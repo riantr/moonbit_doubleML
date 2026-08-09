@@ -151,12 +151,38 @@ pub fn solve_pq(
   // IPW score is provably sign-changed at both endpoints:
   //   - at very low theta,  1{y <= theta} = 0  => score = -q < 0
   //   - at very high theta, 1{y <= theta} = 1  => score = mean(treated/m) - q > 0
+  // REVIEW H1 fix: the second condition can fail when `q` is close to
+  // 1 with sparse treatment (e.g. `mean(treated/m) <= q`). In that
+  // case the bisection converges to the wrong root silently. We
+  // detect a bad upper bracket by checking the sign at initialization
+  // and, if `mean(pq_score_ipw(hi)) <= 0`, widen `hi` exponentially
+  // until the bracket signs flip. After 20 widens we abort (the
+  // score is structurally non-monotonic — caller's data is bad).
   let y_min = array_min(data.y)
   let y_max = array_max(data.y)
   let range = y_max - y_min
-  let margin = if range > 0.0 { range * 0.1 } else { 1.0 }
+  let mut margin = if range > 0.0 { range * 0.1 } else { 1.0 }
   let mut lo = y_min - margin
   let mut hi = y_max + margin
+  let mut widen_attempts = 0
+  while mean(pq_score_ipw(data.x, data.y, treated, m, hi, q)) <= 0.0 &&
+        widen_attempts < 20 {
+    margin = margin * 2.0
+    hi = y_max + margin
+    widen_attempts = widen_attempts + 1
+  }
+  let lo_score = mean(pq_score_ipw(data.x, data.y, treated, m, lo, q))
+  let hi_score = mean(pq_score_ipw(data.x, data.y, treated, m, hi, q))
+  if lo_score >= 0.0 {
+    abort(
+      "solve_pq: lower bracket sign failed (score >= 0 at y_min); the IPW score is structurally non-monotonic for this data",
+    )
+  }
+  if hi_score <= 0.0 {
+    abort(
+      "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+    )
+  }
   // IPW bisection: 60 iterations is enough for 1e-18 * range precision
   // (we only need ~10 for the test tolerance, the rest is a safety margin).
   for _iter = 0; _iter < 60; _iter = _iter + 1 {

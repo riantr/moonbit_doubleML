@@ -11,23 +11,30 @@ release is the canonical version.
 
 ---
 
-## [unreleased] — TODO #11c.4
+## [0.4.1] — REVIEW H1 fix
 
 ### Fixed
-- **LPQ adaptive derivative step** (`lpq.mbt:191-211`): the numerical
-  derivative `h = (y_max - y_min) * 0.01` is replaced with
-  `h = min(0.01 * (y_max - y_min), 1/sqrt(n))`. On continuous y
-  (canonical DGPs) the 1% step still wins, so the SE is bit-equal to
-  the pre-fix value. On discrete y or small n, the 1/sqrt(n) step
-  takes over and prevents the derivative from collapsing to zero.
+- **`solve_pq` upper bracket robustness** (`quantile.mbt:150-188`):
+  the IPW bisection bracket `[y_min - margin, y_max + margin]` relied
+  on `mean(treated/m) - q > 0` at the upper end, which fails when
+  `q ≥ 0.95` and the treatment is sparse. The fix detects the bad
+  upper bracket by checking the sign at initialization, then widens
+  `hi` exponentially up to 20 times. After 20 widens, or if the
+  lower bracket sign is wrong, the function aborts with a clear
+  message rather than silently converging to the wrong root.
 
 ### Tests
-- 113 / 113 across all 4 backends (no test count change; the existing
-  `lpq_within_5pct_of_pre_fix` regression test covers the new tolerance).
-- 9 / 9 `validate_*_with_python.py` PASS.
+- 114 / 114 across all 4 backends (1 new test:
+  `panic_solve_pq_aborts_when_upper_bracket_structurally_invalid`).
+- 9 / 9 `validate_*_with_python.py` PASS (no regression; canonical
+  DGPs use `q = 0.5` where the bracket is always valid).
 
 ### Verification
-- See `_verify/TODO-11c4-verdict.md` (VERDICT: PASS, A- rating).
+- See `_verify/H1-verdict.md` (VERDICT: PASS).
+
+---
+
+## [0.4.0] — TODO #11c.4
 
 ---
 

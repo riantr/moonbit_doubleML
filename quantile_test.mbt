@@ -171,3 +171,32 @@ test "qte_se_hand_computation" {
   inspect((coef - coef_framework).abs() < 1.0e-12, content="true")
   inspect((se_hand - se_framework).abs() < 1.0e-9, content="true")
 }
+
+///|
+/// REVIEW H1 fix: when `q` is close to 1 and the treatment is sparse,
+/// the IPW score at `hi = y_max + margin` is `mean(treated/m) - q`
+/// which can be `<= 0`. The fix detects the bad bracket and widens
+/// `hi` exponentially. After 20 widens it aborts. This test
+/// constructs a DGP where no widening can save the bracket (the
+/// treated mean is `< q`) and asserts the abort fires.
+test "panic_solve_pq_aborts_when_upper_bracket_structurally_invalid" {
+  let n = 200
+  let x = Matrix::zeros(n, 1)
+  let y = Array::make(n, 0.0)
+  let d = Array::make(n, 0.0)
+  // Treated fraction is 0.5 (so mean(treated) = 0.5), but with
+  // q = 0.99 the IPW score at hi = `mean(treated/m) - q < 0` for
+  // any 1/sqrt(n) noise. The fix's 20-step widening is bounded
+  // and will run out — the bracket stays structurally invalid.
+  for i = 0; i < n; i = i + 1 {
+    d[i] = if i % 2 == 0 { 1.0 } else { 0.0 }
+    y[i] = (i % 50).to_double() / 50.0
+  }
+  let data = DoubleMLData::new(x, y, d)
+  let _ = solve_pq(data, 1.0, 0.99, 2, 3141, 1.0e-6)
+  // unreachable: the upper bracket should have aborted
+  inspect(
+    false,
+    content="unreachable: solve_pq should abort on q=0.99 with sparse treatment",
+  )
+}
