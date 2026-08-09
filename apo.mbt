@@ -68,11 +68,13 @@ pub fn DoubleMLAPO::confint(self : DoubleMLAPO) -> (Double, Double) {
 
 ///|
 pub fn DoubleMLAPO::predictions_g(self : DoubleMLAPO) -> Array[Double] {
+  require(self.fitted)
   self.g_hat
 }
 
 ///|
 pub fn DoubleMLAPO::predictions_m(self : DoubleMLAPO) -> Array[Double] {
+  require(self.fitted)
   self.m_hat
 }
 
@@ -122,10 +124,13 @@ fn cross_fit_apo(
 pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
   let n = self.n_obs()
   let treated = indicator_level(self.data.d, self.treatment_level)
-  let ga = Array::make(n, 0.0)
-  let ma = Array::make(n, 0.0)
+  // Accumulate `g` and `m` directly in the storage arrays; divide
+  // by `n_rep` after the loop. REVIEW M3 fix: this used to round-
+  // trip through `ga`/`ma` accumulators and re-divide at the end.
+  let g = Array::make(n, 0.0)
+  let m = Array::make(n, 0.0)
   for r = 0; r < self.n_rep; r = r + 1 {
-    let (g, m) = cross_fit_apo(
+    let (gr, mr) = cross_fit_apo(
       self.data.x,
       self.data.y,
       treated,
@@ -133,17 +138,19 @@ pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
       self.propensity_clip,
     )
     for i = 0; i < n; i = i + 1 {
-      ga[i] = ga[i] + g[i]
-      ma[i] = ma[i] + m[i]
+      g[i] = g[i] + gr[i]
+      m[i] = m[i] + mr[i]
     }
   }
   let inv = 1.0 / self.n_rep.to_double()
-  let g = Array::make(n, 0.0)
-  let m = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
-    g[i] = ga[i] * inv
-    m[i] = ma[i] * inv
+    g[i] = g[i] * inv
+    m[i] = m[i] * inv
   }
+  // `pa` is the APO score's `psi_a` component, which is structurally
+  // `-1` for every observation (the potential-outcome score has no
+  // treatment-side variation). `pb` is the `psi_b` component with
+  // the IPW-style centring `g + treated * (y - g) / m`.
   let pa = Array::make(n, -1.0)
   let pb = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
@@ -212,11 +219,19 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
   let c = Array::make(self.treatment_levels.length(), 0.0)
   let s = Array::make(self.treatment_levels.length(), 0.0)
   for j = 0; j < self.treatment_levels.length(); j = j + 1 {
+    // REVIEW M4 fix: the parent APOS loops over `n_rep` indirectly
+    // by passing `n_rep` to each child APO. Without passing `n_rep`
+    // through, the parent and child would each draw fold partitions
+    // independently, producing `n_rep * n_rep` total fold draws
+    // (wasteful, but functionally redundant). The cleanest fix is
+    // to pass `n_rep = 1` to each child and let the APOS-level loop
+    // do the repetition. This produces `n_rep` total fold draws per
+    // treatment level, matching the intent of the outer `n_rep`.
     let z = DoubleMLAPO::new(
       self.data,
       treatment_level=self.treatment_levels[j],
       n_folds=self.n_folds,
-      n_rep=self.n_rep,
+      n_rep=1,
       seed=self.seed,
       propensity_clip=self.propensity_clip,
     ).fit()

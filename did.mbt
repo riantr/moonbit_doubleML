@@ -19,6 +19,14 @@ pub fn DoubleMLDIDData::new(
 ) -> DoubleMLDIDData {
   require(x.nrows == y.length())
   require(x.nrows == d.length())
+  // Validate that `d` is binary `{0, 1}` (the default port supports
+  // only switchers; the multi-valued `{-1, 0, 1}` Sant'Anna & Zhao
+  // convention is not implemented).
+  for i = 0; i < d.length(); i = i + 1 {
+    if d[i] != 0.0 && d[i] != 1.0 {
+      abort("DoubleMLDIDData.d must be binary {0, 1}")
+    }
+  }
   { x, y, d }
 }
 

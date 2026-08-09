@@ -188,24 +188,24 @@ pub fn LinearRegression::fit_weighted(
     }
   }
   let coef = solve_normal_eqs(xtwx, xtwy, self.ridge)
-  // Cache both (X^T X + ridge I)^{-1} diagonal (for the BLP
-  // homoskedastic-OLS SE) and (X^T W X + ridge I)^{-1} diagonal (for
-  // the WLS-aware RDD SE in TODO #11c.2).
-  let xt = xa.transpose()
-  let xtx = matmul(xt, xa)
-  let xtx_aug = add_ridge(xtx, self.ridge)
-  let xtx_inv = inv_spd(xtx_aug)
-  let xtx_inv_diag = Array::make(p1, 0.0)
-  for j = 0; j < p1; j = j + 1 {
-    xtx_inv_diag[j] = xtx_inv.data[j * p1 + j]
-  }
+  // REVIEW M10 fix: the unweighted `(X^T X + ridge I)^{-1}` diagonal
+  // is only used by `DoubleMLBLP` via the non-WLS `fit` path. The
+  // WLS caller (`DoubleMLRDD`) only reads `xtwx_inv_diag`. We skip
+  // the unweighted `xtx` computation + inverse to save one matrix
+  // multiplication + one Cholesky-based inverse per fit.
   let xtwx_aug = add_ridge(xtwx, self.ridge)
   let xtwx_inv = inv_spd(xtwx_aug)
   let xtwx_inv_diag = Array::make(p1, 0.0)
   for j = 0; j < p1; j = j + 1 {
     xtwx_inv_diag[j] = xtwx_inv.data[j * p1 + j]
   }
-  { ridge: self.ridge, coef_: coef, xtx_inv_diag, xtwx_inv_diag, fitted: true }
+  {
+    ridge: self.ridge,
+    coef_: coef,
+    xtx_inv_diag: [],
+    xtwx_inv_diag,
+    fitted: true,
+  }
 }
 
 ///|
@@ -233,6 +233,12 @@ pub fn LinearRegression::predict(
 /// sandwich matrix. Used by `DoubleMLBLP` for the per-coefficient
 /// heteroskedasticity-robust SE (TODO #11c.1: matches the upstream
 /// `statsmodels.OLS(cov_type='HC0')` default).
+///
+/// REVIEW M9 fix: instead of materialising the full `(X'X)^{-1}` matrix
+/// via `inv_spd` (O(p³) memory + O(p³) compute), we solve `p1`
+/// back-systems `M[j, :] * (X'X + ridge I) = e_j` via `solve_spd`
+/// (each O(p²) compute, zero extra memory). The diagonal entry of the
+/// sandwich is unchanged; only the form of the inner loop changed.
 pub fn LinearRegression::sandwich_se(
   self : LinearRegression,
   x : Matrix,
@@ -244,24 +250,22 @@ pub fn LinearRegression::sandwich_se(
   let p1 = self.coef_.length()
   let xa = augment_with_intercept(x)
   let pred = matvec(xa, self.coef_)
-  // Compute the full (X'X)^{-1} matrix once. We already have the
-  // diagonal cached; for the sandwhich we need the J-th row (for each
-  // coefficient j) so we re-invert. To keep this O(p^3) once and
-  // O(n*p^2) for the diagonal, we invert here. (Cheap alternative:
-  // solve `M[j,:] * (X'X + ridge I) = e_j` for each j via solve_spd,
-  // avoiding the full inverse; but inv_spd is also Cholesky-based.)
   let xt = xa.transpose()
   let xtx = matmul(xt, xa)
   let xtx_aug = add_ridge(xtx, self.ridge)
-  let m_full = inv_spd(xtx_aug)
   // For each j, compute cov_jj = sum_i (sum_a M[j,a] * xa[i,a])^2 * e_i^2
+  // by back-solving `M[j, :] * (X'X + ridge I) = e_j` for each j.
+  let ej : Array[Double] = Array::make(p1, 0.0)
   let out = Array::make(p1, 0.0)
   for j = 0; j < p1; j = j + 1 {
+    ej[j] = 1.0
+    let mj = solve_spd(xtx_aug, ej)
+    ej[j] = 0.0
     let mut acc = 0.0
     for i = 0; i < n; i = i + 1 {
       let mut mjx = 0.0
       for a = 0; a < p1; a = a + 1 {
-        mjx = mjx + m_full.data[j * p1 + a] * xa.data[i * p1 + a]
+        mjx = mjx + mj[a] * xa.data[i * p1 + a]
       }
       let ei = y[i] - pred[i]
       acc = acc + mjx * mjx * ei * ei

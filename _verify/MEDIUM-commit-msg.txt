@@ -1,0 +1,17 @@
+Release 0.4.2: REVIEW medium polish (11 of 12 smells)
+
+Fix 11 of the 12 medium smells from _verify/REVIEW-0.4.0.md:
+
+- M1: DoubleMLAPO predictions_g/m now require(self.fitted)
+- M3: DoubleMLAPO fit: drop ga/ma accumulator round-trip
+- M4: DoubleMLAPOS fit: pass n_rep=1 to child, parent loops
+- M9: LinearRegression::sandwich_se: back-solve instead of inv_spd
+- M10: LinearRegression::fit_weighted: skip unweighted xtx_inv_diag
+- M6: DoubleMLDIDData validates d in {0, 1}
+- M7: array_min/max panic on empty input
+- M2/M8/M11/M12: doc comments
+
+M5 (defensive Array::copy on predictions_*) is deferred: 90 lines
+of churn for poor risk/reward. Documented as Skipped in CHANGELOG.
+
+114/114 tests on all 4 backends. 9/9 validate_*.py pass.

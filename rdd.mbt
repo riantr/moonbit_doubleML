@@ -227,6 +227,10 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
     fuzzy: self.fuzzy,
     coef: c,
     se,
+    // `n_local` is the count of *outcome* observations that fall
+    // inside the bandwidth on both sides of the cutoff. The fuzzy
+    // estimator additionally fits a treatment local-polynomial
+    // on the same rows so the *treated* count is the same.
     n_local: nl + nr,
     fitted: true,
   }

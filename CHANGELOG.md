@@ -11,6 +11,60 @@ release is the canonical version.
 
 ---
 
+## [0.4.2] — REVIEW medium polish
+
+### Changed
+- **M1** (`apo.mbt:70-77`): `DoubleMLAPO::predictions_g` / `predictions_m`
+  now `require(self.fitted)` (consistent with `coef` / `se`).
+- **M3** (`apo.mbt:124-148`): `DoubleMLAPO::fit` no longer round-trips
+  through `ga` / `ma` accumulators — accumulates directly into `g`
+  / `m` and divides by `n_rep` at the end.
+- **M4** (`apo.mbt:217-228`): `DoubleMLAPOS::fit` now passes `n_rep=1`
+  to each child `DoubleMLAPO::fit` (the parent APOS loop performs the
+  repetition). This avoids the previous `n_rep * n_rep` total fold
+  draws.
+- **M9** (`linear.mbt:236-282`): `sandwich_se` replaces the
+  `inv_spd`-based full matrix inversion with `p1` back-solves via
+  `solve_spd`. Saves O(p³) memory per fit and produces bit-equal
+  HC0 SE values.
+- **M10** (`linear.mbt:194-221`): `fit_weighted` no longer computes
+  the unweighted `(X'X)^{-1}` diagonal — only the weighted
+  `(X'WX)^{-1}` diagonal is needed (by `DoubleMLRDD`). Saves one
+  matrix multiplication + one Cholesky-based inverse per fit.
+
+### Fixed
+- **M6** (`did.mbt:11-23`): `DoubleMLDIDData::new` now validates that
+  `d ∈ {0, 1}` (the only treatment convention supported by the port).
+  Catches upstream data errors at construction time.
+- **M7** (`quantile.mbt:2-23`): `array_min` / `array_max` now panic
+  on empty input instead of `v[0]` out-of-bounds.
+
+### Docs
+- **M2** (`apo.mbt:149-152`): `pa` doc comment explains the structural
+  `psi_a = -1` of the APO score.
+- **M8** (`quantile.mbt:131-141`): `solve_pq` doc explains why it is
+  `pub` (blackbox-test-only API).
+- **M11** (`rdd.mbt:222-234`): `n_local` doc explains the count is for
+  outcome observations inside the bandwidth.
+- **M12** (`quantile.mbt:32-45`): `g_cross_fit_count` doc explains the
+  thread-safety assumption.
+
+### Skipped
+- **M5** (defensive `Array::copy` on `predictions_*` accessors): the
+  review itself notes this is a 90-line change with poor risk/reward
+  ratio. The current shared-reference behaviour is faster and the
+  caller is trusted. Deferred — not blocking.
+
+### Tests
+- 114 / 114 across all 4 backends (no test count change; existing
+  tests cover the refactored paths).
+- 9 / 9 `validate_*_with_python.py` PASS.
+
+### Verification
+- See `_verify/MEDIUM-verdict.md`.
+
+---
+
 ## [0.4.1] — REVIEW H1 fix
 
 ### Fixed

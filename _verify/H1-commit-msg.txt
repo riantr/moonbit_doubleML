@@ -1,0 +1,10 @@
+Release 0.4.1: fix REVIEW H1 (solve_pq bracket robustness)
+
+The IPW bisection bracket in solve_pq relied on mean(treated/m) - q > 0
+at the upper end, which fails when q >= 0.95 with sparse treatment.
+The fix detects the bad upper bracket and widens hi exponentially
+up to 20 times; if the bracket still fails, the function aborts with
+a clear message.
+
+1 new test: panic_solve_pq_aborts_when_upper_bracket_structurally_invalid.
+114/114 tests pass on all 4 backends. 9/9 validate_*.py pass.

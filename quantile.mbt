@@ -1,5 +1,8 @@
 ///|
 fn array_min(v : Array[Double]) -> Double {
+  if v.length() < 1 {
+    abort("array_min: empty array")
+  }
   let mut z = v[0]
   for x in v {
     if x < z {
@@ -11,6 +14,9 @@ fn array_min(v : Array[Double]) -> Double {
 
 ///|
 fn array_max(v : Array[Double]) -> Double {
+  if v.length() < 1 {
+    abort("array_max: empty array")
+  }
   let mut z = v[0]
   for x in v {
     if x > z {
@@ -36,6 +42,12 @@ fn outcome_indicator(y : Array[Double], theta : Double) -> Array[Double] {
 /// (Bug #3 fix). The counter is shared between `solve_pq`,
 /// `DoubleMLCVAR::fit` and `DoubleMLLPQ::fit` because all three
 /// share the same `cross_fit_conditional` helper in this file.
+///
+/// Note: this is module-level global state. MoonBit is single-
+/// threaded per package, so concurrent calls are not possible
+/// within a single fit. The counter is exposed via
+/// `reset_g_cross_fit_count()` / `g_cross_fit_calls()` for tests
+/// to bracket a `fit()` call.
 let g_cross_fit_count : Ref[Int] = { val: 0 }
 
 ///|
@@ -133,9 +145,13 @@ fn fit_propensity(
 /// `(theta, se)` and recomputed g on every bisection step.
 ///
 /// Returns: `(theta, psi, deriv)` where `psi : Array[Double]` of
-/// length `n` and `deriv : Double`. `pub` so the QTE tests can
-/// re-derive the QTE SE by hand from the per-treatment
-/// `solve_pq` outputs.
+/// length `n` and `deriv : Double`.
+///
+/// This is `pub` so the blackbox test `quantile_test::qte_se_hand_computation`
+/// can re-derive the QTE SE by hand from the per-treatment `solve_pq`
+/// outputs. Internal-only callers (`DoubleMLPQ`, `DoubleMLQTE`,
+/// `DoubleMLCVAR`) all live in this same package and could call a
+/// `_for_test` variant; the public API is kept for clarity.
 pub fn solve_pq(
   data : DoubleMLData,
   treatment : Double,
