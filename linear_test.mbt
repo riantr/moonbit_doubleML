@@ -163,3 +163,15 @@ test "linear_regression_fit_weighted_changes_coefficients" {
   }
   inspect(differs, content="true")
 }
+
+///|
+test "panic_fit_weighted_aborts_on_negative_weight" {
+  // REVIEW L7: negative weights silently flip the sign of the
+  // residual contribution, so `fit_weighted` now `require`s `w >= 0`
+  // and aborts. The `panic_` prefix tells the MoonBit test runner
+  // to count the abort as a PASS.
+  let x = Matrix::from_array([1.0, 2.0, 1.0, 3.0, 2.0, 5.0], 3, 2)
+  let y = [1.0, 2.0, 3.0]
+  let w_neg = [1.0, -0.5, 1.0]
+  let _ = LinearRegression::new().fit_weighted(x, y, w_neg)
+}

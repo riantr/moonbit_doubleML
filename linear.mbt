@@ -134,6 +134,13 @@ pub fn LinearRegression::xtwx_inv_diag(
 /// Used by `DoubleMLBLP` to recover the per-coefficient standard error
 /// (Bug #5: previously every coefficient shared the same SE =
 /// `sqrt(RSS / (n - p))`, ignoring the `(X^T X)^{-1}` scaling).
+///
+/// REVIEW L8: after a `fit_weighted()` call the cached
+/// `xtx_inv_diag` is the empty array (M10 fix), so calling
+/// `covariance_diagonal` on a WLS-fit model yields a vector of
+/// zeros. Callers must use the unweighted `fit` path (or pass the
+/// pre-computed `(X^T X)^{-1}` diagonal themselves) when the
+/// homoskedastic SE is wanted.
 pub fn LinearRegression::covariance_diagonal(
   self : LinearRegression,
   sigma2 : Double,
@@ -171,6 +178,13 @@ pub fn LinearRegression::fit_weighted(
 ) -> LinearRegression {
   require(x.nrows == y.length())
   require(x.nrows == w.length())
+  // REVIEW L7: WLS is only meaningful with non-negative weights.
+  // Negative weights would silently flip the sign of the residual
+  // contribution; reject at construction so the bug surfaces at
+  // the call site rather than as a wrong-direction estimate.
+  for wi in w {
+    require(wi >= 0.0)
+  }
   let n = x.nrows
   let xa = augment_with_intercept(x)
   let p1 = xa.ncols

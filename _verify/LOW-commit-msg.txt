@@ -1,0 +1,19 @@
+Release 0.4.3: REVIEW low polish (5 of 8 smells)
+
+Changes
+- L7: fit_weighted now require(wi >= 0.0); new panic test pins the
+  contract (abort counts as PASS in MoonBit's runner)
+- L2/L5/L8: docs only (apo cross_fit_apo, DoubleMLBLP cov_type,
+  covariance_diagonal empty xtx_inv_diag note)
+- L6: in-source comment explaining why the match wildcard is
+  required (Int % 4 is signed)
+
+Skipped with reason
+- L1: cov_type field kept for public-API compat
+- L3: coef_ mutability already correctly managed
+- L4: n_features accessor asymmetry is consistent across models
+
+Verification
+- moon test --deny-warn: 115/115 on native, wasm-gc, wasm, js
+- 8/8 validate_*_with_python.py PASS
+- See _verify/LOW-verdict.md

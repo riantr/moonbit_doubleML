@@ -11,6 +11,49 @@ release is the canonical version.
 
 ---
 
+## [0.4.3] — REVIEW low polish
+
+### Fixed
+- **L7** (`linear.mbt:166-189`): `LinearRegression::fit_weighted` now
+  `require`s `w[i] >= 0.0`. Negative WLS weights silently flip the
+  sign of the residual contribution and produced wrong-direction
+  estimates; rejected at the call site instead. New test
+  `panic_fit_weighted_aborts_on_negative_weight` pins the contract
+  (MoonBit's test runner reports the `abort` as a PASS).
+
+### Docs
+- **L2** (`apo.mbt:91-105`): `cross_fit_apo` doc explains the
+  asymmetric split (treated-only `g`, full-sample `m`).
+- **L5** (`blp_policy.mbt:1-22`): `DoubleMLBLP` doc expanded with
+  the full HC0 vs. nonrobust semantics and the rationale for keeping
+  `cov_type` as a struct field (post-fit introspection).
+- **L6** (`seed.mbt:31-37`): in-source comment explains why the
+  match uses a wildcard instead of an explicit `3 => b3` — `Int % 4`
+  is signed, so negative remainders are possible. The "explicit
+  case" alternative is non-exhaustive and fails `moon --deny-warn`.
+- **L8** (`linear.mbt:127-156`): `covariance_diagonal` doc warns that
+  `xtx_inv_diag` is the empty array after `fit_weighted` (M10 fix
+  side-effect) and the call would yield a vector of zeros.
+
+### Skipped
+- **L1** (`cov_type` field on `DoubleMLBLP`): refactoring to a local
+  var would break the public API surface auto-generated in
+  `pkg.generated.mbti`. The field is unused after fit but kept for
+  forward compat.
+- **L3** (`coef_` mutability): already managed correctly via the
+  struct copy in `fit`/`fit_weighted`; no `let mut` was missing.
+- **L4** (asymmetric `n_features` accessor presence): cosmetic; the
+  asymmetry is consistent across all DML models.
+
+### Tests
+- 115 / 115 across all 4 backends (added 1 `panic_*` test for L7).
+- 8 / 8 `validate_*_with_python.py` PASS.
+
+### Verification
+- See `_verify/LOW-verdict.md`.
+
+---
+
 ## [0.4.2] — REVIEW medium polish
 
 ### Changed

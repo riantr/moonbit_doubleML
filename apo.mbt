@@ -88,6 +88,15 @@ fn indicator_level(d : Array[Double], level : Double) -> Array[Double] {
 }
 
 ///|
+/// Cross-fit the APO nuisances. The order is asymmetric: the
+/// conditional outcome `g` is fit only on the treated subset (the
+/// same as the upstream `DoubleMLAPO`), while the propensity `m`
+/// is fit on the *full* training fold (including controls). The
+/// effect is that rows with `treated = 0` receive their `g` value
+/// from the previous fold's treated-only fit (or stay at the
+/// default 0.0 if no fold has yet seen them); rows with `treated = 1`
+/// receive both a `g` (on the treated subset) and a propensity
+/// update. REVIEW L2: this is the upstream convention.
 fn cross_fit_apo(
   x : Matrix,
   y : Array[Double],

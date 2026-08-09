@@ -29,6 +29,10 @@ pub fn seed_to_bytes(seed : Int) -> Array[Byte] {
   let b3 : Byte = ((seed >> 24) & 0xff).to_byte()
   let bytes : Array[Byte] = []
   for k = 0; k < 32; k = k + 1 {
+    // REVIEW L6: `Int % Int` is signed in MoonBit, so `k % 4` can
+    // return negative values for `k < 0`. The wildcard covers
+    // that branch — writing `3 => b3` instead would leave a
+    // non-exhaustive match that `moon --deny-warn` rejects.
     let b = match k % 4 {
       0 => b0
       1 => b1

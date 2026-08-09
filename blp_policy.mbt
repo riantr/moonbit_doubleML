@@ -1,13 +1,21 @@
 ///|
 /// Best linear predictor of an orthogonal signal on a supplied basis.
+///
+/// `cov_type` selects the standard-error convention. Valid values:
+///   - `"HC0"` (default): White's heteroskedasticity-consistent
+///     sandwich SE — robust to arbitrary residual heteroskedasticity.
+///     Matches the upstream `doubleml.utils.blp` call to
+///     `statsmodels.OLS(cov_type='HC0')`.
+///   - `"nonrobust"`: classic homoskedastic OLS SE
+///     (`sigma^2 * (X^T X)^{-1}` with `sigma^2 = RSS / (n - p)`),
+///     which is only valid under the homogeneous-error assumption.
+///
+/// REVIEW L5: the field is currently stored on the struct for forward
+/// compatibility (post-fit introspection), but is not used outside
+/// `fit`. Construct via `DoubleMLBLP::new` to validate the value.
 pub struct DoubleMLBLP {
   basis : Matrix
   orth_signal : Array[Double]
-  // Whether to use the heteroskedasticity-consistent (HC0) sandwich
-  // SE. The upstream `doubleml.utils.blp` calls
-  // `statsmodels.OLS(cov_type='HC0')` by default, so we match that
-  // behaviour unless the caller explicitly opts out via
-  // `cov_type='nonrobust'`.
   cov_type : String
   coef : Array[Double]
   se : Array[Double]
