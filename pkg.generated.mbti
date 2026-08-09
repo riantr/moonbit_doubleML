@@ -1,0 +1,479 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "mavis/dml"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn add_ridge(Matrix, Double) -> Matrix
+
+pub fn aggregate_coef_se(Array[Double], Array[Double]) -> (Double, Double)
+
+pub fn augment_one_col(Matrix, Array[Double]) -> Matrix
+
+pub fn augment_with_intercept(Matrix) -> Matrix
+
+#callsite(autofill(loc))
+pub fn check(Bool, loc~ : SourceLoc) -> Unit
+
+pub fn cholesky(Matrix) -> Matrix
+
+pub fn clip_vec(Array[Double], Double, Double) -> Array[Double]
+
+pub fn[T : Learner] cross_fit_predict(T, Matrix, Array[Double], Array[Fold]) -> Array[Double]
+
+pub fn dot(Array[Double], Array[Double]) -> Double
+
+pub fn filter_by_value(Array[Int], Array[Double], Double) -> Array[Int]
+
+pub fn filter_indices(Array[Int], Array[Double]) -> Array[Int]
+
+pub fn filter_two_values(Array[Int], Array[Double], Double, Array[Double], Double) -> Array[Int]
+
+pub fn g_cross_fit_calls() -> Int
+
+pub fn inv_spd(Matrix) -> Matrix
+
+pub fn kahan_sum(Array[Double]) -> Double
+
+pub fn kfold(Int, Int, Int) -> Array[Fold]
+
+pub fn lpq_score_ipw(DoubleMLLPQData, Array[Double], Array[Double], Double, Double, Double, Double) -> Array[Double]
+
+pub fn matmul(Matrix, Matrix) -> Matrix
+
+pub fn matvec(Matrix, Array[Double]) -> Array[Double]
+
+pub fn matvec_t(Matrix, Array[Double]) -> Array[Double]
+
+pub fn mean(Array[Double]) -> Double
+
+pub fn pq_score_ipw(Matrix, Array[Double], Array[Double], Array[Double], Double, Double) -> Array[Double]
+
+pub fn range_indices(Int) -> Array[Int]
+
+#callsite(autofill(loc))
+pub fn require(Bool, loc~ : SourceLoc) -> Unit
+
+pub fn reset_g_cross_fit_count() -> Unit
+
+pub fn seed_to_bytes(Int) -> Array[Byte]
+
+pub fn slice_matrix_rows(Matrix, Array[Int]) -> Matrix
+
+pub fn slice_vector(Array[Double], Array[Int]) -> Array[Double]
+
+pub fn solve_pq(DoubleMLData, Double, Double, Int, Int, Double) -> (Double, Array[Double], Double)
+
+pub fn solve_spd(Matrix, Array[Double]) -> Array[Double]
+
+pub fn var_est(Array[Double], Array[Double]) -> (Double, Double)
+
+pub fn variance(Array[Double]) -> Double
+
+// Errors
+
+// Types and methods
+pub struct DoubleMLAPO {
+  data : DoubleMLData
+  treatment_level : Double
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  propensity_clip : Double
+  g_hat : Array[Double]
+  m_hat : Array[Double]
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLAPO::coef(Self) -> Double
+pub fn DoubleMLAPO::confint(Self) -> (Double, Double)
+pub fn DoubleMLAPO::fit(Self) -> Self
+pub fn DoubleMLAPO::n_obs(Self) -> Int
+pub fn DoubleMLAPO::new(DoubleMLData, treatment_level? : Double, n_folds? : Int, n_rep? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLAPO::predictions_g(Self) -> Array[Double]
+pub fn DoubleMLAPO::predictions_m(Self) -> Array[Double]
+pub fn DoubleMLAPO::se(Self) -> Double
+
+pub struct DoubleMLAPOS {
+  data : DoubleMLData
+  treatment_levels : Array[Double]
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  propensity_clip : Double
+  coefs : Array[Double]
+  ses : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLAPOS::coefs(Self) -> Array[Double]
+pub fn DoubleMLAPOS::fit(Self) -> Self
+pub fn DoubleMLAPOS::new(DoubleMLData, Array[Double], n_folds? : Int, n_rep? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLAPOS::ses(Self) -> Array[Double]
+
+pub struct DoubleMLBLP {
+  basis : Matrix
+  orth_signal : Array[Double]
+  coef : Array[Double]
+  se : Array[Double]
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLBLP::coef(Self) -> Array[Double]
+pub fn DoubleMLBLP::fit(Self) -> Self
+pub fn DoubleMLBLP::new(Matrix, Array[Double]) -> Self
+pub fn DoubleMLBLP::se(Self) -> Array[Double]
+
+pub struct DoubleMLCVAR {
+  data : DoubleMLData
+  treatment : Double
+  quantile : Double
+  n_folds : Int
+  seed : Int
+  propensity_clip : Double
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLCVAR::coef(Self) -> Double
+pub fn DoubleMLCVAR::fit(Self) -> Self
+pub fn DoubleMLCVAR::new(DoubleMLData, treatment? : Double, quantile? : Double, n_folds? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLCVAR::se(Self) -> Double
+
+pub struct DoubleMLDID {
+  data : DoubleMLDIDData
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  propensity_clip : Double
+  g0_hat : Array[Double]
+  g1_hat : Array[Double]
+  m_hat : Array[Double]
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLDID::coef(Self) -> Double
+pub fn DoubleMLDID::confint(Self) -> (Double, Double)
+pub fn DoubleMLDID::fit(Self, ml_g? : LinearRegression, ml_m? : LinearRegression) -> Self
+pub fn DoubleMLDID::n_obs(Self) -> Int
+pub fn DoubleMLDID::new(DoubleMLDIDData, n_folds? : Int, n_rep? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLDID::predictions_g0(Self) -> Array[Double]
+pub fn DoubleMLDID::predictions_g1(Self) -> Array[Double]
+pub fn DoubleMLDID::predictions_m(Self) -> Array[Double]
+pub fn DoubleMLDID::se(Self) -> Double
+
+pub struct DoubleMLDIDData {
+  x : Matrix
+  y : Array[Double]
+  d : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLDIDData::n_features(Self) -> Int
+pub fn DoubleMLDIDData::n_obs(Self) -> Int
+pub fn DoubleMLDIDData::new(Matrix, Array[Double], Array[Double]) -> Self
+
+pub struct DoubleMLData {
+  x : Matrix
+  y : Array[Double]
+  d : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLData::n_features(Self) -> Int
+pub fn DoubleMLData::n_obs(Self) -> Int
+pub fn DoubleMLData::new(Matrix, Array[Double], Array[Double]) -> Self
+
+pub struct DoubleMLIIVM {
+  data : DoubleMLIIVMData
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  propensity_clip : Double
+  g0_hat : Array[Double]
+  g1_hat : Array[Double]
+  m_hat : Array[Double]
+  r0_hat : Array[Double]
+  r1_hat : Array[Double]
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLIIVM::coef(Self) -> Double
+pub fn DoubleMLIIVM::confint(Self) -> (Double, Double)
+pub fn DoubleMLIIVM::fit(Self, ml_g? : LinearRegression, ml_m? : LinearRegression, ml_r? : LinearRegression) -> Self
+pub fn DoubleMLIIVM::n_obs(Self) -> Int
+pub fn DoubleMLIIVM::new(DoubleMLIIVMData, n_folds? : Int, n_rep? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLIIVM::predictions_g0(Self) -> Array[Double]
+pub fn DoubleMLIIVM::predictions_g1(Self) -> Array[Double]
+pub fn DoubleMLIIVM::predictions_m(Self) -> Array[Double]
+pub fn DoubleMLIIVM::predictions_r0(Self) -> Array[Double]
+pub fn DoubleMLIIVM::predictions_r1(Self) -> Array[Double]
+pub fn DoubleMLIIVM::se(Self) -> Double
+
+pub struct DoubleMLIIVMData {
+  x : Matrix
+  y : Array[Double]
+  d : Array[Double]
+  z : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLIIVMData::n_features(Self) -> Int
+pub fn DoubleMLIIVMData::n_obs(Self) -> Int
+pub fn DoubleMLIIVMData::new(Matrix, Array[Double], Array[Double], Array[Double]) -> Self
+
+pub struct DoubleMLIRM {
+  data : DoubleMLData
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  propensity_clip : Double
+  g0_hat : Array[Double]
+  g1_hat : Array[Double]
+  m_hat : Array[Double]
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLIRM::coef(Self) -> Double
+pub fn DoubleMLIRM::confint(Self) -> (Double, Double)
+pub fn DoubleMLIRM::fit(Self, ml_g? : LinearRegression, ml_m? : LinearRegression) -> Self
+pub fn DoubleMLIRM::n_obs(Self) -> Int
+pub fn DoubleMLIRM::new(DoubleMLData, n_folds? : Int, n_rep? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLIRM::predictions_g0(Self) -> Array[Double]
+pub fn DoubleMLIRM::predictions_g1(Self) -> Array[Double]
+pub fn DoubleMLIRM::predictions_m(Self) -> Array[Double]
+pub fn DoubleMLIRM::se(Self) -> Double
+
+pub struct DoubleMLLPQ {
+  data : DoubleMLLPQData
+  treatment : Double
+  quantile : Double
+  n_folds : Int
+  seed : Int
+  propensity_clip : Double
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLLPQ::coef(Self) -> Double
+pub fn DoubleMLLPQ::fit(Self) -> Self
+pub fn DoubleMLLPQ::new(DoubleMLLPQData, treatment? : Double, quantile? : Double, n_folds? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLLPQ::se(Self) -> Double
+
+pub struct DoubleMLLPQData {
+  x : Matrix
+  y : Array[Double]
+  d : Array[Double]
+  z : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLLPQData::new(Matrix, Array[Double], Array[Double], Array[Double]) -> Self
+
+pub struct DoubleMLPLIV {
+  data : DoubleMLPLIVData
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  l_hat : Array[Double]
+  r_hat : Array[Double]
+  m_hat : Array[Double]
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLPLIV::coef(Self) -> Double
+pub fn DoubleMLPLIV::confint(Self) -> (Double, Double)
+pub fn DoubleMLPLIV::fit(Self, learner? : LinearRegression) -> Self
+pub fn DoubleMLPLIV::n_obs(Self) -> Int
+pub fn DoubleMLPLIV::new(DoubleMLPLIVData, n_folds? : Int, n_rep? : Int, seed? : Int) -> Self
+pub fn DoubleMLPLIV::predictions_l(Self) -> Array[Double]
+pub fn DoubleMLPLIV::predictions_m(Self) -> Array[Double]
+pub fn DoubleMLPLIV::predictions_r(Self) -> Array[Double]
+pub fn DoubleMLPLIV::se(Self) -> Double
+
+pub struct DoubleMLPLIVData {
+  x : Matrix
+  y : Array[Double]
+  d : Array[Double]
+  z : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLPLIVData::n_features(Self) -> Int
+pub fn DoubleMLPLIVData::n_obs(Self) -> Int
+pub fn DoubleMLPLIVData::new(Matrix, Array[Double], Array[Double], Array[Double]) -> Self
+
+pub struct DoubleMLPLR {
+  data : DoubleMLData
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  l_hat : Array[Double]
+  m_hat : Array[Double]
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLPLR::coef(Self) -> Double
+pub fn DoubleMLPLR::confint(Self) -> (Double, Double)
+pub fn DoubleMLPLR::fit(Self, learner? : LinearRegression) -> Self
+pub fn DoubleMLPLR::n_obs(Self) -> Int
+pub fn DoubleMLPLR::new(DoubleMLData, n_folds? : Int, n_rep? : Int, seed? : Int) -> Self
+pub fn DoubleMLPLR::predictions_l(Self) -> Array[Double]
+pub fn DoubleMLPLR::predictions_m(Self) -> Array[Double]
+pub fn DoubleMLPLR::se(Self) -> Double
+
+pub struct DoubleMLPQ {
+  data : DoubleMLData
+  treatment : Double
+  quantile : Double
+  n_folds : Int
+  seed : Int
+  propensity_clip : Double
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLPQ::coef(Self) -> Double
+pub fn DoubleMLPQ::confint(Self) -> (Double, Double)
+pub fn DoubleMLPQ::fit(Self) -> Self
+pub fn DoubleMLPQ::new(DoubleMLData, treatment? : Double, quantile? : Double, n_folds? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLPQ::se(Self) -> Double
+
+pub struct DoubleMLPolicyTree {
+  features : Matrix
+  orth_signal : Array[Double]
+  depth : Int
+  split_feature : Int
+  split_value : Double
+  left_treatment : Int
+  right_treatment : Int
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLPolicyTree::fit(Self) -> Self
+pub fn DoubleMLPolicyTree::new(Matrix, Array[Double], depth? : Int) -> Self
+pub fn DoubleMLPolicyTree::predict(Self, Matrix) -> Array[Int]
+pub fn DoubleMLPolicyTree::split_feature(Self) -> Int
+pub fn DoubleMLPolicyTree::split_value(Self) -> Double
+
+pub struct DoubleMLQTE {
+  data : DoubleMLData
+  quantiles : Array[Double]
+  n_folds : Int
+  seed : Int
+  propensity_clip : Double
+  coefs : Array[Double]
+  ses : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLQTE::coefs(Self) -> Array[Double]
+pub fn DoubleMLQTE::fit(Self) -> Self
+pub fn DoubleMLQTE::new(DoubleMLData, quantiles? : Array[Double], n_folds? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLQTE::ses(Self) -> Array[Double]
+
+pub struct DoubleMLRDD {
+  data : DoubleMLRDDData
+  cutoff : Double
+  bandwidth : Double
+  fuzzy : Bool
+  coef : Double
+  se : Double
+  n_local : Int
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLRDD::coef(Self) -> Double
+pub fn DoubleMLRDD::confint(Self) -> (Double, Double)
+pub fn DoubleMLRDD::fit(Self) -> Self
+pub fn DoubleMLRDD::n_local(Self) -> Int
+pub fn DoubleMLRDD::new(DoubleMLRDDData, cutoff? : Double, bandwidth? : Double, fuzzy? : Bool) -> Self
+pub fn DoubleMLRDD::se(Self) -> Double
+
+pub struct DoubleMLRDDData {
+  x : Matrix
+  y : Array[Double]
+  d : Array[Double]
+  score : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLRDDData::n_obs(Self) -> Int
+pub fn DoubleMLRDDData::new(Matrix, Array[Double], Array[Double], Array[Double]) -> Self
+
+pub struct DoubleMLSSM {
+  data : DoubleMLSSMData
+  n_folds : Int
+  n_rep : Int
+  seed : Int
+  propensity_clip : Double
+  pi_hat : Array[Double]
+  m_hat : Array[Double]
+  g_d1 : Array[Double]
+  g_d0 : Array[Double]
+  coef : Double
+  se : Double
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn DoubleMLSSM::coef(Self) -> Double
+pub fn DoubleMLSSM::confint(Self) -> (Double, Double)
+pub fn DoubleMLSSM::fit(Self, ml_g? : LinearRegression, ml_m? : LinearRegression, ml_pi? : LinearRegression) -> Self
+pub fn DoubleMLSSM::n_obs(Self) -> Int
+pub fn DoubleMLSSM::new(DoubleMLSSMData, n_folds? : Int, n_rep? : Int, seed? : Int, propensity_clip? : Double) -> Self
+pub fn DoubleMLSSM::predictions_g_d0(Self) -> Array[Double]
+pub fn DoubleMLSSM::predictions_g_d1(Self) -> Array[Double]
+pub fn DoubleMLSSM::predictions_m(Self) -> Array[Double]
+pub fn DoubleMLSSM::predictions_pi(Self) -> Array[Double]
+pub fn DoubleMLSSM::se(Self) -> Double
+
+pub struct DoubleMLSSMData {
+  x : Matrix
+  y : Array[Double]
+  d : Array[Double]
+  s : Array[Double]
+} derive(@debug.Debug)
+pub fn DoubleMLSSMData::n_features(Self) -> Int
+pub fn DoubleMLSSMData::n_obs(Self) -> Int
+pub fn DoubleMLSSMData::new(Matrix, Array[Double], Array[Double], Array[Double]) -> Self
+
+pub struct Fold {
+  train_idx : Array[Int]
+  test_idx : Array[Int]
+} derive(@debug.Debug)
+pub fn Fold::test_indices(Self) -> Array[Int]
+pub fn Fold::train_indices(Self) -> Array[Int]
+
+pub struct LinearRegression {
+  ridge : Double
+  coef_ : Array[Double]
+  xtx_inv_diag : Array[Double]
+  fitted : Bool
+} derive(@debug.Debug)
+pub fn LinearRegression::coefficients(Self) -> Array[Double]
+pub fn LinearRegression::covariance_diagonal(Self, Double) -> Array[Double]
+pub fn LinearRegression::fit(Self, Matrix, Array[Double]) -> Self
+pub fn LinearRegression::fit_weighted(Self, Matrix, Array[Double], Array[Double]) -> Self
+pub fn LinearRegression::n_features(Self) -> Int
+pub fn LinearRegression::new(ridge? : Double) -> Self
+pub fn LinearRegression::predict(Self, Matrix) -> Array[Double]
+
+pub struct LogisticRegression {
+  fitted : Bool
+  coef_ : Array[Double]
+} derive(@debug.Debug)
+pub fn LogisticRegression::coefficients(Self) -> Array[Double]
+pub fn LogisticRegression::fit(Self, Matrix, Array[Double], max_iter? : Int, tol? : Double, ridge? : Double) -> Self
+pub fn LogisticRegression::new() -> Self
+pub fn LogisticRegression::predict(Self, Matrix) -> Array[Double]
+pub fn LogisticRegression::predict_class(Self, Matrix, threshold? : Double) -> Array[Double]
+
+type Matrix derive(@debug.Debug)
+pub fn Matrix::cols(Self) -> Int
+pub fn Matrix::copy(Self) -> Self
+pub fn Matrix::from_array(Array[Double], Int, Int) -> Self
+pub fn Matrix::from_rows(Array[Array[Double]]) -> Self
+pub fn Matrix::get(Self, Int, Int) -> Double
+pub fn Matrix::identity(Int) -> Self
+pub fn Matrix::ones(Int, Int) -> Self
+pub fn Matrix::rows(Self) -> Int
+pub fn Matrix::set(Self, Int, Int, Double) -> Unit
+pub fn Matrix::transpose(Self) -> Self
+pub fn Matrix::zeros(Int, Int) -> Self
+
+// Type aliases
+
+// Traits
+pub trait Learner {
+  fn fit(Self, Matrix, Array[Double]) -> Self
+  fn predict(Self, Matrix) -> Array[Double]
+}
+

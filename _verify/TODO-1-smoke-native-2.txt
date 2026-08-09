@@ -1,0 +1,34 @@
+﻿precondition failed at linalg.mbt:24:5-24:24@mavis/dml
+moon : PanicError
+所在位置 行:1 字符: 255
++ ...  $i ====="; moon test _verify_smoke_check_test.mbt -i $i --target nat ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PanicError:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    at moonbit_panic (C:\Users\31379\.moon\lib\runtime.c:651)
+    at @moonbitlang/core/abort.abort[Unit] (C:\Users\31379\.moon\lib\core\abort\abort.mbt:50)
+    at @mavis/dml.check (D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\check.mbt:12)
+    at @mavis/dml.require (D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\check.mbt:22)
+    at @mavis/dml.cholesky (D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\linalg.mbt:25)
+    at @mavis/dml_blackbox_test.__test_5f7665726966795f736d6f6b655f636865636b5f746573742e6d6274_2 (D:\src\MiniMax\Proje
+cts\DoubleMachineLearning\dml-moonbit\_verify_smoke_check_test.mbt:16)
+    at @mavis/dml_blackbox_test.__test_5f7665726966795f736d6f6b655f636865636b5f746573742e6d6274_2.dyncall (D:\src\MiniM
+ax\Projects\DoubleMachineLearning\dml-moonbit\_build\native\debug\test\dml.blackbox_test.c:12432)
+    at @mavis/dml_blackbox_test.moonbit_test_driver_internal_catch_error (D:\src\MiniMax\Projects\DoubleMachineLearning
+\dml-moonbit\__generated_driver_for_blackbox_test.mbt:422)
+    at impl @mavis/dml_blackbox_test.MoonBit_Test_Driver for @mavis/dml_blackbox_test.MoonBit_Test_Driver_Internal_No_A
+rgs with run_test (D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\__generated_driver_for_blackbox_test.mbt:5
+63)
+    at @mavis/dml_blackbox_test.moonbit_test_driver_internal_do_execute (D:\src\MiniMax\Projects\DoubleMachineLearning\
+dml-moonbit\__generated_driver_for_blackbox_test.mbt:735)
+    at main (D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\__generated_driver_for_blackbox_test.mbt:579)
+Error: failed to run test for target Native
+
+Caused by:
+    Failed to run the test: D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\_build\native\debug\test\dml.blac
+kbox_test.exe
+    The test executable exited with exit code: 0xc0000409
+    Active test at executable exit:
+      - D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\_verify_smoke_check_test.mbt:14 "smoke_cholesky_non_p
+sd"

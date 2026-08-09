@@ -1,0 +1,61 @@
+///|
+// One-off demo probe — NOT a test. Prints the fitted coefficients
+// for the DGP `n=200, p=2, y = 1{x0 > 0}` to confirm IRLS produces
+// coefficients in the expected `[-0, 5, 0]` shape (intercept ~ 0,
+// slope on x0 large & positive, slope on x1 ~ 0).
+fn demo_buf(seed : Int) -> Array[Byte] {
+  let s = if seed < 0 { -seed } else { seed }
+  let b0 = (s % 128).to_byte()
+  let b1 = (s / 128 % 128).to_byte()
+  let b2 = (s / 16384 % 128).to_byte()
+  let b3 = (s / 2097152 % 128).to_byte()
+  let bytes : Array[Byte] = []
+  for k = 0; k < 32; k = k + 1 {
+    let b = match k % 4 {
+      0 => b0
+      1 => b1
+      2 => b2
+      _ => b3
+    }
+    bytes.push(b)
+  }
+  bytes
+}
+
+///|
+test "logistic_demo_probe" {
+  let n = 200
+  let p = 2
+  let rng = @random.Rand::chacha8(seed=Bytes::from_array(demo_buf(2026)))
+  let pool : Array[Double] = Array::make(n * p, 0.0)
+  let mut i = 0
+  while i < pool.length() {
+    let u1 = rng.double()
+    let u2 = rng.double()
+    let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
+    let r = (-2.0 * @math.ln(safe)).sqrt()
+    let theta_ = 2.0 * 3.141592653589793 * u2
+    pool[i] = r * @math.cos(theta_)
+    if i + 1 < pool.length() {
+      pool[i + 1] = r * @math.sin(theta_)
+    }
+    i = i + 2
+  }
+  let x_flat : Array[Double] = Array::make(n * p, 0.0)
+  for k = 0; k < n * p; k = k + 1 {
+    x_flat[k] = pool[k]
+  }
+  let x = Matrix::from_array(x_flat, n, p)
+  let y : Array[Double] = Array::make(n, 0.0)
+  for k = 0; k < n; k = k + 1 {
+    y[k] = if x.get(k, 0) > 0.0 { 1.0 } else { 0.0 }
+  }
+  let fitted = LogisticRegression::new().fit(x, y)
+  let c = fitted.coefficients()
+  // Visible diagnostic to confirm IRLS produced non-trivial coefs
+  // in the expected [-0, 5, 0] shape.
+  inspect(c.length(), content="3")
+  println(
+    "DEMO coef: intercept=\{c[0]} slope_x0=\{c[1]} slope_x1=\{c[2]}",
+  )
+}

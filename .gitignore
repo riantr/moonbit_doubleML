@@ -1,0 +1,13 @@
+.DS_Store
+_build/
+target/
+target
+.mooncakes/
+.moonagent/
+
+# Verifier-owned archive files (in-place renamed by the verifier
+# protocol; not part of the library).
+*.mbt.archived
+_verify_*.mbt.archived
+_verify/push-*.log
+_verify/RELEASE-*.md

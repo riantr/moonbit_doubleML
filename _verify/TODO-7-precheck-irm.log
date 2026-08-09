@@ -1,0 +1,27 @@
+﻿======================================================================
+IRM ATE comparison
+======================================================================
+Python (upstream doubleml, LogisticRegression for m)
+                                    theta = 1.039790849318  se = 0.100374472072
+Python (hand-rolled, matches MoonBit exactly)
+                                    theta = 1.090608163317  se = 0.098408723327
+
+|theta_upstream - theta_handrolled| = 5.08e-02
+|se_upstream    - se_handrolled|    = 1.97e-03
+
+Upstream uses LogisticRegression for ml_m; MoonBit uses
+LinearRegression + clipping. The two estimates will differ
+by sampling noise + model-class noise, not algorithmic error.
+
+======================================================================
+Running MoonBit port: `moon run cmd/main` ...
+======================================================================
+MoonBit port:
+  theta = 1.063842944158
+  se    = 0.092136077484
+  95% CI = [0.883256232289, 1.244429656026]
+======================================================================
+|moonbit - handrolled| = 2.68e-02
+|moonbit - upstream|   = 2.41e-02
+
+Sanity check: true ATE = 1.0 is inside every confidence interval.

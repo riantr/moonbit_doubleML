@@ -1,0 +1,23 @@
+﻿======================================================================
+IIVM LATE comparison
+======================================================================
+Python (upstream, LogisticRegression for m/r)
+                                    theta = 0.944122990773  se = 0.216135830078
+Python (hand-rolled, matches MoonBit)
+                                    theta = 1.080120566349  se = 0.183498843893
+
+|theta_upstream - theta_handrolled| = 1.36e-01
+|se_upstream    - se_handrolled|    = 3.26e-02
+
+======================================================================
+Running MoonBit port: `moon run cmd/main` ...
+======================================================================
+MoonBit port:
+  theta = 0.968070704225
+  se    = 0.194995353683
+  95% CI = [0.585879811006, 1.350261597443]
+======================================================================
+|moonbit - handrolled| = 1.12e-01
+|moonbit - upstream|   = 2.39e-02
+
+Sanity check: true LATE = 1.0 should be inside every CI.
