@@ -165,15 +165,13 @@ pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
   for i = 0; i < n; i = i + 1 {
     pb[i] = g[i] + treated[i] * (self.data.y[i] - g[i]) / m[i]
   }
-  let a = mean(pa)
-  let b = mean(pb)
-  let theta = -b / a
-  let mut gamma = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let z = theta * pa[i] + pb[i]
-    gamma = gamma + z * z
-  }
-  let se = (gamma / n.to_double() / (a * a * n.to_double())).sqrt()
+  // REVIEW H2 fix: use the shared `var_est` helper instead of the
+  // 13-line inlined version. Every other estimator (PLR, IRM, PLIV,
+  // IIVM, DID, SSM) already goes through `var_est(psi_a, psi_b)`;
+  // APO is the lone hold-out. The shared helper is Kahan-compensated
+  // and covered by `var_est_test.mbt`'s 3 tests — both bits the
+  // inlined version does NOT have.
+  let (theta, se) = var_est(pa, pb)
   {
     data: self.data,
     treatment_level: self.treatment_level,

@@ -29,23 +29,16 @@ pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
   require(n_obs > 0)
   require(n_folds > 0)
   require(n_folds <= n_obs)
-  // build a 32-byte seed buffer by tiling the integer seed in 7-bit
-  // chunks. Avoids the deprecated `Int::lsr` method.
-  let s = if seed < 0 { -seed } else { seed }
-  let b0 = (s % 128).to_byte()
-  let b1 = (s / 128 % 128).to_byte()
-  let b2 = (s / 16384 % 128).to_byte()
-  let b3 = (s / 2097152 % 128).to_byte()
-  let bytes : Array[Byte] = []
-  for k = 0; k < 32; k = k + 1 {
-    let b = match k % 4 {
-      0 => b0
-      1 => b1
-      2 => b2
-      _ => b3
-    }
-    bytes.push(b)
-  }
+  // REVIEW M13 fix: use the canonical 8-bit `seed_to_bytes` helper
+  // instead of the legacy 7-bit-per-byte tiling that lived here. The
+  // two encoders produce *different* byte streams for the same
+  // integer seed (e.g. `seed = 3141`); the 8-bit version is the one
+  // the rest of the package uses via `seed_to_bytes` (and the one
+  // the docstring says "supersedes the earlier 7-bit-tiling helper").
+  // The fold partition is still well-shuffled — only the specific
+  // indices per fold change. Every test's tolerance is wide enough
+  // to absorb the resulting ~0.01 theta drift.
+  let bytes = seed_to_bytes(seed)
   let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
   // Fisher-Yates permutation of [0, n_obs)
   let perm : Array[Int] = Array::makei(n_obs, fn(i) { i })

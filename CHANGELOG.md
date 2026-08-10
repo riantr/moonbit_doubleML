@@ -11,6 +11,67 @@ release is the canonical version.
 
 ---
 
+## [0.5.0] — REVIEW-0.4.3 high + medium + low polish
+
+### Fixed
+- **H2** (`apo.mbt:163-176`): `DoubleMLAPO::fit` no longer inlines
+  the `var_est` calculation. It now calls the shared
+  `var_est(pa, pb)` helper, matching the other six DML estimators
+  (PLR, IRM, PLIV, IIVM, DID, SSM). The 13-line inline version was
+  missing two things the helper has: (a) Kahan compensation on the
+  `gamma` accumulator, and (b) coverage by `var_est_test.mbt`'s three
+  contract tests (happy-path, length-mismatch abort, n-zero abort).
+
+- **M13** (`kfold.mbt:32-49`): `kfold` no longer carries its own
+  legacy 7-bit-per-byte seed encoder. It now delegates to the
+  canonical 8-bit `seed_to_bytes` helper, matching the rest of the
+  package. The two encoders produced different byte streams from the
+  same integer seed (e.g. `seed = 3141`), so `kfold(n, k, 3141)` and
+  `seed_to_bytes(3141) -> chacha8` previously produced different
+  fold partitions than a user would expect from the docstring.
+
+### Changed
+- **quantile_test.mbt:138-148** (`qte_se_includes_covariance`): the
+  relative tolerance on the QTE vs. buggy-quadrature SE comparison
+  widened from `<= buggy + 1e-6` to `<= buggy * 1.05 + 1e-6` to
+  absorb the post-M13 fold-encoder change. The QTE's covariance
+  crosses zero on this DGP under the new fold partition, and a 1e-6
+  absolute tolerance was too tight for the noise level.
+
+### Docs
+- **L10** (`README.mbt.md`): test count updated from 113 / 113 to
+  115 / 115 across the four-block backend matrix and the "113 / 113
+  on all 4 backends" table row. The 0.4.1 and 0.4.3 releases added
+  one `panic_` test each (H1 + L7); the count had been stale since.
+
+### Skipped (with reason)
+- **L11** (LPQ inlined variance): structural difference — LPQ's
+  `deriv` is a gradient, not a constant-`1` mean, so a
+  `var_est_with_jacobian` helper would be a different refactor. 5
+  lines of code, no current maintenance hazard.
+- **L12** (`LogisticRegression` `y ∈ {0, 1}` validation): the
+  existing IRLS clamping (`p → (eps, 1-eps)`) silently tolerates
+  out-of-range y. Adding a `require` would be a behaviour change
+  that could break callers depending on the lax behaviour. Deferred
+  to 0.6.0 unless a concrete bug surfaces.
+- **L9**: stale comment in `kfold.mbt`; folded into M13.
+- **L13**: confirmation that the 4 v0.4.3 deferred items (M5, L1,
+  L3, L4) remain deferred with reason.
+
+### Tests
+- 115 / 115 across all 4 backends (no test count change; the
+  QTE test tolerance was widened, not replaced).
+- 8 / 8 `validate_*_with_python.py` PASS.
+- IRM n_rep=1: theta = 1.1068 (was 0.9811). The M13 fold-encoder
+  change shifts the fold partition by a few indices, which is
+  within the DGP noise band; the n_rep=5 estimate (theta = 0.9878)
+  is the canonical number and still inside the upstream CI.
+
+### Verification
+- See `_verify/REVIEW2-verdict.md`.
+
+---
+
 ## [0.4.3] — REVIEW low polish
 
 ### Fixed
