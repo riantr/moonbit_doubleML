@@ -1,0 +1,23 @@
+docs: add REVIEW-0.4.3 (1 high / 1 medium / 5 low)
+
+A read-only review of the 0.4.3 codebase. Findings:
+
+High
+- H2: DoubleMLAPO::fit inlines the var_est calculation (apo.mbt:163-176)
+  instead of using the shared helper. 13 lines of duplication that risk
+  drift if var_est is upgraded (e.g. Kahan compensation extension).
+
+Medium
+- M13: kfold.mbt carries its own 7-bit seed encoder (kfold.mbt:33-49)
+  while seed_to_bytes is the canonical 8-bit encoder. Same integer seed
+  produces different fold partitions depending on which encoder is used.
+
+Low (5)
+- L10: README test count is stale (113 → 115 after 0.4.1 + 0.4.3).
+- L11: DoubleMLLPQ::fit inlines var_est-style variance (lpq.mbt:220-224).
+- L12: LogisticRegression::fit does not validate y in {0, 1}.
+- L9: stale comment in kfold.mbt folded into M13.
+- L13: confirmation that the 4 deferred items (M5/L1/L3/L4) remain
+  deferred with reason.
+
+VERDICT: PASS (release-ready). H2 + M13 should be fixed in 0.5.0.
