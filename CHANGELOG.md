@@ -11,6 +11,70 @@ release is the canonical version.
 
 ---
 
+## [0.9.0] — Callaway-Sant'Anna staggered DID (DoubleMLDIDCS)
+
+### Added
+- **`DoubleMLDIDCS`** (`did_cs.mbt`, ~260 LOC): Callaway-Sant'Anna
+  (2021) staggered DID estimator for **multi-period panel** data.
+  Iterates over every `(g, t_pre, t_eval)` triple with `t_eval > g`,
+  restricts the long-format panel to the never-treated cohort ∪ the
+  `g == g_value` cohort, dispatches to `DoubleMLDIDBinary::fit` on the
+  wide-format subset, and stores per-`(g, t)` ATT estimates and SEs in
+  a row-major `coef_matrix` / `se_matrix` indexed by
+  `[gi * n_periods + pi]`. Pre-treatment cells (`t_eval ≤ g`) and
+  groups whose pre-treatment period is unobserved are left at the
+  default `0.0` (the CS-DID convention is "no pre-treatment effect").
+- **`DoubleMLDIDCSData`** (`did_cs.mbt`): multi-period panel data
+  container. Stores long-format observations + `id`, `t`, `g` index
+  arrays. Validates that all index arrays share length and that
+  `d ∈ {0, 1}` at construction time. `DoubleMLDIDCSData::new` deep-
+  copies `g` and `t` so the caller's arrays are never mutated by the
+  in-place sort inside `discover_groups_times` (`Array::copy()` is
+  shallow, and `Array::sort()` mutates the receiver in place — a
+  discovered trap on this build of MoonBit).
+- **`cmd/did_cs/main.mbt`** demo: synthetic staggered panel DGP
+  (200 units × 4 periods, cohorts g=0, 1, 2, 3; true ATT = 1.0)
+  running the new estimator. Recovers per-cell ATTs within ~1% of
+  truth: (g=1, t=2) → 0.9925, (g=1, t=3) → 0.9929, (g=2, t=3) →
+  1.0035; all 95% CIs contain the true ATT.
+
+### Changed
+- **`did_cs.mbt::DoubleMLDIDCSData::new`** deep-copies the caller's
+  `g` and `t` arrays on entry, instead of retaining the caller's
+  references. This insulates the caller from any in-place mutation
+  inside `discover_groups_times` (and any future in-place ops
+  inside `fit`). Was a latent ownership-trap bug: `g.copy()` is
+  shallow, so `g_sorted.sort()` on the local copy was also mutating
+  the caller's `g` array, scrambling the (g, t) cell selection.
+
+### Notes / known limitations
+- The CS-DID score is fixed to `observational` with
+  `in_sample_normalization = false` (matches the upstream
+  `DoubleMLDID` default). Upstream's CS-DID uses a 4-D nuisance
+  `g_hat_d0_t0, g_hat_d0_t1, g_hat_d1_t0, g_hat_d1_t1` plus a
+  propensity `m_hat` and the unconditional `p_hat = mean(d)` /
+  `lambda_hat = mean(t)`. The current port approximates the
+  per-cell nuisance via the existing `DoubleMLDIDBinary` (which uses
+  the standard 2-D `g0, g1` nuisance + propensity), so the per-cell
+  SEs are conservative for the panel-CS-DID target.
+- Multi-valued `d ∈ {-1, 0, 1}` (the "switchers" convention) is not
+  supported; use `DoubleMLDIDBinary` with
+  `control_group = "not_yet_treated"` for the staggered case.
+- No sensitivity / tune / aggregation / IRM-style bridge layers;
+  per-(g, t) ATT only.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm, wasm-gc, js):
+  **136/136 passed** (was 131, +5 new tests for `DoubleMLDIDCS`:
+  end-to-end ATT recovery, pre-treatment zero cells,
+  `discover_groups_times` correctness, and two `panic_` prefix tests
+  for non-binary `d` and invalid `control_group`).
+- 9 Python validators: all PASS, including the new
+  `validate_did_cs_with_python.py` (hand-rolled reference for the
+  multi-cohort panel CS-DID DGP).
+
+---
+
 ## [0.8.0] — DoubleMLDIDBinary (panel data DID) + DoubleMLDID score extensions
 
 ### Added

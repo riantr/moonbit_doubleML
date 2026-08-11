@@ -1,0 +1,38 @@
+Release 0.9.0: DoubleMLDIDCS (Callaway-Sant'Anna staggered DID)
+
+Added
+- did_cs.mbt: DoubleMLDIDCS model + DoubleMLDIDCSData multi-period
+  panel container + discover_groups_times helper. Iterates over
+  every (g, t_pre, t_eval) triple with t_eval > g, restricts the
+  long-format panel to (g == g_value) U (g == never_treated), and
+  dispatches to DoubleMLDIDBinary::fit per cell. Stores per-(g, t)
+  ATT and SE in a row-major matrix indexed by
+  [gi * n_periods + pi]. Supports "never_treated" and
+  "not_yet_treated" control groups.
+- did_cs_test.mbt: 5 tests (end-to-end ATT recovery on 4-cohort
+  panel, pre-treatment zero cells, discover_groups_times sentinel
+  drop, 2 panic tests for non-binary d and invalid control_group).
+- cmd/did_cs: staggered panel DGP demo (n=200 units * 4 periods,
+  cohorts g=0,1,2,3, true ATT=1.0).
+- validate_did_cs_with_python.py: hand-rolled Python reference for
+  the multi-cohort CS-DID DGP.
+
+Fixed
+- did_cs.mbt::discover_groups_times: g.copy() is shallow and
+  Array::sort() is in-place on this MoonBit build, so the original
+  "let g_sorted = g.copy(); g_sorted.sort()" was mutating the
+  caller's g array and scrambling the (g, t) cell filter. Replaced
+  with an explicit deep copy via push, and added defensive deep
+  copy in DoubleMLDIDCSData::new so the caller's g and t arrays
+  are never mutated regardless of internal in-place ops.
+- did_cs_test.mbt: end-to-end test was passing g_arr and id_arr in
+  the wrong positional order (signature has id before g). Swapped.
+
+Tests
+- 136/136 across native, wasm-gc, wasm, js (+5 tests)
+- 9/9 validate_*_with_python.py PASS (incl. new
+  validate_did_cs_with_python.py)
+- Demo recovers (g=1,t=2)=0.9925, (g=1,t=3)=0.9929, (g=2,t=3)=1.0035
+  with all 95% CIs containing true ATT=1.0
+
+See _verify/T090-verdict.md.
