@@ -32,8 +32,6 @@ pub fn stratified_kfold(
   })
   pairs.sort_by(fn(a, b) { a.0.compare(b.0) })
   // Walk and find each stratum's start/end indices in `pairs`.
-  let strata_start : Array[Int] = []
-  let strata_end : Array[Int] = []
   let mut acc_s : Array[Int] = []
   let mut acc_e : Array[Int] = []
   let mut i = 0
@@ -47,8 +45,6 @@ pub fn stratified_kfold(
     acc_e = acc_e + [j]
     i = j
   }
-  ignore(strata_start)
-  ignore(strata_end)
   let n_strata = acc_s.length()
   // Per-stratum folds. Each entry is a list of `n_folds` test index
   // arrays (in observation-space coordinates).

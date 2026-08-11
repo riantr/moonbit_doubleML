@@ -80,6 +80,15 @@ pub fn LogisticRegression::fit(
   ignore(self)
   require(x.nrows == y.length())
   require(x.nrows >= 2)
+  // REVIEW L12 fix (0.7.0): validate `y ∈ {0, 1}`. The doc says
+  // "Only binary outcomes (y in {0, 1}) are supported" but the
+  // pre-fix code silently produced nonsense for out-of-range y
+  // (the IRLS `z = eta + (y - p) / w` formula tolerates anything
+  // but the interpretation as a binary classification breaks).
+  // Catching at the call site is cheaper than a downstream NaN.
+  for yi in y {
+    require(yi == 0.0 || yi == 1.0)
+  }
   let n = x.nrows
   let xa = augment_with_intercept(x)
   let p1 = xa.ncols

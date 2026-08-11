@@ -220,3 +220,15 @@ test "panic_logistic_coefficients_before_fit" {
   let m = LogisticRegression::new()
   let _ = m.coefficients()
 }
+
+///|
+/// REVIEW L12 fix (0.7.0): `fit` must abort when `y` is not in
+/// `{0, 1}`. The pre-fix code silently produced nonsense for
+/// out-of-range labels (e.g. `y = 0.5` produced a
+/// logistic-probability fit on a 0.5-classification problem,
+/// which is meaningless).
+test "panic_logistic_fit_rejects_non_binary_y" {
+  let x = Matrix::zeros(4, 1)
+  let y : Array[Double] = [0.0, 0.5, 1.0, 1.0]
+  let _ = LogisticRegression::new().fit(x, y)
+}

@@ -1,0 +1,19 @@
+Release 0.7.0: REVIEW-0.4.3 leftovers (L11 + L12) + hygiene
+
+Fixed
+- L11 (lpq.mbt, var_est.mbt): LPQ variance now uses shared
+  var_est_with_jacobian(psi, jacobian) helper. Removes the last
+  inlined variance calc across the package. Math is byte-equal;
+  helper has Kahan-compensated accumulator.
+- L12 (logistic.mbt, test): LogisticRegression::fit now validates
+  y in {0, 1}. New panic test pins the contract.
+- N1 (resampling.mbt): removed dead strata_start / strata_end
+  placeholder arrays from the + [...] accumulator refactor.
+- N2 (sensitivity.mbt): doc typo "per-dessity" -> "per-density".
+
+Tests
+- 129/129 across native, wasm-gc, wasm, js (+1 panic test)
+- 8/8 validate_*_with_python.py PASS
+- LPQ coef bit-equal at 1.490000 on canonical z=d DGP
+
+See _verify/T070-verdict.md.

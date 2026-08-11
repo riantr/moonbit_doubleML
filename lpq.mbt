@@ -221,11 +221,11 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
   // contributes; the `(1/n)` factor above accounts for the mean
   // rather than the sum).
   let deriv = f_theta / nf
-  let mut v = 0.0
-  for u in psi {
-    v = v + u * u
-  }
-  let se = (v / nf / (deriv * deriv * nf)).sqrt()
+  // REVIEW L11 fix (0.7.0): use the shared `var_est_with_jacobian`
+  // helper instead of inlining `sum(psi^2) / n / (deriv^2 * n)`.
+  // The math is byte-equal; the helper gives a Kahan-compensated
+  // accumulator and the test contract is the same.
+  let se = var_est_with_jacobian(psi, deriv)
   {
     data: self.data,
     treatment: self.treatment,

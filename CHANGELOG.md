@@ -11,6 +11,44 @@ release is the canonical version.
 
 ---
 
+## [0.7.0] — REVIEW-0.4.3 leftover smells + 0.7.0 hygiene
+
+### Fixed
+- **L12** (`logistic.mbt:81-93`): `LogisticRegression::fit` now
+  validates `y ∈ {0, 1}` via `require(y_i == 0.0 || y_i == 1.0)`
+  for every label. The pre-fix code silently tolerated out-of-range
+  labels (the IRLS `z = eta + (y - p) / w` formula is mathematically
+  defined for any `y`, but the interpretation as binary
+  classification breaks). New test
+  `panic_logistic_fit_rejects_non_binary_y` pins the contract.
+
+- **N1** (`resampling.mbt:35-49`): removed dead `strata_start` /
+  `strata_end` placeholder arrays that were superseded by
+  `acc_s` / `acc_e` during the `+ [...]` accumulator refactor.
+  The `ignore()` calls on the unused arrays were also dropped.
+
+- **N2** (`sensitivity.mbt:3`): typo in doc — "per-dessity" → "per-density".
+
+### Changed
+- **L11** (`lpq.mbt:224-228`, `var_est.mbt:55-87`): LPQ's variance
+  computation now delegates to a new shared helper
+  `var_est_with_jacobian(psi, jacobian)` instead of inlining the
+  `sum(psi^2) / n / (deriv^2 * n)` formula. The math is byte-equal;
+  the helper has a Kahan-compensated accumulator and aborts on
+  `jacobian == 0`. Removes the last inlined variance calc across the
+  package — every estimator now goes through `var_est.mbt` (either
+  the 2-argument or the 1-argument + jacobian form).
+
+### Tests
+- 129 / 129 across all 4 backends (added 1 panic test for L12).
+- 8 / 8 `validate_*_with_python.py` PASS.
+- LPQ coef on canonical `z=d` DGP: bit-equal at `1.490000`.
+
+### Verification
+- See `_verify/T070-verdict.md`.
+
+---
+
 ## [0.6.0] — RDD HC0 + Sensitivity + Resampling + LPQ KDE + dataset demo
 
 ### Added

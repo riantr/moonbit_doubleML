@@ -1,6 +1,6 @@
 ///|
 /// Cinelli & Hazlett (2020) omitted-variable bias analysis for DML
-/// estimators. Given the per-dessity influence-function scalars
+/// estimators. Given the per-density influence-function scalars
 /// `sigma2`, `nu2`, `psi_sigma2`, `psi_nu2`, this helper computes the
 /// maximum bias from an unobserved confounder that shifts the
 /// outcome nuisance `sigma2` by `psi_sigma2` and the treatment

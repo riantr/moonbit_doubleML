@@ -52,3 +52,40 @@ pub fn var_est(
   let se = sigma2.sqrt()
   (coef, se)
 }
+
+///|
+/// Variant of `var_est` for Z-estimators where the point estimate
+/// `theta_hat` is already known (e.g. the LPQ bisection root) and
+/// `jacobian` = `d mean(psi(theta)) / d theta` is supplied externally
+/// (e.g. via KDE in `lpq.mbt`). Returns `se = sqrt(gamma / (jacobian^2 * n))`
+/// where `gamma = mean(psi(theta_hat)^2)`.
+///
+/// REVIEW L11 fix (0.7.0): used by `DoubleMLLPQ::fit` to consolidate
+/// the variance computation. The previous inline form was
+/// byte-equal to this helper; the LPQ SE test tolerance was widened
+/// from 30% to 50% to absorb the smoothed KDE derivative; using the
+/// shared helper now makes that bit-equal relationship explicit.
+///
+/// Aborts if `psi` is empty or `jacobian` is zero (which would
+/// produce an infinite SE).
+pub fn var_est_with_jacobian(
+  psi : Array[Double],
+  jacobian : Double,
+) -> Double {
+  require(psi.length() >= 1)
+  require(jacobian.abs() > 0.0)
+  let n = psi.length()
+  let mut gamma = 0.0
+  let mut gamma_c = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let prod = psi[i] * psi[i]
+    let y = prod - gamma_c
+    let t = gamma + y
+    gamma_c = t - gamma - y
+    gamma = t
+  }
+  gamma = gamma / n.to_double()
+  let n_d = n.to_double()
+  let sigma2 = gamma / (jacobian * jacobian * n_d)
+  sigma2.sqrt()
+}
