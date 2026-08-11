@@ -1,0 +1,24 @@
+Release 0.8.0: DoubleMLDIDBinary (panel DID) + score extensions
+
+Added
+- did_binary.mbt: DoubleMLDIDBinary model + DoubleMLDIDBinaryData
+  panel container + preprocess_did_binary helper. Long-format
+  panel -> wide-format DID dataset. Supports "never_treated" and
+  "not_yet_treated" control groups + anticipation_periods.
+- did_binary_test.mbt: 2 tests (preprocessing + end-to-end ATT
+  recovery on canonical synthetic panel DGP).
+- cmd/did_binary: panel DGP demo (n=400 units, p=3, true ATT=1.0).
+- validate_did_binary_with_python.py: hand-rolled Python reference.
+
+Changed
+- did.mbt: DoubleMLDID now supports score : "observational" |
+  "experimental" and in_sample_normalization : Bool. The 2x2 = 4
+  score flavours implement Sant'Anna & Zhao (2020) Table 1.
+  Default (observational, false) is byte-equal to pre-0.8.0.
+
+Tests
+- 131/131 across native, wasm-gc, wasm, js (+2 tests)
+- 9/9 validate_*_with_python.py PASS
+- ATT = 1.0008 (true 1.0), se = 0.0021, CI contains true value
+
+See _verify/T080-verdict.md.

@@ -11,6 +11,49 @@ release is the canonical version.
 
 ---
 
+## [0.8.0] — DoubleMLDIDBinary (panel data DID) + DoubleMLDID score extensions
+
+### Added
+- **`DoubleMLDIDBinary`** (`did_binary.mbt`): binary-treatment DID
+  for **panel data** following Sant'Anna & Zhao (2020) §4.3. The
+  estimator accepts long-format panel observations
+  `(id, t, y, d, x_1, ..., x_p, g)`, preprocesses them into the
+  wide-format DID dataset (units with both `t_value_pre` and
+  `t_value_eval`, `y_diff = y_post - y_pre`, `G_indicator` /
+  `C_indicator` per `control_group`), and dispatches to
+  `DoubleMLDID::fit`. Supports both `"never_treated"` and
+  `"not_yet_treated"` control groups and the
+  `anticipation_periods` parameter.
+- **`DoubleMLDIDBinaryData`** (`did_binary.mbt`): panel data
+  container storing long-format observations + time/unit/group
+  index arrays. Validates that all index arrays share length at
+  construction time.
+- **`cmd/did_binary/main.mbt`** demo: synthetic panel DGP (200
+  units × 2 periods, half treated) running the new estimator.
+  Recovers `ATT = 1.0008` (true = 1.0) on a 400-unit panel.
+
+### Changed
+- **`DoubleMLDID`** (`did.mbt`): now supports two new constructor
+  options — `score : "observational" | "experimental"` (default
+  `"observational"`) and `in_sample_normalization : Bool` (default
+  `false`). The 2×2 = 4 score flavours implement the four cells of
+  Sant'Anna & Zhao (2020) Table 1 (experimental / observational
+  with in-sample normalisation). The default
+  `(observational, false)` is byte-equal to the pre-0.8.0 port.
+
+### Tests
+- 131 / 131 across all 4 backends (added 2 tests for the new
+  `DoubleMLDIDBinary`: preprocessing + end-to-end ATT recovery).
+- 9 / 9 `validate_*_with_python.py` PASS (added
+  `validate_did_binary_with_python.py` for the new estimator).
+- `cmd/did_binary` demo: ATT = 1.0008 (true = 1.0) with
+  `se ≈ 0.0021` and the 95% CI contains the true value.
+
+### Verification
+- See `_verify/T080-verdict.md`.
+
+---
+
 ## [0.7.0] — REVIEW-0.4.3 leftover smells + 0.7.0 hygiene
 
 ### Fixed

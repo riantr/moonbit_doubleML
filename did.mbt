@@ -86,14 +86,33 @@ pub fn DoubleMLDIDData::n_features(self : DoubleMLDIDData) -> Int {
 ///     se        = sqrt(sigma2).
 ///
 /// The *experimental* score (`score = "experimental"`) and the
-/// staggered-DID variant (`DoubleMLDIDCS`) are not implemented in
-/// this port.
+/// in-sample-normalisation variant
+/// (`in_sample_normalization = true`) are supported as of v0.8.0;
+/// they are required by `DoubleMLDIDBinary`'s preprocessing wrapper.
+/// The staggered-DID variant (`DoubleMLDIDCS`) is still not
+/// implemented in this port.
 pub struct DoubleMLDID {
   data : DoubleMLDIDData
   n_folds : Int
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // Score function. `"observational"` (default) is the ATT-style
+  // IPW score used by Sant'Anna & Zhao (2020) §4.1. `"experimental"`
+  // uses the A/B-test-style score where treatment is independent of
+  // pre-treatment covariates (Sant'Anna & Zhao 2020 §4.2): the
+  // propensity `m` collapses to the constant `mean(d)` and the score
+  // simplifies to `psi_a = -1`, `psi_b = g_0(d=0) + g_1(d=1) -
+  // w_d * (y - g_0)`. Match the upstream `score` constructor
+  // argument.
+  score : String
+  // Whether to normalise the IPW weights by their sample mean
+  // (Sant'Anna & Zhao 2020 eq. 4.3) or by `p_hat = mean(d)`. The
+  // `in_sample_normalization = true` form uses `d / mean(d)` instead
+  // of `d / p_hat` for `psi_a`; equivalent asymptotically but
+  // differs in finite samples. Default is `false` to preserve
+  // pre-0.8.0 bit-equality with the prior `DoubleMLDID` port.
+  in_sample_normalization : Bool
   g0_hat : Array[Double]
   g1_hat : Array[Double]
   m_hat : Array[Double]
@@ -109,18 +128,23 @@ pub fn DoubleMLDID::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  score? : String = "observational",
+  in_sample_normalization? : Bool = false,
 ) -> DoubleMLDID {
   require(n_folds >= 2)
   require(n_folds <= data.n_obs())
   require(n_rep >= 1)
   require(propensity_clip > 0.0)
   require(propensity_clip < 0.5)
+  require(score == "observational" || score == "experimental")
   {
     data,
     n_folds,
     n_rep,
     seed,
     propensity_clip,
+    score,
+    in_sample_normalization,
     g0_hat: Array::make(data.n_obs(), 0.0),
     g1_hat: Array::make(data.n_obs(), 0.0),
     m_hat: Array::make(data.n_obs(), 0.0),
@@ -259,20 +283,89 @@ pub fn DoubleMLDID::fit(
     g1_hat[i] = g1_acc[i] * inv
     m_hat[i] = m_acc[i] * inv
   }
-  // observational DID score (ATT-style), following Sant'Anna & Zhao (2020)
+  // DID score (observational or experimental), following
+  // Sant'Anna & Zhao (2020) §4. The two scores share the same
+  // structure: `psi_a = -weight_psi_a`, `psi_b = psi_b_1 +
+  // weight_resid_d0 * (y - g0)`. The differences are in the
+  // weighting (observational uses IPW with `p_hat`, experimental
+  // uses A/B-test weights that collapse `m` to the constant
+  // `mean(d)`) and in the inclusion of the `g1` term in the
+  // experimental psi_b_1.
   let y = self.data.y
   let d = self.data.d
   let p_hat = mean(d)
+  let mean_d = p_hat
   let psi_a : Array[Double] = Array::make(n, 0.0)
   let psi_b : Array[Double] = Array::make(n, 0.0)
+  let one_minus_d : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
-    let resid_d0 = y[i] - g0_hat[i]
-    let m_i = m_hat[i]
-    let one_minus_m = 1.0 - m_i
-    let denom = p_hat * one_minus_m
-    psi_a[i] = -d[i] / p_hat
-    psi_b[i] = (d[i] - m_i) / denom * resid_d0
+    one_minus_d[i] = 1.0 - d[i]
   }
+  let mean_one_minus_d = mean(one_minus_d)
+  let psi_b_1 : Array[Double] = Array::make(n, 0.0)
+  if self.score == "observational" {
+    if self.in_sample_normalization {
+      // Sant'Anna & Zhao (2020) eq. 4.3 (in-sample-normalised form):
+      //   w_psi_a   = d / mean(d)
+      //   w_resid_d0 = d / mean(d) - (1 - d) * m / (1 - m) / mean((1-d) m / (1-m))
+      let mut prop_weight_mean = 0.0
+      for i = 0; i < n; i = i + 1 {
+        prop_weight_mean = prop_weight_mean +
+          one_minus_d[i] * m_hat[i] / (1.0 - m_hat[i])
+      }
+      prop_weight_mean = prop_weight_mean / n.to_double()
+      for i = 0; i < n; i = i + 1 {
+        let resid_d0 = y[i] - g0_hat[i]
+        let m_i = m_hat[i]
+        let one_minus_m = 1.0 - m_i
+        let prop_weight_i = one_minus_d[i] * m_i / one_minus_m
+        psi_a[i] = -d[i] / mean_d
+        psi_b[i] = (d[i] / mean_d - prop_weight_i / prop_weight_mean) *
+          resid_d0
+      }
+    } else {
+      // Default form (pre-0.8.0 behaviour, byte-equal to 0.7.0):
+      //   w_psi_a   = d / p_hat
+      //   w_resid_d0 = (d - m) / (p_hat * (1 - m))
+      for i = 0; i < n; i = i + 1 {
+        let resid_d0 = y[i] - g0_hat[i]
+        let m_i = m_hat[i]
+        let one_minus_m = 1.0 - m_i
+        let denom = p_hat * one_minus_m
+        psi_a[i] = -d[i] / p_hat
+        psi_b[i] = (d[i] - m_i) / denom * resid_d0
+      }
+    }
+  } else {
+    // score == "experimental": A/B-test setting where treatment is
+    // independent of pre-treatment covariates. The propensity `m`
+    // collapses to `mean(d)` and the psi_a is the constant `-1`.
+    // The psi_b_1 = (d / mean(d) - 1) * g0 + (1 - d / mean(d)) * g1
+    // term captures the doubly-robust g adjustment.
+    if self.in_sample_normalization {
+      for i = 0; i < n; i = i + 1 {
+        let resid_d0 = y[i] - g0_hat[i]
+        let d_i = d[i]
+        let w_d = d_i / mean_d
+        psi_a[i] = -1.0
+        psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
+        psi_b[i] = psi_b_1[i] +
+          (w_d - (1.0 - d_i) / mean_one_minus_d) * resid_d0
+      }
+    } else {
+      for i = 0; i < n; i = i + 1 {
+        let resid_d0 = y[i] - g0_hat[i]
+        let m_i = m_hat[i]
+        let d_i = d[i]
+        let w_d = d_i / m_i
+        psi_a[i] = -1.0
+        psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
+        psi_b[i] = psi_b_1[i] +
+          (d_i - m_i) / (m_i * (1.0 - m_i)) * resid_d0
+      }
+    }
+  }
+  ignore(psi_b_1)
   let (coef, se) = var_est(psi_a, psi_b)
   {
     data: self.data,
@@ -280,6 +373,8 @@ pub fn DoubleMLDID::fit(
     n_rep: self.n_rep,
     seed: self.seed,
     propensity_clip: self.propensity_clip,
+    score: self.score,
+    in_sample_normalization: self.in_sample_normalization,
     g0_hat,
     g1_hat,
     m_hat,
