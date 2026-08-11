@@ -33,6 +33,14 @@ pub struct DoubleMLRDD {
   cutoff : Double
   bandwidth : Double
   fuzzy : Bool
+  // Standard-error convention. `"homoskedastic"` (default) is the
+  // classic WLS-homoskedastic form `var(beta_0) = (X^T W X)^{-1}_{00}
+  // * sum_k w[k] e[k]^2 / n^2` (matches upstream `RDD` reference for
+  // the canonical DGP). `"HC0"` is White's heteroskedasticity-
+  // consistent sandwich: `var(beta_0) = sum_k w[k]^2 * ((M[0,:]·x_k)^2
+  // * e_k^2)` with `M = (X^T W X + ridge I)^{-1}`, robust to arbitrary
+  // residual heteroskedasticity on each side of the cutoff.
+  cov_type : String
   coef : Double
   se : Double
   n_local : Int
@@ -45,13 +53,16 @@ pub fn DoubleMLRDD::new(
   cutoff? : Double = 0.0,
   bandwidth? : Double = 1.0,
   fuzzy? : Bool = false,
+  cov_type? : String = "homoskedastic",
 ) -> DoubleMLRDD {
   require(bandwidth > 0.0)
+  require(cov_type == "homoskedastic" || cov_type == "HC0")
   {
     data,
     cutoff,
     bandwidth,
     fuzzy,
+    cov_type,
     coef: 0.0,
     se: 0.0,
     n_local: 0,
@@ -113,12 +124,18 @@ fn rdd_design(
 /// the unweighted-OLS shape of the formula but for the actual weighted
 /// design). The pre-fix code reported `sum_k w[k] * e[k]^2 / n^2`,
 /// which left out the (X^T W X)^{-1} factor.
+///
+/// TODO 0.6.0: when `cov_type = "HC0"` the variance is replaced by
+/// the White sandwich `var(beta_0) = sum_k w[k]^2 * (M[0,:]·x_k)^2 *
+/// e_k^2` where `M = (X^T W X + ridge I)^{-1}`; this is robust to
+/// arbitrary residual heteroskedasticity on each side of the cutoff.
 fn rdd_side(
   data : DoubleMLRDDData,
   side : Double,
   cutoff : Double,
   h : Double,
   which : Bool,
+  cov_type : String,
 ) -> (Double, Double, Int, Array[Double]) {
   let (xx, yy, w, ids) = rdd_design(data, side, cutoff, h, which)
   if ids.length() == 0 {
@@ -135,21 +152,28 @@ fn rdd_side(
       resid[k] = e
       v = v + w[k] * e * e
     }
-    // TODO #11c.2: scale by (X^T W X)^{-1}[0, 0] so the variance is
-    // correctly measured in the WLS-OLS units. The intercept entry
-    // is index 0 because `augment_with_intercept` puts the leading
-    // column of ones first. We keep the original `1 / n^2` scaling
-    // so the SE units match the upstream `RDD` reference (the
-    // factor combines with the n-side aggregation in the fuzzy
-    // delta-method to give the correct seed SE).
-    let xtwx_inv_diag = model.xtwx_inv_diag()
-    let xwx_inv_00 = if xtwx_inv_diag.length() > 0 {
-      xtwx_inv_diag[0]
-    } else {
-      1.0
-    }
     let n_side = ids.length().to_double()
-    (beta[0], xwx_inv_00 * v / (n_side * n_side), ids.length(), resid)
+    let variance = if cov_type == "HC0" {
+      // White sandwich (no `1/n^2` factor — the sandwich diagonal is
+      // already a variance, not a mean-of-squares). M[0,:] is the
+      // intercept row of `(X^T W X + ridge I)^{-1}`; we get it
+      // from `sandwich_se_weighted` which back-solves p1 systems.
+      let sand = model.sandwich_se_weighted(xx, yy, w)
+      sand[0]
+    } else {
+      // Homoskedastic WLS form: scaled by `(X^T W X)^{-1}_{00}`.
+      // The `1 / n^2` scaling matches upstream `RDD` and combines with
+      // the n-side aggregation in the fuzzy delta-method to give
+      // the correct seed SE.
+      let xtwx_inv_diag = model.xtwx_inv_diag()
+      let xwx_inv_00 = if xtwx_inv_diag.length() > 0 {
+        xtwx_inv_diag[0]
+      } else {
+        1.0
+      }
+      xwx_inv_00 * v / (n_side * n_side)
+    }
+    (beta[0], variance, ids.length(), resid)
   }
 }
 
@@ -161,6 +185,7 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
     self.cutoff,
     self.bandwidth,
     false,
+    self.cov_type,
   )
   let (yr, vyr, nr, res_yr) = rdd_side(
     self.data,
@@ -168,6 +193,7 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
     self.cutoff,
     self.bandwidth,
     false,
+    self.cov_type,
   )
   let mut c = yr - yl
   let mut variance = vyl + vyr
@@ -178,6 +204,7 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
       self.cutoff,
       self.bandwidth,
       true,
+      self.cov_type,
     )
     let (dr, vdr, _, res_dr) = rdd_side(
       self.data,
@@ -185,6 +212,7 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
       self.cutoff,
       self.bandwidth,
       true,
+      self.cov_type,
     )
     let jump = dr - dl
     let raw = c
@@ -225,6 +253,7 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
     cutoff: self.cutoff,
     bandwidth: self.bandwidth,
     fuzzy: self.fuzzy,
+    cov_type: self.cov_type,
     coef: c,
     se,
     // `n_local` is the count of *outcome* observations that fall

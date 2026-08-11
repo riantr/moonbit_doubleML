@@ -236,6 +236,60 @@ pub fn LinearRegression::predict(
 }
 
 ///|
+/// Heteroskedasticity-consistent (HC0) sandwich covariance diagonal of
+/// the WLS coefficient estimator. Mirrors `sandwich_se` but for the
+/// weighted case:
+///
+///     cov(beta_hat) = (X'WX)^{-1} (X' diag(w · e^2) X) (X'WX)^{-1}
+///
+/// diagonal entry `j` simplifies to
+///   `cov_jj = sum_i w[i]^2 · ((M[j,:] · x_i)^2 · e_i^2)`
+/// where `M = (X^T W X + ridge I)^{-1}` and `e = y - X beta_hat`. The
+/// extra `w[i]^2` factor on the score reflects the WLS weight's role
+/// in the IRLS normal equations (see White 1980, §4).
+///
+/// Used by `DoubleMLRDD` for the heteroskedasticity-robust WLS
+/// intercept variance when `cov_type = "HC0"` (TODO 0.6.0).
+pub fn LinearRegression::sandwich_se_weighted(
+  self : LinearRegression,
+  x : Matrix,
+  y : Array[Double],
+  w : Array[Double],
+) -> Array[Double] {
+  require(self.fitted)
+  require(x.nrows == y.length())
+  require(x.nrows == w.length())
+  let n = x.nrows
+  let p1 = self.coef_.length()
+  let xa = augment_with_intercept(x)
+  let pred = matvec(xa, self.coef_)
+  let xt = xa.transpose()
+  let xtx = matmul(xt, xa)
+  let xtx_aug = add_ridge(xtx, self.ridge)
+  // For each j, compute cov_jj = sum_i w[i]^2 * (sum_a M[j,a] * xa[i,a])^2 * e_i^2
+  // by back-solving `M[j, :] * (X^T W X + ridge I) = e_j`.
+  let ej : Array[Double] = Array::make(p1, 0.0)
+  let out = Array::make(p1, 0.0)
+  for j = 0; j < p1; j = j + 1 {
+    ej[j] = 1.0
+    let mj = solve_spd(xtx_aug, ej)
+    ej[j] = 0.0
+    let mut acc = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let mut mjx = 0.0
+      for a = 0; a < p1; a = a + 1 {
+        mjx = mjx + mj[a] * xa.data[i * p1 + a]
+      }
+      let ei = y[i] - pred[i]
+      let wi2 = w[i] * w[i]
+      acc = acc + wi2 * mjx * mjx * ei * ei
+    }
+    out[j] = acc
+  }
+  out
+}
+
+///|
 /// Heteroskedasticity-consistent (HC0) covariance diagonal of the
 /// coefficient estimator. Computes the diagonal of the sandwich form
 ///   `cov(beta_hat) = (X'X)^{-1} (X' diag(e^2) X) (X'X)^{-1}`

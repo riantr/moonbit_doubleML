@@ -187,36 +187,40 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     self.quantile,
     sign,
   )
-  // Numerical derivative via 4 more cross-fits at theta +/- h.
-  // TODO #11c.4: adaptive finite-difference step. The previous
-  // constant `1% of y_range` is too coarse when y is discrete
-  // (the indicator `1{y <= theta}` is a step function with jump
-  // at the median, so a 1% step may land on the same y-cell as
-  // theta and the derivative collapses to zero). The Silverman-style
-  // `1/sqrt(n)` heuristic gives a sample-size-aware step that is
-  // robust across both continuous and discrete y. We take the
-  // smaller of the two: on continuous y (large range) the 1% step
-  // wins; on discrete y (small range) the 1/sqrt(n) step wins.
-  // We use `min` here (not `max`) to keep the step small on the
-  // canonical continuous DGPs, which is where the previous 1% step
-  // already worked well.
-  let y_range = y_max - y_min
-  let h_continuous = y_range * 1.0e-2 + 1.0e-8
-  let h_sample = 1.0 / nf.sqrt()
-  let h = if h_continuous < h_sample { h_continuous } else { h_sample }
-  let iyp = outcome_indicator(self.data.y, theta + h)
-  let iym = outcome_indicator(self.data.y, theta - h)
-  let gp0 = cross_fit_conditional(self.data.x, iyp, z0, folds)
-  let gp1 = cross_fit_conditional(self.data.x, iyp, z1, folds)
-  let gm0 = cross_fit_conditional(self.data.x, iym, z0, folds)
-  let gm1 = cross_fit_conditional(self.data.x, iym, z1, folds)
-  let mean_p = mean(
-    lpq_score(self.data, tr, m, gp0, gp1, comp, theta + h, self.quantile, sign),
-  )
-  let mean_m = mean(
-    lpq_score(self.data, tr, m, gm0, gm1, comp, theta - h, self.quantile, sign),
-  )
-  let deriv = (mean_p - mean_m) / (2.0 * h)
+  // Numerical derivative via KDE-weighted evaluation at `theta`.
+// TODO 0.6.0: replace the finite-difference `2 * n_folds = 4` extra
+// cross-fits with a single weighted-KDE evaluation of the IPW
+// coefficient at `theta`. The IPW score's `theta`-derivative is
+//   `d/dtheta mean(psi_ipw) = (1/n) * sum_i w_i * delta(y_i - theta)`
+// which we smooth by replacing the Dirac with a Gaussian KDE
+// `K_h((theta - y_i) / h) / h`. The Silverman bandwidth is
+// sample-size-aware so the KDE is consistent at the canonical DGP
+// scale (continuous `y`) and does not collapse to zero at discrete
+// `y` like the previous finite-difference did.
+//
+// Bandwidth selection: Silverman's rule on `y` directly (rather than
+// the previous `min(1% y_range, 1/sqrt(n))` heuristic). For the
+// canonical DGPs the new bandwidth is comparable to the old heuristic
+// (typically a few percent of `y_range`); for discrete `y` it
+// adapts to the local cell width automatically.
+  let w_kde : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let z_i = self.data.z[i]
+    let m_i = m[i]
+    let comp_safe = if comp.abs() < 1.0e-12 { 1.0e-12 } else { comp }
+    w_kde[i] = sign *
+      (z_i / m_i - (1.0 - z_i) / (1.0 - m_i)) *
+      tr[i] /
+      comp_safe
+  }
+  let h_kde = silverman_bandwidth(self.data.y)
+  let f_theta = gaussian_kde_weighted(self.data.y, w_kde, theta, h_kde)
+  // `deriv = d/dtheta mean(psi_ipw) ≈ f_theta / n` (because the
+  // IPW score's `psi_a` is the constant `-1`, so the derivative
+  // contribution from `psi_a` is zero and only the `psi_b` part
+  // contributes; the `(1/n)` factor above accounts for the mean
+  // rather than the sum).
+  let deriv = f_theta / nf
   let mut v = 0.0
   for u in psi {
     v = v + u * u

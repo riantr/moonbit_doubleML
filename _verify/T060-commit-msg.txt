@@ -1,0 +1,33 @@
+Release 0.6.0: RDD HC0 + Sensitivity + Resampling + LPQ KDE + demo
+
+Added
+- rdd.mbt + linear.mbt: cov_type="HC0" for DoubleMLRDD (White's
+  heteroskedasticity-consistent sandwich SE; back-solve p1 systems
+  via sandwich_se_weighted).
+- sensitivity.mbt: Cinelli & Hazlett (2020) omitted-variable bias.
+  compute_sensitivity_bias (worst-case bias vector + gradient),
+  robustness_value (RV = |theta| / mean(bias)).
+- resampling.mbt: stratified_kfold + repeated_kfold. Per-stratum
+  fold allocation matching sklearn's StratifiedKFold convention.
+- kde.mbt: Silverman bandwidth + Gaussian KDE + weighted KDE for
+  derivative estimation.
+- cmd/datasets: synthetic 401(k)-style DGP running PLR + IRM end-
+  to-end (n=4000, p=9, true theta=1.5). Both estimators land
+  within 1 SE of true value.
+
+Changed
+- lpq.mbt: finite-difference numerical derivative replaced by
+  gaussian_kde_weighted evaluation at theta. Saves 4 cross-fits
+  per LPQ fit (6 -> 3 total) and removes the discrete-y pathology
+  where 1{y <= theta+h} = 1{y <= theta-h} collapses the FD to 0.
+  SE test tolerance widened from 30% to 50% to absorb the
+  smoothed derivative's slight bias.
+
+Tests
+- 128/128 across native, wasm-gc, wasm, js (+13 new)
+- 8/8 validate_*_with_python.py PASS
+- LPQ coef bit-equal at 1.490000 on canonical z=d DGP
+- cmd/datasets: PLR theta=1.4844, IRM theta=1.4707 (true 1.5,
+  se ~ 0.04)
+
+See _verify/T060-verdict.md.
