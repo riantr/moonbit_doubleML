@@ -19,7 +19,7 @@ covering all 15 models currently in upstream.
 
 ```console
 $ moon test --deny-warn
-Total tests: 136, passed: 136, failed: 0.
+Total tests: 144, passed: 144, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===

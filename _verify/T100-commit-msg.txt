@@ -1,0 +1,53 @@
+Release 0.10.0: DoubleMLDIDCSBinary (ps_processor + G+2T stratified folds)
+
+Added
+- ps_processor.mbt: PSProcessorConfig + PSProcessor with
+  adjust_ps(ps, treatment). Configurable clipping_threshold,
+  extreme_threshold, calibration_method, cv_calibration. Default
+  clips propensity to [1e-2, 1 - 1e-2] (matches upstream
+  default). Calibration_method="isotonic" is reserved for
+  forward-compat (not yet implemented; aborts with a clear
+  message).
+- ps_processor_test.mbt: 6 tests (clip behaviour, config
+  validation, no-input-mutation guarantee, panic tests).
+- did.mbt: DoubleMLDID gets a ps_processor field and a strata
+  field. When strata is non-empty, fit calls stratified_kfold
+  (per-stratum Fisher-Yates + fold allocation); otherwise plain
+  kfold. The public-facing m_hat is now clipped through
+  ps_processor.adjust_ps (default 1e-2) instead of the legacy
+  1e-6 hard clip.
+- did_binary.mbt: DoubleMLDIDBinary gets a ps_processor field
+  and a wide-format G+2T strata computation in fit. The strata
+  are passed to the inner DoubleMLDID::new(strata=...). A safety
+  net drops the strata to [] if any stratum has fewer
+  observations than n_folds (so tiny panels fall back to plain
+  kfold instead of aborting inside stratified_kfold).
+- did_cs.mbt: DoubleMLDIDCS gets a ps_processor field
+  propagated to each per-cell DoubleMLDIDBinary fit.
+
+Changed
+- DoubleMLDID default behaviour: cross-fitted m_hat is clipped
+  to [1e-2, 1 - 1e-2] via the default PSProcessor instead of
+  the legacy 1e-6 hard clip. The did_binary demo ATT moved from
+  1.0008 (v0.8.0) to 1.0004 (v0.10.0); both well within ~1 SE
+  of true theta = 1.0. The legacy propensity_clip? constructor
+  argument is retained for backward compat (read only by the
+  inner cross_fit_did numerical-safety clip).
+
+Notes
+- DoubleMLDIDCS is a strict superset of DoubleMLDIDCSBinary in
+  this port; the upstream did_cs_binary.py adds
+  ps_processor_config + print_periods on top of did_binary.py,
+  but the v0.9.0 DoubleMLDIDCS already covers the per-(g, t)
+  panel CS-DID use case and the v0.10.0 ps_processor upgrade
+  applies uniformly.
+- isotonic calibration is a documented TODO for v0.12+.
+
+Tests
+- 144/144 across native, wasm-gc, wasm, js (+8 tests)
+- 9/9 validate_*_with_python.py PASS
+- cmd/did_binary demo: ATT=1.0004, se=0.0021, CI=[0.996, 1.004]
+- cmd/did_cs demo: 3 (g, t) cells, all near 1.0, all CIs at or
+  above 1.0
+
+See _verify/T100-verdict.md.

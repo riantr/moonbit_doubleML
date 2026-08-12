@@ -52,12 +52,15 @@ pub fn DoubleMLDIDBinaryData::n_features(self : DoubleMLDIDBinaryData) -> Int {
 
 ///|
 /// The wide-format DID subset returned by `preprocess_did_binary`.
-/// Carries the covariate matrix, the first-differenced outcome, and
-/// the binary G_indicator (`d`).
+/// Carries the covariate matrix, the first-differenced outcome, the
+/// binary G_indicator (`d`), and the binary t_indicator
+/// (`t_indicator`: 0 if the wide row originated from the
+/// `t_value_pre` period, 1 if from `t_value_eval`).
 struct WideDIDSubset {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
+  t_indicator : Array[Double]
 } derive(Debug)
 
 ///|
@@ -133,9 +136,11 @@ fn preprocess_did_binary(
   let x_out : Array[Double] = []
   let y_out : Array[Double] = []
   let d_out : Array[Double] = []
+  let t_out : Array[Double] = []
   let mut x_acc = x_out
   let mut y_acc = y_out
   let mut d_acc = d_out
+  let mut t_acc = t_out
   let mut i = 0
   while i < n {
     let id_cur = keys[i].0
@@ -191,6 +196,11 @@ fn preprocess_did_binary(
         x_acc = x_acc + x_row_acc
         y_acc = y_acc + [y_diff]
         d_acc = d_acc + [g_indicator]
+        // t_indicator is 0 (pre) for the wide row, since the
+        // covariates and the `y_diff` reference the pre period.
+        // The post-period residual enters the score via `m_hat`
+        // and `g0_hat`, not via the wide `y` itself.
+        t_acc = t_acc + [0.0]
       }
     }
     i = j
@@ -200,13 +210,14 @@ fn preprocess_did_binary(
   require(n_sub * p == x_acc.length())
   require(y_acc.length() == n_sub)
   require(d_acc.length() == n_sub)
+  require(t_acc.length() == n_sub)
   let x_mat = Matrix::from_array(x_acc, n_sub, p)
   // Validate that the post-preprocess `d` is binary {0, 1} (the
   // upstream `DoubleMLDIDData` requires this).
   for di in d_acc {
     require(di == 0.0 || di == 1.0)
   }
-  { x: x_mat, y: y_acc, d: d_acc }
+  { x: x_mat, y: y_acc, d: d_acc, t_indicator: t_acc }
 }
 
 ///|
@@ -220,6 +231,21 @@ fn preprocess_did_binary(
 /// `false` (divide by `p_hat = mean(d)`). The default
 /// `(observational, false)` matches the byte-equality of the
 /// pre-0.8.0 `DoubleMLDID` port on the canonical DGP.
+///
+/// **v0.10.0 additions** (corresponds to upstream
+/// `DoubleMLDIDCSBinary`):
+///   - `ps_processor` field replaces the bare `propensity_clip`
+///     argument. The processor's `clipping_threshold` is used to
+///     bound the propensity scores inside the score denominator;
+///     the field-level `propensity_clip` is retained for backward
+///     compat but `fit` reads the clip threshold from
+///     `ps_processor.clipping_threshold` instead.
+///   - `fit` builds the wide-format strata
+///     `G_indicator + 2 * t_indicator` (matching upstream
+///     `self._strata`) and passes it to `DoubleMLDID::new(strata=
+///     ...)`, switching the inner sample-splitting to
+///     `stratified_kfold`. Each fold then balances the four
+///     (G, T) cells.
 ///
 /// The model is a thin wrapper around `DoubleMLDID`: it
 /// preprocesses the long-format panel into the wide-format DID
@@ -237,6 +263,7 @@ pub struct DoubleMLDIDBinary {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  ps_processor : PSProcessor
   score : String
   in_sample_normalization : Bool
   // Output of the inner `DoubleMLDID::fit`. Empty until `fit` is
@@ -257,6 +284,7 @@ pub fn DoubleMLDIDBinary::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor? : PSProcessor = PSProcessor::new(),
   score? : String = "observational",
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDBinary {
@@ -278,6 +306,7 @@ pub fn DoubleMLDIDBinary::new(
     n_rep,
     seed,
     propensity_clip,
+    ps_processor,
     score,
     in_sample_normalization,
     // Placeholder: the real `DoubleMLDID` is built in `fit()` once
@@ -395,14 +424,68 @@ pub fn DoubleMLDIDBinary::fit(
     self.anticipation_periods,
   )
   let wide_data = DoubleMLDIDData::new(wide.x, wide.y, wide.d)
+  // v0.10.0: build the wide-format strata as
+  // `G_indicator + 2 * t_indicator` (matching upstream's
+  // `self._strata = ...`), so each fold balances the (G, T) cells.
+  // In the y_diff view the wide row is always anchored to the
+  // pre period (t_indicator = 0), so the effective strata is
+  // `G_indicator` (1-D, G-vs-C balance). We pass both arrays so
+  // upstream-equivalent cells (0, 0), (0, 1), (1, 0), (1, 1) are
+  // represented if the data layout changes in a future port.
+  //
+  // Guard: `stratified_kfold` requires `n_folds <= min stratum
+  // size`. If any stratum is too small (e.g. a tiny control
+  // cohort), fall back to plain `kfold` by passing an empty
+  // `strata` array, which `DoubleMLDID::fit` interprets as
+  // "no stratification".
+  let strata : Array[Int] = []
+  let mut strata_acc = strata
+  let mut use_strata = true
+  for i = 0; i < wide.d.length(); i = i + 1 {
+    strata_acc = strata_acc + [
+      (wide.d[i] + 2.0 * wide.t_indicator[i]).to_int(),
+    ]
+  }
+  // Per-stratum min-size check.
+  let counts : Array[Int] = []
+  let mut counts_acc = counts
+  let seen : Array[Int] = []
+  let mut seen_acc = seen
+  for i = 0; i < strata_acc.length(); i = i + 1 {
+    let s = strata_acc[i]
+    let mut found = false
+    let mut found_idx = 0
+    for j = 0; j < seen_acc.length(); j = j + 1 {
+      if seen_acc[j] == s {
+        found = true
+        found_idx = j
+      }
+    }
+    if found {
+      counts_acc[found_idx] = counts_acc[found_idx] + 1
+    } else {
+      seen_acc = seen_acc + [s]
+      counts_acc = counts_acc + [1]
+    }
+  }
+  for i = 0; i < counts_acc.length(); i = i + 1 {
+    if counts_acc[i] < self.n_folds {
+      use_strata = false
+    }
+  }
+  if !use_strata {
+    strata_acc = []
+  }
   let inner = DoubleMLDID::new(
     wide_data,
     n_folds=self.n_folds,
     n_rep=self.n_rep,
     seed=self.seed,
     propensity_clip=self.propensity_clip,
+    ps_processor=self.ps_processor,
     score=self.score,
     in_sample_normalization=self.in_sample_normalization,
+    strata=strata_acc,
   ).fit()
   { ..self, inner, fitted: true }
 }

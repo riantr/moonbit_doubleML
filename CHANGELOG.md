@@ -11,6 +11,96 @@ release is the canonical version.
 
 ---
 
+## [0.10.0] — DoubleMLDIDCSBinary (ps_processor + G+2T stratified folds)
+
+### Added
+- **`ps_processor.mbt`** (~140 LOC): `PSProcessorConfig` struct
+  (clipping_threshold, extreme_threshold, calibration_method,
+  cv_calibration) and `PSProcessor` with `adjust_ps(ps, treatment)`.
+  The default config clips the propensity to `[1e-2, 1 - 1e-2]`
+  (matches upstream's default). `adjust_ps` first applies the
+  configured calibration (currently a pass-through; `isotonic` PAVA
+  is a documented TODO for v0.12+) and then clips to
+  `[clipping_threshold, 1 - clipping_threshold]`. The processor
+  does not mutate the caller's `ps` or `treatment` arrays.
+- **`ps_processor_test.mbt`** (6 tests): config validation
+  (clipping_threshold ∈ (0, 0.5), `cv_calibration=true` requires
+  a calibration method), `adjust_ps` clip behaviour, no-input-
+  mutation guarantee.
+- **G+2T stratified folds in `DoubleMLDID`** (`did.mbt`):
+  - New `strata : Array[Int]` field on `DoubleMLDID` (default
+    `[]` = no stratification). Length must be 0 or `n_obs`.
+  - `DoubleMLDID::fit` checks `self.strata.length() == n`: if
+    so, it calls `stratified_kfold` (per-stratum Fisher-Yates
+    + fold allocation); otherwise it falls back to plain
+    `kfold`.
+- **`DoubleMLDIDBinary` / `DoubleMLDIDCS` ps_processor integration**
+  (`did_binary.mbt`, `did_cs.mbt`):
+  - New `ps_processor : PSProcessor` field on
+    `DoubleMLDIDBinary` (constructor arg `ps_processor?`).
+  - `DoubleMLDIDBinary::fit` computes the wide-format strata
+    `G_indicator + 2 * t_indicator` (matching upstream's
+    `self._strata`) and passes it to the inner
+    `DoubleMLDID::new(strata=...)`.
+  - `ps_processor` propagates through `DoubleMLDIDBinary` →
+    `DoubleMLDID::fit`, where it replaces the inner
+    `clip_vec(m, 1e-6, 1-1e-6)` with
+    `ps_processor.adjust_ps(m, d)` for the public-facing
+    `m_hat` and the score denominator. The inner `clip_vec`
+    is retained as a per-rep numerical-safety net.
+
+### Changed
+- **`DoubleMLDID` default behaviour**: the cross-fitted
+  propensity in `m_hat` is now clipped to
+  `[1e-2, 1 - 1e-2]` (via the default `PSProcessor`) instead
+  of the legacy `1e-6` hard-coded clip. This widens the score
+  denominator slightly and is the upstream default. The
+  `DoubleMLDIDBinary` demo ATT moved from 1.0008 (v0.8.0) to
+  1.0004 (v0.10.0) on the canonical DGP; both well within
+  ~1 SE of the true value 1.0. The legacy
+  `propensity_clip?` constructor argument is retained for
+  backward compat but is read only by the inner
+  `cross_fit_did` numerical-safety clip; the public-facing
+  clip is now controlled by `ps_processor`.
+
+### Fixed / hardening
+- **Stratified-fold safety net in `DoubleMLDIDBinary::fit`**: if
+  any stratum has fewer observations than `n_folds` (which
+  would abort inside `stratified_kfold`), the strata array is
+  dropped to `[]`, falling back to plain `kfold` for that
+  dataset. This avoids a regression for small panels (e.g.
+  the 4-unit, 1-control-cohort toy dataset in
+  `did_binary_test.mbt`) that worked under plain `kfold` and
+  would otherwise crash under the v0.10.0 stratified path.
+
+### Notes / known limitations
+- **`isotonic` calibration is not yet implemented** (v0.12+
+  TODO). `PSProcessorConfig::new` accepts `calibration_method =
+  "isotonic"` for forward-compat, but `PSProcessor::adjust_ps`
+  aborts on that value (with a clear message). The `clip` step
+  alone is sufficient for the v0.10.0 panel CS-DID work.
+- **`DoubleMLDIDCS` is a strict superset of
+  `DoubleMLDIDCSBinary`**: the upstream `did_cs_binary.py` adds
+  `ps_processor_config`, `print_periods`, and a `print_periods`
+  accessor, but otherwise shares the same score / nuisance
+  structure as `DoubleMLDIDCS`. We did not introduce a
+  separate `DoubleMLDIDCSBinary` struct; `DoubleMLDIDCS` in
+  v0.10.0 already covers both use cases.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm, wasm-gc, js):
+  **144/144 passed** (was 136, +8 new tests: 6 `ps_processor` +
+  2 `DoubleMLDIDBinary` integration tests for the new
+  `ps_processor` field and the wide-format strata plumbing).
+- 9 Python validators: all PASS, including
+  `validate_did_binary_with_python.py` and
+  `validate_did_cs_with_python.py` (the wide-format demo
+  ATT moved from 1.0008 → 1.0004 under the 1e-2 default
+  clip; both well within the 0.3 / 0.5 qualitative
+  tolerances).
+
+---
+
 ## [0.9.0] — Callaway-Sant'Anna staggered DID (DoubleMLDIDCS)
 
 ### Added

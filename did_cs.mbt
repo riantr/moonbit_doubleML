@@ -149,6 +149,10 @@ pub struct DoubleMLDIDCS {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // v0.10.0+: propensity-score processor. Propagated through to
+  // each per-cell `DoubleMLDIDBinary` fit; controls the
+  // `clipping_threshold` applied to the averaged propensity.
+  ps_processor : PSProcessor
   in_sample_normalization : Bool
   // Per-(g, t) ATT estimates, indexed row-major as
   // `coef[i * n_periods + t]` for group `i`, time `t`. `length`
@@ -171,6 +175,7 @@ pub fn DoubleMLDIDCS::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor? : PSProcessor = PSProcessor::new(),
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDCS {
   require(n_folds >= 2)
@@ -189,6 +194,7 @@ pub fn DoubleMLDIDCS::new(
     n_rep,
     seed,
     propensity_clip,
+    ps_processor,
     in_sample_normalization,
     coef_matrix: Array::make(n_groups * n_periods, 0.0),
     se_matrix: Array::make(n_groups * n_periods, 0.0),
@@ -363,6 +369,7 @@ pub fn DoubleMLDIDCS::fit(
         n_rep=self.n_rep,
         seed=self.seed,
         propensity_clip=self.propensity_clip,
+        ps_processor=self.ps_processor,
         score="observational",
         in_sample_normalization=self.in_sample_normalization,
       ).fit()

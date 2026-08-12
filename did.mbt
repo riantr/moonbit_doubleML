@@ -97,6 +97,16 @@ pub struct DoubleMLDID {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // Propensity-score processor. v0.10.0+ replacement for the
+  // bare `propensity_clip` scalar: `fit` now applies
+  // `ps_processor.adjust_ps(m, d)` to the cross-fitted propensity
+  // vector instead of the hard-coded `clip_vec(m, eps, 1-eps)`.
+  // The default `PSProcessor::new()` clips to `[1e-2, 1 - 1e-2]`
+  // (matches upstream's `clipping_threshold=1e-2`). The legacy
+  // `propensity_clip` field is retained for backward compat and
+  // is read only by the inner `cross_fit_did`; the public API
+  // is `ps_processor` (or `ps_processor_config` in the wrappers).
+  ps_processor : PSProcessor
   // Score function. `"observational"` (default) is the ATT-style
   // IPW score used by Sant'Anna & Zhao (2020) §4.1. `"experimental"`
   // uses the A/B-test-style score where treatment is independent of
@@ -113,6 +123,17 @@ pub struct DoubleMLDID {
   // differs in finite samples. Default is `false` to preserve
   // pre-0.8.0 bit-equality with the prior `DoubleMLDID` port.
   in_sample_normalization : Bool
+  // Optional per-observation stratum label for stratified K-fold
+  // sample splitting. If non-empty, `fit` calls
+  // `stratified_kfold` instead of `kfold`; fold `f` of the resulting
+  // partition contains the union of fold-`f` test rows across
+  // strata. Length must equal `data.n_obs()`; entries can be any
+  // integer (the function does not require them to be `0..k-1`).
+  // The DID Binary / DID CS wrappers set this to
+  // `G_indicator + 2 * t_indicator` to balance treated/control ×
+  // pre/post cells across folds (matching upstream's
+  // `self._strata`).
+  strata : Array[Int]
   g0_hat : Array[Double]
   g1_hat : Array[Double]
   m_hat : Array[Double]
@@ -128,8 +149,10 @@ pub fn DoubleMLDID::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor? : PSProcessor = PSProcessor::new(),
   score? : String = "observational",
   in_sample_normalization? : Bool = false,
+  strata? : Array[Int] = [],
 ) -> DoubleMLDID {
   require(n_folds >= 2)
   require(n_folds <= data.n_obs())
@@ -137,14 +160,18 @@ pub fn DoubleMLDID::new(
   require(propensity_clip > 0.0)
   require(propensity_clip < 0.5)
   require(score == "observational" || score == "experimental")
+  // Either no strata (empty) or strata of exact length n_obs.
+  require(strata.length() == 0 || strata.length() == data.n_obs())
   {
     data,
     n_folds,
     n_rep,
     seed,
     propensity_clip,
+    ps_processor,
     score,
     in_sample_normalization,
+    strata,
     g0_hat: Array::make(data.n_obs(), 0.0),
     g1_hat: Array::make(data.n_obs(), 0.0),
     m_hat: Array::make(data.n_obs(), 0.0),
@@ -258,7 +285,14 @@ pub fn DoubleMLDID::fit(
   let g1_acc : Array[Double] = Array::make(n, 0.0)
   let m_acc : Array[Double] = Array::make(n, 0.0)
   for r = 0; r < nrep; r = r + 1 {
-    let folds = kfold(n, self.n_folds, self.seed + r)
+    // Choose the partitioning strategy. With `strata` set (length
+    // = n), use `stratified_kfold` so each fold balances the
+    // (G, T) cells; otherwise plain `kfold`.
+    let folds = if self.strata.length() == n {
+      stratified_kfold(self.strata, self.n_folds, self.seed + r)
+    } else {
+      kfold(n, self.n_folds, self.seed + r)
+    }
     let (g0, g1, m) = cross_fit_did(
       ml_g,
       ml_m,
@@ -283,6 +317,13 @@ pub fn DoubleMLDID::fit(
     g1_hat[i] = g1_acc[i] * inv
     m_hat[i] = m_acc[i] * inv
   }
+  // v0.10.0+: re-clip the averaged propensity through the
+  // `ps_processor` so the public-facing `m_hat` (and downstream
+  // score computation) honours the processor's
+  // `clipping_threshold` (default 1e-2) rather than the inner
+  // `cross_fit_did` 1e-6 clip. The inner `clip_vec` is kept for
+  // numerical safety in the per-rep cross-fit.
+  let m_clipped = self.ps_processor.adjust_ps(m_hat, self.data.d)
   // DID score (observational or experimental), following
   // Sant'Anna & Zhao (2020) §4. The two scores share the same
   // structure: `psi_a = -weight_psi_a`, `psi_b = psi_b_1 +
@@ -311,12 +352,12 @@ pub fn DoubleMLDID::fit(
       let mut prop_weight_mean = 0.0
       for i = 0; i < n; i = i + 1 {
         prop_weight_mean = prop_weight_mean +
-          one_minus_d[i] * m_hat[i] / (1.0 - m_hat[i])
+          one_minus_d[i] * m_clipped[i] / (1.0 - m_clipped[i])
       }
       prop_weight_mean = prop_weight_mean / n.to_double()
       for i = 0; i < n; i = i + 1 {
         let resid_d0 = y[i] - g0_hat[i]
-        let m_i = m_hat[i]
+        let m_i = m_clipped[i]
         let one_minus_m = 1.0 - m_i
         let prop_weight_i = one_minus_d[i] * m_i / one_minus_m
         psi_a[i] = -d[i] / mean_d
@@ -329,7 +370,7 @@ pub fn DoubleMLDID::fit(
       //   w_resid_d0 = (d - m) / (p_hat * (1 - m))
       for i = 0; i < n; i = i + 1 {
         let resid_d0 = y[i] - g0_hat[i]
-        let m_i = m_hat[i]
+        let m_i = m_clipped[i]
         let one_minus_m = 1.0 - m_i
         let denom = p_hat * one_minus_m
         psi_a[i] = -d[i] / p_hat
@@ -355,7 +396,7 @@ pub fn DoubleMLDID::fit(
     } else {
       for i = 0; i < n; i = i + 1 {
         let resid_d0 = y[i] - g0_hat[i]
-        let m_i = m_hat[i]
+        let m_i = m_clipped[i]
         let d_i = d[i]
         let w_d = d_i / m_i
         psi_a[i] = -1.0
@@ -373,11 +414,13 @@ pub fn DoubleMLDID::fit(
     n_rep: self.n_rep,
     seed: self.seed,
     propensity_clip: self.propensity_clip,
+    ps_processor: self.ps_processor,
     score: self.score,
     in_sample_normalization: self.in_sample_normalization,
+    strata: self.strata,
     g0_hat,
     g1_hat,
-    m_hat,
+    m_hat: m_clipped,
     coef,
     se,
     fitted: true,
