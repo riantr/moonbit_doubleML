@@ -27,9 +27,7 @@ fn main {
   let p = 9
   let theta0 = 1.5
   let seed = 1111
-  let rng = @random.Rand::chacha8(
-    seed=Bytes::from_array(@dml.seed_to_bytes(seed)),
-  )
+  let rng = @dml.chacha8_rng(seed)
   // Draw 9 features x n + residuals: 9 * n normals from Box-Muller.
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   for i = 0; i < (n * p + 2 * n) / 2; i = i + 1 {

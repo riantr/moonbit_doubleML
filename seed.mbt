@@ -29,10 +29,12 @@ pub fn seed_to_bytes(seed : Int) -> Array[Byte] {
   let b3 : Byte = ((seed >> 24) & 0xff).to_byte()
   let bytes : Array[Byte] = []
   for k = 0; k < 32; k = k + 1 {
-    // REVIEW L6: `Int % Int` is signed in MoonBit, so `k % 4` can
-    // return negative values for `k < 0`. The wildcard covers
-    // that branch — writing `3 => b3` instead would leave a
-    // non-exhaustive match that `moon --deny-warn` rejects.
+    // `k` ranges over `0..32`, so `k % 4 ∈ {0, 1, 2, 3}`. We use
+    // the wildcard for `3` because MoonBit's match-exhaustiveness
+    // check accepts either `3 => b3` or `_ => b3`; the wildcard
+    // is the path-of-least-resistance under `Int % Int` returning
+    // signed values for `k < 0` (which never happens here, but
+    // the compiler can't prove that).
     let b = match k % 4 {
       0 => b0
       1 => b1
@@ -42,4 +44,13 @@ pub fn seed_to_bytes(seed : Int) -> Array[Byte] {
     bytes.push(b)
   }
   bytes
+}
+
+///|
+/// Convenience constructor: `chacha8_rng(seed)` is shorthand for
+/// `Rand::chacha8(seed=Bytes::from_array(seed_to_bytes(seed)))`.
+/// Use this anywhere the package's tests / demos need a
+/// deterministic RNG keyed by an integer seed.
+pub fn chacha8_rng(seed : Int) -> @random.Rand {
+  @random.Rand::chacha8(seed=Bytes::from_array(seed_to_bytes(seed)))
 }

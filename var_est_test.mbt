@@ -11,7 +11,7 @@ test "var_est_happy_path" {
   let psi_a : Array[Double] = Array::make(n, 1.0)
   let psi_b : Array[Double] = Array::make(n, 0.0)
   // generate psi_b from a standard normal via Box-Muller
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(seed_to_bytes(2024)))
+  let rng = chacha8_rng(2024)
   let mut i = 0
   while i < n {
     let u1 = rng.double()

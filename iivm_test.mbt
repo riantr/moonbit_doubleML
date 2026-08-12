@@ -10,8 +10,7 @@ test "iivm_recovers_true_late_on_simple_dgp" {
   let p = 5
   let theta0 = 1.0
   let alpha = 0.5
-  let bytes = seed_to_bytes(1111)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(1111)
   // need normals: x is n*p; v is n; y noise is n. total = n*p + 2*n.
   let pool : Array[Double] = []
   while pool.length() < n * p + 2 * n {

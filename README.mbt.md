@@ -8,9 +8,9 @@ covering all 15 models currently in upstream.
 
 | Item | Value |
 |------|-------|
-| Source file count | 44 (22 production + 22 test) |
+| Source file count | 54 (26 production + 28 test) |
 | Models ported | 15 / 15 |
-| Tests | **115 / 115** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **150 / 150** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
 | Python cross-checks | 9 / 9 PASS |
 | License | Apache-2.0 |
@@ -119,6 +119,43 @@ $ for s in validate_*_with_python.py; do echo "=== $s ==="; python $s | tail -1;
   IPW-normalized scores are not included.
 * `PALM` (potential-augmented local M-estimation) and `LPLR` (local PLR)
   are not part of the upstream `doubleml` package and are not ported.
+
+## Library helpers
+
+```moonbit nocheck
+// Deterministic chacha8 RNG keyed by an integer seed.
+// Replaces the 3-line `seed_to_bytes -> Bytes::from_array -> chacha8`
+// boilerplate that used to live in every test file.
+let rng = @dml.chacha8_rng(3141)
+
+// Stratum labels for stratified K-fold partitioning.
+// Pairs with `stratified_kfold` in `resampling.mbt` to balance
+// (G, T) cells across folds when used inside `DoubleMLDID`.
+let strata : Array[Int] = []
+for i = 0; i < n; i = i + 1 {
+  strata = strata + [g_indicator[i] + 2 * t_indicator[i]]
+}
+
+// Propensity-score processing. Default clips to `[1e-2, 1 - 1e-2]`.
+let psp = @dml.PSProcessor::new()                    // defaults
+let psp = @dml.PSProcessor::new(config=@dml.PSProcessorConfig::new(clipping_threshold=0.05))
+let out = psp.adjust_ps(ps_array, treatment_array)
+```
+
+## Release flow / verifier scratch
+
+Each release produces two tracked artefacts under `_verify/`:
+
+* `T###-verdict.md` — what was added, what was tested, known
+  limitations, grade.
+* `T###-commit-msg.txt` — the human-readable summary that goes
+  into the git commit message.
+
+All other `_verify/*` files are verifier scratch (build logs,
+probe outputs, Python validator outputs, ad-hoc adversarial
+test scripts) and are excluded by `.gitignore`. To drop the
+  accumulated scratch on a fresh checkout, run
+  `git clean -dfX _verify/`.
 
 ## License
 

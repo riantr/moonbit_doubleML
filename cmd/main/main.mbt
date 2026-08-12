@@ -16,9 +16,7 @@ fn main {
   let p = 5
   let theta0 = 1.0
   let seed = 1111
-  let rng = @random.Rand::chacha8(
-    seed=Bytes::from_array(@dml.seed_to_bytes(seed)),
-  )
+  let rng = @dml.chacha8_rng(seed)
   // build X, D1, D2, eps via a deterministic uniform->normal transform.
   // to keep the port self-contained we use a simple Box-Muller for normals.
   let x_flat : Array[Double] = Array::make(n * p, 0.0)

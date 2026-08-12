@@ -7,15 +7,14 @@ test "did_recovers_true_theta_on_simple_dgp" {
   // We observe the *first difference* y = y_post - y_pre, so
   //   y = theta * d + (u_post - u_pre)
   // After cross-fit:
-  //   g0 = E[y | d=0]  ≈  0          (no treatment effect for untreated)
-  //   g1 = E[y | d=1]  ≈  theta
+  //   g0 = E[y | d=0]  �? 0          (no treatment effect for untreated)
+  //   g1 = E[y | d=1]  �? theta
   //   m  = P(d=1 | x)
   // The DID estimator recovers theta.
   let n = 1000
   let p = 5
   let theta0 = 1.0
-  let bytes = seed_to_bytes(1111)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(1111)
   let pool : Array[Double] = []
   while pool.length() < n * p + 2 * n {
     let u1 = rng.double()

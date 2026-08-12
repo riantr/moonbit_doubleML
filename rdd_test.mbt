@@ -49,8 +49,7 @@ test "rdd_fuzzy_se_is_finite" {
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
   let score = Array::make(n, 0.0)
-  let bytes = seed_to_bytes(7777)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(7777)
   for i = 0; i < n; i = i + 1 {
     let u = (i.to_double() + 0.5) / 300.0 - 1.0
     score[i] = u
@@ -107,8 +106,7 @@ test "rdd_hc0_se_is_finite_and_positive" {
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
   let score = Array::make(n, 0.0)
-  let bytes = seed_to_bytes(7777)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(7777)
   for i = 0; i < n; i = i + 1 {
     let u = (i.to_double() + 0.5) / 300.0 - 1.0
     score[i] = u

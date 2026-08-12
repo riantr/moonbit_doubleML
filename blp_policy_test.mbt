@@ -24,8 +24,7 @@ test "blp_per_coefficient_se_differ" {
   let n = 200
   let b = Matrix::zeros(n, 1)
   let s = Array::make(n, 0.0)
-  let bytes = seed_to_bytes(5151)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(5151)
   for i = 0; i < n; i = i + 1 {
     let x = (i.to_double() - 100.0) / 100.0
     b.set(i, 0, x)
@@ -87,8 +86,7 @@ test "policy_tree_depth_two_recurses" {
   // The depth-1 stump only sees x[0]; if x[0] is split at mean ~ 0,
   // the right-half signal has mean ~0 (mixture of -1 / +1). The
   // depth-2 tree should split x[0] then x[1] on the right side.
-  let bytes = seed_to_bytes(7171)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(7171)
   for i = 0; i < n; i = i + 1 {
     let z0 = (rng.double() - 0.5) * 2.0
     let z1 = (rng.double() - 0.5) * 2.0

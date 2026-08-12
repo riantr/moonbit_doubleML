@@ -22,8 +22,7 @@ fn main {
   let t_arr : Array[Int] = Array::make(n, 0)
   let g_arr : Array[Int] = Array::make(n, 0)
   let id_arr : Array[Int] = Array::make(n, 0)
-  let bytes = @dml.seed_to_bytes(11)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = @dml.chacha8_rng(11)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     let xu : Array[Double] = Array::make(p, 0.0)

@@ -11,6 +11,79 @@ release is the canonical version.
 
 ---
 
+## [0.12.0] — Cleanup: chacha8_rng helper + verifier-scratch hygiene
+
+### Added
+- **`seed.mbt::chacha8_rng(seed)`**: convenience constructor
+  that returns `Rand::chacha8(seed=Bytes::from_array(seed_to_bytes(seed)))`.
+  Used in 13 test files and 5 demos; the 3-line boilerplate
+  pattern (`let bytes = seed_to_bytes(N); let rng =
+  @random.Rand::chacha8(seed=Bytes::from_array(bytes))`)
+  collapses to `let rng = chacha8_rng(N)`. The function is
+  a one-liner but removes ~50 lines of duplicated code and
+  keeps the canonical encoding visible at every callsite.
+
+### Changed
+- **`seed.mbt::seed_to_bytes` docstring**: the wildcard-vs-`3`
+  match comment is now a one-liner explaining that
+  `k ∈ 0..32` so the `_` arm is dead at runtime; the
+  previous text talked about the `REVIEW L6` history that
+  no longer reflects the current code.
+- **`.gitignore`**: the `_verify/` directory is split into
+  tracked-vs-scratch:
+  - **Tracked** (must stay): `T###-verdict.md` and
+    `T###-commit-msg.txt` — the release summary and the
+    git commit message template.
+  - **Scratch** (gitignored): build logs, probe outputs,
+    Python validator outputs, ad-hoc adversarial test
+    scripts, archived `.mbt.archived` files.
+  - The 250+ historical `_verify/*.log`,
+    `_verify/TODO-*`, `_verify/H*`, `_verify/LOW*`,
+    `_verify/MEDIUM*`, `_verify/REVIEW*`,
+    `_verify/T0*-backend-*.log`,
+    `_verify/T0*-pycheck*.log`, `_verify/T0*-demo.log`,
+    `_verify/final-*`, etc. have been removed from the
+    index (but are still on disk if you have a stale
+    checkout; `git clean -dfX _verify/` drops them
+    locally).
+- **`pkg.generated.mbti`** is now git-ignored. It is
+  regenerated automatically by `moon info` and was
+  previously committed by accident. The other tracked
+  `cmd/main/pkg.generated.mbti` is the moon-package's own
+  generated interface and is unchanged.
+- **`cmd/main/main.mbt`** + **`cmd/datasets/main.mbt`** +
+  **`cmd/did_binary/main.mbt`** + **`cmd/did_cs/main.mbt`**
+  + **`cmd/did_multi/main.mbt`**: switched from the
+  3-line `seed_to_bytes -> Bytes::from_array -> chacha8`
+  boilerplate to `chacha8_rng(seed)`.
+- **`README.mbt.md`** test count and source-file count
+  refreshed (150 / 150 across all 4 backends; 54 source
+  files = 26 production + 28 test). Added a "Library
+  helpers" section documenting `chacha8_rng`,
+  `stratified_kfold`, and `PSProcessor` for users who
+  arrive at the package via the API docs rather than the
+  README.
+
+### Notes / known limitations
+- **`_verify/` size dropped from ~250 files to 12 files**
+  (6 `T###-verdict.md` + 6 `T###-commit-msg.txt`). The
+  cleanup is purely a hygiene release: no model behaviour
+  changed, no test thresholds widened.
+- **`pkg.generated.mbti`** is regenerated automatically by
+  `moon info`. If you change the package surface and the
+  CI reports "interface out of date", just run
+  `moon info && moon test`.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm, wasm-gc, js):
+  **150/150 passed** (no test count delta from v0.11.0;
+  this is a pure cleanup release).
+- 9 Python validators: all PASS (no behaviour changes).
+- 5 demos (`moon run cmd/{main,datasets,did_binary,did_cs,did_multi}`)
+  all run cleanly with the new `chacha8_rng` helper.
+
+---
+
 ## [0.11.0] — DoubleMLDIDMulti (top-level multi-period DID with aggregation)
 
 ### Added

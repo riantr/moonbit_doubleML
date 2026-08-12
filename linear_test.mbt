@@ -59,8 +59,7 @@ test "linear_regression_covariance_diagonal" {
   // and that the per-coefficient SE matches sqrt(cov_diag[j]).
   let n = 100
   let p = 2
-  let bytes = seed_to_bytes(4242)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(4242)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n * p; i = i + 1 {

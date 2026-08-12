@@ -5,9 +5,63 @@ target
 .mooncakes/
 .moonagent/
 
+# Auto-generated package interface; refresh with `moon info`.
+pkg.generated.mbti
+
 # Verifier-owned archive files (in-place renamed by the verifier
 # protocol; not part of the library).
 *.mbt.archived
 _verify_*.mbt.archived
+
+# Probe / scratch .mbt files (verifier droppings, not part of
+# the test suite).
+_verify/T090-probe.mbt
+_verify/*.smoke*.mbt
+
+# _verify/ directory policy:
+#   - verdict + commit-msg files (T###-verdict.md,
+#     T###-commit-msg.txt) are tracked — they document each
+#     release.
+#   - everything else (intermediate logs, probe files,
+#     historical TODO-# artefacts) is verifier scratch space
+#     and is excluded from the repo.
+# To clean locally: `git clean -dfX _verify/` keeps tracked
+# verdict/commit-msg files but drops everything else.
+_verify/*.log
+_verify/H*.log
+_verify/H*.md
+_verify/H*.txt
+_verify/LOW*.log
+_verify/LOW*.md
+_verify/LOW*.txt
+_verify/MEDIUM*.log
+_verify/MEDIUM*.md
+_verify/MEDIUM*.txt
+_verify/REVIEW*.log
+_verify/REVIEW*.md
+_verify/REVIEW*.txt
+_verify/T0*.log
+_verify/T0*-cmdmain.log
+_verify/T0*-pycheck*.log
+_verify/T0*-backend-*.log
+_verify/T0*-demo.log
+_verify/TODO-*.log
+_verify/TODO-*.md
+_verify/TODO-*.txt
+_verify/TODO-*.smoke*.mbt
+_verify/dispatch.md
+_verify/dbg_test.mbt.archived
+_verify/irm_iivm_empty_fold_smoke_test.mbt
+_verify/probe-*.log
 _verify/push-*.log
-_verify/RELEASE-*.md
+_verify/push-*.log2
+_verify/push-*.log3
+_verify/push-*.log4
+_verify/review-check*.log
+_verify/tmp*.log
+_verify/todo*.log
+_verify/logistic.mbt.original
+_verify/logistic.mbt.original.dup
+_verify/logistic_test.mbt.original
+_verify/logistic_test.mbt.original.dup
+_verify/logistic_demo_probe.mbt.original

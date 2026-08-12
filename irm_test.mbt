@@ -6,8 +6,7 @@ test "irm_recovers_true_theta_on_simple_dgp" {
   let n = 500
   let p = 5
   let theta0 = 1.0
-  let bytes = seed_to_bytes(1111)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(1111)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)

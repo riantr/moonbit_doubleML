@@ -7,10 +7,9 @@ test "plr_recovers_true_theta_on_simple_dgp" {
   let p = 5
   let theta0 = 1.0
   // build deterministic data using a chacha8-seeded PRNG. We do
-  // not care about matching numpy — we only check the *statistical*
+  // not care about matching numpy �?we only check the *statistical*
   // properties of the estimator.
-  let bytes = seed_to_bytes(1111)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(1111)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -52,7 +51,7 @@ test "plr_recovers_true_theta_on_simple_dgp" {
   // Test 2: 95% CI contains the true theta
   inspect(lo < theta0, content="true")
   inspect(hi > theta0, content="true")
-  // Test 3: anti-sign-flip guard — theta must be positive (true theta = 1.0).
+  // Test 3: anti-sign-flip guard �?theta must be positive (true theta = 1.0).
   inspect(theta > 0.0, content="true")
   // Test 4: SE is positive
   inspect(se > 0.0, content="true")

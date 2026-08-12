@@ -49,7 +49,7 @@ test "did_binary_preprocess_keeps_both_periods" {
 /// (`y_diff = y_post - y_pre`), the wide-format outcome is
 /// approximately `theta * d` (the `x @ 1` terms cancel in the
 /// difference) plus noise. With enough observations the estimator
-/// should recover `theta ≈ 1.0` within a few SE.
+/// should recover `theta �?1.0` within a few SE.
 test "did_binary_recovers_known_att" {
   let n_units = 400
   let p = 3
@@ -62,8 +62,7 @@ test "did_binary_recovers_known_att" {
   let t : Array[Int] = Array::make(n, 0)
   let g : Array[Int] = Array::make(n, 0)
   let id : Array[Int] = Array::make(n, 0)
-  let bytes = seed_to_bytes(7)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     // Each unit's x is drawn once (time-invariant covariates).
     let xu : Array[Double] = Array::make(p, 0.0)
@@ -148,8 +147,7 @@ test "did_binary_uses_ps_processor_clipping" {
   let t : Array[Int] = Array::make(n, 0)
   let g : Array[Int] = Array::make(n, 0)
   let id : Array[Int] = Array::make(n, 0)
-  let bytes = seed_to_bytes(7)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let is_treated = if u % 2 == 0 { 1 } else { 0 }
     for k = 0; k < 2; k = k + 1 {
@@ -213,8 +211,7 @@ test "did_binary_att_invariant_under_ps_processor" {
   let t : Array[Int] = Array::make(n, 0)
   let g : Array[Int] = Array::make(n, 0)
   let id : Array[Int] = Array::make(n, 0)
-  let bytes = seed_to_bytes(7)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let is_treated = if u % 2 == 0 { 1 } else { 0 }
     for k = 0; k < 2; k = k + 1 {

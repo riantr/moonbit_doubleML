@@ -7,8 +7,7 @@ test "pliv_recovers_true_theta_on_simple_dgp" {
   let n = 500
   let p = 5
   let alpha0 = 1.0
-  let bytes = seed_to_bytes(1111)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(1111)
   // Pool of normals: n*p for x, n for (eps, u, xi)  + 1 more noise var
   // generate via Box-Muller: need (n*p + 3*n + 1) normals = 500*5 + 1500 + 1 = 4001
   let pool : Array[Double] = []
@@ -122,8 +121,7 @@ test "pliv_recovers_theta_with_strong_iv" {
   let p = 3
   let alpha0 = 1.0
   // use chacha8-seeded RNG for reproducibility
-  let bytes = seed_to_bytes(2222)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+  let rng = chacha8_rng(2222)
   // generate 3n uniforms, transform to normals via Box-Muller pairs
   let pool : Array[Double] = []
   while pool.length() < 3 * n {
