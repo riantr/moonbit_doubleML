@@ -11,6 +11,104 @@ release is the canonical version.
 
 ---
 
+## [0.11.0] — DoubleMLDIDMulti (top-level multi-period DID with aggregation)
+
+### Added
+- **`did_aggregation.mbt`** (~250 LOC): `DIDAggregationResult`
+  struct (`theta` + `se` + `agg_names`) and three aggregation
+  helpers:
+  - `aggregate_group(coef, se, groups, periods, group_sizes)`:
+    one entry per group, equal-weight mean over the
+    post-treatment cells within each group.
+  - `aggregate_time(coef, se, groups, periods, group_sizes)`:
+    one entry per time period, group-size-weighted mean
+    across groups for that period.
+  - `aggregate_event(coef, se, groups, periods, group_sizes)`:
+    one entry per event time `e = t - g`, group-size-weighted
+    mean across groups for that event time.
+  - All three aggregators skip the `t == g` baseline cells
+    (which `DoubleMLDIDCS` leaves at 0.0 by convention) and
+    the event aggregator skips `e <= 0` cells.
+  - SE is the delta-method propagation: `se_agg = sqrt(sum_i
+    w_i^2 * se_i^2) / sum_i w_i`.
+- **`did_multi.mbt`** (~340 LOC): `DoubleMLDIDMulti`, the
+  top-level multi-period DID container. Wraps `DoubleMLDIDCS`
+  to drive the per-(g, t) ATT cross-fits, then exposes:
+  - `gt_combinations` as a constructor arg: either an
+    explicit `Array[(Int, Int, Int)]` of `(g_value,
+    t_value_pre, t_value_eval)` triples, or a keyword
+    `"standard"` (every `(g, t)` with `t > g` and `t_pre = g`,
+    the canonical Callaway-Sant'Anna staggered set),
+    `"all"` (every cell, including pre-treatment baselines),
+    or `"universal"` (alias for `"all"` in the panel case;
+    repeated-cross-section `"universal"` is not ported).
+  - `n_combinations()`, `coef_at_idx(i)`, `se_at_idx(i)` for
+    accessing the per-(g, t) ATT matrix.
+  - `aggregate_group()`, `aggregate_time()`,
+    `aggregate_event()` methods that delegate to
+    `did_aggregation.mbt` and use the per-cell ATT + SE
+    matrix from the inner `DoubleMLDIDCS::fit`.
+- **`did_aggregation_test.mbt`** (4 tests): basic
+  arithmetic for each aggregator; pre-treatment /
+  baseline-skipping; per-group size weighting.
+- **`did_multi_test.mbt`** (2 tests): end-to-end multi-cohort
+  panel recovers true ATT in every (g, t) cell; the three
+  aggregations produce well-formed result arrays.
+- **`cmd/did_multi/main.mbt`**: end-to-end demo on a
+  4-cohort × 4-period panel; prints the per-(g, t) ATT
+  matrix and the three aggregations.
+
+### Notes / known limitations
+- **No bootstrap / joint CIs.** Upstream's `did_multi.py`
+  implements a full bootstrap pipeline for joint
+  confidence intervals on the aggregated effects (via
+  `DoubleMLFramework.bootstrap`). This is a significant
+  piece (~400 LOC) and is deferred to a later release
+  (v0.12+). The Wald-style (pointwise) SEs that we do
+  compute match the upstream default and are sufficient
+  for the standard event-study visualisation.
+- **No `panel : Bool` switch.** The port is panel-only;
+  the upstream `"universal"` keyword (which is meaningful
+  only for repeated cross sections) is treated as an
+  alias for `"all"`. A `DoubleMLDIDCS` cross-section port
+  is out of scope here; the upstream `did_multi.py` itself
+  dispatches to `DoubleMLDIDCSBinary` (panel) or
+  `DoubleMLDIDCS` (cross-section) per the `panel` flag.
+- **No `print_periods` accessor.** The upstream
+  `DoubleMLDIDMulti.__init__` prints a one-line summary of
+  each `(g, t_pre, t_eval)` combination when
+  `print_periods=True`. We omitted the print accessor to
+  keep the API surface small; the per-cell info is
+  available via `coef_at_idx` / `se_at_idx`.
+- **Per-group sizes are derived from `data.id`** (max id
+  + 1, divided equally across groups). The upstream
+  weights come from a more careful per-cell sample-count
+  inside the per-cell DML. The equal-weight approximation
+  is sufficient for balanced panels (the canonical DGP
+  here) and matches the upstream behaviour to within
+  rounding error on balanced designs.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm, wasm-gc, js):
+  **150/150 passed** (was 144, +6 new tests: 4 `did_aggregation`
+  + 2 `did_multi`).
+- 9 Python validators: all PASS, including the existing
+  `validate_did_*_with_python.py` (no new validator — the
+  `did_multi` aggregations are pure MoonBit-only, with the
+  per-cell numbers already cross-checked by
+  `validate_did_binary_with_python.py` and
+  `validate_did_cs_with_python.py`).
+- Demo (`moon run cmd/did_multi`) on a 4-cohort × 4-period
+  panel (n_units=240, p=3, true ATT=1.0) recovers the per-(g,
+  t) ATTs to within ~1% of truth (1.0005, 0.9989, 1.0046
+  for the 3 (g, t) combos) and the three aggregations
+  produce sensible summaries: g=1 → 0.9997, g=2 → 1.0046
+  (g=3 has no post-treatment cells); t=2 → 1.0005, t=3 →
+  1.0017; e=1 → 1.0025, e=2 → 0.9989 (e <= 0 cells stay at
+  0.0 by convention).
+
+---
+
 ## [0.10.0] — DoubleMLDIDCSBinary (ps_processor + G+2T stratified folds)
 
 ### Added

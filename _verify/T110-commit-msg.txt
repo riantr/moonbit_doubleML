@@ -1,0 +1,61 @@
+Release 0.11.0: DoubleMLDIDMulti (multi-period DID with aggregation)
+
+Added
+- did_aggregation.mbt: DIDAggregationResult + three
+  aggregation helpers:
+  - aggregate_group: per-group equal-weight mean over the
+    post-treatment cells within each group.
+  - aggregate_time: per-period group-size-weighted mean
+    across groups for that period.
+  - aggregate_event: per-event-time (e = t - g) group-size-
+    weighted mean across groups.
+  - All three skip the t == g baseline cells (which
+    DoubleMLDIDCS leaves at 0.0 by convention); the event
+    aggregator also skips e <= 0 cells.
+  - SE is delta-method propagation: se_agg = sqrt(sum_i
+    w_i^2 * se_i^2) / sum_i w_i.
+- did_aggregation_test.mbt: 4 tests (basic arithmetic,
+  pre-treatment skipping, group-size weighting).
+- did_multi.mbt: DoubleMLDIDMulti top-level container. Wraps
+  DoubleMLDIDCS to drive per-(g, t) ATT cross-fits, then
+  exposes:
+  - gt_combinations as constructor arg: explicit
+    Array[(Int, Int, Int)] triples or keyword "standard"
+    (every (g, t) with t > g and t_pre = g, the canonical
+    Callaway-Sant'Anna staggered set), "all" (every cell
+    including pre-treatment baselines), "universal"
+    (alias for "all" in the panel case).
+  - n_combinations(), coef_at_idx(i), se_at_idx(i) for
+    per-(g, t) ATT matrix access.
+  - aggregate_group(), aggregate_time(), aggregate_event()
+    methods that delegate to did_aggregation.mbt.
+- did_multi_test.mbt: 2 end-to-end tests.
+- cmd/did_multi: end-to-end demo on 4-cohort * 4-period
+  panel, prints per-(g, t) ATT matrix and the three
+  aggregations.
+
+Notes / scope reductions
+- No bootstrap / joint CIs (upstream DoubleMLFramework.
+  bootstrap is ~400 LOC, deferred to v0.12+).
+- No panel : Bool switch; port is panel-only. The upstream
+  "universal" keyword is treated as an alias for "all".
+- No print_periods accessor (omitted to keep the API
+  surface small; per-cell info is available via
+  coef_at_idx / se_at_idx).
+- Per-group sizes are derived from data.id (max id + 1,
+  divided equally across groups). The equal-weight
+  approximation is sufficient for balanced panels and
+  matches the upstream behaviour on balanced designs.
+
+Tests
+- 150/150 across native, wasm-gc, wasm, js (+6 tests)
+- 9/9 validate_*_with_python.py PASS (no new validator
+  needed; aggregations are pure MoonBit-only weighted
+  means on top of the already-validated per-cell matrix)
+- cmd/did_multi demo on 4-cohort * 4-period panel:
+  3 (g, t) combos ATT ~ 1.0, group aggregation g=1=0.9997
+  g=2=1.0046 g=3=0 (no post-treatment cells), time
+  aggregation t=2=1.0005 t=3=1.0017, event aggregation
+  e=1=1.0025 e=2=0.9989
+
+See _verify/T110-verdict.md.
