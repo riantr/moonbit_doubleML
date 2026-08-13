@@ -49,6 +49,12 @@ pub fn DoubleMLAPO::n_obs(self : DoubleMLAPO) -> Int {
 }
 
 ///|
+/// Number of features (covariate columns).
+pub fn DoubleMLAPO::n_features(self : DoubleMLAPO) -> Int {
+  self.data.n_features()
+}
+
+///|
 pub fn DoubleMLAPO::coef(self : DoubleMLAPO) -> Double {
   require(self.fitted)
   self.coef
@@ -96,7 +102,7 @@ fn indicator_level(d : Array[Double], level : Double) -> Array[Double] {
 /// from the previous fold's treated-only fit (or stay at the
 /// default 0.0 if no fold has yet seen them); rows with `treated = 1`
 /// receive both a `g` (on the treated subset) and a propensity
-/// update. REVIEW L2: this is the upstream convention.
+/// update. Matches the upstream `DoubleMLAPO` convention.
 fn cross_fit_apo(
   x : Matrix,
   y : Array[Double],
@@ -134,8 +140,7 @@ pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
   let n = self.n_obs()
   let treated = indicator_level(self.data.d, self.treatment_level)
   // Accumulate `g` and `m` directly in the storage arrays; divide
-  // by `n_rep` after the loop. REVIEW M3 fix: this used to round-
-  // trip through `ga`/`ma` accumulators and re-divide at the end.
+  // by `n_rep` after the loop.
   let g = Array::make(n, 0.0)
   let m = Array::make(n, 0.0)
   for r = 0; r < self.n_rep; r = r + 1 {
@@ -165,12 +170,7 @@ pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
   for i = 0; i < n; i = i + 1 {
     pb[i] = g[i] + treated[i] * (self.data.y[i] - g[i]) / m[i]
   }
-  // REVIEW H2 fix: use the shared `var_est` helper instead of the
-  // 13-line inlined version. Every other estimator (PLR, IRM, PLIV,
-  // IIVM, DID, SSM) already goes through `var_est(psi_a, psi_b)`;
-  // APO is the lone hold-out. The shared helper is Kahan-compensated
-  // and covered by `var_est_test.mbt`'s 3 tests — both bits the
-  // inlined version does NOT have.
+  // Score + variance via the shared `var_est` helper.
   let (theta, se) = var_est(pa, pb)
   {
     data: self.data,
@@ -226,10 +226,10 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
   let c = Array::make(self.treatment_levels.length(), 0.0)
   let s = Array::make(self.treatment_levels.length(), 0.0)
   for j = 0; j < self.treatment_levels.length(); j = j + 1 {
-    // REVIEW M4 fix: the parent APOS loops over `n_rep` indirectly
-    // by passing `n_rep` to each child APO. Without passing `n_rep`
-    // through, the parent and child would each draw fold partitions
-    // independently, producing `n_rep * n_rep` total fold draws
+    // The parent APOS passes `n_rep` through to each child APO so
+    // the child does not draw its own fold partition; without
+    // this, parent and child would each draw independently and
+    // produce `n_rep * n_rep` total fold draws.
     // (wasteful, but functionally redundant). The cleanest fix is
     // to pass `n_rep = 1` to each child and let the APOS-level loop
     // do the repetition. This produces `n_rep` total fold draws per

@@ -45,8 +45,8 @@ pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
   //     to arbitrary heteroskedasticity.
   //   - nonrobust: `cov_jj = sigma^2 * (X^T X)^{-1}_{jj}` with
   //     `sigma^2 = RSS / (n - p)` (homogeneous-error assumption).
-  // Bug #5 fix landed the per-coefficient SE; TODO #11c.1 promoted the
-  // default to HC0 to match upstream.
+  // Per-coefficient SE (Bug #5 fix); HC0 default matches
+  // upstream `statsmodels.OLS(cov_type='HC0')`.
   let n_obs = self.orth_signal.length()
   let cov_diag = if self.cov_type == "HC0" {
     model.sandwich_se(self.basis, self.orth_signal)

@@ -11,6 +11,66 @@ release is the canonical version.
 
 ---
 
+## [0.13.0] — Polish: API accessor consistency, REVIEW history trim, logistic_test cleanup
+
+### Added
+- **`n_obs` / `n_features` accessors on every model**. The 15 estimators
+  previously had an inconsistent API surface: `DoubleMLPLR`,
+  `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLRDD`, `DoubleMLPQ`,
+  `DoubleMLQTE`, `DoubleMLCVAR`, `DoubleMLLPQ` all now expose both
+  accessors with matching docstrings. The implementations reuse the
+  existing data containers (`data.n_obs()`, `data.n_features()`,
+  `data.x.rows()` / `data.x.cols()` for the LPQ / RDD variants that
+  carry a `Matrix` rather than a `DoubleMLData`).
+- **`README.mbt.md::Demo entry points` table** documenting all five
+  `cmd/*/main.mbt` drivers: which model each runs, what the DGP is,
+  and what the true θ is. Each row is hyperlinked to the demo's
+  source so users can read the DGP before running the demo.
+
+### Changed
+- **REVIEW history trim**: dropped 6 historical-context comments that
+  no longer reflect the current code (REVIEW L2 / L3 / M3 / M4 / M9 /
+  M10 — purely "we used to do X, now we do Y" notes). Kept the
+  REVIEW comments that document real API contracts (L5 / L7 / L8 /
+  L11 / L12 / H1 / M10-fix / L11-fix). Net `−20` lines of comment
+  text with zero behaviour change.
+- **`logistic_test.mbt` cleanup**: dropped the local 7-bit-encoding
+  `logistic_seed_buf` helper (was used by 2 tests for the
+  chacha8-RNG setup; net `−30` LOC). The new `chacha8_rng(N)` and
+  `permute(n, seed: Int)` call paths use the canonical
+  32-bit-LE `seed_to_bytes` encoding, so test results are bit-equal
+  to v0.12.0.
+- **`quantile.mbt`** + **`rdd.mbt`** + **`apo.mbt`** + **`kfold.mbt`**
+  + **`blp_policy.mbt`** + **`linear.mbt`** + **`lpq.mbt`**:
+  * Docstring consistency: every accessor now has the same
+    "Number of observations." / "Number of features (covariate
+    columns)." header. Several previously blank docstrings
+    (PQ / QTE / CVAR / RDD's `n_obs`) are now filled in.
+  * Three duplicate `///| ///|` doc-comment artifacts from
+    `0.12.0`'s accessor-add pass are collapsed to single `///|`
+    markers.
+
+### Notes / known limitations
+- **No behaviour change** vs. v0.12.0. This is a pure polish
+  release: same numbers, same tests, just cleaner accessor surface
+  and a tidier comment trail.
+- **No new features, no test additions, no API breakage**. The
+  `n_obs` / `n_features` additions are pure additions — no field
+  renames, no signature changes.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm, wasm-gc, js):
+  **150/150 passed** (no test count delta from v0.12.0; this is
+  a pure polish release).
+- 11 Python validators: all PASS, including
+  `validate_did_binary_with_python.py` and
+  `validate_did_cs_with_python.py` (the most recent additions).
+  No tolerance widened.
+- 5 demos (`moon run cmd/{main,datasets,did_binary,did_cs,did_multi}`)
+  all run cleanly and produce bit-equal output to v0.12.0.
+
+---
+
 ## [0.12.0] — Cleanup: chacha8_rng helper + verifier-scratch hygiene
 
 ### Added

@@ -8,7 +8,7 @@ covering all 15 models currently in upstream.
 
 | Item | Value |
 |------|-------|
-| Source file count | 54 (26 production + 28 test) |
+| Source file count | 60 (30 production + 30 test) |
 | Models ported | 15 / 15 |
 | Tests | **150 / 150** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
@@ -41,6 +41,27 @@ let fitted = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141).fit()
 let coef = fitted.coef()      // Double
 let se = fitted.se()          // Double
 let (lo, hi) = fitted.confint()
+```
+
+## Demo entry points
+
+Five `cmd/*/main.mbt` drivers run end-to-end on synthetic DGPs. Each
+prints the true vs. estimated coefficient plus a 95% CI:
+
+| Driver | Model | DGP | True θ |
+|--------|-------|-----|--------|
+| `cmd/main` | `DoubleMLPLR` (and 5 others) | Simple partially linear, `n=500`, `p=5` | 1.0 |
+| `cmd/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=5000`, 9 controls | 1.5 |
+| `cmd/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
+| `cmd/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts × 4 periods | 1.0 |
+| `cmd/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
+
+```console
+$ moon run cmd/main
+$ moon run cmd/datasets
+$ moon run cmd/did_binary
+$ moon run cmd/did_cs
+$ moon run cmd/did_multi
 ```
 
 ## Models

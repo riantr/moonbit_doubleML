@@ -202,10 +202,10 @@ pub fn LinearRegression::fit_weighted(
     }
   }
   let coef = solve_normal_eqs(xtwx, xtwy, self.ridge)
-  // REVIEW M10 fix: the unweighted `(X^T X + ridge I)^{-1}` diagonal
-  // is only used by `DoubleMLBLP` via the non-WLS `fit` path. The
-  // WLS caller (`DoubleMLRDD`) only reads `xtwx_inv_diag`. We skip
-  // the unweighted `xtx` computation + inverse to save one matrix
+  // The unweighted `(X^T X + ridge I)^{-1}` diagonal is only used by
+  // the non-WLS `fit` path (e.g. `DoubleMLBLP`); the WLS caller
+  // (`DoubleMLRDD`) only reads `xtwx_inv_diag`. We skip the
+  // unweighted `xtx` computation + inverse to save one matrix
   // multiplication + one Cholesky-based inverse per fit.
   let xtwx_aug = add_ridge(xtwx, self.ridge)
   let xtwx_inv = inv_spd(xtwx_aug)
@@ -302,9 +302,10 @@ pub fn LinearRegression::sandwich_se_weighted(
 /// heteroskedasticity-robust SE (TODO #11c.1: matches the upstream
 /// `statsmodels.OLS(cov_type='HC0')` default).
 ///
-/// REVIEW M9 fix: instead of materialising the full `(X'X)^{-1}` matrix
-/// via `inv_spd` (O(p³) memory + O(p³) compute), we solve `p1`
-/// back-systems `M[j, :] * (X'X + ridge I) = e_j` via `solve_spd`
+/// Implementation note: instead of materialising the full
+/// `(X'X)^{-1}` matrix via `inv_spd` (O(p³) memory + O(p³)
+/// compute), we solve `p1` back-systems `M[j, :] * (X'X + ridge I)
+/// = e_j` via `solve_spd`
 /// (each O(p²) compute, zero extra memory). The diagonal entry of the
 /// sandwich is unchanged; only the form of the inner loop changed.
 pub fn LinearRegression::sandwich_se(

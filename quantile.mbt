@@ -310,6 +310,18 @@ pub fn DoubleMLPQ::fit(self : DoubleMLPQ) -> DoubleMLPQ {
 }
 
 ///|
+/// Number of observations.
+pub fn DoubleMLPQ::n_obs(self : DoubleMLPQ) -> Int {
+  self.data.n_obs()
+}
+
+///|
+/// Number of features (covariate columns).
+pub fn DoubleMLPQ::n_features(self : DoubleMLPQ) -> Int {
+  self.data.n_features()
+}
+
+///|
 pub fn DoubleMLPQ::coef(self : DoubleMLPQ) -> Double {
   require(self.fitted)
   self.coef
@@ -420,6 +432,18 @@ pub fn DoubleMLQTE::fit(self : DoubleMLQTE) -> DoubleMLQTE {
 }
 
 ///|
+/// Number of observations.
+pub fn DoubleMLQTE::n_obs(self : DoubleMLQTE) -> Int {
+  self.data.n_obs()
+}
+
+///|
+/// Number of features (covariate columns).
+pub fn DoubleMLQTE::n_features(self : DoubleMLQTE) -> Int {
+  self.data.n_features()
+}
+
+///|
 pub fn DoubleMLQTE::coefs(self : DoubleMLQTE) -> Array[Double] {
   self.coefs
 }
@@ -505,6 +529,18 @@ pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
     se: s,
     fitted: true,
   }
+}
+
+///|
+/// Number of observations.
+pub fn DoubleMLCVAR::n_obs(self : DoubleMLCVAR) -> Int {
+  self.data.n_obs()
+}
+
+///|
+/// Number of features (covariate columns).
+pub fn DoubleMLCVAR::n_features(self : DoubleMLCVAR) -> Int {
+  self.data.n_features()
 }
 
 ///|

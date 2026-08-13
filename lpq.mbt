@@ -240,6 +240,18 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
 }
 
 ///|
+/// Number of observations.
+pub fn DoubleMLLPQ::n_obs(self : DoubleMLLPQ) -> Int {
+  self.data.x.rows()
+}
+
+///|
+/// Number of features (covariate columns).
+pub fn DoubleMLLPQ::n_features(self : DoubleMLLPQ) -> Int {
+  self.data.x.cols()
+}
+
+///|
 pub fn DoubleMLLPQ::coef(self : DoubleMLLPQ) -> Double {
   require(self.fitted)
   self.coef

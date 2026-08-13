@@ -266,6 +266,18 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
 }
 
 ///|
+/// Number of observations.
+pub fn DoubleMLRDD::n_obs(self : DoubleMLRDD) -> Int {
+  self.data.n_obs()
+}
+
+///|
+/// Number of features (covariate columns).
+pub fn DoubleMLRDD::n_features(self : DoubleMLRDD) -> Int {
+  self.data.x.cols()
+}
+
+///|
 pub fn DoubleMLRDD::coef(self : DoubleMLRDD) -> Double {
   require(self.fitted)
   self.coef

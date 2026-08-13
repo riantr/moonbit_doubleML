@@ -1,31 +1,5 @@
 ///|
-/// Build a 32-byte seed buffer by tiling the integer seed in 7-bit
-/// chunks. Matches the `kfold` and `var_est` test helpers so the
-/// downstream `chacha8` RNG gets a stable, well-formed seed. Renamed
-/// from `seed_buf` to avoid clashing with the identically-named helper
-/// in `irm_test.mbt` (each `*_test.mbt` shares toplevel scope with the
-/// test driver).
-fn logistic_seed_buf(seed : Int) -> Array[Byte] {
-  let s = if seed < 0 { -seed } else { seed }
-  let b0 = (s % 128).to_byte()
-  let b1 = (s / 128 % 128).to_byte()
-  let b2 = (s / 16384 % 128).to_byte()
-  let b3 = (s / 2097152 % 128).to_byte()
-  let bytes : Array[Byte] = []
-  for k = 0; k < 32; k = k + 1 {
-    let b = match k % 4 {
-      0 => b0
-      1 => b1
-      2 => b2
-      _ => b3
-    }
-    bytes.push(b)
-  }
-  bytes
-}
-
-///|
-/// Drawn a standard normal sample via Box-Muller, padded into `pool`
+/// Draw a standard normal sample via Box-Muller, padded into `pool`
 /// in pairs. Caller is expected to size the pool to a multiple of 2.
 fn fill_normal_pool(rng : @random.Rand, pool : Array[Double]) -> Unit {
   let mut i = 0
@@ -58,11 +32,12 @@ fn mean_at(v : Array[Double], idx : Array[Int]) -> Double {
 }
 
 ///|
-/// Deterministic Fisher-Yates permutation of `[0, n)` using a chacha8
-/// RNG seeded from a 32-byte buffer. Mirrors `kfold`'s permutation
-/// primitive so the split does not depend on platform `Random`.
-fn permute(n : Int, seed_bytes : Array[Byte]) -> Array[Int] {
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(seed_bytes))
+/// Deterministic Fisher-Yates permutation of `[0, n)` using a
+/// chacha8 RNG seeded from an integer seed. Mirrors `kfold`'s
+/// permutation primitive so the split does not depend on platform
+/// `Random`.
+fn permute(n : Int, seed : Int) -> Array[Int] {
+  let rng = chacha8_rng(seed)
   let perm : Array[Int] = Array::makei(n, fn(i) { i })
   for i = n - 1; i > 0; i = i - 1 {
     let j = rng.int(limit=i + 1)
@@ -83,9 +58,7 @@ fn permute(n : Int, seed_bytes : Array[Byte]) -> Array[Int] {
 test "logistic_recovers_linear_separable" {
   let n = 200
   let p = 2
-  let rng = @random.Rand::chacha8(
-    seed=Bytes::from_array(logistic_seed_buf(2026)),
-  )
+  let rng = chacha8_rng(2026)
   // 200 * 2 = 400 normals, padded to an even count (400 already is).
   let pool : Array[Double] = Array::make(n * p, 0.0)
   fill_normal_pool(rng, pool)
@@ -100,7 +73,7 @@ test "logistic_recovers_linear_separable" {
   }
   // 50/50 split: shuffle indices with a fixed seed, then first half
   // is the training set, second half the test set.
-  let perm = permute(n, logistic_seed_buf(17))
+  let perm = permute(n, 17)
   let half = n / 2
   let train_idx : Array[Int] = Array::make(half, 0)
   let test_idx : Array[Int] = Array::make(n - half, 0)
@@ -153,9 +126,7 @@ test "logistic_recovers_linear_separable" {
 test "logistic_predict_matches_sigmoid_of_linear" {
   let n = 200
   let p = 2
-  let rng = @random.Rand::chacha8(
-    seed=Bytes::from_array(logistic_seed_buf(4242)),
-  )
+  let rng = chacha8_rng(4242)
   let pool : Array[Double] = Array::make(n * p, 0.0)
   fill_normal_pool(rng, pool)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)

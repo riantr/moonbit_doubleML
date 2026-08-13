@@ -84,6 +84,12 @@ pub fn DoubleMLIRM::n_obs(self : DoubleMLIRM) -> Int {
 }
 
 ///|
+/// Number of features (covariate columns).
+pub fn DoubleMLIRM::n_features(self : DoubleMLIRM) -> Int {
+  self.data.n_features()
+}
+
+///|
 pub fn DoubleMLIRM::coef(self : DoubleMLIRM) -> Double {
   require(self.fitted)
   self.coef

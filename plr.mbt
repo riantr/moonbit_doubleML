@@ -75,6 +75,12 @@ pub fn DoubleMLPLR::n_obs(self : DoubleMLPLR) -> Int {
 }
 
 ///|
+/// Number of features (covariate columns).
+pub fn DoubleMLPLR::n_features(self : DoubleMLPLR) -> Int {
+  self.data.n_features()
+}
+
+///|
 /// Fitted causal parameter.
 pub fn DoubleMLPLR::coef(self : DoubleMLPLR) -> Double {
   require(self.fitted)

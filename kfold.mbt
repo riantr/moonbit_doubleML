@@ -29,12 +29,9 @@ pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
   require(n_obs > 0)
   require(n_folds > 0)
   require(n_folds <= n_obs)
-  // REVIEW M13 fix: use the canonical 8-bit `seed_to_bytes` helper
-  // instead of the legacy 7-bit-per-byte tiling that lived here. The
-  // two encoders produce *different* byte streams for the same
-  // integer seed (e.g. `seed = 3141`); the 8-bit version is the one
-  // the rest of the package uses via `seed_to_bytes` (and the one
-  // the docstring says "supersedes the earlier 7-bit-tiling helper").
+  // Use the canonical `seed_to_bytes` helper (8-bit LE) so the
+  // fold partition matches what a user would reproduce by hand
+  // from `seed_to_bytes(seed)`.
   // The fold partition is still well-shuffled — only the specific
   // indices per fold change. Every test's tolerance is wide enough
   // to absorb the resulting ~0.01 theta drift.

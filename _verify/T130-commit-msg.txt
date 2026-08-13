@@ -1,0 +1,53 @@
+Release 0.13.0: Polish (accessor consistency + REVIEW trim + logistic_test cleanup)
+
+Added
+- n_obs / n_features accessors on the 8 estimators that
+  were missing one or both: PLR, IRM, APO, RDD, PQ, QTE, CVAR,
+  LPQ. PLR / IRM / APO had n_obs only; RDD had neither; PQ /
+  QTE / CVAR had neither; LPQ had neither. Reuses the existing
+  data containers (data.n_obs() / data.n_features() / data.x
+  .rows() / data.x.cols() for the Matrix-backed RDD / LPQ
+  variants). The two meta-estimators (BLP / PolicyTree) do
+  not carry a data container and intentionally stay without
+  these accessors.
+- README.mbt.md: "Demo entry points" table listing all 5
+  cmd/*/main.mbt drivers with model, DGP, and true theta.
+  Each row is hyperlinked to the demo's source for readers
+  who want to inspect the DGP before running it.
+
+Changed
+- 6 historical REVIEW context comments trimmed (L2 / L3 / M3
+  / M4 / M9 / M10 — pure "we used to do X, now we do Y"
+  notes). Kept the REVIEW comments that document real API
+  contracts (L5 / L7 / L8 / L11 / L12 / H1 / M10-fix /
+  L11-fix). Net -20 lines of comment text.
+- logistic_test.mbt: dropped the local 7-bit-encoding
+  logistic_seed_buf helper (-17 LOC). The 2 callsites now
+  go through the canonical chacha8_rng(N) / permute(n,
+  seed: Int) path, which uses the 8-bit-LE seed_to_bytes
+  encoding. Test results are bit-equal to v0.12.0.
+- permute(n, seed_bytes: Array[Byte]) rewritten as
+  permute(n, seed: Int) for consistency with the rest of
+  the package's RNG helpers.
+- quantile.mbt / rdd.mbt: docstring consistency on the
+  accessors. Three duplicate ///| ///| comment artifacts
+  from the v0.12.0 accessor-add pass collapsed to single
+  ///| markers.
+- quantile.mbt / rdd.mbt: added the missing "Number of
+  observations." / "Number of features (covariate
+  columns)." docstring headers on the new accessors.
+
+Tests
+- 150/150 across all 4 backends (native, wasm-gc, wasm, js).
+  No test count delta — this is a pure polish release.
+- 11/11 validate_*_with_python.py PASS (no tolerance
+  widened).
+- All 5 demos (cmd/{main, datasets, did_binary, did_cs,
+  did_multi}) run cleanly and produce bit-equal output to
+  v0.12.0.
+
+Files
+- 11 source files + 1 README + 1 CHANGELOG. Net
+  +256 / -67 lines.
+
+See _verify/T130-verdict.md.
