@@ -1,0 +1,80 @@
+Release 0.17.0: gain_statistics (sensitivity parameter benchmarks)
+
+Added
+- sensitivity.mbt::gain_statistics(dml_long, dml_short):
+  per-coefficient sensitivity parameter benchmarks
+  cf_y, cf_d, rho, delta_theta from two fitted DML
+  models. Matches the upstream
+  doubleml.utils.gain_statistics.gain_statistics:
+    R2_y = 1 - var_y_residuals / var_y
+    R2_riesz = nu2_short / nu2_long
+    cf_y = clip((R2_y_long - R2_y_short) / (1 - R2_y_long), 0, 1)
+    cf_d = clip((1 - R2_riesz) / R2_riesz, 0, 1)
+    delta_theta = median(all_coef_short - all_coef_long)
+    rho = median(sign(delta_theta) * clip(|delta_theta| /
+      sqrt(var_g * var_riesz), 0, 1))
+- sensitivity.mbt::GainStatsResult: container struct
+  holding the four per-coef benchmark arrays.
+- sensitivity.mbt::GainStatsSource: minimal source
+  struct exposing the per-rep arrays var_y_residuals,
+  nu2, all_coef (row-major (n_coef, n_rep)), plus
+  n_rep and the scalar var_y.
+- sensitivity.mbt::GainStatsSource::new: builder
+  constructor that validates shape consistency.
+- sensitivity.mbt::GainStatsSource::from_blp:
+  convenience helper that wraps new and forwards the
+  user-supplied arrays. The BLP argument is currently
+  ignored (the v0.17.0 release ships the data-flow
+  plumbing only).
+- sensitivity.mbt::median_sorted: helper that
+  computes the median of a sorted array. Exposed for
+  testability.
+- validate_gain_statistics_with_python.py: new Python
+  cross-check. Replicates the upstream gain_statistics
+  algorithm in numpy and emits the per-coefficient
+  benchmarks for a 2-coef x 3-rep random DGP.
+
+Notes
+- rho and cf_y degenerate regimes: rho = 0.0 (or 1.0
+  with sign) when var_g * var_riesz <= 0. The upstream's
+  np.divide(..., where=denom != 0) sets the ratio to
+  1.0 in this regime, and the MoonBit port follows the
+  same convention.
+- cf_y = 0 (clipped) when the long model has higher
+  R2_y than the short model.
+- cf_d = 0 (clipped) when nu2_short >= nu2_long.
+- No automatic DML attribute extraction. The upstream
+  gain_statistics reads
+  dml_long.framework.sensitivity_elements directly. The
+  v0.17.0 port defines GainStatsSource as an explicit
+  input struct.
+- The from_blp helper currently ignores its BLP argument
+  and forwards only the user-supplied arrays. A future
+  port can compute var_y_residuals from blp.coef() and
+  the BLP's RSS, and nu2 from the BLP's sandwich SE.
+- No panel cross-section variant. The upstream supports
+  both panel and cross-section; the v0.17.0 port is
+  panel-only.
+
+Tests
+- 192/192 across all 4 backends (native, wasm-gc, wasm,
+  js). Was 186, +6 new tests in sensitivity_test.mbt:
+    1 gain_statistics_handrolled
+    1 gain_statistics_identical
+    1 gain_statistics_clipping
+    1 gain_statistics_multi_coef_multi_rep
+    1 panic_gain_statistics_length_mismatch
+    1 gain_stats_from_blp_basic
+- 15/15 validate_*_with_python.py PASS (was 14,
+  +validate_gain_statistics_with_python.py).
+- 5/5 demos all run cleanly and produce bit-equal
+  output to v0.16.0. None calls gain_statistics().
+
+Files
+- 1 production file extended: sensitivity.mbt.
+- 1 test file extended: sensitivity_test.mbt (+6 tests).
+- 1 new Python validator:
+  validate_gain_statistics_with_python.py.
+- README.mbt.md + CHANGELOG.md updated.
+
+See _verify/T170-verdict.md.

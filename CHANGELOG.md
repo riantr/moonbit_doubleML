@@ -11,6 +11,110 @@ release is the canonical version.
 
 ---
 
+## [0.17.0] — `gain_statistics` (sensitivity parameter benchmarks from two DML fits)
+
+### Added
+- **`sensitivity.mbt::gain_statistics(dml_long, dml_short)`**:
+  compute the per-coefficient gain-statistic benchmark
+  values `cf_y`, `cf_d`, `rho`, and `delta_theta` from
+  two fitted DML models. Matches the upstream
+  `doubleml.utils.gain_statistics.gain_statistics`:
+  - `R2_y = 1 - var_y_residuals / var_y`
+  - `R2_riesz = nu2_short / nu2_long`
+  - `cf_y = clip((R2_y_long - R2_y_short) / (1 - R2_y_long), 0, 1)`
+  - `cf_d = clip((1 - R2_riesz) / R2_riesz, 0, 1)`
+  - `delta_theta = median(all_coef_short - all_coef_long)`
+  - `rho = median(sign(delta_theta) * clip(|delta_theta| / sqrt(var_g * var_riesz), 0, 1))`,
+    where `var_g = var_y_residuals_short - var_y_residuals_long`
+    and `var_riesz = nu2_long - nu2_short`.
+- **`sensitivity.mbt::GainStatsResult`**: container
+  struct holding the four per-coefficient benchmark
+  arrays (length `n_coef`).
+- **`sensitivity.mbt::GainStatsSource`**: minimal source
+  struct exposing the per-rep arrays
+  `var_y_residuals`, `nu2`, `all_coef` (row-major
+  `(n_coef, n_rep)`), plus `n_rep` and the scalar `var_y`.
+  Designed so any DML estimator (BLP, PolicyTree, PLR,
+  IRM, ...) can be benchmarked without the upstream
+  `DoubleMLFramework` machinery.
+- **`sensitivity.mbt::GainStatsSource::new`**: builder
+  constructor that validates shape consistency (all three
+  per-rep arrays have the same length; length divisible
+  by `n_rep`).
+- **`sensitivity.mbt::GainStatsSource::from_blp`**: a
+  convenience constructor that takes a fitted
+  `DoubleMLBLP` plus the manually-supplied per-rep arrays.
+  Currently a thin wrapper that ignores the BLP and
+  forwards the arrays; a future port can populate the
+  per-rep arrays from the BLP's fit output automatically.
+- **`sensitivity.mbt::median_sorted`**: helper that
+  computes the median of a sorted array. Used internally
+  by `gain_statistics`; exposed for testability.
+- **`validate_gain_statistics_with_python.py`**: new
+  Python cross-check. Replicates the upstream
+  `gain_statistics` algorithm in numpy and emits the
+  per-coefficient benchmarks for a 2-coef × 3-rep
+  random DGP. The MoonBit tests in
+  `sensitivity_test.mbt` match this reference within
+  1e-12 on the same inputs.
+
+### Notes / known limitations
+- **`rho` and `cf_y` degenerate regimes**:
+  - `rho = 0.0` (or `1.0` with sign) when `var_g * var_riesz <= 0`.
+    The upstream's `np.divide(..., where=denom != 0)` sets
+    the ratio to `1.0` in this regime, and the MoonBit
+    port follows the same convention (`denom == 0` or NaN
+    → `rho_abs = 1.0`).
+  - `cf_y = 0` (clipped) when the long model has higher
+    `R2_y` than the short model (i.e. the confounder
+    helps with the long fit).
+  - `cf_d = 0` (clipped) when `nu2_short >= nu2_long`.
+- **No automatic DML attribute extraction**. The
+  upstream `gain_statistics` reads
+  `dml_long.framework.sensitivity_elements` directly.
+  The v0.17.0 port defines `GainStatsSource` as an
+  explicit input struct; users fill in `var_y_residuals`
+  and `nu2` per rep (typically by re-fitting the model
+  with different feature subsets or seeds). The
+  `from_blp` helper is a placeholder for a future
+  auto-population path.
+- **The `from_blp` helper currently ignores its BLP
+  argument** and forwards only the user-supplied arrays.
+  A future port can compute `var_y_residuals` from
+  `blp.coef()` and the BLP's RSS, and `nu2` from the
+  BLP's sandwich SE; the v0.17.0 release ships the
+  data-flow plumbing only.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm,
+  wasm-gc, js): **192/192 passed** (was 186, +6 new
+  tests in `sensitivity_test.mbt`):
+  - 1 `gain_statistics_handrolled`: algorithm
+    correctness on a 1-coef, 1-rep toy DGP with known
+    expected values.
+  - 1 `gain_statistics_identical`: when long and short
+    are identical, all four benchmarks are 0.
+  - 1 `gain_statistics_clipping`: `cf_y` clips to 0
+    when `R2_y_short > R2_y_long`; `cf_d` clips to 1
+    when `R2_riesz = 0.1` (raw value 9).
+  - 1 `gain_statistics_multi_coef_multi_rep`: 2-coef,
+    3-rep hand-rolled DGP; output is length 2 with
+    exact expected values.
+  - 1 `panic_gain_statistics_length_mismatch`:
+    per-rep arrays of different lengths abort.
+  - 1 `gain_stats_from_blp_basic`: the
+    `GainStatsSource::from_blp` helper constructs a
+    source from a fitted BLP + user-supplied arrays.
+- 15 Python validators: all PASS, including the new
+  `validate_gain_statistics_with_python.py`.
+- 5 demos (`moon run cmd/{main, datasets, did_binary,
+  did_cs, did_multi}`) all run cleanly and produce
+  bit-equal output to v0.16.0. None calls
+  `gain_statistics` (it's opt-in via the
+  `GainStatsSource` + `gain_statistics` API).
+
+---
+
 ## [0.16.0] — `DoubleMLDIDMulti` multiple-testing p-adjustment (Romano-Wolf / Holm / Bonferroni)
 
 ### Added
