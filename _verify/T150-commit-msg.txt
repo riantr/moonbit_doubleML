@@ -1,0 +1,109 @@
+Release 0.15.0: did_multi multiplier bootstrap / joint CIs
+
+Added
+- did_multi.mbt::DoubleMLDIDMulti::bootstrap(method_name,
+  n_rep_boot, seed): multiplier bootstrap. Draws
+  n_rep_boot weight vectors from "normal" (default;
+  upstream method="normal"), "Bayes", or "wild"
+  (heteroskedasticity-robust). Computes per-cell
+  t-statistics
+  boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] /
+                       (sqrt(n) * se_k).
+  Stores on boot_t_stat / boot_method / n_rep_boot /
+  boot_seed fields. The chacha8 RNG is seeded by `seed`
+  (default 2024).
+- did_multi.mbt::DoubleMLDIDMulti::confint(joint, level):
+  confidence intervals for the per-(g, t) ATT.
+  joint=false (default): Wald-style theta ± 1.96 * se.
+  joint=true: bootstrap intervals theta ± cv * se
+  where cv is the empirical level-quantile of
+  max_k |boot_t_stat[b, k]|.
+- did_multi.mbt::draw_bootstrap_weights (public for
+  testability): pure-MoonBit weight draw returning a
+  row-major (n_rep_boot, n_obs) array.
+- did_multi.mbt::box_muller_normal (public for
+  testability): standard-normal sample via Box-Muller.
+- did.mbt::DoubleMLDID: per-observation psi_a and
+  psi_b influence-function components (length n_obs
+  on the wide-format data). The DML score is
+  psi_a + theta * psi_b; this is the influence function
+  used by the multiplier bootstrap.
+- did_binary.mbt::WideDIDSubset: stores long-format
+  eval_idx per wide-format row. DoubleMLDIDBinary
+  stores eval_idx in its struct and exposes
+  psi_a_long / psi_b_long (long-format with 0 padding)
+  and inner_psi_a / inner_psi_b (wide-format).
+- did_cs.mbt::DoubleMLDIDCS: psi_matrix field of shape
+  (n_groups * n_periods, n_obs): the per-cell influence
+  function on the full long-format panel. The per-cell
+  fit loop records full_idx_acc (sub->full index map)
+  and uses it to map wide-format psi back to the full
+  long-format panel via wide-format eval_idx.
+- validate_bootstrap_with_python.py: new Python
+  cross-check. Empirical moments of the three multiplier
+  distributions (mean ≈ 0, variance ≈ 1) match the
+  upstream numpy implementation.
+
+Changed
+- did.mbt::DoubleMLDID struct gained psi_a and psi_b
+  fields. fit() populates them alongside the existing
+  coef / se / g0_hat / g1_hat / m_hat outputs. Existing
+  call sites continue to work; the new fields are
+  additive.
+
+Tests
+- 174/174 across all 4 backends (native, wasm-gc, wasm,
+  js). Was 163, +11 new tests in did_multi_test.mbt:
+    3 weight-moment tests (normal / Bayes / wild)
+    1 determinism test
+    1 joint-wider-than-pointwise test
+    2 CI coverage tests (pointwise + joint)
+    3 panic_ tests (joint without bootstrap, bootstrap
+      before fit, invalid method)
+    1 default-method test
+- 13/13 validate_*_with_python.py PASS (was 12, +1 new
+  validate_bootstrap_with_python.py).
+- 5/5 demos all run cleanly and produce bit-equal output
+  to v0.14.0. None calls bootstrap() (it's opt-in via
+  DoubleMLDIDMulti::bootstrap).
+
+Notes
+- Joint CIs are conservative. The bootstrap critical
+  value is the empirical level-quantile of
+  max_k |boot_t_stat[b, k]| over n_rep_boot replications.
+  With n_rep_boot=500 and level=0.95, the critical value
+  is typically 2.5-4 on the canonical DGP (vs 1.96 for
+  the pointwise Wald CI). Matches the upstream
+  confint(joint=True) behaviour.
+- Joint CIs on small DGPs may not cover the true ATT.
+  With n=240 units and n_rep_boot=500, the joint CIs are
+  wide enough that coverage holds for the canonical
+  DGP; users on smaller designs should bump n_rep_boot
+  to 1000+ for tighter critical-value estimates.
+- No CS-DID bootstrap on cross-section data (the
+  upstream DoubleMLDIDCS has a panel flag; the v0.9.0+
+  port is panel-only).
+- The bootstrap RNG seed is 2024 by default, matching
+  the upstream numpy.random.seed(2024) for the
+  canonical _verify/test_bootstrap_reference.py
+  first-test setup. Users can pass a different seed
+  for reproducibility across runs.
+- No _draw_weights upstream exact-value parity: MoonBit
+  chacha8 vs numpy PCG64 produce different absolute
+  weight values; the bootstrap critical values are not
+  bit-equal to upstream. Empirical moments match (mean
+  ≈ 0, variance ≈ 1) and joint CI coverage matches
+  asymptotically.
+- No DoubleMLDIDMulti::p_adjust(method) (upstream
+  Romano-Wolf multiple-testing correction). Deferred -
+  would add another ~80 LOC for the stepdown Romano-Wolf
+  algorithm.
+
+Files
+- 4 production files extended: did.mbt, did_binary.mbt,
+  did_cs.mbt, did_multi.mbt.
+- 1 test file extended: did_multi_test.mbt (+11 tests).
+- 1 new Python validator: validate_bootstrap_with_python.py.
+- README.mbt.md + CHANGELOG.md updated.
+
+See _verify/T150-verdict.md.

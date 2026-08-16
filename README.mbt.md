@@ -10,16 +10,16 @@ covering all 15 models currently in upstream.
 |------|-------|
 | Source file count | 60 (30 production + 30 test) |
 | Models ported | 15 / 15 |
-| Tests | **163 / 163** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **174 / 174** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
-| Python cross-checks | 12 / 12 PASS |
+| Python cross-checks | 13 / 13 PASS |
 | License | Apache-2.0 |
 
 ## Quick start
 
 ```console
 $ moon test --deny-warn
-Total tests: 163, passed: 163, failed: 0.
+Total tests: 174, passed: 174, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -103,10 +103,10 @@ $ moon run cmd/did_multi
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 163/163
-moon test --target wasm-gc --deny-warn   # 163/163
-moon test --target wasm    --deny-warn   # 163/163
-moon test --target js      --deny-warn   # 163/163
+moon test --target native  --deny-warn   # 174/174
+moon test --target wasm-gc --deny-warn   # 174/174
+moon test --target wasm    --deny-warn   # 174/174
+moon test --target js      --deny-warn   # 174/174
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
@@ -121,6 +121,7 @@ output:
 ```console
 $ for s in validate_*_with_python.py; do echo "=== $s ==="; python $s | tail -1; done
 === validate_blp_policy_with_python.py === BLP/PolicyTree reference checks passed
+=== validate_bootstrap_with_python.py === Multipliers match: PASS
 === validate_did_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 1.29e-02 ...
 === validate_did_binary_with_python.py === Reference: run `moon run cmd/did_binary` for the MoonBit output.
 === validate_did_cs_with_python.py === Reference: run `moon run cmd/did_cs` for the MoonBit output.
@@ -184,6 +185,19 @@ let cfg_cv = @dml.PSProcessorConfig::new(
 )
 let psp_cv = @dml.PSProcessor::new(config=cfg_cv)
 let out_cv = psp_cv.adjust_ps(ps_array, treatment_array)
+
+// v0.15.0+: multiplier bootstrap for joint confidence
+// intervals on `DoubleMLDIDMulti`. Draws `n_rep_boot` weight
+// vectors from the chosen multiplier distribution ("normal"
+// / "Bayes" / "wild") and computes per-cell t-statistics.
+// Joint CIs use the empirical 95th percentile of the
+// max-abs-t distribution as the critical value; pointwise
+// CIs use 1.96. `joint=true` CIs are wider (more
+// conservative).
+let fitted = @dml.DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+let booted = fitted.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
+let ci_pw = booted.confint(joint=false)  // Wald-style (1.96 * se)
+let ci_joint = booted.confint(joint=true)  // bootstrap critical value
 ```
 
 ## Release flow / verifier scratch

@@ -11,6 +11,139 @@ release is the canonical version.
 
 ---
 
+## [0.15.0] — `DoubleMLDIDMulti` multiplier bootstrap / joint confidence intervals
+
+### Added
+- **`did_multi.mbt::DoubleMLDIDMulti::bootstrap(method_name,
+  n_rep_boot, seed)`**: multiplier bootstrap for joint
+  confidence intervals. Draws `n_rep_boot` weight vectors
+  from the chosen multiplier distribution and computes
+  per-cell t-statistics
+  `boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] / (sqrt(n) * se_k)`.
+  Supports `"normal"` (default; matches upstream
+  `bootstrap(method="normal")`), `"Bayes"`, and `"wild"`
+  (robust to heteroskedasticity). The chacha8 RNG is seeded
+  by `seed` for reproducibility (default `2024`).
+- **`did_multi.mbt::DoubleMLDIDMulti::confint(joint, level)`**:
+  confidence intervals for the per-(g, t) ATT. `joint = false`
+  (default) returns Wald-style `theta ± 1.96 * se` intervals.
+  `joint = true` returns bootstrap intervals
+  `theta ± cv * se` where `cv` is the empirical
+  `level`-quantile of `max_k |boot_t_stat[b, k]|` across
+  bootstrap replications. Joint CIs are wider (more
+  conservative) and require `bootstrap()` to be called first.
+- **`did_multi.mbt::draw_bootstrap_weights(method_name,
+  n_rep_boot, n_obs, seed)`** (public for testability): pure
+  MoonBit weight-draw function for the three multiplier
+  distributions. Returns a row-major `(n_rep_boot, n_obs)`
+  array.
+- **`did_multi.mbt::box_muller_normal(rng)`** (public for
+  testability): standard-normal sample via Box-Muller.
+- **`did.mbt` (v0.15.0 extension)**: `DoubleMLDID` now
+  exposes per-observation `psi_a` and `psi_b` influence-
+  function components (length `n_obs` on the wide-format
+  data). The DML score is `psi_a + theta * psi_b`; this is
+  the influence function used by the multiplier bootstrap.
+- **`did_binary.mbt` (v0.15.0 extension)**:
+  - `WideDIDSubset` now also stores the long-format
+    `eval_idx` per wide-format row (the index into the
+    `DoubleMLDIDBinaryData` long-format array).
+  - `DoubleMLDIDBinary` stores `eval_idx` in its struct
+    and exposes `psi_a_long` / `psi_b_long` accessors that
+    map the wide-format psi back to the long-format panel
+    (with 0 padding for rows not in the cell).
+  - `DoubleMLDIDBinary` also exposes `inner_psi_a` /
+    `inner_psi_b` accessors that return the wide-format
+    psi directly, used by the per-cell loop in
+    `DoubleMLDIDCS::fit` to build the per-cell influence
+    function on the full long-format panel.
+- **`did_cs.mbt` (v0.15.0 extension)**:
+  - `DoubleMLDIDCS` now stores a `psi_matrix` of shape
+    `(n_groups * n_periods, n_obs)`: the per-cell
+    influence function on the full long-format panel,
+    used by the multiplier bootstrap.
+  - The per-cell fit loop records the full long-format
+    index for each sub row (`full_idx_acc`) and uses it
+    to map the cell's wide-format psi back to the full
+    long-format panel via the wide-format `eval_idx`.
+- **`validate_bootstrap_with_python.py`**: new Python
+  cross-check. Computes the empirical moments of the
+  three multiplier distributions (mean ≈ 0, variance ≈ 1)
+  on a 200 × 50 weight matrix to verify the algorithm
+  matches the upstream `numpy.random.normal /
+  exponential` shape (the actual values differ because
+  MoonBit uses chacha8 vs. numpy's PCG64, but the
+  distributions agree).
+
+### Changed
+- **`did.mbt::DoubleMLDID` struct** gained `psi_a` and
+  `psi_b` fields (length `n_obs` each). The `fit` method
+  populates them alongside the existing `coef` / `se` /
+  `g0_hat` / `g1_hat` / `m_hat` outputs. Existing call
+  sites continue to work; the new fields are additive.
+
+### Notes / known limitations
+- **Joint CIs are conservative by construction**. The
+  bootstrap critical value is the empirical `level`-
+  quantile of `max_k |boot_t_stat[b, k]|` over
+  `n_rep_boot` replications. With `n_rep_boot = 500`
+  and `level = 0.95`, the critical value is typically
+  2.5 – 4 on the canonical DGP (vs. 1.96 for the
+  pointwise Wald CI). This matches the upstream
+  `confint(joint=True)` behaviour.
+- **Joint CIs on a small DGP may not cover the true
+  ATT**. With `n = 240` units and `n_rep_boot = 500`,
+  the joint CIs are wide enough that coverage holds
+  for the canonical DGP; users on smaller designs
+  should bump `n_rep_boot` to 1000+ for tighter
+  critical-value estimates.
+- **No `panel = False` (cross-section) support for
+  the bootstrap**. The CS-DID bootstrap (which would
+  resample at the cross-section unit level) is out of
+  scope; the v0.15.0 port is panel-only. The
+  `DoubleMLDIDCS` upstream class has a `panel` flag
+  but the v0.9.0+ port always uses panel mode.
+- **The bootstrap RNG seed is `2024` by default**,
+  matching the upstream `numpy.random.seed(2024)` for
+  the canonical `_verify/test_bootstrap_reference.py`
+  first-test setup. Users can pass a different `seed`
+  for reproducibility across runs.
+- **No `_draw_weights` upstream exact-value parity**:
+  MoonBit's chacha8 RNG and numpy's PCG64 produce
+  different absolute weight values, so the bootstrap
+  critical values are not bit-equal to upstream. The
+  empirical moments match (mean ≈ 0, variance ≈ 1)
+  and the joint CI coverage matches asymptotically.
+  The `validate_bootstrap_with_python.py` script
+  documents the RNG difference.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm,
+  wasm-gc, js): **174/174 passed** (was 163, +11 new
+  tests in `did_multi_test.mbt`):
+  - 3 weight-moment tests (normal / Bayes / wild
+    means ≈ 0, variances ≈ 1 on 200 × 50 matrices).
+  - 1 determinism test (same seed produces bit-equal
+    `boot_t_stat`).
+  - 1 joint-wider-than-pointwise test (the central
+    property of joint CIs).
+  - 2 CI coverage tests (pointwise and joint CIs both
+    cover the true ATT for every (g, t) cell on the
+    canonical DGP).
+  - 3 `panic_` tests (joint CIs before bootstrap;
+    bootstrap before fit; invalid `method_name`).
+  - 1 default-method test (default `"normal"`, default
+    `n_rep_boot = 500`).
+- 13 Python validators: all PASS, including the new
+  `validate_bootstrap_with_python.py`.
+- 5 demos (`moon run cmd/{main, datasets, did_binary,
+  did_cs, did_multi}`) all run cleanly and produce
+  bit-equal output to v0.14.0. None of the demos
+  calls `bootstrap()` (it's opt-in via
+  `DoubleMLDIDMulti::bootstrap`).
+
+---
+
 ## [0.14.0] — isotonic (PAVA) propensity-score calibration
 
 ### Added

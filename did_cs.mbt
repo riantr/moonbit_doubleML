@@ -161,6 +161,13 @@ pub struct DoubleMLDIDCS {
   // the chosen group).
   coef_matrix : Array[Double]
   se_matrix : Array[Double]
+  // v0.15.0+: per-(g, t) influence function `psi = psi_a + theta
+  // * psi_b`, indexed row-major as
+  // `psi_matrix[(i * n_periods + t) * n_obs + i_long]`. Length
+  // is `n_groups * n_periods * n_obs`. The entry is `0.0` if
+  // the (g, t) cell is not available. Used by the multiplier
+  // bootstrap in `DoubleMLDIDMulti::bootstrap`.
+  psi_matrix : Array[Double]
   n_groups : Int
   n_periods : Int
   fitted : Bool
@@ -198,6 +205,7 @@ pub fn DoubleMLDIDCS::new(
     in_sample_normalization,
     coef_matrix: Array::make(n_groups * n_periods, 0.0),
     se_matrix: Array::make(n_groups * n_periods, 0.0),
+    psi_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
     n_groups,
     n_periods,
     fitted: false,
@@ -292,6 +300,9 @@ pub fn DoubleMLDIDCS::fit(
   let se_values : Array[Double] = []
   let mut coef_values_acc = coef_values
   let mut se_values_acc = se_values
+  // v0.15.0+: per-cell influence function on long-format panel.
+  let psi_values : Array[Array[Double]] = []
+  let mut psi_values_acc = psi_values
   for gi = 0; gi < self.n_groups; gi = gi + 1 {
     let g_value = self.data.groups[gi]
     // Find the index of the period equal to g_value (the
@@ -321,6 +332,10 @@ pub fn DoubleMLDIDCS::fit(
       let mut t_sub_acc : Array[Int] = []
       let mut id_sub_acc : Array[Int] = []
       let mut g_sub_acc : Array[Int] = []
+      // v0.15.0+: track the full long-format index for each
+      // sub row, so we can map wide-format psi back to the
+      // full long-format panel for the multiplier bootstrap.
+      let mut full_idx_acc : Array[Int] = []
       for i = 0; i < n; i = i + 1 {
         let gv = self.data.g[i]
         let tv = self.data.t[i]
@@ -344,6 +359,8 @@ pub fn DoubleMLDIDCS::fit(
         t_sub_acc = t_sub_acc + [tv]
         id_sub_acc = id_sub_acc + [self.data.id[i]]
         g_sub_acc = g_sub_acc + [gv]
+        // Record the full long-format index for the bootstrap.
+        full_idx_acc = full_idx_acc + [i]
         sub_n = sub_n + 1
       }
       if sub_n == 0 {
@@ -379,6 +396,26 @@ pub fn DoubleMLDIDCS::fit(
       // — stay at 0.0 as the default).
       coef_values_acc = coef_values_acc + [sub_fitted.coef()]
       se_values_acc = se_values_acc + [sub_fitted.se()]
+      // v0.15.0+: per-cell influence function
+      // `psi = psi_a + theta * psi_b` on the long-format
+      // panel. The inner DoubleMLDID's psi is on the
+      // wide-format (sub-panel after preprocess_did_binary);
+      // we map it back to the full long-format panel via
+      // `sub_fitted.eval_idx` (wide -> sub) and
+      // `full_idx_acc` (sub -> full). Rows not in the cell
+      // stay at 0.0. Used by the multiplier bootstrap in
+      // `DoubleMLDIDMulti::bootstrap`.
+      let theta = sub_fitted.coef()
+      let inner_psi_a = sub_fitted.inner_psi_a()
+      let inner_psi_b = sub_fitted.inner_psi_b()
+      let sub_to_wide = sub_fitted.eval_idx
+      let psi_long : Array[Double] = Array::make(n, 0.0)
+      for k_wide = 0; k_wide < sub_to_wide.length(); k_wide = k_wide + 1 {
+        let k_sub = sub_to_wide[k_wide]
+        let full_i = full_idx_acc[k_sub]
+        psi_long[full_i] = inner_psi_a[k_wide] + theta * inner_psi_b[k_wide]
+      }
+      psi_values_acc = psi_values_acc + [psi_long]
     }
   }
   // Reassemble the row-major matrix. For missing cells (g, t) with
@@ -393,6 +430,13 @@ pub fn DoubleMLDIDCS::fit(
   )
   let final_se : Array[Double] = Array::make(
     self.n_groups * self.n_periods,
+    0.0,
+  )
+  // v0.15.0+: per-cell influence function `psi = psi_a + theta *
+  // psi_b` on the long-format panel, used by the multiplier
+  // bootstrap. Empty cells (no psi) are left at 0.0.
+  let final_psi : Array[Double] = Array::make(
+    self.n_groups * self.n_periods * n,
     0.0,
   )
   let mut coef_idx = 0
@@ -414,8 +458,21 @@ pub fn DoubleMLDIDCS::fit(
       }
       final_coef[flat] = coef_values_acc[coef_idx]
       final_se[flat] = se_values_acc[coef_idx]
+      // Copy the per-cell psi into the row-major slot. The
+      // psi is a length-`n` array; we flatten it into
+      // `final_psi[flat * n .. (flat + 1) * n]`.
+      let psi_k = psi_values_acc[coef_idx]
+      for k = 0; k < n; k = k + 1 {
+        final_psi[flat * n + k] = psi_k[k]
+      }
       coef_idx = coef_idx + 1
     }
   }
-  { ..self, coef_matrix: final_coef, se_matrix: final_se, fitted: true }
+  {
+    ..self,
+    coef_matrix: final_coef,
+    se_matrix: final_se,
+    psi_matrix: final_psi,
+    fitted: true,
+  }
 }

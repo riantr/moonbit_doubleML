@@ -61,6 +61,12 @@ struct WideDIDSubset {
   y : Array[Double]
   d : Array[Double]
   t_indicator : Array[Double]
+  // v0.15.0+: long-format `eval_idx` per wide-format row.
+  // Lets us map wide-format psi back to long-format for the
+  // multiplier bootstrap. Index into the input
+  // `DoubleMLDIDBinaryData` (long-format) array. Length
+  // matches `y` / `d`.
+  eval_idx : Array[Int]
 } derive(Debug)
 
 ///|
@@ -137,10 +143,13 @@ fn preprocess_did_binary(
   let y_out : Array[Double] = []
   let d_out : Array[Double] = []
   let t_out : Array[Double] = []
+  // v0.15.0+: long-format `eval_idx` per emitted wide row.
+  let eval_idx_out : Array[Int] = []
   let mut x_acc = x_out
   let mut y_acc = y_out
   let mut d_acc = d_out
   let mut t_acc = t_out
+  let mut eval_idx_acc = eval_idx_out
   let mut i = 0
   while i < n {
     let id_cur = keys[i].0
@@ -201,6 +210,11 @@ fn preprocess_did_binary(
         // The post-period residual enters the score via `m_hat`
         // and `g0_hat`, not via the wide `y` itself.
         t_acc = t_acc + [0.0]
+        // v0.15.0+: record the long-format row index for the
+        // eval period. This is the index into the input
+        // `DoubleMLDIDBinaryData` (long-format) arrays; it lets
+        // the bootstrap map wide-format psi back to long-format.
+        eval_idx_acc = eval_idx_acc + [eval_idx]
       }
     }
     i = j
@@ -211,13 +225,20 @@ fn preprocess_did_binary(
   require(y_acc.length() == n_sub)
   require(d_acc.length() == n_sub)
   require(t_acc.length() == n_sub)
+  require(eval_idx_acc.length() == n_sub)
   let x_mat = Matrix::from_array(x_acc, n_sub, p)
   // Validate that the post-preprocess `d` is binary {0, 1} (the
   // upstream `DoubleMLDIDData` requires this).
   for di in d_acc {
     require(di == 0.0 || di == 1.0)
   }
-  { x: x_mat, y: y_acc, d: d_acc, t_indicator: t_acc }
+  {
+    x: x_mat,
+    y: y_acc,
+    d: d_acc,
+    t_indicator: t_acc,
+    eval_idx: eval_idx_acc,
+  }
 }
 
 ///|
@@ -266,6 +287,12 @@ pub struct DoubleMLDIDBinary {
   ps_processor : PSProcessor
   score : String
   in_sample_normalization : Bool
+  // v0.15.0+: long-format row indices for each wide-format
+  // observation, in the same order as `inner.data`. Empty until
+  // `fit` is called. Used by the `psi_*_long` accessors to map
+  // the inner wide-format psi back to the long-format panel
+  // for the multiplier bootstrap.
+  eval_idx : Array[Int]
   // Output of the inner `DoubleMLDID::fit`. Empty until `fit` is
   // called; `coef`/`se`/`confint` accessors guard on `fitted`.
   inner : DoubleMLDID
@@ -309,6 +336,8 @@ pub fn DoubleMLDIDBinary::new(
     ps_processor,
     score,
     in_sample_normalization,
+    // v0.15.0+: long-format row indices. Populated by `fit`.
+    eval_idx: [],
     // Placeholder: the real `DoubleMLDID` is built in `fit()` once
     // the wide-format preprocessing has produced a non-empty
     // dataset. We pass a 4-row dummy here so the
@@ -394,6 +423,65 @@ pub fn DoubleMLDIDBinary::predictions_g1(
 ) -> Array[Double] {
   require(self.fitted)
   self.inner.predictions_g1()
+}
+
+///|
+/// v0.15.0+: per-observation influence function component
+/// `psi_a` mapped from the cell's wide-format data back to
+/// the long-format panel. Length equals `data.n_obs()`
+/// (the long-format panel). For long-format rows that are
+/// not in the cell's wide-format subset, the value is `0.0`.
+/// The influence function `psi = psi_a + theta * psi_b` is
+/// used by the multiplier bootstrap in
+/// `DoubleMLDIDMulti::bootstrap`.
+pub fn DoubleMLDIDBinary::psi_a_long(self : DoubleMLDIDBinary) -> Array[Double] {
+  require(self.fitted)
+  let n_long = self.data.n_obs()
+  let out : Array[Double] = Array::make(n_long, 0.0)
+  let psi_a_wide = self.inner.psi_a
+  for k = 0; k < self.eval_idx.length(); k = k + 1 {
+    out[self.eval_idx[k]] = psi_a_wide[k]
+  }
+  out
+}
+
+///|
+/// v0.15.0+: per-observation influence function component
+/// `psi_b` mapped from the cell's wide-format data back to
+/// the long-format panel. See `psi_a_long` for details.
+pub fn DoubleMLDIDBinary::psi_b_long(self : DoubleMLDIDBinary) -> Array[Double] {
+  require(self.fitted)
+  let n_long = self.data.n_obs()
+  let out : Array[Double] = Array::make(n_long, 0.0)
+  let psi_b_wide = self.inner.psi_b
+  for k = 0; k < self.eval_idx.length(); k = k + 1 {
+    out[self.eval_idx[k]] = psi_b_wide[k]
+  }
+  out
+}
+
+///|
+/// v0.15.0+: per-observation `psi_a` on the cell's wide-format
+/// data (the inner `DoubleMLDID`'s `psi_a` field). Length
+/// equals `n_obs_subset()` (the cell's wide-format panel
+/// size). Used by the multiplier bootstrap in
+/// `DoubleMLDIDMulti::bootstrap` to map wide-format psi back
+/// to the full long-format panel.
+pub fn DoubleMLDIDBinary::inner_psi_a(
+  self : DoubleMLDIDBinary,
+) -> Array[Double] {
+  require(self.fitted)
+  self.inner.psi_a
+}
+
+///|
+/// v0.15.0+: per-observation `psi_b` on the cell's wide-format
+/// data. See `inner_psi_a` for details.
+pub fn DoubleMLDIDBinary::inner_psi_b(
+  self : DoubleMLDIDBinary,
+) -> Array[Double] {
+  require(self.fitted)
+  self.inner.psi_b
 }
 
 ///|
@@ -487,5 +575,8 @@ pub fn DoubleMLDIDBinary::fit(
     in_sample_normalization=self.in_sample_normalization,
     strata=strata_acc,
   ).fit()
-  { ..self, inner, fitted: true }
+  // v0.15.0+: record the long-format `eval_idx` from the
+  // preprocessing so the bootstrap can map wide-format psi
+  // back to long-format.
+  { ..self, inner, eval_idx: wide.eval_idx, fitted: true }
 }

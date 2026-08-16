@@ -139,6 +139,15 @@ pub struct DoubleMLDID {
   m_hat : Array[Double]
   coef : Double
   se : Double
+  // v0.15.0+: per-observation influence function components.
+  // `psi_a[i] + theta * psi_b[i]` is the per-observation
+  // contribution to the DML theta estimator. Length `n_obs` (the
+  // wide-format data). `psi_a` has mean `-1` (by construction
+  // for the observational / experimental score); `psi_b` has
+  // mean `theta * -mean(psi_a)` in the ATT sense. Used by
+  // `DoubleMLDIDMulti::bootstrap` for the multiplier bootstrap.
+  psi_a : Array[Double]
+  psi_b : Array[Double]
   fitted : Bool
 } derive(Debug)
 
@@ -177,6 +186,8 @@ pub fn DoubleMLDID::new(
     m_hat: Array::make(data.n_obs(), 0.0),
     coef: 0.0,
     se: 0.0,
+    psi_a: Array::make(data.n_obs(), 0.0),
+    psi_b: Array::make(data.n_obs(), 0.0),
     fitted: false,
   }
 }
@@ -423,6 +434,8 @@ pub fn DoubleMLDID::fit(
     m_hat: m_clipped,
     coef,
     se,
+    psi_a,
+    psi_b,
     fitted: true,
   }
 }

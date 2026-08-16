@@ -39,6 +39,18 @@ pub struct DoubleMLDIDMulti {
   group_sizes : Array[Int]
   // The inner per-(g, t) estimator.
   inner : DoubleMLDIDCS
+  // v0.15.0+: bootstrap state. `boot_t_stat` is a
+  // `n_rep_boot * n_thetas` row-major array of t-statistics
+  // computed from the multiplier bootstrap. `boot_method` is
+  // the multiplier distribution ("Bayes" / "normal" / "wild").
+  // `n_rep_boot` is the bootstrap replication count. Empty
+  // until `bootstrap()` is called.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  // v0.15.0+: bootstrap RNG seed. `bootstrap` accepts an
+  // optional `seed` argument; the default is `2024`.
+  boot_seed : Int
   fitted : Bool
 } derive(Debug)
 
@@ -150,6 +162,10 @@ pub fn DoubleMLDIDMulti::new(
     in_sample_normalization,
     group_sizes,
     inner,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 2024,
     fitted: false,
   }
 }
@@ -278,6 +294,245 @@ pub fn DoubleMLDIDMulti::se_at_idx(self : DoubleMLDIDMulti, idx : Int) -> Double
 pub fn DoubleMLDIDMulti::fit(self : DoubleMLDIDMulti) -> DoubleMLDIDMulti {
   let inner = self.inner.fit()
   { ..self, inner, fitted: true }
+}
+
+///|
+/// v0.15.0+: multiplier bootstrap for joint confidence
+/// intervals. Draws `n_rep_boot` weight vectors from the
+/// chosen multiplier distribution and computes
+/// `boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] / (sqrt(n) *
+/// se_k)` for each bootstrap replication `b` and each
+/// `(g, t)` cell `k`. The joint confidence interval uses
+/// the empirical 95th percentile of `max_k |boot_t_stat[b, k]|`
+/// as the critical value; the per-cell Wald CI uses 1.96.
+///
+/// `method_name` selects the multiplier distribution:
+///   - `"normal"`: `w[i] ~ N(0, 1)` (default; matches the
+///     upstream `bootstrap(method="normal")` default).
+///   - `"Bayes"`: `w[i] = exp(1) - 1` (mean 0, var 1).
+///   - `"wild"`: `w[i] = x[i] / sqrt(2) + (y[i]^2 - 1) / 2`
+///     with `x, y ~ N(0, 1)`. Robust to heteroskedasticity.
+///
+/// `seed` controls the chacha8 RNG used to draw the weights
+/// (default `2024`; matches the upstream numpy default of
+/// `np.random.seed(2024)` for the first test in
+/// `_verify/test_bootstrap_reference.py`).
+///
+/// The bootstrap populates `self.boot_t_stat` and is required
+/// for `confint(joint=true)`.
+pub fn DoubleMLDIDMulti::bootstrap(
+  self : DoubleMLDIDMulti,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLDIDMulti {
+  require(self.fitted)
+  require(
+    method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+  )
+  require(n_rep_boot >= 2)
+  let n_obs = self.data.y.length()
+  let n_thetas = self.gt_combinations.length()
+  let n_groups = self.inner.n_groups()
+  let n_periods = self.inner.n_periods()
+  // Draw weights. Shape: (n_rep_boot, n_obs).
+  let weights = draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed)
+  // For each gt_combination, locate the per-cell psi on the
+  // full long-format panel and compute the t-statistic. The
+  // psi is `coef * psi_a + psi_b` (the per-observation
+  // influence function); we use the inner `psi_matrix` from
+  // `DoubleMLDIDCS`, indexed row-major as
+  // `psi_matrix[(gi * n_periods + pi) * n_obs + i_long]`.
+  let boot_t_stat : Array[Double] = Array::make(n_rep_boot * n_thetas, 0.0)
+  for b = 0; b < n_rep_boot; b = b + 1 {
+    for k = 0; k < n_thetas; k = k + 1 {
+      let (g, _t_pre, t_eval) = self.gt_combinations[k]
+      // Locate (gi, pi) in the inner matrix.
+      let mut gi = -1
+      let mut pi = -1
+      for i = 0; i < n_groups; i = i + 1 {
+        if self.inner.group_at(i) == g {
+          gi = i
+        }
+      }
+      for i = 0; i < n_periods; i = i + 1 {
+        if self.inner.period_at(i) == t_eval {
+          pi = i
+        }
+      }
+      if gi < 0 || pi < 0 {
+        continue
+      }
+      let flat = gi * n_periods + pi
+      let se_k = self.inner.se_matrix[flat]
+      // Skip empty / pre-treatment cells (se = 0).
+      if se_k == 0.0 {
+        continue
+      }
+      // `boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] /
+      // (sqrt(n) * se_k)`. The denominator makes this a
+      // t-statistic; its distribution is N(0, 1) under the
+      // null. The 1.96 critical value is for 95% pointwise;
+      // the joint CI uses the bootstrap quantile.
+      let mut s = 0.0
+      for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
+        let psi_k_i = self.inner.psi_matrix[flat * n_obs + i_long]
+        s = s + weights[b * n_obs + i_long] * psi_k_i
+      }
+      let denom = n_obs.to_double().sqrt() * se_k
+      boot_t_stat[b * n_thetas + k] = s / denom
+    }
+  }
+  {
+    ..self,
+    boot_t_stat,
+    boot_method: method_name,
+    n_rep_boot,
+    boot_seed: seed,
+  }
+}
+
+///|
+/// v0.15.0+: confidence interval for the per-(g, t) ATT.
+/// When `joint = false` (default), uses the Wald-style
+/// `theta ± 1.96 * se` interval. When `joint = true`, uses
+/// the bootstrap: `theta ± critical_value * se` where
+/// `critical_value` is the 95th percentile of
+/// `max_k |boot_t_stat[b, k]|` across bootstrap replications
+/// `b`. Joint CIs are wider (more conservative) and require
+/// `bootstrap()` to be called first.
+///
+/// `level` is the confidence level (default `0.95`).
+pub fn DoubleMLDIDMulti::confint(
+  self : DoubleMLDIDMulti,
+  joint? : Bool = false,
+  level? : Double = 0.95,
+) -> Array[(Double, Double)] {
+  require(self.fitted)
+  require(level > 0.0 && level < 1.0)
+  let n_thetas = self.gt_combinations.length()
+  let z_975 = 1.959963984540054  // `norm.ppf(0.975)`
+  let out : Array[(Double, Double)] = []
+  let mut out_acc = out
+  if joint {
+    require(
+      self.boot_t_stat.length() > 0,
+    )
+    require(
+      self.boot_method != "" && self.n_rep_boot > 0,
+    )
+    // Compute the empirical quantile of `max_k |boot_t_stat|`.
+    let max_abs : Array[Double] = Array::make(self.n_rep_boot, 0.0)
+    for b = 0; b < self.n_rep_boot; b = b + 1 {
+      let mut m = 0.0
+      for k = 0; k < n_thetas; k = k + 1 {
+        let v = self.boot_t_stat[b * n_thetas + k]
+        let av = if v < 0.0 { -v } else { v }
+        if av > m {
+          m = av
+        }
+      }
+      max_abs[b] = m
+    }
+    // `Array::sort` is in-place. `max_abs` is a fresh array, but
+    // the values may be tied. `sort` is not stable in this
+    // MoonBit build; for the empirical quantile, ties don't
+    // matter (we just need the sorted order).
+    max_abs.sort()
+    let idx = (level * self.n_rep_boot.to_double()).to_int()
+    let idx_clamped = if idx >= self.n_rep_boot {
+      self.n_rep_boot - 1
+    } else {
+      idx
+    }
+    let critical_value = max_abs[idx_clamped]
+    for k = 0; k < n_thetas; k = k + 1 {
+      let _ = self.gt_combinations[k]
+      let theta = self.coef_at_idx(k)
+      let se = self.se_at_idx(k)
+      let lo = theta - critical_value * se
+      let hi = theta + critical_value * se
+      out_acc = out_acc + [(lo, hi)]
+    }
+    ignore(z_975)
+  } else {
+    for k = 0; k < n_thetas; k = k + 1 {
+      let theta = self.coef_at_idx(k)
+      let se = self.se_at_idx(k)
+      let lo = theta - z_975 * se
+      let hi = theta + z_975 * se
+      out_acc = out_acc + [(lo, hi)]
+    }
+  }
+  out_acc
+}
+
+// ---------------------------------------------------------------------------
+// Internal: multiplier bootstrap weight draw (pure MoonBit)
+// ---------------------------------------------------------------------------
+
+///|
+/// Draw `n_rep_boot` weight vectors of length `n_obs` from
+/// the chosen multiplier distribution. The chacha8 RNG is
+/// seeded with `seed` for reproducibility.
+///
+/// Supported methods:
+///   - `"normal"`: `w[i] ~ N(0, 1)` per the Box-Muller transform.
+///   - `"Bayes"`: `w[i] = exp(1) - 1` (mean 0, var 1; uses the
+///     chacha8-driven `rng.double()` for the uniform
+///     quantile input to the inverse-CDF).
+///   - `"wild"`: `w[i] = x[i] / sqrt(2) + (y[i]^2 - 1) / 2` with
+///     `x, y ~ N(0, 1)`. The wild bootstrap is robust to
+///     heteroskedasticity in the influence-function residuals.
+///
+/// Returns a row-major `Array[Double]` of length
+/// `n_rep_boot * n_obs`. The first `n_obs` entries are the
+/// first bootstrap replication's weights, the next `n_obs`
+/// are the second replication, and so on.
+pub fn draw_bootstrap_weights(
+  method_name : String,
+  n_rep_boot : Int,
+  n_obs : Int,
+  seed : Int,
+) -> Array[Double] {
+  let out : Array[Double] = Array::make(n_rep_boot * n_obs, 0.0)
+  let rng = chacha8_rng(seed)
+  for b = 0; b < n_rep_boot; b = b + 1 {
+    for i = 0; i < n_obs; i = i + 1 {
+      let w = match method_name {
+        "normal" => box_muller_normal(rng)
+        "Bayes" => {
+          // exp(1) - 1 via inverse-CDF on uniform.
+          let u = rng.double()
+          let safe = if u < 1.0e-12 { 1.0e-12 } else { u }
+          -@math.ln(safe) - 1.0
+        }
+        "wild" => {
+          let x = box_muller_normal(rng)
+          let y = box_muller_normal(rng)
+          x / 1.4142135623730951 + (y * y - 1.0) / 2.0
+        }
+        _ => abort("draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap)")
+      }
+      out[b * n_obs + i] = w
+    }
+  }
+  out
+}
+
+///|
+/// Standard normal sample via Box-Muller. Pairs `(u1, u2)` in
+/// `[0, 1)` to `(z1, z2) ~ N(0, 1)`. The chacha8 RNG is
+/// uniform in `[0, 1)` per the upstream `numpy.random`
+/// default; we use the cosine for the first draw and the
+/// sine for the second to consume two uniforms per pair.
+pub fn box_muller_normal(rng : @random.Rand) -> Double {
+  let u1 = rng.double()
+  let u2 = rng.double()
+  let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
+  let r = (-2.0 * @math.ln(safe)).sqrt()
+  let theta_ = 2.0 * 3.141592653589793 * u2
+  r * @math.cos(theta_)
 }
 
 ///|
