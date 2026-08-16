@@ -11,6 +11,114 @@ release is the canonical version.
 
 ---
 
+## [0.16.0] — `DoubleMLDIDMulti` multiple-testing p-adjustment (Romano-Wolf / Holm / Bonferroni)
+
+### Added
+- **`did_multi.mbt::DoubleMLDIDMulti::p_adjust(method_name)`**:
+  multiple-testing p-value adjustment for the per-(g, t)
+  ATTs. Returns an `Array[Double]` of adjusted p-values
+  (length `n_combinations`).
+  - `"romano-wolf"` (default): the stepdown bootstrap
+    procedure from Romano & Wolf (2005). For each cell
+    `k`, sorted by descending `|t_k|`, compute
+    `p_k = mean_b [max_j > k |boot_t_stat[b, j]| >=
+    |t_k|]`. Then enforce monotonicity:
+    `p_corrected[k] = max(p_k, p_corrected[k - 1])` (in
+    sorted order). Requires `bootstrap()` to have been
+    called first.
+  - `"rw"`: alias for `"romano-wolf"`.
+  - `"holm"`: Holm-Bonferroni stepdown (no bootstrap
+    required). Sort unadjusted p-values ascending; for
+    each `k`, `p_corrected[k] = max((n - k) * p_sorted[k],
+    p_corrected[k - 1])`, then re-sort to original order.
+  - `"bonferroni"`: `p_corrected[k] = n * p_k`, clipped
+    to `1.0`. No bootstrap required.
+- **`did_multi.mbt::DoubleMLDIDMulti::t_stats()`**:
+  per-cell Wald-style t-statistics `theta / se` (length
+  `n_combinations`). Used by `p_adjust`.
+- **`did_multi.mbt::DoubleMLDIDMulti::p_values()`**:
+  per-cell unadjusted two-sided p-values for `H0:
+  theta = 0`. Length `n_combinations`.
+- **`did_multi.mbt::romano_wolf_p_adjust(boot_t_stat,
+  unadjusted, t_stats)`** (public for testability):
+  pure MoonBit Romano-Wolf stepdown.
+- **`did_multi.mbt::holm_bonferroni_p_adjust(unadjusted)`**
+  (public for testability): pure MoonBit
+  Holm-Bonferroni stepdown.
+- **`did_multi.mbt::bonferroni_p_adjust(unadjusted)`**
+  (public for testability): pure MoonBit Bonferroni.
+- **`did_multi.mbt::norm_sf(x)`** (public for
+  testability): standard-normal survival function
+  `P(Z > x)` using the Abramowitz & Stegun (1964)
+  formula 7.1.26 (max absolute error ~7.5e-8 for
+  `x >= 0`). MoonBit's `@math` does not expose
+  `erfc`, so we approximate the normal CDF directly.
+- **`validate_padjust_with_python.py`**: new Python
+  cross-check. Replicates the upstream Romano-Wolf
+  algorithm with `numpy.random.normal` +
+  `scipy.stats.norm.sf`, then compares to the MoonBit
+  output via the per-cell `t_stats` accessor +
+  `p_adjust`.
+
+### Notes / known limitations
+- **Romano-Wolf is conservative by construction**. The
+  adjusted p-values are >= the unadjusted p-values.
+  With `n_rep_boot = 500` and a small number of cells
+  (3-12), the critical value's Monte-Carlo error is
+  ~`1 / n_rep_boot = 0.002`. Users on designs with
+  many cells should bump `n_rep_boot` to 1000+ for
+  tighter adjusted p-values.
+- **No `BH` / `BY` upstream methods**. The
+  `statsmodels.stats.multitest.multipletests`
+  fallback path supports `bonferroni`, `holm`,
+  `sidak`, `fdr_bh`, `fdr_by`, etc. We port the most
+  common three (`romano-wolf`, `holm`,
+  `bonferroni`); the rest are deferred — add a
+  one-liner per method in `did_multi.mbt::p_adjust`
+  if needed.
+- **The default `p_adjust(method_name)` is
+  `"romano-wolf"`**. To use Holm without bootstrap,
+  pass `method_name="holm"` explicitly.
+- **The `p_adjust(romano-wolf)` before
+  `bootstrap()` aborts**. The error message names the
+  upstream `DoubleMLFramework.p_adjust("romano-wolf")`
+  contract.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm,
+  wasm-gc, js): **186/186 passed** (was 174, +12 new
+  tests in `did_multi_test.mbt`):
+  - 1 `t_stats_basic`: |t| is large on the canonical
+    DGP.
+  - 1 `p_values_basic`: unadjusted p-values are
+    vanishingly small.
+  - 1 `p_adjust_holm`: Holm-Bonferroni on the
+    canonical DGP.
+  - 1 `p_adjust_bonferroni`: Bonferroni on the
+    canonical DGP.
+  - 1 `p_adjust_romano_wolf`: Romano-Wolf on the
+    canonical DGP.
+  - 1 `p_adjust_romano_wolf_alias_rw`: `"rw"` alias.
+  - 1 `p_adjust_romano_wolf_handrolled`: algorithm
+    correctness on a hand-rolled t-statistic vector.
+  - 1 `holm_bonferroni_monotonic`: Holm on a
+    hand-rolled unadjusted-p-value vector.
+  - 1 `bonferroni_handrolled`: exact-value test.
+  - 1 `panic_p_adjust_unknown_method`: abort on
+    invalid method name.
+  - 1 `panic_p_adjust_romano_wolf_without_bootstrap`:
+    abort on Romano-Wolf before bootstrap.
+  - 1 `p_adjust_deterministic_seed`: same seed →
+    bit-equal adjusted p-values.
+- 14 Python validators: all PASS, including the new
+  `validate_padjust_with_python.py`.
+- 5 demos (`moon run cmd/{main, datasets, did_binary,
+  did_cs, did_multi}`) all run cleanly and produce
+  bit-equal output to v0.15.0. None calls `p_adjust`
+  (it's opt-in via `DoubleMLDIDMulti::p_adjust`).
+
+---
+
 ## [0.15.0] — `DoubleMLDIDMulti` multiplier bootstrap / joint confidence intervals
 
 ### Added

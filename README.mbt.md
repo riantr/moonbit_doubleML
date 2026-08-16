@@ -10,16 +10,16 @@ covering all 15 models currently in upstream.
 |------|-------|
 | Source file count | 60 (30 production + 30 test) |
 | Models ported | 15 / 15 |
-| Tests | **174 / 174** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **186 / 186** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
-| Python cross-checks | 13 / 13 PASS |
+| Python cross-checks | 14 / 14 PASS |
 | License | Apache-2.0 |
 
 ## Quick start
 
 ```console
 $ moon test --deny-warn
-Total tests: 174, passed: 174, failed: 0.
+Total tests: 186, passed: 186, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -103,10 +103,10 @@ $ moon run cmd/did_multi
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 174/174
-moon test --target wasm-gc --deny-warn   # 174/174
-moon test --target wasm    --deny-warn   # 174/174
-moon test --target js      --deny-warn   # 174/174
+moon test --target native  --deny-warn   # 186/186
+moon test --target wasm-gc --deny-warn   # 186/186
+moon test --target wasm    --deny-warn   # 186/186
+moon test --target js      --deny-warn   # 186/186
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
@@ -127,6 +127,7 @@ $ for s in validate_*_with_python.py; do echo "=== $s ==="; python $s | tail -1;
 === validate_did_cs_with_python.py === Reference: run `moon run cmd/did_cs` for the MoonBit output.
 === validate_iivm_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 8.58e-03 ...
 === validate_irm_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 5.24e-02 ...
+=== validate_padjust_with_python.py === Romano-Wolf reference matches: PASS
 === validate_pava_with_python.py === PAVA cross-check passed
 === validate_pliv_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 1.41e-01 ...
 === validate_quantile_with_python.py === reference checks passed
@@ -198,6 +199,14 @@ let fitted = @dml.DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
 let booted = fitted.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
 let ci_pw = booted.confint(joint=false)  // Wald-style (1.96 * se)
 let ci_joint = booted.confint(joint=true)  // bootstrap critical value
+
+// v0.16.0+: multiple-testing p-value adjustment.
+// "romano-wolf" (default) requires the bootstrap; "holm"
+// and "bonferroni" don't. Returns an Array[Double] of
+// length n_combinations.
+let pv_rw = booted.p_adjust(method_name="romano-wolf")
+let pv_holm = booted.p_adjust(method_name="holm")
+let pv_bonf = booted.p_adjust(method_name="bonferroni")
 ```
 
 ## Release flow / verifier scratch

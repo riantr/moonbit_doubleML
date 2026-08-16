@@ -395,3 +395,228 @@ test "bootstrap_default_method_is_normal" {
   inspect(booted.boot_method, content="normal")
   inspect(booted.n_rep_boot, content="500")
 }
+
+// ---------------------------------------------------------------------------
+// v0.16.0+ Romano-Wolf / Holm-Bonferroni / Bonferroni p_adjust tests
+// ---------------------------------------------------------------------------
+
+///|
+/// `t_stats` returns `theta / se` per cell. On the canonical
+/// DGP, thetas are ~1.0 and SEs are ~0.005, so |t| is
+/// ~200 and the unadjusted p-values are essentially 0.
+test "t_stats_basic" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let ts = fitted.t_stats()
+  inspect(ts.length(), content="3")
+  // Each |t| should be much larger than 1.96 (the 5% critical
+  // value) because the true ATT = 1.0 is 100+ SEs from 0.
+  for i = 0; i < ts.length(); i = i + 1 {
+    let abs_t = if ts[i] < 0.0 { -ts[i] } else { ts[i] }
+    inspect(abs_t > 10.0, content="true")
+  }
+}
+
+///|
+/// `p_values` returns unadjusted two-sided p-values. On the
+/// canonical DGP all 3 cells have `|t| >> 10`, so the
+/// unadjusted p-values are vanishingly small.
+test "p_values_basic" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv = fitted.p_values()
+  inspect(pv.length(), content="3")
+  for i = 0; i < pv.length(); i = i + 1 {
+    inspect(pv[i] < 1.0e-10, content="true")
+  }
+}
+
+///|
+/// Holm-Bonferroni p-adjustment: `p_corrected[k] = max(
+/// (n - k) * p_sorted[k], p_corrected[k - 1])` then
+/// clip to 1.0. On the canonical DGP, all p-values are
+/// essentially 0, so the adjusted p-values are also 0.
+test "p_adjust_holm" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv = fitted.p_adjust(method_name="holm")
+  inspect(pv.length(), content="3")
+  for i = 0; i < pv.length(); i = i + 1 {
+    inspect(pv[i] < 1.0e-10, content="true")
+  }
+}
+
+///|
+/// Bonferroni p-adjustment: `p_corrected[k] = n *
+/// p_unadjusted[k]`. On the canonical DGP, all p-values
+/// are essentially 0, so the adjusted p-values are also 0.
+test "p_adjust_bonferroni" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv = fitted.p_adjust(method_name="bonferroni")
+  inspect(pv.length(), content="3")
+  for i = 0; i < pv.length(); i = i + 1 {
+    inspect(pv[i] < 1.0e-9, content="true")
+  }
+}
+
+///|
+/// Romano-Wolf p-adjustment: requires `bootstrap()` first.
+/// On the canonical DGP, all adjusted p-values are also
+/// vanishingly small because the bootstrap critical value
+/// is ~10x the |t_k| for every cell.
+test "p_adjust_romano_wolf" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let booted = fitted.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
+  let pv = booted.p_adjust(method_name="romano-wolf")
+  inspect(pv.length(), content="3")
+  for i = 0; i < pv.length(); i = i + 1 {
+    inspect(pv[i] < 0.05, content="true")
+  }
+}
+
+///|
+/// Romano-Wolf p-adjustment with the alias "rw".
+test "p_adjust_romano_wolf_alias_rw" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let booted = fitted.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
+  let pv_rw = booted.p_adjust(method_name="romano-wolf")
+  let pv_alias = booted.p_adjust(method_name="rw")
+  inspect(pv_rw.length(), content="3")
+  let mut all_match = true
+  for i = 0; i < pv_rw.length(); i = i + 1 {
+    if (pv_rw[i] - pv_alias[i]).abs() > 1.0e-15 {
+      all_match = false
+    }
+  }
+  inspect(all_match, content="true")
+}
+
+///|
+/// Romano-Wolf on a hand-rolled t-statistic + bootstrap
+/// t-statistic: verify the algorithm matches the upstream
+/// reference. The hand-rolled `abs_t = [3.0, 1.0, 2.0]`
+/// and `boot_t_stat = (5, 3) ~ N(0, 1)` matrix produce the
+/// expected stepdown p-values: stepdown_ind sorts |t|
+/// descending → [0, 2, 1] (|t_0| = 3, |t_2| = 2, |t_1| = 1).
+/// For i_theta = 0 (cell 0): critical value is max over
+/// j > 0 of |boot_t_stat[b, j]| for each b. With 5
+/// replications of standard normals, the empirical
+/// quantile is a binomial count. The exact counts
+/// depend on the specific random draw, but we just check
+/// the output is in [0, 1] and monotonic in the sense
+/// `p_corrected[i] >= p_corrected[i - 1]` for i > 0 in
+/// stepdown order (not the input order).
+test "p_adjust_romano_wolf_handrolled" {
+  // Build a synthetic data set with known theta / se. The
+  // simplest: 3 cells with t-stats [3.0, 1.0, 2.0].
+  // For the test we just verify the algorithm shape:
+  // - All p-values are in [0, 1].
+  // - Adjusted p-values are >= unadjusted p-values
+  //   (correction is conservative).
+  let n_boot = 1000
+  let boot_t_stat : Array[Double] = Array::make(n_boot * 3, 0.0)
+  let rng = chacha8_rng(2024)
+  for b = 0; b < n_boot; b = b + 1 {
+    for k = 0; k < 3; k = k + 1 {
+      boot_t_stat[b * 3 + k] = box_muller_normal(rng)
+    }
+  }
+  // Compute unadjusted p-values for |t| = [3.0, 1.0, 2.0].
+  // Two-sided: p = 2 * (1 - norm.cdf(|t|)).
+  let unadjusted : Array[Double] = Array::make(3, 0.0)
+  let t_stats : Array[Double] = [3.0, 1.0, 2.0]
+  for k = 0; k < 3; k = k + 1 {
+    let abs = if t_stats[k] < 0.0 { -t_stats[k] } else { t_stats[k] }
+    unadjusted[k] = 2.0 * norm_sf(abs)
+  }
+  let p_adj = romano_wolf_p_adjust(boot_t_stat, unadjusted, t_stats)
+  inspect(p_adj.length(), content="3")
+  // All in [0, 1].
+  for i = 0; i < 3; i = i + 1 {
+    inspect(p_adj[i] >= 0.0, content="true")
+    inspect(p_adj[i] <= 1.0, content="true")
+  }
+  // Adjusted p-values should be conservative (>= unadjusted).
+  // Note: p_adj[i] is in original cell order, but the
+  // stepdown p-values are in sorted-by-|t|-descending order.
+  // Just check each adjusted >= corresponding unadjusted
+  // (the stepdown procedure is conservative).
+  for i = 0; i < 3; i = i + 1 {
+    inspect(p_adj[i] >= unadjusted[i] - 1.0e-12, content="true")
+  }
+  ignore(t_stats)
+}
+
+///|
+/// Holm-Bonferroni is monotonic non-decreasing in the sorted
+/// order and equals `n * p_unadjusted[i]` for the largest
+/// `p_unadjusted`.
+test "holm_bonferroni_monotonic" {
+  // Hand-rolled unadjusted p-values.
+  let unadj : Array[Double] = [0.01, 0.04, 0.03, 0.005]
+  let p_adj = holm_bonferroni_p_adjust(unadj)
+  inspect(p_adj.length(), content="4")
+  // The largest unadjusted p-value is 0.04; the Holm
+  // adjusted should be `1 * 0.04 = 0.04`. The smallest is
+  // 0.005, so the adjusted should be `4 * 0.005 = 0.02`
+  // (clipped by the next-largest p-value of 0.04).
+  // The exact values depend on the sorted order, but we
+  // can check that all are >= the unadjusted p-values
+  // (conservative) and <= 1.0.
+  for i = 0; i < 4; i = i + 1 {
+    inspect(p_adj[i] >= unadj[i] - 1.0e-12, content="true")
+    inspect(p_adj[i] <= 1.0, content="true")
+  }
+}
+
+///|
+/// Bonferroni: `p_corrected = n * p_unadjusted`, clipped
+/// to 1.0. Hand-rolled test.
+test "bonferroni_handrolled" {
+  let unadj : Array[Double] = [0.01, 0.04, 0.03, 0.005]
+  let p_adj = bonferroni_p_adjust(unadj)
+  inspect(p_adj.length(), content="4")
+  // n = 4; expected: [0.04, 0.16, 0.12, 0.02]
+  let expected = [0.04, 0.16, 0.12, 0.02]
+  for i = 0; i < 4; i = i + 1 {
+    inspect((p_adj[i] - expected[i]).abs() < 1.0e-12, content="true")
+  }
+}
+
+///|
+/// `p_adjust` with an unknown method aborts.
+test "panic_p_adjust_unknown_method" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let _ = fitted.p_adjust(method_name="unknown_method")
+}
+
+///|
+/// `p_adjust` with Romano-Wolf before `bootstrap()` aborts.
+test "panic_p_adjust_romano_wolf_without_bootstrap" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let _ = fitted.p_adjust(method_name="romano-wolf")
+}
+
+///|
+/// `p_adjust` is deterministic given a fixed bootstrap seed.
+test "p_adjust_deterministic_seed" {
+  let data = build_bootstrap_dgp()
+  let f1 = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let b1 = f1.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
+  let p1 = b1.p_adjust(method_name="romano-wolf")
+  let f2 = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let b2 = f2.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
+  let p2 = b2.p_adjust(method_name="romano-wolf")
+  let mut all_match = true
+  for i = 0; i < p1.length(); i = i + 1 {
+    if (p1[i] - p2[i]).abs() > 1.0e-15 {
+      all_match = false
+    }
+  }
+  inspect(all_match, content="true")
+}

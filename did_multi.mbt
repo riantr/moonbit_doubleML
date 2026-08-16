@@ -393,6 +393,315 @@ pub fn DoubleMLDIDMulti::bootstrap(
 }
 
 ///|
+/// v0.16.0+: per-cell t-statistics `theta / se` (length
+/// `n_combinations`). The Wald-style t-statistic matches
+/// the upstream `all_t_stats[:, i_rep]` (per repetition,
+/// but v0.15.0 is `n_rep = 1` only). The Romano-Wolf
+/// stepdown p-adjustment in `p_adjust` consumes these
+/// t-statistics. Returns `0.0` for cells where `se_k = 0`
+/// (pre-treatment / missing cells).
+pub fn DoubleMLDIDMulti::t_stats(self : DoubleMLDIDMulti) -> Array[Double] {
+  require(self.fitted)
+  let n = self.gt_combinations.length()
+  let out : Array[Double] = Array::make(n, 0.0)
+  for k = 0; k < n; k = k + 1 {
+    let theta = self.coef_at_idx(k)
+    let se = self.se_at_idx(k)
+    if se > 0.0 {
+      out[k] = theta / se
+    }
+  }
+  out
+}
+
+///|
+/// v0.16.0+: per-cell unadjusted p-values for `H0:
+/// theta = 0` (two-sided, normal approximation). Length
+/// `n_combinations`. `pval[k] = 2 * (1 - norm.cdf(|t_k|))`.
+/// Uses the standard-normal survival function on the
+/// Wald-style t-statistics from `t_stats()`.
+///
+/// The implementation uses Abramowitz & Stegun (1964)
+/// formula 7.1.26 for the normal CDF (max absolute error
+/// ~7.5e-8). MoonBit's `@math` does not expose `erfc`, so
+/// we approximate `norm.cdf` directly.
+pub fn DoubleMLDIDMulti::p_values(self : DoubleMLDIDMulti) -> Array[Double] {
+  require(self.fitted)
+  let ts = self.t_stats()
+  let n = ts.length()
+  let out : Array[Double] = Array::make(n, 1.0)
+  for k = 0; k < n; k = k + 1 {
+    let t = ts[k]
+    let abs_t = if t < 0.0 { -t } else { t }
+    // `p = 2 * (1 - norm.cdf(abs_t))` using the A&S 7.1.26
+    // approximation. The formula is
+    // `norm.cdf(x) ≈ 1 - phi(x) * (b1*t + b2*t^2 + b3*t^3
+    //   + b4*t^4 + b5*t^5)` with `t = 1 / (1 + p*x)` and
+    //   `phi(x) = exp(-x^2 / 2) / sqrt(2 pi)`.
+    let p = 2.0 * norm_sf(abs_t)
+    out[k] = if p > 1.0 { 1.0 } else { p }
+  }
+  out
+}
+
+// ---------------------------------------------------------------------------
+// Internal: standard-normal survival function (A&S 7.1.26)
+// ---------------------------------------------------------------------------
+
+///|
+/// Standard-normal survival function `P(Z > x)` using the
+/// Abramowitz & Stegun (1964) formula 7.1.26 (max absolute
+/// error ~7.5e-8 for `x >= 0`):
+///
+///   `sf(x) = phi(x) * (b1*t + b2*t^2 + b3*t^3
+///              + b4*t^4 + b5*t^5)`
+///   `phi(x) = exp(-x^2 / 2) / sqrt(2 pi)`
+///   `t = 1 / (1 + p * x)`
+///   `p = 0.2316419, b1 = 0.319381530, b2 = -0.356563782,
+///    b3 = 1.781477937, b4 = -1.821255978, b5 = 1.330274429`
+pub fn norm_sf(x : Double) -> Double {
+  if x <= 0.0 {
+    return 1.0
+  }
+  let p = 0.2316419
+  let b1 = 0.319381530
+  let b2 = -0.356563782
+  let b3 = 1.781477937
+  let b4 = -1.821255978
+  let b5 = 1.330274429
+  let t = 1.0 / (1.0 + p * x)
+  let phi = @math.exp(-x * x / 2.0) / 2.5066282746310002
+  let poly = t *
+    (b1 + t * (b2 + t * (b3 + t * (b4 + t * b5))))
+  let sf = phi * poly
+  if sf > 1.0 {
+    1.0
+  } else if sf < 0.0 {
+    0.0
+  } else {
+    sf
+  }
+}
+
+///|
+/// v0.16.0+: multiple-testing p-value adjustment for the
+/// per-(g, t) ATTs. Returns an `Array[Double]` of adjusted
+/// p-values (length `n_combinations`).
+///
+/// **Methods**:
+///   - `"romano-wolf"` (default): the stepdown bootstrap
+///     procedure from Romano & Wolf (2005). For each cell
+///     `k`, sorted by descending `|t_k|`, compute
+///     `p_k = mean_b [max_j > k |boot_t_stat[b, j]| >=
+///     |t_k|]`. Then enforce monotonicity:
+///     `p_corrected[k] = max(p_k, p_corrected[k - 1])` (in
+///     sorted order). Requires `bootstrap()` to have been
+///     called first.
+///   - `"holm"`: Holm-Bonferroni stepdown (no bootstrap
+///     required). Sort unadjusted p-values ascending; for
+///     each `k`, `p_corrected[k] = max((n - k) * p_sorted[k],
+///     p_corrected[k - 1])`, then re-sort to original order.
+///   - `"bonferroni"`: `p_corrected[k] = n * p_k`, clipped
+///     to `1.0`. No bootstrap required.
+///
+/// The p-values are computed from the Wald-style
+/// t-statistics (`theta / se` per cell) via the
+/// two-sided normal approximation.
+pub fn DoubleMLDIDMulti::p_adjust(
+  self : DoubleMLDIDMulti,
+  method_name? : String = "romano-wolf",
+) -> Array[Double] {
+  require(self.fitted)
+  require(
+    method_name == "romano-wolf" ||
+    method_name == "rw" ||
+    method_name == "holm" ||
+    method_name == "bonferroni",
+  )
+  let n = self.gt_combinations.length()
+  require(n > 0)
+  let unadjusted = self.p_values()
+  match method_name {
+    "romano-wolf" | "rw" =>
+      romano_wolf_p_adjust(self.boot_t_stat, unadjusted, self.t_stats())
+    "holm" => holm_bonferroni_p_adjust(unadjusted)
+    "bonferroni" => bonferroni_p_adjust(unadjusted)
+    _ => abort("DoubleMLDIDMulti::p_adjust: unknown method")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal: Romano-Wolf stepdown (matches upstream)
+// ---------------------------------------------------------------------------
+
+///|
+/// Romano-Wolf stepdown multiple-testing correction.
+///
+/// Algorithm (matches upstream `doubleml.double_ml_framework.p_adjust`):
+///   1. Sort `|t_k|` descending; let `stepdown_ind` be the
+///      resulting permutation of cell indices and `ro` be
+///      its inverse.
+///   2. For each cell `k` (in stepdown order), compute the
+///      bootstrap critical value as
+///      `cv_k = max_{j > k} |boot_t_stat[b, j]|` for each
+///      bootstrap replication `b`. Then
+///      `p_k = mean_b [cv_k >= |t_{stepdown_ind[k]}|]`.
+///   3. Enforce monotonicity:
+///      `p_corrected_sorted[k] = max(p_k, p_corrected_sorted[k - 1])`.
+///   4. Re-order to original cell order via `ro`.
+///
+/// `boot_t_stat` is row-major `(n_rep_boot, n_thetas)`.
+/// `unadjusted` and `t_stats` are length `n_thetas`.
+pub fn romano_wolf_p_adjust(
+  boot_t_stat : Array[Double],
+  unadjusted : Array[Double],
+  t_stats : Array[Double],
+) -> Array[Double] {
+  let n = t_stats.length()
+  let n_boot = boot_t_stat.length() / n
+  require(n_boot > 0)
+  // Sort |t| descending. We use a simple O(n^2) selection
+  // sort because n is typically small (3-12 cells).
+  let stepdown_ind : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    stepdown_ind[i] = i
+  }
+  let abs_t : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let t = t_stats[i]
+    abs_t[i] = if t < 0.0 { -t } else { t }
+  }
+  // Simple insertion sort on `stepdown_ind` by descending
+  // `abs_t`.
+  for i = 1; i < n; i = i + 1 {
+    let mut j = i
+    while j > 0 && abs_t[stepdown_ind[j]] > abs_t[stepdown_ind[j - 1]] {
+      let tmp = stepdown_ind[j]
+      stepdown_ind[j] = stepdown_ind[j - 1]
+      stepdown_ind[j - 1] = tmp
+      j = j - 1
+    }
+  }
+  // `ro` is the inverse permutation of `stepdown_ind`:
+  // `ro[stepdown_ind[i]] = i`.
+  let ro : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    ro[stepdown_ind[i]] = i
+  }
+  // Compute the stepdown p-values.
+  let p_sorted : Array[Double] = Array::make(n, 1.0)
+  for i_theta = 0; i_theta < n; i_theta = i_theta + 1 {
+    // Bootstrap critical value per replication: max
+    // |boot_t_stat[b, j]| for `j > i_theta` (in stepdown
+    // order). Use `np.delete`-equivalent: skip the cells
+    // at stepdown positions `0..i_theta`.
+    let mut p_k = 0.0
+    for b = 0; b < n_boot; b = b + 1 {
+      let mut cv = 0.0
+      for j = i_theta; j < n; j = j + 1 {
+        let idx = stepdown_ind[j]
+        let v = boot_t_stat[b * n + idx]
+        let av = if v < 0.0 { -v } else { v }
+        if av > cv {
+          cv = av
+        }
+      }
+      let t_target = abs_t[stepdown_ind[i_theta]]
+      if cv >= t_target {
+        p_k = p_k + 1.0
+      }
+    }
+    let p_k_normalised = if p_k / n_boot.to_double() > 1.0 {
+      1.0
+    } else {
+      p_k / n_boot.to_double()
+    }
+    p_sorted[i_theta] = p_k_normalised
+  }
+  // Enforce monotonicity.
+  for i_theta = 1; i_theta < n; i_theta = i_theta + 1 {
+    if p_sorted[i_theta] < p_sorted[i_theta - 1] {
+      p_sorted[i_theta] = p_sorted[i_theta - 1]
+    }
+  }
+  // Re-order to original cell order via `ro`.
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = p_sorted[ro[i]]
+  }
+  ignore(unadjusted)
+  out
+}
+
+// ---------------------------------------------------------------------------
+// Internal: Holm-Bonferroni and Bonferroni
+// ---------------------------------------------------------------------------
+
+///|
+/// Holm-Bonferroni stepdown correction. Sort unadjusted
+/// p-values ascending, then `p_corrected_sorted[k] =
+/// max((n - k) * p_sorted[k], p_corrected_sorted[k - 1])`,
+/// clipped to `1.0`. Re-order to original cell order.
+pub fn holm_bonferroni_p_adjust(
+  unadjusted : Array[Double],
+) -> Array[Double] {
+  let n = unadjusted.length()
+  let order : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    order[i] = i
+  }
+  // Sort `order` by ascending `unadjusted[order[i]]` via
+  // insertion sort.
+  for i = 1; i < n; i = i + 1 {
+    let mut j = i
+    while j > 0 && unadjusted[order[j]] < unadjusted[order[j - 1]] {
+      let tmp = order[j]
+      order[j] = order[j - 1]
+      order[j - 1] = tmp
+      j = j - 1
+    }
+  }
+  let ro : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    ro[order[i]] = i
+  }
+  let p_sorted : Array[Double] = Array::make(n, 1.0)
+  p_sorted[0] = if unadjusted[order[0]] * n.to_double() > 1.0 {
+    1.0
+  } else {
+    unadjusted[order[0]] * n.to_double()
+  }
+  for i = 1; i < n; i = i + 1 {
+    let raw = unadjusted[order[i]] * (n - i).to_double()
+    let mut candidate = if raw > 1.0 { 1.0 } else { raw }
+    if candidate < p_sorted[i - 1] {
+      candidate = p_sorted[i - 1]
+    }
+    p_sorted[i] = candidate
+  }
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = p_sorted[ro[i]]
+  }
+  out
+}
+
+///|
+/// Bonferroni correction. `p_corrected[k] = min(1.0, n *
+/// p_unadjusted[k])`.
+pub fn bonferroni_p_adjust(
+  unadjusted : Array[Double],
+) -> Array[Double] {
+  let n = unadjusted.length()
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    let p = unadjusted[i] * n.to_double()
+    out[i] = if p > 1.0 { 1.0 } else { p }
+  }
+  out
+}
+
+///|
 /// v0.15.0+: confidence interval for the per-(g, t) ATT.
 /// When `joint = false` (default), uses the Wald-style
 /// `theta ± 1.96 * se` interval. When `joint = true`, uses
