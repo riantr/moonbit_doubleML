@@ -16,6 +16,7 @@ _verify_*.mbt.archived
 # Probe / scratch .mbt files (verifier droppings, not part of
 # the test suite).
 _verify/T090-probe.mbt
+_verify/probe_pava.mbt
 _verify/*.smoke*.mbt
 
 # _verify/ directory policy:
