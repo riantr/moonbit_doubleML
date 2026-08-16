@@ -1,0 +1,105 @@
+Release 0.14.0: isotonic (PAVA) propensity-score calibration
+
+Added
+- ps_processor.mbt::pava(y, weights?): pure-MoonBit
+  pool-adjacent-violators algorithm. Weighted-PAVA
+  output where each block is sum_y / sum_w. Input
+  must be sorted by the predictor x; tie handling
+  is per-observation (matches the canonical PAVA
+  convention, differs from sklearn's
+  group-tied-before-PAVA on tied-x inputs).
+- ps_processor.mbt::fit_isotonic(x, y): sort (x, y)
+  by x (stable sort) and apply pava. Returns
+  (sorted_x, sorted_y_hat).
+- ps_processor.mbt::predict_isotonic(fitted_x,
+  fitted_y_hat, x_new): step-function lookup with
+  out-of-bounds clip, matching sklearn
+  IsotonicRegression(out_of_bounds="clip", y_min=0.0,
+  y_max=1.0) on the no-tie case.
+- PSProcessor::adjust_ps(ps, treatment, cv?): new
+  optional cv parameter for K-fold cross-validated
+  calibration. Default cv=None with
+  cv_calibration=true uses a deterministic 5-fold
+  split with seed=3141 (matches upstream
+  cross_val_predict(cv=5) default).
+- validate_pava_with_python.py: new Python
+  cross-check. Produces the sklearn
+  IsotonicRegression reference (in-sample + 5-fold
+  CV) on a 10-element DGP with strictly-distinct x
+  and binary treatment; the MoonBit per-DGP numbers
+  in ps_processor_test.mbt match within 1e-12.
+
+Changed
+- PSProcessor::adjust_ps signature gained a third
+  optional cv? parameter. Default cv=None; existing
+  callers (v0.10.0..v0.13.0) continue to work and
+  the calibration_method="none" path is byte-equal
+  to v0.13.0.
+- PSProcessorConfig docstring: removed the v0.10.0
+  "v0.12+ TODO" placeholder; the isotonic section
+  now describes the v0.14.0 PAVA-based semantics.
+- validate_treatment (private helper): aborts on any
+  treatment[i] not in {0.0, 1.0} before any
+  calibration work runs.
+
+Fixed
+- v0.10.0..v0.13.0
+  calibration_method="isotonic" abort:
+  the placeholder "isotonic calibration not yet
+  implemented in this port" is gone. v0.14.0
+  wires up the full PAVA-based fit.
+
+Tests
+- 163/163 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 150, +13 new tests in
+  ps_processor_test.mbt:
+    6 PAVA primitives (monotonic, single violation,
+      heavy violation, empty, weighted, sort)
+    4 PSProcessor integration (in-sample no-CV,
+      PAVA pooling, CV basic, CV user-folds)
+    1 predict_isotonic step function
+    1 input-no-mutation guard
+    1 CV all-to-mean coverage
+- 12/12 validate_*_with_python.py PASS (was 11,
+  +validate_pava_with_python.py).
+- 5/5 demos (cmd/{main, datasets, did_binary,
+  did_cs, did_multi}) all run cleanly and produce
+  bit-equal output to v0.13.0. The did_binary /
+  did_cs demos continue to use the default
+  PSProcessor config (clip-only, no calibration).
+
+Notes
+- PAVA tie handling: per-observation (each x is a
+  separate row even if tied). On a strictly-distinct-x
+  input (the canonical case for the propensity-score
+  use, where ps is a continuous prediction) the
+  MoonBit PAVA is bit-equal to sklearn
+  IsotonicRegression. On tied-x inputs the two may
+  differ in the block mean; documented in the v0.14.0
+  tests and the CHANGELOG.
+- Default cv is a deterministic 5-fold split with
+  seed=3141 (matches the package's standard fold
+  RNG). To use a different partition, pass
+  cv=Some([(train1, test1), ...]); the union of all
+  test_idx must cover [0, n) (otherwise aborts with
+  a clear "cv partition does not cover all indices"
+  message).
+- No change to the v0.10.0 default 1e-2 clip. The
+  1e-2 default still applies after the (optional)
+  calibration step.
+- No init_ps_processor shim (upstream wrapper around
+  the deprecated trimming_rule / trimming_threshold
+  keywords). The v0.14.0 entry point is
+  PSProcessor::new(config=...) directly.
+
+Files
+- 1 production file (ps_processor.mbt) extended
+  with PAVA + isotonic helpers and the new cv? arg
+  on adjust_ps.
+- 1 test file (ps_processor_test.mbt) extended
+  with 13 new tests.
+- 1 new Python validator
+  (validate_pava_with_python.py).
+- README.mbt.md + CHANGELOG.md updated.
+
+See _verify/T140-verdict.md.

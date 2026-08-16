@@ -11,6 +11,138 @@ release is the canonical version.
 
 ---
 
+## [0.14.0] — isotonic (PAVA) propensity-score calibration
+
+### Added
+- **`ps_processor.mbt::pava(y, weights?)`** — pure-MoonBit
+  pool-adjacent-violators algorithm. Given a sequence `y`
+  sorted by the predictor `x` and (optionally) per-element
+  `weights`, returns the isotonic (non-decreasing) L2
+  projection. Each output block is the weighted mean of its
+  constituent elements; ties in the input are handled by
+  the algorithm itself (they form a single block).
+  Weighted-mean handling matches the canonical PAVA
+  convention: a single block of `n` weighted observations
+  with sum `s` and weight `w` reports `s / w`, not `s / n`.
+- **`ps_processor.mbt::fit_isotonic(x, y)`** — sort `(x, y)`
+  by `x` (stable sort, ties preserve original order) and
+  apply `pava` to the sorted `y`. Returns `(sorted_x,
+  sorted_y_hat)` with both arrays the same length as the
+  input. Used as the calibration-step foundation for
+  `PSProcessor::adjust_ps`.
+- **`ps_processor.mbt::predict_isotonic(fitted_x,
+  fitted_y_hat, x_new)`** — step-function lookup on the
+  PAVA-fitted model. For each `x_new[i]`, returns the
+  `fitted_y_hat` at the largest `fitted_x[j] <= x_new[i]`,
+  clipped to `[0, 1]` (defensive). Matches
+  `sklearn.isotonic.IsotonicRegression(out_of_bounds="clip",
+  y_min=0.0, y_max=1.0)` on the no-tie case.
+- **Isotonic calibration in `PSProcessor::adjust_ps`**.
+  `PSProcessorConfig::new` already accepted
+  `calibration_method="isotonic"` in v0.10.0 as a
+  forward-compat placeholder; v0.14.0 wires up the actual
+  PAVA-based fit. The new `cv?` parameter on
+  `PSProcessor::adjust_ps(ps, treatment, cv?)` is consulted
+  only when `config.calibration_method="isotonic"` and
+  `config.cv_calibration=true`: each `(train_idx, test_idx)`
+  fold fits PAVA on the training subset and predicts on
+  the test subset, concatenating the held-out predictions
+  in the original index order. When `cv = None`, a
+  deterministic 5-fold split with `seed=3141` is used
+  (matches upstream `cross_val_predict(cv=5)` default).
+- **`validate_pava_with_python.py`** — new Python
+  cross-check. Prints the sklearn `IsotonicRegression`
+  reference (in-sample + 5-fold CV) on a 10-element DGP
+  with strictly-distinct propensity scores and binary
+  treatment; the per-DGP numbers are used as the
+  ground-truth for the MoonBit test cases in
+  `ps_processor_test.mbt`.
+
+### Changed
+- **`PSProcessor::adjust_ps` signature** gained a third
+  optional `cv?` parameter. Default `cv = None` means
+  "use the deterministic 5-fold split" when
+  `cv_calibration=true`, and is ignored otherwise. No
+  caller is broken: existing calls `adjust_ps(ps, t)`
+  continue to work and the v0.10.0..v0.13.0
+  `calibration_method="none"` path is byte-equal to
+  v0.14.0.
+- **`ps_processor.mbt::PSProcessorConfig` docstring**:
+  the v0.10.0 "v0.12+ TODO" placeholder is gone. The
+  isotonic section now describes the actual v0.14.0
+  semantics (PAVA fit, optional CV) with a usage
+  example.
+- **Validation helper added**: `validate_treatment`
+  (private) aborts on non-binary `treatment[i]` in
+  `0.0 / 1.0` before any calibration work runs. The
+  upstream `_validate_treatment` (full type/dim check
+  + `type_of_target == "binary"`) is a strict superset
+  but we don't have a generic target-type helper in
+  pure MoonBit; the bitwise `0.0 / 1.0` check is the
+  upstream-equivalent contract for the propensity-score
+  use case.
+
+### Fixed
+- **`PSProcessorConfig` v0.10.0 placeholder abort**:
+  v0.10.0..v0.13.0 `calibration_method="isotonic"` would
+  call `abort("isotonic calibration not yet implemented
+  in this port")` on first use. v0.14.0 implements the
+  full PAVA-based calibration; the abort is gone.
+
+### Notes / known limitations
+- **PAVA tie handling differs from sklearn on tied-x
+  inputs**. The MoonBit PAVA treats each `x` value as a
+  separate observation (regardless of ties); sklearn's
+  `IsotonicRegression` groups tied `x` values into a
+  single block before applying PAVA. On a strictly
+  distinct-x input (the canonical case for the
+  propensity-score use, where `ps` is a continuous
+  prediction) the two are bit-equal. On tied-x inputs
+  the two may differ by a few ULPs of the block mean.
+  This is documented in the v0.14.0 PAVA tests; the
+  validate_pava_with_python.py script uses a 4-decimal
+  random x to ensure no ties.
+- **Default `cv` is a deterministic 5-fold split with
+  `seed=3141`** (matches the package's standard fold
+  RNG). To use a different fold partition, pass
+  `cv=Some([(train1, test1), (train2, test2), ...])`;
+  the union of all `test_idx` must cover `[0, n)`
+  (otherwise `isotonic_calibrate_cv` aborts with a
+  clear "cv partition does not cover all indices"
+  message).
+- **No `propensity_score_processing` upstream
+  convenience function port** (the `init_ps_processor`
+  wrapper in upstream that handles the deprecated
+  `trimming_rule` / `trimming_threshold` keywords). The
+  v0.14.0 entry point is the `PSProcessor` class
+  directly; users who need the trimming-rule shim can
+  build it on top of `PSProcessor::new` in 2 lines.
+- **No change to the v0.10.0 default 1e-2 clip** or to
+  the v0.13.0 accessor surface. The 1e-2 default is
+  applied after the (optional) calibration step, so
+  the user can opt into a different `clipping_threshold`
+  without affecting the calibration.
+
+### Verification
+- 4-backend `moon test --deny-warn` (native, wasm,
+  wasm-gc, js): **163/163 passed** (was 150, +13 new
+  tests in `ps_processor_test.mbt`: 6 PAVA primitives +
+  4 PSProcessor integration + 1 predict_isotonic step
+  function + 1 CV path + 1 input-no-mutation guard).
+- 12 Python validators: all PASS, including the new
+  `validate_pava_with_python.py` (sklearn reference for
+  PAVA in-sample + 5-fold CV on a 10-element DGP with
+  distinct-x).
+- 5 demos (`moon run cmd/{main, datasets, did_binary,
+  did_cs, did_multi}`) all run cleanly and produce
+  bit-equal output to v0.13.0. The `did_binary` and
+  `did_cs` demos continue to use the default
+  `PSProcessor` config (clip-only, no calibration); the
+  isotonic calibration is opt-in via
+  `calibration_method="isotonic"`.
+
+---
+
 ## [0.13.0] — Polish: API accessor consistency, REVIEW history trim, logistic_test cleanup
 
 ### Added

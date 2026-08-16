@@ -10,16 +10,16 @@ covering all 15 models currently in upstream.
 |------|-------|
 | Source file count | 60 (30 production + 30 test) |
 | Models ported | 15 / 15 |
-| Tests | **150 / 150** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **163 / 163** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
-| Python cross-checks | 9 / 9 PASS |
+| Python cross-checks | 12 / 12 PASS |
 | License | Apache-2.0 |
 
 ## Quick start
 
 ```console
 $ moon test --deny-warn
-Total tests: 150, passed: 150, failed: 0.
+Total tests: 163, passed: 163, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -103,10 +103,10 @@ $ moon run cmd/did_multi
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 115/115
-moon test --target wasm-gc --deny-warn   # 115/115
-moon test --target wasm    --deny-warn   # 115/115
-moon test --target js      --deny-warn   # 115/115
+moon test --target native  --deny-warn   # 163/163
+moon test --target wasm-gc --deny-warn   # 163/163
+moon test --target wasm    --deny-warn   # 163/163
+moon test --target js      --deny-warn   # 163/163
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
@@ -122,8 +122,11 @@ output:
 $ for s in validate_*_with_python.py; do echo "=== $s ==="; python $s | tail -1; done
 === validate_blp_policy_with_python.py === BLP/PolicyTree reference checks passed
 === validate_did_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 1.29e-02 ...
+=== validate_did_binary_with_python.py === Reference: run `moon run cmd/did_binary` for the MoonBit output.
+=== validate_did_cs_with_python.py === Reference: run `moon run cmd/did_cs` for the MoonBit output.
 === validate_iivm_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 8.58e-03 ...
 === validate_irm_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 5.24e-02 ...
+=== validate_pava_with_python.py === PAVA cross-check passed
 === validate_pliv_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 1.41e-01 ...
 === validate_quantile_with_python.py === reference checks passed
 === validate_rdd_with_python.py === RDD reference checks passed
@@ -161,6 +164,26 @@ for i = 0; i < n; i = i + 1 {
 let psp = @dml.PSProcessor::new()                    // defaults
 let psp = @dml.PSProcessor::new(config=@dml.PSProcessorConfig::new(clipping_threshold=0.05))
 let out = psp.adjust_ps(ps_array, treatment_array)
+
+// v0.14.0+: isotonic (PAVA) calibration of the propensity
+// scores. The calibrated output is a step function from
+// PAVA on `(ps, treatment)`, then clipped to
+// `[clipping_threshold, 1 - clipping_threshold]`. Combine
+// with `cv_calibration=true` for K-fold cross-validated
+// predictions (matches upstream `cross_val_predict(cv=5)`).
+let cfg = @dml.PSProcessorConfig::new(
+  calibration_method="isotonic",  // v0.14.0+: PAVA fit
+)
+let psp_iso = @dml.PSProcessor::new(config=cfg)
+let out_iso = psp_iso.adjust_ps(ps_array, treatment_array)
+
+// 5-fold CV calibration with the deterministic kfold split.
+let cfg_cv = @dml.PSProcessorConfig::new(
+  calibration_method="isotonic",
+  cv_calibration=true,
+)
+let psp_cv = @dml.PSProcessor::new(config=cfg_cv)
+let out_cv = psp_cv.adjust_ps(ps_array, treatment_array)
 ```
 
 ## Release flow / verifier scratch
