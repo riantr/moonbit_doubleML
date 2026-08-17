@@ -1,0 +1,105 @@
+Release 0.20.0: DoubleMLDIDCrossSection (Sant'Anna-Zhao 2020)
+
+Added
+- did_cross_section.mbt: DoubleMLDIDCrossSectionData
+  (x, y, d, t — each unit has ONE observation;
+  d and t are binary {0, 1}).
+- did_cross_section.mbt: DoubleMLDIDCrossSection
+  model. Fits 4 g-functions g(d, t, x) = E[Y | D=d,
+  T=t, X] and 1 propensity m(x) = E[D=1 | X] via
+  cross-fit LinearRegression, then constructs the
+  ATT score per the upstream
+  doubleml.DoubleMLDIDCS._score_elements formula.
+  Four (score, in_sample_normalization) combinations
+  are supported: observational / experimental,
+  in-sample / out-of-sample. ATT is the closed-form
+  OLS estimate -<psi_a, psi_b> / ||psi_b||^2; SE is
+  the HC0 sandwich.
+- did_cross_section_test.mbt: 11 new tests covering
+  data validation, end-to-end ATT recovery on three
+  score variants, psi_a / psi_b accessors,
+  orthogonalization invariant, prediction accessors,
+  confint, and determinism.
+- cmd/did_cross_section/main.mbt: runnable demo on
+  a 500-unit DGP with true ATT = 1.0. Recovers
+  ATT ~ 1.00 (e.g. 1.0024) with 95% CI covering
+  the true value.
+- validate_did_cross_section_with_python.py: 16th
+  Python validator. Replicates the upstream
+  _score_elements formula in numpy and emits the
+  reference theta_hat for a 200-unit DGP.
+
+Public API
+- DoubleMLDIDCrossSectionData::new(x, y, d, t, name?)
+- DoubleMLDIDCrossSectionData::n_obs()
+- DoubleMLDIDCrossSectionData::n_features()
+- DoubleMLDIDCrossSection::new(data, n_folds?, n_rep?,
+  seed?, score?, in_sample_normalization?,
+  propensity_clip?, ps_processor?)
+- DoubleMLDIDCrossSection::fit() -> fitted model
+- DoubleMLDIDCrossSection::coef() / se() / confint()
+- DoubleMLDIDCrossSection::psi_a() / psi_b()
+- DoubleMLDIDCrossSection::predictions_g_d0_t0() /
+  predictions_g_d0_t1() / predictions_g_d1_t0() /
+  predictions_g_d1_t1() / predictions_m()
+
+Notes
+- The cross-section DID model is the
+  Sant'Anna-Zhao 2020 "repeated cross-sections"
+  variant (one observation per unit, two time
+  periods). It is NOT the same as the panel DID
+  (DoubleMLDIDBinary / DoubleMLDIDCS): the panel
+  DID uses 2 g-functions (g(0), g(1)), while the
+  cross-section DID uses 4 g-functions (g(d, t) for
+  the 4 (d, t) cells). The cross-section model is
+  more flexible (the outcome can depend on (d, t, x)
+  instead of just (d, x)) but requires 4x more
+  nuisance fits.
+- The cross-section DID is a SCALAR estimator (one
+  ATT), unlike the panel DID which produces a
+  (g, t) grid. The "universal" keyword in
+  DoubleMLDIDMulti::gt_combinations_keyword does
+  not apply to the cross-section model (it's a
+  panel-only concept).
+- Default config: score = "observational",
+  in_sample_normalization = false, n_folds = 5,
+  n_rep = 1, seed = 3141, propensity_clip = 1e-6,
+  default PSProcessor.
+- The 4 nuisance fits use the same closed-form
+  LinearRegression (Cholesky + ridge 1e-10) as
+  every other DML estimator in the package. No new
+  learner infrastructure is introduced.
+- LinearRegression auto-augments with an intercept
+  column, so a basis with 2 input columns fits
+  3 g-function coefs (intercept + 2 slopes) per
+  cell.
+
+Tests
+- 215/215 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 204 in v0.19.0; +11 new tests
+  in did_cross_section_test.mbt.
+- 16/16 validate_*_with_python.py PASS
+  (+1 new: validate_did_cross_section_with_python.py).
+- 6/6 demos run cleanly and produce sensible
+  output (cmd/did_cross_section recovers
+  ATT ~ 1.00 on a 500-unit DGP).
+
+Files
+- 2 new production files: did_cross_section.mbt,
+  cmd/did_cross_section/{main.mbt, moon.pkg}.
+- 1 new test file: did_cross_section_test.mbt.
+- 1 new Python validator:
+  validate_did_cross_section_with_python.py.
+- README.mbt.md + CHANGELOG.md updated.
+
+Cross-check vs numpy
+For n=200, p=2, att=1.0 (same DGP shape as the
+MoonBit test):
+- numpy reference theta_hat = 0.831
+- MoonBit theta_hat ~ 0.83 (recovers true ATT
+  within Monte-Carlo error)
+- psi_a, psi_b match the upstream
+  _score_elements formula to within 1e-9 (the
+  closed-form OLS score is exact).
+
+See _verify/T200-verdict.md.

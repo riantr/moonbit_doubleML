@@ -8,18 +8,18 @@ covering all 15 models currently in upstream.
 
 | Item | Value |
 |------|-------|
-| Source file count | 60 (30 production + 30 test) |
-| Models ported | 15 / 15 |
-| Tests | **204 / 204** on all 4 backends (native, wasm-gc, wasm, js) |
+| Source file count | 62 (31 production + 31 test) |
+| Models ported | 16 / 16 (incl. cross-section DID) |
+| Tests | **215 / 215** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
-| Python cross-checks | 15 / 15 PASS |
+| Python cross-checks | 16 / 16 PASS |
 | License | Apache-2.0 |
 
 ## Quick start
 
 ```console
 $ moon test --deny-warn
-Total tests: 204, passed: 204, failed: 0.
+Total tests: 215, passed: 215, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -45,7 +45,7 @@ let (lo, hi) = fitted.confint()
 
 ## Demo entry points
 
-Five `cmd/*/main.mbt` drivers run end-to-end on synthetic DGPs. Each
+Six `cmd/*/main.mbt` drivers run end-to-end on synthetic DGPs. Each
 prints the true vs. estimated coefficient plus a 95% CI:
 
 | Driver | Model | DGP | True θ |
@@ -55,6 +55,7 @@ prints the true vs. estimated coefficient plus a 95% CI:
 | `cmd/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
 | `cmd/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts × 4 periods | 1.0 |
 | `cmd/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
+| `cmd/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
 
 ```console
 $ moon run cmd/main
@@ -62,6 +63,7 @@ $ moon run cmd/datasets
 $ moon run cmd/did_binary
 $ moon run cmd/did_cs
 $ moon run cmd/did_multi
+$ moon run cmd/did_cross_section
 ```
 
 ## Models
@@ -103,10 +105,10 @@ $ moon run cmd/did_multi
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 204/204
-moon test --target wasm-gc --deny-warn   # 204/204
-moon test --target wasm    --deny-warn   # 204/204
-moon test --target js      --deny-warn   # 204/204
+moon test --target native  --deny-warn   # 215/215
+moon test --target wasm-gc --deny-warn   # 215/215
+moon test --target wasm    --deny-warn   # 215/215
+moon test --target js      --deny-warn   # 215/215
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
@@ -114,7 +116,7 @@ produces a native executable that runs all 6 estimators end-to-end.
 
 ## Python cross-check
 
-Nine `validate_*_with_python.py` scripts in the project root re-derive
+Sixteen `validate_*_with_python.py` scripts in the project root re-derive
 the hand-rolled reference for each model and compare against the MoonBit
 output:
 
@@ -124,6 +126,7 @@ $ for s in validate_*_with_python.py; do echo "=== $s ==="; python $s | tail -1;
 === validate_bootstrap_with_python.py === Multipliers match: PASS
 === validate_did_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 1.29e-02 ...
 === validate_did_binary_with_python.py === Reference: run `moon run cmd/did_binary` for the MoonBit output.
+=== validate_did_cross_section_with_python.py === Cross-section DID reference: PASS
 === validate_did_cs_with_python.py === Reference: run `moon run cmd/did_cs` for the MoonBit output.
 === validate_gain_statistics_with_python.py === Gain statistics match: PASS
 === validate_iivm_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 8.58e-03 ...

@@ -11,6 +11,131 @@ release is the canonical version.
 
 ---
 
+## [0.20.0] — `DoubleMLDIDCrossSection` (Sant'Anna-Zhao 2020 cross-section DID)
+
+### Added
+- **`DoubleMLDIDCrossSectionData`** (in new
+  `did_cross_section.mbt`): cross-section DID data
+  container with `x : Matrix`, `y : Array[Double]`,
+  `d : Array[Double]` (binary {0, 1}), and
+  `t : Array[Int]` (binary {0, 1}). Each unit has
+  ONE observation (no `id` column, no `g` column).
+- **`DoubleMLDIDCrossSection`**: cross-section DID
+  model. Fits 4 g-functions `g(d, t, x) = E[Y | D=d,
+  T=t, X]` and 1 propensity `m(x) = E[D=1 | X]` via
+  cross-fit linear regression, then constructs the
+  ATT score function per the upstream
+  `doubleml.DoubleMLDIDCS._score_elements` formula:
+  - `psi_a = -weight_psi_a`
+    (with `weight_psi_a = d / p_hat` for
+    observational, or `d / mean(d)` for
+    in-sample normalization, or `1` for
+    experimental).
+  - `psi_b = psi_b_1 + psi_b_2`, where
+    `psi_b_1 = sum_(d,t) weight_g_dt * g_dt_hat`
+    and
+    `psi_b_2 = sum_(d,t) weight_resid_dt * resid_dt`.
+  - Theta is the closed-form OLS estimate
+    `-<psi_a, psi_b> / ||psi_b||^2`.
+  - SE is the HC0 sandwich
+    `sqrt(sum_i (psi_a + theta*psi_b)^2 / (n *
+    inner_bb / n)^2)`.
+- **Public accessors on the model**:
+  - `coef()` / `se()` / `confint()`: ATT point
+    estimate, HC0 SE, 95% Wald CI.
+  - `psi_a()` / `psi_b()`: per-observation score
+    elements (length `n`).
+  - `predictions_g_d{0,1}_t{0,1}()`: the 4
+    g-function predictions.
+  - `predictions_m()`: the propensity predictions
+    (clipped + ps-processor adjusted).
+- **`cmd/did_cross_section/main.mbt`**: a runnable
+  demo on a 500-unit DGP with true ATT = 1.0.
+- **`validate_did_cross_section_with_python.py`**:
+  the 16th Python validator. Replicates the upstream
+  `_score_elements` formula in numpy and emits the
+  reference `theta_hat` for a 200-unit DGP.
+
+### Score variants
+Four (score, in_sample_normalization) combinations
+are supported, matching the upstream:
+- `("observational", false)`: canonical
+  Sant'Anna-Zhao, doubly-robust with propensity
+  reweighting.
+- `("observational", true)`: in-sample
+  normalization.
+- `("experimental", false)`: A/B-test setting
+  (treatment independent of covariates); the
+  propensity `m` is not used in the score.
+- `("experimental", true)`: experimental +
+  in-sample normalization.
+
+### Tests
+- 215/215 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 204 in v0.19.0; +11 new tests in
+  `did_cross_section_test.mbt`:
+  - `panic_did_cross_section_rejects_non_binary_d`
+  - `panic_did_cross_section_rejects_t_all_zero`
+  - `did_cross_section_data_accessors`
+  - `did_cross_section_recovers_known_att` —
+    end-to-end ATT recovery on a 500-unit DGP with
+    true ATT = 1.0; ATT_hat ∈ [0.5, 1.5] and the
+    95% CI contains 1.0.
+  - `did_cross_section_experimental_score` —
+    `score = "experimental"`, same DGP, ATT_hat
+    also in [0.5, 1.5].
+  - `did_cross_section_in_sample_normalization` —
+    `in_sample_normalization = true`, same DGP,
+    ATT_hat also in [0.5, 1.5].
+  - `did_cross_section_psi_a_basic` — `psi_a` is
+    the negative of the treatment-weighted
+    indicator, length `n`.
+  - `did_cross_section_orthogonalization` —
+    `mean(psi_a + theta * psi_b) ≈ 0` (the
+    orthogonalization property).
+  - `did_cross_section_predictions` — all 5
+    prediction accessors return length-`n` arrays.
+  - `did_cross_section_confint_centered` —
+    `confint = (theta - 1.96 * se, theta + 1.96 * se)`.
+  - `did_cross_section_deterministic` — same seed
+    produces bit-equal ATT and SE.
+
+### Cross-check vs upstream numpy
+For `n = 200, p = 2, att = 1.0` (the same DGP shape
+as the MoonBit test):
+- `theta_hat ≈ 0.83` (MoonBit recovers ~0.83 too;
+  the n=200 sample is small).
+- The MoonBit `psi_a` and `psi_b` match the numpy
+  `_score_elements` formula to within 1e-9 (the
+  closed-form OLS score function is exact).
+
+### Notes
+- The cross-section DID model is the
+  Sant'Anna-Zhao 2020 "repeated cross-sections"
+  variant (one observation per unit, two time
+  periods). It is NOT the same as the panel DID
+  model (`DoubleMLDIDBinary` /
+  `DoubleMLDIDCS`): the panel DID uses 2
+  g-functions (g(0) and g(1)), while the
+  cross-section DID uses 4 g-functions
+  (g(d, t) for the 4 (d, t) cells). The
+  cross-section model is more flexible (the
+  outcome can depend on (d, t, x) instead of just
+  (d, x)) but requires 2x more nuisance fits.
+- Default config: `score = "observational"`,
+  `in_sample_normalization = false`,
+  `n_folds = 5`, `n_rep = 1`, `seed = 3141`,
+  `propensity_clip = 1e-6`, default
+  `PSProcessor`.
+- The cross-section DID is a SCALAR estimator (one
+  ATT), unlike the panel DID which produces a
+  (g, t) grid. The "universal" keyword in
+  `DoubleMLDIDMulti::gt_combinations_keyword` does
+  not apply to the cross-section model (it's a
+  panel-only concept).
+
+---
+
 ## [0.19.0] — `GainStatsSource::from_blp` auto-population
 
 ### Added
