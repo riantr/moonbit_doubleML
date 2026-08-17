@@ -10,7 +10,7 @@ covering all 15 models currently in upstream.
 |------|-------|
 | Source file count | 60 (30 production + 30 test) |
 | Models ported | 15 / 15 |
-| Tests | **200 / 200** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **204 / 204** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
 | Python cross-checks | 15 / 15 PASS |
 | License | Apache-2.0 |
@@ -19,7 +19,7 @@ covering all 15 models currently in upstream.
 
 ```console
 $ moon test --deny-warn
-Total tests: 200, passed: 200, failed: 0.
+Total tests: 204, passed: 204, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -103,10 +103,10 @@ $ moon run cmd/did_multi
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 200/200
-moon test --target wasm-gc --deny-warn   # 200/200
-moon test --target wasm    --deny-warn   # 200/200
-moon test --target js      --deny-warn   # 200/200
+moon test --target native  --deny-warn   # 204/204
+moon test --target wasm-gc --deny-warn   # 204/204
+moon test --target wasm    --deny-warn   # 204/204
+moon test --target js      --deny-warn   # 204/204
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
@@ -228,6 +228,13 @@ let src_short = @dml.GainStatsSource::new(
   var_y_residuals_short, nu2_short, all_coef_short, n_rep, var_y,
 )
 let gs = @dml.gain_statistics(src_long, src_short)
+
+// v0.19.0+: `from_blp(blp)` auto-populates a
+// `GainStatsSource` from a fitted `DoubleMLBLP`.
+// `var_y_residuals = rss / n_obs`,
+// `nu2[k] = var_y_residuals / (n * se[k]^2)`,
+// `all_coef = blp.coef()`, `var_y = blp.var_y()`.
+let src = @dml.GainStatsSource::from_blp(blp_fitted)
 ```
 
 ## Release flow / verifier scratch

@@ -11,6 +11,103 @@ release is the canonical version.
 
 ---
 
+## [0.19.0] — `GainStatsSource::from_blp` auto-population
+
+### Added
+- **`DoubleMLBLP::n_obs()`** accessor: sample size used
+  by the BLP fit. Throws if the BLP hasn't been fit yet.
+- **`DoubleMLBLP::rss()`** accessor: residual sum of
+  squares from the BLP fit. Equals
+  `sum_i (orth_signal[i] - basis[i] @ coef)^2`.
+- **`DoubleMLBLP::var_y()`** accessor: variance of the
+  BLP's orthogonal signal (the BLP's "outcome"
+  variable). Computed as a population variance
+  (divisor `n`).
+- **`GainStatsSource::from_blp(blp, n_rep?)`**:
+  re-implemented to auto-populate the per-rep arrays
+  from the BLP's fit output:
+  - `var_y_residuals[k] = RSS / n_obs` (constant
+    across coefficients; the BLP's residual
+    variance).
+  - `nu2[k] = var_y_residuals[k] / (n_obs * se[k]^2)`
+    (per-coef Riesz representer norm squared under
+    the homoskedastic OLS convention
+    `se[k]^2 = sigma^2 * (Z^T Z)^{-1}_{kk}`).
+  - `all_coef[k] = blp.coef()[k]`.
+  - `var_y = blp.var_y()` (the BLP's outcome
+    variance).
+  - `n_rep` defaults to 1 (single-rep BLP); the BLP
+    does not natively produce per-rep sensitivity
+    elements, so multi-rep values are broadcast.
+
+### Changed
+- `DoubleMLBLP` now stores `n_obs`, `rss`, and `var_y`
+  post-fit. Initialised to `0`/`0.0`/`0.0` in `new`,
+  filled in by `fit`. The `fit` method now also
+  computes the residual sum of squares once and
+  shares it between the HC0 and nonrobust paths.
+- `GainStatsSource::from_blp` signature changed from
+  `(blp, var_y_residuals, nu2, all_coef, n_rep, var_y)`
+  (data-flow plumbing only) to `(blp, n_rep?)` (true
+  auto-population). The old 6-arg form is removed.
+
+### Tests
+- 204/204 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 200 in v0.18.0; +4 new tests in
+  `sensitivity_test.mbt`:
+  - `gain_stats_from_blp_basic` — basic auto-population
+    on a 2-column basis (3 coefs with intercept).
+    Verifies all 4 per-rep arrays match the BLP's
+    fit output.
+  - `gain_stats_from_blp_n_rep` — `n_rep=1` (default)
+    works; arrays are length `n_coef` (broadcast).
+  - `panic_gain_stats_from_blp_unfitted` — `from_blp`
+    requires the BLP to be fit first (the accessors
+    throw if `!fitted`).
+  - `panic_gain_stats_from_blp_n_rep_invalid` —
+    `n_rep` must divide `n_coef` (3 does not divide
+    2 with a 1-column basis).
+  - `gain_stats_end_to_end_via_blp` — two BLPs (low
+    and high noise) on the same 1-column basis
+    (same `n_coef`), auto-populated sources, then
+    `gain_statistics` runs end-to-end. The "long"
+    model (low noise) has smaller `var_y_residuals`
+    than the "short" model (high noise), and the
+    per-coef benchmarks are in their valid ranges.
+
+### Cross-check
+- The 15/15 Python validators still PASS
+  (including `validate_gain_statistics_with_python.py`,
+  which is unaffected by the `from_blp` signature
+  change — the underlying `gain_statistics` algorithm
+  is unchanged).
+- 5/5 demos still run cleanly with bit-equal output
+  to v0.18.0 (none of them uses `from_blp`).
+
+### Notes
+- The HC0 SE convention is consistent with the
+  homoskedastic interpretation of `nu2` up to O(1/n)
+  corrections. For users who want a more accurate
+  `nu2` under HC0, the upstream
+  `doubleml.DoubleMLPLR.sensitivity_elements` is the
+  authoritative source; the v0.19.0 port keeps the
+  BLP-only path simple.
+- The auto-population is consistent with the BLP's
+  role as the post-DML second stage: BLP fits
+  `orth_signal ~ basis`, so the BLP's residual
+  variance is the natural analog of DML's `sigma2`,
+  and the BLP's `se^2` is the natural analog of
+  DML's `nu2 * sigma2 / n`.
+- `n_rep > 1` is rare for BLP (the BLP is
+  single-shot, not cross-fit). The broadcast
+  behaviour is a convenience for users who want to
+  store multiple BLP fits in one
+  `GainStatsSource` (e.g. one per bootstrap
+  replication, though that pattern is more
+  commonly used with DML models directly).
+
+---
+
 ## [0.18.0] — BH / BY FDR p-adjust
 
 ### Added

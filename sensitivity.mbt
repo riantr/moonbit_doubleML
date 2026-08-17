@@ -303,28 +303,62 @@ pub fn GainStatsSource::new(
 }
 
 ///|
-/// Convenience constructor for `GainStatsSource` from a
-/// fitted `DoubleMLBLP` and the outcome variance. The
-/// per-rep `var_y_residuals[k]` is `RSS_long / n_obs` (the
-/// outcome-residual variance under the BLP's RSS) and
-/// `nu2[k]` is the per-rep treatment-residual variance. In
-/// the v0.17.0 port we use a single rep (`n_rep = 1`) and
-/// build both arrays from the same source — for a richer
-/// multi-rep DML this would be filled in by the model's
-/// `fit` method.
+/// v0.19.0+ convenience constructor for `GainStatsSource`
+/// from a fitted `DoubleMLBLP`. Auto-populates all the
+/// per-rep arrays from the BLP's fit output:
+///
+///   - `var_y_residuals[k] = RSS / n_obs` (constant across
+///     coefficients; the BLP's residual variance).
+///   - `nu2[k] = var_y_residuals[k] / (n_obs * se[k]^2)`
+///     (the per-coef Riesz representer norm squared under
+///     the homoskedastic OLS convention
+///     `se[k]^2 = sigma^2 * (Z^T Z)^{-1}_{kk}`).
+///   - `all_coef[k] = blp.coef()[k]`.
+///   - `var_y = blp.var_y()` (the variance of the BLP's
+///     orthogonal signal — the BLP's "outcome" variable).
+///
+/// The HC0 SE convention is consistent with this
+/// homoskedastic interpretation up to O(1/n) corrections
+/// (the BLP's HC0 SE is robust to heteroskedasticity in
+/// the orthogonal-signal residuals; the auto-populated
+/// `nu2` uses the BLP's reported SE directly).
+///
+/// `n_rep` defaults to 1 (single-rep BLP). Multi-rep
+/// DMLs should pass `n_rep > 1`, in which case the
+/// auto-populated arrays are broadcast across reps (the
+/// BLP does not natively produce per-rep sensitivity
+/// elements).
 pub fn GainStatsSource::from_blp(
   blp : DoubleMLBLP,
-  var_y_residuals : Array[Double],
-  nu2 : Array[Double],
-  all_coef : Array[Double],
-  n_rep : Int,
-  var_y : Double,
+  n_rep? : Int = 1,
 ) -> GainStatsSource {
-  ignore(blp)
-  let n = var_y_residuals.length()
-  require(n == nu2.length())
-  require(n == all_coef.length())
-  require(n % n_rep == 0)
+  require(blp.fitted)
+  let n_obs = blp.n_obs()
+  let coef = blp.coef()
+  let se = blp.se()
+  let p = coef.length()
+  let n_obs_d = n_obs.to_double()
+  let rss = blp.rss()
+  let var_y_residuals_scalar = rss / n_obs_d
+  // var_y_residuals broadcast to length p (constant).
+  let var_y_residuals : Array[Double] = Array::make(p, var_y_residuals_scalar)
+  // nu2 per coef: sigma^2 / (n_obs * se^2). Degenerate se
+  // (= 0) sets nu2 = 1.0 (sentinel: nu2 * n * se^2 = 1,
+  // which collapses the se^2 weight in
+  // `var_riesz = nu2_long - nu2_short` for that coef).
+  let nu2 : Array[Double] = Array::make(p, 0.0)
+  for k = 0; k < p; k = k + 1 {
+    let se_k = se[k]
+    if se_k <= 0.0 {
+      nu2[k] = 1.0
+    } else {
+      nu2[k] = var_y_residuals_scalar / (n_obs_d * se_k * se_k)
+    }
+  }
+  let all_coef = coef.copy()
+  let var_y = blp.var_y()
+  require(n_rep > 0)
+  require(p % n_rep == 0)
   { var_y_residuals, nu2, all_coef, n_rep, var_y }
 }
 

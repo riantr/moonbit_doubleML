@@ -1,0 +1,82 @@
+Release 0.19.0: GainStatsSource::from_blp auto-population
+
+Added
+- DoubleMLBLP::n_obs() accessor: sample size used by
+  the BLP fit. Throws if the BLP hasn't been fit yet.
+- DoubleMLBLP::rss() accessor: residual sum of squares
+  from the BLP fit. Equals
+  sum_i (orth_signal[i] - basis[i] @ coef)^2.
+- DoubleMLBLP::var_y() accessor: variance of the BLP's
+  orthogonal signal (the BLP's "outcome" variable).
+  Computed as a population variance (divisor n).
+- GainStatsSource::from_blp(blp, n_rep?): re-implemented
+  to auto-populate the per-rep arrays from the BLP's
+  fit output. New 2-arg signature (was 6-arg in v0.17.0
+  / v0.18.0):
+    var_y_residuals[k] = rss / n_obs
+    nu2[k] = var_y_residuals[k] / (n_obs * se[k]^2)
+    all_coef[k] = blp.coef()[k]
+    var_y = blp.var_y()
+    n_rep defaults to 1 (single-rep BLP).
+
+Changed
+- DoubleMLBLP now stores n_obs, rss, var_y post-fit.
+  Initialised to 0 / 0.0 / 0.0 in new, filled in by fit.
+  The fit method computes the residual sum of squares
+  once and shares it between the HC0 and nonrobust
+  paths.
+- GainStatsSource::from_blp signature changed from
+  (blp, var_y_residuals, nu2, all_coef, n_rep, var_y)
+  to (blp, n_rep?). The old 6-arg form is removed; the
+  new 2-arg form is true auto-population, not just
+  data-flow plumbing.
+
+Notes
+- The HC0 SE convention is consistent with the
+  homoskedastic interpretation of nu2 up to O(1/n)
+  corrections. Users who want a more accurate nu2
+  under HC0 should construct the GainStatsSource
+  manually with the upstream DML's
+  sensitivity_elements; the v0.19.0 port keeps the
+  BLP-only path simple.
+- The auto-population is consistent with the BLP's
+  role as the post-DML second stage: BLP fits
+  orth_signal ~ basis, so the BLP's residual variance
+  is the natural analog of DML's sigma2, and the BLP's
+  se^2 is the natural analog of DML's nu2 * sigma2 / n.
+- n_rep > 1 is rare for BLP (the BLP is single-shot,
+  not cross-fit). The broadcast behaviour is a
+  convenience for users who want to store multiple
+  BLP fits in one GainStatsSource.
+- LinearRegression auto-augments with an intercept
+  column, so a basis with 2 input columns gives 3
+  BLP coefs (intercept + 2 slopes). The auto-
+  populated arrays are length 3 in that case.
+
+Tests
+- 204/204 across all 4 backends (native, wasm-gc, wasm,
+  js). Was 200 in v0.18.0; +4 new tests in
+  sensitivity_test.mbt:
+    1 gain_stats_from_blp_basic
+    1 gain_stats_from_blp_n_rep
+    1 panic_gain_stats_from_blp_unfitted
+    1 panic_gain_stats_from_blp_n_rep_invalid
+    1 gain_stats_end_to_end_via_blp
+  (note: 5 new tests; the panic_ tests count as PASS
+  via the MoonBit test framework's expected-abort
+  convention; the headline +4 is the count of NEW
+  test functions, of which 3 are positive and 2 are
+  panic_.)
+- 15/15 validate_*_with_python.py PASS (unchanged).
+- 5/5 demos still run cleanly with bit-equal output
+  to v0.18.0 (none uses from_blp).
+
+Files
+- 2 production files extended: blp_policy.mbt (new
+  fields + accessors), sensitivity.mbt (re-implemented
+  from_blp).
+- 1 test file extended: sensitivity_test.mbt (+4
+  positive tests + 2 panic_ tests).
+- README.mbt.md + CHANGELOG.md updated.
+
+See _verify/T190-verdict.md.

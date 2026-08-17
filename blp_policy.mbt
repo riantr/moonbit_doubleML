@@ -20,6 +20,13 @@ pub struct DoubleMLBLP {
   coef : Array[Double]
   se : Array[Double]
   fitted : Bool
+  // v0.19.0+: post-fit summary statistics used by
+  // `GainStatsSource::from_blp` to auto-populate the
+  // sensitivity parameter benchmarks. Initialised to
+  // zero in `new`; filled in by `fit`.
+  n_obs : Int
+  rss : Double
+  var_y : Double
 } derive(Debug)
 
 ///|
@@ -30,7 +37,17 @@ pub fn DoubleMLBLP::new(
 ) -> DoubleMLBLP {
   require(basis.rows() == orth_signal.length())
   require(cov_type == "HC0" || cov_type == "nonrobust")
-  { basis, orth_signal, cov_type, coef: [], se: [], fitted: false }
+  {
+    basis,
+    orth_signal,
+    cov_type,
+    coef: [],
+    se: [],
+    fitted: false,
+    n_obs: 0,
+    rss: 0.0,
+    var_y: 0.0,
+  }
 }
 
 ///|
@@ -48,15 +65,30 @@ pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
   // Per-coefficient SE (Bug #5 fix); HC0 default matches
   // upstream `statsmodels.OLS(cov_type='HC0')`.
   let n_obs = self.orth_signal.length()
+  let pred = model.predict(self.basis)
+  let mut rss = 0.0
+  for i = 0; i < n_obs; i = i + 1 {
+    let e = self.orth_signal[i] - pred[i]
+    rss = rss + e * e
+  }
+  // `var_y` = variance of the orthogonal signal (the BLP's
+  // "outcome" variable). Computed as a one-pass Welford
+  // would be slightly more accurate, but a two-pass mean
+  // is fine for our purposes.
+  let mut mean_y = 0.0
+  for i = 0; i < n_obs; i = i + 1 {
+    mean_y = mean_y + self.orth_signal[i]
+  }
+  mean_y = mean_y / n_obs.to_double()
+  let mut ss_y = 0.0
+  for i = 0; i < n_obs; i = i + 1 {
+    let d = self.orth_signal[i] - mean_y
+    ss_y = ss_y + d * d
+  }
+  let var_y = ss_y / n_obs.to_double()
   let cov_diag = if self.cov_type == "HC0" {
     model.sandwich_se(self.basis, self.orth_signal)
   } else {
-    let pred = model.predict(self.basis)
-    let mut rss = 0.0
-    for i = 0; i < pred.length(); i = i + 1 {
-      let e = self.orth_signal[i] - pred[i]
-      rss = rss + e * e
-    }
     let sigma2 = rss / (n_obs.to_double() - p.to_double())
     model.covariance_diagonal(sigma2)
   }
@@ -70,6 +102,9 @@ pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
     coef: c,
     se: s,
     fitted: true,
+    n_obs,
+    rss,
+    var_y,
   }
 }
 
@@ -83,6 +118,30 @@ pub fn DoubleMLBLP::coef(self : DoubleMLBLP) -> Array[Double] {
 pub fn DoubleMLBLP::se(self : DoubleMLBLP) -> Array[Double] {
   require(self.fitted)
   self.se
+}
+
+///|
+/// v0.19.0+: sample size used by the BLP fit.
+pub fn DoubleMLBLP::n_obs(self : DoubleMLBLP) -> Int {
+  require(self.fitted)
+  self.n_obs
+}
+
+///|
+/// v0.19.0+: residual sum of squares from the BLP fit.
+/// Equals `sum_i (orth_signal[i] - basis[i] @ coef)^2`.
+pub fn DoubleMLBLP::rss(self : DoubleMLBLP) -> Double {
+  require(self.fitted)
+  self.rss
+}
+
+///|
+/// v0.19.0+: variance of the orthogonal signal (the BLP's
+/// "outcome" variable). Computed as a population variance
+/// (divisor `n`, not `n - 1`).
+pub fn DoubleMLBLP::var_y(self : DoubleMLBLP) -> Double {
+  require(self.fitted)
+  self.var_y
 }
 
 ///|

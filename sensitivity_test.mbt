@@ -268,16 +268,136 @@ test "panic_gain_statistics_length_mismatch" {
 }
 
 ///|
-/// `GainStatsSource::from_blp` constructs a source from a
-/// fitted `DoubleMLBLP` + manually-supplied per-rep arrays.
-/// The accessor validates that all three arrays have the
-/// same length and that `length % n_rep == 0`.
+/// v0.19.0+: `GainStatsSource::from_blp(blp)` auto-populates
+/// the per-rep arrays from the BLP's fit output. The BLP
+/// is fit on a small DGP with two features; with the
+/// automatic intercept, the BLP returns 3 coefs
+/// (intercept + 2 slopes).
 test "gain_stats_from_blp_basic" {
-  let blp = DoubleMLBLP::new(Matrix::zeros(2, 2), [1.0, 1.0]).fit()
-  let src = GainStatsSource::from_blp(blp, [1.0], [0.5], [0.0], 1, 4.0)
-  inspect(src.var_y_residuals.length(), content="1")
-  inspect(src.nu2.length(), content="1")
-  inspect(src.all_coef.length(), content="1")
+  let basis = Matrix::zeros(10, 2)
+  for i = 0; i < 10; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    basis.set(i, 1, i.to_double() * 0.1)
+  }
+  let orth_signal = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  let blp = DoubleMLBLP::new(basis, orth_signal).fit()
+  let src = GainStatsSource::from_blp(blp)
+  let n_coef = blp.coef().length()
+  inspect(src.var_y_residuals.length(), content=n_coef.to_string())
+  inspect(src.nu2.length(), content=n_coef.to_string())
+  inspect(src.all_coef.length(), content=n_coef.to_string())
   inspect(src.n_rep, content="1")
-  inspect((src.var_y - 4.0).abs() < 1.0e-12, content="true")
+  // all_coef matches the BLP's coef.
+  let blp_coef = blp.coef()
+  for k = 0; k < n_coef; k = k + 1 {
+    inspect((src.all_coef[k] - blp_coef[k]).abs() < 1.0e-15, content="true")
+  }
+  // var_y matches the BLP's var_y.
+  inspect((src.var_y - blp.var_y()).abs() < 1.0e-15, content="true")
+}
+
+///|
+/// v0.19.0+: `GainStatsSource::from_blp(blp, n_rep=N)`
+/// accepts an explicit `n_rep`. The arrays are length
+/// `n_coef` (broadcast).
+test "gain_stats_from_blp_n_rep" {
+  let basis = Matrix::zeros(10, 2)
+  for i = 0; i < 10; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    basis.set(i, 1, i.to_double() * 0.1)
+  }
+  let orth_signal = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  let blp = DoubleMLBLP::new(basis, orth_signal).fit()
+  let n_coef = blp.coef().length()
+  // n_rep must divide n_coef. n_rep=1 (default) works.
+  let src = GainStatsSource::from_blp(blp, n_rep=1)
+  inspect(src.n_rep, content="1")
+  inspect(src.var_y_residuals.length(), content=n_coef.to_string())
+}
+
+///|
+/// v0.19.0+: panic test — `from_blp` requires the BLP to
+/// be fitted first.
+test "panic_gain_stats_from_blp_unfitted" {
+  let basis = Matrix::zeros(5, 1)
+  for i = 0; i < 5; i = i + 1 {
+    basis.set(i, 0, 1.0)
+  }
+  let unfitted = DoubleMLBLP::new(basis, [0.1, 0.2, 0.3, 0.4, 0.5])
+  let _ = GainStatsSource::from_blp(unfitted)
+}
+
+///|
+/// v0.19.0+: panic test — `n_rep` must divide the number
+/// of BLP coefficients.
+test "panic_gain_stats_from_blp_n_rep_invalid" {
+  // 1-column basis -> 2 coefs (intercept + 1 slope).
+  // n_rep = 3 does not divide 2.
+  let basis = Matrix::zeros(10, 1)
+  for i = 0; i < 10; i = i + 1 {
+    basis.set(i, 0, 1.0)
+  }
+  let blp = DoubleMLBLP::new(basis, [
+    0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+  ]).fit()
+  let _ = GainStatsSource::from_blp(blp, n_rep=3)
+}
+
+///|
+/// v0.19.0+ end-to-end: fit two BLPs with the SAME basis
+/// structure (1 feature each, so 2 coefs each with
+/// intercept) but DIFFERENT noise realizations on the
+/// orthogonal signal. The "long" model (low-noise signal)
+/// has smaller residual variance than the "short" model
+/// (high-noise signal). Auto-populate `GainStatsSource`
+/// via `from_blp` and call `gain_statistics` to compute
+/// the per-coef benchmarks. The benchmarks should be
+/// well-defined (in [0, 1] for `cf_y` / `cf_d` / `|rho|`).
+test "gain_stats_end_to_end_via_blp" {
+  let n = 50
+  let basis = Matrix::zeros(n, 1)
+  for i = 0; i < n; i = i + 1 {
+    basis.set(i, 0, 1.0)
+  }
+  // Two different orthogonal signals with different noise
+  // levels. The "long" model uses a low-noise signal
+  // (smaller residual variance after BLP fit). The
+  // "short" model uses a high-noise signal.
+  let signal_low_noise : Array[Double] = []
+  let signal_high_noise : Array[Double] = []
+  let mut acc_lo = signal_low_noise
+  let mut acc_hi = signal_high_noise
+  for i = 0; i < n; i = i + 1 {
+    let xi = i.to_double() * 0.1
+    acc_lo = acc_lo + [0.5 + 0.3 * xi + 0.01 * (i % 5).to_double()]
+    acc_hi = acc_hi + [0.5 + 0.3 * xi + 0.5 * (i % 7).to_double()]
+  }
+  let signal_low_noise = acc_lo
+  let signal_high_noise = acc_hi
+  let blp_long = DoubleMLBLP::new(basis, signal_low_noise).fit()
+  let blp_short = DoubleMLBLP::new(basis, signal_high_noise).fit()
+  let src_long = GainStatsSource::from_blp(blp_long)
+  let src_short = GainStatsSource::from_blp(blp_short)
+  // Long model has smaller residual variance.
+  inspect(
+    src_long.var_y_residuals[0] <= src_short.var_y_residuals[0] + 1.0e-12,
+    content="true",
+  )
+  // Both sources have the same n_coef (2 = intercept + 1).
+  let n_coef = src_long.all_coef.length()
+  inspect(src_short.all_coef.length(), content=n_coef.to_string())
+  let result = gain_statistics(src_long, src_short)
+  inspect(result.cf_y.length(), content=n_coef.to_string())
+  inspect(result.cf_d.length(), content=n_coef.to_string())
+  inspect(result.rho.length(), content=n_coef.to_string())
+  inspect(result.delta_theta.length(), content=n_coef.to_string())
+  // All benchmark values must be finite and in valid ranges.
+  for k = 0; k < n_coef; k = k + 1 {
+    let cf_y_k = result.cf_y[k]
+    let cf_d_k = result.cf_d[k]
+    let rho_k = result.rho[k]
+    inspect(cf_y_k >= 0.0 && cf_y_k <= 1.0, content="true")
+    inspect(cf_d_k >= 0.0 && cf_d_k <= 1.0, content="true")
+    inspect(rho_k >= -1.0 && rho_k <= 1.0, content="true")
+  }
 }
