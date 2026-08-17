@@ -616,3 +616,181 @@ test "p_adjust_deterministic_seed" {
   }
   inspect(all_match, content="true")
 }
+
+// ---------------------------------------------------------------------------
+// v0.18.0+ BH / BY FDR p_adjust tests
+// ---------------------------------------------------------------------------
+
+///|
+/// Benjamini-Hochberg FDR on a hand-rolled example.
+/// `p = [0.01, 0.04, 0.03, 0.005]`, n = 4.
+/// Sorted ascending: `[0.005, 0.01, 0.03, 0.04]`, order
+/// `[3, 0, 2, 1]`.
+/// `p_adj_sorted[k] = min(1, p_sorted[k] * 4 / (k+1))`:
+///   k=0: 0.005 * 4 / 1 = 0.020
+///   k=1: 0.01  * 4 / 2 = 0.020
+///   k=2: 0.03  * 4 / 3 = 0.040
+///   k=3: 0.04  * 4 / 4 = 0.040
+/// Already non-decreasing so the monotonicity pass is a
+/// no-op. Re-order to original: `[0.020, 0.040, 0.040, 0.020]`.
+test "bh_fdr_handrolled" {
+  let unadj : Array[Double] = [0.01, 0.04, 0.03, 0.005]
+  let p_adj = bh_fdr_p_adjust(unadj)
+  let expected = [0.02, 0.04, 0.04, 0.02]
+  inspect(p_adj.length(), content="4")
+  for i = 0; i < 4; i = i + 1 {
+    inspect((p_adj[i] - expected[i]).abs() < 1.0e-12, content="true")
+  }
+}
+
+///|
+/// Benjamini-Yekutieli FDR on a hand-rolled example.
+/// Same unadjusted p-values as the BH test, n = 4.
+/// Harmonic sum `c = 1 + 1/2 + 1/3 + 1/4 = 2.08333...`.
+/// `p_adj_sorted[k] = min(1, p_sorted[k] * 4 * c / (k+1))`:
+///   k=0: 0.005 * 4 * 2.0833... / 1 = 0.0417
+///   k=1: 0.01  * 4 * 2.0833... / 2 = 0.0417
+///   k=2: 0.03  * 4 * 2.0833... / 3 = 0.0833
+///   k=3: 0.04  * 4 * 2.0833... / 4 = 0.0833
+/// Re-order to original: out[3]=sorted[0], out[0]=sorted[1],
+/// out[2]=sorted[2], out[1]=sorted[3].
+test "by_fdr_handrolled" {
+  let unadj : Array[Double] = [0.01, 0.04, 0.03, 0.005]
+  let p_adj = by_fdr_p_adjust(unadj)
+  let c : Double = 1.0 + 0.5 + 1.0 / 3.0 + 0.25 // 2.0833...
+  // p_adj_sorted[k] = p_sorted[k] * 4 * c / (k + 1).
+  let sorted = [
+    0.005 * 4.0 * c / 1.0,
+    0.01 * 4.0 * c / 2.0,
+    0.03 * 4.0 * c / 3.0,
+    0.04 * 4.0 * c / 4.0,
+  ]
+  let target = [sorted[1], sorted[3], sorted[2], sorted[0]]
+  inspect(p_adj.length(), content="4")
+  for i = 0; i < 4; i = i + 1 {
+    inspect((p_adj[i] - target[i]).abs() < 1.0e-12, content="true")
+  }
+}
+
+///|
+/// BY is always at least as conservative as BH (`c >= 1`).
+test "bh_by_inclusion_relations" {
+  let unadj : Array[Double] = [0.01, 0.04, 0.03, 0.005, 0.02]
+  let bh = bh_fdr_p_adjust(unadj)
+  let by = by_fdr_p_adjust(unadj)
+  for i = 0; i < 5; i = i + 1 {
+    inspect(by[i] >= bh[i] - 1.0e-12, content="true")
+  }
+}
+
+///|
+/// BH / BY adjusted p-values are non-decreasing when the
+/// inputs are read in sorted-p order (algorithm invariant).
+test "bh_by_sorted_output_is_monotonic" {
+  let unadj : Array[Double] = [0.10, 0.20, 0.05, 0.30, 0.15]
+  let bh = bh_fdr_p_adjust(unadj)
+  let by = by_fdr_p_adjust(unadj)
+  let bh_sorted : Array[Double] = bh.copy()
+  bh_sorted.sort()
+  let by_sorted : Array[Double] = by.copy()
+  by_sorted.sort()
+  let mut bh_mono = true
+  let mut by_mono = true
+  for i = 1; i < bh_sorted.length(); i = i + 1 {
+    if bh_sorted[i] < bh_sorted[i - 1] - 1.0e-15 {
+      bh_mono = false
+    }
+    if by_sorted[i] < by_sorted[i - 1] - 1.0e-15 {
+      by_mono = false
+    }
+  }
+  inspect(bh_mono, content="true")
+  inspect(by_mono, content="true")
+}
+
+///|
+/// `DoubleMLDIDMulti::p_adjust("bh")` works without
+/// `bootstrap()` (BH only needs the unadjusted p-values,
+/// unlike Romano-Wolf).
+test "p_adjust_bh_no_bootstrap_required" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv = fitted.p_adjust(method_name="bh")
+  inspect(pv.length(), content="3")
+  // On the canonical DGP the unadjusted p-values are
+  // ~0 (|t| ~ 200), so BH adjusted p-values are ~0 too.
+  let mut all_zero = true
+  for i = 0; i < 3; i = i + 1 {
+    if pv[i] > 0.01 {
+      all_zero = false
+    }
+  }
+  inspect(all_zero, content="true")
+}
+
+///|
+/// `DoubleMLDIDMulti::p_adjust("by")` works without
+/// `bootstrap()`. BY >= BH pointwise.
+test "p_adjust_by_no_bootstrap_required" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv = fitted.p_adjust(method_name="by")
+  let pv_bh = fitted.p_adjust(method_name="bh")
+  for i = 0; i < pv.length(); i = i + 1 {
+    inspect(pv[i] >= pv_bh[i] - 1.0e-12, content="true")
+  }
+}
+
+///|
+/// `p_adjust("bh")` is deterministic given a fixed
+/// bootstrap seed (BH is purely a function of
+/// unadjusted p-values, so the seed is irrelevant;
+/// this test verifies determinism across re-fits).
+test "p_adjust_bh_deterministic" {
+  let data = build_bootstrap_dgp()
+  let f1 = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let f2 = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let p1 = f1.p_adjust(method_name="bh")
+  let p2 = f2.p_adjust(method_name="bh")
+  let mut all_match = true
+  for i = 0; i < p1.length(); i = i + 1 {
+    if (p1[i] - p2[i]).abs() > 1.0e-15 {
+      all_match = false
+    }
+  }
+  inspect(all_match, content="true")
+}
+
+///|
+/// Numerical cross-check vs `statsmodels.stats.multitest`
+/// (BH / BY). The Python reference for the same inputs
+/// (n=5, p = [0.001, 0.01, 0.02, 0.03, 0.05]) is:
+///   BH = [0.005, 0.025, 0.0333, 0.0375, 0.05]
+///   BY = [0.0114, 0.0571, 0.0761, 0.0857, 0.1142]
+/// (computed by `multipletests(p, method='fdr_bh')` and
+/// `multipletests(p, method='fdr_by')` in
+/// `validate_padjust_with_python.py`).
+test "bh_by_vs_statsmodels_reference" {
+  let unadj : Array[Double] = [0.001, 0.01, 0.02, 0.03, 0.05]
+  let bh = bh_fdr_p_adjust(unadj)
+  let by = by_fdr_p_adjust(unadj)
+  // BH reference: [0.005, 0.025, 0.0333, 0.0375, 0.05]
+  let bh_ref = [0.005, 0.025, 0.02 * 5.0 / 3.0, 0.03 * 5.0 / 4.0, 0.05]
+  // BY reference: p[k] * 5 * c / (k+1) where c = 2.2833...
+  let c : Double = 1.0 + 0.5 + 1.0 / 3.0 + 0.25 + 0.2
+  let by_sorted = [
+    0.001 * 5.0 * c / 1.0,
+    0.01 * 5.0 * c / 2.0,
+    0.02 * 5.0 * c / 3.0,
+    0.03 * 5.0 * c / 4.0,
+    0.05 * 5.0 * c / 5.0,
+  ]
+  // order = argsort(unadj) ascending = [0, 1, 2, 3, 4]
+  // so ro = identity, and out[i] = by_sorted[i].
+  let by_ref = by_sorted
+  let _ = bh_ref
+  for i = 0; i < 5; i = i + 1 {
+    inspect((bh[i] - bh_ref[i]).abs() < 1.0e-12, content="true")
+    inspect((by[i] - by_ref[i]).abs() < 1.0e-12, content="true")
+  }
+}

@@ -11,6 +11,78 @@ release is the canonical version.
 
 ---
 
+## [0.18.0] — BH / BY FDR p-adjust
+
+### Added
+- **`did_multi.mbt::bh_fdr_p_adjust(unadjusted)`**:
+  Benjamini-Hochberg FDR correction. Sort p-values
+  ascending, `p_adj_sorted[k] = min(1, p_sorted[k] * n /
+  (k + 1))`, enforce monotonicity from the largest rank
+  downward (BH-specific direction), re-order to
+  original cell order. Matches
+  `statsmodels.stats.multitest.multipletests(p, method='fdr_bh')`.
+- **`did_multi.mbt::by_fdr_p_adjust(unadjusted)`**:
+  Benjamini-Yekutieli FDR correction. Same as BH but
+  multiplied by the harmonic-sum factor
+  `c = sum_{i=1}^{n} 1/i`. Matches
+  `statsmodels.stats.multitest.multipletests(p, method='fdr_by')`.
+- **`DoubleMLDIDMulti::p_adjust` accepts `"bh"` and
+  `"by"`**: end-to-end dispatcher for FDR control.
+  BH / BY do **not** require `bootstrap()` (they only
+  consume the unadjusted p-values), so they are cheaper
+  than the Romano-Wolf stepdown.
+
+### Tests
+- 200/200 across all 4 backends (native, wasm-gc, wasm,
+  js). Was 192 in v0.17.0, +8 new tests:
+  - `bh_fdr_handrolled` — known 4-element example
+    with exact reference values.
+  - `by_fdr_handrolled` — same example, BY formula
+    with `c = 1 + 1/2 + 1/3 + 1/4 = 2.0833...`.
+  - `bh_by_inclusion_relations` — `BY[i] >= BH[i]`
+    pointwise (`c >= 1`).
+  - `bh_by_sorted_output_is_monotonic` — algorithm
+    invariant: BH/BY are non-decreasing when read in
+    sorted-p order.
+  - `p_adjust_bh_no_bootstrap_required` — end-to-end
+    through `DoubleMLDIDMulti::p_adjust("bh")` on the
+    canonical DGP.
+  - `p_adjust_by_no_bootstrap_required` — end-to-end
+    through `p_adjust("by")`, plus `BY >= BH` check.
+  - `p_adjust_bh_deterministic` — same DGP, two fits,
+    bit-equal output.
+  - `bh_by_vs_statsmodels_reference` — exact
+    cross-check against
+    `statsmodels.stats.multitest.multipletests`
+    on a 5-element p-value array.
+
+### Cross-check vs statsmodels
+For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
+
+| Method | statsmodels | MoonBit |
+|--------|-------------|---------|
+| BH     | `[0.005, 0.025, 0.033333, 0.0375, 0.05]` | ✓ |
+| BY     | `[0.011417, 0.057083, 0.076111, 0.085625, 0.114167]` | ✓ |
+
+### Notes
+- BH controls the false discovery rate (FDR); the
+  adjusted p-values can be smaller than the unadjusted
+  ones (BH is less conservative than Holm or
+  Bonferroni on average).
+- BY is at least as conservative as BH (`c >= 1`), but
+  the comparison BY vs Bonferroni is case-by-case:
+  BY sorts and applies a different scaling, so
+  `BY[i] >= Bonferroni[i]` is **not** guaranteed.
+- The 5 existing demos still produce bit-equal output
+  to v0.17.0 (none call `p_adjust("bh")` or
+  `p_adjust("by")`).
+- 15/15 Python validators still PASS. The
+  `validate_padjust_with_python.py` script now also
+  emits the BH / BY reference values for
+  cross-checking.
+
+---
+
 ## [0.17.1] — `moon fmt` pass (hygiene)
 
 ### Fixed

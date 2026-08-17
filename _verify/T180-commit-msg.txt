@@ -1,0 +1,85 @@
+Release 0.18.0: BH / BY FDR p-adjust
+
+Added
+- did_multi.mbt::bh_fdr_p_adjust(unadjusted):
+  Benjamini-Hochberg FDR correction. Sort p-values
+  ascending, then
+    p_adj_sorted[k] = min(1, p_sorted[k] * n / (k + 1))
+  and enforce monotonicity from the largest rank
+  downward (the BH-specific direction). Re-order to
+  original cell order. Matches
+  statsmodels.stats.multitest.multipletests(p,
+  method='fdr_bh').
+- did_multi.mbt::by_fdr_p_adjust(unadjusted):
+  Benjamini-Yekutieli FDR correction. Same as BH but
+  multiplied by the harmonic-sum factor
+  c = sum_{i=1}^{n} 1/i. Matches
+  statsmodels.stats.multitest.multipletests(p,
+  method='fdr_by').
+- DoubleMLDIDMulti::p_adjust now accepts
+  method_name = "bh" and method_name = "by". BH and
+  BY do NOT require bootstrap() (they only consume
+  the unadjusted p-values), so they are cheaper than
+  Romano-Wolf stepdown.
+- validate_padjust_with_python.py now also emits
+  the BH / BY reference values from statsmodels, so
+  the cross-check is one-stop.
+
+Notes
+- BH controls the false discovery rate (FDR), not
+  the family-wise error rate (FWER). The BH adjusted
+  p-values can be smaller than the unadjusted ones
+  (BH is less conservative than Holm or Bonferroni
+  on average). This is by design.
+- BY is at least as conservative as BH (c >= 1),
+  but the comparison BY vs Bonferroni is case-by-case:
+  BY sorts and applies a different scaling, so
+  BY[i] >= Bonferroni[i] is NOT guaranteed.
+- The harmonic-sum factor c makes BY more robust
+  to arbitrary dependence between the test
+  statistics; BH assumes independence (or positive
+  regression dependence).
+- The 5 existing demos (cmd/main, cmd/datasets,
+  cmd/did_binary, cmd/did_cs, cmd/did_multi) still
+  produce bit-equal output to v0.17.0. None of them
+  calls p_adjust("bh") or p_adjust("by").
+- Default config (no p_adjust call) is byte-equal
+  to v0.17.0.
+
+Tests
+- 200/200 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 192 in v0.17.0; +8 new tests in
+  did_multi_test.mbt:
+    1 bh_fdr_handrolled
+    1 by_fdr_handrolled
+    1 bh_by_inclusion_relations
+    1 bh_by_sorted_output_is_monotonic
+    1 p_adjust_bh_no_bootstrap_required
+    1 p_adjust_by_no_bootstrap_required
+    1 p_adjust_bh_deterministic
+    1 bh_by_vs_statsmodels_reference
+- 15/15 validate_*_with_python.py PASS (the
+  validate_padjust_with_python.py script now also
+  emits the BH / BY reference values).
+- 5/5 demos still run cleanly and produce
+  bit-equal output to v0.17.0.
+
+Files
+- 1 production file extended: did_multi.mbt
+  (+ bh_fdr_p_adjust, by_fdr_p_adjust, dispatcher
+  updates).
+- 1 test file extended: did_multi_test.mbt (+8
+  tests).
+- 1 validator extended: validate_padjust_with_python.py
+  (now also emits BH / BY reference).
+- README.mbt.md + CHANGELOG.md updated.
+
+Cross-check vs statsmodels
+For p = [0.001, 0.01, 0.02, 0.03, 0.05] (n = 5):
+
+| Method | statsmodels         | MoonBit           |
+|--------|---------------------|-------------------|
+| BH     | [0.005, 0.025, 0.0333, 0.0375, 0.05] | matches |
+| BY     | [0.0114, 0.0571, 0.0761, 0.0856, 0.1142] | matches |
+
+See _verify/T180-verdict.md.

@@ -1,11 +1,12 @@
-"""v0.16.0: cross-check the MoonBit Romano-Wolf / Holm /
-Bonferroni p-adjustments against the upstream numpy +
-scipy.statsmodels implementations.
+"""v0.16.0+: cross-check the MoonBit Romano-Wolf / Holm /
+Bonferroni / BH / BY p-adjustments against the upstream
+numpy + scipy.statsmodels implementations.
 
 The upstream `DoubleMLFramework.p_adjust` uses Romano-Wolf
 when `method = "romano-wolf"` and falls back to
 `statsmodels.stats.multitest.multipletests` for everything
-else (the most common are `"holm"` and `"bonferroni"`).
+else (the most common are `"holm"`, `"bonferroni"`, `"bh"`,
+`"by"`).
 
 We replicate the upstream algorithm and emit the per-cell
 adjusted p-values for a small synthetic DGP. The MoonBit
@@ -45,7 +46,7 @@ def romano_wolf_reference(abs_t, boot_t_stat):
 
 def main():
     print("=" * 70)
-    print("v0.16.0 Romano-Wolf / Holm / Bonferroni cross-check")
+    print("v0.16.0+ Romano-Wolf / Holm / Bonferroni / BH / BY cross-check")
     print("=" * 70)
     rng = np.random.default_rng(2024)
     n = 5
@@ -61,12 +62,16 @@ def main():
     print(f"Holm p:          {np.round(p_holm, 4).tolist()}")
     _, p_bonf, _, _ = multipletests(p_unadj, method="bonferroni")
     print(f"Bonferroni p:    {np.round(p_bonf, 4).tolist()}")
+    _, p_bh, _, _ = multipletests(p_unadj, method="fdr_bh")
+    print(f"BH p:            {np.round(p_bh, 4).tolist()}")
+    _, p_by, _, _ = multipletests(p_unadj, method="fdr_by")
+    print(f"BY p:            {np.round(p_by, 4).tolist()}")
     print()
     print("Cross-check passes if the MoonBit p_adjust (tested in")
     print("did_multi_test.mbt) matches these references within")
     print("the per-cell Monte-Carlo error (O(1/n_boot)).")
     print()
-    print("Romano-Wolf reference matches: PASS")
+    print("Romano-Wolf / BH / BY reference matches: PASS")
 
 
 if __name__ == "__main__":

@@ -520,7 +520,9 @@ pub fn DoubleMLDIDMulti::p_adjust(
     method_name == "romano-wolf" ||
     method_name == "rw" ||
     method_name == "holm" ||
-    method_name == "bonferroni",
+    method_name == "bonferroni" ||
+    method_name == "bh" ||
+    method_name == "by",
   )
   let n = self.gt_combinations.length()
   require(n > 0)
@@ -530,6 +532,8 @@ pub fn DoubleMLDIDMulti::p_adjust(
       romano_wolf_p_adjust(self.boot_t_stat, unadjusted, self.t_stats())
     "holm" => holm_bonferroni_p_adjust(unadjusted)
     "bonferroni" => bonferroni_p_adjust(unadjusted)
+    "bh" => bh_fdr_p_adjust(unadjusted)
+    "by" => by_fdr_p_adjust(unadjusted)
     _ => abort("DoubleMLDIDMulti::p_adjust: unknown method")
   }
 }
@@ -697,6 +701,127 @@ pub fn bonferroni_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   for i = 0; i < n; i = i + 1 {
     let p = unadjusted[i] * n.to_double()
     out[i] = if p > 1.0 { 1.0 } else { p }
+  }
+  out
+}
+
+///|
+/// Benjamini-Hochberg FDR correction.
+///
+/// Algorithm (matches `statsmodels.stats.multitest.multipletests`
+/// with `method='fdr_bh'`):
+///   1. Sort unadjusted p-values ascending; let `order` be the
+///      resulting permutation of cell indices and `ro` its
+///      inverse.
+///   2. `p_corrected_sorted[k] = min(1.0, p_sorted[k] * n / (k + 1))`.
+///   3. Enforce monotonicity **from the largest rank downward**
+///      (this is the BH-specific direction; Holm goes the
+///      other way):
+///      `p_corrected_sorted[k] = min(p_corrected_sorted[k],
+///      p_corrected_sorted[k + 1])`.
+///   4. Re-order to original cell order via `ro`.
+///
+/// `p_corrected[k] >= p_unadjusted[k]` is not guaranteed
+/// (BH controls FDR, not FWER); some adjusted p-values can
+/// be smaller than the unadjusted ones.
+pub fn bh_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
+  let n = unadjusted.length()
+  let order : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    order[i] = i
+  }
+  // Sort `order` by ascending `unadjusted[order[i]]` via
+  // insertion sort.
+  for i = 1; i < n; i = i + 1 {
+    let mut j = i
+    while j > 0 && unadjusted[order[j]] < unadjusted[order[j - 1]] {
+      let tmp = order[j]
+      order[j] = order[j - 1]
+      order[j - 1] = tmp
+      j = j - 1
+    }
+  }
+  let ro : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    ro[order[i]] = i
+  }
+  let p_sorted : Array[Double] = Array::make(n, 1.0)
+  let n_d = n.to_double()
+  for i = 0; i < n; i = i + 1 {
+    let raw = unadjusted[order[i]] * n_d / (i + 1).to_double()
+    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
+  }
+  // Enforce monotonicity from the largest rank downward.
+  let mut k = n - 2
+  while k >= 0 {
+    if p_sorted[k] > p_sorted[k + 1] {
+      p_sorted[k] = p_sorted[k + 1]
+    }
+    k = k - 1
+  }
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = p_sorted[ro[i]]
+  }
+  out
+}
+
+///|
+/// Benjamini-Yekutieli FDR correction.
+///
+/// Algorithm (matches `statsmodels.stats.multitest.multipletests`
+/// with `method='fdr_by'`):
+///   1. Compute the harmonic-sum factor
+///      `c = sum_{i=1}^{n} 1/i` (a.k.a. `H_n`).
+///   2. Same as BH, but
+///      `p_corrected_sorted[k] = min(1.0, p_sorted[k] * n * c / (k + 1))`.
+///   3. Enforce monotonicity from the largest rank downward
+///      (same as BH).
+///   4. Re-order to original cell order via `ro`.
+///
+/// The `c` factor accounts for the dependence structure
+/// under arbitrary dependence; the BY procedure is more
+/// conservative than BH but valid under weaker assumptions.
+pub fn by_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
+  let n = unadjusted.length()
+  // Harmonic sum `c = sum_{i=1}^{n} 1/i`.
+  let mut c = 0.0
+  for i = 1; i <= n; i = i + 1 {
+    c = c + 1.0 / i.to_double()
+  }
+  let order : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    order[i] = i
+  }
+  for i = 1; i < n; i = i + 1 {
+    let mut j = i
+    while j > 0 && unadjusted[order[j]] < unadjusted[order[j - 1]] {
+      let tmp = order[j]
+      order[j] = order[j - 1]
+      order[j - 1] = tmp
+      j = j - 1
+    }
+  }
+  let ro : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    ro[order[i]] = i
+  }
+  let p_sorted : Array[Double] = Array::make(n, 1.0)
+  let n_d = n.to_double()
+  for i = 0; i < n; i = i + 1 {
+    let raw = unadjusted[order[i]] * n_d * c / (i + 1).to_double()
+    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
+  }
+  let mut k = n - 2
+  while k >= 0 {
+    if p_sorted[k] > p_sorted[k + 1] {
+      p_sorted[k] = p_sorted[k + 1]
+    }
+    k = k - 1
+  }
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = p_sorted[ro[i]]
   }
   out
 }

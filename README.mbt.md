@@ -10,7 +10,7 @@ covering all 15 models currently in upstream.
 |------|-------|
 | Source file count | 60 (30 production + 30 test) |
 | Models ported | 15 / 15 |
-| Tests | **192 / 192** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **200 / 200** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
 | Python cross-checks | 15 / 15 PASS |
 | License | Apache-2.0 |
@@ -19,7 +19,7 @@ covering all 15 models currently in upstream.
 
 ```console
 $ moon test --deny-warn
-Total tests: 192, passed: 192, failed: 0.
+Total tests: 200, passed: 200, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -103,10 +103,10 @@ $ moon run cmd/did_multi
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 192/192
-moon test --target wasm-gc --deny-warn   # 192/192
-moon test --target wasm    --deny-warn   # 192/192
-moon test --target js      --deny-warn   # 192/192
+moon test --target native  --deny-warn   # 200/200
+moon test --target wasm-gc --deny-warn   # 200/200
+moon test --target wasm    --deny-warn   # 200/200
+moon test --target js      --deny-warn   # 200/200
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
@@ -202,12 +202,17 @@ let ci_pw = booted.confint(joint=false)  // Wald-style (1.96 * se)
 let ci_joint = booted.confint(joint=true)  // bootstrap critical value
 
 // v0.16.0+: multiple-testing p-value adjustment.
-// "romano-wolf" (default) requires the bootstrap; "holm"
-// and "bonferroni" don't. Returns an Array[Double] of
-// length n_combinations.
+// "romano-wolf" (default) requires the bootstrap; "holm",
+// "bonferroni", "bh", "by" don't. Returns an Array[Double]
+// of length n_combinations.
 let pv_rw = booted.p_adjust(method_name="romano-wolf")
 let pv_holm = booted.p_adjust(method_name="holm")
 let pv_bonf = booted.p_adjust(method_name="bonferroni")
+// v0.18.0+: FDR-controlling adjustments (Benjamini-Hochberg
+// and Benjamini-Yekutieli). Both consume only the unadjusted
+// p-values, so they don't require `bootstrap()`.
+let pv_bh = fitted.p_adjust(method_name="bh")
+let pv_by = fitted.p_adjust(method_name="by")
 
 // v0.17.0+: gain statistics for sensitivity parameter
 // benchmarks. Pass two `GainStatsSource` (one for the
