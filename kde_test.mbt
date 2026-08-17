@@ -30,7 +30,8 @@ test "gaussian_kde_recovers_normal_density" {
 test "silverman_bandwidth_uniform" {
   let n = 200
   let y : Array[Double] = Array::makei(n, fn(i) {
-    (i.to_double() - (n.to_double() - 1.0) / 2.0) / ((n.to_double() - 1.0) / 2.0)
+    (i.to_double() - (n.to_double() - 1.0) / 2.0) /
+    ((n.to_double() - 1.0) / 2.0)
   })
   let h = silverman_bandwidth(y)
   inspect(h > 0.15, content="true")

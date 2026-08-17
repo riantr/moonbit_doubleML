@@ -1,0 +1,47 @@
+Release 0.17.1: moon fmt pass (hygiene)
+
+Hotfix.
+
+Fixed
+- kde.mbt: missing trailing newline. The file was
+  last modified in v0.6.0; the missing EOL was a
+  long-standing condition that the v0.17.0 release
+  inherited. The format check has been silently failing
+  on this file since v0.6.0; v0.17.1 closes the loop.
+
+Changed (mechanical, no semantic change)
+- moon fmt pass: 24 source files re-formatted by the
+  official MoonBit formatter. Changes are pure
+  whitespace / line-wrap / doc-comment re-flow
+  (e.g. 19 tests in ps_processor_test.mbt added and
+  19 removed -> net zero; 88 doc-comment lines
+  re-formatted). No API change, no behaviour change,
+  no test change.
+- Files affected (24):
+  cmd/datasets/main.mbt, cmd/datasets/moon.pkg,
+  cmd/did_binary/main.mbt, cmd/did_binary/moon.pkg,
+  cmd/did_cs/main.mbt, cmd/did_multi/main.mbt,
+  did.mbt, did_aggregation_test.mbt,
+  did_binary.mbt, did_binary_test.mbt,
+  did_cs.mbt, did_cs_test.mbt,
+  did_multi.mbt, did_multi_test.mbt,
+  kde.mbt, kde_test.mbt,
+  lpq.mbt, ps_processor.mbt, ps_processor_test.mbt,
+  resampling.mbt, resampling_test.mbt,
+  sensitivity.mbt, sensitivity_test.mbt,
+  var_est.mbt.
+- cmd/datasets/moon.pkg + cmd/did_binary/moon.pkg:
+  trailing newline added (matches cmd/did_cs and
+  cmd/did_multi moon.pkg which already had EOL).
+
+Tests
+- 192/192 across all 4 backends (native, wasm-gc,
+  wasm, js). Same count as v0.17.0; all tests still
+  pass.
+- 15/15 Python validators still PASS.
+- 5/5 demos still run cleanly and produce bit-equal
+  output to v0.17.0 (and v0.16.0 / v0.15.0 / ...).
+- moon fmt --check now exits clean (was failing on
+  kde.mbt + 23 others in v0.17.0).
+
+No behavioural change. This is a pure hygiene pass.

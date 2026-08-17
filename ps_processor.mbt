@@ -61,7 +61,9 @@ pub struct PSProcessor {
 } derive(Debug)
 
 ///|
-pub fn PSProcessor::new(config? : PSProcessorConfig = PSProcessorConfig::default()) -> PSProcessor {
+pub fn PSProcessor::new(
+  config? : PSProcessorConfig = PSProcessorConfig::default(),
+) -> PSProcessor {
   { config, }
 }
 
@@ -182,10 +184,7 @@ fn validate_treatment(treatment : Array[Double]) -> Unit {
 /// The input MUST be sorted by `x` in non-decreasing order. Use
 /// `fit_isotonic` for the public entry point that sorts and
 /// returns the fitted model.
-pub fn pava(
-  y : Array[Double],
-  weights? : Array[Double] = [],
-) -> Array[Double] {
+pub fn pava(y : Array[Double], weights? : Array[Double] = []) -> Array[Double] {
   let n = y.length()
   if n == 0 {
     return []

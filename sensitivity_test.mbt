@@ -34,8 +34,14 @@ test "sensitivity_bias_known_formula" {
   let sqrt2 = 2.0.sqrt()
   inspect((max_bias[0] - sqrt2).abs() < 1.0e-12, content="true")
   inspect((max_bias[1] - sqrt2).abs() < 1.0e-12, content="true")
-  inspect((psi_max_bias[0] - 3.0 / (2.0 * sqrt2)).abs() < 1.0e-12, content="true")
-  inspect((psi_max_bias[1] - 6.0 / (2.0 * sqrt2)).abs() < 1.0e-12, content="true")
+  inspect(
+    (psi_max_bias[0] - 3.0 / (2.0 * sqrt2)).abs() < 1.0e-12,
+    content="true",
+  )
+  inspect(
+    (psi_max_bias[1] - 6.0 / (2.0 * sqrt2)).abs() < 1.0e-12,
+    content="true",
+  )
 }
 
 ///|
@@ -150,14 +156,14 @@ test "gain_statistics_identical" {
   )
   let gs = gain_statistics(dml_long, dml_short)
   inspect(gs.cf_y.length(), content="2")
-  inspect((gs.cf_y[0]).abs() < 1.0e-12, content="true")
-  inspect((gs.cf_y[1]).abs() < 1.0e-12, content="true")
-  inspect((gs.cf_d[0]).abs() < 1.0e-12, content="true")
-  inspect((gs.cf_d[1]).abs() < 1.0e-12, content="true")
-  inspect((gs.delta_theta[0]).abs() < 1.0e-12, content="true")
-  inspect((gs.delta_theta[1]).abs() < 1.0e-12, content="true")
-  inspect((gs.rho[0]).abs() < 1.0e-12, content="true")
-  inspect((gs.rho[1]).abs() < 1.0e-12, content="true")
+  inspect(gs.cf_y[0].abs() < 1.0e-12, content="true")
+  inspect(gs.cf_y[1].abs() < 1.0e-12, content="true")
+  inspect(gs.cf_d[0].abs() < 1.0e-12, content="true")
+  inspect(gs.cf_d[1].abs() < 1.0e-12, content="true")
+  inspect(gs.delta_theta[0].abs() < 1.0e-12, content="true")
+  inspect(gs.delta_theta[1].abs() < 1.0e-12, content="true")
+  inspect(gs.rho[0].abs() < 1.0e-12, content="true")
+  inspect(gs.rho[1].abs() < 1.0e-12, content="true")
 }
 
 ///|
@@ -183,7 +189,7 @@ test "gain_statistics_clipping" {
   )
   let gs = gain_statistics(dml_long, dml_short)
   // `cf_y` clips to 0.
-  inspect((gs.cf_y[0]).abs() < 1.0e-12, content="true")
+  inspect(gs.cf_y[0].abs() < 1.0e-12, content="true")
   // `cf_d = 9`, clipped to 1.
   inspect((gs.cf_d[0] - 1.0).abs() < 1.0e-12, content="true")
 }
@@ -196,16 +202,18 @@ test "gain_statistics_multi_coef_multi_rep" {
   // 2 coefs x 3 reps, var_y = 1.
   let dml_long = GainStatsSource::new(
     // coef 0: reps 0, 1, 2
-    [0.4, 0.4, 0.4,
-     // coef 1: reps 0, 1, 2
-     0.4, 0.4, 0.4],
+    [
+      0.4, 0.4, 0.4,
+      // coef 1: reps 0, 1, 2
+       0.4, 0.4, 0.4,
+    ],
     [
       0.5, 0.5, 0.5, // coef 0
-      0.5, 0.5, 0.5, // coef 1
+       0.5, 0.5, 0.5, // coef 1
     ],
     [
       1.0, 1.0, 1.0, // coef 0
-      2.0, 2.0, 2.0, // coef 1
+       2.0, 2.0, 2.0, // coef 1
     ],
     3,
     1.0,
@@ -248,11 +256,13 @@ test "gain_statistics_multi_coef_multi_rep" {
 /// Length mismatch: `dml_long.all_coef.length()` must equal
 /// `dml_long.var_y_residuals.length()`. The function aborts.
 test "panic_gain_statistics_length_mismatch" {
-  let dml_long = GainStatsSource::new(
-    [1.0, 1.0], [1.0, 1.0], [1.0], 1, 1.0,
-  )
+  let dml_long = GainStatsSource::new([1.0, 1.0], [1.0, 1.0], [1.0], 1, 1.0)
   let dml_short = GainStatsSource::new(
-    [0.5, 0.5], [0.5, 0.5], [1.0, 1.0], 1, 1.0,
+    [0.5, 0.5],
+    [0.5, 0.5],
+    [1.0, 1.0],
+    1,
+    1.0,
   )
   let _ = gain_statistics(dml_long, dml_short)
 }
@@ -264,9 +274,7 @@ test "panic_gain_statistics_length_mismatch" {
 /// same length and that `length % n_rep == 0`.
 test "gain_stats_from_blp_basic" {
   let blp = DoubleMLBLP::new(Matrix::zeros(2, 2), [1.0, 1.0]).fit()
-  let src = GainStatsSource::from_blp(
-    blp, [1.0], [0.5], [0.0], 1, 4.0,
-  )
+  let src = GainStatsSource::from_blp(blp, [1.0], [0.5], [0.0], 1, 4.0)
   inspect(src.var_y_residuals.length(), content="1")
   inspect(src.nu2.length(), content="1")
   inspect(src.all_coef.length(), content="1")

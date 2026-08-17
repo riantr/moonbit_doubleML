@@ -11,6 +11,50 @@ release is the canonical version.
 
 ---
 
+## [0.17.1] — `moon fmt` pass (hygiene)
+
+### Fixed
+- `kde.mbt`: trailing newline added. The file was
+  last modified in v0.6.0; the missing EOL was a
+  long-standing condition that the v0.17.0 release
+  inherited. `moon fmt --check` had been silently
+  failing on this file since v0.6.0.
+- `cmd/datasets/moon.pkg`, `cmd/did_binary/moon.pkg`:
+  trailing newline added (matches `cmd/did_cs` and
+  `cmd/did_multi` `moon.pkg` which already had EOL).
+
+### Changed (mechanical, no semantic change)
+- `moon fmt` pass: 24 source files re-formatted by
+  the official MoonBit formatter. Changes are pure
+  whitespace / line-wrap / doc-comment re-flow
+  (e.g. 19 tests in `ps_processor_test.mbt` added
+  and 19 removed in net-zero fashion; 88
+  doc-comment lines re-flowed). No API change, no
+  behaviour change, no test change.
+- Files affected (24):
+  `cmd/datasets/main.mbt`, `cmd/datasets/moon.pkg`,
+  `cmd/did_binary/main.mbt`, `cmd/did_binary/moon.pkg`,
+  `cmd/did_cs/main.mbt`, `cmd/did_multi/main.mbt`,
+  `did.mbt`, `did_aggregation_test.mbt`,
+  `did_binary.mbt`, `did_binary_test.mbt`,
+  `did_cs.mbt`, `did_cs_test.mbt`,
+  `did_multi.mbt`, `did_multi_test.mbt`,
+  `kde.mbt`, `kde_test.mbt`,
+  `lpq.mbt`, `ps_processor.mbt`, `ps_processor_test.mbt`,
+  `resampling.mbt`, `resampling_test.mbt`,
+  `sensitivity.mbt`, `sensitivity_test.mbt`,
+  `var_est.mbt`.
+
+### Notes
+- No behavioural change. This is a pure hygiene pass.
+- 192/192 tests still pass (bit-equal to v0.17.0).
+- 15/15 Python validators still PASS.
+- 5/5 demos still run cleanly with bit-equal output
+  to v0.17.0 (and to v0.16.0, v0.15.0, ...).
+- `moon fmt --check` now exits clean.
+
+---
+
 ## [0.17.0] — `gain_statistics` (sensitivity parameter benchmarks from two DML fits)
 
 ### Added

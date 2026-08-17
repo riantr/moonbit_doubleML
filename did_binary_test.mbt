@@ -159,8 +159,7 @@ test "did_binary_uses_ps_processor_clipping" {
       id[row] = u
       g[row] = is_treated
       d[row] = if is_treated == 1 && k == 1 { 1.0 } else { 0.0 }
-      y[row] = (k + is_treated).to_double() + 0.05 *
-        (rng.double() - 0.5)
+      y[row] = (k + is_treated).to_double() + 0.05 * (rng.double() - 0.5)
     }
   }
   let data = DoubleMLDIDBinaryData::new(

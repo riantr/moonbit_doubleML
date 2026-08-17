@@ -181,16 +181,15 @@ fn preprocess_did_binary(
         } else {
           0.0
         }
-      } else {
         // "not_yet_treated": keep never-treated OR (G_indicator=0
         // AND g_unit > max_g_value). The never-treated condition is
         // the same as above; the latter is the not-yet-treated
         // cohort.
-        if g_unit == never_treated_value || (g_indicator == 0.0 && g_unit > max_g_value) {
-          1.0
-        } else {
-          0.0
-        }
+      } else if g_unit == never_treated_value ||
+        (g_indicator == 0.0 && g_unit > max_g_value) {
+        1.0
+      } else {
+        0.0
       }
       // Wide row is emitted iff G_indicator == 1 OR
       // C_indicator == 1 (and exactly one, asserted by require).
@@ -232,13 +231,7 @@ fn preprocess_did_binary(
   for di in d_acc {
     require(di == 0.0 || di == 1.0)
   }
-  {
-    x: x_mat,
-    y: y_acc,
-    d: d_acc,
-    t_indicator: t_acc,
-    eval_idx: eval_idx_acc,
-  }
+  { x: x_mat, y: y_acc, d: d_acc, t_indicator: t_acc, eval_idx: eval_idx_acc }
 }
 
 ///|
@@ -319,7 +312,9 @@ pub fn DoubleMLDIDBinary::new(
   require(n_rep >= 1)
   require(propensity_clip > 0.0)
   require(propensity_clip < 0.5)
-  require(control_group == "never_treated" || control_group == "not_yet_treated")
+  require(
+    control_group == "never_treated" || control_group == "not_yet_treated",
+  )
   require(score == "observational" || score == "experimental")
   require(anticipation_periods >= 0)
   {
@@ -391,9 +386,7 @@ pub fn DoubleMLDIDBinary::se(self : DoubleMLDIDBinary) -> Double {
 
 ///|
 /// 95% Wald-style confidence interval.
-pub fn DoubleMLDIDBinary::confint(
-  self : DoubleMLDIDBinary,
-) -> (Double, Double) {
+pub fn DoubleMLDIDBinary::confint(self : DoubleMLDIDBinary) -> (Double, Double) {
   require(self.fitted)
   self.inner.confint()
 }
@@ -530,9 +523,7 @@ pub fn DoubleMLDIDBinary::fit(
   let mut strata_acc = strata
   let mut use_strata = true
   for i = 0; i < wide.d.length(); i = i + 1 {
-    strata_acc = strata_acc + [
-      (wide.d[i] + 2.0 * wide.t_indicator[i]).to_int(),
-    ]
+    strata_acc = strata_acc + [(wide.d[i] + 2.0 * wide.t_indicator[i]).to_int()]
   }
   // Per-stratum min-size check.
   let counts : Array[Int] = []

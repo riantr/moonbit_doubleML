@@ -68,10 +68,7 @@ pub fn var_est(
 ///
 /// Aborts if `psi` is empty or `jacobian` is zero (which would
 /// produce an infinite SE).
-pub fn var_est_with_jacobian(
-  psi : Array[Double],
-  jacobian : Double,
-) -> Double {
+pub fn var_est_with_jacobian(psi : Array[Double], jacobian : Double) -> Double {
   require(psi.length() >= 1)
   require(jacobian.abs() > 0.0)
   let n = psi.length()

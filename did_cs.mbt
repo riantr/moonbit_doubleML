@@ -105,13 +105,15 @@ fn discover_groups_times(
   let mut t_unique_acc = t_unique
   for i = 0; i < n; i = i + 1 {
     let gv = g_sorted[i]
-    if g_unique_acc.length() == 0 || g_unique_acc[g_unique_acc.length() - 1] != gv {
+    if g_unique_acc.length() == 0 ||
+      g_unique_acc[g_unique_acc.length() - 1] != gv {
       if gv != never_treated_value {
         g_unique_acc = g_unique_acc + [gv]
       }
     }
     let tv = t_sorted[i]
-    if t_unique_acc.length() == 0 || t_unique_acc[t_unique_acc.length() - 1] != tv {
+    if t_unique_acc.length() == 0 ||
+      t_unique_acc[t_unique_acc.length() - 1] != tv {
       t_unique_acc = t_unique_acc + [tv]
     }
   }
@@ -189,7 +191,9 @@ pub fn DoubleMLDIDCS::new(
   require(n_rep >= 1)
   require(propensity_clip > 0.0)
   require(propensity_clip < 0.5)
-  require(control_group == "never_treated" || control_group == "not_yet_treated")
+  require(
+    control_group == "never_treated" || control_group == "not_yet_treated",
+  )
   require(anticipation_periods >= 0)
   let n_groups = data.groups.length()
   let n_periods = data.times.length()
@@ -260,10 +264,7 @@ pub fn DoubleMLDIDCS::group_at(self : DoubleMLDIDCS, group_idx : Int) -> Int {
 
 ///|
 /// Time value at column index `t` (sorted ascending).
-pub fn DoubleMLDIDCS::period_at(
-  self : DoubleMLDIDCS,
-  period_idx : Int,
-) -> Int {
+pub fn DoubleMLDIDCS::period_at(self : DoubleMLDIDCS, period_idx : Int) -> Int {
   require(period_idx >= 0 && period_idx < self.n_periods)
   self.data.times[period_idx]
 }

@@ -55,12 +55,7 @@ test "did_cs_recovers_known_att_per_cell" {
     id_arr,
     g_arr,
   )
-  let fitted = DoubleMLDIDCS::new(
-    data,
-    n_folds=2,
-    n_rep=1,
-    seed=3141,
-  ).fit()
+  let fitted = DoubleMLDIDCS::new(data, n_folds=2, n_rep=1, seed=3141).fit()
   // n_groups = 3 (g = 1, 2, 3), n_periods = 4.
   inspect(fitted.n_groups(), content="3")
   inspect(fitted.n_periods(), content="4")

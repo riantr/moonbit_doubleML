@@ -188,21 +188,21 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     sign,
   )
   // Numerical derivative via KDE-weighted evaluation at `theta`.
-// TODO 0.6.0: replace the finite-difference `2 * n_folds = 4` extra
-// cross-fits with a single weighted-KDE evaluation of the IPW
-// coefficient at `theta`. The IPW score's `theta`-derivative is
-//   `d/dtheta mean(psi_ipw) = (1/n) * sum_i w_i * delta(y_i - theta)`
-// which we smooth by replacing the Dirac with a Gaussian KDE
-// `K_h((theta - y_i) / h) / h`. The Silverman bandwidth is
-// sample-size-aware so the KDE is consistent at the canonical DGP
-// scale (continuous `y`) and does not collapse to zero at discrete
-// `y` like the previous finite-difference did.
-//
-// Bandwidth selection: Silverman's rule on `y` directly (rather than
-// the previous `min(1% y_range, 1/sqrt(n))` heuristic). For the
-// canonical DGPs the new bandwidth is comparable to the old heuristic
-// (typically a few percent of `y_range`); for discrete `y` it
-// adapts to the local cell width automatically.
+  // TODO 0.6.0: replace the finite-difference `2 * n_folds = 4` extra
+  // cross-fits with a single weighted-KDE evaluation of the IPW
+  // coefficient at `theta`. The IPW score's `theta`-derivative is
+  //   `d/dtheta mean(psi_ipw) = (1/n) * sum_i w_i * delta(y_i - theta)`
+  // which we smooth by replacing the Dirac with a Gaussian KDE
+  // `K_h((theta - y_i) / h) / h`. The Silverman bandwidth is
+  // sample-size-aware so the KDE is consistent at the canonical DGP
+  // scale (continuous `y`) and does not collapse to zero at discrete
+  // `y` like the previous finite-difference did.
+  //
+  // Bandwidth selection: Silverman's rule on `y` directly (rather than
+  // the previous `min(1% y_range, 1/sqrt(n))` heuristic). For the
+  // canonical DGPs the new bandwidth is comparable to the old heuristic
+  // (typically a few percent of `y_range`); for discrete `y` it
+  // adapts to the local cell width automatically.
   let w_kde : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     let z_i = self.data.z[i]

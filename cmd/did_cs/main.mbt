@@ -57,20 +57,13 @@ fn main {
     id_arr,
     g_arr,
   )
-  let fitted = @dml.DoubleMLDIDCS::new(
-    data,
-    n_folds=2,
-    n_rep=1,
-    seed=3141,
-  ).fit()
+  let fitted = @dml.DoubleMLDIDCS::new(data, n_folds=2, n_rep=1, seed=3141).fit()
   println(
     "=== MoonBit DML demo: Callaway-Sant'Anna DID (staggered, n_units=\{n_units}, p=\{p}) ===",
   )
   println("true ATT = \{theta0}")
   println("")
-  println(
-    "n_groups = \{fitted.n_groups()}, n_periods = \{fitted.n_periods()}",
-  )
+  println("n_groups = \{fitted.n_groups()}, n_periods = \{fitted.n_periods()}")
   println("")
   println("--- Per-(g, t) ATT estimates (post-treatment cells) ---")
   for gi = 0; gi < fitted.n_groups(); gi = gi + 1 {

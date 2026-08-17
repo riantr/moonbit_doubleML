@@ -49,10 +49,7 @@ pub fn compute_sensitivity_bias(
 /// (`1.0e300`) if the estimator is already zero (degenerate) since
 /// MoonBit's `Double` has no `Infinity` constant in this build.
 /// Per Cinelli & Hazlett (2020) §3.2: `RV = |theta_hat| / mean(max_bias)`.
-pub fn robustness_value(
-  theta : Double,
-  max_bias : Array[Double],
-) -> Double {
+pub fn robustness_value(theta : Double, max_bias : Array[Double]) -> Double {
   if theta == 0.0 {
     return 1.0e300
   }
@@ -140,9 +137,7 @@ pub fn gain_statistics(
 ) -> GainStatsResult {
   require(dml_long.var_y_residuals.length() == dml_long.nu2.length())
   require(dml_long.var_y_residuals.length() == dml_long.all_coef.length())
-  require(
-    dml_short.var_y_residuals.length() == dml_short.nu2.length(),
-  )
+  require(dml_short.var_y_residuals.length() == dml_short.nu2.length())
   require(dml_short.var_y_residuals.length() == dml_short.all_coef.length())
   // Long and short must share the same per-rep dimensions.
   let n_long = dml_long.var_y_residuals.length()

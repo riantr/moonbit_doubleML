@@ -86,7 +86,9 @@ fn main {
   }
   let x_mat = @dml.Matrix::from_array(x_flat, n, p)
   let data = @dml.DoubleMLData::new(x_mat, y, d)
-  println("=== MoonBit DML demo: synthetic 401(k)-style DGP (n=\{n}, p=\{p}) ===")
+  println(
+    "=== MoonBit DML demo: synthetic 401(k)-style DGP (n=\{n}, p=\{p}) ===",
+  )
   println("true theta_0      = \{theta0}")
   let plr = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141)
   let plr_fit = plr.fit()

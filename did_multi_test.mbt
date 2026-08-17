@@ -53,11 +53,7 @@ test "did_multi_fit_and_aggregate" {
     id_arr,
     g_arr,
   )
-  let fitted = DoubleMLDIDMulti::new(
-    data,
-    n_folds=2,
-    seed=3141,
-  ).fit()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
   // `standard` gt_combinations emits (g, t) with t > g.
   // n_groups = 3 (g = 1, 2, 3), n_periods = 4.
   // Cells: (1, 2), (1, 3), (2, 3) -> 3 combinations.

@@ -372,8 +372,7 @@ pub fn DoubleMLDID::fit(
         let one_minus_m = 1.0 - m_i
         let prop_weight_i = one_minus_d[i] * m_i / one_minus_m
         psi_a[i] = -d[i] / mean_d
-        psi_b[i] = (d[i] / mean_d - prop_weight_i / prop_weight_mean) *
-          resid_d0
+        psi_b[i] = (d[i] / mean_d - prop_weight_i / prop_weight_mean) * resid_d0
       }
     } else {
       // Default form (pre-0.8.0 behaviour, byte-equal to 0.7.0):
@@ -388,33 +387,29 @@ pub fn DoubleMLDID::fit(
         psi_b[i] = (d[i] - m_i) / denom * resid_d0
       }
     }
-  } else {
     // score == "experimental": A/B-test setting where treatment is
     // independent of pre-treatment covariates. The propensity `m`
     // collapses to `mean(d)` and the psi_a is the constant `-1`.
     // The psi_b_1 = (d / mean(d) - 1) * g0 + (1 - d / mean(d)) * g1
     // term captures the doubly-robust g adjustment.
-    if self.in_sample_normalization {
-      for i = 0; i < n; i = i + 1 {
-        let resid_d0 = y[i] - g0_hat[i]
-        let d_i = d[i]
-        let w_d = d_i / mean_d
-        psi_a[i] = -1.0
-        psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
-        psi_b[i] = psi_b_1[i] +
-          (w_d - (1.0 - d_i) / mean_one_minus_d) * resid_d0
-      }
-    } else {
-      for i = 0; i < n; i = i + 1 {
-        let resid_d0 = y[i] - g0_hat[i]
-        let m_i = m_clipped[i]
-        let d_i = d[i]
-        let w_d = d_i / m_i
-        psi_a[i] = -1.0
-        psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
-        psi_b[i] = psi_b_1[i] +
-          (d_i - m_i) / (m_i * (1.0 - m_i)) * resid_d0
-      }
+  } else if self.in_sample_normalization {
+    for i = 0; i < n; i = i + 1 {
+      let resid_d0 = y[i] - g0_hat[i]
+      let d_i = d[i]
+      let w_d = d_i / mean_d
+      psi_a[i] = -1.0
+      psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
+      psi_b[i] = psi_b_1[i] + (w_d - (1.0 - d_i) / mean_one_minus_d) * resid_d0
+    }
+  } else {
+    for i = 0; i < n; i = i + 1 {
+      let resid_d0 = y[i] - g0_hat[i]
+      let m_i = m_clipped[i]
+      let d_i = d[i]
+      let w_d = d_i / m_i
+      psi_a[i] = -1.0
+      psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
+      psi_b[i] = psi_b_1[i] + (d_i - m_i) / (m_i * (1.0 - m_i)) * resid_d0
     }
   }
   ignore(psi_b_1)

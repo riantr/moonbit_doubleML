@@ -82,7 +82,9 @@ pub fn DoubleMLDIDMulti::new(
   require(n_folds >= 2)
   require(n_rep >= 1)
   require(anticipation_periods >= 0)
-  require(control_group == "never_treated" || control_group == "not_yet_treated")
+  require(
+    control_group == "never_treated" || control_group == "not_yet_treated",
+  )
   let n_groups = data.groups.length()
   let n_periods = data.times.length()
   // Resolve `gt_combinations`: explicit list wins, otherwise
@@ -90,7 +92,12 @@ pub fn DoubleMLDIDMulti::new(
   let resolved = if gt_combinations.length() > 0 {
     gt_combinations
   } else {
-    expand_gt_keyword(gt_combinations_keyword, data.groups, data.times, anticipation_periods)
+    expand_gt_keyword(
+      gt_combinations_keyword,
+      data.groups,
+      data.times,
+      anticipation_periods,
+    )
   }
   require(resolved.length() > 0)
   // Sanity-check each triple against the data.
@@ -199,11 +206,9 @@ fn expand_gt_keyword(
         if t > g - anticipation_periods {
           out_acc = out_acc + [(g, g, t)]
         }
-      } else {
         // "all" or "universal": emit every (g, t) cell.
-        if t > g - anticipation_periods {
-          out_acc = out_acc + [(g, g, t)]
-        }
+      } else if t > g - anticipation_periods {
+        out_acc = out_acc + [(g, g, t)]
       }
     }
   }
@@ -242,7 +247,10 @@ pub fn DoubleMLDIDMulti::n_combinations(self : DoubleMLDIDMulti) -> Int {
 ///|
 /// The inner per-(g, t) ATT at row-major index `idx` (matching
 /// the canonical `gt_combinations[i]` ordering).
-pub fn DoubleMLDIDMulti::coef_at_idx(self : DoubleMLDIDMulti, idx : Int) -> Double {
+pub fn DoubleMLDIDMulti::coef_at_idx(
+  self : DoubleMLDIDMulti,
+  idx : Int,
+) -> Double {
   require(self.fitted)
   require(idx >= 0 && idx < self.gt_combinations.length())
   let (g, t_pre, t_eval) = self.gt_combinations[idx]
@@ -266,7 +274,10 @@ pub fn DoubleMLDIDMulti::coef_at_idx(self : DoubleMLDIDMulti, idx : Int) -> Doub
 
 ///|
 /// The inner per-(g, t) SE at row-major index `idx`.
-pub fn DoubleMLDIDMulti::se_at_idx(self : DoubleMLDIDMulti, idx : Int) -> Double {
+pub fn DoubleMLDIDMulti::se_at_idx(
+  self : DoubleMLDIDMulti,
+  idx : Int,
+) -> Double {
   require(self.fitted)
   let (g, t_pre, t_eval) = self.gt_combinations[idx]
   let mut gi = -1
@@ -383,13 +394,7 @@ pub fn DoubleMLDIDMulti::bootstrap(
       boot_t_stat[b * n_thetas + k] = s / denom
     }
   }
-  {
-    ..self,
-    boot_t_stat,
-    boot_method: method_name,
-    n_rep_boot,
-    boot_seed: seed,
-  }
+  { ..self, boot_t_stat, boot_method: method_name, n_rep_boot, boot_seed: seed }
 }
 
 ///|
@@ -471,8 +476,7 @@ pub fn norm_sf(x : Double) -> Double {
   let b5 = 1.330274429
   let t = 1.0 / (1.0 + p * x)
   let phi = @math.exp(-x * x / 2.0) / 2.5066282746310002
-  let poly = t *
-    (b1 + t * (b2 + t * (b3 + t * (b4 + t * b5))))
+  let poly = t * (b1 + t * (b2 + t * (b3 + t * (b4 + t * b5))))
   let sf = phi * poly
   if sf > 1.0 {
     1.0
@@ -642,9 +646,7 @@ pub fn romano_wolf_p_adjust(
 /// p-values ascending, then `p_corrected_sorted[k] =
 /// max((n - k) * p_sorted[k], p_corrected_sorted[k - 1])`,
 /// clipped to `1.0`. Re-order to original cell order.
-pub fn holm_bonferroni_p_adjust(
-  unadjusted : Array[Double],
-) -> Array[Double] {
+pub fn holm_bonferroni_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let n = unadjusted.length()
   let order : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
@@ -689,9 +691,7 @@ pub fn holm_bonferroni_p_adjust(
 ///|
 /// Bonferroni correction. `p_corrected[k] = min(1.0, n *
 /// p_unadjusted[k])`.
-pub fn bonferroni_p_adjust(
-  unadjusted : Array[Double],
-) -> Array[Double] {
+pub fn bonferroni_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let n = unadjusted.length()
   let out : Array[Double] = Array::make(n, 1.0)
   for i = 0; i < n; i = i + 1 {
@@ -720,16 +720,12 @@ pub fn DoubleMLDIDMulti::confint(
   require(self.fitted)
   require(level > 0.0 && level < 1.0)
   let n_thetas = self.gt_combinations.length()
-  let z_975 = 1.959963984540054  // `norm.ppf(0.975)`
+  let z_975 = 1.959963984540054 // `norm.ppf(0.975)`
   let out : Array[(Double, Double)] = []
   let mut out_acc = out
   if joint {
-    require(
-      self.boot_t_stat.length() > 0,
-    )
-    require(
-      self.boot_method != "" && self.n_rep_boot > 0,
-    )
+    require(self.boot_t_stat.length() > 0)
+    require(self.boot_method != "" && self.n_rep_boot > 0)
     // Compute the empirical quantile of `max_k |boot_t_stat|`.
     let max_abs : Array[Double] = Array::make(self.n_rep_boot, 0.0)
     for b = 0; b < self.n_rep_boot; b = b + 1 {
@@ -821,7 +817,10 @@ pub fn draw_bootstrap_weights(
           let y = box_muller_normal(rng)
           x / 1.4142135623730951 + (y * y - 1.0) / 2.0
         }
-        _ => abort("draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap)")
+        _ =>
+          abort(
+            "draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap)",
+          )
       }
       out[b * n_obs + i] = w
     }

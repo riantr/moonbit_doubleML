@@ -27,9 +27,7 @@ pub fn stratified_kfold(
   require(n_folds <= n_obs)
   // Sort indices by stratum label, then walk to extract per-stratum
   // slices. Use a parallel sort by pairs.
-  let pairs : Array[(Int, Int)] = Array::makei(n_obs, fn(i) {
-    (stratum[i], i)
-  })
+  let pairs : Array[(Int, Int)] = Array::makei(n_obs, fn(i) { (stratum[i], i) })
   pairs.sort_by(fn(a, b) { a.0.compare(b.0) })
   // Walk and find each stratum's start/end indices in `pairs`.
   let mut acc_s : Array[Int] = []
@@ -109,7 +107,8 @@ pub fn stratified_kfold(
         train_idx_acc = train_idx_acc + [k]
       }
     }
-    combined_acc = combined_acc + [{ train_idx: train_idx_acc, test_idx: test_idx_acc }]
+    combined_acc = combined_acc +
+      [{ train_idx: train_idx_acc, test_idx: test_idx_acc }]
   }
   combined_acc
 }

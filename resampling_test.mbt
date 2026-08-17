@@ -5,7 +5,11 @@
 /// each fold's test set should contain exactly 5 from each stratum.
 test "stratified_kfold_balanced_test_sets" {
   let stratum : Array[Int] = Array::makei(20, fn(i) {
-    if i < 10 { 0 } else { 1 }
+    if i < 10 {
+      0
+    } else {
+      1
+    }
   })
   let folds = stratified_kfold(stratum, 2, 3141)
   inspect(folds.length(), content="2")

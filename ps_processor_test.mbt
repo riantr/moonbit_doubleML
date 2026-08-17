@@ -11,7 +11,7 @@ test "ps_processor_clip_basic" {
   // Below eps clipped up to eps.
   inspect(out[0] - 0.05 < 1.0e-12, content="true")
   // Above 1 - eps clipped down to 1 - eps.
-  inspect((1.0 - out[4]) - 0.05 < 1.0e-12, content="true")
+  inspect(1.0 - out[4] - 0.05 < 1.0e-12, content="true")
   // Interior values unchanged.
   inspect((out[1] - 0.2).abs() < 1.0e-12, content="true")
   inspect((out[2] - 0.5).abs() < 1.0e-12, content="true")
@@ -235,7 +235,9 @@ test "ps_processor_isotonic_pooling" {
   // [1, 2, 3] (the y values at sorted x = [0.1, 0.1, 0.3, 0.5,
   // 0.5] are [0, 1, 1, 0, 1] in stable-sort order; PAVA pools
   // positions 1..3 into a 3-element block with mean 2/3).
-  let expected = [0.6666666666666666, 0.95, 0.6666666666666666, 0.95, 0.6666666666666666]
+  let expected = [
+    0.6666666666666666, 0.95, 0.6666666666666666, 0.95, 0.6666666666666666,
+  ]
   for i = 0; i < 5; i = i + 1 {
     inspect((out[i] - expected[i]).abs() < 1.0e-12, content="true")
   }
@@ -287,10 +289,7 @@ test "ps_processor_isotonic_cv_user_folds" {
   let test1 : Array[Int] = [0, 1, 2, 3, 4]
   let train2 : Array[Int] = [0, 1, 2, 3, 4]
   let test2 : Array[Int] = [5, 6, 7, 8, 9]
-  let cv : Array[(Array[Int], Array[Int])] = [
-    (train1, test1),
-    (train2, test2),
-  ]
+  let cv : Array[(Array[Int], Array[Int])] = [(train1, test1), (train2, test2)]
   let out = psp.adjust_ps(ps, treatment, cv=Some(cv))
   inspect(out.length(), content="10")
   // Output must lie in [0.05, 0.95] after clip.

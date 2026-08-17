@@ -59,7 +59,9 @@ fn main {
     seed=3141,
   ).fit()
   let (lo, hi) = fitted.confint()
-  println("=== MoonBit DML demo: DID Binary (panel, n_units=\{n_units}, p=\{p}) ===")
+  println(
+    "=== MoonBit DML demo: DID Binary (panel, n_units=\{n_units}, p=\{p}) ===",
+  )
   println("true ATT = \{theta0}")
   println("")
   println("--- DoubleMLDIDBinary (observational, never_treated control) ---")
