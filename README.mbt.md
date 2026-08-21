@@ -10,7 +10,7 @@ covering all 15 models currently in upstream.
 |------|-------|
 | Source file count | 62 (31 production + 31 test) |
 | Models ported | 16 / 16 (incl. cross-section DID) |
-| Tests | **215 / 215** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **225 / 225** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
 | Python cross-checks | 16 / 16 PASS |
 | License | Apache-2.0 |
@@ -19,7 +19,7 @@ covering all 15 models currently in upstream.
 
 ```console
 $ moon test --deny-warn
-Total tests: 215, passed: 215, failed: 0.
+Total tests: 225, passed: 225, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -105,10 +105,10 @@ $ moon run cmd/did_cross_section
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 215/215
-moon test --target wasm-gc --deny-warn   # 215/215
-moon test --target wasm    --deny-warn   # 215/215
-moon test --target js      --deny-warn   # 215/215
+moon test --target native  --deny-warn   # 225/225
+moon test --target wasm-gc --deny-warn   # 225/225
+moon test --target wasm    --deny-warn   # 225/225
+moon test --target js      --deny-warn   # 225/225
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver

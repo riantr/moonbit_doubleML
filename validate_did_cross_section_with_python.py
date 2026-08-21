@@ -212,12 +212,29 @@ def main():
     print(f"95% CI    = ({theta - 1.96 * se:.6f}, "
           f"{theta + 1.96 * se:.6f})")
     print()
+    # v0.21.0+: multiplier bootstrap. The bootstrap
+    # t-stat has mean 0 and SD 1 under the null.
+    n_boot = 1000
+    rng_boot = np.random.default_rng(2024)
+    weights = rng_boot.normal(size=(n_boot, n))
+    psi = psi_a + theta * psi_b
+    se_psi = np.sqrt(np.sum(psi ** 2) / n)
+    boot_t_stat = (weights @ psi) / (np.sqrt(n) * se_psi)
+    print("--- Multiplier bootstrap (n_rep_boot=1000, normal) ---")
+    print(f"boot_t_stat mean = {np.mean(boot_t_stat):.4f}")
+    print(f"boot_t_stat std  = {np.std(boot_t_stat):.4f}")
+    print(f"abs(t_975)       = {np.percentile(np.abs(boot_t_stat), 97.5):.4f}")
+    print()
     print("Cross-check passes if the MoonBit")
     print("DoubleMLDIDCrossSection (tested in")
     print("did_cross_section_test.mbt) recovers the")
     print("true ATT within Monte-Carlo error and")
     print("matches the upstream numpy score on the")
     print("same DGP (within 1e-9 on psi_a, psi_b).")
+    print("v0.21.0+: the bootstrap t-stat should have")
+    print("mean ~ 0 and SD ~ 1 (matches the panel")
+    print("DoubleMLDIDMulti multiplier bootstrap")
+    print("convention).")
     print()
     print("Cross-section DID reference: PASS")
 

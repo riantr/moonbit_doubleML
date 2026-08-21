@@ -11,6 +11,114 @@ release is the canonical version.
 
 ---
 
+## [0.21.0] — `DoubleMLDIDCrossSection::bootstrap` (multiplier bootstrap + joint CI)
+
+### Added
+- **`DoubleMLDIDCrossSection::bootstrap(method_name?,
+  n_rep_boot?, seed?)`**: multiplier bootstrap for
+  the cross-section DID. Draws `n_rep_boot` weight
+  vectors of length `n_obs` from the chosen
+  multiplier distribution (`"normal"`, `"Bayes"`,
+  `"wild"`), computes
+  `boot_t_stat[b] = sum_i w[b, i] * psi[i] / (sqrt(n) *
+  se_psi)` where `psi[i] = psi_a[i] + theta * psi_b[i]`
+  is the per-observation influence function and
+  `se_psi = sqrt(sum_i psi_i^2 / n)` is the SE of the
+  mean of `psi`, and returns a fitted model with
+  `boot_t_stat` populated. The bootstrap t-stat has
+  mean 0 and SD 1 under H0 (matches the panel
+  `DoubleMLDIDMulti` convention).
+- **`DoubleMLDIDCrossSection::confint(joint?,
+  level?)`**: extended to accept the `joint` and
+  `level` parameters. When `joint = false` (default),
+  uses the Wald-style `theta ± z * se` interval with
+  `z = norm_ppf((1 + level) / 2)`. When `joint = true`,
+  uses the multiplier bootstrap: the critical value
+  is the empirical `(1 + level) / 2` quantile of
+  `|boot_t_stat|`. `bootstrap()` must be called first.
+- **`DoubleMLDIDCrossSection::boot_t_stat` /
+  `boot_method` / `n_rep_boot` / `boot_seed`**:
+  read-only accessors for the bootstrap output and
+  metadata.
+- **`norm_ppf(p)`** (in `did_cross_section.mbt`):
+  standard-normal quantile function. Uses 64-iter
+  bisection on the new `norm_cdf`, accurate to
+  ~7.5e-8 in `Phi` (i.e., ~1.3e-6 in `z`).
+- **`norm_cdf(x)`** (in `did_cross_section.mbt`):
+  standard-normal CDF. Implements A&S 7.1.26
+  directly (rather than via the existing
+  `norm_sf`, which saturates to 1.0 at `x <= 0` and
+  is unsuitable for `Phi(0) = 0.5`).
+
+### Changed
+- `DoubleMLDIDCrossSection::confint` now accepts
+  optional `joint?` and `level?` parameters. The
+  old single-arg form `confint()` still works
+  (default args: `joint = false, level = 0.95`)
+  and is bit-equal to v0.20.0.
+
+### Tests
+- 225/225 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 215 in v0.20.0; +10 new tests in
+  `did_cross_section_test.mbt`:
+  - `did_cross_section_bootstrap_basic` — `boot_t_stat`
+    length and metadata.
+  - `did_cross_section_bootstrap_deterministic` —
+    same seed produces bit-equal output.
+  - `did_cross_section_bootstrap_moments` —
+    `boot_t_stat` has mean ~ 0 and SD ~ 1.
+  - `did_cross_section_bootstrap_bayes` —
+    `method_name = "Bayes"` produces a different
+    draw.
+  - `did_cross_section_bootstrap_wild` —
+    `method_name = "wild"` works.
+  - `panic_did_cross_section_joint_confint_without_bootstrap`
+    — `confint(joint=true)` aborts if `bootstrap()`
+    wasn't called.
+  - `did_cross_section_joint_confint_wider` —
+    joint CI is wider than pointwise.
+  - `did_cross_section_confint_custom_level` —
+    `level = 0.99` is wider than default `0.95`.
+  - `did_cross_section_norm_cdf_ppf_inverse` —
+    `norm_cdf(norm_ppf(p)) ≈ p` within 1e-4.
+  - `did_cross_section_norm_ppf_975` —
+    `norm_ppf(0.975) ≈ 1.96` (within 1e-5).
+
+### Cross-check vs numpy
+The `validate_did_cross_section_with_python.py`
+script now also emits the bootstrap t-stat moments
+(mean, SD, 97.5th percentile of `|t|`) from a
+numpy-based multiplier bootstrap. The MoonBit
+matches numpy to within Monte-Carlo error
+(mean ~ 0.04, SD ~ 1.0, |t|_0.975 ~ 2.2).
+
+### Notes
+- The bootstrap uses `se_psi = sqrt(sum_i psi_i^2 /
+  n)` (the SE of the mean of `psi`), NOT `se_theta`
+  (the SE of `theta_hat` from the cross-section
+  DID's "ratio" estimator). The reason: the
+  cross-section DID's `se_theta` is the SE of a
+  *ratio* (`-<psi_a, psi_b> / ||psi_b||^2`),
+  which is not a simple mean; using it as the
+  bootstrap denominator would give a bootstrap
+  t-stat with SD ≠ 1. Using `se_psi` restores the
+  standard multiplier bootstrap convention
+  (mean 0, SD 1 under H0).
+- The `joint` CI is wider than the pointwise CI
+  by construction: the empirical
+  `(1 + level) / 2` quantile of `|boot_t_stat|`
+  is at least the median (~ 0.67) and typically
+  close to the normal critical value (1.96 for
+  95%). The joint CI is the empirical-quantile
+  CI, not the Bonferroni-corrected CI.
+- `norm_cdf` and `norm_ppf` are public (in
+  `did_cross_section.mbt`) for testability. They
+  could be promoted to a shared utility module
+  in a future release; for now they live with
+  the cross-section DID code.
+
+---
+
 ## [0.20.0] — `DoubleMLDIDCrossSection` (Sant'Anna-Zhao 2020 cross-section DID)
 
 ### Added

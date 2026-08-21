@@ -63,4 +63,11 @@ fn main {
   println("")
   println("ATT_hat = \{att}, se = \{se}")
   println("95% CI  = [\{lo}, \{hi}] covers=\{covered}")
+  // v0.21.0+: multiplier bootstrap and joint CI.
+  let booted = fitted.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
+  let (lo_jt, hi_jt) = booted.confint(joint=true)
+  let covered_jt = lo_jt <= theta0 && theta0 <= hi_jt
+  println("")
+  println("--- Multiplier bootstrap (n_rep_boot=500, normal) ---")
+  println("joint 95% CI = [\{lo_jt}, \{hi_jt}] covers=\{covered_jt}")
 }

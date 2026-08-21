@@ -227,3 +227,183 @@ test "did_cross_section_deterministic" {
   inspect((f1.coef() - f2.coef()).abs() < 1.0e-15, content="true")
   inspect((f1.se() - f2.se()).abs() < 1.0e-15, content="true")
 }
+
+// ---------------------------------------------------------------------------
+// v0.21.0+ bootstrap / joint CI tests
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.21.0+: `bootstrap` populates `boot_t_stat` with
+/// `n_rep_boot` t-statistics, one per replication.
+test "did_cross_section_bootstrap_basic" {
+  let data = build_cross_section_dgp(200, 2, 1.0)
+  let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let booted = fitted.bootstrap(method_name="normal", n_rep_boot=500, seed=2024)
+  inspect(booted.boot_t_stat.length(), content="500")
+  inspect(booted.boot_method, content="normal")
+  inspect(booted.n_rep_boot, content="500")
+  inspect(booted.boot_seed, content="2024")
+}
+
+///|
+/// v0.21.0+: `bootstrap` is reproducible given a
+/// fixed seed.
+test "did_cross_section_bootstrap_deterministic" {
+  let data = build_cross_section_dgp(200, 2, 1.0)
+  let f1 = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let f2 = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let b1 = f1.bootstrap(method_name="normal", n_rep_boot=100, seed=2024)
+  let b2 = f2.bootstrap(method_name="normal", n_rep_boot=100, seed=2024)
+  let mut all_match = true
+  for i = 0; i < b1.boot_t_stat.length(); i = i + 1 {
+    if (b1.boot_t_stat[i] - b2.boot_t_stat[i]).abs() > 1.0e-15 {
+      all_match = false
+    }
+  }
+  inspect(all_match, content="true")
+}
+
+///|
+/// v0.21.0+: `boot_t_stat` has approximately mean 0
+/// and standard deviation 1 under the null (since
+/// it's a bootstrap of a t-statistic).
+test "did_cross_section_bootstrap_moments" {
+  let data = build_cross_section_dgp(500, 2, 1.0)
+  let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let booted = fitted.bootstrap(
+    method_name="normal",
+    n_rep_boot=1000,
+    seed=2024,
+  )
+  let n_boot = booted.boot_t_stat.length()
+  let n_d = n_boot.to_double()
+  let mut mean = 0.0
+  for i = 0; i < n_boot; i = i + 1 {
+    mean = mean + booted.boot_t_stat[i]
+  }
+  mean = mean / n_d
+  let mut ss = 0.0
+  for i = 0; i < n_boot; i = i + 1 {
+    let d = booted.boot_t_stat[i] - mean
+    ss = ss + d * d
+  }
+  let sd = (ss / n_d).sqrt()
+  // Mean should be ~0 (within ~0.1), SD should be ~1
+  // (within ~0.1). The Monte-Carlo error is O(1/sqrt(n_boot))
+  // ≈ 0.03.
+  inspect(mean.abs() < 0.15, content="true")
+  inspect((sd - 1.0).abs() < 0.15, content="true")
+}
+
+///|
+/// v0.21.0+: `bootstrap` with `method_name = "Bayes"`
+/// produces a different `boot_t_stat` (mean still ~0,
+/// SD still ~1) but a different draw.
+test "did_cross_section_bootstrap_bayes" {
+  let data = build_cross_section_dgp(200, 2, 1.0)
+  let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let booted_normal = fitted.bootstrap(
+    method_name="normal",
+    n_rep_boot=500,
+    seed=2024,
+  )
+  let booted_bayes = fitted.bootstrap(
+    method_name="Bayes",
+    n_rep_boot=500,
+    seed=2024,
+  )
+  // The two draws should differ.
+  let mut differ = false
+  for i = 0; i < 10; i = i + 1 {
+    if (booted_normal.boot_t_stat[i] - booted_bayes.boot_t_stat[i]).abs() > 0.1 {
+      differ = true
+    }
+  }
+  inspect(differ, content="true")
+  inspect(booted_bayes.boot_method, content="Bayes")
+}
+
+///|
+/// v0.21.0+: `bootstrap` with `method_name = "wild"`.
+test "did_cross_section_bootstrap_wild" {
+  let data = build_cross_section_dgp(200, 2, 1.0)
+  let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let booted = fitted.bootstrap(method_name="wild", n_rep_boot=500, seed=2024)
+  inspect(booted.boot_t_stat.length(), content="500")
+  inspect(booted.boot_method, content="wild")
+}
+
+///|
+/// v0.21.0+: `confint(joint = true)` requires
+/// `bootstrap` to be called first; without bootstrap
+/// the call aborts.
+test "panic_did_cross_section_joint_confint_without_bootstrap" {
+  let data = build_cross_section_dgp(200, 2, 1.0)
+  let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let _ = fitted.confint(joint=true)
+}
+
+///|
+/// v0.21.0+: `confint(joint = true)` returns a wider
+/// interval than `confint(joint = false)` when the
+/// empirical bootstrap quantile exceeds the normal
+/// critical value.
+test "did_cross_section_joint_confint_wider" {
+  let data = build_cross_section_dgp(200, 2, 1.0)
+  let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let booted = fitted.bootstrap(
+    method_name="normal",
+    n_rep_boot=1000,
+    seed=2024,
+  )
+  let (lo_pw, hi_pw) = booted.confint(joint=false)
+  let (lo_jt, hi_jt) = booted.confint(joint=true)
+  // Joint CI half-width should be >= pointwise
+  // (the joint critical value is the empirical
+  // (1+level)/2 quantile of |boot_t_stat|, which
+  // is at least the median of |boot_t_stat| ≈
+  // 0.67 by symmetry, but typically close to 1.96).
+  let hw_pw = (hi_pw - lo_pw) / 2.0
+  let hw_jt = (hi_jt - lo_jt) / 2.0
+  inspect(hw_jt >= hw_pw - 1.0e-12, content="true")
+}
+
+///|
+/// v0.21.0+: `confint(level = 0.99)` produces a
+/// wider interval than the default 95%.
+test "did_cross_section_confint_custom_level" {
+  let data = build_cross_section_dgp(200, 2, 1.0)
+  let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let (lo_95, hi_95) = fitted.confint()
+  let (lo_99, hi_99) = fitted.confint(level=0.99)
+  let hw_95 = (hi_95 - lo_95) / 2.0
+  let hw_99 = (hi_99 - lo_99) / 2.0
+  inspect(hw_99 > hw_95, content="true")
+}
+
+///|
+/// v0.21.0+: `norm_cdf` and `norm_ppf` are inverses
+/// of each other (within tolerance).
+test "did_cross_section_norm_cdf_ppf_inverse" {
+  // For a few representative quantiles, Phi(z) and
+  // ppf(Phi(z)) should agree within ~1e-4.
+  let test_vals : Array[Double] = [0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+  let mut all_match = true
+  for i = 0; i < test_vals.length(); i = i + 1 {
+    let p = test_vals[i]
+    let z = norm_ppf(p)
+    let p_recovered = norm_cdf(z)
+    if (p_recovered - p).abs() > 1.0e-4 {
+      all_match = false
+    }
+  }
+  inspect(all_match, content="true")
+}
+
+///|
+/// v0.21.0+: `norm_ppf(0.975) ≈ 1.96` (within the
+/// 1.3e-6 accuracy of the bisection-based formula).
+test "did_cross_section_norm_ppf_975" {
+  let z = norm_ppf(0.975)
+  inspect((z - 1.959963984540054).abs() < 1.0e-5, content="true")
+}
