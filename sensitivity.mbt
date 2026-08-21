@@ -363,6 +363,117 @@ pub fn GainStatsSource::from_blp(
 }
 
 ///|
+/// v0.22.0+: `from_blp_cv(blp, n_folds?, seed?)` is
+/// the cross-fit variant of `from_blp`. The only
+/// difference is `var_y_residuals`, which is computed
+/// from out-of-fold (OOF) predictions rather than
+/// the in-sample BLP residuals. The OOF residual
+/// variance is honest (no leakage from the basis
+/// fit on the same rows), so the `R2_y` benchmark
+/// in `gain_statistics` is more accurate.
+///
+/// Algorithm:
+///   1. Draw `n_folds` random folds via `kfold` (with
+///      `chacha8_rng`-style seeding through `seed`).
+///   2. For each fold, fit a LinearRegression on the
+///      training rows and predict on the test fold.
+///   3. Compute the per-fold test residual variance
+///      `sigma2_fold = sum_i (y_i - y_hat_i)^2 /
+///      n_fold` (the honest OOF estimate).
+///   4. `var_y_residuals_scalar` = mean over folds of
+///      `sigma2_fold` (the "average fold residual
+///      variance").
+///
+/// `coef`, `se`, `var_y`, and `all_coef` are
+/// unchanged from `from_blp` (the BLP's own fit on
+/// the full data is the canonical coefficient
+/// estimate; only `var_y_residuals` is recomputed).
+///
+/// `nu2` is recomputed as
+/// `var_y_residuals_cv / (n_obs * se^2)` (same
+/// homoskedastic convention as `from_blp`).
+pub fn GainStatsSource::from_blp_cv(
+  blp : DoubleMLBLP,
+  n_folds? : Int = 5,
+  seed? : Int = 3141,
+) -> GainStatsSource {
+  require(blp.fitted)
+  require(n_folds >= 2)
+  let n_obs = blp.n_obs()
+  require(n_obs >= n_folds)
+  let coef = blp.coef()
+  let se = blp.se()
+  let p = coef.length()
+  let n_obs_d = n_obs.to_double()
+  let orth_signal = blp.orth_signal()
+  let basis = blp.basis()
+  // Compute the OOF residual variance via k-fold.
+  let folds = kfold(n_obs, n_folds, seed)
+  let mut ss_resid_oof = 0.0
+  let mut n_pred = 0
+  for fold = 0; fold < n_folds; fold = fold + 1 {
+    let test_idx = folds[fold].test_idx
+    let train_idx = folds[fold].train_idx
+    let n_train = train_idx.length()
+    let n_test = test_idx.length()
+    let p_basis = basis.cols()
+    // Build the training sub-matrix.
+    let mut x_train_acc : Array[Double] = []
+    let mut y_train_acc : Array[Double] = []
+    for k = 0; k < n_train; k = k + 1 {
+      let i = train_idx[k]
+      for j = 0; j < p_basis; j = j + 1 {
+        x_train_acc = x_train_acc + [basis.data[i * p_basis + j]]
+      }
+      y_train_acc = y_train_acc + [orth_signal[i]]
+    }
+    // Build the test sub-matrix.
+    let mut x_test_acc : Array[Double] = []
+    for k = 0; k < n_test; k = k + 1 {
+      let i = test_idx[k]
+      for j = 0; j < p_basis; j = j + 1 {
+        x_test_acc = x_test_acc + [basis.data[i * p_basis + j]]
+      }
+    }
+    let x_train = Matrix::from_array(x_train_acc, n_train, p_basis)
+    let x_test = Matrix::from_array(x_test_acc, n_test, p_basis)
+    let model = LinearRegression::new().fit(x_train, y_train_acc)
+    let pred = model.predict(x_test)
+    for k = 0; k < n_test; k = k + 1 {
+      let i = test_idx[k]
+      let r = orth_signal[i] - pred[k]
+      ss_resid_oof = ss_resid_oof + r * r
+    }
+    n_pred = n_pred + n_test
+  }
+  // `var_y_residuals_cv = ss_resid_oof / n_obs`
+  // (the OOF residual variance, equivalent to the
+  // mean of per-fold `sigma2_fold` weighted by
+  // `n_fold / n_obs`).
+  let var_y_residuals_scalar = ss_resid_oof / n_obs_d
+  let var_y_residuals : Array[Double] = Array::make(p, var_y_residuals_scalar)
+  let nu2 : Array[Double] = Array::make(p, 0.0)
+  for k = 0; k < p; k = k + 1 {
+    let se_k = se[k]
+    if se_k <= 0.0 {
+      nu2[k] = 1.0
+    } else {
+      nu2[k] = var_y_residuals_scalar / (n_obs_d * se_k * se_k)
+    }
+  }
+  let all_coef = coef.copy()
+  let var_y = blp.var_y()
+  // n_rep is fixed at 1 for the BLP cross-fit (the
+  // BLP does not natively produce per-rep sensitivity
+  // elements; multi-rep would require multiple BLP
+  // fits with different folds).
+  let n_rep = 1
+  // Suppress unused-variable warnings.
+  let _ = n_pred
+  { var_y_residuals, nu2, all_coef, n_rep, var_y }
+}
+
+///|
 /// Median of a sorted array. Returns the middle value (or
 /// the average of the two middle values for even-length
 /// arrays). Caller is expected to pre-sort with

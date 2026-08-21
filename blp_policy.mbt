@@ -145,6 +145,26 @@ pub fn DoubleMLBLP::var_y(self : DoubleMLBLP) -> Double {
 }
 
 ///|
+/// v0.22.0+: the orthogonal signal array (the BLP's
+/// "outcome" variable). Length `n_obs`. Used by
+/// `GainStatsSource::from_blp_cv` to compute the
+/// cross-fit residual variance.
+pub fn DoubleMLBLP::orth_signal(self : DoubleMLBLP) -> Array[Double] {
+  require(self.fitted)
+  self.orth_signal
+}
+
+///|
+/// v0.22.0+: the basis matrix (the BLP's "design
+/// matrix"). Shape `n_obs x p_features`. Used by
+/// `GainStatsSource::from_blp_cv` to refit the
+/// BLP on each fold's training subset.
+pub fn DoubleMLBLP::basis(self : DoubleMLBLP) -> Matrix {
+  require(self.fitted)
+  self.basis
+}
+
+///|
 /// A binary tree node used by `DoubleMLPolicyTree`. A `Leaf` is a
 /// terminal that always returns the given treatment. A `Split` carries
 /// the split feature, the threshold value, and the two child nodes.

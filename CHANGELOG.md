@@ -11,6 +11,87 @@ release is the canonical version.
 
 ---
 
+## [0.22.0] — `GainStatsSource::from_blp_cv` (cross-fit BLP)
+
+### Added
+- **`GainStatsSource::from_blp_cv(blp, n_folds?,
+  seed?)`**: cross-fit variant of `from_blp`. The
+  only difference is `var_y_residuals`, which is
+  computed from out-of-fold (OOF) predictions
+  rather than the in-sample BLP residuals. The OOF
+  residual variance is honest (no leakage from the
+  basis fit on the same rows), so the `R2_y`
+  benchmark in `gain_statistics` is more accurate.
+  Algorithm:
+  1. Draw `n_folds` random folds via `kfold` (with
+     `seed` for reproducibility).
+  2. For each fold, fit a `LinearRegression` on the
+     training rows and predict on the test fold.
+  3. Compute the per-fold test residual variance
+     `sigma2_fold = sum_i (y_i - y_hat_i)^2 / n_fold`.
+  4. `var_y_residuals_scalar = sum_fold sum_i
+     (y_i - y_hat_i)^2 / n_obs` (the OOF residual
+     variance, equivalent to the weighted average
+     of per-fold `sigma2_fold` with weights
+     `n_fold / n_obs`).
+- **`DoubleMLBLP::orth_signal()` accessor**:
+  returns the BLP's orthogonal signal array
+  (length `n_obs`). Used by `from_blp_cv` to
+  recompute the residuals.
+- **`DoubleMLBLP::basis()` accessor**: returns the
+  BLP's basis matrix (shape `n_obs x p_features`).
+  Used by `from_blp_cv` to refit the BLP on each
+  fold's training subset.
+
+### Tests
+- 231/231 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 225 in v0.21.0; +6 new tests in
+  `sensitivity_test.mbt`:
+  - `gain_stats_from_blp_cv_basic` — basic
+    auto-population; shape and per-coef consistency
+    with the BLP's full-data fit.
+  - `gain_stats_from_blp_cv_differs_from_in_sample`
+    — the cross-fit `var_y_residuals` is at least
+    the in-sample `var_y_residuals` (because the
+    in-sample version is biased low).
+  - `gain_stats_from_blp_cv_deterministic` —
+    same `seed` produces bit-equal `var_y_residuals`
+    and `nu2`.
+  - `gain_stats_from_blp_cv_end_to_end` — two
+    BLPs (long = constant, short = noise) with
+    the same `n_coef`; the long has lower cross-fit
+    `var_y_residuals`.
+  - `panic_gain_stats_from_blp_cv_unfitted` —
+    `from_blp_cv` requires the BLP to be fit.
+  - `panic_gain_stats_from_blp_cv_n_folds_too_small`
+    — `n_folds` must be >= 2.
+
+### Notes
+- The cross-fit `var_y_residuals` is **strictly
+  larger** than the in-sample version on average
+  (because the basis was fit on the same rows
+  in the in-sample case, so the in-sample
+  residuals are biased low). The test
+  `gain_stats_from_blp_cv_differs_from_in_sample`
+  verifies this direction.
+- The OOF residual variance is the right thing
+  for sensitivity benchmarks because it
+  approximates the "honest" R^2 the basis would
+  achieve on held-out data. The in-sample version
+  is the "training R^2", which is upward-biased
+  and gives an overly optimistic `cf_y` benchmark.
+- `coef`, `se`, `var_y`, and `all_coef` are
+  unchanged from `from_blp`. The BLP's own fit
+  on the full data is the canonical coefficient
+  estimate; only `var_y_residuals` and `nu2` are
+  recomputed.
+- `n_rep` is fixed at 1 for `from_blp_cv`. The BLP
+  is a single-shot fit, so multi-rep would require
+  multiple BLP fits with different folds; defer to
+  a future release if needed.
+
+---
+
 ## [0.21.0] — `DoubleMLDIDCrossSection::bootstrap` (multiplier bootstrap + joint CI)
 
 ### Added

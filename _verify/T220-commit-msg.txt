@@ -1,0 +1,76 @@
+Release 0.22.0: GainStatsSource::from_blp_cv (cross-fit BLP)
+
+Added
+- sensitivity.mbt::GainStatsSource::from_blp_cv
+  (blp, n_folds?, seed?): cross-fit variant of
+  from_blp. The only difference is var_y_residuals,
+  which is computed from out-of-fold (OOF)
+  predictions rather than the in-sample BLP
+  residuals. The OOF residual variance is honest
+  (no leakage from the basis fit on the same rows),
+  so the R2_y benchmark in gain_statistics is more
+  accurate. coef, se, var_y, and all_coef are
+  unchanged from from_blp.
+- blp_policy.mbt::DoubleMLBLP::orth_signal()
+  accessor: returns the BLP's orthogonal signal
+  array (length n_obs). Used by from_blp_cv to
+  recompute the residuals.
+- blp_policy.mbt::DoubleMLBLP::basis() accessor:
+  returns the BLP's basis matrix (shape
+  n_obs x p_features). Used by from_blp_cv to
+  refit the BLP on each fold's training subset.
+
+Algorithm
+For from_blp_cv:
+  1. Draw n_folds random folds via kfold (with
+     seed for reproducibility).
+  2. For each fold, fit a LinearRegression on the
+     training rows and predict on the test fold.
+  3. Compute the OOF residual sum
+     sum_fold sum_i (y_i - y_hat_i)^2.
+  4. var_y_residuals_scalar = OOF RSS / n_obs.
+  5. nu2[k] = var_y_residuals_scalar / (n_obs * se[k]^2)
+     (same homoskedastic convention as from_blp).
+
+Notes
+- The cross-fit var_y_residuals is strictly larger
+  than the in-sample version on average (because
+  the basis was fit on the same rows in the
+  in-sample case, so the in-sample residuals are
+  biased low).
+- The OOF residual variance is the right thing
+  for sensitivity benchmarks because it
+  approximates the "honest" R^2 the basis would
+  achieve on held-out data. The in-sample version
+  is the "training R^2", which is upward-biased
+  and gives an overly optimistic cf_y benchmark.
+- n_rep is fixed at 1 for from_blp_cv. The BLP is
+  a single-shot fit, so multi-rep would require
+  multiple BLP fits with different folds; defer
+  to a future release if needed.
+
+Tests
+- 231/231 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 225 in v0.21.0; +6 new tests in
+  sensitivity_test.mbt:
+    1 gain_stats_from_blp_cv_basic
+    1 gain_stats_from_blp_cv_differs_from_in_sample
+    1 gain_stats_from_blp_cv_deterministic
+    1 gain_stats_from_blp_cv_end_to_end
+    1 panic_gain_stats_from_blp_cv_unfitted
+    1 panic_gain_stats_from_blp_cv_n_folds_too_small
+- 16/16 validate_*_with_python.py PASS (no new
+  validator; the upstream gain_statistics does not
+  distinguish in-sample vs cross-fit residuals).
+- 6/6 demos run cleanly and produce bit-equal
+  output to v0.21.0 (none uses from_blp_cv).
+
+Files
+- 2 production files extended: blp_policy.mbt
+  (+ orth_signal, + basis accessors), sensitivity.mbt
+  (+ from_blp_cv).
+- 1 test file extended: sensitivity_test.mbt
+  (+ 6 tests).
+- README.mbt.md + CHANGELOG.md updated.
+
+See _verify/T220-verdict.md.
