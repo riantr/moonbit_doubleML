@@ -474,6 +474,146 @@ pub fn GainStatsSource::from_blp_cv(
 }
 
 ///|
+/// v0.23.0+: `from_blp_hc0(blp, n_folds?, seed?)` is
+/// the HC0-honest variant of `from_blp_cv`. The
+/// difference is the `nu2` formula: instead of the
+/// homoskedastic OLS convention
+/// `nu2 = var_y_residuals / (n_obs * se^2)`, it uses
+/// the projection-weight formula
+/// `nu2[k] = (1 / n_obs) * ||M[k,:] @ basis^T||^2`
+/// where `M = (basis^T basis + ridge I)^{-1}` is the
+/// BLP's regression matrix. This is consistent with
+/// the upstream
+/// `doubleml.utils._estimation._compute_sensitivity_elements`
+/// convention, where `nu2 = E[score_d^2]` and the
+/// score is the per-observation influence on the
+/// k-th coefficient (`M[k,:] @ x_i`).
+///
+/// The homoskedastic formula conflates `nu2` with
+/// `se^2` (using the relation
+/// `se^2 = sigma^2 * (Z^T Z)^{-1}_{kk}`), which is
+/// only correct under homoskedasticity. The HC0 SE
+/// `se^2 = sum_i (M[k,:] @ x_i)^2 * e_i^2` does not
+/// satisfy the same relation; the projection-weight
+/// formula is the HC0-compatible alternative.
+///
+/// `var_y_residuals` is computed via K-fold
+/// cross-fitting (same as `from_blp_cv`). `coef`,
+/// `se`, `var_y`, and `all_coef` are unchanged from
+/// `from_blp`.
+pub fn GainStatsSource::from_blp_hc0(
+  blp : DoubleMLBLP,
+  n_folds? : Int = 5,
+  seed? : Int = 3141,
+) -> GainStatsSource {
+  require(blp.fitted)
+  require(n_folds >= 2)
+  let n_obs = blp.n_obs()
+  require(n_obs >= n_folds)
+  let coef = blp.coef()
+  let se = blp.se()
+  let p = coef.length()
+  let n_obs_d = n_obs.to_double()
+  let orth_signal = blp.orth_signal()
+  let basis = blp.basis()
+  let p_basis = basis.cols()
+  require(p == p_basis + 1) // p = p_basis + 1 (intercept)
+  // Compute `M = (basis^T basis + ridge I)^{-1}` using
+  // the same ridge as the BLP's `LinearRegression`.
+  // `LinearRegression::fit` uses `ridge = 1e-10`.
+  let ridge = 1.0e-10
+  let basis_t = basis.transpose()
+  let xtx = matmul(basis_t, basis)
+  // Add ridge to the diagonal.
+  let xtx_ridged = Matrix::zeros(p_basis, p_basis)
+  for i = 0; i < p_basis; i = i + 1 {
+    for j = 0; j < p_basis; j = j + 1 {
+      xtx_ridged.set(i, j, xtx.get(i, j) + (if i == j { ridge } else { 0.0 }))
+    }
+  }
+  let m_mat = inv_spd(xtx_ridged)
+  // Compute `nu2[k] = (1 / n_obs) * ||M[k,:] @ basis^T||^2`
+  // for each coef k. Note: the BLP's stored `coef`
+  // has the intercept at position 0 (because
+  // `LinearRegression::fit` augments with an
+  // intercept column). The regression matrix `M` is
+  // for the un-augmented basis, so `nu2[0]` (the
+  // intercept coef) uses `M[0,:] @ basis^T` (the
+  // first row of M, which corresponds to the first
+  // basis column — wait, no; `M[0,:]` is the
+  // first row, which corresponds to the first coef
+  // in the un-augmented basis. But the BLP's coef
+  // is in the order [intercept, slopes] = [0, 1, ...].
+  // So we need to map: nu2[k] uses M[k-1, :] for
+  // k >= 1, and nu2[0] corresponds to the intercept
+  // (which doesn't have a M row; we use a sentinel).
+  let nu2 : Array[Double] = Array::make(p, 0.0)
+  // Intercept (k = 0): no projection; nu2 = 1.0
+  // (sentinel, matches the from_blp convention).
+  nu2[0] = 1.0
+  // Slopes (k = 1, ..., p - 1): use M[k - 1, :].
+  for k = 1; k < p; k = k + 1 {
+    let m_row = k - 1
+    // `r = M[m_row, :] @ basis^T` is a length-`n_obs`
+    // vector. We compute it as `r[i] = sum_j
+    // M[m_row, j] * basis[i, j]`.
+    let mut sum_sq = 0.0
+    for i = 0; i < n_obs; i = i + 1 {
+      let mut r_i = 0.0
+      for j = 0; j < p_basis; j = j + 1 {
+        r_i = r_i + m_mat.get(m_row, j) * basis.get(i, j)
+      }
+      sum_sq = sum_sq + r_i * r_i
+    }
+    nu2[k] = sum_sq / n_obs_d
+  }
+  // Compute cross-fit var_y_residuals (same as
+  // from_blp_cv).
+  let folds = kfold(n_obs, n_folds, seed)
+  let mut ss_resid_oof = 0.0
+  for fold = 0; fold < n_folds; fold = fold + 1 {
+    let test_idx = folds[fold].test_idx
+    let train_idx = folds[fold].train_idx
+    let n_train = train_idx.length()
+    let n_test = test_idx.length()
+    let mut x_train_acc : Array[Double] = []
+    let mut y_train_acc : Array[Double] = []
+    for k = 0; k < n_train; k = k + 1 {
+      let i = train_idx[k]
+      for j = 0; j < p_basis; j = j + 1 {
+        x_train_acc = x_train_acc + [basis.data[i * p_basis + j]]
+      }
+      y_train_acc = y_train_acc + [orth_signal[i]]
+    }
+    let mut x_test_acc : Array[Double] = []
+    for k = 0; k < n_test; k = k + 1 {
+      let i = test_idx[k]
+      for j = 0; j < p_basis; j = j + 1 {
+        x_test_acc = x_test_acc + [basis.data[i * p_basis + j]]
+      }
+    }
+    let x_train = Matrix::from_array(x_train_acc, n_train, p_basis)
+    let x_test = Matrix::from_array(x_test_acc, n_test, p_basis)
+    let model = LinearRegression::new().fit(x_train, y_train_acc)
+    let pred = model.predict(x_test)
+    for k = 0; k < n_test; k = k + 1 {
+      let i = test_idx[k]
+      let r = orth_signal[i] - pred[k]
+      ss_resid_oof = ss_resid_oof + r * r
+    }
+  }
+  let var_y_residuals_scalar = ss_resid_oof / n_obs_d
+  let var_y_residuals : Array[Double] = Array::make(p, var_y_residuals_scalar)
+  let _ = se // Suppress unused-variable warning; se
+  // is exposed via the source but not used
+  // in the HC0 nu2 formula.
+  let all_coef = coef.copy()
+  let var_y = blp.var_y()
+  let n_rep = 1
+  { var_y_residuals, nu2, all_coef, n_rep, var_y }
+}
+
+///|
 /// Median of a sorted array. Returns the middle value (or
 /// the average of the two middle values for even-length
 /// arrays). Caller is expected to pre-sort with

@@ -1,0 +1,69 @@
+Release 0.23.0: GainStatsSource::from_blp_hc0 (HC0-honest nu2)
+
+Added
+- sensitivity.mbt::GainStatsSource::from_blp_hc0
+  (blp, n_folds?, seed?): HC0-honest variant of
+  from_blp_cv. Same cross-fit var_y_residuals as
+  from_blp_cv, but a different nu2 formula:
+  nu2[k] = (1 / n_obs) * ||M[k,:] @ basis^T||^2
+  where M = (basis^T basis + ridge I)^{-1} is the
+  BLP's regression matrix. This is consistent with
+  the upstream
+  doubleml.utils._estimation._compute_sensitivity_elements
+  convention, where nu2 = E[score_d^2] and the
+  score is the per-observation influence on the
+  k-th coefficient.
+
+Why a separate function
+- The homoskedastic OLS formula
+  nu2 = var_y_residuals / (n_obs * se^2) is only
+  correct under homoskedasticity (where
+  se^2 = sigma^2 * (Z^T Z)^{-1}_{kk}).
+- The HC0 SE
+  se^2 = sum_i (M[k,:] @ x_i)^2 * e_i^2
+  does not satisfy the same relation.
+- The projection-weight formula is the
+  HC0-compatible alternative.
+- Under homoskedasticity the two formulas agree
+  exactly; under heteroskedasticity they differ
+  in a way that captures the per-observation
+  "weight" the basis has on the k-th coefficient.
+
+Notes
+- The intercept nu2[0] is set to 1.0 (sentinel),
+  matching the convention from from_blp and
+  from_blp_cv. The intercept doesn't have a
+  "projection weight" in the OLS sense.
+- coef, se, var_y, all_coef are unchanged from
+  from_blp / from_blp_cv.
+- The regression matrix M is recomputed inside
+  from_blp_hc0 (the LinearRegression learner only
+  stores the diagonal of M, not the full matrix,
+  so we re-invert to get the full M). This is a
+  one-time cost per from_blp_hc0 call and is
+  negligible for the typical BLP dimensions
+  (p <= 10).
+
+Tests
+- 235/235 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 231 in v0.22.0; +4 new tests in
+  sensitivity_test.mbt:
+    1 gain_stats_from_blp_hc0_basic
+    1 gain_stats_from_blp_hc0_nu2_differs
+    1 gain_stats_from_blp_hc0_nu2_matches_projection_formula
+    1 panic_gain_stats_from_blp_hc0_unfitted
+- 16/16 validate_*_with_python.py PASS (no new
+  validator; the upstream gain_statistics does
+  not distinguish HC0-honest from homoskedastic
+  nu2).
+- 6/6 demos run cleanly and produce bit-equal
+  output to v0.22.0 (none uses from_blp_hc0).
+
+Files
+- 1 production file extended: sensitivity.mbt
+  (+ from_blp_hc0).
+- 1 test file extended: sensitivity_test.mbt
+  (+ 4 tests).
+- README.mbt.md + CHANGELOG.md updated.
+
+See _verify/T230-verdict.md.

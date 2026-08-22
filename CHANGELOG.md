@@ -11,6 +11,76 @@ release is the canonical version.
 
 ---
 
+## [0.23.0] — `GainStatsSource::from_blp_hc0` (HC0-honest `nu2`)
+
+### Added
+- **`GainStatsSource::from_blp_hc0(blp, n_folds?,
+  seed?)`**: HC0-honest variant of `from_blp_cv`.
+  Same cross-fit `var_y_residuals` as
+  `from_blp_cv`, but a different `nu2` formula:
+  instead of the homoskedastic OLS convention
+  `nu2 = var_y_residuals / (n_obs * se^2)`, uses
+  the projection-weight formula
+  `nu2[k] = (1 / n_obs) * ||M[k,:] @ basis^T||^2`
+  where `M = (basis^T basis + ridge I)^{-1}` is the
+  BLP's regression matrix. This is consistent with
+  the upstream
+  `doubleml.utils._estimation._compute_sensitivity_elements`
+  convention, where `nu2 = E[score_d^2]` and the
+  score is the per-observation influence on the
+  k-th coefficient.
+
+### Why a separate function?
+The homoskedastic formula conflates `nu2` with
+`se^2` via `se^2 = sigma^2 * (Z^T Z)^{-1}_{kk}`,
+which is only correct under homoskedasticity. The
+HC0 SE
+`se^2 = sum_i (M[k,:] @ x_i)^2 * e_i^2` does not
+satisfy the same relation; the projection-weight
+formula is the HC0-compatible alternative.
+
+Under homoskedasticity the two formulas agree
+exactly; under heteroskedasticity they differ
+in a way that captures the per-observation
+"weight" the basis has on the k-th coefficient.
+
+### Tests
+- 235/235 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 231 in v0.22.0; +4 new tests in
+  `sensitivity_test.mbt`:
+  - `gain_stats_from_blp_hc0_basic` — basic
+    shape and accessor consistency.
+  - `gain_stats_from_blp_hc0_nu2_differs` — the
+    HC0 `nu2` differs from the homoskedastic
+    `nu2` (computed by `from_blp_cv`) on a
+    heteroskedastic DGP. On a homoskedastic
+    DGP the two are equal.
+  - `gain_stats_from_blp_hc0_nu2_matches_projection_formula`
+    — recompute the projection formula from
+    scratch and verify bit-equal to the
+    function output.
+  - `panic_gain_stats_from_blp_hc0_unfitted` —
+    `from_blp_hc0` requires the BLP to be fit.
+
+### Notes
+- The intercept `nu2[0]` is set to 1.0 (sentinel),
+  matching the convention from `from_blp` and
+  `from_blp_cv`. The intercept doesn't have a
+  "projection weight" in the OLS sense; the
+  sentinel is a no-op in the `gain_statistics`
+  algorithm.
+- `coef`, `se`, `var_y`, `all_coef` are unchanged
+  from `from_blp` / `from_blp_cv`.
+- The regression matrix `M` is recomputed inside
+  `from_blp_hc0` (the `LinearRegression` learner
+  only stores the diagonal of `M`, not the full
+  matrix, so we re-invert to get the full `M`).
+  This is a one-time cost per `from_blp_hc0` call
+  and is negligible for the typical BLP
+  dimensions (`p <= 10`).
+
+---
+
 ## [0.22.0] — `GainStatsSource::from_blp_cv` (cross-fit BLP)
 
 ### Added

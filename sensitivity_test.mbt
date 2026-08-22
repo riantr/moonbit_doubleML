@@ -566,6 +566,139 @@ test "panic_gain_stats_from_blp_cv_n_folds_too_small" {
   let _ = GainStatsSource::from_blp_cv(blp, n_folds=1)
 }
 
+// ---------------------------------------------------------------------------
+// v0.23.0+ GainStatsSource::from_blp_hc0 tests
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.23.0+: `from_blp_hc0` produces a source with
+/// the same shape as `from_blp` / `from_blp_cv` but
+/// a different `nu2` (HC0-honest projection-weight
+/// formula rather than the homoskedastic
+/// OLS-derived `var_y_residuals / (n * se^2)`).
+test "gain_stats_from_blp_hc0_basic" {
+  let basis = Matrix::zeros(50, 2)
+  for i = 0; i < 50; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    basis.set(i, 1, i.to_double() * 0.1)
+  }
+  let orth_signal : Array[Double] = Array::make(50, 0.0)
+  let rng = chacha8_rng(7)
+  for i = 0; i < 50; i = i + 1 {
+    orth_signal[i] = 0.5 +
+      0.3 * i.to_double() * 0.1 +
+      0.5 * (rng.double() - 0.5)
+  }
+  let blp = DoubleMLBLP::new(basis, orth_signal).fit()
+  let src = GainStatsSource::from_blp_hc0(blp, n_folds=5, seed=3141)
+  let n_coef = blp.coef().length()
+  inspect(src.var_y_residuals.length(), content=n_coef.to_string())
+  inspect(src.nu2.length(), content=n_coef.to_string())
+  inspect(src.all_coef.length(), content=n_coef.to_string())
+  inspect(src.n_rep, content="1")
+  // var_y matches the BLP's var_y.
+  inspect((src.var_y - blp.var_y()).abs() < 1.0e-15, content="true")
+}
+
+///|
+/// v0.23.0+: the HC0 `nu2` differs from the
+/// homoskedastic `nu2` (computed by `from_blp`)
+/// when the BLP uses HC0 SE. The two formulas only
+/// agree under homoskedasticity.
+test "gain_stats_from_blp_hc0_nu2_differs" {
+  let basis = Matrix::zeros(100, 2)
+  let rng = chacha8_rng(7)
+  for i = 0; i < 100; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    // Heteroskedastic feature: variance grows with i.
+    basis.set(i, 1, i.to_double() * 0.1 * (1.0 + 0.1 * (rng.double() - 0.5)))
+  }
+  let orth_signal : Array[Double] = Array::make(100, 0.0)
+  for i = 0; i < 100; i = i + 1 {
+    // Heteroskedastic noise.
+    let noise_scale = 1.0 + 0.5 * (i.to_double() / 100.0)
+    orth_signal[i] = 0.5 +
+      0.3 * i.to_double() * 0.1 +
+      noise_scale * (rng.double() - 0.5)
+  }
+  let blp = DoubleMLBLP::new(basis, orth_signal).fit()
+  let src_homo = GainStatsSource::from_blp_cv(blp, n_folds=5, seed=3141)
+  let src_hc0 = GainStatsSource::from_blp_hc0(blp, n_folds=5, seed=3141)
+  // Compare nu2[1] (first slope coef). The two
+  // formulas should differ under heteroskedasticity.
+  let nu2_homo = src_homo.nu2[1]
+  let nu2_hc0 = src_hc0.nu2[1]
+  // Allow a small relative tolerance for the
+  // difference (the two are on the same order of
+  // magnitude; the difference is the
+  // heteroskedasticity correction).
+  let diff = (nu2_homo - nu2_hc0).abs()
+  // The relative diff should be > 0 (the two
+  // formulas genuinely differ).
+  inspect(diff > 0.0, content="true")
+}
+
+///|
+/// v0.23.0+: the HC0 `nu2` is the
+/// projection-weight formula
+/// `nu2[k] = (1 / n_obs) * ||M[k,:] @ basis^T||^2`.
+/// Verify by recomputing the formula from scratch
+/// and comparing to the function output.
+test "gain_stats_from_blp_hc0_nu2_matches_projection_formula" {
+  let basis = Matrix::zeros(50, 2)
+  for i = 0; i < 50; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    basis.set(i, 1, i.to_double() * 0.1)
+  }
+  let orth_signal : Array[Double] = Array::make(50, 0.0)
+  let rng = chacha8_rng(7)
+  for i = 0; i < 50; i = i + 1 {
+    orth_signal[i] = 0.5 +
+      0.3 * i.to_double() * 0.1 +
+      0.5 * (rng.double() - 0.5)
+  }
+  let blp = DoubleMLBLP::new(basis, orth_signal).fit()
+  let src = GainStatsSource::from_blp_hc0(blp, n_folds=5, seed=3141)
+  let p_basis = basis.cols()
+  let n_obs = blp.n_obs()
+  let n_obs_d = n_obs.to_double()
+  // Recompute M = (basis^T basis + 1e-10 I)^{-1}.
+  let ridge = 1.0e-10
+  let xtx = matmul(basis.transpose(), basis)
+  let xtx_ridged = Matrix::zeros(p_basis, p_basis)
+  for i = 0; i < p_basis; i = i + 1 {
+    for j = 0; j < p_basis; j = j + 1 {
+      xtx_ridged.set(i, j, xtx.get(i, j) + (if i == j { ridge } else { 0.0 }))
+    }
+  }
+  let m_mat = inv_spd(xtx_ridged)
+  // Recompute nu2[1] (first slope).
+  let k = 1
+  let m_row = k - 1
+  let mut sum_sq = 0.0
+  for i = 0; i < n_obs; i = i + 1 {
+    let mut r_i = 0.0
+    for j = 0; j < p_basis; j = j + 1 {
+      r_i = r_i + m_mat.get(m_row, j) * basis.get(i, j)
+    }
+    sum_sq = sum_sq + r_i * r_i
+  }
+  let expected_nu2 = sum_sq / n_obs_d
+  inspect((src.nu2[1] - expected_nu2).abs() < 1.0e-12, content="true")
+}
+
+///|
+/// v0.23.0+: panic test — `from_blp_hc0` requires
+/// the BLP to be fit.
+test "panic_gain_stats_from_blp_hc0_unfitted" {
+  let basis = Matrix::zeros(5, 1)
+  for i = 0; i < 5; i = i + 1 {
+    basis.set(i, 0, 1.0)
+  }
+  let unfitted = DoubleMLBLP::new(basis, [0.1, 0.2, 0.3, 0.4, 0.5])
+  let _ = GainStatsSource::from_blp_hc0(unfitted)
+}
+
 ///|
 /// Helper: deterministic U(-0.5, 0.5) for the CV
 /// tests (avoids depending on the chacha8 RNG which
