@@ -1,9 +1,75 @@
 ///|
+/// v0.24.0+ `gt_combinations_keyword = "universal"`
+/// emits ALL (g, t) cells (including pre-treatment
+/// placebos), not just post-treatment. The
+/// baseline cell `t = g` is excluded (identically
+/// zero by construction).
+test "did_multi_universal_includes_pre_treatment" {
+  let data = build_bootstrap_dgp()
+  // Standard: 3 cells (1,2), (1,3), (2,3) -- only
+  // post-treatment with t > g.
+  let fitted_standard = DoubleMLDIDMulti::new(
+    data, n_folds=2, seed=3141, gt_combinations_keyword="standard",
+  ).fit()
+  inspect(fitted_standard.n_combinations(), content="3")
+  // Universal: includes pre-treatment placebos.
+  // For 4 cohorts (g=0,1,2,3) and 4 periods (t=0,1,2,3),
+  // the non-baseline cells are:
+  //   g=1: (1,0), (1,2), (1,3)   -- 3 cells
+  //   g=2: (2,0), (2,1), (2,3)   -- 3 cells
+  //   g=3: (3,0), (3,1), (3,2)   -- 3 cells
+  // Total: 9 cells.
+  let fitted_universal = DoubleMLDIDMulti::new(
+    data, n_folds=2, seed=3141, gt_combinations_keyword="universal",
+  ).fit()
+  inspect(fitted_universal.n_combinations(), content="9")
+  // "all" is an alias for "universal".
+  let fitted_all = DoubleMLDIDMulti::new(
+    data, n_folds=2, seed=3141, gt_combinations_keyword="all",
+  ).fit()
+  inspect(fitted_all.n_combinations(), content="9")
+}
+
+///|
+/// v0.24.0+ `gt_combinations_keyword = "universal"`
+/// cells include pre-treatment placebos (t < g). On
+/// a DGP with no true pre-treatment effect, the
+/// pre-treatment cell estimates should be near 0.
+test "did_multi_universal_pre_treatment_placebo" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(
+    data, n_folds=2, seed=3141, gt_combinations_keyword="universal",
+  ).fit()
+  // Iterate over the (g, t_pre, t_eval) triples and
+  // verify that pre-treatment cells (t_eval < g)
+  // are near 0 (the DGP has no pre-treatment effect).
+  let n_combos = fitted.n_combinations()
+  let mut n_pre = 0
+  let mut max_abs_pre = 0.0
+  for i = 0; i < n_combos; i = i + 1 {
+    let (g, _t_pre, t_eval) = fitted.gt_combinations[i]
+    let coef = fitted.coef_at_idx(i)
+    if t_eval < g {
+      n_pre = n_pre + 1
+      let abs_coef = if coef < 0.0 { -coef } else { coef }
+      if abs_coef > max_abs_pre {
+        max_abs_pre = abs_coef
+      }
+    }
+  }
+  // There should be at least some pre-treatment cells.
+  inspect(n_pre > 0, content="true")
+  // The maximum |coef| among pre-treatment cells
+  // should be < 1.0 (loose; the DGP has theta0 = 1.0
+  // for post-treatment only).
+  inspect(max_abs_pre < 1.0, content="true")
+}
+
+///|
 /// End-to-end: `DoubleMLDIDMulti::fit` should drive a
 /// per-(g, t) ATT matrix and the three aggregations should
 /// reduce it sensibly.
-test "did_multi_fit_and_aggregate" {
-  // 4 cohorts × 4 periods, theta0 = 1.0 for every
+test "did_multi_fit_and_aggregate" {  // 4 cohorts × 4 periods, theta0 = 1.0 for every
   // post-treatment (g, t) cell.
   let n_per_cohort = 80
   let p = 3

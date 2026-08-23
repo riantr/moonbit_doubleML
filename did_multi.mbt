@@ -122,7 +122,11 @@ pub fn DoubleMLDIDMulti::new(
     require(g_found)
     require(t_pre_found)
     require(t_eval_found)
-    require(t_eval > t_pre)
+    // Note: for "standard", `t_eval > t_pre` is
+    // enforced by the keyword expansion. For
+    // "all" / "universal", `t_eval < t_pre`
+    // (pre-treatment placebo) is explicitly
+    // allowed.
     ignore(n_groups)
     ignore(n_periods)
   }
@@ -192,23 +196,34 @@ fn expand_gt_keyword(
   let mut out_acc = out
   for i = 0; i < n_groups; i = i + 1 {
     let g = groups[i]
+    // Skip the never-treated group (g == 0) — these
+    // units never receive treatment, so ATT(g, t)
+    // is undefined for them. Upstream's
+    // `_construct_gt_combinations` filters these
+    // out via `_is_never_treated(g_values,
+    // never_treated_value=0)`.
+    if g == 0 {
+      continue
+    }
     for j = 0; j < n_periods; j = j + 1 {
       let t = times[j]
-      // Skip pre-treatment cells relative to g, with
-      // anticipation_periods leeway. For "standard", only emit
-      // post-treatment cells (t > g - anticipation_periods) and
-      // also require t_pre = g (the canonical Callaway-Sant'Anna
-      // pre-treatment baseline). For "all" / "universal", emit
-      // every (g, t) cell, including pre-treatment. The strict
-      // `t > g - anticipation_periods` ensures t_eval > t_pre
-      // (i.e. the cell is a real post-treatment period).
+      // For "standard", only emit post-treatment
+      // cells (t > g - anticipation_periods, with
+      // the canonical baseline t_pre = g). For
+      // "all" / "universal", emit every (g, t) cell
+      // except the baseline t = g (identically zero
+      // by construction). The pre-treatment cells
+      // t < g are placebos for the parallel trends
+      // assumption.
       if keyword == "standard" {
-        if t > g - anticipation_periods {
+        if t > g - anticipation_periods && t > g {
           out_acc = out_acc + [(g, g, t)]
         }
-        // "all" or "universal": emit every (g, t) cell.
-      } else if t > g - anticipation_periods {
-        out_acc = out_acc + [(g, g, t)]
+      } else {
+        // "all" or "universal".
+        if t != g {
+          out_acc = out_acc + [(g, g, t)]
+        }
       }
     }
   }

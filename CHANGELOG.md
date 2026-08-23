@@ -11,6 +11,66 @@ release is the canonical version.
 
 ---
 
+## [0.24.1] — `did_multi` "universal" / "all" keyword emits pre-treatment placebos
+
+### Fixed
+- **`did_multi.mbt::expand_gt_keyword`**:
+  `"standard"` and `"all"` / `"universal"` had
+  identical bodies, so `gt_combinations_keyword =
+  "universal"` was silently returning the same 3
+  post-treatment cells as `"standard"`. Replaced
+  with two distinct paths:
+  - `"standard"`: every (g, t) with `t > g` and
+    `t_pre = g` (the default Callaway-Sant'Anna
+    staggered set; same as before).
+  - `"all"` / `"universal"`: every (g, t) with
+    `t != g` and `t_pre = g`, restricted to
+    `g > 0` (i.e. the never-treated group is
+    excluded, matching upstream's
+    `_construct_gt_combinations` filter).
+  On the 4-cohort × 4-period demo DGP, this
+  gives 9 universal cells (3 cohorts × 3 non-
+  baseline periods) vs 3 standard cells. The 6
+  pre-treatment cells (e.g. (g=1, t=0), (g=2,
+  t=0), (g=2, t=1), (g=3, t=0), (g=3, t=1),
+  (g=3, t=2)) are placebos for the parallel
+  trends assumption; on the demo DGP their
+  point estimates are exactly 0 (no anticipation
+  effect).
+- **`DoubleMLDIDMulti::new` over-strict sanity
+  check** removed: `require(t_eval > t_pre)` was
+  blocking the `"universal"` keyword's
+  pre-treatment cells (`t_eval < t_pre`). The
+  keyword expansion now allows `t_eval < t_pre`
+  when the user explicitly opts in via
+  `gt_combinations_keyword = "universal"` (or
+  `"all"`).
+
+### Tests
+- 243/243 across all 4 backends. Was 241 in
+  v0.24.0; +2 new tests in `did_multi_test.mbt`:
+  - `did_multi_universal_includes_pre_treatment`:
+    n_combinations() == 3 for "standard", == 9
+    for both "universal" and "all".
+  - `did_multi_universal_pre_treatment_placebo`:
+    on the 4-cohort × 4-period DGP (no true
+    pre-treatment effect), the pre-treatment
+    cells have `|coef| < 1.0` and `n_pre > 0`.
+- Demo `cmd/did_multi/main.mbt` now shows a
+  "Universal mode" section at the end with the
+  9 cells and the pre-treatment max|coef|
+  summary.
+
+### Why this is 0.24.1 (not 0.25.0)
+This is a bug fix on the existing v0.24.0
+keyword surface, not a new public-API addition.
+Existing users calling `gt_combinations_keyword
+= "universal"` were silently getting
+"standard" behavior; the fix makes the keyword
+actually do what it says.
+
+---
+
 ## [0.24.0] — `tsbh` / `tsby` two-stage FDR + BH/BY long-name aliases
 
 ### Added

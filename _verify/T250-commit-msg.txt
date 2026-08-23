@@ -1,0 +1,18 @@
+Release 0.24.1: did_multi "universal" / "all" keyword now emits pre-treatment placebos
+
+The expand_gt_keyword function previously had identical bodies for
+"standard" and "all" / "universal", so the latter keywords were
+silently returning the same 3 post-treatment cells. Replaced with
+two distinct paths: "standard" keeps t > g (canonical CS staggered
+set), while "all" / "universal" emits every t != g (excluding the
+never-treated cohort g=0). On the 4-cohort × 4-period demo DGP, this
+yields 9 universal cells (3 cohorts × 3 non-baseline periods) vs 3
+standard cells. The 6 pre-treatment cells are placebos for the
+parallel trends assumption.
+
+Also removed the over-strict `require(t_eval > t_pre)` check in
+DoubleMLDIDMulti::new that was blocking the universal keyword's
+pre-treatment cells.
+
+Tests: 243/243 PASS (+2), all backends clean, --deny-warn exit 0.
+Demo cmd/did_multi now shows a "Universal mode" section.

@@ -57,7 +57,7 @@ fn main {
   println(
     "=== MoonBit DML demo: DoubleMLDIDMulti (n_units=\{n_units}, p=\{p}, true ATT=\{theta0}) ===",
   )
-  println("n_combinations = \{fitted.n_combinations()}")
+  println("n_combinations (standard) = \{fitted.n_combinations()}")
   println("")
   println("--- Per-(g, t) ATT matrix ---")
   for i = 0; i < fitted.n_combinations(); i = i + 1 {
@@ -97,4 +97,31 @@ fn main {
     let se = e_agg.se[i]
     println("  e=\{e_name}: ATT_hat=\{att}, se=\{se}")
   }
+  println("")
+  // v0.24.0+: "universal" keyword includes pre-treatment
+  // placebos. The DGP has no pre-treatment effect, so
+  // those cells should be near 0.
+  let fitted_u = @dml.DoubleMLDIDMulti::new(
+    data,
+    n_folds=2,
+    seed=3141,
+    gt_combinations_keyword="universal",
+  ).fit()
+  println(
+    "--- Universal mode (pre-treatment placebos, n_combos=\{fitted_u.n_combinations()}) ---",
+  )
+  let mut n_pre = 0
+  let mut max_abs_pre = 0.0
+  for i = 0; i < fitted_u.n_combinations(); i = i + 1 {
+    let (g, _t_pre, t_eval) = fitted_u.gt_combinations[i]
+    let coef = fitted_u.coef_at_idx(i)
+    if t_eval < g {
+      n_pre = n_pre + 1
+      let abs_coef = if coef < 0.0 { -coef } else { coef }
+      if abs_coef > max_abs_pre {
+        max_abs_pre = abs_coef
+      }
+    }
+  }
+  println("  pre-treatment cells: \{n_pre}, max|coef|=\{max_abs_pre} (expect < 1.0)")
 }
