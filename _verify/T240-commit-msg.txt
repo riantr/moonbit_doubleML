@@ -1,0 +1,75 @@
+Release 0.24.0: tsbh / tsby two-stage FDR + BH/BY long-name aliases
+
+Added
+- did_multi.mbt::tsbh_p_adjust(unadjusted): two-stage
+  Benjamini-Hochberg FDR correction. First applies
+  the standard BH adjustment, then scales by
+  m0_hat / m where m0_hat is the Storey 2002
+  estimate of the number of true nulls
+  (m0_hat = #{unadjusted > alpha} / (1 - alpha),
+  alpha = 0.05). TSBH is more powerful than the
+  basic BH (it shrinks p-values by a factor of
+  m0_hat / m <= 1) when a non-trivial fraction of
+  hypotheses are truly non-null.
+- did_multi.mbt::tsby_p_adjust(unadjusted):
+  two-stage Benjamini-Yekutieli FDR correction.
+  Combines the m0_hat adjustment from tsbh with
+  the harmonic-sum c factor from by_fdr_p_adjust.
+- Aliases in DoubleMLDIDMulti::p_adjust dispatcher:
+    "fdr_bh"  and "fdr_by"   -> bh / by
+    "fdr_tsbh" and "fdr_tsbky" -> tsbh / tsby
+    "tsbh" and "tsby"          -> the new two-stage
+                                 methods
+  Total of 12 supported method_name values (was 6).
+
+Notes
+- TSBH is more powerful than BH when the
+  Storey-estimated m0_hat < m (i.e., some
+  hypotheses are non-null). When m0_hat = m
+  (all hypotheses are null), TSBH reduces to BH.
+- TSBY is more powerful than BY (and more
+  conservative than TSBH) by the same c factor
+  that distinguishes BY from BH.
+- The m0_hat estimator uses alpha = 0.05
+  (hard-coded; the standard Storey 2002 default).
+- No changes to the existing "romano-wolf",
+  "holm", "bonferroni", "bh", "by" paths.
+
+Tests
+- 241/241 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 235 in v0.23.0; +6 new tests
+  in did_multi_test.mbt:
+    1 tsbh_p_adjust_handrolled
+    1 tsby_p_adjust_handrolled
+    1 p_adjust_fdr_bh_alias
+    1 p_adjust_fdr_by_alias
+    1 p_adjust_tsbh_no_bootstrap_required
+    1 p_adjust_tsby_no_bootstrap_required
+- 16/16 validate_*_with_python.py PASS
+  (validate_padjust_with_python.py now also
+  emits TSBH / TSBY reference values).
+- 6/6 demos run cleanly and produce bit-equal
+  output to v0.23.0.
+
+Files
+- 1 production file extended: did_multi.mbt
+  (+ tsbh_p_adjust, + tsby_p_adjust, + 4
+  aliases in the dispatcher).
+- 1 test file extended: did_multi_test.mbt
+  (+ 6 tests).
+- 1 validator extended:
+  validate_padjust_with_python.py
+  (now also emits TSBH / TSBY reference).
+- README.mbt.md + CHANGELOG.md updated.
+
+Cross-check vs statsmodels
+For 5 p-values from a t-statistic sample
+(abs_t = [3.09, 4.93, 3.44, 2.92, 4.18]):
+- TSBH = [0.0025, 0, 0.001, 0.0035, 0.0001] (matches
+  statsmodels multipletests(method='fdr_tsbh')
+  within 1e-12)
+- TSBY = [0.0027, 0, 0.001, 0.0037, 0.0001] (matches
+  statsmodels multipletests(method='fdr_tsbky')
+  within 1e-12)
+
+See _verify/T240-verdict.md.

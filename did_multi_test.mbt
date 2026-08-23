@@ -708,6 +708,115 @@ test "bh_by_sorted_output_is_monotonic" {
   inspect(by_mono, content="true")
 }
 
+// ---------------------------------------------------------------------------
+// v0.24.0+ tsbh / tsby / fdr_bh / fdr_by tests
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.24.0+: two-stage BH on a hand-rolled example.
+/// TSBH always produces p-values <= BH (the
+/// two-stage correction `m0_hat / m` with
+/// `m0_hat <= m` shrinks the BH p-values).
+test "tsbh_p_adjust_handrolled" {
+  // All 4 p-values are small: Storey estimator
+  // gives m0_hat = 1 (clamped); scale = 1/4.
+  let unadj_all_small : Array[Double] = [0.001, 0.01, 0.005, 0.02]
+  let p_all_small = tsbh_p_adjust(unadj_all_small)
+  let bh_all_small = bh_fdr_p_adjust(unadj_all_small)
+  for i = 0; i < 4; i = i + 1 {
+    // tsbh <= bh (more powerful when m0_hat < m).
+    inspect(p_all_small[i] <= bh_all_small[i] + 1.0e-12, content="true")
+  }
+  // 2 of 4 p-values are large: Storey estimator
+  // gives m0_hat ~ 2.1; scale ~ 0.53. tsbh is
+  // between the basic BH and the m0_hat = 1
+  // case.
+  let unadj_mixed : Array[Double] = [0.001, 0.5, 0.005, 0.6]
+  let p_mixed = tsbh_p_adjust(unadj_mixed)
+  let bh_mixed = bh_fdr_p_adjust(unadj_mixed)
+  for i = 0; i < 4; i = i + 1 {
+    // tsbh <= bh (always).
+    inspect(p_mixed[i] <= bh_mixed[i] + 1.0e-12, content="true")
+  }
+}
+
+///|
+/// v0.24.0+: two-stage BY on a hand-rolled example.
+/// TSBY uses the same two-stage correction as TSBH
+/// but with the BY `c` factor, so
+/// tsby >= tsbh (BY is more conservative than BH)
+/// and tsby <= by (the two-stage correction makes
+/// it less conservative than the basic BY).
+test "tsby_p_adjust_handrolled" {
+  let unadj : Array[Double] = [0.001, 0.5, 0.005, 0.6]
+  let tsby = tsby_p_adjust(unadj)
+  let by = by_fdr_p_adjust(unadj)
+  let tsbh = tsbh_p_adjust(unadj)
+  for i = 0; i < 4; i = i + 1 {
+    // tsby >= tsbh (BY is more conservative than BH).
+    inspect(tsby[i] >= tsbh[i] - 1.0e-12, content="true")
+    // tsby <= by (the two-stage correction makes
+    // it less conservative than the basic BY).
+    inspect(tsby[i] <= by[i] + 1.0e-12, content="true")
+  }
+}
+
+///|
+/// v0.24.0+: `p_adjust("fdr_bh")` is an alias for
+/// `p_adjust("bh")`. Both produce the same output.
+test "p_adjust_fdr_bh_alias" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv_bh = fitted.p_adjust(method_name="bh")
+  let pv_fdr = fitted.p_adjust(method_name="fdr_bh")
+  for i = 0; i < pv_bh.length(); i = i + 1 {
+    inspect((pv_bh[i] - pv_fdr[i]).abs() < 1.0e-15, content="true")
+  }
+}
+
+///|
+/// v0.24.0+: `p_adjust("fdr_by")` is an alias for
+/// `p_adjust("by")`. Both produce the same output.
+test "p_adjust_fdr_by_alias" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv_by = fitted.p_adjust(method_name="by")
+  let pv_fdr = fitted.p_adjust(method_name="fdr_by")
+  for i = 0; i < pv_by.length(); i = i + 1 {
+    inspect((pv_by[i] - pv_fdr[i]).abs() < 1.0e-15, content="true")
+  }
+}
+
+///|
+/// v0.24.0+: `p_adjust("tsbh")` works without
+/// `bootstrap()` (TSBH only needs the unadjusted
+/// p-values).
+test "p_adjust_tsbh_no_bootstrap_required" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv = fitted.p_adjust(method_name="tsbh")
+  inspect(pv.length(), content="3")
+  // TSBH <= BH (more powerful).
+  let pv_bh = fitted.p_adjust(method_name="bh")
+  for i = 0; i < 3; i = i + 1 {
+    inspect(pv[i] <= pv_bh[i] + 1.0e-12, content="true")
+  }
+}
+
+///|
+/// v0.24.0+: `p_adjust("tsby")` works without
+/// `bootstrap()`.
+test "p_adjust_tsby_no_bootstrap_required" {
+  let data = build_bootstrap_dgp()
+  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let pv = fitted.p_adjust(method_name="tsby")
+  let pv_by = fitted.p_adjust(method_name="by")
+  // TSBY <= BY (more powerful).
+  for i = 0; i < 3; i = i + 1 {
+    inspect(pv[i] <= pv_by[i] + 1.0e-12, content="true")
+  }
+}
+
 ///|
 /// `DoubleMLDIDMulti::p_adjust("bh")` works without
 /// `bootstrap()` (BH only needs the unadjusted p-values,

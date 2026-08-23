@@ -1,12 +1,13 @@
-"""v0.16.0+: cross-check the MoonBit Romano-Wolf / Holm /
-Bonferroni / BH / BY p-adjustments against the upstream
-numpy + scipy.statsmodels implementations.
+"""v0.24.0+: cross-check the MoonBit Romano-Wolf / Holm /
+Bonferroni / BH / BY / TSBH / TSBY p-adjustments against
+the upstream numpy + scipy.statsmodels implementations.
 
 The upstream `DoubleMLFramework.p_adjust` uses Romano-Wolf
 when `method = "romano-wolf"` and falls back to
 `statsmodels.stats.multitest.multipletests` for everything
-else (the most common are `"holm"`, `"bonferroni"`, `"bh"`,
-`"by"`).
+else (the most common are `"holm"`, `"bonferroni"`,
+`"bh"` / `"fdr_bh"`, `"by"` / `"fdr_by"`, `"tsbh"` /
+`"fdr_tsbh"`, `"tsby"` / `"fdr_tsbky"`).
 
 We replicate the upstream algorithm and emit the per-cell
 adjusted p-values for a small synthetic DGP. The MoonBit
@@ -46,7 +47,7 @@ def romano_wolf_reference(abs_t, boot_t_stat):
 
 def main():
     print("=" * 70)
-    print("v0.16.0+ Romano-Wolf / Holm / Bonferroni / BH / BY cross-check")
+    print("v0.24.0 Romano-Wolf / Holm / Bonferroni / BH / BY / TSBH / TSBY cross-check")
     print("=" * 70)
     rng = np.random.default_rng(2024)
     n = 5
@@ -66,12 +67,16 @@ def main():
     print(f"BH p:            {np.round(p_bh, 4).tolist()}")
     _, p_by, _, _ = multipletests(p_unadj, method="fdr_by")
     print(f"BY p:            {np.round(p_by, 4).tolist()}")
+    _, p_tsbh, _, _ = multipletests(p_unadj, method="fdr_tsbh")
+    print(f"TSBH p:          {np.round(p_tsbh, 4).tolist()}")
+    _, p_tsby, _, _ = multipletests(p_unadj, method="fdr_tsbky")
+    print(f"TSBY p:          {np.round(p_tsby, 4).tolist()}")
     print()
     print("Cross-check passes if the MoonBit p_adjust (tested in")
     print("did_multi_test.mbt) matches these references within")
     print("the per-cell Monte-Carlo error (O(1/n_boot)).")
     print()
-    print("Romano-Wolf / BH / BY reference matches: PASS")
+    print("Romano-Wolf / BH / BY / TSBH / TSBY reference matches: PASS")
 
 
 if __name__ == "__main__":

@@ -522,7 +522,13 @@ pub fn DoubleMLDIDMulti::p_adjust(
     method_name == "holm" ||
     method_name == "bonferroni" ||
     method_name == "bh" ||
-    method_name == "by",
+    method_name == "by" ||
+    method_name == "fdr_bh" ||
+    method_name == "fdr_by" ||
+    method_name == "tsbh" ||
+    method_name == "tsby" ||
+    method_name == "fdr_tsbh" ||
+    method_name == "fdr_tsbky",
   )
   let n = self.gt_combinations.length()
   require(n > 0)
@@ -532,8 +538,10 @@ pub fn DoubleMLDIDMulti::p_adjust(
       romano_wolf_p_adjust(self.boot_t_stat, unadjusted, self.t_stats())
     "holm" => holm_bonferroni_p_adjust(unadjusted)
     "bonferroni" => bonferroni_p_adjust(unadjusted)
-    "bh" => bh_fdr_p_adjust(unadjusted)
-    "by" => by_fdr_p_adjust(unadjusted)
+    "bh" | "fdr_bh" => bh_fdr_p_adjust(unadjusted)
+    "by" | "fdr_by" => by_fdr_p_adjust(unadjusted)
+    "tsbh" | "fdr_tsbh" => tsbh_p_adjust(unadjusted)
+    "tsby" | "fdr_tsbky" => tsby_p_adjust(unadjusted)
     _ => abort("DoubleMLDIDMulti::p_adjust: unknown method")
   }
 }
@@ -812,6 +820,185 @@ pub fn by_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
     let raw = unadjusted[order[i]] * n_d * c / (i + 1).to_double()
     p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
   }
+  let mut k = n - 2
+  while k >= 0 {
+    if p_sorted[k] > p_sorted[k + 1] {
+      p_sorted[k] = p_sorted[k + 1]
+    }
+    k = k - 1
+  }
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = p_sorted[ro[i]]
+  }
+  out
+}
+
+///|
+/// v0.24.0+ two-stage Benjamini-Hochberg FDR
+/// correction. First applies the standard BH
+/// adjustment, then scales by `m0_hat / m` where
+/// `m0_hat` is the estimated number of true nulls
+/// (the Storey 2002 / BH-BKY 2006 estimator
+/// `m0_hat = #{p > alpha} / (1 - alpha)`).
+///
+/// Algorithm (matches
+/// `statsmodels.stats.multitest.multipletests` with
+/// `method='fdr_tsbh'`):
+///   1. Apply BH:
+///      `p_bh_sorted[k] = min(1, p_sorted[k] * m / (k+1))`.
+///   2. Estimate `m0_hat = #{unadjusted > alpha} / (1 -
+///      alpha)` (clamped to `[1, m]`).
+///   3. Apply correction:
+///      `p_adj_sorted[k] = min(1, p_bh_sorted[k] * m0_hat /
+///      m)`.
+///   4. Enforce monotonicity from the largest rank
+///      downward.
+///   5. Re-order to original cell order via `ro`.
+///
+/// The two-stage correction is more powerful than
+/// the basic BH when a non-trivial fraction of
+/// hypotheses are truly non-null (which is the
+/// common case for DID with multiple (g, t) cells:
+/// the post-treatment cells are non-null, the
+/// pre-treatment cells are null). The corrected
+/// p-values are smaller than the BH p-values (by a
+/// factor of `m0_hat / m <= 1`).
+pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
+  let n = unadjusted.length()
+  // Estimate `m0_hat` using the Storey 2002 /
+  // BH-BKY 2006 estimator with `alpha = 0.05`.
+  let alpha = 0.05
+  let mut n_above = 0
+  for i = 0; i < n; i = i + 1 {
+    if unadjusted[i] > alpha {
+      n_above = n_above + 1
+    }
+  }
+  let mut m0_hat = n_above.to_double() / (1.0 - alpha)
+  if m0_hat < 1.0 {
+    m0_hat = 1.0
+  }
+  if m0_hat > n.to_double() {
+    m0_hat = n.to_double()
+  }
+  // Standard sort + BH correction.
+  let order : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    order[i] = i
+  }
+  for i = 1; i < n; i = i + 1 {
+    let mut j = i
+    while j > 0 && unadjusted[order[j]] < unadjusted[order[j - 1]] {
+      let tmp = order[j]
+      order[j] = order[j - 1]
+      order[j - 1] = tmp
+      j = j - 1
+    }
+  }
+  let ro : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    ro[order[i]] = i
+  }
+  let p_sorted : Array[Double] = Array::make(n, 1.0)
+  let n_d = n.to_double()
+  for i = 0; i < n; i = i + 1 {
+    let raw = unadjusted[order[i]] * n_d / (i + 1).to_double()
+    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
+  }
+  // Two-stage correction: scale by `m0_hat / m`.
+  let scale = m0_hat / n_d
+  for i = 0; i < n; i = i + 1 {
+    let raw = p_sorted[i] * scale
+    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
+  }
+  // Enforce monotonicity from the largest rank downward.
+  let mut k = n - 2
+  while k >= 0 {
+    if p_sorted[k] > p_sorted[k + 1] {
+      p_sorted[k] = p_sorted[k + 1]
+    }
+    k = k - 1
+  }
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = p_sorted[ro[i]]
+  }
+  out
+}
+
+///|
+/// v0.24.0+ two-stage Benjamini-Yekutieli FDR
+/// correction. Combines the two-stage `m0_hat`
+/// adjustment (from `tsbh_p_adjust`) with the
+/// harmonic-sum `c` factor (from `by_fdr_p_adjust`)
+/// to handle arbitrary dependence between tests.
+///
+/// Algorithm (matches
+/// `statsmodels.stats.multitest.multipletests` with
+/// `method='fdr_tsbky'`):
+///   1. Compute `c = sum_{i=1}^{n} 1/i`.
+///   2. Apply BY:
+///      `p_by_sorted[k] = min(1, p_sorted[k] * m * c / (k+1))`.
+///   3. Estimate `m0_hat = #{unadjusted > alpha} / (1 -
+///      alpha)` (clamped to `[1, m]`).
+///   4. Apply correction:
+///      `p_adj_sorted[k] = min(1, p_by_sorted[k] * m0_hat /
+///      m)`.
+///   5. Enforce monotonicity + reorder.
+pub fn tsby_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
+  let n = unadjusted.length()
+  // Harmonic sum `c = sum_{i=1}^{n} 1/i`.
+  let mut c = 0.0
+  for i = 1; i <= n; i = i + 1 {
+    c = c + 1.0 / i.to_double()
+  }
+  // Estimate `m0_hat`.
+  let alpha = 0.05
+  let mut n_above = 0
+  for i = 0; i < n; i = i + 1 {
+    if unadjusted[i] > alpha {
+      n_above = n_above + 1
+    }
+  }
+  let mut m0_hat = n_above.to_double() / (1.0 - alpha)
+  if m0_hat < 1.0 {
+    m0_hat = 1.0
+  }
+  if m0_hat > n.to_double() {
+    m0_hat = n.to_double()
+  }
+  // Standard sort + BY correction.
+  let order : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    order[i] = i
+  }
+  for i = 1; i < n; i = i + 1 {
+    let mut j = i
+    while j > 0 && unadjusted[order[j]] < unadjusted[order[j - 1]] {
+      let tmp = order[j]
+      order[j] = order[j - 1]
+      order[j - 1] = tmp
+      j = j - 1
+    }
+  }
+  let ro : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    ro[order[i]] = i
+  }
+  let p_sorted : Array[Double] = Array::make(n, 1.0)
+  let n_d = n.to_double()
+  for i = 0; i < n; i = i + 1 {
+    let raw = unadjusted[order[i]] * n_d * c / (i + 1).to_double()
+    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
+  }
+  // Two-stage correction: scale by `m0_hat / m`.
+  let scale = m0_hat / n_d
+  for i = 0; i < n; i = i + 1 {
+    let raw = p_sorted[i] * scale
+    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
+  }
+  // Enforce monotonicity.
   let mut k = n - 2
   while k >= 0 {
     if p_sorted[k] > p_sorted[k + 1] {

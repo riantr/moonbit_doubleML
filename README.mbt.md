@@ -10,7 +10,7 @@ covering all 15 models currently in upstream.
 |------|-------|
 | Source file count | 62 (31 production + 31 test) |
 | Models ported | 16 / 16 (incl. cross-section DID) |
-| Tests | **235 / 235** on all 4 backends (native, wasm-gc, wasm, js) |
+| Tests | **241 / 241** on all 4 backends (native, wasm-gc, wasm, js) |
 | Warnings | 0 (under `moon test --deny-warn`) |
 | Python cross-checks | 16 / 16 PASS |
 | License | Apache-2.0 |
@@ -19,7 +19,7 @@ covering all 15 models currently in upstream.
 
 ```console
 $ moon test --deny-warn
-Total tests: 235, passed: 235, failed: 0.
+Total tests: 241, passed: 241, failed: 0.
 
 $ moon run cmd/main
 === MoonBit DML PLR (partialling out) ===
@@ -105,10 +105,10 @@ $ moon run cmd/did_cross_section
 ## Supported backends
 
 ```console
-moon test --target native  --deny-warn   # 235/235
-moon test --target wasm-gc --deny-warn   # 235/235
-moon test --target wasm    --deny-warn   # 235/235
-moon test --target js      --deny-warn   # 235/235
+moon test --target native  --deny-warn   # 241/241
+moon test --target wasm-gc --deny-warn   # 241/241
+moon test --target wasm    --deny-warn   # 241/241
+moon test --target js      --deny-warn   # 241/241
 ```
 
 `wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
@@ -216,6 +216,12 @@ let pv_bonf = booted.p_adjust(method_name="bonferroni")
 // p-values, so they don't require `bootstrap()`.
 let pv_bh = fitted.p_adjust(method_name="bh")
 let pv_by = fitted.p_adjust(method_name="by")
+// v0.24.0+: two-stage FDR (more powerful when some
+// hypotheses are non-null). "tsbh" / "fdr_tsbh" and
+// "tsby" / "fdr_tsbky" are statsmodels-compatible
+// aliases.
+let pv_tsbh = fitted.p_adjust(method_name="tsbh")
+let pv_tsby = fitted.p_adjust(method_name="tsby")
 
 // v0.17.0+: gain statistics for sensitivity parameter
 // benchmarks. Pass two `GainStatsSource` (one for the

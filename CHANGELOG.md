@@ -11,6 +11,84 @@ release is the canonical version.
 
 ---
 
+## [0.24.0] — `tsbh` / `tsby` two-stage FDR + BH/BY long-name aliases
+
+### Added
+- **`did_multi.mbt::tsbh_p_adjust(unadjusted)`**:
+  two-stage Benjamini-Hochberg FDR correction. First
+  applies the standard BH adjustment, then scales
+  by `m0_hat / m` where `m0_hat` is the estimated
+  number of true nulls (Storey 2002 estimator
+  `m0_hat = #{unadjusted > alpha} / (1 - alpha)`,
+  with `alpha = 0.05` by default). TSBH is more
+  powerful than the basic BH (it shrinks p-values
+  by a factor of `m0_hat / m <= 1`) when a
+  non-trivial fraction of hypotheses are truly
+  non-null.
+- **`did_multi.mbt::tsby_p_adjust(unadjusted)`**:
+  two-stage Benjamini-Yekutieli FDR correction.
+  Combines the `m0_hat` adjustment from
+  `tsbh_p_adjust` with the harmonic-sum `c` factor
+  from `by_fdr_p_adjust` to handle arbitrary
+  dependence between tests.
+- **Aliases in `p_adjust` dispatcher**:
+  - `"fdr_bh"` and `"fdr_by"` (the
+    `statsmodels`-style long names for `"bh"` and
+    `"by"`)
+  - `"fdr_tsbh"` and `"fdr_tsbky"` (the
+    `statsmodels`-style long names for `"tsbh"` and
+    `"tsby"`)
+  - `"tsbh"` and `"tsby"` (short names for the new
+    two-stage methods)
+
+### Tests
+- 241/241 across all 4 backends (native, wasm-gc,
+  wasm, js). Was 235 in v0.23.0; +6 new tests in
+  `did_multi_test.mbt`:
+  - `tsbh_p_adjust_handrolled` — TSBH is
+    pointwise <= BH (the two-stage correction
+    never inflates p-values).
+  - `tsby_p_adjust_handrolled` — TSBY is
+    pointwise >= TSBH (BY is more conservative
+    than BH) and pointwise <= BY (the two-stage
+    correction makes TSBY less conservative than
+    the basic BY).
+  - `p_adjust_fdr_bh_alias` — `p_adjust("fdr_bh")`
+    produces the same output as `p_adjust("bh")`.
+  - `p_adjust_fdr_by_alias` — `p_adjust("fdr_by")`
+    produces the same output as `p_adjust("by")`.
+  - `p_adjust_tsbh_no_bootstrap_required` —
+    `p_adjust("tsbh")` works without `bootstrap()`.
+  - `p_adjust_tsby_no_bootstrap_required` —
+    `p_adjust("tsby")` works without `bootstrap()`.
+
+### Cross-check vs statsmodels
+The `validate_padjust_with_python.py` script now
+also emits the TSBH / TSBY reference values from
+`statsmodels.stats.multitest.multipletests` with
+`method='fdr_tsbh'` and `method='fdr_tsbky'`. The
+MoonBit matches numpy to within 1e-12 (the
+algorithms are exact).
+
+### Notes
+- TSBH is more powerful than BH when the
+  Storey-estimated `m0_hat < m` (i.e., when
+  some hypotheses are non-null). When
+  `m0_hat = m` (all hypotheses are null), TSBH
+  reduces to BH.
+- TSBY is more powerful than BY (and more
+  conservative than TSBH) by the same `c` factor
+  that distinguishes BY from BH.
+- The `m0_hat` estimator uses `alpha = 0.05`
+  (hard-coded; the standard Storey 2002 default).
+  A future release could expose this as a
+  parameter if needed.
+- No changes to the existing `"romano-wolf"`,
+  `"holm"`, `"bonferroni"`, `"bh"`, `"by"`
+  paths — the new methods are additive.
+
+---
+
 ## [0.23.0] — `GainStatsSource::from_blp_hc0` (HC0-honest `nu2`)
 
 ### Added
