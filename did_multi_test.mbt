@@ -9,7 +9,10 @@ test "did_multi_universal_includes_pre_treatment" {
   // Standard: 3 cells (1,2), (1,3), (2,3) -- only
   // post-treatment with t > g.
   let fitted_standard = DoubleMLDIDMulti::new(
-    data, n_folds=2, seed=3141, gt_combinations_keyword="standard",
+    data,
+    n_folds=2,
+    seed=3141,
+    gt_combinations_keyword="standard",
   ).fit()
   inspect(fitted_standard.n_combinations(), content="3")
   // Universal: includes pre-treatment placebos.
@@ -20,12 +23,18 @@ test "did_multi_universal_includes_pre_treatment" {
   //   g=3: (3,0), (3,1), (3,2)   -- 3 cells
   // Total: 9 cells.
   let fitted_universal = DoubleMLDIDMulti::new(
-    data, n_folds=2, seed=3141, gt_combinations_keyword="universal",
+    data,
+    n_folds=2,
+    seed=3141,
+    gt_combinations_keyword="universal",
   ).fit()
   inspect(fitted_universal.n_combinations(), content="9")
   // "all" is an alias for "universal".
   let fitted_all = DoubleMLDIDMulti::new(
-    data, n_folds=2, seed=3141, gt_combinations_keyword="all",
+    data,
+    n_folds=2,
+    seed=3141,
+    gt_combinations_keyword="all",
   ).fit()
   inspect(fitted_all.n_combinations(), content="9")
 }
@@ -38,7 +47,10 @@ test "did_multi_universal_includes_pre_treatment" {
 test "did_multi_universal_pre_treatment_placebo" {
   let data = build_bootstrap_dgp()
   let fitted = DoubleMLDIDMulti::new(
-    data, n_folds=2, seed=3141, gt_combinations_keyword="universal",
+    data,
+    n_folds=2,
+    seed=3141,
+    gt_combinations_keyword="universal",
   ).fit()
   // Iterate over the (g, t_pre, t_eval) triples and
   // verify that pre-treatment cells (t_eval < g)
@@ -69,7 +81,7 @@ test "did_multi_universal_pre_treatment_placebo" {
 /// End-to-end: `DoubleMLDIDMulti::fit` should drive a
 /// per-(g, t) ATT matrix and the three aggregations should
 /// reduce it sensibly.
-test "did_multi_fit_and_aggregate" {  // 4 cohorts × 4 periods, theta0 = 1.0 for every
+test "did_multi_fit_and_aggregate" { // 4 cohorts × 4 periods, theta0 = 1.0 for every
   // post-treatment (g, t) cell.
   let n_per_cohort = 80
   let p = 3

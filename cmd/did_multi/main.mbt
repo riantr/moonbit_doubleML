@@ -123,5 +123,7 @@ fn main {
       }
     }
   }
-  println("  pre-treatment cells: \{n_pre}, max|coef|=\{max_abs_pre} (expect < 1.0)")
+  println(
+    "  pre-treatment cells: \{n_pre}, max|coef|=\{max_abs_pre} (expect < 1.0)",
+  )
 }

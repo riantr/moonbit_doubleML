@@ -219,11 +219,9 @@ fn expand_gt_keyword(
         if t > g - anticipation_periods && t > g {
           out_acc = out_acc + [(g, g, t)]
         }
-      } else {
         // "all" or "universal".
-        if t != g {
-          out_acc = out_acc + [(g, g, t)]
-        }
+      } else if t != g {
+        out_acc = out_acc + [(g, g, t)]
       }
     }
   }
@@ -879,10 +877,13 @@ pub fn by_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
 /// pre-treatment cells are null). The corrected
 /// p-values are smaller than the BH p-values (by a
 /// factor of `m0_hat / m <= 1`).
-pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
+///
+/// Shared `m0_hat` estimator: Storey 2002 /
+/// BH-BKY 2006 with `alpha = 0.05` hard-coded:
+///   `m0_hat = #{unadjusted > alpha} / (1 - alpha)`
+/// clamped to `[1, m]`.
+fn storey_m0_hat(unadjusted : Array[Double]) -> Double {
   let n = unadjusted.length()
-  // Estimate `m0_hat` using the Storey 2002 /
-  // BH-BKY 2006 estimator with `alpha = 0.05`.
   let alpha = 0.05
   let mut n_above = 0
   for i = 0; i < n; i = i + 1 {
@@ -897,6 +898,14 @@ pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   if m0_hat > n.to_double() {
     m0_hat = n.to_double()
   }
+  m0_hat
+}
+
+pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
+  let n = unadjusted.length()
+  // Estimate `m0_hat` using the Storey 2002 /
+  // BH-BKY 2006 estimator with `alpha = 0.05`.
+  let m0_hat = storey_m0_hat(unadjusted)
   // Standard sort + BH correction.
   let order : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
@@ -969,20 +978,7 @@ pub fn tsby_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
     c = c + 1.0 / i.to_double()
   }
   // Estimate `m0_hat`.
-  let alpha = 0.05
-  let mut n_above = 0
-  for i = 0; i < n; i = i + 1 {
-    if unadjusted[i] > alpha {
-      n_above = n_above + 1
-    }
-  }
-  let mut m0_hat = n_above.to_double() / (1.0 - alpha)
-  if m0_hat < 1.0 {
-    m0_hat = 1.0
-  }
-  if m0_hat > n.to_double() {
-    m0_hat = n.to_double()
-  }
+  let m0_hat = storey_m0_hat(unadjusted)
   // Standard sort + BY correction.
   let order : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {

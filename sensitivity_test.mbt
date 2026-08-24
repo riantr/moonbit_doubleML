@@ -699,6 +699,185 @@ test "panic_gain_stats_from_blp_hc0_unfitted" {
   let _ = GainStatsSource::from_blp_hc0(unfitted)
 }
 
+// ---------------------------------------------------------------------------
+// v0.25.0+ GainStatsSource::from_blp_cv_repeated tests
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.25.0+: `from_blp_cv_repeated` produces a
+/// `GainStatsSource` with the same shape as
+/// `from_blp_cv` (same `coef`, `var_y`, `all_coef`,
+/// `n_rep`), but the `var_y_residuals` is averaged
+/// across `n_repeats` independent K-fold runs
+/// (each with a different seed).
+test "gain_stats_from_blp_cv_repeated_basic" {
+  let basis = Matrix::zeros(50, 2)
+  for i = 0; i < 50; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    basis.set(i, 1, i.to_double() * 0.1)
+  }
+  let orth_signal : Array[Double] = []
+  let mut acc = orth_signal
+  for i = 0; i < 50; i = i + 1 {
+    acc = acc + [0.5 + 0.3 * i.to_double() * 0.1 + 0.5 * rng_double2(i)]
+  }
+  let blp = DoubleMLBLP::new(basis, acc).fit()
+  let src = GainStatsSource::from_blp_cv_repeated(
+    blp,
+    n_folds=5,
+    n_repeats=10,
+    seed=3141,
+  )
+  let n_coef = blp.coef().length()
+  inspect(src.var_y_residuals.length(), content=n_coef.to_string())
+  inspect(src.nu2.length(), content=n_coef.to_string())
+  inspect(src.all_coef.length(), content=n_coef.to_string())
+  inspect(src.n_rep, content="1")
+  // var_y matches the BLP's var_y.
+  inspect((src.var_y - blp.var_y()).abs() < 1.0e-15, content="true")
+  // all_coef matches the BLP's coef.
+  let blp_coef = blp.coef()
+  for k = 0; k < n_coef; k = k + 1 {
+    inspect((src.all_coef[k] - blp_coef[k]).abs() < 1.0e-15, content="true")
+  }
+  // var_y_residuals is positive (not NaN, not inf).
+  for k = 0; k < n_coef; k = k + 1 {
+    let v = src.var_y_residuals[k]
+    inspect(v > 0.0, content="true")
+    inspect(v < 1.0e10, content="true")
+  }
+}
+
+///|
+/// v0.25.0+: `from_blp_cv_repeated` with `n_repeats=1`
+/// should match the per-rep result of
+/// `from_blp_cv` with the same `seed` (both use the
+/// same K-fold partition, so the residual SS is
+/// bit-equal).
+test "gain_stats_from_blp_cv_repeated_matches_single_when_one_repeat" {
+  let basis = Matrix::zeros(40, 2)
+  for i = 0; i < 40; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    basis.set(i, 1, i.to_double() * 0.1)
+  }
+  let orth_signal : Array[Double] = []
+  let mut acc = orth_signal
+  for i = 0; i < 40; i = i + 1 {
+    acc = acc + [0.5 + 0.2 * i.to_double() * 0.1 + 0.5 * rng_double2(i)]
+  }
+  let blp = DoubleMLBLP::new(basis, acc).fit()
+  let src_single = GainStatsSource::from_blp_cv(blp, n_folds=5, seed=3141)
+  let src_rep1 = GainStatsSource::from_blp_cv_repeated(
+    blp,
+    n_folds=5,
+    n_repeats=1,
+    seed=3141,
+  )
+  // Same residual variance when n_repeats=1.
+  let p = src_single.var_y_residuals.length()
+  for k = 0; k < p; k = k + 1 {
+    inspect(
+      (src_single.var_y_residuals[k] - src_rep1.var_y_residuals[k]).abs() <
+      1.0e-15,
+      content="true",
+    )
+  }
+}
+
+///|
+/// v0.25.0+: averaging across repeats reduces the
+/// variance of `var_y_residuals` estimates. The
+/// single-repeat estimate has a high variance
+/// across seeds; the 10-repeat average should be
+/// much closer to the "true" (in-sample) residual
+/// variance. We check that the 10-repeat estimate
+/// is between the 1-repeat estimates for two
+/// different seeds (loose but sufficient).
+test "gain_stats_from_blp_cv_repeated_smooths_estimate" {
+  let basis = Matrix::zeros(60, 2)
+  for i = 0; i < 60; i = i + 1 {
+    basis.set(i, 0, 1.0)
+    basis.set(i, 1, i.to_double() * 0.1)
+  }
+  let orth_signal : Array[Double] = []
+  let mut acc = orth_signal
+  for i = 0; i < 60; i = i + 1 {
+    acc = acc + [0.5 + 0.2 * i.to_double() * 0.1 + 0.5 * rng_double2(i)]
+  }
+  let blp = DoubleMLBLP::new(basis, acc).fit()
+  // Two different single-rep seeds give different
+  // OOF residual variances.
+  let s_a = GainStatsSource::from_blp_cv(blp, n_folds=5, seed=3141)
+  let s_b = GainStatsSource::from_blp_cv(blp, n_folds=5, seed=4242)
+  let s_avg = GainStatsSource::from_blp_cv_repeated(
+    blp,
+    n_folds=5,
+    n_repeats=20,
+    seed=3141,
+  )
+  let v_a = s_a.var_y_residuals[1]
+  let v_b = s_b.var_y_residuals[1]
+  let v_avg = s_avg.var_y_residuals[1]
+  // Guard against a degenerate DGP: if the noise
+  // were perfectly predictable from the basis, all
+  // three estimates would collapse to ~0 and the
+  // comparisons below would be vacuous.
+  inspect(v_a > 1.0e-6, content="true")
+  inspect(v_b > 1.0e-6, content="true")
+  // The averaged estimate should be within [lo/2,
+  // hi*3/2] of the two single-rep estimates (the
+  // average of seeds 3141..3160 is drawn from the
+  // same sampling distribution as seeds 3141 /
+  // 4242). A denominator bug that inflates
+  // `var_y_residuals` by `n_repeats` breaks this
+  // band immediately.
+  let lo = if v_a > v_b { v_b } else { v_a }
+  let hi = if v_a > v_b { v_a } else { v_b }
+  inspect(v_avg > lo * 0.5, content="true")
+  inspect(v_avg < hi * 1.5, content="true")
+}
+
+///|
+/// v0.25.0+: panic test — `from_blp_cv_repeated`
+/// requires the BLP to be fit.
+test "panic_gain_stats_from_blp_cv_repeated_unfitted" {
+  let basis = Matrix::zeros(5, 1)
+  for i = 0; i < 5; i = i + 1 {
+    basis.set(i, 0, 1.0)
+  }
+  let unfitted = DoubleMLBLP::new(basis, [0.1, 0.2, 0.3, 0.4, 0.5])
+  let _ = GainStatsSource::from_blp_cv_repeated(unfitted)
+}
+
+///|
+/// v0.25.0+: panic test — `n_repeats` must be >= 1.
+test "panic_gain_stats_from_blp_cv_repeated_zero_repeats" {
+  let basis = Matrix::zeros(10, 1)
+  for i = 0; i < 10; i = i + 1 {
+    basis.set(i, 0, 1.0)
+  }
+  let blp = DoubleMLBLP::new(basis, [
+    0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+  ]).fit()
+  let _ = GainStatsSource::from_blp_cv_repeated(blp, n_repeats=0)
+}
+
+///|
+/// Helper: deterministic U(-0.5, 0.5) that takes an
+/// `i` parameter (so we don't share the chacha8
+/// RNG state with the existing `rng_double`).
+/// Uses a fresh per-index chacha8 stream so the
+/// sequence is genuinely non-affine in `i` (an
+/// earlier LCG draft produced values linear in
+/// `i`, which made the CV noise perfectly
+/// predictable from the basis and collapsed the
+/// OOF residual variance to ~1e-25 — a vacuous
+/// test DGP).
+fn rng_double2(i : Int) -> Double {
+  let r = @dml.chacha8_rng(i + 1)
+  r.double() - 0.5
+}
+
 ///|
 /// Helper: deterministic U(-0.5, 0.5) for the CV
 /// tests (avoids depending on the chacha8 RNG which

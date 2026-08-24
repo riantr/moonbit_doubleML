@@ -12,6 +12,7 @@ pkg.generated.mbti
 # protocol; not part of the library).
 *.mbt.archived
 _verify_*.mbt.archived
+_verify/mut-bak-*
 
 # Probe / scratch .mbt files (verifier droppings, not part of
 # the test suite).

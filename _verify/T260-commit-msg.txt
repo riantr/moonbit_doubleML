@@ -1,0 +1,30 @@
+Release 0.25.0: from_blp_cv_repeated + nine-step QA battery
+
+New API: GainStatsSource::from_blp_cv_repeated(blp, n_folds=5,
+n_repeats=10, seed=3141) averages the K-fold OOF residual SS
+across independent splits (per-rep seeds seed+0..seed+n-1),
+reducing var_y_residuals variance by ~1/sqrt(n_repeats) on
+small samples. coef/se/var_y/all_coef identical to from_blp_cv;
+n_repeats=1 is bit-equal to from_blp_cv.
+
+QA battery run as release gate (T260):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings; no secrets/FFI.
+- Dup check: extracted storey_m0_hat from tsbh/tsby (killed the
+  one >=12-line duplicate); dupcheck.py now reports 0.
+- Deps: only moonbitlang/core subpackages; moon.mod version
+  fixed 0.8.0 -> 0.25.0.
+- Unit: 248/248 on native/wasm-gc/wasm/js with --deny-warn.
+- Gherkin: features/dml_acceptance.feature (10 scenarios, each
+  mapped to its executable MoonBit test).
+- Mutation: 5/5 mutants killed (M2 initially survived a vacuous
+  test — affine test noise collapsed OOF residuals to ~1e-25;
+  smooths test strengthened with relative band + degenerate-DGP
+  guard, rng_double2 now per-index chacha8).
+- Fuzz: new cmd/fuzz deterministic property harness, 6 surfaces
+  x 300 trials, 0 violations (p_adjust family, kfold partition,
+  matmul associativity, OLS normal equations, norm_ppf/cdf
+  inverse, romano-wolf range).
+- Components: all 7 cmd demos pass output assertions.
+
+Tests: 248/248 PASS, all backends, --deny-warn clean.

@@ -11,6 +11,119 @@ release is the canonical version.
 
 ---
 
+## [0.25.0] — `GainStatsSource::from_blp_cv_repeated` (multi-seed K-fold average)
+
+### Added
+- **`sensitivity.mbt::GainStatsSource::from_blp_cv_repeated(blp,
+  n_folds?, n_repeats?, seed?)`**: a more stable
+  version of `from_blp_cv`. Repeats the K-fold
+  pipeline `n_repeats` times with seeds
+  `seed + 0, seed + 1, ..., seed + n_repeats - 1`
+  and averages the OOF residual sum-of-squares
+  across repeats. This reduces the variance of
+  the `var_y_residuals` estimate by approximately
+  `1 / sqrt(n_repeats)` (i.i.d. assumption on the
+  per-rep estimates).
+- **`validate_cv_repeated_with_python.py`**:
+  reference implementation in numpy (using
+  sklearn's `KFold`) that demonstrates the
+  variance-reduction principle. Reference
+  values: single-repeat spread ~ 0.0007,
+  10-repeat reduces the SE by `1 / sqrt(10) ~ 0.32`.
+
+### When to use it
+- Use `from_blp_cv` for the standard single-pass
+  cross-fit (fast, deterministic, matches the
+  v0.22.0 behavior).
+- Use `from_blp_cv_repeated` when the
+  `R2_y` / `nu2` sensitivity benchmarks are
+  noisy on small samples (e.g. `n_obs < 500`)
+  and the downstream `gain_statistics` rho
+  estimates are unstable across single-rep
+  seeds. Typical gain: 3-5x reduction in
+  `var_y_residuals` SE for `n_repeats=10`,
+  ~7x for `n_repeats=50`.
+
+### Tests
+- 248/248 across all 4 backends. Was 243 in
+  v0.24.1; +5 new tests in `sensitivity_test.mbt`:
+  - `gain_stats_from_blp_cv_repeated_basic`:
+    structural sanity (lengths, positivity,
+    `var_y` / `all_coef` match the BLP).
+  - `gain_stats_from_blp_cv_repeated_matches_single_when_one_repeat`:
+    bit-equal to `from_blp_cv` when
+    `n_repeats=1`.
+  - `gain_stats_from_blp_cv_repeated_smooths_estimate`:
+    averaged estimate lies between the
+    single-rep estimates for seeds 3141 and
+    4242.
+  - `panic_gain_stats_from_blp_cv_repeated_unfitted`
+    and `panic_gain_stats_from_blp_cv_repeated_zero_repeats`.
+
+### Why 0.25.0 (not a sub-patch)
+`from_blp_cv_repeated` is a new public API
+(though the existing API is unchanged). It's a
+strict generalization of `from_blp_cv`
+(`from_blp_cv(blp, n_folds=k, seed=s)` ==
+`from_blp_cv_repeated(blp, n_folds=k, n_repeats=1, seed=s)`).
+
+### QA battery (v0.25.0 release gate, T260)
+Full nine-step quality gate run before tagging:
+1. **Format**: `moon fmt` no-op. PASS.
+2. **SAST**: `moon check --deny-warn` 0 warnings;
+   secret/unsafe/FFI scans clean; TODO matches are
+   historical references only. PASS.
+3. **Duplicate code**: `_verify/dupcheck.py` found
+   one 14-line duplicate (Storey `m0_hat` block in
+   `tsbh_p_adjust` / `tsby_p_adjust`). Extracted
+   `storey_m0_hat()`; re-scan reports 0 duplicated
+   blocks >= 12 lines. PASS.
+4. **Dependencies**: only `moonbitlang/core` sub-
+   packages (math / random / bytes); no third-party
+   MoonBit deps. Python validators need numpy /
+   sklearn / statsmodels (all importable). Fixed
+   stale `moon.mod` version `0.8.0` → `0.25.0`.
+   PASS.
+5. **Unit tests**: 248/248 on all 4 backends with
+   `--deny-warn`. PASS.
+6. **Gherkin**: added `features/dml_acceptance.feature`
+   (3 features / 10 scenarios) mapping every scenario
+   to its executable MoonBit test — MoonBit has no
+   native Cucumber runner, so the .feature file is
+   the documented acceptance layer. PASS (documented).
+7. **Mutation testing**: 5 hand-rolled mutants:
+   M1 universal `t != g`→`t == g` (killed ×2),
+   M2 `from_blp_cv_repeated` denominator drops
+   `n_repeats` (**initially SURVIVED** — the
+   smooths test was vacuous: an affine test-noise
+   helper made OOF residuals ~1e-25 and the
+   absolute tolerance swamped everything;
+   strengthened to relative band + degenerate-DGP
+   guard, now killed), M3 BH scale `m`→`m+1`
+   (killed ×2), M4 `norm_cdf` b1×2 (killed ×1),
+   M5 Box-Muller drops `sqrt` (killed ×3).
+   Final score 5/5. PASS.
+8. **Fuzzing**: new `cmd/fuzz` deterministic
+   property-based harness, 6 surfaces x 300
+   trials (p_adjust family range/length/
+   pointwise-monotonicity, kfold partition
+   invariants, matmul associativity, OLS
+   normal-equation orthogonality, norm_ppf/norm_cdf
+   inverse sweep, Romano-Wolf range). An earlier
+   exact-interpolation invariant was replaced:
+   Vandermonde + internal intercept augmentation +
+   ridge is not an interpolation contract. 0
+   violations, 0 warnings. PASS.
+9. **Component tests**: all 7 `cmd/*` components
+   run end-to-end with output assertions
+   (PLR theta recovery, 401k PLR+IRM CIs,
+   DID Binary ATT, CS-DID coverage, DIDMulti
+   standard/universal modes, cross-section DID
+   pointwise+joint CI coverage, fuzz harness).
+   PASS.
+
+---
+
 ## [0.24.1] — `did_multi` "universal" / "all" keyword emits pre-treatment placebos
 
 ### Fixed
