@@ -133,3 +133,59 @@ pub fn[T : Learner] cross_fit_predict(
   }
   preds
 }
+
+///|
+/// Double cross-fit prediction helper used by IRM-style models
+/// (e.g. LPLR). `outer` is the row-level outer-fold partition;
+/// for each outer fold, the model's training slice is re-split
+/// into `n_inner` inner folds via `kfold`, the learner is fit on
+/// each inner training slice and predicts on the corresponding
+/// inner test slice, and the resulting `n_inner` arrays of
+/// predictions are returned. The outer model then has, for each
+/// outer test row, an inner OOF prediction — used downstream to
+/// construct nuisance `W` and the preliminary `beta`.
+///
+/// Returns an `Array[Array[Double]]` of length `outer.length()`,
+/// one entry per outer fold. Each entry has length
+/// `inner_train_count` (the size of the outer fold's training
+/// slice); values are filled at the original training-row
+/// positions in the order the inner folds visit them.
+pub fn[T : Learner] double_cross_fit_predict(
+  learner : T,
+  x : Matrix,
+  y : Array[Double],
+  outer : Array[Fold],
+  n_inner : Int,
+  seed : Int,
+) -> Array[Array[Double]] {
+  let mut rng_state : Int = seed
+  let out : Array[Array[Double]] = Array::new()
+  for fold in outer {
+    let train_idx = fold.train_idx
+    let m = train_idx.length()
+    // Build inner folds on the outer training indices.
+    let inner = kfold(m, n_inner, rng_state)
+    rng_state = rng_state + 1
+    let preds : Array[Double] = Array::make(m, 0.0)
+    for ifold in inner {
+      let xt_rows : Array[Int] = Array::makei(ifold.train_idx.length(), fn(k) {
+        train_idx[ifold.train_idx[k]]
+      })
+      let yt_rows : Array[Int] = Array::makei(ifold.train_idx.length(), fn(k) {
+        train_idx[ifold.train_idx[k]]
+      })
+      let xt = slice_matrix_rows(x, xt_rows)
+      let yt = slice_vector(y, yt_rows)
+      let fitted = learner.fit(xt, yt)
+      let te_rows : Array[Int] = Array::makei(ifold.test_idx.length(), fn(k) {
+        train_idx[ifold.test_idx[k]]
+      })
+      let p = fitted.predict(slice_matrix_rows(x, te_rows))
+      for k = 0; k < ifold.test_idx.length(); k = k + 1 {
+        preds[ifold.test_idx[k]] = p[k]
+      }
+    }
+    out.push(preds)
+  }
+  out
+}

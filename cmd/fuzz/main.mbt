@@ -30,6 +30,10 @@
 //      approach's structural contract (units x T for cre/wg,
 //      units x (T-1) for fd), and a same-seed refit reproduces
 //      coef/se bit-exactly.
+//   8. DoubleMLLPLR nonlinear fits on random LZZ2020-style
+//      data: coef/se finite (Newton does not explode), CI
+//      symmetric around coef with half-width 1.96*se, and
+//      same-seed refit reproduces coef/se bit-exactly.
 
 ///|
 fn check(cond : Bool, msg : String) -> Unit {
@@ -367,6 +371,94 @@ fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
+fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
+  for trial = 0; trial < trials; trial = trial + 1 {
+    let n = rng.int(limit=100) + 60
+    let seed = rng.int(limit=100_000)
+    // Build a small LZZ2020-style DGP inline (the public
+    // test-only `build_lplr_dgp` is not visible from the fuzz
+    // harness, so we keep this self-contained and minimal).
+    let p = 6
+    let x_flat : Array[Double] = Array::make(n * p, 0.0)
+    let y : Array[Double] = Array::make(n, 0.0)
+    let d : Array[Double] = Array::make(n, 0.0)
+    let ch_rng = @dml.chacha8_rng(seed)
+    let pool : Array[Double] = Array::new()
+    while pool.length() < n * p + n {
+      let u1 = ch_rng.double()
+      let u2 = ch_rng.double()
+      let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
+      let r = (-2.0 * @math.ln(safe)).sqrt()
+      let th = 2.0 * 3.141592653589793 * u2
+      pool.push(r * @math.cos(th))
+      pool.push(r * @math.sin(th))
+    }
+    for i = 0; i < n * p; i = i + 1 {
+      x_flat[i] = pool[i]
+    }
+    for i = 0; i < n; i = i + 1 {
+      let x1 = x_flat[i * p]
+      let x2 = x_flat[i * p + 1]
+      let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]
+      let p_t = @dml.expit(a)
+      let u = ch_rng.double()
+      d[i] = if u < p_t { 1.0 } else { 0.0 }
+    }
+    for i = 0; i < n; i = i + 1 {
+      let x1 = x_flat[i * p]
+      let x2 = x_flat[i * p + 1]
+      let x3 = x_flat[i * p + 2]
+      let x4 = x_flat[i * p + 3]
+      let x5 = x_flat[i * p + 4]
+      let x6 = x_flat[i * p + 5]
+      let r = 0.25 * x1 * x2 +
+        0.25 * x3 * x3 +
+        0.25 * @math.cos(x4) -
+        0.5 * @math.sin(x5) +
+        (if x6 > 0.0 { 1.0 } else { 0.0 }) -
+        0.5
+      let prob = @dml.expit(0.5 * d[i] + r)
+      let u = ch_rng.double()
+      y[i] = if u < prob { 1.0 } else { 0.0 }
+    }
+    let data = @dml.DoubleMLBinaryData::new(
+      @dml.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+    )
+    let model = @dml.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
+    let th = model.coef()
+    let se = model.se()
+    check(
+      th.abs() < 1.0e10 && th == th,
+      "lplr finite coef (trial=\{trial}, th=\{th})",
+    )
+    check(
+      se == se && se >= 0.0 && se < 1.0e10,
+      "lplr non-negative finite se (trial=\{trial}, se=\{se}, th=\{th})",
+    )
+    // CI identity only meaningful when se dominates
+    // floating-point rounding. Below ~1e-3 the confint
+    // computation can produce numerical artefacts; skip.
+    if se > 1.0e-3 {
+      let (lo, hi) = model.confint()
+      let z = 1.959963984540054
+      let half = (hi - lo) / 2.0
+      check(
+        (half - z * se).abs() < 1.0e-9,
+        "lplr CI identity (trial=\{trial}, se=\{se})",
+      )
+    }
+    // Same-seed refit determinism.
+    let again = @dml.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
+    check(
+      again.coef() == th && again.se() == se,
+      "lplr same-seed refit (trial=\{trial})",
+    )
+  }
+}
+
+///|
 fn main {
   let trials = 300
   println("=== mavis/dml fuzz harness (\{trials} trials per surface) ===")
@@ -381,26 +473,30 @@ fn main {
   let s5 = master.int(limit=1_000_000)
   let s6 = master.int(limit=1_000_000)
   let s7 = master.int(limit=1_000_000)
-  println("[1/7] p_adjust family ...")
+  let s8 = master.int(limit=1_000_000)
+  println("[1/8] p_adjust family ...")
   fuzz_padjust(@dml.chacha8_rng(s1), trials)
   println("      OK")
-  println("[2/7] kfold partition invariants ...")
+  println("[2/8] kfold partition invariants ...")
   fuzz_kfold(@dml.chacha8_rng(s2), trials)
   println("      OK")
-  println("[3/7] Matrix matmul associativity ...")
+  println("[3/8] Matrix matmul associativity ...")
   fuzz_matmul(@dml.chacha8_rng(s3), trials)
   println("      OK")
-  println("[4/7] LinearRegression normal-equations invariants ...")
+  println("[4/8] LinearRegression normal-equations invariants ...")
   fuzz_linear_exact(@dml.chacha8_rng(s4), trials)
   println("      OK")
-  println("[5/7] norm_ppf / norm_cdf inverse sweep ...")
+  println("[5/8] norm_ppf / norm_cdf inverse sweep ...")
   fuzz_norm_inverse(@dml.chacha8_rng(s5), trials)
   println("      OK")
-  println("[6/7] romano_wolf_p_adjust range/length ...")
+  println("[6/8] romano_wolf_p_adjust range/length ...")
   fuzz_romano_wolf(@dml.chacha8_rng(s6), trials)
   println("      OK")
-  println("[7/7] DoubleMLPLPR clustered fit invariants ...")
+  println("[7/8] DoubleMLPLPR clustered fit invariants ...")
   fuzz_plpr(@dml.chacha8_rng(s7), trials)
+  println("      OK")
+  println("[8/8] DoubleMLLPLR nonlinear fit invariants ...")
+  fuzz_lplr(@dml.chacha8_rng(s8), trials)
   println("      OK")
   println("")
   println("ALL FUZZ SURFACES PASSED (no invariant violations)")

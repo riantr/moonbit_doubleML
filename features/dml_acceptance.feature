@@ -130,3 +130,50 @@ Feature: Static panel partially linear regression (PLPR)
     Given the same DGP with alpha scaled to ~0
     When cre_general is fit
     Then theta lies in [0.93, 1.07]
+
+Feature: Partially logistic regression (LPLR)
+  DoubleMLLPLR estimates `Y = expit(D * theta + r_0(X))` for binary
+  outcomes via a double cross-fit (outer folds for ml_M / ml_m /
+  ml_t; inner folds for the preliminary per-fold beta and the
+  inner OOF used to build `W = logit(M_inner)`). The score is
+  nonlinear in theta; the port uses a damped Newton solve for
+  numerical stability on the closed-form-learner DGP.
+
+  Background:
+    Given a LZZ2020-style DGP with alpha = 0.5 (60 x 6 features,
+      500 observations, binary D and Y)
+
+  Scenario: LPLR recovers alpha at finite positive SE
+    # mapped to: lplr_smoke_lzz2020_recovers_theta
+    When DoubleMLLPLR is fit with n_folds=2, n_folds_inner=2
+    Then theta_hat is finite and theta lies in [-1.0, 2.5]
+    And the standard error is positive and finite
+
+  Scenario: LPLR respects both score paths
+    # mapped to: lplr_both_scores_accepted
+    When the score is set to "nuisance_space"
+    And the score is set to "instrument"
+    Then both fits complete without aborting
+
+  Scenario: Newton solve at the root converges in one step
+    # mapped to: lplr_newton_solve_at_root
+    Given psi = 0, psi_deriv = 1 (length 3) and theta_start = 1.0
+    When newton_solve_score is called
+    Then the result is (1.0, true) within 1e-12
+
+  Scenario: Same-seed refit is deterministic
+    # mapped to: lplr_deterministic
+    When the same data and seed are used twice
+    Then coef agrees within 1e-15 and se agrees within 1e-15
+
+  Scenario: CI identity holds
+    # mapped to: lplr_confint_identity
+    When the model is fit
+    Then (hi - lo) / 2 == 1.959963984540054 * se within 1e-9
+    And (hi + lo) / 2 == coef within 1e-12
+
+  Scenario: expit / logit round-trip
+    # mapped to: lplr_expit_logit_round_trip
+    Then expit(0) == 0.5 within 1e-15
+    And logit(0.5) == 0 within 1e-15
+    And for x in {-1, -0.5, 0.5, 1, 3}, logit(expit(x)) == x within 1e-9

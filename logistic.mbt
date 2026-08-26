@@ -49,6 +49,30 @@ fn sigmoid(x : Double) -> Double {
 }
 
 ///|
+/// Public elementwise `expit(x) = 1 / (1 + exp(-x))` for callers
+/// that need to evaluate the logistic link (e.g. LPLR's nonlinear
+/// score). Numerically safe at both tails: for `x >= 0` the
+/// `1/(1+exp(-x))` form avoids large `exp`; for `x < 0` the
+/// `exp(x)/(1+exp(x))` form avoids underflowing to 0. The output
+/// is in the open interval `(0, 1)` for any finite input.
+pub fn expit(x : Double) -> Double {
+  sigmoid(x)
+}
+
+///|
+/// Public elementwise `logit(p) = log(p / (1 - p))`. Inputs are
+/// clamped to `[eps, 1 - eps]` (default `eps = 1e-8`) so the result
+/// stays finite; the LPLR score clips inner-fold `M` predictions
+/// to `[1e-8, 1 - 1e-8]` upstream before logit, mirroring scipy
+/// `logit(clip(p, 1e-8, 1 - 1e-8))`.
+pub fn logit(p : Double, eps? : Double = 1.0e-8) -> Double {
+  let plo = eps
+  let phi = 1.0 - eps
+  let pc = if p < plo { plo } else if p > phi { phi } else { p }
+  @math.ln(pc / (1.0 - pc))
+}
+
+///|
 /// Fit the logistic regression by Newton-Raphson IRLS. `x` is `n x p`
 /// and `y` is a length-`n` vector of 0/1 labels.
 ///

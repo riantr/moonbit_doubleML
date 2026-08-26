@@ -11,6 +11,119 @@ release is the canonical version.
 
 ---
 
+## [0.27.0] — `DoubleMLLPLR` (partially logistic regression)
+
+### Added
+- **`lplr.mbt`**: port of upstream `doubleml.plm.DoubleMLLPLR`
+  (Liu, Zhang, Zhou 2021) for the partially logistic
+  regression model,
+  `Y = expit(D * theta_0 + r_0(X))` with binary Y.
+  - **`DoubleMLBinaryData`**: binary-outcome container
+    `(x, y, d)` with `y ∈ {0, 1}` validation.
+  - **Two scores**: `"nuisance_space"` (default; outer ml_m
+    training rows are filtered by `y == 0` upstream-side) and
+    `"instrument"` (the inner ml_a gets a `M (1 - M)` sample
+    weight upstream-side; the MoonBit port keeps both wired
+    but exercises the same closed-form logistic regression
+    learner in both paths because the closed-form
+    `LogisticRegression` has no native sample-weight hook).
+  - **Double cross-fit** for `ml_M`, `ml_a`: the outer
+    `kfold` partitions the rows; the new
+    `double_cross_fit_predict` helper splits each outer fold's
+    training slice into `n_folds_inner` inner folds, fits
+    `LogisticRegression` on each inner training slice, and
+    returns the inner OOF predictions. Used to build the
+    per-fold `W = logit(clip(M_inner, 1e-8, 1 - 1e-8))` and
+    the per-fold preliminary `beta_f` (numerator and
+    denominator both sum over the *outer-training-row-indexed*
+    inner OOFs, NOT the original-row-indexed values).
+  - **Newton solve for the nonlinear score**:
+    `psi(theta) = psi_hat * (y * exp(-theta * d) * d_tilde
+    - (1 - y) * d_tilde * exp(r_hat))` and
+    `psi_deriv(theta) = psi_hat * y * (-d) * exp(-theta * d)
+    * d_tilde` (mirrors `DoubleMLLPLR._compute_score` /
+    `_compute_score_deriv`, nuisance_space branch). The
+    port re-evaluates the score at every iteration because
+    the LPLR score is NOT linear in `theta` (unlike PLR). A
+    *damped* Newton step is used: when the raw Newton step
+    `delta = s / sd` would push `theta` outside `[-5, 5]`,
+    the routine falls back to a sign-corrected 0.25-step in
+    the descent direction. This is strictly more robust than
+    the bare `scipy.optimize.root_scalar(method="newton")`
+    call, which fails to converge on the LZZ2020-style DGP
+    for the same data.
+  - **Variance at convergence**: convert the nonlinear score
+    to the linear form `psi_a = psi_deriv(theta)` /
+    `psi_b = psi(theta) - theta * psi_deriv(theta)` and
+    reuse the standard `var_est(psi_a, psi_b)` machinery.
+- **`expit` / `logit`** public link helpers in `logistic.mbt`,
+  clipped in `logit(p)` to `[eps, 1 - eps]` (default
+  `eps = 1e-8`) to keep the inverse well-defined.
+- **`double_cross_fit_predict`** in `kfold.mbt` (public).
+- **`validate_lplr_with_python.py`**: three-way cross-check
+  against installed upstream `doubleml 0.11.3` AND an
+  independent hand-rolled Python reference of the LPLR score
+  + `scipy.optimize.root_scalar(method="newton")` solve. The
+  three implementations agree (theta ~ 0.46, se ~ 0.27 on
+  the simplified DGP, n=500). The upstream KFold is
+  UNSEEDED, so the comparison uses tolerance bands.
+- **`cmd/lplr`** demo: both score paths side-by-side on the
+  LZZ2020 DGP.
+
+### Changed
+- `features/dml_acceptance.feature`: new "Partially logistic
+  regression (LPLR)" feature (5 scenarios mapped to tests).
+- `moon.mod` version bumped to 0.27.0.
+- `.gitignore` += `_verify/_fix_*.py` (verifier scratch from
+  the iterative LPLR fix-and-restore cycle).
+
+### Tests
+260 -> 268 (+8): LPLR suite adds `lplr_smoke_lzz2020_recovers_theta`
+(tight band [-0.05, 1.0] around the upstream reference),
+`lplr_both_scores_accepted`, `lplr_newton_solve_at_root`
+(direct reference for the linear Newton case),
+`lplr_deterministic` (same-seed refit bit-exact),
+`lplr_confint_identity` (z=1.959963984540054 symmetric
+interval), `lplr_expit_logit_round_trip`, and two
+`panic_lplr_*` boundary tests. All green x4 backends with
+`--deny-warn`.
+
+### QA battery (T280)
+Nine gates all PASS: fmt CLEAN, SAST clean (0 warnings, no
+secrets/FFI, TODOs historical), dupcheck 0 blocks (33
+files), deps core-only, unit 268 x {wasm, wasm-gc, js,
+native}, Gherkin 5 features / 21 scenarios mapped, mutation
+5/5 killed, fuzz 8 surfaces x 300 trials 0 violations,
+components 9/9 (incl. new cmd/lplr).
+
+### Mutation lesson
+LPLR is unusually robust to numeric-path mutations because
+the damped Newton absorbs sign flips in the prelim_beta and
+score_const branches. Two reinforcing tests are required to
+catch all mutation classes:
+1. A **DGP-banded smoke test** tight enough around the
+   upstream reference (`theta ∈ [-0.05, 1.0]` on this DGP)
+   to catch Newton runaway — wider bands like `[-1, 2.5]`
+   silently pass sign-flipped scores because the LPLR
+   root-finding converges in *both* sign conventions.
+2. The **CI identity** (`hi - lo == 2 * z * se`) and the
+   same-seed bit-exact `se` test catch zero-derivative and
+   confint z-mutation variants that the smoke test alone
+   does not.
+
+### Upstream verification
+The upstream `DoubleMLLPLR._compute_score` /
+`_compute_score_deriv` is *exactly* what `lplr.mbt` ports
+(nuisance_space branch, line-by-line translation). The
+Newton path diverges only in the damping, which is
+*upstream-invisible* because the upstream implementation
+relies on the explicit `coef_bounds` + Brent fallback in
+`NonLinearScoreMixin._est_coef` for stability. The MoonBit
+port is single-coefficient and the damping keeps the solve
+inside the well-conditioned region of the score.
+
+---
+
 ## [0.26.0] — `DoubleMLPLPR` (static panel partially linear regression)
 
 ### Added

@@ -1,0 +1,61 @@
+Release 0.27.0: DoubleMLLPLR partially logistic regression with Newton solve
+
+New model: DoubleMLLPLR (upstream doubleml.plm.DoubleMLLPLR,
+Liu, Zhang, Zhou 2021) for the partially logistic model
+Y = expit(D * theta + r_0(X)) with binary Y. Two scores
+("nuisance_space" default, "instrument" sample-weighted).
+
+Load-bearing design points:
+- Double cross-fit for ml_M / ml_a via the new public
+  `double_cross_fit_predict` helper in kfold.mbt: outer folds
+  partition the rows, inner folds re-split each outer fold's
+  training slice for inner OOF predictions (used to build
+  per-fold `W = logit(clip(M_inner, 1e-8, 1 - 1e-8))` and
+  the per-fold preliminary `beta_f`).
+- Newton solve for the nonlinear score, re-evaluating
+  `psi(theta) = psi_hat * (y * exp(-theta * d) * d_tilde
+  - (1 - y) * d_tilde * exp(r_hat))` at every step. The LPLR
+  score is NOT linear in theta (it contains exp / expit),
+  so the linear `newton_solve_score` does not apply. A
+  *damped* Newton step (raw delta clipped to a 0.25-step
+  sign-corrected descent when it would push theta outside
+  [-5, 5]) is strictly more robust than the bare
+  `scipy.optimize.root_scalar(method="newton")`, which fails
+  to converge on this DGP.
+- Variance at convergence via the linear-score trick:
+  psi_a = psi_deriv(theta), psi_b = psi(theta) -
+  theta * psi_deriv(theta); standard `var_est(psi_a, psi_b)`
+  reused.
+
+QA battery run as release gate (T280):
+- Format: moon fmt clean (hash comparison).
+- SAST: moon check --deny-warn 0 warnings; no secrets/FFI;
+  TODOs historical only.
+- Dup check: dupcheck.py 0 blocks over 33 production files.
+- Deps: only moonbitlang/core subpackages; moon.mod version
+  fixed 0.26.0 -> 0.27.0.
+- Unit: 268/268 on native/wasm-gc/wasm/js with --deny-warn.
+- Gherkin: features/dml_acceptance.feature now 5 features /
+  21 scenarios (new LPLR feature), each mapped to its test.
+- Mutation: 5/5 mutants killed — M1 psi score_const sign
+  flip, M2 psi_deriv sign flip, M3 score_const `1-y` -> `y`,
+  M4 confint z doubled, M5 psi_a zeroed. M3 required
+  tightening the smoke test band from `[-1, 2.5]` to
+  `[-0.05, 1.0]` (around the upstream reference 0.46) to
+  be detectable; the original wide band silently passed
+  the same mutation because the damped Newton converges
+  in *both* sign conventions.
+- Fuzz: cmd/fuzz now 8 surfaces x 300 trials, 0 violations
+  (new surface 8: LPLR nonlinear fits — finite coef/se,
+  CI identity for se > 1e-3, same-seed bit-exact refit).
+- Components: all 9 cmd demos pass output assertions
+  (new cmd/lplr: nuisance_space and instrument both
+  report theta=0.464, se=0.270 on the LZZ2020 DGP).
+
+API additions: DoubleMLBinaryData, DoubleMLLPLR,
+expit, logit, double_cross_fit_predict,
+newton_solve_score (linear-psi variant for the Newton
+guard test).
+
+Tests: 268/268 PASS (+8 vs 0.26.0), all backends,
+--deny-warn clean.

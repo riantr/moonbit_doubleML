@@ -70,3 +70,6 @@ _verify/logistic_demo_probe.mbt.original
 # Python diagnostics scratch (validator support, kept locally only).
 __pycache__/
 _verify/diag_cre*.py
+_verify/_fix_*.py
+_verify/_fix_*.py.archived
+_build-archived/
