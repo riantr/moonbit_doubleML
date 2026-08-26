@@ -11,6 +11,97 @@ release is the canonical version.
 
 ---
 
+## [0.28.0] — Cluster-robust inference for `DoubleMLPLR` / `DoubleMLIRM`
+
+### Added
+- **`DoubleMLData` gains `cluster_vars`**: pass a length-`n`
+  vector of unit ids to `DoubleMLData::new(x, y, d,
+  cluster_vars=...)` to enable the clustered DML path. Mirrors
+  the upstream `DoubleMLData(cluster_cols=...)` API in 0.11.x
+  (the deprecated `DoubleMLClusterData` wrapper is now
+  equivalent). Empty (default) keeps the row-level path.
+- **`is_cluster_data()` / `n_cluster_vars()`** accessors on
+  `DoubleMLData`.
+- **Clustered-DML path for `DoubleMLPLR`**: when the data carries
+  a non-empty `cluster_vars` vector, `DoubleMLPLR::fit` routes
+  through a new `fit_cluster` helper that:
+  1. draws `kfold` over the *unique unit ids* (via the new
+     `expand_unit_folds_to_rows` helper, shared with
+     `DoubleMLIRM`),
+  2. computes the causal parameter as the fold-weighted ratio
+     of cluster score sums (using the existing `est_coef_cluster`
+     helper ported in v0.26.0 for `DoubleMLPLPR`), and
+  3. reports the unit-level cluster-robust SE (using the
+     existing `var_est_cluster` helper).
+  Per-row nuisances are cross-fitted with cluster-respecting
+  folds, so the per-row score elements `psi_a = -(d - m)^)`, `psi_b
+  = (d - m) * (y - l)` are the same as the row-level path — only
+  the fold partition and the two aggregation steps differ.
+- **Clustered-DML path for `DoubleMLIRM`**: same shape; the
+  per-row ATE score elements are unchanged, but the fold-weighted
+  ratio and the unit-level SE now account for the within-unit
+  correlation that the row-level SE deflates.
+- **`expand_unit_folds_to_rows` / `build_row_unit_map`** in
+  `kfold.mbt`: shared cluster-fold builders (dedup'd from the
+  PLPR / PLR / IRM cluster paths — total duplication dropped from
+  one 12-line block to zero).
+- **`validate_cluster_plr_with_python.py`**: three-way
+  cross-check against installed upstream `doubleml 0.11.3`
+  (using `cluster_cols='cluster'`) AND a hand-rolled Python
+  cluster-robust numpy reference. On the LZZ2020 DGP, all three
+  agree: cluster SE / row SE ratio ~ 1.5-1.6.
+- **`plr_cluster_test.mbt`** (+6 tests): same-seed cluster
+  refit bit-exact; cluster SE > row SE; ratio lower bound 1.2;
+  `is_cluster_data` semantics; panic on missing unit id.
+- **New reference test for `est_coef_cluster` with imbalanced
+  fold sizes**: `plpr_est_coef_cluster_imbalanced_folds` sets
+  `fold_n_units = [1, 3]` and asserts theta = 1.5 exactly. This
+  catches a `1 / |I_k|` typo that the original `|I_k| = [1, 2]`
+  reference test (which happened to be invariant under the
+  typo) would silently pass.
+
+### Changed
+- `moon.mod` version bumped to 0.28.0.
+- `.gitignore` covers the cluster / dedup / diag scratch files
+  produced during this release.
+
+### Tests
+268 -> 276 (+8): PLR cluster suite adds determinism, SE larger
+than row, ratio lower bound, data-class accessor semantics, and
+explicit-empty cluster_vars check; PLPR reference adds
+imbalanced-folds variant; kfold suite adds panic on missing
+unit id. All green x4 backends with `--deny-warn`.
+
+### QA battery (T290)
+Nine gates all PASS: fmt CLEAN, SAST clean (0 warnings, no
+secrets/FFI, TODOs historical), dupcheck 0 blocks over 33
+files (dedup'd the cluster-path unit→row fold expansion),
+deps core-only, unit 276 x {wasm, wasm-gc, js, native},
+Gherkin 6 features / 25 scenarios (new cluster-robust
+feature), mutation 5/5 killed, fuzz 9 surfaces x 300 trials
+(new surface 9: cluster-robust vs row-level), components
+9/9 (existing 9 cmd demos all pass output assertions; the
+cluster path is exercised by the `plpr` demo via
+`cre_general` / `cre_normal` upstream-derived).
+
+### Mutation lesson
+Two reinforcing tests are needed to catch all numeric-path
+mutation classes in the cluster infrastructure:
+
+- A **reference test with imbalanced fold sizes**
+  (`[1, 3]`) catches the `w = 1 / |I_k| -> w = 1` typo. The
+  original `[1, 2]` reference test was invariant under this
+  typo because both folds cancel out at that size.
+- A **direct data-class accessor test** catches the
+  `is_cluster_data() -> false` typo that sends cluster data
+  through the row-level path. The cluster SE vs row SE test
+  alone does not catch this — when both paths collapse to
+  row-level, the SE values are identical and the ratio is
+  1.0 (the guard's lower bound is the only invariant that
+  fires).
+
+---
+
 ## [0.27.0] — `DoubleMLLPLR` (partially logistic regression)
 
 ### Added

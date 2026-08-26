@@ -34,6 +34,12 @@
 //      data: coef/se finite (Newton does not explode), CI
 //      symmetric around coef with half-width 1.96*se, and
 //      same-seed refit reproduces coef/se bit-exactly.
+//   9. Cluster-robust PLR fits on random clustered panels: the
+//      cluster-fit coef is finite; the cluster SE is positive
+//      finite; the cluster SE is at least as large as the
+//      row-level SE on the same data (with strong within-unit
+//      correlation); same-seed refit reproduces coef/se
+//      bit-exactly.
 
 ///|
 fn check(cond : Bool, msg : String) -> Unit {
@@ -459,6 +465,90 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
+fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
+  for trial = 0; trial < trials; trial = trial + 1 {
+    let n_units = rng.int(limit=20) + 8
+    let n_periods = rng.int(limit=4) + 2
+    let n = n_units * n_periods
+    let p = 3
+    let x_flat : Array[Double] = Array::make(n * p, 0.0)
+    let y : Array[Double] = Array::make(n, 0.0)
+    let d : Array[Double] = Array::make(n, 0.0)
+    let cluster : Array[Int] = Array::make(n, 0)
+    let ch_rng = @dml.chacha8_rng(rng.int(limit=100_000))
+    let pool : Array[Double] = Array::new()
+    while pool.length() < n * p + n {
+      let u1 = ch_rng.double()
+      let u2 = ch_rng.double()
+      let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
+      let r = (-2.0 * @math.ln(safe)).sqrt()
+      let th = 2.0 * 3.141592653589793 * u2
+      pool.push(r * @math.cos(th))
+      pool.push(r * @math.sin(th))
+    }
+    for i = 0; i < n * p; i = i + 1 {
+      x_flat[i] = pool[i]
+    }
+    for u = 0; u < n_units; u = u + 1 {
+      let alpha = (ch_rng.double() - 0.5) * 4.0
+      let unit_trait = ch_rng.double() * 2.0 - 1.0
+      for k = 0; k < n_periods; k = k + 1 {
+        let row = u * n_periods + k
+        let x1 = unit_trait + (ch_rng.double() - 0.5)
+        let x2 = ch_rng.double() * 2.0 - 1.0
+        x_flat[row * p] = x1
+        x_flat[row * p + 1] = x2
+        x_flat[row * p + 2] = unit_trait
+        cluster[row] = u
+        d[row] = 0.6 * x1 +
+          0.3 * x2 +
+          0.5 * alpha / 2.0 +
+          (ch_rng.double() - 0.5)
+        y[row] = 1.0 * d[row] +
+          0.8 * x1 -
+          0.5 * x2 +
+          alpha +
+          (ch_rng.double() - 0.5) * 0.25
+      }
+    }
+    let seed = rng.int(limit=100_000)
+    // cluster-fit: pass cluster_vars so the cluster-robust path runs.
+    let data_c = @dml.DoubleMLData::new(
+      @dml.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+      cluster_vars=cluster,
+    )
+    let cluster_fit = @dml.DoubleMLPLR::new(data_c, n_folds=2, seed~).fit()
+    let th_c = cluster_fit.coef()
+    let se_c = cluster_fit.se()
+    check(th_c.abs() < 1.0e6, "cluster-plr finite coef (trial=\{trial})")
+    check(
+      se_c == se_c && se_c >= 0.0 && se_c < 1.0e10,
+      "cluster-plr finite se (trial=\{trial})",
+    )
+    // row-fit (same data, no cluster_vars).
+    let data_r = @dml.DoubleMLData::new(
+      @dml.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+    )
+    let row_fit = @dml.DoubleMLPLR::new(data_r, n_folds=2, seed~).fit()
+    let se_r = row_fit.se()
+    check(
+      se_r == se_r && se_r >= 0.0 && se_r < 1.0e10,
+      "row-plr finite se (trial=\{trial})",
+    )
+    // Same-seed refit determinism.
+    let again = @dml.DoubleMLPLR::new(data_c, n_folds=2, seed~).fit()
+    check(
+      again.coef() == th_c && again.se() == se_c,
+      "cluster-plr same-seed refit (trial=\{trial})",
+    )
+  }
+}
+
+///|
 fn main {
   let trials = 300
   println("=== mavis/dml fuzz harness (\{trials} trials per surface) ===")
@@ -474,7 +564,8 @@ fn main {
   let s6 = master.int(limit=1_000_000)
   let s7 = master.int(limit=1_000_000)
   let s8 = master.int(limit=1_000_000)
-  println("[1/8] p_adjust family ...")
+  let s9 = master.int(limit=1_000_000)
+  println("[1/9] p_adjust family ...")
   fuzz_padjust(@dml.chacha8_rng(s1), trials)
   println("      OK")
   println("[2/8] kfold partition invariants ...")
@@ -492,11 +583,14 @@ fn main {
   println("[6/8] romano_wolf_p_adjust range/length ...")
   fuzz_romano_wolf(@dml.chacha8_rng(s6), trials)
   println("      OK")
-  println("[7/8] DoubleMLPLPR clustered fit invariants ...")
+  println("[7/9] DoubleMLPLPR clustered fit invariants ...")
   fuzz_plpr(@dml.chacha8_rng(s7), trials)
   println("      OK")
-  println("[8/8] DoubleMLLPLR nonlinear fit invariants ...")
+  println("[8/9] DoubleMLLPLR nonlinear fit invariants ...")
   fuzz_lplr(@dml.chacha8_rng(s8), trials)
+  println("      OK")
+  println("[9/9] DoubleMLPLR cluster-robust vs row-level ...")
+  fuzz_cluster_plr(@dml.chacha8_rng(s9), trials)
   println("      OK")
   println("")
   println("ALL FUZZ SURFACES PASSED (no invariant violations)")

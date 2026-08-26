@@ -1,0 +1,66 @@
+Release 0.28.0: cluster-robust inference for DoubleMLPLR / DoubleMLIRM
+
+Clustered-DML path for the two cross-sectional estimators,
+wired through `DoubleMLData(cluster_vars=...)`. Mirrors the
+upstream `DoubleMLData(cluster_cols=...)` API in 0.11.x.
+
+When the data carries a non-empty cluster_vars vector, the
+estimators route through:
+  1. folds drawn over the unique unit ids (rows of one unit
+     stay on the same side of every split),
+  2. the causal parameter as the fold-weighted ratio of
+     cluster score sums (`est_coef_cluster`, originally ported
+     in v0.26.0 for DoubleMLPLPR),
+  3. unit-level cluster-robust SE (`var_est_cluster`).
+
+Per-row nuisances are cross-fitted with cluster-respecting
+folds, so the per-row score elements are identical to the
+row-level path — only the fold partition and the two
+aggregation steps differ.
+
+Dedup: the unit->row fold expansion logic was shared between
+PLPR, PLR, and IRM as one 12-line block each. Extracted to
+`expand_unit_folds_to_rows` + `build_row_unit_map` in
+kfold.mbt; dupcheck now reports 0 blocks over 33 files.
+
+API additions:
+- `DoubleMLData` optional `cluster_vars` parameter
+- `DoubleMLData::is_cluster_data` / `n_cluster_vars`
+- `expand_unit_folds_to_rows` / `build_row_unit_map` in
+  kfold.mbt
+- `DoubleMLPLR::fit_cluster` / `DoubleMLIRM::fit_cluster`
+  internal helpers (driven by `data.is_cluster_data()`)
+
+QA battery run as release gate (T290):
+- Format: moon fmt clean (hash comparison).
+- SAST: moon check --deny-warn 0 warnings; no secrets/FFI;
+  TODOs historical only.
+- Dup check: dupcheck.py 0 blocks over 33 production files
+  (dedup'd the cluster-path unit->row fold expansion that
+  was previously shared between plpr.mbt / plr.mbt / irm.mbt).
+- Deps: only moonbitlang/core subpackages; moon.mod version
+  bumped 0.27.0 -> 0.28.0.
+- Unit: 276/276 on native/wasm-gc/wasm/js with --deny-warn.
+- Gherkin: features/dml_acceptance.feature now 6 features /
+  25 scenarios (new cluster-robust feature), each mapped to
+  its test.
+- Mutation: 5/5 mutants killed -- M1 cluster unit->row fold
+  mask `in_test[tu[k]] = false` (3 cluster tests);
+  M2 `w = 1/|I_k|` -> `w = 1` (caught by new imbalanced-folds
+  reference test); M3 `gamma / npc` -> `gamma` (caught by
+  var_est_cluster reference); M4 missing-unit-id abort
+  (caught by new panic test); M5 `is_cluster_data() -> false`
+  (caught by data-class accessor test). M2 lesson: the
+  original est_coef_cluster reference used
+  `fold_n_units = [1, 2]`, which is invariant under the
+  `1/|I_k|` -> `1` typo because both folds cancel out at
+  that size. The new `[1, 3]` reference breaks the symmetry.
+- Fuzz: cmd/fuzz now 9 surfaces x 300 trials, 0 violations
+  (new surface 9: cluster-robust vs row-level PLR fits on
+  random clustered panels).
+- Components: all 9 cmd demos pass output assertions; the
+  cluster path is exercised by the `plpr` demo via the
+  upstream-derived cre_general / cre_normal approaches.
+
+Tests: 276/276 PASS (+8 vs 0.27.0), all backends,
+--deny-warn clean.

@@ -133,11 +133,22 @@ pub fn DoubleMLPLR::predictions_m(self : DoubleMLPLR) -> Array[Double] {
 /// preserved. The `predictions_l/m` accessors return the nuisances
 /// from the *last* repetition (the conventional choice in upstream
 /// `doubleml`), not a cross-rep average.
+///
+/// When `self.data` carries a non-empty `cluster_vars` vector, the
+/// estimator routes through the *clustered* DML path: folds are
+/// drawn over the unique cluster ids, every row of a unit stays
+/// on the same side of every split, the causal parameter is the
+/// fold-weighted ratio of cluster score sums, and the SE is the
+/// unit-level cluster-robust estimator (mirrors upstream's
+/// `_var_est` one-cluster-variable branch and
+/// `LinearScoreMixin._est_coef` cluster branch).
 pub fn DoubleMLPLR::fit(
   self : DoubleMLPLR,
   learner? : LinearRegression = LinearRegression::new(),
 ) -> DoubleMLPLR {
-  ignore(learner)
+  if self.data.is_cluster_data() {
+    return self.fit_cluster(learner)
+  }
   let n = self.n_obs()
   let nrep = self.n_rep
   let coefs : Array[Double] = Array::make(nrep, 0.0)
@@ -168,6 +179,89 @@ pub fn DoubleMLPLR::fit(
     ses[r] = se_r
   }
   // last iteration's predictions are now in l_pred / m_pred
+  let (coef, se) = aggregate_coef_se(coefs, ses)
+  {
+    data: self.data,
+    n_folds: self.n_folds,
+    n_rep: self.n_rep,
+    seed: self.seed,
+    l_hat: l_pred,
+    m_hat: m_pred,
+    coef,
+    se,
+    fitted: true,
+  }
+}
+
+///|
+/// Clustered-DML path for `DoubleMLPLR`. Folds partition whole
+/// units (`kfold` on unique cluster ids, expanded to row folds);
+/// coefficient is the fold-weighted ratio of cluster score sums
+/// (`est_coef_cluster`); variance is unit-level cluster-robust
+/// (`var_est_cluster`). `psi_a = -(d - m_hat)^2` and
+/// `psi_b = (d - m_hat) * (y - l_hat)` are the per-row score
+/// elements — the same ones the row-level path uses. The cluster
+/// path differs from the row-level path only in the fold
+/// partition and the two aggregation steps; the per-row score
+/// elements are identical, so a single nuisances cross-fit
+/// (with cluster-respecting folds) feeds both paths.
+fn DoubleMLPLR::fit_cluster(
+  self : DoubleMLPLR,
+  learner : LinearRegression,
+) -> DoubleMLPLR {
+  let cluster = self.data.cluster_vars
+  let n = self.n_obs()
+  let nrep = self.n_rep
+  let uniq = unique_units(cluster)
+  let n_units = uniq.length()
+  require(self.n_folds <= n_units)
+  // row → unit-position map (linear scan, panels are small in
+  // tests and demos).
+  let row_unit = build_row_unit_map(cluster, uniq)
+  // ascending row indices per unit
+  let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+    let rows : Array[Int] = []
+    rows
+  })
+  for i = 0; i < n; i = i + 1 {
+    unit_rows[row_unit[i]].push(i)
+  }
+  let coefs : Array[Double] = Array::make(nrep, 0.0)
+  let ses : Array[Double] = Array::make(nrep, 0.0)
+  let mut l_pred : Array[Double] = Array::make(n, 0.0)
+  let mut m_pred : Array[Double] = Array::make(n, 0.0)
+  for r = 0; r < nrep; r = r + 1 {
+    // unit-level folds expanded to row-level folds (rows of one
+    // unit stay on the same side of every split).
+    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
+    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+      cluster, folds_u, row_unit,
+    )
+    l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
+    m_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    let psi_b : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let v = self.data.d[i] - m_pred[i]
+      let u = self.data.y[i] - l_pred[i]
+      psi_a[i] = -v * v
+      psi_b[i] = v * u
+    }
+    let theta_r = est_coef_cluster(psi_a, psi_b, folds_row, fold_n_units)
+    let psi_res : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi_res[i] = theta_r * psi_a[i] + psi_b[i]
+    }
+    coefs[r] = theta_r
+    ses[r] = var_est_cluster(
+      psi_res,
+      psi_a,
+      unit_rows,
+      unit_fold,
+      folds_u.length(),
+      self.n_folds,
+    )
+  }
   let (coef, se) = aggregate_coef_se(coefs, ses)
   {
     data: self.data,

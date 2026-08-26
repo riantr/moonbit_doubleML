@@ -131,6 +131,42 @@ Feature: Static panel partially linear regression (PLPR)
     When cre_general is fit
     Then theta lies in [0.93, 1.07]
 
+Feature: Cluster-robust inference for PLR/IRM
+  Passing a non-empty `cluster_vars` to `DoubleMLData::new`
+  routes the estimator through the clustered DML path: folds
+  are drawn over the unique unit ids (rows of one unit stay
+  on the same side of every split), the causal parameter is
+  the fold-weighted ratio of cluster score sums, and the SE
+  is unit-level cluster-robust. Mirrors the upstream
+  `DoubleMLData(cluster_cols=...)` API in 0.11.x.
+
+  Background:
+    Given a clustered panel DGP with strong within-unit
+      correlation (50 units x 4 periods, alpha = 0.5)
+
+  Scenario: Cluster-robust SE is larger than the row-level SE
+    # mapped to: plr_cluster_se_larger_than_row_se
+    When the same data is fit twice — once with cluster_vars
+    And once without
+    Then the cluster SE is at least 1.5x the row-level SE
+    And both theta_hat values are finite
+
+  Scenario: Cluster data accessor returns true only when set
+    # mapped to: plr_cluster_data_class, plr_no_cluster_data_default,
+    #            plr_explicit_empty_cluster_vars
+    Then is_cluster_data is true iff cluster_vars was non-empty
+    And n_obs and n_features are unchanged
+
+  Scenario: Same-seed cluster refit is bit-exact
+    # mapped to: plr_cluster_deterministic
+    When the same data and seed are used twice
+    Then coef agrees within 1e-15 and se agrees within 1e-15
+
+  Scenario: Cluster SE / row SE ratio is a lower bound
+    # mapped to: plr_cluster_se_ratio_lower_bound
+    Given a 60-unit x 5-period clustered panel
+    Then the cluster / row SE ratio is at least 1.2
+
 Feature: Partially logistic regression (LPLR)
   DoubleMLLPLR estimates `Y = expit(D * theta + r_0(X))` for binary
   outcomes via a double cross-fit (outer folds for ml_M / ml_m /

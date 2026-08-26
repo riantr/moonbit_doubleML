@@ -72,4 +72,18 @@ __pycache__/
 _verify/diag_cre*.py
 _verify/_fix_*.py
 _verify/_fix_*.py.archived
+# Mut/cluster/dedup scratch files used during iterative fix cycles;
+# all are renamed to .archived so git sees them but ignores them.
+_verify/_mut*.py
+_verify/_mut*.py.archived
+_verify/_add_*.py
+_verify/_add_*.py.archived
+_verify/_dedup_*.py
+_verify/_dedup_*.py.archived
+_verify/_diag_*.py
+_verify/_diag_*.py.archived
+_verify/_strip_*.py
+_verify/_strip_*.py.archived
+_verify/_apply_*.py
+_verify/_apply_*.py.archived
 _build-archived/

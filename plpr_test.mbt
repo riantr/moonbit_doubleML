@@ -229,6 +229,32 @@ test "plpr_est_coef_cluster_reference" {
 }
 
 ///|
+/// Direct reference test for `est_coef_cluster` with imbalanced
+/// fold sizes: fold 0 has 1 unit, fold 1 has 3 units. The
+/// fold-weighted coefficient `theta = -sa^-1 sb` with weights
+/// `w_k = 1 / |I_k|` differs from the unweighted mean by the
+/// `w_k` factor, so a typo that drops `1 / |I_k|` (e.g. sets
+/// `w = 1`) flips the result.
+///
+///   fold 0: |I_0| = 1, psi_a sum = a0, psi_b sum = b0
+///   fold 1: |I_1| = 3, psi_a sum = a1, psi_b sum = b1
+///   weighted:  sa = a0 + (1/3) a1,  sb = b0 + (1/3) b1
+///   unweighted: sa = a0 + a1,        sb = b0 + b1
+test "plpr_est_coef_cluster_imbalanced_folds" {
+  let psi_a : Array[Double] = [-1.0, -2.0, -3.0, -4.0]
+  let psi_b : Array[Double] = [2.0, 3.0, 4.0, 5.0]
+  // fold 0 test_rows = [0], fold 1 test_rows = [1, 2, 3]
+  let folds : Array[Fold] = [
+    Fold::new([1, 2, 3], [0]),
+    Fold::new([0], [1, 2, 3]),
+  ]
+  let th = est_coef_cluster(psi_a, psi_b, folds, [1, 3])
+  // weighted sa = -1 + (1/3)*(-9) = -4, sb = 2 + (1/3)*12 = 6
+  // theta = -6 / -4 = 1.5 exactly.
+  inspect((th - 1.5).abs() < 1.0e-12, content="true")
+}
+
+///|
 /// Direct reference test for `var_est_cluster`: 4 units x 2 rows,
 /// folds {u0,u1} / {u2,u3}, n_folds_per_cluster = 2.
 ///

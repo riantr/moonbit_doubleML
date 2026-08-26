@@ -109,6 +109,101 @@ pub fn range_indices(n : Int) -> Array[Int] {
 }
 
 ///|
+/// Clustered-path fold builder. Takes the unit-level fold
+/// partition (a `kfold(n_units, n_folds, seed)` result) and
+/// expands it to a row-level fold partition where every row of
+/// a given unit lands on the same side of every split. Also
+/// returns the per-unit test-fold index and the per-fold
+/// unit count, both of which are needed by
+/// `est_coef_cluster` / `var_est_cluster`.
+///
+///   `cluster`        : length-`n` vector of unit ids
+///   `folds_u`        : unit-level folds (each `Fold` carries
+///                      `test_indices` = unit positions)
+///   `row_unit`       : length-`n` row → unit-position map
+///                      (use `build_row_unit_map`)
+///
+/// Returns `(folds_row, unit_fold, fold_n_units)`:
+///   - `folds_row`     : length-`n_folds` row-level folds
+///   - `unit_fold`     : length-`n_units` per-unit test-fold index
+///   - `fold_n_units`  : length-`n_folds` per-fold unit count
+pub fn expand_unit_folds_to_rows(
+  cluster : Array[Int],
+  folds_u : Array[Fold],
+  row_unit : Array[Int],
+) -> (Array[Fold], Array[Int], Array[Int]) {
+  let n = cluster.length()
+  let n_units = row_unit_max(row_unit) + 1
+  let folds_row : Array[Fold] = []
+  let unit_fold : Array[Int] = Array::make(n_units, 0)
+  let fold_n_units : Array[Int] = Array::make(folds_u.length(), 0)
+  for f = 0; f < folds_u.length(); f = f + 1 {
+    let tu = folds_u[f].test_indices()
+    fold_n_units[f] = tu.length()
+    let in_test : Array[Bool] = Array::make(n_units, false)
+    for k = 0; k < tu.length(); k = k + 1 {
+      in_test[tu[k]] = true
+      unit_fold[tu[k]] = f
+    }
+    let train_rows : Array[Int] = []
+    let test_rows : Array[Int] = []
+    for i = 0; i < n; i = i + 1 {
+      if in_test[row_unit[i]] {
+        test_rows.push(i)
+      } else {
+        train_rows.push(i)
+      }
+    }
+    folds_row.push(Fold::new(train_rows, test_rows))
+  }
+  (folds_row, unit_fold, fold_n_units)
+}
+
+///|
+/// Build a row → unit-position map (length = `n`, each entry is
+/// the position of the row's unit in the unique-ids array
+/// produced by `unique_units(cluster)`). Aborts if any row's
+/// unit is missing from the `uniq` list (a row whose unit is
+/// not in `uniq` would be an unrecoverable data error).
+pub fn build_row_unit_map(
+  cluster : Array[Int],
+  uniq : Array[Int],
+) -> Array[Int] {
+  let n = cluster.length()
+  let n_units = uniq.length()
+  let row_unit : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    let g = cluster[i]
+    let mut found = false
+    for k = 0; k < n_units; k = k + 1 {
+      if uniq[k] == g {
+        row_unit[i] = k
+        found = true
+        break
+      }
+    }
+    if !found {
+      abort("expand_unit_folds_to_rows: row without a unit id")
+    }
+  }
+  row_unit
+}
+
+///|
+/// Helper: `max(row_unit)` (the largest unit position, equal to
+/// `n_units - 1` when `row_unit` is built from a complete
+/// `uniq` vector).
+fn row_unit_max(row_unit : Array[Int]) -> Int {
+  let mut m = 0
+  for i = 0; i < row_unit.length(); i = i + 1 {
+    if row_unit[i] > m {
+      m = row_unit[i]
+    }
+  }
+  m
+}
+
+///|
 /// Cross-fit prediction helper. For each fold, fit the learner on the
 /// training slice `(x[train], y[train])` and predict on the test slice
 /// `x[test]`. The returned vector has length `n_obs` and contains

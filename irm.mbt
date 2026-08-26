@@ -241,13 +241,20 @@ fn cross_fit_irm(
 /// `predictions_g0 / g1 / m` accessors return the nuisances from the
 /// *last* repetition (the conventional choice in upstream `doubleml`),
 /// not a cross-rep average.
+///
+/// When `self.data` carries a non-empty `cluster_vars` vector, the
+/// estimator routes through the clustered DML path: folds partition
+/// whole units (rows of one cluster id stay on the same side of
+/// every split), the ATE is the fold-weighted ratio of cluster
+/// score sums, and the SE is unit-level cluster-robust.
 pub fn DoubleMLIRM::fit(
   self : DoubleMLIRM,
   ml_g? : LinearRegression = LinearRegression::new(),
   ml_m? : LinearRegression = LinearRegression::new(),
 ) -> DoubleMLIRM {
-  ignore(ml_g)
-  ignore(ml_m)
+  if self.data.is_cluster_data() {
+    return self.fit_cluster(ml_g, ml_m)
+  }
   let n = self.n_obs()
   let nrep = self.n_rep
   let coefs : Array[Double] = Array::make(nrep, 0.0)
@@ -290,6 +297,101 @@ pub fn DoubleMLIRM::fit(
     ses[r] = se_r
   }
   // last iteration's predictions are now in g0 / g1 / m
+  let (coef, se) = aggregate_coef_se(coefs, ses)
+  {
+    data: self.data,
+    n_folds: self.n_folds,
+    n_rep: self.n_rep,
+    seed: self.seed,
+    propensity_clip: self.propensity_clip,
+    g0_hat: g0,
+    g1_hat: g1,
+    m_hat: m,
+    coef,
+    se,
+    fitted: true,
+  }
+}
+
+///|
+/// Clustered-DML path for `DoubleMLIRM`. Same shape as
+/// `DoubleMLPLR::fit_cluster`: folds are drawn over the unique
+/// cluster ids, expanded to row folds; `g0`, `g1`, `m` are
+/// cross-fitted with cluster-respecting folds; the ATE
+/// coefficient is the fold-weighted ratio of cluster score sums
+/// (the IRM `psi_a = -1.0` is constant so the weighted sum
+/// collapses to `n_units`-normalised mean), and the SE is the
+/// unit-level cluster-robust `var_est_cluster`.
+fn DoubleMLIRM::fit_cluster(
+  self : DoubleMLIRM,
+  ml_g : LinearRegression,
+  ml_m : LinearRegression,
+) -> DoubleMLIRM {
+  let cluster = self.data.cluster_vars
+  let n = self.n_obs()
+  let nrep = self.n_rep
+  let uniq = unique_units(cluster)
+  let n_units = uniq.length()
+  require(self.n_folds <= n_units)
+  let row_unit = build_row_unit_map(cluster, uniq)
+  let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+    let rows : Array[Int] = []
+    rows
+  })
+  for i = 0; i < n; i = i + 1 {
+    unit_rows[row_unit[i]].push(i)
+  }
+  let coefs : Array[Double] = Array::make(nrep, 0.0)
+  let ses : Array[Double] = Array::make(nrep, 0.0)
+  let mut g0 : Array[Double] = Array::make(n, 0.0)
+  let mut g1 : Array[Double] = Array::make(n, 0.0)
+  let mut m : Array[Double] = Array::make(n, 0.0)
+  for r = 0; r < nrep; r = r + 1 {
+    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
+    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+      cluster, folds_u, row_unit,
+    )
+    let (g0_r, g1_r, m_r) = cross_fit_irm(
+      ml_g,
+      ml_m,
+      self.data.x,
+      self.data.y,
+      self.data.d,
+      folds_row,
+      self.propensity_clip,
+    )
+    g0 = g0_r
+    g1 = g1_r
+    m = m_r
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    let psi_b : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let u0 = self.data.y[i] - g0[i]
+      let u1 = self.data.y[i] - g1[i]
+      let m_i = m[i]
+      let one_minus_m = 1.0 - m_i
+      let d_over_m = self.data.d[i] * u1 / m_i
+      let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
+        u0 /
+        one_minus_m
+      psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
+      psi_a[i] = -1.0
+    }
+    let theta_r = est_coef_cluster(psi_a, psi_b, folds_row, fold_n_units)
+    let psi_res : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi_res[i] = theta_r * psi_a[i] + psi_b[i]
+    }
+    coefs[r] = theta_r
+    ses[r] = var_est_cluster(
+      psi_res,
+      psi_a,
+      unit_rows,
+      unit_fold,
+      folds_u.length(),
+      self.n_folds,
+    )
+  }
   let (coef, se) = aggregate_coef_se(coefs, ses)
   {
     data: self.data,

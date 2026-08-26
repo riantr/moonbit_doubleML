@@ -86,3 +86,14 @@ test "slice_matrix_rows" {
   inspect(out.get(1, 0), content="1")
   inspect(out.get(1, 1), content="2")
 }
+
+///|
+/// `build_row_unit_map` aborts when a row's unit id is
+/// missing from the unique-ids list. This protects against
+/// silent misclassification (a row assigned to a unit not in
+/// `uniq` would corrupt the cluster partition).
+test "panic_build_row_unit_map_missing_unit" {
+  let cluster : Array[Int] = [0, 1, 5, 0] // 5 not in uniq
+  let uniq : Array[Int] = [0, 1]
+  let _ = build_row_unit_map(cluster, uniq)
+}
