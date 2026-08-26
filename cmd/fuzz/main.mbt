@@ -25,6 +25,11 @@
 //   5. norm_cdf / norm_ppf: inverse consistency within 1e-4
 //      over a random sweep of p ∈ (0.001, 0.999).
 //   6. romano_wolf_p_adjust: output in [0,1], length preserved.
+//   7. DoubleMLPLPR clustered fits on random panels: coef/se
+//      finite and positive-se, transformed row count matches the
+//      approach's structural contract (units x T for cre/wg,
+//      units x (T-1) for fd), and a same-seed refit reproduces
+//      coef/se bit-exactly.
 
 ///|
 fn check(cond : Bool, msg : String) -> Unit {
@@ -164,11 +169,7 @@ fn fuzz_matmul(rng : @random.Rand, trials : Int) -> Unit {
     for i = 0; i < n; i = i + 1 {
       for j = 0; j < n; j = j + 1 {
         check(
-          approx_eq(
-            abc_left.get(i, j),
-            abc_right.get(i, j),
-            1.0e-9,
-          ),
+          approx_eq(abc_left.get(i, j), abc_right.get(i, j), 1.0e-9),
           "matmul associativity (\{i},\{j})",
         )
       }
@@ -208,10 +209,7 @@ fn fuzz_linear_exact(rng : @random.Rand, trials : Int) -> Unit {
     let mut sum_abs_r = 0.0
     for i = 0; i < n; i = i + 1 {
       let r = pred[i] - ys[i]
-      check(
-        r.abs() < 1.0e300,
-        "linear residuals finite (trial \{trial})",
-      )
+      check(r.abs() < 1.0e300, "linear residuals finite (trial \{trial})")
       sum_r = sum_r + r
       sum_abs_r = sum_abs_r + r.abs()
     }
@@ -232,7 +230,7 @@ fn fuzz_linear_exact(rng : @random.Rand, trials : Int) -> Unit {
         norm_x = norm_x + xij * xij
         norm_r = norm_r + r * r
       }
-      let scale = (norm_x.sqrt() * norm_r.sqrt())
+      let scale = norm_x.sqrt() * norm_r.sqrt()
       check(
         dot_xr.abs() <= 1.0e-6 * scale + 1.0e-12,
         "OLS: residuals orthogonal to feature \{j} (trial \{trial})",
@@ -280,10 +278,101 @@ fn fuzz_romano_wolf(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
+/// Random FE-correlated panel for the PLPR surface. Returns the
+/// panel plus the row count each approach must produce.
+fn fuzz_plpr_panel(
+  rng : @random.Rand,
+  n_units : Int,
+  n_periods : Int,
+) -> @dml.DoubleMLPanelData {
+  let p = 2
+  let n = n_units * n_periods
+  let x_flat : Array[Double] = Array::make(n * p, 0.0)
+  let y : Array[Double] = Array::make(n, 0.0)
+  let d : Array[Double] = Array::make(n, 0.0)
+  let t_arr : Array[Int] = Array::make(n, 0)
+  let id_arr : Array[Int] = Array::make(n, 0)
+  let theta_true = 1.0
+  for u = 0; u < n_units; u = u + 1 {
+    let alpha = (rng.double() - 0.5) * 4.0
+    let unit_trait = rng.double() * 2.0 - 1.0
+    for k = 0; k < n_periods; k = k + 1 {
+      let row = u * n_periods + k
+      let x1 = unit_trait + (rng.double() - 0.5)
+      let x2 = rng.double() * 2.0 - 1.0
+      x_flat[row * p] = x1
+      x_flat[row * p + 1] = x2
+      t_arr[row] = k
+      id_arr[row] = u
+      d[row] = 0.6 * x1 + 0.3 * x2 + 0.5 * alpha / 2.0 + (rng.double() - 0.5)
+      y[row] = theta_true * d[row] +
+        0.8 * x1 -
+        0.5 * x2 +
+        alpha +
+        (rng.double() - 0.5) * 0.25
+    }
+  }
+  @dml.DoubleMLPanelData::new(
+    @dml.Matrix::from_array(x_flat, n, p),
+    y,
+    d,
+    t_arr,
+    id_arr,
+  )
+}
+
+///|
+fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
+  let approaches = ["cre_general", "cre_normal", "fd_exact", "wg_approx"]
+  for trial = 0; trial < trials; trial = trial + 1 {
+    let n_units = rng.int(limit=25) + 6
+    let n_periods = rng.int(limit=4) + 2
+    let approach = approaches[rng.int(limit=4)]
+    let iv = rng.double() < 0.25
+    let panel = fuzz_plpr_panel(rng, n_units, n_periods)
+    let seed = rng.int(limit=100_000)
+    let model = if iv {
+      @dml.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
+    } else {
+      @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+    }
+    // Invariant 1: finite, positive-se estimates.
+    let th = model.coef()
+    let se = model.se()
+    check(
+      th.abs() < 1.0e6 && se > 0.0 && se < 1.0e3,
+      "plpr \{approach}: finite coef/positive se (trial=\{trial})",
+    )
+    // Invariant 2: structural row count of the transformed sample.
+    let expected_rows = if approach == "fd_exact" {
+      n_units * (n_periods - 1)
+    } else {
+      n_units * n_periods
+    }
+    check(
+      model.predictions_l().length() == expected_rows,
+      "plpr \{approach}: transformed row count (trial=\{trial})",
+    )
+    // Invariant 3: same-seed refit is bit-exact.
+    let again = if iv {
+      @dml.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
+    } else {
+      @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+    }
+    check(
+      again.coef() == th && again.se() == se,
+      "plpr \{approach}: same-seed refit determinism (trial=\{trial})",
+    )
+  }
+}
+
+///|
 fn main {
   let trials = 300
   println("=== mavis/dml fuzz harness (\{trials} trials per surface) ===")
-  let master = @random.Rand::chacha8(seed=Bytes::from_array(@dml.seed_to_bytes(20260824)))
+  let master = @random.Rand::chacha8(
+    seed=Bytes::from_array(@dml.seed_to_bytes(20260824)),
+  )
   // Derive per-surface RNGs deterministically from the master seed.
   let s1 = master.int(limit=1_000_000)
   let s2 = master.int(limit=1_000_000)
@@ -291,23 +380,27 @@ fn main {
   let s4 = master.int(limit=1_000_000)
   let s5 = master.int(limit=1_000_000)
   let s6 = master.int(limit=1_000_000)
-  println("[1/6] p_adjust family ...")
+  let s7 = master.int(limit=1_000_000)
+  println("[1/7] p_adjust family ...")
   fuzz_padjust(@dml.chacha8_rng(s1), trials)
   println("      OK")
-  println("[2/6] kfold partition invariants ...")
+  println("[2/7] kfold partition invariants ...")
   fuzz_kfold(@dml.chacha8_rng(s2), trials)
   println("      OK")
-  println("[3/6] Matrix matmul associativity ...")
+  println("[3/7] Matrix matmul associativity ...")
   fuzz_matmul(@dml.chacha8_rng(s3), trials)
   println("      OK")
-  println("[4/6] LinearRegression normal-equations invariants ...")
+  println("[4/7] LinearRegression normal-equations invariants ...")
   fuzz_linear_exact(@dml.chacha8_rng(s4), trials)
   println("      OK")
-  println("[5/6] norm_ppf / norm_cdf inverse sweep ...")
+  println("[5/7] norm_ppf / norm_cdf inverse sweep ...")
   fuzz_norm_inverse(@dml.chacha8_rng(s5), trials)
   println("      OK")
-  println("[6/6] romano_wolf_p_adjust range/length ...")
+  println("[6/7] romano_wolf_p_adjust range/length ...")
   fuzz_romano_wolf(@dml.chacha8_rng(s6), trials)
+  println("      OK")
+  println("[7/7] DoubleMLPLPR clustered fit invariants ...")
+  fuzz_plpr(@dml.chacha8_rng(s7), trials)
   println("      OK")
   println("")
   println("ALL FUZZ SURFACES PASSED (no invariant violations)")

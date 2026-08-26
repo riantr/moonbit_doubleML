@@ -11,6 +11,85 @@ release is the canonical version.
 
 ---
 
+## [0.26.0] — `DoubleMLPLPR` (static panel partially linear regression)
+
+### Added
+- **`plpr.mbt`**: port of upstream `doubleml.plm.DoubleMLPLPR`
+  (Clarke & Polselli 2025) for static panel data,
+  `Y_it = D_it * theta0 + g(X_it) + alpha_i + zeta_it`.
+  - **`DoubleMLPanelData`**: panel container `(x, y, d, t, id)`.
+  - **Four static-panel approaches** (`approach=`):
+    `cre_general` (Mundlak augmentation + post-hoc
+    `m_hat* = m_hat + d_mean - mean_by_id(m_hat)` adjustment),
+    `cre_normal` (treatment regression on `[X, d_mean]`),
+    `fd_exact` (first differences with `[X_t, X_{t-1}]` design),
+    `wg_approx` (within transformation
+    `v - unit_mean(v) + grand_mean(v)`).
+  - Both scores: `"partialling out"` (default) and `"IV-type"`
+    (theta_initial from PO, then g on `y - theta_init * d`,
+    exactly like upstream).
+  - **Clustered inference path** (the load-bearing design point):
+    upstream re-wraps the transformed panel as static-panel data
+    with `cluster_cols = id_col`, so estimation always uses the
+    cluster machinery — folds are drawn over whole units
+    (`kfold` on unique ids, expanded to row folds), the causal
+    parameter is the fold-weighted ratio of cluster score sums
+    (**`est_coef_cluster`**, mirroring
+    `LinearScoreMixin._est_coef`'s cluster branch), and the SE is
+    unit-level cluster-robust (**`var_est_cluster`**, mirroring
+    `_var_est`'s one-cluster-variable branch:
+    `gamma += S_g^2 / |I_k|`, both accumulators divided by
+    `n_folds_per_cluster`, scaled by `1 / (N_units * J^2)`).
+    A naive row-level implementation reports se ~ 0.32-0.36 where
+    the clustered path reports ~ 0.02 (18x tighter); the coefs move
+    correspondingly because row-level splits leak unit information
+    into the training folds.
+- **`Fold::new(train_idx, test_idx)`** public constructor so
+  external packages can drive cross-fitting with custom
+  partitions.
+- **`validate_plpr_with_python.py`**: cross-checks against BOTH
+  installed upstream doubleml 0.11.3 AND an independent
+  hand-rolled numpy reference of the full clustered pipeline
+  (unit-level permutation split, weighted coef, cluster SE).
+  All three implementations agree (upstream theta within
+  ~0.01 of hand-rolled across all four approaches; se all
+  ~0.02). Note: upstream `KFold(shuffle=True)` is not seeded,
+  so upstream numbers drift run-to-run; comparisons use bands.
+- **`cmd/plpr`** demo: four-approach comparison table on the
+  FE-correlated DGP (60 x 4, true theta = 1.0).
+- **Fuzz surface 7/7**: PLPR clustered fits over random panels —
+  finite coef/se, structural transformed-row count per approach,
+  same-seed bit-exact refit determinism.
+
+### Changed
+- `features/dml_acceptance.feature`: new "Static panel partially
+  linear regression (PLPR)" feature (4 scenarios mapped to tests;
+  total now 4 features / 14 scenarios).
+- `moon.mod` version bumped to 0.26.0 (found stale at QA step 4).
+
+### Tests
+257 -> 260 (+3): plpr suite gained `panic_plpr_too_few_units`,
+plus hand-computed reference tests for `est_coef_cluster`
+(exact theta 3.0) and `var_est_cluster` (exact
+`sqrt(3.25/36)`); the main recovery test now also asserts the
+CI identity (`hi - lo == 2 * z * se`) and a clustered-scale se
+guard (`se < 0.08`, regression guard against naive row-level
+inference). All green x4 backends with `--deny-warn`.
+
+### QA battery (T270)
+Nine gates all PASS: fmt CLEAN, SAST clean (0 warnings, no
+secrets/FFI, TODOs historical only), dupcheck 0 blocks (32
+files), deps core-only, unit 260 x {wasm, wasm-gc, js, native},
+Gherkin 14 scenarios mapped, mutation 5/5 killed (coef sign
+flip x6, row-level kfold x6, linear-gamma x3, npc-division drop
+x1 via reference test, confint z doubling x1 via CI identity),
+fuzz 7 surfaces x 300 trials 0 violations, components 8/8
+(incl. new cmd/plpr). Mutation lesson re-confirmed: DGP-level
+bands alone miss a sqrt(2)-scale variance mutation; the
+hand-computed reference test catches it exactly.
+
+---
+
 ## [0.25.0] — `GainStatsSource::from_blp_cv_repeated` (multi-seed K-fold average)
 
 ### Added

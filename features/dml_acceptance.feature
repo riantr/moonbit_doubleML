@@ -89,3 +89,44 @@ Feature: Two-stage FDR corrections
     # mapped to: padjust dispatcher tests in did_multi_test.mbt
     When p_adjust is called with method_name "fdr_tsbh"
     Then the result equals tsbh_p_adjust output
+
+Feature: Static panel partially linear regression (PLPR)
+  DoubleMLPLPR transforms a static panel via one of four
+  approaches and always runs the clustered DML path: folds
+  partition whole units, the coefficient is a fold-weighted
+  ratio of cluster score sums, and the SE is unit-level
+  cluster-robust (upstream doubleml >= 0.11 semantics).
+
+  Background:
+    Given a balanced panel DGP with unit fixed effects correlated
+      with the treatment (60 units x 4 periods, true theta = 1.0)
+
+  Scenario: All four approaches recover theta at clustered scale
+    # mapped to: plpr_all_approaches_recover_theta
+    When cre_general, cre_normal, fd_exact and wg_approx are fit
+      with n_folds 2 and seed 3141
+    Then every theta lies in [0.9, 1.15]
+    And every se lies in [0.004, 0.08] (naive row-level inference
+      would report ~0.32-0.36 for the CRE approaches)
+    And each CI is symmetric around theta with half-width
+      1.959963984540054 * se
+
+  Scenario: Cluster coefficient and variance match hand-computed values
+    # mapped to: plpr_est_coef_cluster_reference and plpr_var_est_cluster_reference
+    Given a two-fold partition with unit weights w = [1, 1/2]
+    Then est_coef_cluster returns -10.5 / -3.5 = 3.0 exactly
+    Given four units of two rows with hand-computed score sums
+    Then var_est_cluster returns sqrt(3.25 / 36) within 1e-12
+
+  Scenario: No unit spans both sides of a fold
+    # mapped to: panic_plpr_too_few_units plus the clustered se
+    # scale guard in plpr_all_approaches_recover_theta
+    When the unit count is below n_folds
+    Then fitting aborts
+    And on valid panels every fitted se stays at the clustered scale
+
+  Scenario: Without fixed effects cre_general behaves like a plain PLR
+    # mapped to: plpr_no_fe_recovery
+    Given the same DGP with alpha scaled to ~0
+    When cre_general is fit
+    Then theta lies in [0.93, 1.07]

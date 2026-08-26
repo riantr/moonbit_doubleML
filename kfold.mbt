@@ -19,6 +19,16 @@ pub fn Fold::test_indices(self : Fold) -> Array[Int] {
 }
 
 ///|
+/// Public constructor: build a fold from explicit train/test index
+/// arrays (used by callers that drive cross-fitting with their own
+/// partitions, e.g. the clustered panel path in `plpr.mbt`).
+pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
+  require(test_idx.length() > 0)
+  require(train_idx.length() + test_idx.length() > 0)
+  { train_idx, test_idx }
+}
+
+///|
 /// Draw `n_folds` (train, test) splits that together partition
 /// `[0, n_obs)` using a deterministic shuffle seeded with `seed`. The
 /// resulting list has length `n_folds`. If `n_obs` is not a multiple of

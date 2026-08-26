@@ -67,3 +67,6 @@ _verify/logistic.mbt.original.dup
 _verify/logistic_test.mbt.original
 _verify/logistic_test.mbt.original.dup
 _verify/logistic_demo_probe.mbt.original
+# Python diagnostics scratch (validator support, kept locally only).
+__pycache__/
+_verify/diag_cre*.py

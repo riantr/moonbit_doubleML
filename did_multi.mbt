@@ -901,6 +901,7 @@ fn storey_m0_hat(unadjusted : Array[Double]) -> Double {
   m0_hat
 }
 
+///|
 pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let n = unadjusted.length()
   // Estimate `m0_hat` using the Storey 2002 /

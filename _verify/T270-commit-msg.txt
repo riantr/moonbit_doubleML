@@ -1,0 +1,58 @@
+Release 0.26.0: DoubleMLPLPR static panel PLR with clustered inference
+
+New model: DoubleMLPLPR (upstream doubleml.plm.DoubleMLPLPR,
+Clarke & Polselli 2025) for static panel partially linear
+regression, Y_it = D_it*theta0 + g(X_it) + alpha_i + zeta_it.
+Four approaches: cre_general (Mundlak + post-hoc m_hat
+adjustment), cre_normal ([X, d_mean] treatment regression),
+fd_exact (first differences + lagged design), wg_approx
+(within transformation). Both PO and IV-type scores.
+
+Load-bearing design point: upstream re-wraps the transformed
+panel as static-panel data with cluster_cols = id_col, so all
+approaches take the CLUSTERED DML path:
+- folds drawn over whole units (kfold on unique ids, expanded
+  to row folds; no unit spans train+test),
+- coefficient = fold-weighted ratio of cluster score sums
+  (est_coef_cluster, w_k = 1/|I_k|),
+- unit-level cluster-robust SE (var_est_cluster: gamma +=
+  S_g^2/|I_k|, both accumulators / n_folds_per_cluster, scale
+  1/(N_units*J^2)).
+A naive row-level implementation reports se ~0.32-0.36 where
+the clustered path reports ~0.02 and shifts coefs ~0.15 via
+unit leakage in training folds. Cross-checked against installed
+upstream doubleml 0.11.3 AND an independent hand-rolled numpy
+cluster reference: all three agree on theta (~1.00) and se
+(~0.02) across all four approaches.
+
+QA battery run as release gate (T270):
+- Format: moon fmt clean (hash comparison).
+- SAST: moon check --deny-warn 0 warnings; no secrets/FFI;
+  TODOs historical only.
+- Dup check: dupcheck.py 0 blocks over 32 production files
+  (cre_general id-recovery duplication removed by threading
+  tf.id out of transform_panel).
+- Deps: only moonbitlang/core subpackages; moon.mod version
+  fixed 0.25.0 -> 0.26.0.
+- Unit: 260/260 on native/wasm-gc/wasm/js with --deny-warn.
+- Gherkin: features/dml_acceptance.feature now 4 features /
+  14 scenarios (new PLPR feature), each mapped to its test.
+- Mutation: 5/5 mutants killed — M1 coef sign flip x6 tests;
+  M2 row-level kfold x6 (abort); M3 linear-gamma x3;
+  M4 npc-division drop x1 (hand-computed var_est_cluster
+  reference, exact sqrt(3.25/36)); M5 confint z doubling x1
+  (CI identity hi-lo == 2*z*se). Lesson: DGP-level se bands
+  miss a sqrt(2)-scale variance mutation; the reference test
+  kills it exactly.
+- Fuzz: cmd/fuzz now 7 surfaces x 300 trials, 0 violations
+  (new surface 7: PLPR clustered fits — finite coef/se,
+  structural row count per approach, same-seed bit-exact
+  refit).
+- Components: all 8 cmd demos pass output assertions
+  (new cmd/plpr: 4 thetas in [0.9,1.15], ses in [0.004,0.08]).
+
+API additions: DoubleMLPanelData, DoubleMLPLPR,
+est_coef_cluster, var_est_cluster, Fold::new.
+
+Tests: 260/260 PASS (+12 vs 0.25.0), all backends,
+--deny-warn clean.
