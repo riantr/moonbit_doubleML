@@ -9,6 +9,7 @@ pub struct DoubleMLPLIVData {
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
+  cluster_vars : Array[Int]
 } derive(Debug)
 
 ///|
@@ -20,11 +21,15 @@ pub fn DoubleMLPLIVData::new(
   y : Array[Double],
   d : Array[Double],
   z : Array[Double],
+  cluster_vars? : Array[Int] = [],
 ) -> DoubleMLPLIVData {
   require(x.nrows == y.length())
   require(x.nrows == d.length())
   require(x.nrows == z.length())
-  { x, y, d, z }
+  if cluster_vars.length() > 0 {
+    require(cluster_vars.length() == x.nrows)
+  }
+  { x, y, d, z, cluster_vars }
 }
 
 ///|
@@ -37,6 +42,19 @@ pub fn DoubleMLPLIVData::n_obs(self : DoubleMLPLIVData) -> Int {
 /// Number of features.
 pub fn DoubleMLPLIVData::n_features(self : DoubleMLPLIVData) -> Int {
   self.x.cols()
+}
+
+///|
+/// True iff the data is set up for clustered inference (a
+/// non-empty cluster_vars vector was passed to DoubleMLPLIVData::new).
+pub fn DoubleMLPLIVData::is_cluster_data(self : DoubleMLPLIVData) -> Bool {
+  self.cluster_vars.length() > 0
+}
+
+///|
+/// Length of the cluster_vars vector (0 when not clustered).
+pub fn DoubleMLPLIVData::n_cluster_vars(self : DoubleMLPLIVData) -> Int {
+  self.cluster_vars.length()
 }
 
 ///|
@@ -172,6 +190,9 @@ pub fn DoubleMLPLIV::fit(
   self : DoubleMLPLIV,
   learner? : LinearRegression = LinearRegression::new(),
 ) -> DoubleMLPLIV {
+  if self.data.is_cluster_data() {
+    return self.fit_cluster(learner)
+  }
   ignore(learner)
   let n = self.n_obs()
   let nrep = self.n_rep
@@ -204,6 +225,89 @@ pub fn DoubleMLPLIV::fit(
     ses[r] = se_r
   }
   // last iteration's predictions are now in l_pred / r_pred / m_pred
+  let (coef, se) = aggregate_coef_se(coefs, ses)
+  {
+    data: self.data,
+    n_folds: self.n_folds,
+    n_rep: self.n_rep,
+    seed: self.seed,
+    l_hat: l_pred,
+    r_hat: r_pred,
+    m_hat: m_pred,
+    coef,
+    se,
+    fitted: true,
+  }
+}
+
+///|
+/// Clustered-DML path for `DoubleMLPLIV`. Same shape as
+/// `DoubleMLPLR::fit_cluster`: folds are drawn over the
+/// unique unit ids, expanded to row folds via
+/// `expand_unit_folds_to_rows`; coefficient is the
+/// fold-weighted ratio of cluster score sums
+/// (`est_coef_cluster`); variance is unit-level
+/// cluster-robust (`var_est_cluster`). All three nuisances
+/// (`l = E[Y|X]`, `r = E[D|X]`, `m = E[Z|X]`) are
+/// cross-fitted with cluster-respecting folds; the per-row
+/// score elements are the same as the row-level path
+/// (`psi_a = -w_hat * v_hat`, `psi_b = v_hat * u_hat`).
+fn DoubleMLPLIV::fit_cluster(
+  self : DoubleMLPLIV,
+  learner : LinearRegression,
+) -> DoubleMLPLIV {
+  let cluster = self.data.cluster_vars
+  let n = self.n_obs()
+  let nrep = self.n_rep
+  let uniq = unique_units(cluster)
+  let n_units = uniq.length()
+  require(self.n_folds <= n_units)
+  let row_unit = build_row_unit_map(cluster, uniq)
+  let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+    let rows : Array[Int] = []
+    rows
+  })
+  for i = 0; i < n; i = i + 1 {
+    unit_rows[row_unit[i]].push(i)
+  }
+  let coefs : Array[Double] = Array::make(nrep, 0.0)
+  let ses : Array[Double] = Array::make(nrep, 0.0)
+  let mut l_pred : Array[Double] = Array::make(n, 0.0)
+  let mut r_pred : Array[Double] = Array::make(n, 0.0)
+  let mut m_pred : Array[Double] = Array::make(n, 0.0)
+  for r = 0; r < nrep; r = r + 1 {
+    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
+    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+      cluster, folds_u, row_unit,
+    )
+    l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
+    r_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
+    m_pred = cross_fit_predict(learner, self.data.x, self.data.z, folds_row)
+    let y = self.data.y
+    let d = self.data.d
+    let z = self.data.z
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    let psi_b : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let u = y[i] - l_pred[i]
+      let w = d[i] - r_pred[i]
+      let v = z[i] - m_pred[i]
+      psi_a[i] = -w * v
+      psi_b[i] = v * u
+    }
+    let (theta_r, se_r) = cluster_causal_param_and_se(
+      psi_a,
+      psi_b,
+      folds_row,
+      fold_n_units,
+      unit_rows,
+      unit_fold,
+      folds_u.length(),
+      self.n_folds,
+    )
+    coefs[r] = theta_r
+    ses[r] = se_r
+  }
   let (coef, se) = aggregate_coef_se(coefs, ses)
   {
     data: self.data,

@@ -8,10 +8,9 @@
 // import {
 //   "moonbitlang/x@0.4.6",
 // }
-
 name = "mavis/dml"
 
-version = "0.29.0"
+version = "0.30.0"
 
 readme = "README.mbt.md"
 

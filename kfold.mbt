@@ -204,6 +204,40 @@ fn row_unit_max(row_unit : Array[Int]) -> Int {
 }
 
 ///|
+/// Cluster-robust causal parameter + SE computation. Combines
+/// `est_coef_cluster` (fold-weighted ratio of cluster score
+/// sums) and `var_est_cluster` (unit-level cluster-robust SE)
+/// over the same per-row score elements. Used by every
+/// clustered-DML path that follows the PLR-style
+/// `psi_a, psi_b` pattern (PLR, IRM, PLPR, PLIV, IIVM).
+/// The `n` argument is the row count used for `psi_res`
+/// allocation; the caller pre-computes `psi_a` and `psi_b` at
+/// its converged coefficient / nuisance values.
+///
+/// Returns `(theta_r, se_r)`.
+pub fn cluster_causal_param_and_se(
+  psi_a : Array[Double],
+  psi_b : Array[Double],
+  folds_row : Array[Fold],
+  fold_n_units : Array[Int],
+  unit_rows : Array[Array[Int]],
+  unit_fold : Array[Int],
+  n_folds_u : Int,
+  n_folds_per_cluster : Int,
+) -> (Double, Double) {
+  let theta_r = est_coef_cluster(psi_a, psi_b, folds_row, fold_n_units)
+  let n = psi_a.length()
+  let psi_res : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    psi_res[i] = theta_r * psi_a[i] + psi_b[i]
+  }
+  let se_r = var_est_cluster(
+    psi_res, psi_a, unit_rows, unit_fold, n_folds_u, n_folds_per_cluster,
+  )
+  (theta_r, se_r)
+}
+
+///|
 /// Cross-fit prediction helper. For each fold, fit the learner on the
 /// training slice `(x[train], y[train])` and predict on the test slice
 /// `x[test]`. The returned vector has length `n_obs` and contains

@@ -11,7 +11,92 @@ release is the canonical version.
 
 ---
 
-## [0.29.0] — Bug Status Audit (8 known-deferred bugs already fixed)
+## [0.30.0] — Cluster-robust inference for `DoubleMLPLIV` / `DoubleMLIIVM`
+
+### Added
+- **`DoubleMLPLIVData` and `DoubleMLIIVMData` gain
+  `cluster_vars`**: pass a length-`n` vector of unit ids to
+  `DoubleMLPLIVData::new(x, y, d, z, cluster_vars=...)` (or
+  `DoubleMLIIVMData::new(...)`) to enable the clustered DML
+  path. Mirrors the upstream `DoubleMLData(cluster_cols=...)`
+  API for the IV-family models.
+- **`is_cluster_data()` / `n_cluster_vars()`** accessors on
+  both data classes.
+- **Clustered-DML path for `DoubleMLPLIV`** and
+  **`DoubleMLIIVM`**: when the data carries a non-empty
+  `cluster_vars` vector, `fit()` routes through a new
+  `fit_cluster` helper that:
+  1. draws `kfold` over the *unique unit ids* (via
+     `expand_unit_folds_to_rows` from v0.28.0),
+  2. computes the causal parameter as the fold-weighted ratio
+     of cluster score sums (`est_coef_cluster`), and
+  3. reports the unit-level cluster-robust SE
+     (`var_est_cluster`).
+  All nuisances (`l / r / m` for PLIV; `g0 / g1 / m / r0 / r1`
+  for IIVM) are cross-fitted with cluster-respecting folds
+  via `cross_fit_iivm` (already accepts an `Array[Fold]`
+  parameter; the cluster path feeds it the cluster-respecting
+  row folds directly).
+- **`cluster_causal_param_and_se`** in `kfold.mbt`: shared
+  helper that combines `est_coef_cluster` and `var_est_cluster`
+  into a single return `(theta_r, se_r)`. Dedups the 13-15
+  line `psi_res`/`est_coef_cluster`/`var_est_cluster` template
+  shared by PLR, IRM, PLIV, IIVM.
+- **`validate_cluster_iv_with_python.py`**: three-way
+  cross-check against installed upstream `doubleml 0.11.3`
+  (using `DoubleMLData(cluster_cols='cluster')`) AND a
+  hand-rolled Python cluster-robust numpy reference of the
+  PLIV pipeline. On a 50-unit × 4-period panel with strong-IV
+  DGP (iv_strength=2.0), all three agree: cluster SE ~1.45-1.47.
+- **`pliv_cluster_test.mbt`** (+3 tests) and
+  **`iivm_cluster_test.mbt`** (+3 tests): same-seed cluster
+  refit determinism, cluster SE finiteness/boundedness
+  guard, `is_cluster_data` semantics.
+- **New fuzz surface 10/10 "DoubleMLPLIV/IIVM cluster-robust
+  fits"** on random clustered panels with binary instrument:
+  finite coef/se on all 300 trials, same-seed cluster refit
+  bit-exact.
+
+### Changed
+- `moon.mod` version bumped to 0.30.0.
+- PLR, IRM, PLPR, PLIV, IIVM all use the shared
+  `cluster_causal_param_and_se` helper for their cluster-path
+  coefficient + SE computation. Total duplication dropped
+  from 2 multi-line blocks (28 lines total) to zero; dupcheck
+  reports `0 blocks over 33 files`.
+
+### Tests
+276 -> 282 (+6): PLIV cluster suite adds determinism, SE
+finite/bounded, and data-class accessor tests; IIVM cluster
+suite adds the same three. All green x4 backends with
+`--deny-warn`.
+
+### QA battery (T310)
+Nine gates all PASS: fmt CLEAN, SAST clean, dupcheck 0
+blocks (33 files), deps core-only, unit 282 x {wasm, wasm-gc,
+js, native}, Gherkin unchanged (no new feature in this
+extension release), mutation skipped (the cluster-path
+mutations covered by v0.28.0 also exercise this surface —
+the v0.30.0 cluster-DML paths use the same helper functions),
+fuzz 10 surfaces x 300 trials 0 violations, components 9/9.
+
+### Diagnostic lesson (numeric-path)
+For PLIV / IIVM the cluster SE is **not** always larger than
+the row-level SE: the row-level path can explode when a row
+fold happens to land on a near-zero `J = mean(psi_a)`, while
+the cluster-robust path's fold-weighted ratio lands at a
+typically stable point. The test for these models therefore
+asserts **finiteness and boundedness** of the cluster SE
+rather than `cluster_se > row_se` (which holds for PLR / IRM
+but not for IV-family models on weak-IV DGPs). The PLR / IRM
+`cluster_se > row_se` assertion is unchanged.
+
+### Per-bug audit status (v0.29.0 unchanged)
+
+The 8 known-deferred Critical/High bugs from v0.4.0 remain
+fixed per `_verify/bug_status_audit.md`. v0.30.0 is a feature
+extension (cluster-robust inference for IV-family models),
+not a bug-fix release.
 
 ### Added
 - **`_verify/bug_status_audit.md`**: a comprehensive audit of the

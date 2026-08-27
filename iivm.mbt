@@ -7,6 +7,7 @@ pub struct DoubleMLIIVMData {
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
+  cluster_vars : Array[Int]
 } derive(Debug)
 
 ///|
@@ -15,11 +16,15 @@ pub fn DoubleMLIIVMData::new(
   y : Array[Double],
   d : Array[Double],
   z : Array[Double],
+  cluster_vars? : Array[Int] = [],
 ) -> DoubleMLIIVMData {
   require(x.nrows == y.length())
   require(x.nrows == d.length())
   require(x.nrows == z.length())
-  { x, y, d, z }
+  if cluster_vars.length() > 0 {
+    require(cluster_vars.length() == x.nrows)
+  }
+  { x, y, d, z, cluster_vars }
 }
 
 ///|
@@ -30,6 +35,19 @@ pub fn DoubleMLIIVMData::n_obs(self : DoubleMLIIVMData) -> Int {
 ///|
 pub fn DoubleMLIIVMData::n_features(self : DoubleMLIIVMData) -> Int {
   self.x.cols()
+}
+
+///|
+/// True iff the data is set up for clustered inference (a
+/// non-empty `cluster_vars` vector was passed to `new`).
+pub fn DoubleMLIIVMData::is_cluster_data(self : DoubleMLIIVMData) -> Bool {
+  self.cluster_vars.length() > 0
+}
+
+///|
+/// Length of the cluster_vars vector (0 when not clustered).
+pub fn DoubleMLIIVMData::n_cluster_vars(self : DoubleMLIIVMData) -> Int {
+  self.cluster_vars.length()
 }
 
 ///|
@@ -289,6 +307,9 @@ pub fn DoubleMLIIVM::fit(
   ml_m? : LinearRegression = LinearRegression::new(),
   ml_r? : LinearRegression = LinearRegression::new(),
 ) -> DoubleMLIIVM {
+  if self.data.is_cluster_data() {
+    return self.fit_cluster(ml_g, ml_m, ml_r)
+  }
   ignore(ml_g)
   ignore(ml_m)
   ignore(ml_r)
@@ -346,6 +367,118 @@ pub fn DoubleMLIIVM::fit(
     ses[r] = se_r
   }
   // last iteration's predictions are now in g0 / g1 / m / r0 / r1
+  let (coef, se) = aggregate_coef_se(coefs, ses)
+  {
+    data: self.data,
+    n_folds: self.n_folds,
+    n_rep: self.n_rep,
+    seed: self.seed,
+    propensity_clip: self.propensity_clip,
+    g0_hat: g0,
+    g1_hat: g1,
+    m_hat: m,
+    r0_hat: r0,
+    r1_hat: r1,
+    coef,
+    se,
+    fitted: true,
+  }
+}
+
+///|
+/// Clustered-DML path for `DoubleMLIIVM`. Same shape as the
+/// other `fit_cluster` helpers: folds are drawn over the
+/// unique unit ids, expanded to row folds via
+/// `expand_unit_folds_to_rows`; all five nuisances
+/// (`g0`, `g1`, `m`, `r0`, `r1`) are cross-fitted with
+/// cluster-respecting folds; the LATE coefficient is the
+/// fold-weighted ratio of cluster score sums
+/// (`est_coef_cluster`); the SE is unit-level cluster-robust
+/// (`var_est_cluster`). The per-row score elements are the
+/// same as the row-level path
+/// (`psi_a = -(r1 - r0) - z w1/m + (1 - z) w0/(1 - m)`,
+/// `psi_b = g1 - g0 + z u1/m - (1 - z) u0/(1 - m)`).
+fn DoubleMLIIVM::fit_cluster(
+  self : DoubleMLIIVM,
+  ml_g : LinearRegression,
+  ml_m : LinearRegression,
+  ml_r : LinearRegression,
+) -> DoubleMLIIVM {
+  let cluster = self.data.cluster_vars
+  let n = self.n_obs()
+  let nrep = self.n_rep
+  let uniq = unique_units(cluster)
+  let n_units = uniq.length()
+  require(self.n_folds <= n_units)
+  let row_unit = build_row_unit_map(cluster, uniq)
+  let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+    let rows : Array[Int] = []
+    rows
+  })
+  for i = 0; i < n; i = i + 1 {
+    unit_rows[row_unit[i]].push(i)
+  }
+  let coefs : Array[Double] = Array::make(nrep, 0.0)
+  let ses : Array[Double] = Array::make(nrep, 0.0)
+  let mut g0 : Array[Double] = Array::make(n, 0.0)
+  let mut g1 : Array[Double] = Array::make(n, 0.0)
+  let mut m : Array[Double] = Array::make(n, 0.0)
+  let mut r0 : Array[Double] = Array::make(n, 0.0)
+  let mut r1 : Array[Double] = Array::make(n, 0.0)
+  for r = 0; r < nrep; r = r + 1 {
+    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
+    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+      cluster, folds_u, row_unit,
+    )
+    let (g0_r, g1_r, m_r, r0_r, r1_r) = cross_fit_iivm(
+      ml_g,
+      ml_m,
+      ml_r,
+      self.data.x,
+      self.data.y,
+      self.data.d,
+      self.data.z,
+      folds_row,
+      self.propensity_clip,
+    )
+    g0 = g0_r
+    g1 = g1_r
+    m = m_r
+    r0 = r0_r
+    r1 = r1_r
+    let y = self.data.y
+    let d = self.data.d
+    let z = self.data.z
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    let psi_b : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let u0 = y[i] - g0[i]
+      let u1 = y[i] - g1[i]
+      let w0 = d[i] - r0[i]
+      let w1 = d[i] - r1[i]
+      let m_i = m[i]
+      let one_minus_m = 1.0 - m_i
+      psi_b[i] = g1[i] -
+        g0[i] +
+        z[i] * u1 / m_i -
+        (1.0 - z[i]) * u0 / one_minus_m
+      psi_a[i] = -(r1[i] - r0[i]) -
+        z[i] * w1 / m_i +
+        (1.0 - z[i]) * w0 / one_minus_m
+    }
+    let (theta_r, se_r) = cluster_causal_param_and_se(
+      psi_a,
+      psi_b,
+      folds_row,
+      fold_n_units,
+      unit_rows,
+      unit_fold,
+      folds_u.length(),
+      self.n_folds,
+    )
+    coefs[r] = theta_r
+    ses[r] = se_r
+  }
   let (coef, se) = aggregate_coef_se(coefs, ses)
   {
     data: self.data,

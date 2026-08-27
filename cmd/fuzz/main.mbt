@@ -34,7 +34,10 @@
 //      data: coef/se finite (Newton does not explode), CI
 //      symmetric around coef with half-width 1.96*se, and
 //      same-seed refit reproduces coef/se bit-exactly.
-//   9. Cluster-robust PLR fits on random clustered panels: the
+//   9. Cluster-robust PLR fits on random clustered panels:
+//   10. Cluster-robust PLIV/IIVM fits on random clustered
+//      panels with binary instrument: finite coef/se, same-
+//      seed cluster refit bit-exact. the
 //      cluster-fit coef is finite; the cluster SE is positive
 //      finite; the cluster SE is at least as large as the
 //      row-level SE on the same data (with strong within-unit
@@ -549,6 +552,113 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
+/// Cluster-robust PLIV / IIVM fits on a small clustered panel
+/// with a binary instrument (the IIVM cross-fit filters on
+/// `z == 0.0` / `z == 1.0`, so Z must be binary). Surfaces:
+///   - finite coef (no divide-by-zero in `var_est`),
+///   - finite positive SE,
+///   - same-seed cluster refit is bit-exact.
+fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
+  for trial = 0; trial < trials; trial = trial + 1 {
+    let n_units = rng.int(limit=20) + 8
+    let n_periods = rng.int(limit=3) + 2
+    let n = n_units * n_periods
+    let p = 3
+    let x_flat : Array[Double] = Array::make(n * p, 0.0)
+    let y : Array[Double] = Array::make(n, 0.0)
+    let d : Array[Double] = Array::make(n, 0.0)
+    let z : Array[Double] = Array::make(n, 0.0)
+    let cluster : Array[Int] = Array::make(n, 0)
+    let ch_rng = @dml.chacha8_rng(rng.int(limit=100_000))
+    let pool : Array[Double] = Array::new()
+    while pool.length() < n * p + n {
+      let u1 = ch_rng.double()
+      let u2 = ch_rng.double()
+      let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
+      let r = (-2.0 * @math.ln(safe)).sqrt()
+      let th = 2.0 * 3.141592653589793 * u2
+      pool.push(r * @math.cos(th))
+      pool.push(r * @math.sin(th))
+    }
+    for i = 0; i < n * p; i = i + 1 {
+      x_flat[i] = pool[i]
+    }
+    for u = 0; u < n_units; u = u + 1 {
+      let alpha = (ch_rng.double() - 0.5) * 4.0
+      let unit_trait = ch_rng.double() * 2.0 - 1.0
+      for k = 0; k < n_periods; k = k + 1 {
+        let row = u * n_periods + k
+        let x1 = unit_trait + (ch_rng.double() - 0.5)
+        let x2 = ch_rng.double() * 2.0 - 1.0
+        let x3 = ch_rng.double() * 2.0 - 1.0
+        x_flat[row * p] = x1
+        x_flat[row * p + 1] = x2
+        x_flat[row * p + 2] = x3
+        cluster[row] = u
+        d[row] = 0.6 * x1 +
+          0.3 * x2 +
+          0.5 * alpha / 2.0 +
+          (ch_rng.double() - 0.5)
+        // Binary Z driven by expit(iv_strength * x1 + unit effect);
+        // cluster-fold keeps both z=0 and z=1 in every train slice
+        // because both unit effects and iv_strength are non-extreme.
+        let prop = 1.5 * x1 + 0.4 * alpha / 2.0 + 0.3 * unit_trait
+        let pz = @dml.expit(prop)
+        let u01 = ch_rng.double()
+        z[row] = if u01 < pz { 1.0 } else { 0.0 }
+        y[row] = 1.0 * d[row] +
+          0.8 * x1 -
+          0.5 * x2 +
+          alpha +
+          (ch_rng.double() - 0.5) * 0.25
+      }
+    }
+    let seed = rng.int(limit=100_000)
+    let data_c_pliv = @dml.DoubleMLPLIVData::new(
+      @dml.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+      z,
+      cluster_vars=cluster,
+    )
+    let pliv_fit = @dml.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
+    let th_p = pliv_fit.coef()
+    let se_p = pliv_fit.se()
+    check(
+      th_p == th_p && th_p.abs() < 1.0e6,
+      "fuzz PLIV finite coef (trial=\{trial}, th=\{th_p})",
+    )
+    check(
+      se_p == se_p && se_p >= 0.0 && se_p < 1.0e10,
+      "fuzz PLIV finite se (trial=\{trial}, se=\{se_p})",
+    )
+    let again = @dml.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
+    check(
+      again.coef() == th_p && again.se() == se_p,
+      "fuzz PLIV same-seed refit (trial=\{trial})",
+    )
+    let data_c_iivm = @dml.DoubleMLIIVMData::new(
+      @dml.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+      z,
+      cluster_vars=cluster,
+    )
+    let iivm_fit = @dml.DoubleMLIIVM::new(data_c_iivm, n_folds=2, seed~).fit()
+    let th_i = iivm_fit.coef()
+    let se_i = iivm_fit.se()
+    check(
+      th_i == th_i && th_i.abs() < 1.0e6,
+      "fuzz IIVM finite coef (trial=\{trial}, th=\{th_i})",
+    )
+    check(
+      se_i == se_i && se_i >= 0.0 && se_i < 1.0e10,
+      "fuzz IIVM finite se (trial=\{trial}, se=\{se_i})",
+    )
+  }
+}
+
+///|
 fn main {
   let trials = 300
   println("=== mavis/dml fuzz harness (\{trials} trials per surface) ===")
@@ -565,32 +675,36 @@ fn main {
   let s7 = master.int(limit=1_000_000)
   let s8 = master.int(limit=1_000_000)
   let s9 = master.int(limit=1_000_000)
-  println("[1/9] p_adjust family ...")
+  let s10 = master.int(limit=1_000_000)
+  println("[1/10] p_adjust family ...")
   fuzz_padjust(@dml.chacha8_rng(s1), trials)
   println("      OK")
-  println("[2/8] kfold partition invariants ...")
+  println("[2/10] kfold partition invariants ...")
   fuzz_kfold(@dml.chacha8_rng(s2), trials)
   println("      OK")
-  println("[3/8] Matrix matmul associativity ...")
+  println("[3/10] Matrix matmul associativity ...")
   fuzz_matmul(@dml.chacha8_rng(s3), trials)
   println("      OK")
-  println("[4/8] LinearRegression normal-equations invariants ...")
+  println("[4/10] LinearRegression normal-equations invariants ...")
   fuzz_linear_exact(@dml.chacha8_rng(s4), trials)
   println("      OK")
-  println("[5/8] norm_ppf / norm_cdf inverse sweep ...")
+  println("[5/10] norm_ppf / norm_cdf inverse sweep ...")
   fuzz_norm_inverse(@dml.chacha8_rng(s5), trials)
   println("      OK")
-  println("[6/8] romano_wolf_p_adjust range/length ...")
+  println("[6/10] romano_wolf_p_adjust range/length ...")
   fuzz_romano_wolf(@dml.chacha8_rng(s6), trials)
   println("      OK")
-  println("[7/9] DoubleMLPLPR clustered fit invariants ...")
+  println("[7/10] DoubleMLPLPR clustered fit invariants ...")
   fuzz_plpr(@dml.chacha8_rng(s7), trials)
   println("      OK")
-  println("[8/9] DoubleMLLPLR nonlinear fit invariants ...")
+  println("[8/10] DoubleMLLPLR nonlinear fit invariants ...")
   fuzz_lplr(@dml.chacha8_rng(s8), trials)
   println("      OK")
-  println("[9/9] DoubleMLPLR cluster-robust vs row-level ...")
+  println("[9/10] DoubleMLPLR cluster-robust vs row-level ...")
   fuzz_cluster_plr(@dml.chacha8_rng(s9), trials)
+  println("      OK")
+  println("[10/10] DoubleMLPLIV/IIVM cluster-robust fits ...")
+  fuzz_cluster_iv(@dml.chacha8_rng(s10), trials)
   println("      OK")
   println("")
   println("ALL FUZZ SURFACES PASSED (no invariant violations)")

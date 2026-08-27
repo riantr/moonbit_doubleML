@@ -247,20 +247,18 @@ fn DoubleMLPLR::fit_cluster(
       psi_a[i] = -v * v
       psi_b[i] = v * u
     }
-    let theta_r = est_coef_cluster(psi_a, psi_b, folds_row, fold_n_units)
-    let psi_res : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi_res[i] = theta_r * psi_a[i] + psi_b[i]
-    }
-    coefs[r] = theta_r
-    ses[r] = var_est_cluster(
-      psi_res,
+    let (theta_r, se_r) = cluster_causal_param_and_se(
       psi_a,
+      psi_b,
+      folds_row,
+      fold_n_units,
       unit_rows,
       unit_fold,
       folds_u.length(),
       self.n_folds,
     )
+    coefs[r] = theta_r
+    ses[r] = se_r
   }
   let (coef, se) = aggregate_coef_se(coefs, ses)
   {

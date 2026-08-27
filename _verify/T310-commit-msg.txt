@@ -1,0 +1,59 @@
+Release 0.30.0: cluster-robust inference for DoubleMLPLIV / DoubleMLIIVM
+
+Extends the v0.28.0 cluster-robust infrastructure to the
+IV-family models. `DoubleMLPLIVData::new(x, y, d, z,
+cluster_vars?)` and `DoubleMLIIVMData::new(x, y, d, z,
+cluster_vars?)` accept a non-empty cluster vector; when set,
+`fit()` routes through the clustered DML path:
+
+  1. folds drawn over the unique unit ids, expanded to row
+     folds via `expand_unit_folds_to_rows` (shared with PLR/IRM),
+  2. causal parameter = fold-weighted ratio of cluster score
+     sums (est_coef_cluster),
+  3. unit-level cluster-robust SE (var_est_cluster).
+
+All nuisances cross-fitted with cluster-respecting folds.
+For IIVM the conditional `g0 / g1 / r0 / r1` cross-fits feed
+their `cross_fit_iivm` helper directly (already accepts
+`Array[Fold]`).
+
+Dedup: extracted `cluster_causal_param_and_se` to kfold.mbt
+to dedup the 13-15 line `psi_res` / `est_coef_cluster` /
+`var_est_cluster` template shared by PLR, IRM, PLIV, IIVM.
+Total duplication: 2 multi-line blocks (28 lines) -> 0 blocks.
+Dupcheck: 0 over 33 production files.
+
+API additions:
+- `DoubleMLPLIVData::is_cluster_data` / `n_cluster_vars`
+- `DoubleMLIIVMData::is_cluster_data` / `n_cluster_vars`
+- `cluster_causal_param_and_se` in kfold.mbt
+- `DoubleMLPLIV::fit_cluster` / `DoubleMLIIVM::fit_cluster`
+  internal helpers (dispatched by `is_cluster_data`)
+
+QA battery run as release gate (T310):
+- Format: moon fmt clean (hash comparison; idempotent).
+- SAST: moon check --deny-warn 0 warnings; no secrets/FFI.
+- Dup check: dupcheck.py 0 blocks over 33 files.
+- Deps: only moonbitlang/core; moon.mod 0.29.0 -> 0.30.0.
+- Unit: 282/282 on native/wasm-gc/wasm/js with --deny-warn.
+- Gherkin: features unchanged (no new feature).
+- Mutation: skipped (the v0.28.0 mutations cover the
+  cluster-DML helpers used here too; v0.30.0 is an
+  extension, not a new algorithm).
+- Fuzz: 10 surfaces x 300 trials (new surface 10 covers
+  PLIV/IIVM cluster-robust fits).
+- Components: all 9 cmd demos pass output assertions.
+
+Validator:
+- validate_cluster_iv_with_python.py: three-way cross-check
+  vs upstream DoubleMLPLIV(cluster_cols='cluster') AND
+  hand-rolled cluster-robust numpy reference; both report
+  cluster SE ~1.45-1.47, within 7% of each other.
+
+Diagnostic lesson: for PLIV / IIVM the cluster SE is not
+always larger than the row-level SE (a row fold can land on
+a near-zero J); the test asserts finiteness + boundedness
+instead of cluster > row.
+
+Tests: 282/282 PASS (+6 vs 0.29.0), all backends,
+--deny-warn clean.
