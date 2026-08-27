@@ -1,0 +1,100 @@
+Release 0.29.0: bug-status audit (8 known-deferred bugs already fixed)
+
+0-line code-change release. Re-inspects the 8 Critical/High
+bugs enumerated in _verify/final-verdict.md (the 0.4.0
+release-gate verdict, dated 2026-08-12) against the current
+source. **All 8 have been silently fixed in subsequent
+releases (0.4.0 -> 0.28.0).** Several validator scripts
+already print "Bug #X fix" next to the relevant assertion,
+so the audit is not speculative.
+
+Per-bug summary:
+
+  #1  SSM pi array shared across folds
+      Fix: cross_fit_ssm accumulates pi_acc and divides by
+           folds (each fold's g_d1/g_d0 cross-fits use their
+           OWN fold's pi_hat, not a stale shared array).
+      Evidence: ssm.mbt line ~200; ssm_pi_no_leakage test;
+                validate_ssm_with_python.py prints "Bug #1 fix".
+
+  #2  QTE SE missing 2*cov(c1,c0) cross term
+      Fix: QTE SE = gamma = mean((psi_d1/deriv_d1 -
+           psi_d0/deriv_d0)^2) / n, the proper delta-method
+           variance for the derived parameter theta_qte =
+           theta_d1 - theta_d0 (no quadrature).
+      Evidence: quantile.mbt:394-421 "Bug #2 fix" comment;
+                qte_se_includes_covariance + qte_se_hand_computation tests.
+
+  #3  PQ/LPQ re-fit g every bisection step (50 cross-fits)
+      Fix: IPW-only score used for bisection; g cross-fitted
+           ONCE at the resulting theta. Saves 4 cross-fits
+           per LPQ fit. Module-level g_cross_fit_count
+           counter exposes the count for tests.
+      Evidence: quantile.mbt:140-218 "Bug #3 fix" + counter.
+
+  #4  LPQ score sign convention / complier prob per fold
+      Fix: LPQ score formula updated to upstream convention;
+           complier prob = r1 - r0 (full-sample, not per-fold
+           average).
+      Evidence: lpq.mbt "Bug #4 fix" comments; validate_quantile
+                returns 1.49 == q_treated.
+
+  #5  BLP per-coefficient SE
+      Fix: Per-coefficient SE = sqrt(cov_diag[j]) where
+           cov_diag is either HC0 sandwich diagonal (HC0) or
+           sigma^2 * (X^T X)^-1[j,j] (nonrobust).
+      Evidence: blp_policy.mbt:89-97 (two-cov_type branch);
+                blp_per_coefficient_se_differ test asserts
+                se[0] != se[1]; validate_blp_policy prints
+                per-coefficient SE.
+
+  #6  RDD kernel weights unused at fit time
+      Fix: rdd_side uses LinearRegression::fit_weighted so the
+           triangular kernel is honored at fit time. Variance
+           is the HC0 sandwich sum_k w^2 (M[0,:].x_k)^2 e_k^2.
+      Evidence: rdd.mbt "Bug #6 fix" comment; rdd_kernel_in_fit
+                test; validate_rdd prints "Bug #7".
+
+  #7  Fuzzy RDD delta-method missing -2*raw*cov(raw,jump)/jump^3
+      Fix: var(c) = var(raw) + c^2 var(jump) - 2*c*cov(raw,jump)
+           divided by jump^4.
+      Evidence: rdd.mbt line ~280 "Bug #7 fix";
+                rdd_fuzzy_delta_method test.
+
+  #8  PolicyTree depth unused / gain was |s_l|+|s_r|
+      Fix: depth now honored via policy_tree_build recursion;
+           gain IS weighted-variance-reduction
+           (-(nl/n)*var_l - (nr/n)*var_r), which IS the
+           upstream "variance reduction" criterion (not Gini).
+      Evidence: blp_policy.mbt:178-294 recursion + var_l/var_r;
+                policytree_recursive_depth test.
+
+Validator exit codes (post-audit):
+
+  validate_quantile_with_python.py ... PASS
+  validate_blp_policy_with_python.py . PASS
+  validate_ssm_with_python.py ........ PASS
+  validate_rdd_with_python.py ....... PASS
+
+QA battery run as release gate (T300):
+- Format: moon fmt clean (hash comparison; no files changed).
+- SAST: moon check --deny-warn 0 warnings; no secrets/FFI;
+  TODOs historical only.
+- Dup check: dupcheck.py 0 blocks (no file changes).
+- Deps: only moonbitlang/core subpackages; moon.mod version
+  bumped 0.28.0 -> 0.29.0.
+- Unit: 276/276 on native/wasm-gc/wasm/js with --deny-warn
+  (no test changes; audit-only release).
+- Gherkin: features/dml_acceptance.feature unchanged (no
+  new feature in this audit-only release).
+- Mutation: skipped (no source changes; the v0.4.0 and
+  v0.19.0 mutations already cover the fixed code paths).
+- Fuzz: cmd/fuzz 9 surfaces x 300 trials 0 violations
+  (unchanged from v0.28.0).
+- Components: all 9 cmd demos pass output assertions
+  unchanged.
+
+API: unchanged.
+
+Tests: 276/276 PASS (unchanged), all backends,
+--deny-warn clean.

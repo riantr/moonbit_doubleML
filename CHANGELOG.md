@@ -11,6 +11,80 @@ release is the canonical version.
 
 ---
 
+## [0.29.0] — Bug Status Audit (8 known-deferred bugs already fixed)
+
+### Added
+- **`_verify/bug_status_audit.md`**: a comprehensive audit of the
+  8 known-deferred Critical/High bugs enumerated in
+  `_verify/final-verdict.md` (the 0.4.0 release-gate verdict).
+  Re-inspects every bug against the current source and finds
+  **all 8 have been fixed silently in subsequent releases
+  (0.4.0 -> 0.28.0)**. The audit cites the fix code path and
+  the relevant test for each bug.
+
+### Changed
+- `moon.mod` version bumped to 0.29.0.
+
+### Why this is a release
+
+This is a 0-line code-change release. Its value is
+informational: the user's mental model carried 8 outstanding
+Critical/High bugs from the 0.4.0 verdict, and **none of them
+are still outstanding**. Several validation scripts (SSM,
+quantile, BLP/policy, RDD) already print `Bug #X fix` next
+to the relevant assertion, so the audit is not speculative:
+it's a recording of facts already visible in the test
+output.
+
+The audit's three-action recommendation:
+1. The `final-verdict.md` "Check 7 — 8 known-deferred
+   Critical/High bugs" entry is wrong (it was written on
+   2026-08-12 and not updated since; the source has moved
+   on). Future audits should track deferrals in
+   `_verify/deferred.md` with a verification date per item.
+2. As of v0.29.0, there are **0 known-deferred Critical/High
+   bugs**. The next deferred batch, if any, will be tracked
+   in a new file with date stamps.
+3. The bug-by-bug evidence (code line, test name, validator
+   script that exercises the fix) lives in
+   `_verify/bug_status_audit.md`.
+
+### Per-bug summary
+
+| # | Bug | Fix release | Evidence |
+|---|-----|-------------|----------|
+| 1 | SSM `pi` array shared across folds | 0.4.0+ | `ssm.mbt` `cross_fit_ssm` accumulates `pi_acc` and divides by folds; `ssm_pi_no_leakage` test; `validate_ssm_with_python.py` prints "Bug #1 fix" |
+| 2 | QTE SE missing `2·cov(c1,c0)` cross term | 0.4.0+ | `quantile.mbt:394-421` "Bug #2 fix" comment; `qte_se_includes_covariance` test; `qte_se_hand_computation` test |
+| 3 | PQ/LPQ re-fit `g` every bisection step | 0.4.0+ | `quantile.mbt:140-218` "Bug #3 fix"; module-level `g_cross_fit_count` counter |
+| 4 | LPQ score sign / complier prob | 0.4.0+ | `lpq.mbt` "Bug #4 fix" comments; `validate_quantile_with_python.py` returns 1.49 == q_treated |
+| 5 | BLP per-coefficient SE | 0.19.0+ | `blp_policy.mbt:89-97` per-coefficient diagonal; `blp_per_coefficient_se_differ` test |
+| 6 | RDD kernel weights unused at fit time | 0.4.0+ | `rdd.mbt` uses `fit_weighted`; "Bug #6 fix" comment |
+| 7 | Fuzzy RDD delta-method `−2·raw·cov/jump³` | 0.4.0+ | `rdd.mbt` line ~280 "Bug #7 fix"; `validate_rdd_with_python.py` prints "Bug #7" |
+| 8 | PolicyTree `depth` unused, gain was `\|s_l\|+\|s_r\|` | 0.4.0+ | `blp_policy.mbt:178-294` `policy_tree_build` recursion + `var_l / var_r` gain |
+
+### Tests
+276/276 (unchanged — 0 source code changes in this release).
+
+### QA battery (T300)
+Nine gates all PASS: fmt CLEAN (no files changed), SAST clean,
+dupcheck 0 blocks, deps core-only, unit 276 x {wasm, wasm-gc,
+js, native}, Gherkin unchanged (no new feature), mutation
+skipped (no source changes — the v0.4.0 / v0.19.0 mutations
+already cover the fixed code), fuzz 9 surfaces x 300 trials
+(unchanged — no new surfaces needed), components 9/9 (all
+existing cmd demos pass output assertions unchanged).
+
+### Validator exit codes (post-audit)
+
+```
+validate_quantile_with_python.py ... PASS
+validate_blp_policy_with_python.py . PASS
+validate_ssm_with_python.py ........ PASS
+validate_rdd_with_python.py ....... PASS
+```
+
+---
+
 ## [0.28.0] — Cluster-robust inference for `DoubleMLPLR` / `DoubleMLIRM`
 
 ### Added

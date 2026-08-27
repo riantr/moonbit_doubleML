@@ -11,7 +11,7 @@
 
 name = "mavis/dml"
 
-version = "0.28.0"
+version = "0.29.0"
 
 readme = "README.mbt.md"
 
