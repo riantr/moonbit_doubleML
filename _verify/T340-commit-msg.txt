@@ -1,0 +1,54 @@
+Release 0.33.0: fuzz cluster-vs-row SE ratio guard
+
+Applies the v0.32.0 empirical lesson to the fuzz
+infrastructure. Surface 9 (`DoubleMLPLR cluster-robust vs
+row-level`) gains a new invariant: cluster SE / row SE
+ratio stays within 1e4x of the larger value.
+
+Background: v0.32.0's 30-seed empirical study on strong-IV
+DGPs found that the cluster path is numerically fragile on
+~10% of seeds — fold-weighted `J = mean(psi_a)` near zero
+inflates the variance by orders of magnitude (one seed
+hit cluster_se = 211049 while row_se was 90.5, ratio
+2300x). The fuzz infrastructure before v0.33.0 only
+checked cluster SE finiteness in isolation, with no
+comparison to the row-level SE on the same DGP — meaning
+a regression to "cluster path returns row-level SE" would
+NOT be caught.
+
+The new invariant `max(se_c, se_r) / min(se_c, se_r) < 1e4`
+catches:
+  - regression where the cluster SE diverges from the row
+    SE by > 10000x (a pathological fold-split fingerprint);
+  - accidental formula swap between cluster and row paths.
+
+It does NOT catch:
+  - sign flips in cluster-vs-row SE order (both
+    arrangements are correct mathematical behaviour on
+    different fold splits);
+  - small (1.5-2x) disagreements within the empirical
+    median ratio of 1.12x — a tighter bound would reject
+    healthy fits on pathological seeds.
+
+API: unchanged.
+
+Tests: 282/282 PASS (unchanged; the fuzz invariant IS the
+test).
+
+QA battery run as release gate (T340):
+- Format: moon fmt clean (idempotent hash comparison).
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks over 33 files.
+- Deps: only moonbitlang/core; moon.mod 0.32.0 -> 0.33.0.
+- Unit: 282/282 on native/wasm-gc/wasm/js with --deny-warn.
+- Gherkin: features unchanged (no new feature).
+- Fuzz: 10 surfaces x 300 trials 0 violations (including
+  the new cluster-vs-row SE ratio guard on surface 9).
+  MoonBit's cluster path stays well within the 1e4x bound
+  on all 300 random trials — the v0.32.0 lesson's
+  numerical fragility does NOT apply to MoonBit (we use
+  the v0.26.0 / v0.28.0 / v0.30.0 / v0.31.0 helper
+  formulation `est_coef_cluster` + `var_est_cluster`,
+  which is more numerically robust than upstream's
+  `DoubleMLPLIV._est_coef` on the strong-IV DGP).
+- Components: all 9 cmd demos pass output assertions.

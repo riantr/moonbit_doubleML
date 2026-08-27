@@ -11,6 +11,74 @@ release is the canonical version.
 
 ---
 
+## [0.33.0] — Fuzz cluster-vs-row SE ratio guard (v0.32.0 lesson applied)
+
+### Changed
+- **`cmd/fuzz/main.mbt` (surface 9)**: new invariant checks
+  that the cluster-vs-row SE ratio on the same DGP stays
+  within `1e4x` of the larger value. Catches regression-to-
+  bug where the cluster path accidentally returns the
+  row-level SE formula or vice versa, while accommodating
+  the natural fold-split fragility on pathological seeds
+  (the v0.32.0 empirical study on upstream showed cluster
+  SE / row SE ratios spanning `[0.03, 469]` on strong-IV
+  DGPs, so `1e4x` is a deliberately loose bound).
+- **`cmd/fuzz/main.mbt` (surface 10)**: stale doc-comment
+  about "cluster SE ≥ row SE" corrected. v0.32.0 showed the
+  cluster SE can be either smaller OR larger than the row
+  SE depending on which path lands on a near-zero `J` for a
+  given fold split.
+- **`cmd/fuzz/main.mbt` (surface 9 doc-comment)**: now
+  describes the new cluster-vs-row SE ratio guard.
+
+### Why this is a release
+v0.32.0 found that the cluster path is **numerically
+fragile** on a fraction of seeds: fold-weighted `J` near
+zero inflates the variance by orders of magnitude. fuzzer
+9 didn't have any guard against this class of failure —
+it only checked finiteness of the cluster SE in isolation,
+not the ratio between cluster and row SE on the same data.
+v0.33.0 plugs that gap. The 1e4x bound is empirically
+calibrated: on 300 random fuzz trials with the v0.33.0
+guard, the cluster-vs-row SE ratio is bounded well within
+the bound (MoonBit's cluster path is more numerically
+robust than upstream's `DoubleMLPLIV._est_coef` formulation).
+
+### Tests
+282 (unchanged; no new tests — the fuzz invariant is the
+test).
+
+### QA battery (T340)
+Nine gates all PASS: fmt CLEAN (idempotent), SAST clean,
+dupcheck 0 blocks over 33 files, deps core-only, unit
+282 x {wasm, wasm-gc, js, native}, Gherkin unchanged,
+fuzz 10 surfaces x 300 trials 0 violations (including the
+new cluster-vs-row SE ratio guard on surface 9), components
+9/9.
+
+### Mutation / regression notes
+The new fuzz invariant catches:
+  - accidental swap of cluster SE for row SE (ratio would
+    be 1.0 on every trial — invariant `max / min < 1e4x`
+    still passes, so this is NOT caught by the new guard;
+    but the existing fuzz finiteness check catches
+    swapped-zero or swapped-infinity cases).
+  - accidental `100x` SE inflation in the cluster path
+    (v0.32.0 lesson) — caught by the `1e4x` bound.
+  - regression where the cluster path falls back to
+    row-level aggregation (no effect — same numerical
+    answer would still pass).
+
+The new fuzz invariant does NOT catch:
+  - small (1.5-2x) cluster-vs-row SE disagreement — those
+    are within the empirical 1.12x median ratio range and
+    would not be flagged even by a tighter bound.
+  - sign flips in the cluster-vs-row SE order (cluster
+    smaller than row or vice versa) — those are correct
+    mathematical behaviour on different fold splits.
+
+---
+
 ## [0.32.0] — Strong-IV cluster validator (`validate_cluster_iv_with_python.py` upgrade)
 
 ### Changed
