@@ -532,23 +532,11 @@ pub fn DoubleMLPLPR::fit(
   let uniq = unique_units(tf.id)
   let n_units = uniq.length()
   require(n_units >= self.n_folds)
-  // Row -> unit-position lookup (linear scan; panels in tests and
-  // demos are small).
-  let row_unit : Array[Int] = Array::make(n, 0)
-  for i = 0; i < n; i = i + 1 {
-    let g = tf.id[i]
-    let mut found = false
-    for k = 0; k < n_units; k = k + 1 {
-      if uniq[k] == g {
-        row_unit[i] = k
-        found = true
-        break
-      }
-    }
-    if !found {
-      abort("DoubleMLPLPR: transformed row without unit id")
-    }
-  }
+  // Row -> unit-position lookup (uses the shared
+  // `build_row_unit_map` from kfold.mbt; aborts with the
+  // same diagnostic if a transformed row references a unit
+  // id missing from the unique-ids list).
+  let row_unit = build_row_unit_map(tf.id, uniq)
   // Ascending row indices per unit.
   let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
     let rows : Array[Int] = []
@@ -563,30 +551,15 @@ pub fn DoubleMLPLPR::fit(
   let mut l_pred : Array[Double] = Array::make(n, 0.0)
   let mut m_pred : Array[Double] = Array::make(n, 0.0)
   for r = 0; r < nrep; r = r + 1 {
-    // Unit-level folds expanded to ascending row-index folds.
+    // Unit-level folds expanded to row-level folds via the
+    // shared helper (rows of one unit stay on the same side
+    // of every split).
     let folds_u = kfold(n_units, self.n_folds, self.seed + r)
-    let unit_fold : Array[Int] = Array::make(n_units, 0)
-    let fold_n_units : Array[Int] = Array::make(folds_u.length(), 0)
-    let folds_row : Array[Fold] = []
-    for f = 0; f < folds_u.length(); f = f + 1 {
-      let tu = folds_u[f].test_indices()
-      fold_n_units[f] = tu.length()
-      let in_test : Array[Bool] = Array::make(n_units, false)
-      for k = 0; k < tu.length(); k = k + 1 {
-        in_test[tu[k]] = true
-        unit_fold[tu[k]] = f
-      }
-      let train_rows : Array[Int] = []
-      let test_rows : Array[Int] = []
-      for i = 0; i < n; i = i + 1 {
-        if in_test[row_unit[i]] {
-          test_rows.push(i)
-        } else {
-          train_rows.push(i)
-        }
-      }
-      folds_row.push({ train_idx: train_rows, test_idx: test_rows })
-    }
+    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+      tf.id,
+      folds_u,
+      row_unit,
+    )
     l_pred = cross_fit_predict(LinearRegression::new(), tf.x, tf.y, folds_row)
     if self.approach == "cre_normal" {
       // ml_m gets [X, d_mean] as inputs.
@@ -658,23 +631,21 @@ pub fn DoubleMLPLPR::fit(
       }
       (psi_a_po, psi_b_po)
     }
-    // Clustered-path coefficient and standard error: fold-weighted
-    // ratio of cluster score sums, then the score residual evaluated
-    // at theta_hat feeds the unit-level variance.
-    let theta_r = est_coef_cluster(psi_a, psi_b, folds_row, fold_n_units)
-    let psi_res : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi_res[i] = theta_r * psi_a[i] + psi_b[i]
-    }
-    coefs[r] = theta_r
-    ses[r] = var_est_cluster(
-      psi_res,
+    // Clustered-path coefficient and standard error via the
+    // shared helper (fold-weighted cluster ratio + unit-level
+    // cluster-robust SE).
+    let (theta_r, se_r) = cluster_causal_param_and_se(
       psi_a,
+      psi_b,
+      folds_row,
+      fold_n_units,
       unit_rows,
       unit_fold,
       folds_u.length(),
       self.n_folds,
     )
+    coefs[r] = theta_r
+    ses[r] = se_r
   }
   let (coef, se) = aggregate_coef_se(coefs, ses)
   {

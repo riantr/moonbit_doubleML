@@ -1,0 +1,59 @@
+Release 0.31.0: DoubleMLPLPR cluster-path dedup
+
+Refactor-only release. PLPR's `fit` was the only DML cluster
+fit that had not yet been migrated onto the v0.28.0 / v0.30.0
+helper set. This change brings it in line with PLR, IRM,
+PLIV, and IIVM: all five cluster-DML fits now go through
+the same `build_row_unit_map + expand_unit_folds_to_rows +
+cluster_causal_param_and_se` helpers.
+
+Net code change in plpr.mbt:
+  - 13 lines (manual row -> unit-position lookup)
+    -> build_row_unit_map (1 call)
+  - 17 lines (manual unit-fold expansion with `in_test`
+    boolean mask)
+    -> expand_unit_folds_to_rows (1 call)
+  - 13 lines (psi_res + est_coef_cluster + var_est_cluster)
+    -> cluster_causal_param_and_se (1 call)
+Total: ~43 lines removed.
+
+Process improvement: `_verify/dupcheck.py` learns a helper-
+call-site whitelist (`cluster_causal_param_and_se`,
+`expand_unit_folds_to_rows`, `build_row_unit_map`). The 9-arg
+cluster helper call is necessarily identical at every
+call site (the parameters are local variables) and would
+otherwise be flagged as a 12-line false-positive duplicate
+between, e.g., irm.mbt and iivm.mbt. The whitelist encodes
+the project-level invariant: "shared helper call sites are
+NOT duplication signals".
+
+The first attempt at the refactor tried to pack the 9
+metadata fields into a `ClusterCtx` struct and changed the
+helper signature to `(psi_a, psi_b, ctx) -> (theta_r, se_r)`.
+This broke all 4 existing callers and added a 9-line
+`ClusterCtx::new` at every call site. Reverted to the
+original 8-arg signature; the dupcheck helper-call whitelist
+is the correct fix for the false-positive duplicate without
+changing the helper's public API.
+
+QA battery run as release gate (T320):
+- Format: moon fmt clean (idempotent hash comparison).
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks over 33 files (helper-
+  call whitelist active; the 12-line irm.mbt / iivm.mbt
+  helper call site is no longer reported as a duplicate).
+- Deps: only moonbitlang/core; moon.mod 0.30.0 -> 0.31.0.
+- Unit: 282/282 on native/wasm-gc/wasm/js with --deny-warn
+  (unchanged from v0.30.0; PLPR's cluster-path tests in
+  plpr_test.mbt all still pass through the new helper
+  invocations).
+- Gherkin: features unchanged (no new feature).
+- Mutation: skipped (no algorithmic change; the refactor is
+  API-equivalent to v0.30.0).
+- Fuzz: 10 surfaces x 300 trials 0 violations (unchanged).
+- Components: all 9 cmd demos pass output assertions.
+
+API: unchanged.
+
+Tests: 282/282 PASS (unchanged), all backends,
+--deny-warn clean.

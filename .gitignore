@@ -86,4 +86,12 @@ _verify/_strip_*.py
 _verify/_strip_*.py.archived
 _verify/_apply_*.py
 _verify/_apply_*.py.archived
+_verify/_refactor_*.py
+_verify/_refactor_*.py.archived
+_verify/_revert_*.py
+_verify/_revert_*.py.archived
+_verify/_fix_*.py
+_verify/_fix_*.py.archived
+_verify/_restore_*.py
+_verify/_restore_*.py.archived
 _build-archived/

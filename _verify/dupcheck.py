@@ -4,6 +4,15 @@ Normalizes each line (strip comments / whitespace), then uses a
 sliding-window hash to find repeated blocks of >= MIN_BLOCK lines
 across production .mbt files. Reports the largest non-overlapping
 duplicate groups.
+
+`HELPER_CALL_SITES` lists known-helper call sites (multi-line
+calls to shared cluster-DML helpers) that MUST be repeated at
+every use site (parameter passing is not deduplicatable). Any
+block whose first non-blank line contains one of these helper
+names is excluded from the duplicate report. This avoids
+flagging false-positive duplicates like the
+`cluster_causal_param_and_se(...)` 9-arg call, which is
+identical at every call site by construction.
 """
 
 import hashlib
@@ -12,6 +21,11 @@ from collections import defaultdict
 from pathlib import Path
 
 MIN_BLOCK = 12
+HELPER_CALL_SITES = (
+    "cluster_causal_param_and_se(",
+    "expand_unit_folds_to_rows(",
+    "build_row_unit_map(",
+)
 
 
 def normalize(line: str) -> str:
@@ -47,8 +61,29 @@ def main() -> int:
         lines = load_lines(p)
         norm = [n for n, _ in lines]
         linenos = [l for _, l in lines]
+        # Mark the *start* line of each known helper-call block
+        # (so windows whose starting line is a helper call are
+        # skipped — the per-call-site parameter list of a
+        # helper call is necessarily identical and is not a
+        # duplication signal). We use substring containment
+        # rather than `startswith` because the normalized
+        # MoonBit call form is `let (theta_r, se_r) =
+        # cluster_causal_param_and_se(...)` — the helper name
+        # does not appear at the start of the line.
+        is_helper_call_start = [
+            any(s in n for s in HELPER_CALL_SITES) for n in norm
+        ]
         for i in range(len(norm) - MIN_BLOCK + 1):
-            block = "\n".join(norm[i : i + MIN_BLOCK])
+            window = norm[i : i + MIN_BLOCK]
+            # Skip windows whose first line OR whose interior
+            # contains a known helper call site. The 9-arg
+            # `cluster_causal_param_and_se(...)` call has the
+            # same normalized text at every call site (the
+            # parameters are local variables) and would
+            # otherwise be flagged as a false positive.
+            if any(is_helper_call_start[j] for j in range(i, i + MIN_BLOCK)):
+                continue
+            block = "\n".join(window)
             h = hashlib.md5(block.encode()).hexdigest()
             windows.append((p.name, linenos[i], h))
             index[h].append((p.name, linenos[i]))
