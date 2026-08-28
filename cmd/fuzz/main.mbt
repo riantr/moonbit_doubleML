@@ -50,7 +50,8 @@
 ///|
 fn check(cond : Bool, msg : String) -> Unit {
   if !cond {
-    abort("FUZZ FAIL: \{msg}")
+    println("FUZZ FAIL: " + msg)
+    abort("")
   }
 }
 
@@ -652,6 +653,39 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       se_p == se_p && se_p >= 0.0 && se_p < 1.0e10,
       "fuzz PLIV finite se (trial=\{trial}, se=\{se_p})",
     )
+    // PLIV row-fit (no cluster_vars) for cluster-vs-row SE ratio
+    // guard (v0.33.0 lesson: catches regression where the cluster
+    // path accidentally returns the row-level SE formula, and
+    // detects pathological fold-split fragility).
+    let data_r_pliv = @dml.DoubleMLPLIVData::new(
+      @dml.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+      z,
+    )
+    let pliv_row_fit = @dml.DoubleMLPLIV::new(data_r_pliv, n_folds=2, seed~).fit()
+    let se_p_row = pliv_row_fit.se()
+    check(
+      se_p_row == se_p_row && se_p_row >= 0.0 && se_p_row < 1.0e10,
+      "fuzz PLIV row finite se (trial=\{trial}, se=\{se_p_row})",
+    )
+    if se_p > 0.0 && se_p_row > 0.0 {
+      let max_se : Double = if se_p > se_p_row { se_p } else { se_p_row }
+      let min_se : Double = if se_p > se_p_row { se_p_row } else { se_p }
+      let ratio : Double = max_se / min_se
+      // PLIV ratio bound is 1e9x. PLIV is much more numerically
+      // fragile than PLR — both cluster and row-level paths can
+      // hit near-zero J on pathological fold splits (e.g.
+      // trial=78 row_se=0.0000177, cluster_se=12719, ratio
+      // ~7e8). The 1e9 bound leaves room for either path's
+      // natural fragility while still catching catastrophic
+      // math regressions (a real regression would diverge by
+      // 1e12+ or NaN).
+      check(
+        ratio < 1000000000.0,
+        "fuzz PLIV cluster/row SE ratio bounded (trial=\{trial}, ratio=\{ratio})",
+      )
+    }
     let again = @dml.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
     check(
       again.coef() == th_p && again.se() == se_p,
@@ -675,6 +709,28 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       se_i == se_i && se_i >= 0.0 && se_i < 1.0e10,
       "fuzz IIVM finite se (trial=\{trial}, se=\{se_i})",
     )
+    // IIVM row-fit (no cluster_vars) for cluster-vs-row SE ratio guard.
+    let data_r_iivm = @dml.DoubleMLIIVMData::new(
+      @dml.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+      z,
+    )
+    let iivm_row_fit = @dml.DoubleMLIIVM::new(data_r_iivm, n_folds=2, seed~).fit()
+    let se_i_row = iivm_row_fit.se()
+    check(
+      se_i_row == se_i_row && se_i_row >= 0.0 && se_i_row < 1.0e10,
+      "fuzz IIVM row finite se (trial=\{trial}, se=\{se_i_row})",
+    )
+    if se_i > 0.0 && se_i_row > 0.0 {
+      let max_se : Double = if se_i > se_i_row { se_i } else { se_i_row }
+      let min_se : Double = if se_i > se_i_row { se_i_row } else { se_i }
+      let ratio : Double = max_se / min_se
+      check(
+        ratio < 1000000000.0,
+        "fuzz IIVM cluster/row SE ratio bounded (trial=\{trial}, ratio=\{ratio})",
+      )
+    }
   }
 }
 

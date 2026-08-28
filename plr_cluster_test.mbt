@@ -190,3 +190,32 @@ test "plr_cluster_se_ratio_lower_bound" {
   let ratio = clustered.se() / row.se()
   inspect(ratio > 1.2, content="true")
 }
+
+///|
+/// `n_rep > 1` cluster fit: each rep uses a different random
+/// fold split (seed = self.seed + r). The aggregated coefficient
+/// and SE must be finite across reps, and same-seed refit must
+/// reproduce the per-rep aggregated result bit-exactly. v0.33.0
+/// fuzz surface 9 covered `n_rep = 1`; this test covers `n_rep > 1`
+/// determinism and finiteness.
+///
+/// Note: `n_rep = 1` and `n_rep > 1` produce DIFFERENT numbers
+/// because each rep uses a different fold split (different
+/// `kfold(n_units, n_folds, self.seed + r)`). `n_rep = 1` goes
+/// through the fast-path `(coefs[0], ses[0])` in
+/// `aggregate_coef_se`, while `n_rep = 2` goes through the
+/// median formula `median(ub_r - median(theta_r)) / 1.96`.
+test "plr_cluster_n_rep_two" {
+  let rng = chacha8_rng(7)
+  let (data_c, _) = build_clustered_dgp(rng, 50, 4, 1.0)
+  let fit1 = DoubleMLPLR::new(data_c, n_folds=2, n_rep=2, seed=11).fit()
+  // Finiteness on the agg coef/SE.
+  inspect(fit1.coef() == fit1.coef(), content="true")
+  inspect(fit1.se() == fit1.se(), content="true")
+  inspect(fit1.se() > 0.0 && fit1.se() < 1.0e10, content="true")
+  // Same-seed refit must reproduce bit-exact (the median + ub
+  // formula is fully deterministic given the input arrays).
+  let fit2 = DoubleMLPLR::new(data_c, n_folds=2, n_rep=2, seed=11).fit()
+  inspect((fit1.coef() - fit2.coef()).abs() < 1.0e-15, content="true")
+  inspect((fit1.se() - fit2.se()).abs() < 1.0e-15, content="true")
+}

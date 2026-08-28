@@ -205,7 +205,7 @@ def main() -> None:
     print("v0.32.0 cluster-robust PLIV cross-check (strong-IV DGP)")
     print("=" * 76)
     n_units, n_periods, theta0, iv_strength, noise_sd = 200, 5, 1.0, 4.0, 0.25
-    seeds = (7, 8, 9, 11, 13)
+    seeds = tuple(range(100, 130))  # 30 seeds for the v0.34.0 empirical study
     print(
         f"DGP: {n_units} units x {n_periods} periods, theta0={theta0}, "
         f"iv_strength={iv_strength}, alpha in [-0.25, 0.25]"
@@ -277,20 +277,32 @@ def main() -> None:
         f"our handrolled ref; both are mathematically valid."
     )
 
-    # Diagnostic summary across all seeds. Cluster/row SE ratios
-    # span the empirically observed 0.3-5x range on these strong-IV
-    # DGPs; the absolute ratio varies by seed (cluster J can land
-    # at a different point than row J depending on the fold split).
-    # The Medians are reported for human inspection but NOT
-    # asserted — the only assertion is the per-seed finiteness
-    # check above.
-    se_ratios = sorted(r[7] for r in rows if r[7] != float("inf"))
-    median_se_ratio = se_ratios[len(se_ratios) // 2]
-    print(
-        f"\nMedian cluster/row SE ratio: {median_se_ratio:.3f} "
-        f"(empirical reference [0.7, 1.3] from v0.30.0 study, "
-        f"but DGP-dependent — reported for human inspection only)"
+    # Diagnostic summary across all seeds (v0.34.0 statistical
+    # study). Cluster/row SE ratios span a much wider range than
+    # v0.30.0's 5-seed study suggested — the 30-seed study on
+    # this strong-IV DGP shows the full distribution.
+    se_ratios = sorted(
+        r[7] for r in rows if r[7] != float("inf") and r[7] > 0.0
     )
+    if se_ratios:
+      n_total = len(se_ratios)
+      buckets = [
+          ("[0.1, 0.3)", sum(1 for r in se_ratios if 0.1 <= r < 0.3)),
+          ("[0.3, 5.0]", sum(1 for r in se_ratios if 0.3 <= r < 5.0)),
+          ("[5.0, 1e3)", sum(1 for r in se_ratios if 5.0 <= r < 1e3)),
+          ("[1e3, inf)", sum(1 for r in se_ratios if r >= 1e3)),
+      ]
+      print(
+          f"\nCluster/row SE ratio distribution (n={n_total} seeds):"
+      )
+      for label, count in buckets:
+        if count > 0:
+          pct = 100.0 * count / n_total
+          print(f"  {label:<14s}: {count:3d} seeds  ({pct:5.1f}%)")
+      median_se_ratio = se_ratios[len(se_ratios) // 2]
+      print(
+          f"  median: {median_se_ratio:.3f}"
+      )
 
     print()
     verdict = "PASS" if ok else "FAIL"

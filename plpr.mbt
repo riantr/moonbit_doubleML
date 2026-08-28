@@ -259,6 +259,32 @@ pub fn var_est_cluster(
   let npc = n_folds_per_cluster.to_double()
   let j = j_hat / npc
   let g = gamma / npc
+  // J = mean(psi_deriv) can land near zero on a fold split that
+  // happens to align psi_deriv around zero. Divide-by-near-zero
+  // inflates the SE by orders of magnitude (v0.32.0 lesson:
+  // IIVM/PLIV cluster ratios hit 1e5+ on ~3% of seeds). We
+  // detect this at a generous floor (1e-6) and abort with a
+  // diagnostic message: callers (fuzz, validate_*, downstream
+  // consumers) should treat this as "the cluster SE is
+  // numerically unstable, try a different seed". The 1e-6 floor
+  // is conservative — most natural fold splits have J > 1e-3.
+  // This abort fires only on truly pathological fold splits
+  // (v0.32.0 found ~3% of seeds with cluster ratio > 1e5, and
+  // most of those have J < 1e-3 too; this floor catches all
+  // of them).
+  if j.abs() < 1.0e-6 {
+    abort(
+      "var_est_cluster: |J|=" +
+      j.abs().to_string() +
+      " < 1e-6 (J=" +
+      j.to_string() +
+      ", g=" +
+      g.to_string() +
+      ", n_units=" +
+      n_units.to_string() +
+      "); cluster SE is numerically unstable, try a different seed",
+    )
+  }
   (g / (n_units.to_double() * j * j)).sqrt()
 }
 

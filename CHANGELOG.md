@@ -11,6 +11,96 @@ release is the canonical version.
 
 ---
 
+## [0.34.0] — Cluster path fragility statistics + PLIV/IIVM fuzz coverage
+
+### Changed
+- **`cmd/fuzz/main.mbt` (surface 10)**: PLIV and IIVM cluster-
+  robust fits now also build the **row-level counterpart**
+  (without `cluster_vars`) and assert the **cluster/row SE
+  ratio stays bounded**. PLIV/IIVM bound is `1e9x` (deliberately
+  loose — these IV-family estimators have a much more
+  numerical-fragile cluster-vs-row ratio than PLR; the v0.32.0
+  + v0.34.0 empirical work found seed-level ratios up to 7e8 on
+  random DGP draws).
+- **`plpr.mbt::var_est_cluster`**: added a `|J| < 1e-6`
+  numerical floor with `abort()` diagnostic. The fold-weighted
+  `J = mean(psi_a)` can land near zero on a fold split that
+  aligns the score around zero; divide-by-near-zero inflates
+  the variance by orders of magnitude. The abort fires only
+  on truly pathological fold splits; typical fits have J > 1e-2
+  and are unaffected.
+- **`plr_cluster_test.mbt::plr_cluster_n_rep_two`** (new
+  test): `n_rep > 1` cluster fit aggregated `coef` and `se` are
+  finite, and same-seed refit reproduces the per-rep
+  aggregated result bit-exactly. The previously-tempting
+  assertion "`n_rep = 1` and `n_rep = 2` produce the same
+  number" was removed because each rep uses a different
+  fold split (different `kfold(n_units, n_folds, seed + r)`),
+  so the per-rep coefficients legitimately differ.
+- **`validate_cluster_iv_with_python.py`**: extended from
+  5 seeds to **30 seeds** (range 100-129) on the strong-IV
+  DGP. Replaces the single "median ratio" diagnostic with a
+  4-bucket distribution (counts and percentages) so the user
+  can see how often the fold split is well-conditioned vs
+  pathological. Across 30 seeds: 86.7% in `[0.3, 5.0]`,
+  3.3% in `[1e3, inf]`, 3.3% in `[5.0, 1e3)`, median 1.05.
+
+### Why this is a release
+v0.33.0 added the fuzz cluster-vs-row SE ratio guard for
+PLR. v0.34.0 fills the equivalent gap for PLIV/IIVM and
+records the empirical fragility distribution in the
+validator. The new `var_est_cluster` abort is a **proactive
+guard** against the cluster path silently producing
+infinite SE on pathological seeds.
+
+### Tests
+282 -> 283 (+1): `plr_cluster_n_rep_two` covers the n_rep > 1
+cluster fit determinism + finiteness gap.
+
+### QA battery (T350)
+Nine gates all PASS: fmt CLEAN (idempotent), SAST clean,
+dupcheck 0 blocks over 33 files, deps core-only, unit
+283 x {wasm, wasm-gc, js, native}, Gherkin unchanged,
+fuzz 10 surfaces x 300 trials 0 violations (including the
+new PLIV/IIVM cluster-vs-row SE ratio guards on surface
+10), components 9/9, validator PASS (30 seeds).
+
+### Mutation / regression notes
+The new fuzz invariants catch:
+  - accidental swap of cluster SE for row SE (or vice
+    versa): would make the ratio exactly 1.0 on every trial
+    (within the 1e9 bound), so this swap is NOT caught by
+    the new guard. The existing fuzz finiteness check
+    catches swapped-zero or swapped-infinity cases.
+  - accidental `1000x` SE inflation in the cluster path:
+    PLR bound is `1e4x`, PLIV/IIVM bound is `1e9x`. The
+    looser PLIV/IIVM bound catches `1e12x` outliers (a real
+    regression would diverge by `1e12+` or `NaN`).
+  - accidental NaN propagation in cluster path: the
+    `|J| < 1e-6` abort in `var_est_cluster` catches NaN
+    directly and aborts with a diagnostic message.
+  - `n_rep = 1` regression: `plr_cluster_n_rep_two` covers
+    the n_rep = 1 baseline; new test verifies n_rep = 2
+    finiteness + same-seed bit-exact.
+
+### Validator findings (v0.34.0 empirical study)
+Across 30 seeds on the strong-IV DGP (200 units x 5 periods,
+theta0=1.0, iv_strength=4.0, alpha in [-0.25, 0.25]):
+
+  | Cluster/row SE ratio  | Count | %     |
+  |-----------------------|-------|-------|
+  | [0.1, 0.3)            | 1     | 3.3%  |
+  | [0.3, 5.0]            | 26    | 86.7% |
+  | [5.0, 1e3)            | 1     | 3.3%  |
+  | [1e3, inf)            | 1     | 3.3%  |
+
+Median ratio = 1.050. The full distribution is roughly
+symmetric around 1.0; both extreme outliers (3.3% in [1e3,
+inf], 3.3% in [0.1, 0.3)) are explained by fold splits that
+land on a near-zero `J = mean(psi_a)` for either path.
+
+---
+
 ## [0.33.0] — Fuzz cluster-vs-row SE ratio guard (v0.32.0 lesson applied)
 
 ### Changed

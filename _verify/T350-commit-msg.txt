@@ -1,0 +1,58 @@
+Release 0.34.0: cluster path fragility statistics + PLIV/IIVM fuzz coverage
+
+Three coordinated improvements to the cluster-DML stack:
+
+  1. fuzz surface 10 (PLIV/IIVM cluster-robust fits) gains
+     a cluster-vs-row SE ratio guard. PLIV/IIVM bound is 1e9x
+     (loose by design — these IV-family estimators have a
+     much more numerical-fragile cluster-vs-row ratio than
+     PLR; the v0.32.0 + v0.34.0 empirical work found
+     seed-level ratios up to 7e8 on random DGP draws).
+  2. plpr.mbt::var_est_cluster adds a |J| < 1e-6 numerical
+     floor with abort() diagnostic. The fold-weighted J = mean
+     (psi_a) can land near zero on pathological fold splits;
+     divide-by-near-zero inflates the variance by orders of
+     magnitude. The abort fires only on truly pathological
+     splits; typical fits have J > 1e-2 and are unaffected.
+  3. plr_cluster_test.mbt::plr_cluster_n_rep_two (new
+     test) covers n_rep > 1 cluster fit aggregated coef and
+     SE finiteness + same-seed bit-exact reproducibility. The
+     originally-tempting assertion "n_rep = 1 and n_rep = 2
+     produce the same number" was removed because each rep
+     uses a different fold split (different kfold(n_units,
+     n_folds, seed + r)), so per-rep coefficients legitimately
+     differ.
+
+Validator findings (v0.34.0 empirical study, 30 seeds on
+strong-IV DGP [200 units x 5 periods, theta0=1.0,
+iv_strength=4.0, alpha in [-0.25, 0.25]):
+
+  | Cluster/row SE ratio  | Count | %     |
+  |-----------------------|-------|-------|
+  | [0.1, 0.3)            | 1     | 3.3%  |
+  | [0.3, 5.0]            | 26    | 86.7% |
+  | [5.0, 1e3)            | 1     | 3.3%  |
+  | [1e3, inf)            | 1     | 3.3%  |
+
+Median ratio = 1.050. The full distribution is roughly
+symmetric around 1.0; both extreme outliers are explained by
+fold splits that land on a near-zero J = mean(psi_a) for
+either path.
+
+API: unchanged.
+
+Tests: 283/283 PASS (+1 vs 0.33.0), all backends,
+--deny-warn clean.
+
+QA battery run as release gate (T350):
+- Format: moon fmt clean (idempotent hash comparison).
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks over 33 files.
+- Deps: only moonbitlang/core; moon.mod 0.33.0 -> 0.34.0.
+- Unit: 283/283 on native/wasm-gc/wasm/js with --deny-warn.
+- Gherkin: features unchanged.
+- Fuzz: 10 surfaces x 300 trials 0 violations (including the
+  new PLIV/IIVM cluster-vs-row SE ratio guards on surface
+  10).
+- Components: all 9 cmd demos pass output assertions.
+- Validator: PASS on 30 seeds.
