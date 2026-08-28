@@ -92,8 +92,24 @@ test "slice_matrix_rows" {
 /// missing from the unique-ids list. This protects against
 /// silent misclassification (a row assigned to a unit not in
 /// `uniq` would corrupt the cluster partition).
-test "panic_build_row_unit_map_missing_unit" {
+///
+/// v0.36.0: this test was renamed and rewritten to use the
+/// `try ... catch ... noraise` pattern. Before v0.36.0, the
+/// `panic_*` prefix caused MoonBit's test driver to skip this
+/// test entirely on native/wasm-gc (see
+/// `_verify/WHITEBOX_T_REPORT.md` for the framework limitation).
+/// Now that `build_row_unit_map` returns `Array[Int] raise
+/// ClusterDataError`, the missing-unit path is observable: the
+/// catch branch asserts the exact variant and payload, the
+/// noraise branch fails the test if no error fires.
+test "build_row_unit_map_raises_missing_unit" {
   let cluster : Array[Int] = [0, 1, 5, 0] // 5 not in uniq
   let uniq : Array[Int] = [0, 1]
-  let _ = build_row_unit_map(cluster, uniq)
+  try
+    build_row_unit_map(cluster, uniq)
+  catch {
+    ClusterDataError::MissingUnit(g) => inspect(g, content="5")
+  } noraise {
+    _ => fail("expected build_row_unit_map to raise MissingUnit on unit_id=5")
+  }
 }

@@ -1,0 +1,72 @@
+Release 0.36.0: build_row_unit_map abort -> raise ClusterDataError
+
+Continuing the surgical abort -> raise conversion pattern from
+v0.35.0 (where var_est_cluster's J-floor defensive guard was
+converted). This release tackles the second silently-skipped
+panic_* test in the cluster-DML stack: build_row_unit_map's
+missing-unit defensive guard.
+
+  - kfold.mbt: declare pub suberror ClusterDataError with
+    MissingUnit(Int) variant (carries the missing unit id).
+  - kfold.mbt::build_row_unit_map: signature `Array[Int]` ->
+    `Array[Int] raise ClusterDataError`; the abort is replaced
+    with `raise ClusterDataError::MissingUnit(g)`.
+  - 5 fit_cluster methods (plr/irm/pliv/iivm/plpr) wrap each
+    build_row_unit_map call in
+    `try ... catch { ClusterDataError::MissingUnit(g) => abort(...) }`
+    to preserve the pre-v0.36.0 process-death behavior. Public
+    API unchanged.
+
+The pre-v0.36.0 panic_build_row_unit_map_missing_unit test was
+silently skipped on native/wasm-gc (MoonBit's panic_* driver
+skips panic-prefixed tests; see _verify/WHITEBOX_T_REPORT.md).
+The test is renamed to build_row_unit_map_raises_missing_unit
+and rewritten using the `try ... catch ... noraise` pattern
+introduced in v0.35.0:
+
+  try build_row_unit_map(malformed_cluster, uniq) catch {
+    ClusterDataError::MissingUnit(g) => inspect(g, content="5")
+  } noraise {
+    _ => fail("expected build_row_unit_map to raise MissingUnit on unit_id=5")
+  }
+
+The noraise branch fails the test if no error fires (catches
+any future mutation that bypasses the raise). The catch branch
+asserts the exact variant + payload (catches mutations that
+construct a different variant or strip the payload).
+
+Verified: silencing the raise (replacing it with `let _ = g`)
+makes the test fail with the expected diagnostic message. The
+test is now a real assertion that runs on every backend.
+
+Public API stability: DoubleMLXXX::fit and DoubleMLXXX::fit_cluster
+signatures unchanged. From outside, the API behaves identically
+to v0.35.0. Internally, the cluster helper stack now raises two
+domain-specific suberror types (VarEstClusterError + ClusterDataError),
+each documented at the top of kfold.mbt.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted (var_est_cluster J-floor)
+  v0.36.0: 2/14 (build_row_unit_map missing-unit)
+  Remaining 12 (did_multi.mbt:558/1145, plpr.mbt:447,
+  ps_processor.mbt:35/129/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases. The
+  central check.mbt require() helper is the largest remaining
+  item and will need a separate refactor (would cascade to all
+  324 pub functions).
+
+Tests: 284/284 PASS (count unchanged: 1 silent panic_* test was
+renamed, not added) on native/wasm/wasm-gc/js with --deny-warn.
+
+QA battery run as release gate (T370):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.35.0 -> 0.36.0.
+- Unit: 284/284 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 10 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS (incl. validate_cluster_iv + validate_plpr).
+- Mutation verified: silencing the build_row_unit_map raise makes
+  build_row_unit_map_raises_missing_unit fail with the expected
+  diagnostic.

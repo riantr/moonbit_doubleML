@@ -558,10 +558,19 @@ pub fn DoubleMLPLPR::fit(
   let n_units = uniq.length()
   require(n_units >= self.n_folds)
   // Row -> unit-position lookup (uses the shared
-  // `build_row_unit_map` from kfold.mbt; aborts with the
-  // same diagnostic if a transformed row references a unit
-  // id missing from the unique-ids list).
-  let row_unit = build_row_unit_map(tf.id, uniq)
+  // `build_row_unit_map` from kfold.mbt). v0.36.0: it raises
+  // ClusterDataError::MissingUnit on a malformed cluster vector;
+  // catch and re-abort to preserve pre-v0.36.0 behavior.
+  let row_unit = try
+    build_row_unit_map(tf.id, uniq)
+  catch {
+    ClusterDataError::MissingUnit(g) =>
+      abort(
+        "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
+        g.to_string() +
+        ")",
+      )
+  }
   // Ascending row indices per unit.
   let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
     let rows : Array[Int] = []

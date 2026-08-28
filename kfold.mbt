@@ -16,6 +16,22 @@ pub suberror VarEstClusterError {
 }
 
 ///|
+/// Error type raised by `build_row_unit_map` when a row's unit
+/// id is not present in the `uniq` list (a malformed cluster
+/// vector — the cluster ids must form a subset of the unique
+/// unit ids). The payload is the missing unit id, which the
+/// caller can use to log or surface a meaningful diagnostic.
+///
+/// Added in v0.36.0 to convert the previous `abort()` call
+/// into a testable error path. The pre-v0.36.0
+/// `panic_build_row_unit_map_missing_unit` test was silently
+/// skipped on native/wasm-gc (MoonBit's `panic_*` driver skips
+/// panic-prefixed tests; see `_verify/WHITEBOX_T_REPORT.md`).
+pub suberror ClusterDataError {
+  MissingUnit(Int) // (unit_id)
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {
@@ -182,10 +198,20 @@ pub fn expand_unit_folds_to_rows(
 /// produced by `unique_units(cluster)`). Aborts if any row's
 /// unit is missing from the `uniq` list (a row whose unit is
 /// not in `uniq` would be an unrecoverable data error).
+///
+/// Returns `Array[Int] raise ClusterDataError`: the v0.36.0
+/// conversion replaces the previous `abort()` call with
+/// `raise ClusterDataError::MissingUnit(g)` so the data-error
+/// path becomes directly testable. Callers that want the
+/// pre-v0.36.0 process-death behavior should catch the error
+/// and re-abort (this is what every `DoubleMLXXX::fit_cluster`
+/// does); callers that want to surface the error to downstream
+/// consumers should propagate via `?`. The error type is declared
+/// at the top of this file so the cluster helper stack can share it.
 pub fn build_row_unit_map(
   cluster : Array[Int],
   uniq : Array[Int],
-) -> Array[Int] {
+) -> Array[Int] raise ClusterDataError {
   let n = cluster.length()
   let n_units = uniq.length()
   let row_unit : Array[Int] = Array::make(n, 0)
@@ -200,7 +226,7 @@ pub fn build_row_unit_map(
       }
     }
     if !found {
-      abort("expand_unit_folds_to_rows: row without a unit id")
+      raise ClusterDataError::MissingUnit(g)
     }
   }
   row_unit

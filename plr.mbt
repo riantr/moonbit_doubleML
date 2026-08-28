@@ -216,8 +216,19 @@ fn DoubleMLPLR::fit_cluster(
   let n_units = uniq.length()
   require(self.n_folds <= n_units)
   // row → unit-position map (linear scan, panels are small in
-  // tests and demos).
-  let row_unit = build_row_unit_map(cluster, uniq)
+  // tests and demos). v0.36.0: build_row_unit_map raises
+  // ClusterDataError::MissingUnit on a malformed cluster vector;
+  // we catch and re-abort to preserve pre-v0.36.0 behavior.
+  let row_unit = try
+    build_row_unit_map(cluster, uniq)
+  catch {
+    ClusterDataError::MissingUnit(g) =>
+      abort(
+        "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
+        g.to_string() +
+        ")",
+      )
+  }
   // ascending row indices per unit
   let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
     let rows : Array[Int] = []

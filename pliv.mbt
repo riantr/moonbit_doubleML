@@ -262,7 +262,19 @@ fn DoubleMLPLIV::fit_cluster(
   let uniq = unique_units(cluster)
   let n_units = uniq.length()
   require(self.n_folds <= n_units)
-  let row_unit = build_row_unit_map(cluster, uniq)
+  // v0.36.0: build_row_unit_map raises ClusterDataError on
+  // malformed cluster vector; catch and re-abort to preserve
+  // pre-v0.36.0 behavior.
+  let row_unit = try
+    build_row_unit_map(cluster, uniq)
+  catch {
+    ClusterDataError::MissingUnit(g) =>
+      abort(
+        "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
+        g.to_string() +
+        ")",
+      )
+  }
   let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
     let rows : Array[Int] = []
     rows

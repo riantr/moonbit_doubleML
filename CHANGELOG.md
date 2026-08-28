@@ -11,6 +11,64 @@ release is the canonical version.
 
 ---
 
+## [0.36.0] — `build_row_unit_map` abort → `raise ClusterDataError`
+
+### Changed
+- **`kfold.mbt::build_row_unit_map`**: signature changed from
+  `Array[Int]` to `Array[Int] raise ClusterDataError`. The
+  missing-unit-id defensive guard used `abort("...")` to kill the
+  process on a malformed cluster vector; this release replaces
+  the abort with `raise ClusterDataError::MissingUnit(g)`,
+  carrying the missing unit id as payload.
+- **`kfold.mbt`**: declared `pub suberror ClusterDataError`
+  with `MissingUnit(Int)` variant. Sits alongside the v0.35.0
+  `VarEstClusterError` suberror so the cluster helper stack can
+  share error types.
+
+### Fixed
+- **Second silent `panic_*` test converted to real assertion**:
+  the v0.36.0 release continues the v0.35.0 surgical
+  abort → raise conversion pattern. The pre-existing
+  `panic_build_row_unit_map_missing_unit` test (kfold_test.mbt)
+  was silently skipped on native/wasm-gc (MoonBit's `panic_*`
+  driver skips panic-prefixed tests; see
+  `_verify/WHITEBOX_T_REPORT.md`). The test is now renamed to
+  `build_row_unit_map_raises_missing_unit` and rewritten with
+  the `try ... catch ... noraise { fail(...) }` pattern. The
+  `noraise` branch fails the test if no error fires, the `catch`
+  branch asserts the exact variant + payload (catches any future
+  mutation that constructs a different variant or strips the
+  payload).
+
+### Public API stability
+- `DoubleMLXXX::fit` and `DoubleMLXXX::fit_cluster` signatures
+  are unchanged. Internally, every `build_row_unit_map(...)`
+  call site in `plr/irm/pliv/iivm/plpr::fit_cluster` is wrapped
+  in `try ... catch { ClusterDataError::MissingUnit(g) =>
+  abort("... (unit_id=" + g.to_string() + ")") }` to preserve
+  the pre-v0.36.0 process-death behavior on malformed cluster
+  vectors. From the outside, the API behaves identically.
+
+### Tests
+- 284/284 PASS (test count unchanged: 1 silent panic_* test was
+  renamed, not added) on native/wasm/wasm-gc/js with `--deny-warn`.
+- Mutation sweep verified: silencing the raise (replacing
+  `raise ClusterDataError::MissingUnit(g)` with
+  `let _ = g`) makes the regression test fail with
+  "expected build_row_unit_map to raise MissingUnit on unit_id=5".
+  Confirmed with `moon test -f "build_row_unit_map*"`.
+- Fuzz: 10 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 defensive aborts converted (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- Remaining 12 (did_multi.mbt:558/1145, plpr.mbt:447,
+  ps_processor.mbt:35/129/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases.
+
+---
+
 ## [0.35.0] — `var_est_cluster` abort → `raise VarEstClusterError`
 
 ### Changed
