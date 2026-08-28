@@ -11,6 +11,79 @@ release is the canonical version.
 
 ---
 
+## [0.35.0] — `var_est_cluster` abort → `raise VarEstClusterError`
+
+### Changed
+- **`plpr.mbt::var_est_cluster`**: signature changed from `Double`
+  to `Double raise VarEstClusterError`. The v0.34.0 J-floor
+  defensive guard (`|J| < 1e-6`) used `abort("...")` to kill the
+  process on pathological fold splits; this release replaces the
+  abort with `raise VarEstClusterError::JTooSmall(j, g, n_units)`,
+  carrying the exact `(j, g, n_units)` triple that triggered the
+  floor. The new error type is declared in `kfold.mbt` so the
+  cluster helper stack can share it.
+- **`kfold.mbt::cluster_causal_param_and_se`**: signature changed
+  from `(Double, Double)` to `(Double, Double) raise VarEstClusterError`.
+  The `var_est_cluster` error propagates automatically via `?`.
+
+### Fixed
+- **Silent `panic_*` test gap (whitebox finding)**: the v0.34.0
+  release shipped a `panic_var_est_cluster_j_floor` test that
+  documented the J-floor abort. Whitebox mutation testing revealed
+  that this test never actually runs (MoonBit's `panic_*` test
+  driver skips them on native/wasm-gc; the JS/wasm path has no
+  assertion so the test passes regardless of whether abort fires).
+  With abort → raise, the J-floor path becomes directly testable:
+  the new test uses `try ... catch ... noraise { fail(...) }`
+  to assert the error fires (catches mutation M04: removing the
+  J-floor entirely). Future `panic_*` tests for similar defensive
+  guards can follow the same `try/catch/noraise` pattern once
+  their abort paths are converted to `raise`.
+
+### Public API stability
+- `DoubleMLXXX::fit` and `DoubleMLXXX::fit_cluster` signatures are
+  unchanged. Internally, every `cluster_causal_param_and_se(...)`
+  call site in `plr/irm/pliv/iivm/plpr` is wrapped in
+  `try ... catch { VarEstClusterError::JTooSmall => abort(...) }`
+  to preserve the pre-v0.35.0 process-death behavior on
+  pathological fold splits. From the outside, the API behaves
+  identically to v0.34.0.
+
+### Whitebox verification
+- 8 cluster mutations applied (per `_verify/_whitebox_mut.py`):
+  - 7 KILLED (M01, M02, M04, M05, M06, M07, M08)
+  - 1 SURVIVED (M03: relax floor 1e-6→1e-2 — only catches
+    fold splits with J ∈ [1e-6, 1e-2), which the unit test
+    corpus does not naturally produce; the v0.32.0 validator's
+    30-seed empirical study exercises that range empirically)
+- M04 (`if false` — remove J-floor entirely) was previously
+  unreachable; the new `plpr_var_est_cluster_raises_j_too_small_on_zero_j`
+  test now catches it.
+
+### Tests
+- 284/284 PASS (+1 vs 0.34.0) on native/wasm/wasm-gc/js with
+  `--deny-warn`.
+- Fuzz: 10 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS (including `validate_cluster_iv` and
+  `validate_cluster_plr`).
+- Cmd demos (`cmd/plpr`, `cmd/lplr`, `cmd/main`) all execute
+  without panic and produce expected output.
+
+### Migration for downstream consumers
+- `var_est_cluster` and `cluster_causal_param_and_se` are public
+  helpers used directly by some whitebox / fuzz / test code. They
+  are now declared `raise VarEstClusterError`. Callers that want
+  the pre-v0.35.0 behavior should wrap the call in
+  `try ... catch { _ => abort(...) }` (the same pattern used
+  inside `fit_cluster`); callers that want to handle the error
+  gracefully should use `?` or `try ... catch ... noraise`.
+- The re-abort helper `kfold.mbt::re_abort_j_too_small` was
+  drafted during refactor but ended up unused (each fit_cluster
+  inlines the match because catch needs the right return type);
+  it is removed in the final diff. No callers reference it.
+
+---
+
 ## [0.34.0] — Cluster path fragility statistics + PLIV/IIVM fuzz coverage
 
 ### Changed

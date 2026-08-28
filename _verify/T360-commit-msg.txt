@@ -1,0 +1,72 @@
+Release 0.35.0: var_est_cluster abort -> raise VarEstClusterError
+
+The v0.34.0 J-floor defensive guard in var_est_cluster used
+abort() to kill the process on pathological fold splits. Whitebox
+mutation testing revealed that this abort path was effectively
+untestable: MoonBit's panic_* test driver SKIPS the test entirely
+on native/wasm-gc (driver source line 823-828), and on JS/wasm the
+test runs but has no assertion (just `let _ = ...`). 22.6% of the
+test suite (64 of 283 tests) was silently skipping.
+
+This release converts the J-floor abort to raise VarEstClusterError,
+making the panic path directly testable across all backends.
+
+  - kfold.mbt: declare pub suberror VarEstClusterError with
+    JTooSmall(Double, Double, Int) variant carrying (j, g, n_units).
+  - plpr.mbt::var_est_cluster: signature `Double` -> `Double raise
+    VarEstClusterError`; the abort is replaced with
+    `raise VarEstClusterError::JTooSmall(j, g, n_units)`.
+  - kfold.mbt::cluster_causal_param_and_se: signature `(Double,
+    Double)` -> `(Double, Double) raise VarEstClusterError`; the
+    var_est_cluster error propagates via `?`.
+  - 5 fit_cluster methods (plr/irm/pliv/iivm/plpr) wrap each
+    cluster_causal_param_and_se call in
+    `try ... catch { VarEstClusterError::JTooSmall => abort(...) }`
+    to preserve the pre-v0.35.0 process-death behavior on
+    pathological fold splits. Public API unchanged.
+
+Whitebox mutation testing (verify/_whitebox_mut.py):
+
+  - 8 mutations applied to plpr.mbt::est_coef_cluster and
+    plpr.mbt::var_est_cluster
+  - 7 KILLED (M01, M02, M04, M05, M06, M07, M08)
+  - 1 SURVIVED (M03: relax floor 1e-6 -> 1e-2; only catches
+    fold splits with J in [1e-6, 1e-2), unreachable by current
+    test corpus; the v0.32.0 validator's 30-seed empirical study
+    exercises that range empirically)
+  - M04 (remove J-floor entirely) was previously SURVIVED; now
+    KILLED by the new plpr_var_est_cluster_raises_j_too_small_on_zero_j
+    test.
+
+The new regression test (plpr_test.mbt) uses the MoonBit
+try ... catch ... noraise pattern:
+
+  try var_est_cluster(zero_j_input) catch {
+    VarEstClusterError::JTooSmall(j, _, _) =>
+      inspect(j.abs() < 1.0e-6, content="true")
+  } noraise {
+    _ => fail("expected var_est_cluster to raise JTooSmall on J=0")
+  }
+
+The noraise branch fails the test if no error fires (catches
+mutation M04). The catch branch asserts the exact variant and
+payload.
+
+Tests: 284/284 PASS (+1 vs 0.34.0), all 4 backends,
+--deny-warn clean.
+
+QA battery run as release gate (T360):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.34.0 -> 0.35.0.
+- Unit: 284/284 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 10 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS (incl. validate_cluster_iv + validate_plpr).
+- Mutation sweep: 7/8 KILLED (M04 newly KILLED by the new test).
+
+API: DoubleMLXXX::fit and DoubleMLXXX::fit_cluster signatures
+unchanged. Internally, every cluster_causal_param_and_se call site
+preserves the pre-v0.35.0 process-death behavior. From outside,
+the API behaves identically to v0.34.0.

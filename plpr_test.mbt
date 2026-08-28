@@ -269,6 +269,62 @@ test "plpr_var_est_cluster_reference" {
   let psi_deriv : Array[Double] = [1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0]
   let unit_rows : Array[Array[Int]] = [[0, 1], [2, 3], [4, 5], [6, 7]]
   let unit_fold : Array[Int] = [0, 0, 1, 1]
-  let se = var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2)
+  let se = try
+    var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2)
+  catch {
+    _ => 0.0  // unreachable for this input
+  }
   inspect((se - (3.25 / 36.0).sqrt()).abs() < 1.0e-12, content="true")
+}
+
+///|
+/// Regression test for the v0.34.0 J-floor defensive guard in
+/// `var_est_cluster`. The fold-mean `J = mean(psi_deriv)` can land
+/// on (or near) zero for fold splits where `psi_deriv` sums to zero
+/// inside every fold. The 1e-6 floor raises `VarEstClusterError::JTooSmall`
+/// (v0.35.0+) carrying the exact `(j, g, n_units)` triple that
+/// triggered it.
+///
+/// Before v0.35.0, the J-floor used `abort()`, which made this case
+/// untestable on native/wasm-gc because `panic_*` tests are
+/// silently skipped by the test driver. Now that the abort has
+/// been replaced with `raise VarEstClusterError`, the panic path is
+/// observable: tests can use `try?` to convert the error to a
+/// `Result`, then inspect it.
+///
+/// This test exercises the J-floor path with a contrived but
+/// deterministic input (psi_deriv rows [+1, -1, +1, -1, ...] so
+/// every unit sums to 0, every fold sums to 0, J = 0). It is the
+/// catchable counterpart to whitebox mutation M04 (removing the
+/// J-floor entirely). With the floor in place, the call returns
+/// `Err(VarEstClusterError::JTooSmall(0.0, g, 4))`; without the
+/// floor (regression), it returns `Ok(NaN)` and the inspect fails.
+///
+///   psi_deriv rows: [+1, -1, +1, -1, +1, -1, +1, -1]
+///   unit 0 (fold 0): rows 0,1 -> sum 0
+///   unit 1 (fold 0): rows 2,3 -> sum 0
+///   unit 2 (fold 1): rows 4,5 -> sum 0
+///   unit 3 (fold 1): rows 6,7 -> sum 0
+///   fold0 j_hat = 0, fold1 j_hat = 0  =>  j_hat = 0  =>  j = 0
+///   |j| = 0 < 1e-6  =>  raise VarEstClusterError::JTooSmall(0, g, 4)
+test "plpr_var_est_cluster_raises_j_too_small_on_zero_j" {
+  let psi : Array[Double] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  let psi_deriv : Array[Double] = [1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
+  let unit_rows : Array[Array[Int]] = [[0, 1], [2, 3], [4, 5], [6, 7]]
+  let unit_fold : Array[Int] = [0, 0, 1, 1]
+  // Expected: the J-floor raises VarEstClusterError::JTooSmall.
+  // Migration pattern (MoonBit deprecates `try?`):
+  //   try expr catch { e => inspect(e, content=...) } noraise {
+  //     _ => fail("expected expr to raise")
+  //   }
+  // The catch branch asserts the exact variant + payload; the
+  // noraise branch fails the test if no error fires (catches M04).
+  try
+    var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2)
+  catch {
+    VarEstClusterError::JTooSmall(j, _, _) =>
+      inspect(j.abs() < 1.0e-6, content="true")
+  } noraise {
+    _ => fail("expected var_est_cluster to raise JTooSmall on J=0")
+  }
 }

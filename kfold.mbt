@@ -1,4 +1,21 @@
 ///|
+/// Error type raised by `var_est_cluster` when the fold-mean
+/// `J = mean(psi_deriv)` lands below the `1e-6` floor (a
+/// defensive guard added in v0.34.0 against divide-by-near-zero
+/// inflations of the cluster SE; see the rationale comment in
+/// `var_est_cluster` below). The payload captures the exact
+/// `(j, g, n_units)` triple that triggered the floor so callers
+/// can log or surface a meaningful diagnostic.
+///
+/// Callers that want to preserve the pre-v0.35.0 process-death
+/// behavior should `match` on this variant and re-abort; callers
+/// that want to retry or surface the error to downstream
+/// consumers should propagate it via `?`.
+pub suberror VarEstClusterError {
+  JTooSmall(Double, Double, Int) // (j, g, n_units)
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {
@@ -214,7 +231,13 @@ fn row_unit_max(row_unit : Array[Int]) -> Int {
 /// allocation; the caller pre-computes `psi_a` and `psi_b` at
 /// its converged coefficient / nuisance values.
 ///
-/// Returns `(theta_r, se_r)`.
+/// Returns `(theta_r, se_r)`. The `!VarEstClusterError` annotation
+/// propagates the J-floor defensive guard from `var_est_cluster`
+/// (v0.34.0+) so callers can decide whether to abort, retry with
+/// a different seed, or surface the error to downstream consumers.
+/// All fit_cluster() methods in PLR / IRM / PLPR / PLIV / IIVM
+/// catch this error and re-abort to preserve the pre-v0.35.0
+/// process-death behavior on pathological fold splits.
 pub fn cluster_causal_param_and_se(
   psi_a : Array[Double],
   psi_b : Array[Double],
@@ -224,7 +247,7 @@ pub fn cluster_causal_param_and_se(
   unit_fold : Array[Int],
   n_folds_u : Int,
   n_folds_per_cluster : Int,
-) -> (Double, Double) {
+) -> (Double, Double) raise VarEstClusterError {
   let theta_r = est_coef_cluster(psi_a, psi_b, folds_row, fold_n_units)
   let n = psi_a.length()
   let psi_res : Array[Double] = Array::make(n, 0.0)

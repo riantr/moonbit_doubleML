@@ -222,6 +222,15 @@ pub fn est_coef_cluster(
 /// the score derivative (= psi_a). `unit_fold[u]` is the test-fold
 /// index of unit u; every row of a unit lies in that fold because
 /// the folds partition whole units.
+///
+/// Returns `Double!VarEstClusterError`: the v0.34.0 J-floor
+/// defensive guard (|J|<1e-6) raises `VarEstClusterError::JTooSmall`
+/// carrying the exact `(j, g, n_units)` triple that triggered it.
+/// Callers that want the pre-v0.35.0 process-death behavior should
+/// catch the error and re-abort (this is what every
+/// `DoubleMLXXX::fit_cluster` does); callers that want to retry or
+/// surface the error should propagate via `?`. The error type is
+/// declared in `kfold.mbt` so the cluster helper stack can share it.
 pub fn var_est_cluster(
   psi : Array[Double],
   psi_deriv : Array[Double],
@@ -229,7 +238,7 @@ pub fn var_est_cluster(
   unit_fold : Array[Int],
   n_folds : Int,
   n_folds_per_cluster : Int,
-) -> Double {
+) -> Double raise VarEstClusterError {
   let n_units = unit_rows.length()
   let mut gamma = 0.0
   let mut j_hat = 0.0
@@ -273,17 +282,7 @@ pub fn var_est_cluster(
   // most of those have J < 1e-3 too; this floor catches all
   // of them).
   if j.abs() < 1.0e-6 {
-    abort(
-      "var_est_cluster: |J|=" +
-      j.abs().to_string() +
-      " < 1e-6 (J=" +
-      j.to_string() +
-      ", g=" +
-      g.to_string() +
-      ", n_units=" +
-      n_units.to_string() +
-      "); cluster SE is numerically unstable, try a different seed",
-    )
+    raise VarEstClusterError::JTooSmall(j, g, n_units)
   }
   (g / (n_units.to_double() * j * j)).sqrt()
 }
@@ -660,16 +659,34 @@ pub fn DoubleMLPLPR::fit(
     // Clustered-path coefficient and standard error via the
     // shared helper (fold-weighted cluster ratio + unit-level
     // cluster-robust SE).
-    let (theta_r, se_r) = cluster_causal_param_and_se(
-      psi_a,
-      psi_b,
-      folds_row,
-      fold_n_units,
-      unit_rows,
-      unit_fold,
-      folds_u.length(),
-      self.n_folds,
-    )
+    let (theta_r, se_r) = try
+      cluster_causal_param_and_se(
+        psi_a,
+        psi_b,
+        folds_row,
+        fold_n_units,
+        unit_rows,
+        unit_fold,
+        folds_u.length(),
+        self.n_folds,
+      )
+    catch {
+      e =>
+        match e {
+          VarEstClusterError::JTooSmall(j, g, n_units) =>
+            abort(
+              "var_est_cluster: |J|=" +
+              j.abs().to_string() +
+              " < 1e-6 (J=" +
+              j.to_string() +
+              ", g=" +
+              g.to_string() +
+              ", n_units=" +
+              n_units.to_string() +
+              "); cluster SE is numerically unstable, try a different seed",
+            )
+        }
+    }
     coefs[r] = theta_r
     ses[r] = se_r
   }

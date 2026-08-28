@@ -466,16 +466,34 @@ fn DoubleMLIIVM::fit_cluster(
         z[i] * w1 / m_i +
         (1.0 - z[i]) * w0 / one_minus_m
     }
-    let (theta_r, se_r) = cluster_causal_param_and_se(
-      psi_a,
-      psi_b,
-      folds_row,
-      fold_n_units,
-      unit_rows,
-      unit_fold,
-      folds_u.length(),
-      self.n_folds,
-    )
+    let (theta_r, se_r) = try
+      cluster_causal_param_and_se(
+        psi_a,
+        psi_b,
+        folds_row,
+        fold_n_units,
+        unit_rows,
+        unit_fold,
+        folds_u.length(),
+        self.n_folds,
+      )
+    catch {
+      e =>
+        match e {
+          VarEstClusterError::JTooSmall(j, g, n_units) =>
+            abort(
+              "var_est_cluster: |J|=" +
+              j.abs().to_string() +
+              " < 1e-6 (J=" +
+              j.to_string() +
+              ", g=" +
+              g.to_string() +
+              ", n_units=" +
+              n_units.to_string() +
+              "); cluster SE is numerically unstable, try a different seed",
+            )
+        }
+    }
     coefs[r] = theta_r
     ses[r] = se_r
   }
