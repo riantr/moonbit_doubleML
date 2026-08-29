@@ -189,9 +189,10 @@ pub fn DoubleMLPLIV::predictions_m(self : DoubleMLPLIV) -> Array[Double] {
 pub fn DoubleMLPLIV::fit(
   self : DoubleMLPLIV,
   learner? : LinearRegression = LinearRegression::new(),
+  max_attempts? : Int = 1,
 ) -> DoubleMLPLIV {
   if self.data.is_cluster_data() {
-    return self.fit_cluster(learner)
+    return self.fit_cluster(learner, max_attempts~)
   }
   ignore(learner)
   let n = self.n_obs()
@@ -255,7 +256,9 @@ pub fn DoubleMLPLIV::fit(
 fn DoubleMLPLIV::fit_cluster(
   self : DoubleMLPLIV,
   learner : LinearRegression,
+  max_attempts? : Int = 1,
 ) -> DoubleMLPLIV {
+  require(max_attempts >= 1)
   let cluster = self.data.cluster_vars
   let n = self.n_obs()
   let nrep = self.n_rep
@@ -288,52 +291,61 @@ fn DoubleMLPLIV::fit_cluster(
   let mut r_pred : Array[Double] = Array::make(n, 0.0)
   let mut m_pred : Array[Double] = Array::make(n, 0.0)
   for r = 0; r < nrep; r = r + 1 {
-    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
-    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
-      cluster, folds_u, row_unit,
-    )
-    l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
-    r_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
-    m_pred = cross_fit_predict(learner, self.data.x, self.data.z, folds_row)
-    let y = self.data.y
-    let d = self.data.d
-    let z = self.data.z
-    let psi_a : Array[Double] = Array::make(n, 0.0)
-    let psi_b : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      let u = y[i] - l_pred[i]
-      let w = d[i] - r_pred[i]
-      let v = z[i] - m_pred[i]
-      psi_a[i] = -w * v
-      psi_b[i] = v * u
-    }
-    let (theta_r, se_r) = try
-      cluster_causal_param_and_se(
-        psi_a,
-        psi_b,
-        folds_row,
-        fold_n_units,
-        unit_rows,
-        unit_fold,
-        folds_u.length(),
-        self.n_folds,
+    // v0.40.0: retry loop on J-floor (see plr.mbt::fit_cluster).
+    let mut theta_r = 0.0
+    let mut se_r = 0.0
+    let mut attempt = 0
+    let mut succeeded = false
+    while attempt < max_attempts && !succeeded {
+      let rep_seed = self.seed + r + attempt * nrep
+      let folds_u = kfold(n_units, self.n_folds, rep_seed)
+      let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+        cluster, folds_u, row_unit,
       )
-    catch {
-      e =>
-        match e {
-          VarEstClusterError::JTooSmall(j, g, n_units) =>
-            abort(
-              "var_est_cluster: |J|=" +
-              j.abs().to_string() +
-              " < 1e-6 (J=" +
-              j.to_string() +
-              ", g=" +
-              g.to_string() +
-              ", n_units=" +
-              n_units.to_string() +
-              "); cluster SE is numerically unstable, try a different seed",
-            )
+      l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
+      r_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
+      m_pred = cross_fit_predict(learner, self.data.x, self.data.z, folds_row)
+      let y = self.data.y
+      let d = self.data.d
+      let z = self.data.z
+      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let psi_b : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        let u = y[i] - l_pred[i]
+        let w = d[i] - r_pred[i]
+        let v = z[i] - m_pred[i]
+        psi_a[i] = -w * v
+        psi_b[i] = v * u
+      }
+      let (t, s) = try
+        cluster_causal_param_and_se(
+          psi_a,
+          psi_b,
+          folds_row,
+          fold_n_units,
+          unit_rows,
+          unit_fold,
+          folds_u.length(),
+          self.n_folds,
+        )
+      catch {
+        _ => {
+          attempt = attempt + 1
+          (0.0, 0.0)
         }
+      }
+      theta_r = t
+      se_r = s
+      succeeded = true
+    }
+    if !succeeded {
+      abort(
+        "var_est_cluster: J-floor fired " +
+        max_attempts.to_string() +
+        " times for rep=" +
+        r.to_string() +
+        " (cluster SE numerically unstable across multiple fold splits, try a different seed or larger n_units)",
+      )
     }
     coefs[r] = theta_r
     ses[r] = se_r

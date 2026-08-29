@@ -543,8 +543,10 @@ pub fn DoubleMLPLPR::predictions_m(self : DoubleMLPLPR) -> Array[Double] {
 pub fn DoubleMLPLPR::fit(
   self : DoubleMLPLPR,
   learner? : LinearRegression = LinearRegression::new(),
+  max_attempts? : Int = 1,
 ) -> DoubleMLPLPR {
   ignore(learner)
+  require(max_attempts >= 1)
   let tf = transform_panel(self.panel, self.approach)
   let n = tf.y.length()
   // Upstream re-wraps the transformed panel in a static-panel
@@ -585,15 +587,22 @@ pub fn DoubleMLPLPR::fit(
   let mut l_pred : Array[Double] = Array::make(n, 0.0)
   let mut m_pred : Array[Double] = Array::make(n, 0.0)
   for r = 0; r < nrep; r = r + 1 {
-    // Unit-level folds expanded to row-level folds via the
-    // shared helper (rows of one unit stay on the same side
-    // of every split).
-    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
-    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
-      tf.id,
-      folds_u,
-      row_unit,
-    )
+    // v0.40.0: retry loop on J-floor (see plr.mbt::fit_cluster).
+    let mut theta_r = 0.0
+    let mut se_r = 0.0
+    let mut attempt = 0
+    let mut succeeded = false
+    while attempt < max_attempts && !succeeded {
+      let rep_seed = self.seed + r + attempt * nrep
+      // Unit-level folds expanded to row-level folds via the
+      // shared helper (rows of one unit stay on the same side
+      // of every split).
+      let folds_u = kfold(n_units, self.n_folds, rep_seed)
+      let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+        tf.id,
+        folds_u,
+        row_unit,
+      )
     l_pred = cross_fit_predict(LinearRegression::new(), tf.x, tf.y, folds_row)
     if self.approach == "cre_normal" {
       // ml_m gets [X, d_mean] as inputs.
@@ -668,33 +677,35 @@ pub fn DoubleMLPLPR::fit(
     // Clustered-path coefficient and standard error via the
     // shared helper (fold-weighted cluster ratio + unit-level
     // cluster-robust SE).
-    let (theta_r, se_r) = try
-      cluster_causal_param_and_se(
-        psi_a,
-        psi_b,
-        folds_row,
-        fold_n_units,
-        unit_rows,
-        unit_fold,
-        folds_u.length(),
-        self.n_folds,
-      )
-    catch {
-      e =>
-        match e {
-          VarEstClusterError::JTooSmall(j, g, n_units) =>
-            abort(
-              "var_est_cluster: |J|=" +
-              j.abs().to_string() +
-              " < 1e-6 (J=" +
-              j.to_string() +
-              ", g=" +
-              g.to_string() +
-              ", n_units=" +
-              n_units.to_string() +
-              "); cluster SE is numerically unstable, try a different seed",
-            )
+      let (t, s) = try
+        cluster_causal_param_and_se(
+          psi_a,
+          psi_b,
+          folds_row,
+          fold_n_units,
+          unit_rows,
+          unit_fold,
+          folds_u.length(),
+          self.n_folds,
+        )
+      catch {
+        _ => {
+          attempt = attempt + 1
+          (0.0, 0.0)
         }
+      }
+      theta_r = t
+      se_r = s
+      succeeded = true
+    }
+    if !succeeded {
+      abort(
+        "var_est_cluster: J-floor fired " +
+        max_attempts.to_string() +
+        " times for rep=" +
+        r.to_string() +
+        " (cluster SE numerically unstable across multiple fold splits, try a different seed or larger n_units)",
+      )
     }
     coefs[r] = theta_r
     ses[r] = se_r

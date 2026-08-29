@@ -1,0 +1,67 @@
+Release 0.40.0: max_attempts parameter for random restart on J-floor
+
+The v0.34.0 J-floor defensive guard in var_est_cluster aborts
+the process on a fold split where mean(psi_deriv) lands below
+1e-6. Until v0.40.0, callers had to retry manually: catch the
+abort, bump the seed, retry. v0.40.0 adds an opt-in
+max_attempts parameter to all 5 cluster-robust fit methods
+(PLR, IRM, PLIV, IIVM, PLPR) that does the retry internally
+with a different fold split (seed = self.seed + r + attempt *
+nrep) on each retry.
+
+Default max_attempts=1 preserves pre-v0.40.0 behavior. With
+max_attempts > 1, the fit_cluster methods wrap the per-rep
+work in a `while attempt < max_attempts` retry loop. The
+catch arm of the try block records the failure and re-enters
+the while loop with the next attempt's seed. After
+max_attempts consecutive J-floor fires for a given rep, the
+fit re-aborts with a message that includes max_attempts and
+the rep index.
+
+API change (additive):
+  DoubleMLPLR::fit(learner? : LinearRegression = ...,
+                  max_attempts? : Int = 1) -> DoubleMLPLR
+  DoubleMLIRM::fit(ml_g? : LinearRegression = ...,
+                  ml_m? : LinearRegression = ...,
+                  max_attempts? : Int = 1) -> DoubleMLIRM
+  DoubleMLPLIV::fit(learner? : LinearRegression = ...,
+                   max_attempts? : Int = 1) -> DoubleMLPLIV
+  DoubleMLIIVM::fit(ml_g? : LinearRegression = ...,
+                   ml_m? : LinearRegression = ...,
+                   ml_r? : LinearRegression = ...,
+                   max_attempts? : Int = 1) -> DoubleMLIIVM
+  DoubleMLPLPR::fit(learner? : LinearRegression = ...,
+                   max_attempts? : Int = 1) -> DoubleMLPLPR
+
+Row-level fit (no cluster_vars) is unaffected: max_attempts
+is silently ignored.
+
+New regression test: plr_cluster_max_attempts_accepted asserts
+the parameter is accepted by the type-checker. The actual
+J-floor rate is measured by the empirical validator
+(validate_cluster_iv_with_python.py, 30 seeds). v0.40.0 makes
+the public API more forgiving on pathological seeds without
+changing the underlying math.
+
+Tests: 287/287 PASS (+1 vs 0.39.0) on native/wasm/wasm-gc/js
+with --deny-warn.
+
+QA battery run as release gate (T410):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.39.0 -> 0.40.0.
+- Unit: 287/287 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14
+  v0.40.0: 5/14 (this release is a feature, not a conversion)
+  Remaining 9 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases.

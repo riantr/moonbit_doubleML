@@ -11,6 +11,58 @@ release is the canonical version.
 
 ---
 
+## [0.40.0] — Random restart on J-floor: `max_attempts` parameter
+
+### Added
+- **`max_attempts?` parameter** on every cluster-robust fit
+  method: `DoubleMLPLR::fit`, `DoubleMLIRM::fit`,
+  `DoubleMLPLIV::fit`, `DoubleMLIIVM::fit`,
+  `DoubleMLPLPR::fit`. Default: `1` (preserves pre-v0.40.0
+  behavior). When `max_attempts > 1`, the fit retries
+  `cluster_causal_param_and_se` with a different fold split
+  (seed = `self.seed + r + attempt * nrep`) on each retry.
+  After `max_attempts` consecutive J-floor fires for a given
+  rep, the fit re-aborts with a message that includes
+  `max_attempts` and the rep index (so callers can identify
+  the failing rep).
+
+### Changed
+- **5 cluster-robust `fit_cluster` methods** (PLR, IRM, PLIV,
+  IIVM, PLPR): the inner `for r in 0..nrep` loop now wraps the
+  per-rep work in a `while attempt < max_attempts` retry loop.
+  The catch arm of the `try` block records the failure and
+  re-enters the while loop with the next attempt's seed.
+- **Pre-v0.40.0 behavior** is preserved when
+  `max_attempts=1` (the default): the first J-floor fire
+  re-aborts with the same diagnostic message as before.
+
+### Public API stability
+- All 5 public `fit` methods gain a new optional named
+  parameter `max_attempts?` with a default value of 1. Existing
+  callers that do not pass it see no behavior change.
+- Row-level fit (no `cluster_vars`) is unaffected: `max_attempts`
+  is silently ignored for the row-level path.
+
+### Tests
+- 287/287 PASS (+1 vs 0.39.0: new
+  `plr_cluster_max_attempts_accepted` test asserts the
+  parameter is accepted by the type-checker) on
+  native/wasm/wasm-gc/js with `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.40.0: **5/14** (this release is a feature, not a conversion)
+- Remaining 9 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases.
+
+---
+
 ## [0.39.0] — Fuzz surface 11: PLPR cluster-path stress (small n_units)
 
 ### Added

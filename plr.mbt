@@ -145,9 +145,10 @@ pub fn DoubleMLPLR::predictions_m(self : DoubleMLPLR) -> Array[Double] {
 pub fn DoubleMLPLR::fit(
   self : DoubleMLPLR,
   learner? : LinearRegression = LinearRegression::new(),
+  max_attempts? : Int = 1,
 ) -> DoubleMLPLR {
   if self.data.is_cluster_data() {
-    return self.fit_cluster(learner)
+    return self.fit_cluster(learner, max_attempts~)
   }
   let n = self.n_obs()
   let nrep = self.n_rep
@@ -208,7 +209,9 @@ pub fn DoubleMLPLR::fit(
 fn DoubleMLPLR::fit_cluster(
   self : DoubleMLPLR,
   learner : LinearRegression,
+  max_attempts? : Int = 1,
 ) -> DoubleMLPLR {
+  require(max_attempts >= 1)
   let cluster = self.data.cluster_vars
   let n = self.n_obs()
   let nrep = self.n_rep
@@ -242,49 +245,78 @@ fn DoubleMLPLR::fit_cluster(
   let mut l_pred : Array[Double] = Array::make(n, 0.0)
   let mut m_pred : Array[Double] = Array::make(n, 0.0)
   for r = 0; r < nrep; r = r + 1 {
-    // unit-level folds expanded to row-level folds (rows of one
-    // unit stay on the same side of every split).
-    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
-    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
-      cluster, folds_u, row_unit,
-    )
-    l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
-    m_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
-    let psi_a : Array[Double] = Array::make(n, 0.0)
-    let psi_b : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      let v = self.data.d[i] - m_pred[i]
-      let u = self.data.y[i] - l_pred[i]
-      psi_a[i] = -v * v
-      psi_b[i] = v * u
-    }
-    let (theta_r, se_r) = try
-      cluster_causal_param_and_se(
-        psi_a,
-        psi_b,
-        folds_row,
-        fold_n_units,
-        unit_rows,
-        unit_fold,
-        folds_u.length(),
-        self.n_folds,
+    // v0.40.0: retry loop on J-floor. Each retry uses a different
+    // fold split (seed = self.seed + r + attempt*nrep) so the
+    // fold-mean J is different. If all max_attempts attempts hit
+    // the J-floor for this rep, we record the failure and the
+    // post-loop re-aborts (preserves pre-v0.40.0 behavior when
+    // max_attempts=1).
+    let mut theta_r = 0.0
+    let mut se_r = 0.0
+    let mut attempt = 0
+    let mut succeeded = false
+    while attempt < max_attempts && !succeeded {
+      let rep_seed = self.seed + r + attempt * nrep
+      let folds_u = kfold(n_units, self.n_folds, rep_seed)
+      let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+        cluster, folds_u, row_unit,
       )
-    catch {
-      e =>
-        match e {
-          VarEstClusterError::JTooSmall(j, g, n_units) =>
-            abort(
-              "var_est_cluster: |J|=" +
-              j.abs().to_string() +
-              " < 1e-6 (J=" +
-              j.to_string() +
-              ", g=" +
-              g.to_string() +
-              ", n_units=" +
-              n_units.to_string() +
-              "); cluster SE is numerically unstable, try a different seed",
-            )
+      l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
+      m_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
+      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let psi_b : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        let v = self.data.d[i] - m_pred[i]
+        let u = self.data.y[i] - l_pred[i]
+        psi_a[i] = -v * v
+        psi_b[i] = v * u
+      }
+      // The cluster helper can raise VarEstClusterError::JTooSmall
+      // on a fold split where mean(psi_deriv) lands below 1e-6.
+      // The catch arm below records the failure and tries again
+      // with the next attempt's seed; we don't re-abort here
+      // because v0.40.0 adds max_attempts retries.
+      let (t, s) = try
+        cluster_causal_param_and_se(
+          psi_a,
+          psi_b,
+          folds_row,
+          fold_n_units,
+          unit_rows,
+          unit_fold,
+          folds_u.length(),
+          self.n_folds,
+        )
+      catch {
+        _ => {
+          attempt = attempt + 1
+          // Sentinel (0.0, 0.0): the catch arm's return value is
+          // never observed because we re-enter the while loop
+          // (succeeded stays false) until attempt == max_attempts.
+          // The post-loop check `if !succeeded` then re-aborts.
+          (0.0, 0.0)
         }
+      }
+      // If we got here without the catch arm running, the try
+      // expression returned (t, s) and we succeeded. The catch
+      // arm's (0.0, 0.0) is never observed because succeeded
+      // is still false in that branch (we set attempt += 1 but
+      // didn't reach this code).
+      theta_r = t
+      se_r = s
+      succeeded = true
+    }
+    if !succeeded {
+      // All max_attempts attempts hit the J-floor; give up and
+      // re-abort (preserves pre-v0.40.0 behavior when
+      // max_attempts=1).
+      abort(
+        "var_est_cluster: J-floor fired " +
+        max_attempts.to_string() +
+        " times for rep=" +
+        r.to_string() +
+        " (cluster SE numerically unstable across multiple fold splits, try a different seed or larger n_units)",
+      )
     }
     coefs[r] = theta_r
     ses[r] = se_r

@@ -251,9 +251,10 @@ pub fn DoubleMLIRM::fit(
   self : DoubleMLIRM,
   ml_g? : LinearRegression = LinearRegression::new(),
   ml_m? : LinearRegression = LinearRegression::new(),
+  max_attempts? : Int = 1,
 ) -> DoubleMLIRM {
   if self.data.is_cluster_data() {
-    return self.fit_cluster(ml_g, ml_m)
+    return self.fit_cluster(ml_g, ml_m, max_attempts~)
   }
   let n = self.n_obs()
   let nrep = self.n_rep
@@ -326,7 +327,9 @@ fn DoubleMLIRM::fit_cluster(
   self : DoubleMLIRM,
   ml_g : LinearRegression,
   ml_m : LinearRegression,
+  max_attempts? : Int = 1,
 ) -> DoubleMLIRM {
+  require(max_attempts >= 1)
   let cluster = self.data.cluster_vars
   let n = self.n_obs()
   let nrep = self.n_rep
@@ -359,63 +362,74 @@ fn DoubleMLIRM::fit_cluster(
   let mut g1 : Array[Double] = Array::make(n, 0.0)
   let mut m : Array[Double] = Array::make(n, 0.0)
   for r = 0; r < nrep; r = r + 1 {
-    let folds_u = kfold(n_units, self.n_folds, self.seed + r)
-    let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
-      cluster, folds_u, row_unit,
-    )
-    let (g0_r, g1_r, m_r) = cross_fit_irm(
-      ml_g,
-      ml_m,
-      self.data.x,
-      self.data.y,
-      self.data.d,
-      folds_row,
-      self.propensity_clip,
-    )
-    g0 = g0_r
-    g1 = g1_r
-    m = m_r
-    let psi_a : Array[Double] = Array::make(n, 0.0)
-    let psi_b : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      let u0 = self.data.y[i] - g0[i]
-      let u1 = self.data.y[i] - g1[i]
-      let m_i = m[i]
-      let one_minus_m = 1.0 - m_i
-      let d_over_m = self.data.d[i] * u1 / m_i
-      let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
-        u0 /
-        one_minus_m
-      psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
-      psi_a[i] = -1.0
-    }
-    let (theta_r, se_r) = try
-      cluster_causal_param_and_se(
-        psi_a,
-        psi_b,
-        folds_row,
-        fold_n_units,
-        unit_rows,
-        unit_fold,
-        folds_u.length(),
-        self.n_folds,
+    // v0.40.0: retry loop on J-floor. Each retry uses a different
+    // fold split (seed = self.seed + r + attempt*nrep) so the
+    // fold-mean J is different.
+    let mut theta_r = 0.0
+    let mut se_r = 0.0
+    let mut attempt = 0
+    let mut succeeded = false
+    while attempt < max_attempts && !succeeded {
+      let rep_seed = self.seed + r + attempt * nrep
+      let folds_u = kfold(n_units, self.n_folds, rep_seed)
+      let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+        cluster, folds_u, row_unit,
       )
-    catch {
-      e =>
-        match e {
-          VarEstClusterError::JTooSmall(j, g, n_units) =>
-            abort(
-              "var_est_cluster: |J|=" +
-              j.abs().to_string() +
-              " < 1e-6 (J=" +
-              j.to_string() +
-              ", g=" +
-              g.to_string() +
-              ", n_units=" +
-              n_units.to_string() +
-              "); cluster SE is numerically unstable, try a different seed",
-            )
+      let (g0_r, g1_r, m_r) = cross_fit_irm(
+        ml_g,
+        ml_m,
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        folds_row,
+        self.propensity_clip,
+      )
+      g0 = g0_r
+      g1 = g1_r
+      m = m_r
+      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let psi_b : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        let u0 = self.data.y[i] - g0[i]
+        let u1 = self.data.y[i] - g1[i]
+        let m_i = m[i]
+        let one_minus_m = 1.0 - m_i
+        let d_over_m = self.data.d[i] * u1 / m_i
+        let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
+          u0 /
+          one_minus_m
+        psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
+        psi_a[i] = -1.0
+      }
+      let (t, s) = try
+        cluster_causal_param_and_se(
+          psi_a,
+          psi_b,
+          folds_row,
+          fold_n_units,
+          unit_rows,
+          unit_fold,
+          folds_u.length(),
+          self.n_folds,
+        )
+      catch {
+        _ => {
+          attempt = attempt + 1
+          (0.0, 0.0)
         }
+      }
+      theta_r = t
+      se_r = s
+      succeeded = true
+    }
+    if !succeeded {
+      abort(
+        "var_est_cluster: J-floor fired " +
+        max_attempts.to_string() +
+        " times for rep=" +
+        r.to_string() +
+        " (cluster SE numerically unstable across multiple fold splits, try a different seed or larger n_units)",
+      )
     }
     coefs[r] = theta_r
     ses[r] = se_r
