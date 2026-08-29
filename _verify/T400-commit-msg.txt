@@ -1,0 +1,53 @@
+Release 0.39.0: fuzz surface 11 (PLPR cluster-path stress)
+
+New fuzz surface that concentrates the search on the v0.34.0
+J-floor boundary region. Two sub-fuzzers:
+
+  11a (300 trials): small n_units (4-9) random panels across
+  all 4 panel approaches (cre_general / cre_normal / fd_exact /
+  wg_approx). Exercises the cluster helper stack
+  (build_row_unit_map, est_coef_cluster, var_est_cluster) on
+  tiny inputs where fold splits are nearly degenerate.
+
+  11b (75 trials): n_units=2, 2-fold kfold. Pathological
+  imbalanced fold sizes (1 unit per fold) — the worst case
+  for the v0.34.0 J-floor, since mean(psi_deriv) over a single
+  unit is just that unit's psi_deriv, which can land near
+  zero when the unit has near-canceling d and y terms.
+
+Invariant: every trial that completes must produce a finite
+coef and a positive se in [0, 1e3]. The J-floor defensive guard
+(v0.34.0) aborts the process on |J| < 1e-6; an abort ends the
+trial early. The 30-seed empirical validator
+(validate_cluster_iv_with_python.py) measures the J-floor
+rate end-to-end and reports the bucket distribution. Surface
+11 is the upstream search that the validator validates.
+
+Mutation-verified: a drop-one-j regression in var_est_cluster
+((g / (n * j * j)).sqrt() -> (g / (n * j)).sqrt()) is caught
+by surface 7 (general PLPR invariants) within the first
+trial. The drop-one-j bug causes the cluster SE to be larger
+than expected (j -> j*j denominator change inflates SE), which
+the surface-7 invariant catches as an out-of-range se.
+
+Tests: 286/286 PASS (unchanged: surface 11 is a cmd-fuzz
+surface, not a unit test) on native/wasm/wasm-gc/js with
+--deny-warn.
+
+QA battery run as release gate (T400):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.38.0 -> 0.39.0.
+- Unit: 286/286 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+
+Next up (v0.40.0): random restart on J-floor. The current
+J-floor behavior is process death (caller is expected to retry
+with a different seed). v0.40.0 will add a max_attempts
+parameter to the cluster fit APIs that retries internally
+with seed = seed + r for r in 1..max_attempts before giving up
+and aborting. This makes the public API more forgiving on
+pathological seeds without changing the underlying math.

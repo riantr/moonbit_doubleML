@@ -46,6 +46,19 @@
 //      filters on `z == 0.0` / `z == 1.0`, so Z must be
 //      binary): finite coef/se (no divide-by-zero in `var_est`),
 //      same-seed cluster refit bit-exact.
+//   11. PLPR cluster-path stress on pathological fold splits:
+//      small n_units (the J-floor defensive guard in
+//      `var_est_cluster` fires when mean(psi_deriv) lands below
+//      1e-6; small n_units makes this much more likely because
+//      the kfold over few units produces imbalanced fold sizes
+//      and psi_deriv tends to sum closer to zero). The fuzz
+//      surface runs N small-unit PLPR fits across all 4 panel
+//      approaches (cre_general / cre_normal / fd_exact /
+//      wg_approx) and asserts the v0.34.0 J-floor is a stable
+//      boundary (no panics, no NaN/Inf escaping). The v0.32.0
+//      validator's 30-seed empirical study found that ~3% of
+//      random DGP draws hit the J-floor; this surface
+//      concentrates the search on that ~3% region.
 
 ///|
 fn check(cond : Bool, msg : String) -> Unit {
@@ -735,6 +748,78 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
+fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int) -> Unit {
+  // Small n_units (4-9) is where the v0.34.0 J-floor fires most
+  // often: with so few units, the kfold over 2 folds produces
+  // imbalanced fold sizes and mean(psi_deriv) is more likely to
+  // land near zero. The v0.32.0 validator's 30-seed empirical
+  // study found that ~3% of random DGP draws hit the J-floor;
+  // this surface concentrates the search on that ~3% region.
+  let approaches = ["cre_general", "cre_normal", "fd_exact", "wg_approx"]
+  for trial = 0; trial < trials; trial = trial + 1 {
+    let n_units = rng.int(limit=6) + 4
+    let n_periods = rng.int(limit=3) + 2
+    let approach = approaches[rng.int(limit=4)]
+    let panel = fuzz_plpr_panel(rng, n_units, n_periods)
+    let seed = rng.int(limit=100_000)
+    let model = @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+    // Invariant 1: PLPR clustered fit must always produce finite
+    // coef and a positive se. The J-floor defensive guard
+    // (v0.34.0) aborts the process if mean(psi_deriv) lands below
+    // 1e-6; from the public API's perspective this is a process
+    // death, NOT a finite result. So a successful return here
+    // means the fold split is fine, and we expect finite finite
+    // positive-se. (Surface 7 covers general PLPR with larger
+    // n_units; this surface targets the J-floor boundary.)
+    let th = model.coef()
+    let se = model.se()
+    check(
+      th.abs() < 1.0e6 && se > 0.0 && se < 1.0e3,
+      "plpr_cluster_stress \{approach} (n_units=\{n_units}, n_periods=\{n_periods}, trial=\{trial}): finite coef/positive se",
+    )
+    // Invariant 2: predictions_l has the right length.
+    let expected_rows = if approach == "fd_exact" {
+      n_units * (n_periods - 1)
+    } else {
+      n_units * n_periods
+    }
+    check(
+      model.predictions_l().length() == expected_rows,
+      "plpr_cluster_stress \{approach} (n_units=\{n_units}, n_periods=\{n_periods}, trial=\{trial}): transformed row count",
+    )
+  }
+  // ----- 11b: n_units=2, 2-fold kfold -----
+  for trial = 0; trial < trials / 4; trial = trial + 1 {
+    let n_units = 2
+    let n_periods = rng.int(limit=3) + 3
+    let approach = approaches[rng.int(limit=4)]
+    let panel = fuzz_plpr_panel(rng, n_units, n_periods)
+    let seed = rng.int(limit=100_000)
+    let model = @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+    let th = model.coef()
+    let se = model.se()
+    check(
+      th.abs() < 1.0e6 && se > 0.0 && se < 1.0e3,
+      "plpr_cluster_stress 11b \{approach} (n_units=\{n_units}, n_periods=\{n_periods}, trial=\{trial}): finite coef/positive se on 2-fold imbalanced split",
+    )
+  }
+  // Note: the v0.34.0 J-floor defensive guard does NOT produce a
+  // finite result on the small-unit panels that the surface
+  // targets; it aborts the process. That's by design (callers
+  // are expected to retry with a different seed on the surface
+  // API path). From the fuzzer's perspective, an abort means
+  // the trial dies; the fuzzer reports the trial number at
+  // the abort. The invariant checks above are for trials that
+  // *complete* — they assert the SE is in [0, 1e3], which
+  // catches any regression that lets a NaN/Inf escape the
+  // J-floor guard. The 30-seed empirical validator
+  // (`validate_cluster_iv_with_python.py`) measures the
+  // J-floor rate end-to-end and reports the bucket
+  // distribution; this fuzz surface is the upstream search
+  // that the validator validates.
+}
+
+///|
 fn main {
   let trials = 300
   println("=== mavis/dml fuzz harness (\{trials} trials per surface) ===")
@@ -752,35 +837,39 @@ fn main {
   let s8 = master.int(limit=1_000_000)
   let s9 = master.int(limit=1_000_000)
   let s10 = master.int(limit=1_000_000)
-  println("[1/10] p_adjust family ...")
+  let s11 = master.int(limit=1_000_000)
+  println("[1/11] p_adjust family ...")
   fuzz_padjust(@dml.chacha8_rng(s1), trials)
   println("      OK")
-  println("[2/10] kfold partition invariants ...")
+  println("[2/11] kfold partition invariants ...")
   fuzz_kfold(@dml.chacha8_rng(s2), trials)
   println("      OK")
-  println("[3/10] Matrix matmul associativity ...")
+  println("[3/11] Matrix matmul associativity ...")
   fuzz_matmul(@dml.chacha8_rng(s3), trials)
   println("      OK")
-  println("[4/10] LinearRegression normal-equations invariants ...")
+  println("[4/11] LinearRegression normal-equations invariants ...")
   fuzz_linear_exact(@dml.chacha8_rng(s4), trials)
   println("      OK")
-  println("[5/10] norm_ppf / norm_cdf inverse sweep ...")
+  println("[5/11] norm_ppf / norm_cdf inverse sweep ...")
   fuzz_norm_inverse(@dml.chacha8_rng(s5), trials)
   println("      OK")
-  println("[6/10] romano_wolf_p_adjust range/length ...")
+  println("[6/11] romano_wolf_p_adjust range/length ...")
   fuzz_romano_wolf(@dml.chacha8_rng(s6), trials)
   println("      OK")
-  println("[7/10] DoubleMLPLPR clustered fit invariants ...")
+  println("[7/11] DoubleMLPLPR clustered fit invariants ...")
   fuzz_plpr(@dml.chacha8_rng(s7), trials)
   println("      OK")
-  println("[8/10] DoubleMLLPLR nonlinear fit invariants ...")
+  println("[8/11] DoubleMLLPLR nonlinear fit invariants ...")
   fuzz_lplr(@dml.chacha8_rng(s8), trials)
   println("      OK")
-  println("[9/10] DoubleMLPLR cluster-robust vs row-level ...")
+  println("[9/11] DoubleMLPLR cluster-robust vs row-level ...")
   fuzz_cluster_plr(@dml.chacha8_rng(s9), trials)
   println("      OK")
-  println("[10/10] DoubleMLPLIV/IIVM cluster-robust fits ...")
+  println("[10/11] DoubleMLPLIV/IIVM cluster-robust fits ...")
   fuzz_cluster_iv(@dml.chacha8_rng(s10), trials)
+  println("      OK")
+  println("[11/11] DoubleMLPLPR cluster-path stress (small n_units) ...")
+  fuzz_plpr_cluster_stress(@dml.chacha8_rng(s11), trials)
   println("      OK")
   println("")
   println("ALL FUZZ SURFACES PASSED (no invariant violations)")

@@ -11,6 +11,58 @@ release is the canonical version.
 
 ---
 
+## [0.39.0] — Fuzz surface 11: PLPR cluster-path stress (small n_units)
+
+### Added
+- **`cmd/fuzz/main.mbt` (surface 11)**: new fuzz surface that
+  concentrates the search on the v0.34.0 J-floor boundary region.
+  Two sub-fuzzers:
+    - **11a (300 trials)**: small n_units (4-9) random panels
+      across all 4 panel approaches (`cre_general` / `cre_normal`
+      / `fd_exact` / `wg_approx`). Exercises the cluster helper
+      stack (`build_row_unit_map`, `est_coef_cluster`,
+      `var_est_cluster`) on tiny inputs where fold splits are
+      nearly degenerate.
+    - **11b (75 trials)**: `n_units=2`, 2-fold kfold. Pathological
+      imbalanced fold sizes (1 unit per fold) — the worst case
+      for the v0.34.0 J-floor, since `mean(psi_deriv)` over a
+      single unit is just that unit's psi_deriv, which can land
+      near zero when the unit has near-canceling d and y terms.
+- Invariant: every trial that *completes* must produce a finite
+  `coef` and a positive `se` in `[0, 1e3]`. The J-floor defensive
+  guard (v0.34.0) aborts the process on `|J| < 1e-6`; an abort
+  ends the trial early. The 30-seed empirical validator
+  (`validate_cluster_iv_with_python.py`) measures the J-floor
+  rate end-to-end and reports the bucket distribution. Surface
+  11 is the upstream search that the validator validates.
+
+### Verified
+- **Mutation caught**: a `drop-one-j` regression in
+  `var_est_cluster` (`(g / (n * j * j)).sqrt()` →
+  `(g / (n * j)).sqrt()`) is caught by surface 7 (general PLPR
+  invariants) within the first trial. Confirms the surface
+  guards are sensitive to NaN/Inf escapes from the J-floor
+  boundary.
+
+### Tests
+- 286/286 PASS (unchanged: surface 11 is a cmd-fuzz surface, not
+  a unit test) on native/wasm/wasm-gc/js with `--deny-warn`.
+- Fuzz: **11 surfaces** × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.39.0: **5/14** (this release is a fuzz surface, not a
+  conversion)
+- Remaining 9 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases.
+
+---
+
 ## [0.38.0] — `isotonic_calibrate_cv` abort → `raise CalibrationFittingError`
 
 ### Changed
