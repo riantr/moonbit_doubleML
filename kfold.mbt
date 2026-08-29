@@ -128,6 +128,26 @@ pub suberror BracketSignError {
 }
 
 ///|
+/// Error type raised by `DoubleMLDIDData::new` when the
+/// treatment vector `d` is non-binary. The default port
+/// supports only the binary `d ∈ {0, 1}` convention (only
+/// the switchers; the multi-valued `{-1, 0, 1}` Sant'Anna &
+/// Zhao 2020 convention is not implemented). The payload
+/// is the index of the first non-binary entry, which the
+/// caller can use to log a meaningful diagnostic.
+///
+/// Added in v0.43.0 to convert the previous `abort()` call
+/// into a testable error path. The pre-v0.43.0 abort was
+/// silently skipped on native/wasm-gc via the `panic_*`
+/// driver behavior (see `_verify/WHITEBOX_T_REPORT.md`).
+/// The new `did_data_raises_on_non_binary_treatment` test
+/// constructs a `DoubleMLDIDData` with a non-binary `d`
+/// entry and asserts the error fires.
+pub suberror DIDDataError {
+  NonBinaryTreatment(Int) // (first non-binary index)
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {

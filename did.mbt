@@ -12,11 +12,23 @@ pub struct DoubleMLDIDData {
 } derive(Debug)
 
 ///|
+/// Returns `DoubleMLDIDData raise DIDDataError`: the v0.43.0
+/// conversion replaces the previous `abort()` call with
+/// `raise DIDDataError::NonBinaryTreatment(i)` so the
+/// non-binary-`d` path becomes directly testable. Callers
+/// that want the pre-v0.43.0 process-death behavior should
+/// catch the error and re-abort (this is what
+/// `DoubleMLDIDBinaryData::new` does); callers that want to
+/// surface the error to downstream consumers should propagate
+/// via `?`. The `require` checks on `x.nrows` against `y.length`
+/// and `d.length` are unchanged and still abort the process
+/// (they are central `require` checks; refactoring them is
+/// out of scope for this surgical release).
 pub fn DoubleMLDIDData::new(
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
-) -> DoubleMLDIDData {
+) -> DoubleMLDIDData raise DIDDataError {
   require(x.nrows == y.length())
   require(x.nrows == d.length())
   // Validate that `d` is binary `{0, 1}` (the default port supports
@@ -24,7 +36,7 @@ pub fn DoubleMLDIDData::new(
   // convention is not implemented).
   for i = 0; i < d.length(); i = i + 1 {
     if d[i] != 0.0 && d[i] != 1.0 {
-      abort("DoubleMLDIDData.d must be binary {0, 1}")
+      raise DIDDataError::NonBinaryTreatment(i)
     }
   }
   { x, y, d }

@@ -1,0 +1,66 @@
+Release 0.43.0: DoubleMLDIDData::new binary-check abort -> raise DIDDataError
+
+Continuing the surgical abort -> raise conversion pattern from
+v0.35.0-v0.42.0. This release tackles the non-binary-treatment
+defensive guard in DoubleMLDIDData::new (did.mbt:27).
+
+  - kfold.mbt: declare pub suberror DIDDataError with
+    NonBinaryTreatment(Int) variant (carries the first
+    non-binary index as payload).
+  - did.mbt::DoubleMLDIDData::new: signature
+    `DoubleMLDIDData` -> `DoubleMLDIDData raise DIDDataError`.
+    The `abort("DoubleMLDIDData.d must be binary {0, 1}")` is
+    replaced with `raise DIDDataError::NonBinaryTreatment(i)`.
+  - 3 prod callers wrap in try/catch/re-abort to preserve
+    pre-v0.43.0 process-death behavior:
+    - did_binary.mbt:343 (`DoubleMLDIDBinary::new`, the
+      placeholder `DoubleMLDIDData` with all-zero `d`)
+    - did_binary.mbt:507 (`DoubleMLDIDBinary::fit`, the
+      wide-format `d` from `preprocess_did_binary`)
+    - cmd/main/main.mbt:232 (the cmd demo)
+
+New regression test (did_test.mbt):
+  - did_data_raises_on_non_binary_treatment: calls
+    `DoubleMLDIDData::new` directly with a 3-row
+    `d = [0.0, 0.5, 1.0]` (entry 1 is non-binary) and
+    asserts the error fires with `i == 1`. Uses
+    `try ... catch ... noraise { fail(...) }` pattern.
+    Mutation-verified: removing the validation loop
+    (replacing the `if d[i] != 0.0 && d[i] != 1.0 { raise ... }`
+    block with `if false { raise ... }`) makes the test
+    fail with the expected diagnostic.
+
+Public API stability:
+  DoubleMLDIDData::new is the only signature change. All
+  callers that previously got process-death now get the
+  same process-death via the try/catch/re-abort pattern,
+  so the externally observable behavior is identical.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14
+  v0.41.0: 7/14
+  v0.42.0: 8/14
+  v0.43.0: 9/14 (this release)
+  Remaining 5 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, check.mbt:11) targeted for future
+  releases. The next candidate (v0.44.0) is
+  ps_processor.mbt:35 (cv_calibration=true requires isotonic)
+  or plpr.mbt:447 (DoubleMLPLPR::new approach) — both are
+  public constructor cascades.
+
+Tests: 292/292 PASS (+1 vs 0.42.0) on native/wasm/wasm-gc/js
+with --deny-warn.
+
+QA battery run as release gate (T440):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.42.0 -> 0.43.0.
+- Unit: 292/292 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+- Mutation: new test verified to catch validation-removed mutations.

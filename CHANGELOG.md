@@ -11,6 +11,69 @@ release is the canonical version.
 
 ---
 
+## [0.43.0] — `DoubleMLDIDData::new` binary-check abort → `raise DIDDataError`
+
+### Changed
+- **`did.mbt::DoubleMLDIDData::new`**: signature changed from
+  `DoubleMLDIDData` to `DoubleMLDIDData raise DIDDataError`.
+  The non-binary-treatment defensive guard (`abort`) is
+  replaced with `raise DIDDataError::NonBinaryTreatment(i)`,
+  carrying the index of the first non-binary entry as payload.
+- **3 callers wrap in try/catch/re-abort**:
+  `DoubleMLDIDBinary::new` (did_binary.mbt:343, the
+  placeholder `DoubleMLDIDData` with all-zero `d`),
+  `DoubleMLDIDBinary::fit` (did_binary.mbt:507, the
+  wide-format `d` from `preprocess_did_binary`), and the
+  `cmd/main` demo (cmd/main/main.mbt:232). Each catches
+  `DIDDataError::NonBinaryTreatment(i)` and aborts with the
+  pre-v0.43.0 diagnostic message
+  ("DoubleMLDIDData.d must be binary {0, 1} (index ...)")
+  to preserve the process-death behavior.
+- **`kfold.mbt`**: declared `pub suberror DIDDataError`
+  with `NonBinaryTreatment(Int)` variant.
+
+### Added
+- **`did_data_raises_on_non_binary_treatment`** test
+  (did_test.mbt): regression test for the v0.43.0 abort
+  → raise conversion in `DoubleMLDIDData::new`. The
+  previous `panic_*` driver skipped this test path on
+  native/wasm-gc (see `_verify/WHITEBOX_T_REPORT.md`).
+  The new test calls `DoubleMLDIDData::new` directly with
+  a 3-row `d = [0.0, 0.5, 1.0]` (entry 1 is non-binary)
+  and asserts the error fires with `i == 1`. Uses the
+  `try ... catch ... noraise { fail(...) }` pattern.
+  Mutation-verified: removing the validation loop makes
+  the test fail with "expected DoubleMLDIDData::new to
+  raise DIDDataError::NonBinaryTreatment on d=[0,0.5,1]".
+
+### Public API stability
+- `DoubleMLDIDData::new` is the only signature change.
+  All callers that previously got process-death now get
+  the same process-death via the try/catch/re-abort
+  pattern, so the externally observable behavior is
+  identical.
+
+### Tests
+- 292/292 PASS (+1 vs 0.42.0) on native/wasm/wasm-gc/js
+  with `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS (including `validate_did_with_python.py`
+  and `validate_did_binary_with_python.py`).
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: 7/14 (array_min + array_max empty-array)
+- v0.42.0: 8/14 (solve_pq upper-bracket)
+- v0.43.0: **9/14** (DoubleMLDIDData non-binary-treatment)
+- Remaining 5 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, check.mbt:11) targeted for future
+  releases.
+
+---
+
 ## [0.42.0] — `solve_pq` upper-bracket abort → `raise BracketSignError`
 
 ### Changed

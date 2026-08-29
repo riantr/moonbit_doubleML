@@ -339,12 +339,22 @@ pub fn DoubleMLDIDBinary::new(
     // `DoubleMLDID::new` precondition `n_folds <= n_obs` is not
     // tripped at construction time (`n_folds` defaults to 2).
     // The dummy is overwritten by the real inner model on `fit()`.
+    // v0.43.0: wrap DoubleMLDIDData::new in try/catch/re-abort to
+    // preserve pre-v0.43.0 process-death behavior. The dummy
+    // data is valid binary d, so the catch arm is unreachable in
+    // practice; it exists to satisfy the `raise DIDDataError`
+    // signature on DoubleMLDIDData::new.
     inner: DoubleMLDID::new(
-      DoubleMLDIDData::new(
-        Matrix::zeros(4, data.n_features()),
-        [0.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-      ),
+      try
+        DoubleMLDIDData::new(
+          Matrix::zeros(4, data.n_features()),
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+        )
+      catch {
+        DIDDataError::NonBinaryTreatment(i) =>
+          abort("DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")")
+      },
       n_folds~,
       n_rep~,
       seed~,
@@ -504,7 +514,16 @@ pub fn DoubleMLDIDBinary::fit(
     self.control_group,
     self.anticipation_periods,
   )
-  let wide_data = DoubleMLDIDData::new(wide.x, wide.y, wide.d)
+  // v0.43.0: wrap in try/catch/re-abort to preserve pre-v0.43.0
+  // process-death behavior. The `wide.d` output of
+  // `preprocess_did_binary` is normally binary (only the
+  // switchers); the catch arm is a defense-in-depth measure.
+  let wide_data = try
+    DoubleMLDIDData::new(wide.x, wide.y, wide.d)
+  catch {
+    DIDDataError::NonBinaryTreatment(i) =>
+      abort("DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")")
+  }
   // v0.10.0: build the wide-format strata as
   // `G_indicator + 2 * t_indicator` (matching upstream's
   // `self._strata = ...`), so each fold balances the (G, T) cells.

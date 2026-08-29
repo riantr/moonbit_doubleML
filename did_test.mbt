@@ -84,3 +84,30 @@ test "did_fitted_has_predictions" {
   inspect(fitted.predictions_g1().length(), content="200")
   inspect(fitted.predictions_m().length(), content="200")
 }
+
+///|
+/// Regression test for the v0.43.0 abort → raise conversion in
+/// `DoubleMLDIDData::new`. The previous
+/// `abort("DoubleMLDIDData.d must be binary {0, 1}")` was
+/// silently skipped on native/wasm-gc (MoonBit's `panic_*`
+/// driver skips panic-prefixed tests; see
+/// `_verify/WHITEBOX_T_REPORT.md`). The new test calls
+/// `DoubleMLDIDData::new` directly with a non-binary `d` entry
+/// and asserts the error fires. The `noraise` branch fails the
+/// test if no error fires, the `catch` branch asserts the
+/// exact variant + payload (catches any future mutation
+/// that strips the variant identity or the index).
+test "did_data_raises_on_non_binary_treatment" {
+  // 3-row dataset; entry 1 is 0.5 (non-binary).
+  let x = Matrix::zeros(3, 1)
+  let y : Array[Double] = [0.0, 0.0, 0.0]
+  let d : Array[Double] = [0.0, 0.5, 1.0]
+  try
+    ignore(DoubleMLDIDData::new(x, y, d))
+  catch {
+    DIDDataError::NonBinaryTreatment(i) => inspect(i, content="1")
+  } noraise {
+    _ =>
+      fail("expected DoubleMLDIDData::new to raise DIDDataError::NonBinaryTreatment on d=[0,0.5,1]")
+  }
+}
