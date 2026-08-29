@@ -12,7 +12,7 @@
 /// cross-validated calibration (matches upstream
 /// `sklearn.model_selection.cross_val_predict`); pass `cv` to
 /// `PSProcessor::adjust_ps` to control the fold partition.
-pub struct PSProcessorConfig {
+pub(all) struct PSProcessorConfig {
   clipping_threshold : Double
   extreme_threshold : Double
   calibration_method : String
@@ -116,17 +116,18 @@ pub fn PSProcessor::adjust_ps(
   require(ps.length() == treatment.length())
   let n = ps.length()
   require(n > 0)
-  // Calibration step.
-  let calibrated = match self.config.calibration_method {
-    "none" => ps
-    "isotonic" =>
-      if self.config.cv_calibration {
-        isotonic_calibrate_cv(ps, treatment, cv)
-      } else {
-        let (sorted_x, y_hat) = fit_isotonic(ps, treatment)
-        predict_isotonic_from_fit(ps, sorted_x, y_hat)
-      }
-    _ => abort("unknown calibration_method (set in PSProcessorConfig::new)")
+  // Calibration step. v0.37.0: extracted into apply_calibration
+  // helper that raises InvalidCalibrationError on unknown
+  // calibration method; catch and re-abort to preserve pre-v0.37.0
+  // process-death behavior.
+  let calibrated = try
+    apply_calibration(self.config, ps, treatment, cv)
+  catch {
+    InvalidCalibrationError::UnknownMethod(m) =>
+      abort(
+        "unknown calibration_method (set in PSProcessorConfig::new): " +
+        m,
+      )
   }
   // Clip to [eps, 1 - eps].
   let lo = self.config.clipping_threshold
@@ -143,6 +144,40 @@ pub fn PSProcessor::adjust_ps(
     }
   }
   out
+}
+
+///|
+/// Apply the configured calibration method to a propensity-score
+/// vector. Returns `Array[Double] raise InvalidCalibrationError`:
+/// the v0.37.0 extraction lifts the previous `abort()` call from
+/// `PSProcessor::adjust_ps` into this helper so the unknown-method
+/// path becomes directly testable. `PSProcessor::adjust_ps` wraps
+/// the call in `try ... catch { ... => abort(...) }` to preserve
+/// pre-v0.37.0 process-death behavior.
+///
+/// Note: `PSProcessorConfig::new` also has a `require` check on
+/// `calibration_method` (only `"none"` and `"isotonic"` are
+/// allowed). That check normally fires first; this helper's
+/// raise only fires if a config is constructed directly (bypassing
+/// `new`), which the new `ps_processor_adjust_ps_raises_unknown_method`
+/// test does deliberately.
+pub fn apply_calibration(
+  config : PSProcessorConfig,
+  ps : Array[Double],
+  treatment : Array[Double],
+  cv : Array[(Array[Int], Array[Int])]?,
+) -> Array[Double] raise InvalidCalibrationError {
+  match config.calibration_method {
+    "none" => ps
+    "isotonic" =>
+      if config.cv_calibration {
+        isotonic_calibrate_cv(ps, treatment, cv)
+      } else {
+        let (sorted_x, y_hat) = fit_isotonic(ps, treatment)
+        predict_isotonic_from_fit(ps, sorted_x, y_hat)
+      }
+    _ => raise InvalidCalibrationError::UnknownMethod(config.calibration_method)
+  }
 }
 
 // ---------------------------------------------------------------------------

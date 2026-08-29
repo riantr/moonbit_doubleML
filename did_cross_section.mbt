@@ -931,8 +931,20 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
   )
   require(n_rep_boot >= 2)
   let n = self.data.n_obs()
-  // Draw weights. Shape: (n_rep_boot, n_obs).
-  let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed)
+  // Draw weights. Shape: (n_rep_boot, n_obs). v0.37.0:
+  // draw_bootstrap_weights raises BootstrapMethodError on an
+  // unknown method; catch and re-abort to preserve pre-v0.37.0
+  // process-death behavior. Same defense-in-depth note as
+  // did_multi::bootstrap.
+  let weights = try
+    draw_bootstrap_weights(method_name, n_rep_boot, n, seed)
+  catch {
+    BootstrapMethodError::UnknownMethod(m) =>
+      abort(
+        "draw_bootstrap_weights: unknown method (set in DoubleMLDIDCrossSection::bootstrap): " +
+        m,
+      )
+  }
   // Compute the per-observation influence function
   // `psi[i] = psi_a[i] + theta * psi_b[i]` once.
   let psi : Array[Double] = Array::make(n, 0.0)

@@ -453,11 +453,24 @@ test "panic_bootstrap_before_fit" {
 }
 
 ///|
-/// `bootstrap(method_name="invalid")` aborts.
-test "panic_bootstrap_invalid_method" {
-  let data = build_bootstrap_dgp()
-  let fitted = DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
-  let _ = fitted.bootstrap(method_name="invalid")
+/// Regression test for the v0.37.0 abort → raise conversion in
+/// `draw_bootstrap_weights`. The function's `_ => abort` fallback
+/// for unknown bootstrap methods was previously unreachable from
+/// the public `bootstrap` API (because `bootstrap`'s `require`
+/// catches first); this test calls `draw_bootstrap_weights`
+/// directly with an invalid method to reach the fallback. The
+/// `noraise` branch fails the test if no error fires, the `catch`
+/// branch asserts the exact variant + payload (catches any future
+/// mutation that strips the payload).
+test "draw_bootstrap_weights_raises_unknown_method" {
+  try
+    draw_bootstrap_weights("invalid_method", 10, 5, 42)
+  catch {
+    BootstrapMethodError::UnknownMethod(m) => inspect(m, content="invalid_method")
+  } noraise {
+    _ =>
+      fail("expected draw_bootstrap_weights to raise UnknownMethod on invalid_method")
+  }
 }
 
 ///|

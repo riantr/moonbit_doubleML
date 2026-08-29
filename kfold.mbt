@@ -32,6 +32,45 @@ pub suberror ClusterDataError {
 }
 
 ///|
+/// Error type raised by `draw_bootstrap_weights` when the
+/// requested bootstrap method is not one of the supported
+/// options (`"normal"`, `"Bayes"`, `"wild"`). The payload is
+/// the unknown method name, which the caller can use to log
+/// or surface a meaningful diagnostic.
+///
+/// Added in v0.37.0 to convert the previous `abort()` call
+/// into a testable error path. The pre-v0.37.0
+/// `panic_bootstrap_invalid_method` test only exercised the
+/// `require` check in `DoubleMLDIDMulti::bootstrap` (which
+/// fires before the `_ => abort` fallback) — the test was
+/// silently skipped on native/wasm-gc. The new test
+/// `draw_bootstrap_weights_raises_unknown_method` calls
+/// `draw_bootstrap_weights` directly with an invalid method,
+/// exercising the previously-unreachable `_ => abort` path.
+pub suberror BootstrapMethodError {
+  UnknownMethod(String) // (method_name)
+}
+
+///|
+/// Error type raised by `apply_calibration` (extracted from
+/// `PSProcessor::adjust_ps` in v0.37.0) when the configured
+/// calibration method is not one of the supported options
+/// (`"none"`, `"isotonic"`). The payload is the unknown method
+/// name, which the caller can use to log or surface a
+/// meaningful diagnostic.
+///
+/// Added in v0.37.0 to convert the previous `abort()` call
+/// inside `adjust_ps` into a testable error path. The
+/// `panic_*` test driver limitation had not been observed for
+/// this path because no test exercised it; the new test
+/// `ps_processor_adjust_ps_raises_unknown_method` constructs
+/// a config directly (bypassing `PSProcessorConfig::new`'s
+/// `require` check) to reach the previously-unreachable abort.
+pub suberror InvalidCalibrationError {
+  UnknownMethod(String) // (calibration_method)
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {

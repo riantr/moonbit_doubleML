@@ -343,3 +343,38 @@ test "ps_processor_isotonic_no_cv_preserves_pava_output" {
     inspect((out[i] - 0.5).abs() < 1.0e-12, content="true")
   }
 }
+
+///|
+/// Regression test for the v0.37.0 abort → raise conversion in
+/// `apply_calibration` (extracted from `PSProcessor::adjust_ps`).
+///
+/// The fallback `_ => abort` for unknown calibration methods was
+/// previously unreachable from the public `PSProcessorConfig::new`
+/// API (because `new`'s `require` catches first). This test
+/// constructs a `PSProcessorConfig` directly (bypassing `new`'s
+/// `require`) and calls the internal `apply_calibration` helper
+/// to reach the fallback. The `noraise` branch fails the test if
+/// no error fires, the `catch` branch asserts the exact variant
+/// + payload (catches any future mutation that strips the payload).
+test "apply_calibration_raises_unknown_method" {
+  // Construct config directly to bypass PSProcessorConfig::new's
+  // require check (which would catch "bogus_method" first).
+  let cfg : PSProcessorConfig = {
+    clipping_threshold: 0.01,
+    extreme_threshold: 1.0e-12,
+    calibration_method: "bogus_method",
+    cv_calibration: false,
+  }
+  let ps = [0.5, 0.1, 0.9, 0.2, 0.7]
+  let treatment = [0.0, 1.0, 0.0, 1.0, 0.0]
+  try
+    ignore(apply_calibration(cfg, ps, treatment, None))
+  catch {
+    InvalidCalibrationError::UnknownMethod(m) => inspect(m, content="bogus_method")
+  } noraise {
+    _ =>
+      fail(
+        "expected apply_calibration to raise InvalidCalibrationError::UnknownMethod on bogus_method",
+      )
+  }
+}

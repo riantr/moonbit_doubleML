@@ -11,6 +11,102 @@ release is the canonical version.
 
 ---
 
+## [0.37.0] — Two more defensive aborts → raise conversions
+
+### Changed
+- **`did_multi.mbt::draw_bootstrap_weights`**: signature changed
+  from `Array[Double]` to `Array[Double] raise BootstrapMethodError`.
+  The unknown-method fallback (`_ => abort`) is replaced with
+  `raise BootstrapMethodError::UnknownMethod(method_name)`.
+- **`ps_processor.mbt`**: extracted the calibration match from
+  `PSProcessor::adjust_ps` into a new public helper
+  `apply_calibration(config, ps, treatment, cv)` that returns
+  `Array[Double] raise InvalidCalibrationError`. The unknown-
+  method fallback (`_ => abort`) is replaced with
+  `raise InvalidCalibrationError::UnknownMethod(config.calibration_method)`.
+  `PSProcessorConfig` is now declared `pub(all)` (was `pub`) so
+  the regression test can construct a config directly with an
+  invalid `calibration_method` (bypassing `PSProcessorConfig::new`'s
+  `require` check).
+
+### Fixed
+- **Third silent `panic_*` test path converted**: the previous
+  `panic_bootstrap_invalid_method` test (did_multi_test.mbt) only
+  exercised the `require` check inside `bootstrap()` (which
+  catches invalid methods BEFORE the `_ => abort` fallback in
+  `draw_bootstrap_weights`). The test was silently skipped on
+  native/wasm-gc. Replaced with
+  `draw_bootstrap_weights_raises_unknown_method`, which calls
+  `draw_bootstrap_weights` directly with an invalid method to
+  reach the previously-unreachable fallback.
+
+### Added
+- **`apply_calibration_raises_unknown_method`** test
+  (ps_processor_test.mbt): regression test for the v0.37.0
+  calibration fallback. Constructs a `PSProcessorConfig`
+  directly (bypassing `new`'s `require`) and calls
+  `apply_calibration` to reach the fallback.
+
+### Skipped (dead-code aborts)
+- **`did_multi.mbt:558` (p_adjust unknown-method fallback)**:
+  skipped because the `require` at lines 532-545 catches the
+  same set of methods that the match covers. The abort is
+  unreachable from the public API. Converting it would add no
+  test value (the existing `panic_p_adjust_unknown_method`
+  test only exercises the `require` path).
+- **Future candidates with the same dead-code pattern**:
+  `did_multi.mbt:1145` (`draw_bootstrap_weights`) is reachable
+  via direct calls (which `draw_bootstrap_weights_raises_unknown_method`
+  exercises). Other candidates with require-before-abort pattern:
+  `plpr.mbt:447` (DoubleMLPLPR::new approach), `ps_processor.mbt:35`
+  (PSProcessorConfig::new cv_calibration), `did.mbt:27`
+  (DoubleMLDIDData::new binary check), `quantile.mbt:4/18`
+  (array_min/array_max empty array). These need require removal
+  (cascading to callers) before the abort becomes reachable.
+
+### Public API stability
+- `DoubleMLDIDMulti::bootstrap` and `DoubleMLDIDCrossSection::bootstrap`
+  and `PSProcessor::adjust_ps` signatures are unchanged. Internally,
+  every `draw_bootstrap_weights(...)` / `apply_calibration(...)`
+  call site is wrapped in `try ... catch { ... => abort(...) }`
+  to preserve pre-v0.37.0 process-death behavior. From the outside,
+  the API behaves identically.
+- `PSProcessorConfig` is now `pub(all)` instead of `pub`. Field
+  access was already implicit (MoonBit makes struct fields public
+  by default in `pub struct`); the only practical difference is
+  that test code can now construct a config directly via struct
+  literal syntax. Existing callers that go through
+  `PSProcessorConfig::new` continue to work as before.
+
+### Tests
+- 285/285 PASS (+1 vs 0.36.0: removed `panic_bootstrap_invalid_method`,
+  added `draw_bootstrap_weights_raises_unknown_method` and
+  `apply_calibration_raises_unknown_method`) on native/wasm/wasm-gc/js
+  with `--deny-warn`.
+- Mutation-verified:
+  - `draw_bootstrap_weights_raises_unknown_method`: silencing
+    the raise makes the test fail with "expected
+    draw_bootstrap_weights to raise UnknownMethod on invalid_method".
+  - `apply_calibration_raises_unknown_method`: silencing the
+    raise makes the test fail with "expected apply_calibration
+    to raise InvalidCalibrationError::UnknownMethod on bogus_method".
+- Fuzz: 10 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: **4/14** (draw_bootstrap_weights unknown-method +
+  apply_calibration unknown-method)
+- Remaining 10 (did_multi.mbt:558, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases. The
+  dead-code skips (did_multi.mbt:558 and the require-before-abort
+  pattern candidates) require require-removal refactors that
+  cascade to many callers.
+
+---
+
 ## [0.36.0] — `build_row_unit_map` abort → `raise ClusterDataError`
 
 ### Changed

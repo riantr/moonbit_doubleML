@@ -1,0 +1,95 @@
+Release 0.37.0: draw_bootstrap_weights + apply_calibration abort -> raise
+
+Continuing the surgical abort -> raise conversion pattern from
+v0.35.0/v0.36.0 (var_est_cluster J-floor + build_row_unit_map
+missing-unit). This release tackles two more defensive aborts in
+the DID/bootstrap and PSProcessor stacks.
+
+  - kfold.mbt: declare two more suberror types,
+    `BootstrapMethodError::UnknownMethod(String)` and
+    `InvalidCalibrationError::UnknownMethod(String)`. Sits
+    alongside v0.35.0's `VarEstClusterError` and v0.36.0's
+    `ClusterDataError`.
+
+  - did_multi.mbt::draw_bootstrap_weights: signature
+    `Array[Double]` -> `Array[Double] raise BootstrapMethodError`.
+    The unknown-method fallback aborts with the method_name.
+
+  - did_multi.mbt and did_cross_section.mbt: 2 prod callers
+    (`DoubleMLDIDMulti::bootstrap` and
+    `DoubleMLDIDCrossSection::bootstrap`) wrap each call in
+    `try ... catch { BootstrapMethodError::UnknownMethod(m) =>
+    abort("..." + m) }` to preserve pre-v0.37.0 behavior.
+
+  - ps_processor.mbt: extracted calibration match into a new
+    public helper `apply_calibration(config, ps, treatment, cv)`
+    that returns `Array[Double] raise InvalidCalibrationError`.
+    `PSProcessor::adjust_ps` wraps the call in `try ... catch
+    { InvalidCalibrationError::UnknownMethod(m) => abort(...) }`.
+    `PSProcessorConfig` is now `pub(all)` (was `pub`) so the
+    regression test can construct a config directly with an
+    invalid `calibration_method` (bypassing
+    `PSProcessorConfig::new`'s `require` check that would catch
+    it first).
+
+  - Test conversions:
+    - `panic_bootstrap_invalid_method` -> removed (it only
+      exercised the `require` inside `bootstrap()`, not the
+      `_ => abort` fallback in `draw_bootstrap_weights`). Replaced
+      with `draw_bootstrap_weights_raises_unknown_method` which
+      calls `draw_bootstrap_weights` directly with an invalid
+      method, reaching the previously-unreachable fallback.
+    - New `apply_calibration_raises_unknown_method` regression
+      test for the calibration match fallback.
+
+  - Mutation-verified:
+    - `draw_bootstrap_weights_raises_unknown_method`: silencing
+      the raise (`_ => raise ...` -> `_ => { let _ = m; 0.0 }`)
+      makes the test fail with the expected diagnostic.
+    - `apply_calibration_raises_unknown_method`: same.
+
+Skipped (dead code):
+  - `did_multi.mbt:558` (`p_adjust` unknown-method fallback):
+    the `require` at lines 532-545 catches the same set of
+    methods that the match covers, so the abort is unreachable
+    from the public API. Converting it adds no test value (the
+    existing `panic_p_adjust_unknown_method` test only exercises
+    the `require` path).
+  - Future dead-code candidates with require-before-abort
+    pattern: `plpr.mbt:447` (DoubleMLPLPR::new approach),
+    `ps_processor.mbt:35` (PSProcessorConfig::new cv_calibration),
+    `did.mbt:27` (DoubleMLDIDData::new binary check),
+    `quantile.mbt:4/18` (array_min/array_max empty array).
+    These need require-removal refactors that cascade to many
+    callers before the abort becomes reachable.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14 (this release)
+  Remaining 10 targeted for future releases. The central
+  check.mbt require() helper is the largest remaining item and
+  needs a separate refactor (would cascade to all 324 pub
+  functions).
+
+Public API stability:
+  DoubleMLDIDMulti::bootstrap, DoubleMLDIDCrossSection::bootstrap,
+  PSProcessor::adjust_ps signatures are unchanged. From outside,
+  the API behaves identically. PSProcessorConfig struct fields
+  were already public-by-default; the `pub` -> `pub(all)` change
+  only enables test code to construct a config directly.
+
+Tests: 285/285 PASS (+1 vs 0.36.0: removed 1 silent panic_* test,
+added 2 real assertions) on native/wasm/wasm-gc/js with
+--deny-warn.
+
+QA battery run as release gate (T380):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.36.0 -> 0.37.0.
+- Unit: 285/285 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 10 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+- Mutation: 2 new tests verified to catch silent-raise mutations.

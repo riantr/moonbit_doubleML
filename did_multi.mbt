@@ -359,8 +359,24 @@ pub fn DoubleMLDIDMulti::bootstrap(
   let n_thetas = self.gt_combinations.length()
   let n_groups = self.inner.n_groups()
   let n_periods = self.inner.n_periods()
-  // Draw weights. Shape: (n_rep_boot, n_obs).
-  let weights = draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed)
+  // Draw weights. Shape: (n_rep_boot, n_obs). v0.37.0:
+  // draw_bootstrap_weights raises BootstrapMethodError on an
+  // unknown method; catch and re-abort to preserve pre-v0.37.0
+  // process-death behavior. Note: bootstrap() itself also has
+  // a require() check that catches invalid methods first; the
+  // catch below only fires if a caller invokes bootstrap with a
+  // method that passes require() but doesn't reach the match
+  // (currently impossible because the require and match sets
+  // are aligned; kept as defense-in-depth).
+  let weights = try
+    draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed)
+  catch {
+    BootstrapMethodError::UnknownMethod(m) =>
+      abort(
+        "draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap): " +
+        m,
+      )
+  }
   // For each gt_combination, locate the per-cell psi on the
   // full long-format panel and compute the t-statistic. The
   // psi is `coef * psi_a + psi_b` (the per-observation
@@ -1118,12 +1134,22 @@ pub fn DoubleMLDIDMulti::confint(
 /// `n_rep_boot * n_obs`. The first `n_obs` entries are the
 /// first bootstrap replication's weights, the next `n_obs`
 /// are the second replication, and so on.
+///
+/// Returns `Array[Double] raise BootstrapMethodError`: the v0.37.0
+/// conversion replaces the previous `abort()` call with
+/// `raise BootstrapMethodError::UnknownMethod(method_name)` so
+/// the unknown-method path becomes directly testable. Callers
+/// that want the pre-v0.37.0 process-death behavior should catch
+/// the error and re-abort (this is what every prod caller does);
+/// callers that want to surface the error to downstream
+/// consumers should propagate via `?`. The error type is declared
+/// in `kfold.mbt` so the cluster helper stack can share it.
 pub fn draw_bootstrap_weights(
   method_name : String,
   n_rep_boot : Int,
   n_obs : Int,
   seed : Int,
-) -> Array[Double] {
+) -> Array[Double] raise BootstrapMethodError {
   let out : Array[Double] = Array::make(n_rep_boot * n_obs, 0.0)
   let rng = chacha8_rng(seed)
   for b = 0; b < n_rep_boot; b = b + 1 {
@@ -1141,10 +1167,7 @@ pub fn draw_bootstrap_weights(
           let y = box_muller_normal(rng)
           x / 1.4142135623730951 + (y * y - 1.0) / 2.0
         }
-        _ =>
-          abort(
-            "draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap)",
-          )
+        _ => raise BootstrapMethodError::UnknownMethod(method_name)
       }
       out[b * n_obs + i] = w
     }
