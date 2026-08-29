@@ -1,0 +1,72 @@
+Release 0.41.0: array_min / array_max abort -> raise EmptyArrayError
+
+Continuing the surgical abort -> raise conversion pattern from
+v0.35.0-v0.38.0. This release tackles two more defensive aborts
+in the quantile stack.
+
+  - kfold.mbt: declare pub suberror EmptyArrayError (no
+    payload).
+  - quantile.mbt::array_min / array_max: signatures
+    `Double` -> `Double raise EmptyArrayError`. Functions
+    changed from `fn` to `pub fn` so the regression tests
+    can exercise them directly. The `abort("array_min:
+    empty array")` (line 4) and `abort("array_max: empty
+    array")` (line 18) calls are replaced with
+    `raise EmptyArrayError`.
+  - quantile.mbt::solve_pq: no signature change. The
+    internal `array_min`/`array_max` calls (line 177,178)
+    are wrapped in `try ... catch { EmptyArrayError =>
+    abort("solve_pq: empty y array (data.y.length() == 0)") }`
+    to preserve the pre-v0.41.0 process-death behavior.
+  - DoubleMLLPQ::fit: the `array_min`/`array_max` calls
+    (line 156,157) are wrapped in
+    `try ... catch { EmptyArrayError => abort(...) }` to
+    preserve the pre-v0.41.0 process-death behavior.
+
+New regression tests (all in quantile_test.mbt):
+  - array_min_raises_on_empty: calls array_min([]) and
+    asserts the error fires via
+    `try ... catch ... noraise { fail(...) }`.
+  - array_max_raises_on_empty: same pattern for array_max.
+  - array_min_max_returns_correct_values_on_nonempty:
+    guards against a regression where the raise conversion
+    accidentally changes the success path.
+
+Mutation-verified: replacing `raise EmptyArrayError` with
+`let _ = ()` (silenced raise) makes the regression tests
+fail with the expected diagnostic (process death, caught by
+the test runner).
+
+Public API stability:
+  DoubleMLPQ::fit, DoubleMLQTE::fit, DoubleMLCVAR::fit,
+  DoubleMLLPQ::fit signatures are unchanged. Internally,
+  the solve_pq / array_min / array_max calls now wrap in
+  `try ... catch { EmptyArrayError => abort(...) }` to
+  preserve the pre-v0.41.0 process-death behavior. From the
+  outside, the API behaves identically.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14
+  v0.41.0: 7/14 (this release)
+  Remaining 7 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:193/198 [solve_pq
+  brackets], did.mbt:27, check.mbt:11) targeted for future
+  releases.
+
+Tests: 290/290 PASS (+3 vs 0.40.0: 2 new panic-* tests
+converted to real assertions, plus 1 sanity test) on
+native/wasm/wasm-gc/js with --deny-warn.
+
+QA battery run as release gate (T420):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.40.0 -> 0.41.0.
+- Unit: 290/290 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+- Mutation: new tests verified to catch silent-raise mutations.

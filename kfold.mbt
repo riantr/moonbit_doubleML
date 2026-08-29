@@ -88,6 +88,19 @@ pub suberror CalibrationFittingError {
 }
 
 ///|
+/// Error type raised by `array_min` and `array_max` when the
+/// input array is empty. No payload — the empty array case
+/// has no diagnostic detail to carry.
+///
+/// Added in v0.41.0 to convert the previous `abort()` calls
+/// into testable error paths. The pre-v0.41.0 aborts were
+/// reachable only via internal helpers; no public test
+/// exercised them. The new `array_min_raises_on_empty` and
+/// `array_max_raises_on_empty` tests call the helpers
+/// directly with `[]` and assert the errors fire.
+pub suberror EmptyArrayError
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {

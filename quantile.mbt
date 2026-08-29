@@ -1,7 +1,12 @@
 ///|
-fn array_min(v : Array[Double]) -> Double {
+/// Returns the minimum element of `v`. Raises
+/// `EmptyArrayError` if `v` is empty. v0.41.0: signature changed
+/// from `Double` to `Double raise EmptyArrayError` to make the
+/// empty-array path testable. Callers that want the pre-v0.41.0
+/// process-death behavior should catch and re-abort.
+pub fn array_min(v : Array[Double]) -> Double raise EmptyArrayError {
   if v.length() < 1 {
-    abort("array_min: empty array")
+    raise EmptyArrayError
   }
   let mut z = v[0]
   for x in v {
@@ -13,9 +18,14 @@ fn array_min(v : Array[Double]) -> Double {
 }
 
 ///|
-fn array_max(v : Array[Double]) -> Double {
+/// Returns the maximum element of `v`. Raises `EmptyArrayError`
+/// if `v` is empty. v0.41.0: signature changed from `Double`
+/// to `Double raise EmptyArrayError` to make the empty-array
+/// path testable. Callers that want the pre-v0.41.0 process-death
+/// behavior should catch and re-abort.
+pub fn array_max(v : Array[Double]) -> Double raise EmptyArrayError {
   if v.length() < 1 {
-    abort("array_max: empty array")
+    raise EmptyArrayError
   }
   let mut z = v[0]
   for x in v {
@@ -174,8 +184,16 @@ pub fn solve_pq(
   // and, if `mean(pq_score_ipw(hi)) <= 0`, widen `hi` exponentially
   // until the bracket signs flip. After 20 widens we abort (the
   // score is structurally non-monotonic — caller's data is bad).
-  let y_min = array_min(data.y)
-  let y_max = array_max(data.y)
+  let y_min = try
+    array_min(data.y)
+  catch {
+    EmptyArrayError => abort("array_min: empty y array (data.y.length() == 0)")
+  }
+  let y_max = try
+    array_max(data.y)
+  catch {
+    EmptyArrayError => abort("array_max: empty y array (data.y.length() == 0)")
+  }
   let range = y_max - y_min
   let mut margin = if range > 0.0 { range * 0.1 } else { 1.0 }
   let mut lo = y_min - margin

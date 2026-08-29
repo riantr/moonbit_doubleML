@@ -153,8 +153,16 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
   // 4 more cross-fits for the numerical derivative). This
   // drops the total g cross-fit count from `2 * 50 = 100`
   // (bisection) + 4 (derivative) = 104 to 2 + 4 = 6.
-  let y_min = array_min(self.data.y)
-  let y_max = array_max(self.data.y)
+  let y_min = try
+    array_min(self.data.y)
+  catch {
+    EmptyArrayError => abort("array_min: empty y array (data.y.length() == 0)")
+  }
+  let y_max = try
+    array_max(self.data.y)
+  catch {
+    EmptyArrayError => abort("array_max: empty y array (data.y.length() == 0)")
+  }
   let y_range = y_max - y_min
   let margin = if y_range > 0.0 { y_range * 0.1 } else { 1.0 }
   let mut lo = y_min - margin

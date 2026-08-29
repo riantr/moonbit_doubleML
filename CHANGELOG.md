@@ -11,6 +11,75 @@ release is the canonical version.
 
 ---
 
+## [0.41.0] — `array_min` / `array_max` abort → `raise EmptyArrayError`
+
+### Changed
+- **`quantile.mbt::array_min`** and **`quantile.mbt::array_max`**:
+  signatures changed from `Double` to
+  `Double raise EmptyArrayError`. The empty-array defensive
+  guards (`abort`) are replaced with `raise EmptyArrayError`.
+  Functions are now `pub fn` (were `fn`) so the regression
+  tests can exercise them directly.
+- **`quantile.mbt::solve_pq`**: no signature change. The
+  internal `array_min`/`array_max` calls are wrapped in
+  `try ... catch { EmptyArrayError => abort("...") }` to
+  preserve the pre-v0.41.0 process-death behavior on an
+  empty `data.y`.
+- **`DoubleMLLPQ::fit`**: the `array_min`/`array_max` calls
+  inside the function are wrapped in
+  `try ... catch { EmptyArrayError => abort("...") }` to
+  preserve the pre-v0.41.0 process-death behavior on an
+  empty `data.y`.
+- **`kfold.mbt`**: declared `pub suberror EmptyArrayError`
+  (no payload — the empty-array case has no diagnostic
+  detail to carry). Sits alongside the v0.35.0
+  `VarEstClusterError`, v0.36.0 `ClusterDataError`,
+  v0.37.0 `BootstrapMethodError` / `InvalidCalibrationError`,
+  and v0.38.0 `CalibrationFittingError` suberror types.
+
+### Added
+- **`array_min_raises_on_empty`** test (quantile_test.mbt):
+  calls `array_min([])` and asserts the error fires. Uses
+  the `try ... catch ... noraise { fail(...) }` pattern.
+- **`array_max_raises_on_empty`** test (quantile_test.mbt):
+  same pattern for `array_max`.
+- **`array_min_max_returns_correct_values_on_nonempty`** test
+  (quantile_test.mbt): guards against a regression where the
+  raise conversion accidentally changes the success path.
+  Asserts `array_min([3,1,4,1,5,9,2,6]) == 1.0` and
+  `array_max(...) == 9.0`.
+
+### Public API stability
+- `DoubleMLPQ::fit`, `DoubleMLQTE::fit`, `DoubleMLCVAR::fit`,
+  `DoubleMLLPQ::fit` signatures are unchanged. Internally,
+  the `solve_pq` / `array_min` / `array_max` calls now wrap
+  in `try ... catch { EmptyArrayError => abort(...) }` to
+  preserve the pre-v0.41.0 process-death behavior. From the
+  outside, the API behaves identically.
+
+### Tests
+- 290/290 PASS (+3 vs 0.40.0: 2 new panic-* tests converted to
+  real assertions, plus 1 sanity test) on native/wasm/wasm-gc/js
+  with `--deny-warn`.
+- Mutation-verified: replacing `raise EmptyArrayError` with
+  `let _ = ()` (silenced raise) makes the regression tests
+  fail with the expected diagnostic.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: **7/14** (array_min + array_max empty-array)
+- Remaining 7 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:193/198 [solve_pq
+  brackets], did.mbt:27, check.mbt:11) targeted for future
+  releases.
+
+---
+
 ## [0.40.0] — Random restart on J-floor: `max_attempts` parameter
 
 ### Added

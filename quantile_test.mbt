@@ -204,3 +204,47 @@ test "panic_solve_pq_aborts_when_upper_bracket_structurally_invalid" {
     content="unreachable: solve_pq should abort on q=0.99 with sparse treatment",
   )
 }
+
+///|
+/// Regression test for the v0.41.0 abort → raise conversion in
+/// `array_min`. The previous `abort("array_min: empty array")` on
+/// an empty input was unreachable from the public API (no test
+/// exercised it). The new test calls `array_min` directly with an
+/// empty array and asserts the error fires. The `noraise` branch
+/// fails the test if no error fires, the `catch` branch asserts
+/// the exact variant (catches any future mutation that strips
+/// the variant identity).
+test "array_min_raises_on_empty" {
+  try
+    ignore(array_min([]))
+  catch {
+    EmptyArrayError => ()
+  } noraise {
+    _ =>
+      fail("expected array_min to raise EmptyArrayError on empty input")
+  }
+}
+
+///|
+/// Regression test for the v0.41.0 abort → raise conversion in
+/// `array_max`. Same pattern as `array_min_raises_on_empty` above.
+test "array_max_raises_on_empty" {
+  try
+    ignore(array_max([]))
+  catch {
+    EmptyArrayError => ()
+  } noraise {
+    _ =>
+      fail("expected array_max to raise EmptyArrayError on empty input")
+  }
+}
+
+///|
+/// Sanity test: `array_min`/`array_max` return correct values on
+/// non-empty inputs. This guards against a regression where the
+/// raise conversion accidentally changes the success path.
+test "array_min_max_returns_correct_values_on_nonempty" {
+  let v : Array[Double] = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0]
+  inspect(array_min(v) == 1.0, content="true")
+  inspect(array_max(v) == 9.0, content="true")
+}
