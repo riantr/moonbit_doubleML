@@ -119,7 +119,10 @@ pub fn PSProcessor::adjust_ps(
   // Calibration step. v0.37.0: extracted into apply_calibration
   // helper that raises InvalidCalibrationError on unknown
   // calibration method; catch and re-abort to preserve pre-v0.37.0
-  // process-death behavior.
+  // process-death behavior. v0.38.0: apply_calibration now also
+  // propagates CalibrationFittingError from isotonic_calibrate_cv;
+  // we re-abort to preserve the pre-v0.38.0 behavior on a malformed
+  // cv partition.
   let calibrated = try
     apply_calibration(self.config, ps, treatment, cv)
   catch {
@@ -128,6 +131,11 @@ pub fn PSProcessor::adjust_ps(
         "unknown calibration_method (set in PSProcessorConfig::new): " +
         m,
       )
+    CalibrationFittingError::IncompleteCVPartition =>
+      abort(
+        "isotonic_calibrate_cv: cv partition does not cover all indices",
+      )
+    _ => abort("apply_calibration: unknown error")
   }
   // Clip to [eps, 1 - eps].
   let lo = self.config.clipping_threshold
@@ -166,7 +174,7 @@ pub fn apply_calibration(
   ps : Array[Double],
   treatment : Array[Double],
   cv : Array[(Array[Int], Array[Int])]?,
-) -> Array[Double] raise InvalidCalibrationError {
+) -> Array[Double] raise Error {
   match config.calibration_method {
     "none" => ps
     "isotonic" =>
@@ -410,11 +418,20 @@ fn predict_isotonic_from_fit(
 /// of every other fold's, so this is embarrassingly parallel
 /// (sequential here for simplicity, but the per-fold work is
 /// O(n log n) for the sort + O(n) for the PAVA scan).
-fn isotonic_calibrate_cv(
+///
+/// Returns `Array[Double] raise CalibrationFittingError`: the
+/// v0.38.0 conversion replaces the previous `abort()` call with
+/// `raise CalibrationFittingError::IncompleteCVPartition` when
+/// the cv partition fails to cover every input index. Callers
+/// that want the pre-v0.38.0 process-death behavior should catch
+/// the error and re-abort (this is what `apply_calibration` does);
+/// callers that want to surface the error to downstream
+/// consumers should propagate via `?`.
+pub fn isotonic_calibrate_cv(
   x : Array[Double],
   y : Array[Double],
   cv : Array[(Array[Int], Array[Int])]?,
-) -> Array[Double] {
+) -> Array[Double] raise CalibrationFittingError {
   let n = x.length()
   let folds : Array[(Array[Int], Array[Int])] = match cv {
     Some(f) => f
@@ -451,10 +468,10 @@ fn isotonic_calibrate_cv(
     }
   }
   // Each input index must be predicted by exactly one fold.
-  // Abort if any index is uncovered (a malformed cv partition).
+  // Raise if any index is uncovered (a malformed cv partition).
   for i = 0; i < n; i = i + 1 {
     if !seen[i] {
-      abort("isotonic_calibrate_cv: cv partition does not cover all indices")
+      raise CalibrationFittingError::IncompleteCVPartition
     }
   }
   out

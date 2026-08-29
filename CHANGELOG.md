@@ -11,6 +11,62 @@ release is the canonical version.
 
 ---
 
+## [0.38.0] — `isotonic_calibrate_cv` abort → `raise CalibrationFittingError`
+
+### Changed
+- **`ps_processor.mbt::isotonic_calibrate_cv`**: signature changed
+  from `Array[Double]` to `Array[Double] raise CalibrationFittingError`.
+  The malformed-cv-partition fallback (`abort`) is replaced with
+  `raise CalibrationFittingError::IncompleteCVPartition`. Function
+  is now `pub` (was `fn`) so the regression test can exercise it
+  directly.
+- **`ps_processor.mbt::apply_calibration`**: signature changed from
+  `Array[Double] raise InvalidCalibrationError` to
+  `Array[Double] raise Error` so the catch block in
+  `PSProcessor::adjust_ps` can handle both the unknown-method
+  error (v0.37.0) and the incomplete-partition error (v0.38.0).
+  A wildcard arm `_ => abort("apply_calibration: unknown error")`
+  is added to satisfy MoonBit's `partial_match` warning.
+- **`PSProcessor::adjust_ps`**: the catch block now has a second
+  arm for `CalibrationFittingError::IncompleteCVPartition` that
+  re-aborts with the pre-v0.38.0 message
+  ("isotonic_calibrate_cv: cv partition does not cover all indices").
+- **`kfold.mbt`**: declared `pub suberror CalibrationFittingError`
+  with `IncompleteCVPartition` variant (no payload).
+
+### Added
+- **`isotonic_calibrate_cv_raises_incomplete_partition`** test
+  (ps_processor_test.mbt): constructs a deliberately-malformed
+  cv partition (5 inputs, one fold covering only 4 of them) and
+  asserts the error fires. Uses the `try ... catch ... noraise`
+  pattern. Mutation-verified: replacing the raise with `()`
+  silently makes the test fail with the expected diagnostic.
+
+### Public API stability
+- `PSProcessor::adjust_ps` signature is unchanged. Internally,
+  the catch block now has one additional arm. From the outside,
+  the API behaves identically.
+
+### Tests
+- 286/286 PASS (+1 vs 0.37.0) on native/wasm/wasm-gc/js with
+  `--deny-warn`.
+- Fuzz: 10 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: **5/14** (isotonic_calibrate_cv incomplete-cv-partition)
+- Remaining 9 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases.
+  The quantile helpers (`array_min`/`array_max`) and the
+  `solve_pq` bracket aborts are next on the list — both are
+  internal helpers with controlled blast radius.
+
+---
+
 ## [0.37.0] — Two more defensive aborts → raise conversions
 
 ### Changed

@@ -371,10 +371,44 @@ test "apply_calibration_raises_unknown_method" {
     ignore(apply_calibration(cfg, ps, treatment, None))
   catch {
     InvalidCalibrationError::UnknownMethod(m) => inspect(m, content="bogus_method")
+    _ => inspect(false, content="true")  // unreachable: only UnknownMethod can fire on bogus_method
   } noraise {
     _ =>
       fail(
         "expected apply_calibration to raise InvalidCalibrationError::UnknownMethod on bogus_method",
+      )
+  }
+}
+
+///|
+/// Regression test for the v0.38.0 abort → raise conversion in
+/// `isotonic_calibrate_cv`. The previous `abort()` for a
+/// malformed cv partition (some input index not covered by any
+/// fold's test_idx) was reachable only via the (formerly
+/// private) helper; no public test exercised it. The new test
+/// constructs a deliberately-malformed cv partition (5 inputs,
+/// one fold that covers only 4 of them) and asserts the error
+/// fires. The `noraise` branch fails the test if no error
+/// fires, the `catch` branch asserts the exact variant (catches
+/// any future mutation that strips the variant identity).
+test "isotonic_calibrate_cv_raises_incomplete_partition" {
+  let x : Array[Double] = [0.1, 0.2, 0.3, 0.4, 0.5]
+  let y : Array[Double] = [0.0, 1.0, 0.0, 1.0, 0.0]
+  // Build a 1-fold split covering only indices 0..3 (missing index 4).
+  // This is "valid" MoonBit syntax (fold covers some indices) but
+  // triggers the IncompleteCVPartition path because index 4 is never
+  // in any test_idx.
+  let malformed_cv : Array[(Array[Int], Array[Int])] = [
+    ([4], [0, 1, 2, 3]),
+  ]
+  try
+    ignore(isotonic_calibrate_cv(x, y, Some(malformed_cv)))
+  catch {
+    CalibrationFittingError::IncompleteCVPartition => ()
+  } noraise {
+    _ =>
+      fail(
+        "expected isotonic_calibrate_cv to raise CalibrationFittingError::IncompleteCVPartition on incomplete cv partition",
       )
   }
 }

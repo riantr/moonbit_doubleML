@@ -71,6 +71,23 @@ pub suberror InvalidCalibrationError {
 }
 
 ///|
+/// Error type raised by `isotonic_calibrate_cv` when the
+/// provided cv partition does not cover every input index
+/// (some input rows are not in any fold's test_idx). This
+/// indicates a malformed cv partition passed by the caller.
+///
+/// Added in v0.38.0 to convert the previous `abort()` call
+/// into a testable error path. The pre-v0.38.0 abort was
+/// reachable only via the (formerly private)
+/// `isotonic_calibrate_cv` helper; no public test exercised
+/// it. The new `isotonic_calibrate_cv_raises_incomplete_partition`
+/// test constructs a deliberately-malformed cv partition and
+/// asserts the error fires.
+pub suberror CalibrationFittingError {
+  IncompleteCVPartition
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {

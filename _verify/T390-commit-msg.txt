@@ -1,0 +1,62 @@
+Release 0.38.0: isotonic_calibrate_cv abort -> raise CalibrationFittingError
+
+Continuing the surgical abort -> raise conversion pattern from
+v0.35.0/v0.36.0/v0.37.0. This release tackles `isotonic_calibrate_cv`'s
+malformed-cv-partition defensive guard.
+
+  - kfold.mbt: declare pub suberror CalibrationFittingError with
+    IncompleteCVPartition variant (no payload).
+  - ps_processor.mbt::isotonic_calibrate_cv: signature
+    `Array[Double]` -> `Array[Double] raise CalibrationFittingError`.
+    The malformed-cv-partition abort is replaced with
+    `raise CalibrationFittingError::IncompleteCVPartition`.
+    Function is now `pub` (was `fn`) so the regression test can
+    exercise it directly.
+  - ps_processor.mbt::apply_calibration: signature
+    `Array[Double] raise InvalidCalibrationError` ->
+    `Array[Double] raise Error` so the catch block in
+    PSProcessor::adjust_ps can handle both the unknown-method
+    error (v0.37.0) and the incomplete-partition error (v0.38.0).
+    A wildcard arm `_ => abort("apply_calibration: unknown error")`
+    is added to satisfy MoonBit's `partial_match` warning.
+  - PSProcessor::adjust_ps: catch block gains a second arm for
+    CalibrationFittingError::IncompleteCVPartition that re-aborts
+    with the pre-v0.38.0 message.
+
+New regression test:
+  isotonic_calibrate_cv_raises_incomplete_partition constructs a
+  malformed cv partition (5 inputs, one fold covering only 4 of
+  them) and asserts the error fires via the
+  `try ... catch ... noraise { fail(...) }` pattern.
+
+Mutation-verified: replacing the raise with `()` silently makes
+the test fail with the expected diagnostic.
+
+Public API stability:
+  PSProcessor::adjust_ps signature unchanged. From outside, the
+  API behaves identically.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14 (this release)
+  Remaining 9 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, quantile.mbt:4/18/193/198,
+  did.mbt:27, check.mbt:11) targeted for future releases.
+  Next up: quantile array_min/array_max + solve_pq bracket
+  aborts — both internal helpers with controlled blast radius.
+
+Tests: 286/286 PASS (+1 vs 0.37.0) on native/wasm/wasm-gc/js
+with --deny-warn.
+
+QA battery run as release gate (T390):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.37.0 -> 0.38.0.
+- Unit: 286/286 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 10 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+- Mutation: new test verified to catch silent-raise mutations.
