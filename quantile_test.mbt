@@ -248,3 +248,38 @@ test "array_min_max_returns_correct_values_on_nonempty" {
   inspect(array_min(v) == 1.0, content="true")
   inspect(array_max(v) == 9.0, content="true")
 }
+
+///|
+/// Regression test for the v0.42.0 abort → raise conversion in
+/// `solve_pq` (upper bracket sign failure). Constructs a DGP
+/// where the IPW score remains non-positive after 20
+/// exponential widens of the upper bracket. The existing
+/// `panic_solve_pq_aborts_when_upper_bracket_structurally_invalid`
+/// test exercises the same code path via the public API; this
+/// new test exercises it directly via the (now public-via-test)
+/// `solve_pq` helper with a guaranteed-fired input.
+///
+/// Note: v0.42.0 also considered adding a
+/// `solve_pq_raises_on_lower_bracket_sign_failure` test, but
+/// the lower-bracket abort turned out to be dead code: at
+/// `lo = y_min - margin < y_min`, every `1{y <= lo} = 0`, so
+/// the IPW score `treated/m * 0 - q` is `-q < 0` for all
+/// `q > 0`. The `lo_score >= 0.0` check never fires. The
+/// dead abort is removed in v0.42.0; the suberror type
+/// `BracketSignError` has only the reachable `UpperSignFailed`
+/// variant.
+test "solve_pq_raises_on_upper_bracket_sign_failure" {
+  let n = 200
+  let x = Matrix::zeros(n, 1)
+  let y = Array::make(n, 0.0)
+  let d = Array::make(n, 0.0)
+  let data = DoubleMLData::new(x, y, d)
+  try
+    ignore(solve_pq(data, 1.0, 0.99, 2, 3141, 1.0e-6))
+  catch {
+    BracketSignError::UpperSignFailed => ()
+  } noraise {
+    _ =>
+      fail("expected solve_pq to raise BracketSignError::UpperSignFailed on q=0.99 with sparse treatment")
+  }
+}

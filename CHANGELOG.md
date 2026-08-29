@@ -11,6 +11,82 @@ release is the canonical version.
 
 ---
 
+## [0.42.0] — `solve_pq` upper-bracket abort → `raise BracketSignError`
+
+### Changed
+- **`quantile.mbt::solve_pq`**: signature changed from
+  `(Double, Array[Double], Double)` to
+  `(Double, Array[Double], Double) raise BracketSignError`.
+  The upper-bracket sign-failed abort is replaced with
+  `raise BracketSignError::UpperSignFailed`. The
+  lower-bracket dead-code abort is removed (see
+  "Removed" below).
+- **3 callers wrap in try/catch/re-abort**:
+  `DoubleMLPQ::fit`, `DoubleMLQTE::fit`,
+  `DoubleMLCVAR::fit`. Each catches
+  `BracketSignError::UpperSignFailed` and aborts with the
+  pre-v0.42.0 diagnostic message to preserve the
+  process-death behavior on pathologically bad DGPs.
+
+### Removed
+- **`quantile.mbt::solve_pq` lower-bracket dead abort**:
+  the pre-v0.42.0 source had
+  `if lo_score >= 0.0 { abort("...") }` at solve_pq. This
+  check is dead code: at `lo = y_min - margin < y_min`,
+  every `1{y <= lo} = 0`, so the IPW score
+  `treated/m * 0 - q` is `-q < 0` for all `q > 0`. The
+  `lo_score >= 0.0` check never fires. v0.42.0 removes the
+  dead `if`-block and the dead diagnostic message; the
+  suberror `BracketSignError` has only the reachable
+  `UpperSignFailed` variant.
+
+### Added
+- **`kfold.mbt::suberror BracketSignError`**: new
+  suberror with `UpperSignFailed` variant. The
+  `LowerSignFailed` variant that was in earlier drafts of
+  this release was removed because the corresponding
+  abort is dead code.
+- **`solve_pq_raises_on_upper_bracket_sign_failure`** test
+  (quantile_test.mbt): regression test for the v0.42.0
+  upper-bracket abort → raise conversion. Calls
+  `solve_pq` directly with a pathological DGP/quantile
+  combination (`y = 0`, `d = 0`, `q = 0.99` — sparse
+  treatment with high quantile means the IPW score at the
+  upper bracket is non-positive after 20 widens) and
+  asserts the error fires. Uses the
+  `try ... catch ... noraise { fail(...) }` pattern.
+  Mutation-verified: silencing the raise makes the test
+  fail with the expected diagnostic.
+
+### Public API stability
+- `DoubleMLPQ::fit`, `DoubleMLQTE::fit`,
+  `DoubleMLCVAR::fit` signatures are unchanged.
+  Internally, the `solve_pq` calls now wrap in
+  `try ... catch { BracketSignError::UpperSignFailed =>
+  abort(...) }` to preserve the pre-v0.42.0 process-death
+  behavior. From the outside, the API behaves identically.
+
+### Tests
+- 291/291 PASS (+1 vs 0.41.0: 1 new real assertion; the
+  proposed lower-bracket test was dropped because the
+  corresponding abort is dead code) on native/wasm/wasm-gc/js
+  with `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: 7/14 (array_min + array_max empty-array)
+- v0.42.0: **8/14** (solve_pq upper-bracket + removed dead lower)
+- Remaining 6 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, did.mbt:27, check.mbt:11)
+  targeted for future releases.
+
+---
+
 ## [0.41.0] — `array_min` / `array_max` abort → `raise EmptyArrayError`
 
 ### Changed

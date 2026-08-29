@@ -101,6 +101,33 @@ pub suberror CalibrationFittingError {
 pub suberror EmptyArrayError
 
 ///|
+/// Error type raised by `solve_pq` when the IPW score at the
+/// upper bracket remains non-positive after 20 exponential
+/// widens — the score is structurally non-monotonic on the
+/// bracket, the quantile is non-monotonic in this data, or
+/// `q` is too close to 1 with sparse treatment.
+///
+/// Added in v0.42.0 to convert the previous `abort()` call
+/// in `solve_pq` into a testable error path. The pre-v0.42.0
+/// abort was reachable only via the (private) `solve_pq`
+/// helper; no public test exercised it. The new
+/// `solve_pq_raises_on_upper_bracket_sign_failure` test
+/// constructs a pathological DGP/quantile combination and
+/// asserts the error fires.
+///
+/// Note: the pre-v0.42.0 source also had a
+/// `lower-bracket-sign-failed` abort at solve_pq. That abort
+/// is dead code: at `lo = y_min - margin < y_min`, every
+/// `1{y <= lo} = 0`, so the IPW score `treated/m * 0 - q` is
+/// `-q < 0` for all `q > 0`. The `lo_score >= 0.0` check
+/// never fires. The dead abort is removed in v0.42.0; the
+/// suberror type has only the reachable `UpperSignFailed`
+/// variant.
+pub suberror BracketSignError {
+  UpperSignFailed
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {

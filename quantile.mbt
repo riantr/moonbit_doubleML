@@ -169,7 +169,7 @@ pub fn solve_pq(
   n_folds : Int,
   seed : Int,
   clip : Double,
-) -> (Double, Array[Double], Double) {
+) -> (Double, Array[Double], Double) raise BracketSignError {
   let treated = indicator_level(data.d, treatment)
   let folds = kfold(data.n_obs(), n_folds, seed)
   let m = fit_propensity(data.x, treated, folds, clip)
@@ -205,17 +205,22 @@ pub fn solve_pq(
     hi = y_max + margin
     widen_attempts = widen_attempts + 1
   }
+  // The pre-v0.42.0 source had a `lo_score >= 0.0` abort here.
+  // That check is dead code (at lo = y_min - margin < y_min,
+  // every `1{y <= lo} = 0`, so the IPW score `treated/m * 0 - q`
+  // is `-q < 0` for all `q > 0`); v0.42.0 removes it. We still
+  // compute lo_score for symmetry with hi_score (and to keep
+  // the function shape; removing both would be a separate
+  // cleanup).
   let lo_score = mean(pq_score_ipw(data.x, data.y, treated, m, lo, q))
+  ignore(lo_score)
   let hi_score = mean(pq_score_ipw(data.x, data.y, treated, m, hi, q))
-  if lo_score >= 0.0 {
-    abort(
-      "solve_pq: lower bracket sign failed (score >= 0 at y_min); the IPW score is structurally non-monotonic for this data",
-    )
-  }
+  // The pre-v0.42.0 source had a `lo_score >= 0.0` abort here.
+  // That check is dead code (at lo = y_min - margin < y_min,
+  // every `1{y <= lo} = 0`, so the IPW score `treated/m * 0 - q`
+  // is `-q < 0` for all `q > 0`); v0.42.0 removes it.
   if hi_score <= 0.0 {
-    abort(
-      "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
-    )
+    raise BracketSignError::UpperSignFailed
   }
   // IPW bisection: 60 iterations is enough for 1e-18 * range precision
   // (we only need ~10 for the test tolerance, the rest is a safety margin).
@@ -297,14 +302,21 @@ pub fn DoubleMLPQ::new(
 
 ///|
 pub fn DoubleMLPQ::fit(self : DoubleMLPQ) -> DoubleMLPQ {
-  let (theta, psi, deriv) = solve_pq(
-    self.data,
-    self.treatment,
-    self.quantile,
-    self.n_folds,
-    self.seed,
-    self.propensity_clip,
-  )
+  let (theta, psi, deriv) = try
+    solve_pq(
+      self.data,
+      self.treatment,
+      self.quantile,
+      self.n_folds,
+      self.seed,
+      self.propensity_clip,
+    )
+  catch {
+    BracketSignError::UpperSignFailed =>
+      abort(
+        "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+      )
+  }
   let n = self.data.n_obs().to_double()
   // SE = sqrt(E[psi^2] / n) / |deriv|, the standard
   // one-step influence-function variance for a Z-estimator.
@@ -392,22 +404,36 @@ pub fn DoubleMLQTE::fit(self : DoubleMLQTE) -> DoubleMLQTE {
   let c = Array::make(self.quantiles.length(), 0.0)
   let s = Array::make(self.quantiles.length(), 0.0)
   for j = 0; j < self.quantiles.length(); j = j + 1 {
-    let (theta1, psi1, deriv1) = solve_pq(
-      self.data,
-      1.0,
-      self.quantiles[j],
-      self.n_folds,
-      self.seed,
-      self.propensity_clip,
-    )
-    let (theta0, psi0, deriv0) = solve_pq(
-      self.data,
-      0.0,
-      self.quantiles[j],
-      self.n_folds,
-      self.seed,
-      self.propensity_clip,
-    )
+    let (theta1, psi1, deriv1) = try
+      solve_pq(
+        self.data,
+        1.0,
+        self.quantiles[j],
+        self.n_folds,
+        self.seed,
+        self.propensity_clip,
+      )
+    catch {
+      BracketSignError::UpperSignFailed =>
+        abort(
+          "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+        )
+    }
+    let (theta0, psi0, deriv0) = try
+      solve_pq(
+        self.data,
+        0.0,
+        self.quantiles[j],
+        self.n_folds,
+        self.seed,
+        self.propensity_clip,
+      )
+    catch {
+      BracketSignError::UpperSignFailed =>
+        abort(
+          "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+        )
+    }
     c[j] = theta1 - theta0
     // Bug #2 fix: the QTE SE must use the joint variance of
     // `(psi_d1, psi_d0)`, NOT the quadrature
@@ -508,14 +534,21 @@ pub fn DoubleMLCVAR::new(
 
 ///|
 pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
-  let (pq, _, _) = solve_pq(
-    self.data,
-    self.treatment,
-    self.quantile,
-    self.n_folds,
-    self.seed,
-    self.propensity_clip,
-  )
+  let (pq, _, _) = try
+    solve_pq(
+      self.data,
+      self.treatment,
+      self.quantile,
+      self.n_folds,
+      self.seed,
+      self.propensity_clip,
+    )
+  catch {
+    BracketSignError::UpperSignFailed =>
+      abort(
+        "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+      )
+  }
   let treated = indicator_level(self.data.d, self.treatment)
   let folds = kfold(self.data.n_obs(), self.n_folds, self.seed)
   let m = fit_propensity(self.data.x, treated, folds, self.propensity_clip)

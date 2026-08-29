@@ -1,0 +1,66 @@
+Release 0.42.0: solve_pq upper-bracket abort -> raise BracketSignError
+
+Continuing the surgical abort -> raise conversion pattern from
+v0.35.0-v0.41.0. This release tackles the upper-bracket sign
+failure abort in solve_pq (quantile.mbt:215).
+
+  - kfold.mbt: declare pub suberror BracketSignError with
+    UpperSignFailed variant.
+  - quantile.mbt::solve_pq: signature `(Double, Array[Double],
+    Double)` -> `(Double, Array[Double], Double) raise
+    BracketSignError`. The upper-bracket abort is replaced
+    with `raise BracketSignError::UpperSignFailed`.
+  - quantile.mbt: lower-bracket abort removed (dead code):
+    at `lo = y_min - margin < y_min`, every `1{y <= lo} = 0`,
+    so the IPW score `treated/m * 0 - q` is `-q < 0` for all
+    `q > 0`. The `lo_score >= 0.0` check never fires.
+  - 3 callers (DoubleMLPQ::fit, DoubleMLQTE::fit,
+    DoubleMLCVAR::fit) wrap in `try ... catch {
+    BracketSignError::UpperSignFailed => abort(...) }` to
+    preserve the pre-v0.42.0 process-death behavior.
+
+New regression test (quantile_test.mbt):
+  - solve_pq_raises_on_upper_bracket_sign_failure: calls
+    `solve_pq` directly with a pathological DGP/quantile
+    combination (`y = 0`, `d = 0`, `q = 0.99`) and asserts
+    the error fires. Uses `try ... catch ... noraise {
+    fail(...) }` pattern. Mutation-verified: silencing the
+    raise makes the test fail with the expected diagnostic.
+
+The lower-bracket test was dropped because the corresponding
+abort is dead code (see comment in BracketSignError doc).
+
+Public API stability:
+  DoubleMLPQ::fit, DoubleMLQTE::fit, DoubleMLCVAR::fit
+  signatures are unchanged. Internally, the solve_pq calls
+  now wrap in `try ... catch {
+  BracketSignError::UpperSignFailed => abort(...) }` to
+  preserve the pre-v0.42.0 process-death behavior. From the
+  outside, the API behaves identically.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14
+  v0.41.0: 7/14
+  v0.42.0: 8/14 (this release)
+  Remaining 6 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  ps_processor.mbt:35/422, did.mbt:27, check.mbt:11)
+  targeted for future releases.
+
+Tests: 291/291 PASS (+1 vs 0.41.0: 1 new real assertion;
+the proposed lower-bracket test was dropped because the
+corresponding abort is dead code) on native/wasm/wasm-gc/js
+with --deny-warn.
+
+QA battery run as release gate (T430):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.41.0 -> 0.42.0.
+- Unit: 291/291 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+- Mutation: new test verified to catch silent-raise mutations.
