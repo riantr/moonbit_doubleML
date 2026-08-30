@@ -46,8 +46,34 @@ test "panic_ps_processor_rejects_clip_too_large" {
 /// constructor should accept it for forward-compatibility, but
 /// `cv_calibration=true` without a calibration method is a
 /// configuration error.
-test "panic_ps_processor_cv_without_calibration" {
-  let _ = PSProcessorConfig::new(calibration_method="none", cv_calibration=true)
+///
+/// v0.44.0: renamed and rewritten using the
+/// `try ... catch ... noraise { fail(...) }` pattern. The
+/// pre-v0.44.0 `panic_*` test was silently skipped on
+/// native/wasm-gc (MoonBit's `panic_*` driver skips
+/// panic-prefixed tests; see
+/// `_verify/WHITEBOX_T_REPORT.md`). The new test calls
+/// `PSProcessorConfig::new` directly with the inconsistent
+/// config and asserts the error fires. The `noraise` branch
+/// fails the test if no error fires, the `catch` branch
+/// asserts the exact variant (catches any future mutation
+/// that strips the variant identity).
+test "ps_processor_config_raises_inconsistent_cv_calibration" {
+  try
+    ignore(
+      PSProcessorConfig::new(
+        calibration_method="none",
+        cv_calibration=true,
+      ),
+    )
+  catch {
+    PSConfigError::InconsistentCVCalibration => ()
+  } noraise {
+    _ =>
+      fail(
+        "expected PSProcessorConfig::new to raise PSConfigError::InconsistentCVCalibration on cv_calibration=true with calibration_method='none'",
+      )
+  }
 }
 
 ///|

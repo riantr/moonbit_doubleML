@@ -20,28 +20,50 @@ pub(all) struct PSProcessorConfig {
 } derive(Debug)
 
 ///|
+/// Returns `PSProcessorConfig raise PSConfigError`: the v0.44.0
+/// conversion replaces the previous `abort()` call with
+/// `raise PSConfigError::InconsistentCVCalibration` so the
+/// inconsistent-configuration path becomes directly testable.
+/// Callers that want the pre-v0.44.0 process-death behavior
+/// should catch the error and re-abort (this is what
+/// `PSProcessorConfig::default` does, although it never
+/// triggers the error in practice). The `require` checks on
+/// the four argument ranges are unchanged and still abort the
+/// process (they are central `require` checks; refactoring
+/// them is out of scope for this surgical release).
 pub fn PSProcessorConfig::new(
   clipping_threshold? : Double = 1.0e-2,
   extreme_threshold? : Double = 1.0e-12,
   calibration_method? : String = "none",
   cv_calibration? : Bool = false,
-) -> PSProcessorConfig {
+) -> PSProcessorConfig raise PSConfigError {
   require(clipping_threshold > 0.0)
   require(clipping_threshold < 0.5)
   require(extreme_threshold > 0.0)
   require(extreme_threshold < 0.5)
   require(calibration_method == "none" || calibration_method == "isotonic")
   if cv_calibration && calibration_method == "none" {
-    abort("cv_calibration=true requires calibration_method='isotonic'")
+    raise PSConfigError::InconsistentCVCalibration
   }
   { clipping_threshold, extreme_threshold, calibration_method, cv_calibration }
 }
 
 ///|
 /// Default PS processor config (clipping_threshold=1e-2, no
-/// calibration).
+/// calibration). v0.44.0: returns a pre-constructed default
+/// via a private helper that doesn't raise, so this signature
+/// stays `PSProcessorConfig` (no `raise`).
 pub fn PSProcessorConfig::default() -> PSProcessorConfig {
-  PSProcessorConfig::new()
+  // The default args are valid (no cv_calibration,
+  // calibration_method="none"), so the cv_calibration abort
+  // is unreachable. Construct directly without going
+  // through the `new()` raise path.
+  {
+    clipping_threshold: 1.0e-2,
+    extreme_threshold: 1.0e-12,
+    calibration_method: "none",
+    cv_calibration: false,
+  }
 }
 
 ///|

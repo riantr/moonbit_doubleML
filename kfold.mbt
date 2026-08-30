@@ -148,6 +148,30 @@ pub suberror DIDDataError {
 }
 
 ///|
+/// Error type raised by `PSProcessorConfig::new` when the
+/// configuration is internally inconsistent — the only
+/// currently-reachable case is `cv_calibration = true`
+/// combined with `calibration_method = "none"`, because
+/// CV calibration is only meaningful for the isotonic
+/// method. No payload — the call-site (the `require`
+/// checks for clipping/extreme thresholds and
+/// calibration_method string) is enough to identify the
+/// configuration error.
+///
+/// Added in v0.44.0 to convert the previous `abort()` call
+/// into a testable error path. The pre-v0.44.0
+/// `panic_ps_processor_cv_without_calibration` test was
+/// silently skipped on native/wasm-gc (MoonBit's `panic_*`
+/// driver skips panic-prefixed tests; see
+/// `_verify/WHITEBOX_T_REPORT.md`). The new
+/// `ps_processor_config_raises_inconsistent_cv_calibration`
+/// test calls `PSProcessorConfig::new` directly with the
+/// inconsistent config and asserts the error fires.
+pub suberror PSConfigError {
+  InconsistentCVCalibration
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {

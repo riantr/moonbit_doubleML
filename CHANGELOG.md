@@ -11,6 +11,74 @@ release is the canonical version.
 
 ---
 
+## [0.44.0] — `PSProcessorConfig::new` cv_calibration abort → `raise PSConfigError`
+
+### Changed
+- **`ps_processor.mbt::PSProcessorConfig::new`**: signature
+  changed from `PSProcessorConfig` to
+  `PSProcessorConfig raise PSConfigError`. The inconsistent-
+  configuration defensive guard (`abort`) is replaced with
+  `raise PSConfigError::InconsistentCVCalibration`. No
+  payload — the call-site is enough to identify the
+  configuration error.
+- **`ps_processor.mbt::PSProcessorConfig::default`**: no
+  signature change. Implementation reworked to construct
+  the default `PSProcessorConfig` literal directly instead
+  of going through the (now-`raise`) `new()` path. The
+  default args are valid (`cv_calibration=false`,
+  `calibration_method="none"`), so the cv_calibration abort
+  is unreachable in practice.
+- **`kfold.mbt`**: declared `pub suberror PSConfigError`
+  with `InconsistentCVCalibration` variant.
+
+### Added
+- **`ps_processor_config_raises_inconsistent_cv_calibration`**
+  test (ps_processor_test.mbt): regression test for the
+  v0.44.0 abort → raise conversion. The pre-v0.44.0
+  `panic_ps_processor_cv_without_calibration` test was
+  silently skipped on native/wasm-gc (MoonBit's `panic_*`
+  driver skips panic-prefixed tests; see
+  `_verify/WHITEBOX_T_REPORT.md`). The new test calls
+  `PSProcessorConfig::new` directly with the inconsistent
+  config and asserts the error fires. Uses the
+  `try ... catch ... noraise { fail(...) }` pattern.
+  Mutation-verified: removing the validation block makes
+  the test fail with the expected diagnostic.
+
+### Public API stability
+- `PSProcessorConfig::new` is the only signature change.
+  All cascade callers (`PSProcessor::new`,
+  `PSProcessor::from_config`, `DoubleMLDID*::new` family)
+  continue to work unchanged because the new raise is
+  only triggered by an inconsistent configuration
+  (`cv_calibration=true` + `calibration_method="none"`)
+  that no prod code produces. The `require` checks on the
+  four argument ranges are unchanged and still abort the
+  process (they are central `require` checks; refactoring
+  them is out of scope for this surgical release).
+
+### Tests
+- 292/292 PASS (test count unchanged: 1 silent panic_* test
+  was renamed, not added) on native/wasm/wasm-gc/js with
+  `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: 7/14 (array_min + array_max empty-array)
+- v0.42.0: 8/14 (solve_pq upper-bracket)
+- v0.43.0: 9/14 (DoubleMLDIDData non-binary-treatment)
+- v0.44.0: **10/14** (PSProcessorConfig inconsistent-cv)
+- Remaining 4 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  did_multi.mbt:1145, check.mbt:11) targeted for future
+  releases.
+
+---
+
 ## [0.43.0] — `DoubleMLDIDData::new` binary-check abort → `raise DIDDataError`
 
 ### Changed

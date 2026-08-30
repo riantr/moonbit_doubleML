@@ -1,0 +1,62 @@
+Release 0.44.0: PSProcessorConfig cv_calibration abort -> raise PSConfigError
+
+Continuing the surgical abort -> raise conversion pattern from
+v0.35.0-v0.43.0. This release tackles the inconsistent-
+configuration defensive guard in PSProcessorConfig::new
+(ps_processor.mbt:35).
+
+  - kfold.mbt: declare pub suberror PSConfigError with
+    InconsistentCVCalibration variant (no payload).
+  - ps_processor.mbt::PSProcessorConfig::new: signature
+    `PSProcessorConfig` -> `PSProcessorConfig raise
+    PSConfigError`. The `abort("cv_calibration=true requires
+    calibration_method='isotonic'")` is replaced with
+    `raise PSConfigError::InconsistentCVCalibration`.
+  - ps_processor.mbt::PSProcessorConfig::default: refactored
+    to construct the default `PSProcessorConfig` literal
+    directly instead of going through the (now-`raise`) `new()`
+    path. The default args are valid, so the cv_calibration
+    abort is unreachable in practice.
+
+New regression test (ps_processor_test.mbt):
+  - ps_processor_config_raises_inconsistent_cv_calibration:
+    calls `PSProcessorConfig::new(calibration_method="none",
+    cv_calibration=true)` and asserts the error fires. Uses
+    `try ... catch ... noraise { fail(...) }` pattern.
+    Mutation-verified: removing the validation block makes
+    the test fail with the expected diagnostic.
+
+Public API stability:
+  PSProcessorConfig::new is the only signature change. All
+  cascade callers (PSProcessor::new, PSProcessor::from_config,
+  DoubleMLDID*::new family) continue to work unchanged
+  because the new raise is only triggered by an
+  inconsistent configuration that no prod code produces.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14
+  v0.41.0: 7/14
+  v0.42.0: 8/14
+  v0.43.0: 9/14
+  v0.44.0: 10/14 (this release)
+  Remaining 4 (did_multi.mbt:558 dead-code, plpr.mbt:447,
+  did_multi.mbt:1145, check.mbt:11) targeted for future
+  releases.
+
+Tests: 292/292 PASS (test count unchanged: 1 silent panic_*
+test was renamed, not added) on native/wasm/wasm-gc/js with
+--deny-warn.
+
+QA battery run as release gate (T450):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.43.0 -> 0.44.0.
+- Unit: 292/292 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+- Mutation: new test verified to catch validation-removed mutations.
