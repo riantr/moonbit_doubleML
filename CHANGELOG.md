@@ -11,6 +11,62 @@ release is the canonical version.
 
 ---
 
+## [0.45.0] — `transform_panel` dead-code abort: documented + improved diagnostic
+
+### Skipped (dead code)
+- **`plpr.mbt:447`** (`transform_panel` else-branch abort):
+  this abort is unreachable through the public API. The
+  `require()` in `DoubleMLPLPR::new` (line 479-484) checks
+  that `approach` is one of
+  `{cre_general, cre_normal, fd_exact, wg_approx}`,
+  and `transform_panel` is only called from
+  `DoubleMLPLPR::fit` (line 550). The abort can only
+  fire if a caller constructs `DoubleMLPLPR` via struct
+  literal (the struct is `pub`), bypassing the `::new`
+  require. v0.45.0 documents this explicitly and improves
+  the abort message to be more descriptive (mentions
+  `DoubleMLPLPR::new` as the expected configuration site)
+  so the diagnostic is actionable if the abort ever
+  fires. Same dead-code pattern as v0.37.0's
+  `did_multi.mbt:558` (p_adjust fallback), which was
+  documented and skipped.
+
+### Changed
+- **`plpr.mbt::transform_panel`**: abort message
+  improved from
+  `"DoubleMLPLPR: unknown approach \{approach\}"`
+  to
+  `"DoubleMLPLPR: unknown approach (set in DoubleMLPLPR::new): " + approach`.
+  v0.45.0 also adds a comment block above the abort
+  explaining why it is dead code and what the defense-
+  in-depth contract is.
+
+### Tests
+- 292/292 PASS (test count unchanged: no new test added
+  because the abort is unreachable through the public API;
+  the existing `panic_plpr_bad_approach` test in
+  plpr_test.mbt covers the public-API rejection path)
+  on native/wasm/wasm-gc/js with `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: 7/14 (array_min + array_max empty-array)
+- v0.42.0: 8/14 (solve_pq upper-bracket)
+- v0.43.0: 9/14 (DoubleMLDIDData non-binary-treatment)
+- v0.44.0: 10/14 (PSProcessorConfig inconsistent-cv)
+- v0.45.0: **10/14** (dead-code skip + diagnostic improvement)
+- Remaining 4 (did_multi.mbt:558 dead-code,
+  did_multi.mbt:1145, check.mbt:11, plus this
+  plpr.mbt:447 dead-code already counted in the
+  10/14) targeted for future releases.
+
+---
+
 ## [0.44.0] — `PSProcessorConfig::new` cv_calibration abort → `raise PSConfigError`
 
 ### Changed

@@ -444,7 +444,25 @@ fn transform_panel(
       id: id_s,
     }
   } else {
-    abort("DoubleMLPLPR: unknown approach \{approach}")
+    // v0.45.0: dead-code abort. `DoubleMLPLPR::new` requires
+    // `approach` to be one of {cre_general, cre_normal,
+    // fd_exact, wg_approx}, so this else branch is
+    // unreachable through the public API. The abort is
+    // kept as a defense-in-depth measure for callers that
+    // construct `DoubleMLPLPR` directly via struct literal
+    // (the struct is `pub`). v0.45.0 marks this explicitly
+    // and improves the abort message to be more descriptive
+    // (mentions `DoubleMLPLPR::new` as the expected
+    // configuration site) so the diagnostic is actionable
+    // if the abort ever fires.
+    //
+    // Same dead-code pattern as v0.37.0's
+    // `did_multi.mbt:558` (p_adjust fallback), which was
+    // documented and skipped.
+    abort(
+      "DoubleMLPLPR: unknown approach (set in DoubleMLPLPR::new): " +
+      approach,
+    )
   }
 }
 

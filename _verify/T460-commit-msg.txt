@@ -1,0 +1,58 @@
+Release 0.45.0: transform_panel dead-code abort — documented + diagnostic improved
+
+This release tackles `plpr.mbt:447` (the `transform_panel`
+else-branch abort for an unknown approach) but recognizes
+it as dead code, mirroring the v0.37.0 pattern for
+`did_multi.mbt:558` (p_adjust fallback).
+
+Why the abort is dead code:
+  - `DoubleMLPLPR::new` (line 479-484) has a `require()`
+    that checks `approach` is one of
+    {cre_general, cre_normal, fd_exact, wg_approx}.
+  - `transform_panel` is only called from
+    `DoubleMLPLPR::fit` (line 550), which only sees
+    approaches that passed the `::new` require.
+  - The abort can only fire if a caller constructs
+    `DoubleMLPLPR` directly via struct literal (the
+    struct is `pub`), bypassing the `::new` require.
+
+Changes:
+  - plpr.mbt::transform_panel: abort message improved
+    from "DoubleMLPLPR: unknown approach \{approach\}"
+    to
+    "DoubleMLPLPR: unknown approach (set in DoubleMLPLPR::new): " + approach.
+    v0.45.0 also adds a comment block above the abort
+    explaining the dead-code contract.
+  - CHANGELOG: documents the dead-code status and
+    cross-references v0.37.0's did_multi.mbt:558 skip.
+
+Tests: 292/292 PASS (test count unchanged: no new test
+added because the abort is unreachable through the public
+API; the existing panic_plpr_bad_approach test in
+plpr_test.mbt covers the public-API rejection path) on
+native/wasm/wasm-gc/js with --deny-warn.
+
+QA battery run as release gate (T460):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.44.0 -> 0.45.0.
+- Unit: 292/292 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14
+  v0.41.0: 7/14
+  v0.42.0: 8/14
+  v0.43.0: 9/14
+  v0.44.0: 10/14
+  v0.45.0: 10/14 (dead-code skip + diagnostic; no
+  conversion counted)
+  Remaining 3 (did_multi.mbt:558 dead-code,
+  did_multi.mbt:1145, check.mbt:11) targeted for future
+  releases.
