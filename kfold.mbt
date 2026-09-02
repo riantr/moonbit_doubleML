@@ -172,6 +172,29 @@ pub suberror PSConfigError {
 }
 
 ///|
+/// Error type reserved for the upcoming conversion of
+/// `check.mbt::check` and `check.mbt::require` from
+/// `abort("precondition failed at ...")` to a typed
+/// `raise`. The payload is the `SourceLoc` of the failing
+/// call site (auto-injected by `#callsite(autofill(loc))`
+/// at every call), so the diagnostic message will point
+/// at the offending source line.
+///
+/// Added in v0.47.0 as a **planning release**. v0.47.0
+/// only declares the suberror type and ships a tiny
+/// `check_make_violated` helper (in `check.mbt`) that
+/// constructs a `Violated(loc)` for the regression test.
+/// The actual `check`/`require` → `raise PreconditionError`
+/// conversion is targeted for v0.48.0+ (cascade to all
+/// 324 pub functions, expected 1-2 release effort with
+/// try/catch/re-abort shims at every call site so the
+/// public abort behavior is preserved during the
+/// transition).
+pub suberror PreconditionError {
+  Violated(SourceLoc)
+}
+
+///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {
@@ -198,7 +221,7 @@ pub fn Fold::test_indices(self : Fold) -> Array[Int] {
 pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
   require(test_idx.length() > 0)
   require(train_idx.length() + test_idx.length() > 0)
-  { train_idx, test_idx }
+  { train_idx, test_idx, }
 }
 
 ///|
@@ -242,7 +265,7 @@ pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
         train_idx.push(perm[k])
       }
     }
-    folds.push({ train_idx, test_idx })
+    folds.push({ train_idx, test_idx, })
     offset = offset + test_size
   }
   folds

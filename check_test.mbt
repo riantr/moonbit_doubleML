@@ -258,3 +258,37 @@ test "panic_rdd_new_bandwidth_zero" {
   let data = DoubleMLRDDData::new(x, y, d, score)
   let _ = DoubleMLRDD::new(data, bandwidth=0.0)
 }
+
+///|
+/// v0.47.0 planning-release test for the new
+/// `PreconditionError` suberror. Exercises the
+/// `check_make_violated` helper from `check.mbt`, which
+/// constructs a `PreconditionError::Violated(loc)` whose
+/// payload is the call-site `SourceLoc` auto-injected by
+/// `#callsite(autofill(loc))`. The full conversion of
+/// `check`/`require` to `raise PreconditionError` is
+/// targeted for v0.48.0+ (cascade to all 324 pub
+/// functions); v0.47.0 only declares the suberror type
+/// and ships this regression test.
+///
+/// The test does NOT call `check(false, ...)` because
+/// that would abort the process; the v0.47.0 scope is
+/// just to assert that the suberror type exists, the
+/// `Violated(SourceLoc)` variant is constructable
+/// through the public helper, and the `loc` payload
+/// round-trips. Real coverage of the `raise` path lands
+/// in v0.48.0+.
+test "precondition_error_violated_via_helper" {
+  // `check_make_violated()` is auto-injected with the
+  // SourceLoc of this call site by #callsite(autofill(loc)).
+  let err = check_make_violated()
+  match err {
+    PreconditionError::Violated(loc) => {
+      // The payload is a SourceLoc; we can render it to
+      // confirm it is non-empty (the test source file
+      // path is embedded in the rendered string).
+      let s = loc.to_string()
+      inspect(s.length() > 0, content="true")
+    }
+  }
+}

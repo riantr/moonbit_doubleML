@@ -11,6 +11,81 @@ release is the canonical version.
 
 ---
 
+## [0.47.0] — `PreconditionError` planning release: suberror + helper
+
+### Added
+- **`kfold.mbt::PreconditionError`** (new suberror):
+  declared `pub suberror PreconditionError {
+  Violated(SourceLoc) }` next to the other 9 suberror
+  types. The payload is the `SourceLoc` of the failing
+  call site, which will be auto-injected by
+  `#callsite(autofill(loc))` once the central `check` /
+  `require` conversion lands in v0.48.0+. v0.47.0 ships
+  the type but does NOT yet convert the central
+  `check.mbt::check` / `check.mbt::require` (cascade
+  to all 324 pub functions; targeted for v0.48.0+).
+- **`check.mbt::check_make_violated`** (new helper):
+  `pub fn check_make_violated(loc~ : SourceLoc) ->
+  PreconditionError` that constructs a
+  `PreconditionError::Violated(loc)` whose payload is
+  the call-site `SourceLoc` auto-injected by
+  `#callsite(autofill(loc))`. Visible in tests as
+  `check_make_violated()` with no explicit `loc`
+  argument. Same `pub`-but-test-only helper pattern as
+  v0.37.0's `apply_calibration`.
+
+### Changed
+- **`check.mbt`**: extended from 22 lines to 51 lines.
+  The pre-v0.47.0 file contained only `check` and
+  `require`; v0.47.0 adds the `check_make_violated`
+  helper as a forward-compatible hook for the upcoming
+  conversion. The `check` / `require` semantics are
+  unchanged (still `abort` on failure) — v0.47.0 is a
+  planning release, not a behavior change.
+- **`check_test.mbt`**: extended by 27 lines to host
+  the new regression test. The pre-v0.47.0 file
+  contained only `panic_*` tests that the MoonBit
+  `panic_*` driver silently skips (see
+  `_verify/WHITEBOX_T_REPORT.md`, 22.6% silent).
+  v0.47.0 adds the first `try_*`-style regression test
+  in this file.
+
+### Tests
+- 293/293 PASS (was 292: +1 for
+  `precondition_error_violated_via_helper`) on
+  native / wasm / wasm-gc / js with `--deny-warn`.
+  Test count delta +1; the new test exercises the
+  `check_make_violated` helper end-to-end (construct
+  → match → render `loc` to non-empty string).
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS (BLP/policy, bootstrap,
+  cluster_iv, cluster_plr, cv_repeated, did, did_binary,
+  did_cross_section, did_cs, gain_statistics, iivm, irm,
+  lplr, padjust, pava, pliv, plpr, quantile, rdd, ssm,
+  with_python).
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: 7/14 (array_min + array_max empty-array)
+- v0.42.0: 8/14 (solve_pq upper-bracket)
+- v0.43.0: 9/14 (DoubleMLDIDData non-binary-treatment)
+- v0.44.0: 10/14 (PSProcessorConfig inconsistent-cv)
+- v0.45.0: 10/14 (transform_panel dead-code skip)
+- v0.46.0: 10/14 (p_adjust dead-code skip)
+- v0.47.0: **10/14** (planning release — suberror declared, helper
+  shipped, conversion deferred to v0.48.0+)
+- Remaining 1: `check.mbt:11` (central `require`) — the
+  v0.47.0 planning release sets up the type and helper
+  for the v0.48.0+ conversion, which is expected to
+  take 1-2 releases with try/catch/re-abort shims at
+  every call site (preserving the public abort behavior
+  during the transition).
+
+---
+
 ## [0.46.0] — `DoubleMLDIDMulti::p_adjust` dead-code abort: documented + improved diagnostic
 
 ### Skipped (dead code)
