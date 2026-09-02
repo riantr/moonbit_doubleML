@@ -29,7 +29,7 @@ pub fn DoubleMLPLIVData::new(
   if cluster_vars.length() > 0 {
     require(cluster_vars.length() == x.nrows)
   }
-  { x, y, d, z, cluster_vars }
+  { x, y, d, z, cluster_vars, }
 }
 
 ///|
@@ -268,9 +268,7 @@ fn DoubleMLPLIV::fit_cluster(
   // v0.36.0: build_row_unit_map raises ClusterDataError on
   // malformed cluster vector; catch and re-abort to preserve
   // pre-v0.36.0 behavior.
-  let row_unit = try
-    build_row_unit_map(cluster, uniq)
-  catch {
+  let row_unit = build_row_unit_map(cluster, uniq) catch {
     ClusterDataError::MissingUnit(g) =>
       abort(
         "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
@@ -317,18 +315,16 @@ fn DoubleMLPLIV::fit_cluster(
         psi_a[i] = -w * v
         psi_b[i] = v * u
       }
-      let (t, s) = try
-        cluster_causal_param_and_se(
-          psi_a,
-          psi_b,
-          folds_row,
-          fold_n_units,
-          unit_rows,
-          unit_fold,
-          folds_u.length(),
-          self.n_folds,
-        )
-      catch {
+      let (t, s) = cluster_causal_param_and_se(
+        psi_a,
+        psi_b,
+        folds_row,
+        fold_n_units,
+        unit_rows,
+        unit_fold,
+        folds_u.length(),
+        self.n_folds,
+      ) catch {
         _ => {
           attempt = attempt + 1
           (0.0, 0.0)

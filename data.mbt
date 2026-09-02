@@ -40,7 +40,7 @@ pub fn DoubleMLData::new(
   if cluster_vars.length() > 0 {
     require(cluster_vars.length() == x.nrows)
   }
-  { x, y, d, cluster_vars }
+  { x, y, d, cluster_vars, }
 }
 
 ///|

@@ -229,14 +229,10 @@ fn main {
     d_did[i] = if rng.double() < p_x_ { 1.0 } else { 0.0 }
     y_did[i] = theta0 * d_did[i] + 0.3 * (i + 1).to_double() / n.to_double()
   }
-  let did_data = try
-    @dml.DoubleMLDIDData::new(x_mat, y_did, d_did)
-  catch {
+  let did_data = @dml.DoubleMLDIDData::new(x_mat, y_did, d_did) catch {
     @dml.DIDDataError::NonBinaryTreatment(i) =>
       abort(
-        "DoubleMLDIDData.d must be binary {0, 1} (index " +
-        i.to_string() +
-        ")",
+        "DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")",
       )
   }
   let did = @dml.DoubleMLDID::new(did_data, n_folds=2, n_rep=1, seed=3141)

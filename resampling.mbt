@@ -108,7 +108,7 @@ pub fn stratified_kfold(
       }
     }
     combined_acc = combined_acc +
-      [{ train_idx: train_idx_acc, test_idx: test_idx_acc }]
+      [{ train_idx: train_idx_acc, test_idx: test_idx_acc, }]
   }
   combined_acc
 }

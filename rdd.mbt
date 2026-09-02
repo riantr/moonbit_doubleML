@@ -17,7 +17,7 @@ pub fn DoubleMLRDDData::new(
   require(x.rows() == y.length())
   require(x.rows() == d.length())
   require(x.rows() == score.length())
-  { x, y, d, score }
+  { x, y, d, score, }
 }
 
 ///|

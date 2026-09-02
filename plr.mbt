@@ -222,9 +222,7 @@ fn DoubleMLPLR::fit_cluster(
   // tests and demos). v0.36.0: build_row_unit_map raises
   // ClusterDataError::MissingUnit on a malformed cluster vector;
   // we catch and re-abort to preserve pre-v0.36.0 behavior.
-  let row_unit = try
-    build_row_unit_map(cluster, uniq)
-  catch {
+  let row_unit = build_row_unit_map(cluster, uniq) catch {
     ClusterDataError::MissingUnit(g) =>
       abort(
         "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
@@ -276,18 +274,16 @@ fn DoubleMLPLR::fit_cluster(
       // The catch arm below records the failure and tries again
       // with the next attempt's seed; we don't re-abort here
       // because v0.40.0 adds max_attempts retries.
-      let (t, s) = try
-        cluster_causal_param_and_se(
-          psi_a,
-          psi_b,
-          folds_row,
-          fold_n_units,
-          unit_rows,
-          unit_fold,
-          folds_u.length(),
-          self.n_folds,
-        )
-      catch {
+      let (t, s) = cluster_causal_param_and_se(
+        psi_a,
+        psi_b,
+        folds_row,
+        fold_n_units,
+        unit_rows,
+        unit_fold,
+        folds_u.length(),
+        self.n_folds,
+      ) catch {
         _ => {
           attempt = attempt + 1
           // Sentinel (0.0, 0.0): the catch arm's return value is

@@ -83,7 +83,7 @@ pub fn aggregate_group(
     }
     names[i] = g_value.to_string()
   }
-  { theta, se, agg_names: names }
+  { theta, se, agg_names: names, }
 }
 
 ///|
@@ -136,7 +136,7 @@ pub fn aggregate_time(
     }
     names[pi] = t_eval.to_string()
   }
-  { theta, se, agg_names: names }
+  { theta, se, agg_names: names, }
 }
 
 ///|
@@ -221,5 +221,5 @@ pub fn aggregate_event(
     }
     names[ei] = e.to_string()
   }
-  { theta, se, agg_names: names }
+  { theta, se, agg_names: names, }
 }

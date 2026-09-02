@@ -463,13 +463,14 @@ test "panic_bootstrap_before_fit" {
 /// branch asserts the exact variant + payload (catches any future
 /// mutation that strips the payload).
 test "draw_bootstrap_weights_raises_unknown_method" {
-  try
-    draw_bootstrap_weights("invalid_method", 10, 5, 42)
-  catch {
-    BootstrapMethodError::UnknownMethod(m) => inspect(m, content="invalid_method")
+  try draw_bootstrap_weights("invalid_method", 10, 5, 42) catch {
+    BootstrapMethodError::UnknownMethod(m) =>
+      inspect(m, content="invalid_method")
   } noraise {
     _ =>
-      fail("expected draw_bootstrap_weights to raise UnknownMethod on invalid_method")
+      fail(
+        "expected draw_bootstrap_weights to raise UnknownMethod on invalid_method",
+      )
   }
 }
 

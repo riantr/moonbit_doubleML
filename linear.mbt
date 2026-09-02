@@ -25,7 +25,7 @@ pub struct LinearRegression {
 
 ///|
 pub fn LinearRegression::new(ridge? : Double = 1.0e-10) -> LinearRegression {
-  { ridge, coef_: [], xtx_inv_diag: [], xtwx_inv_diag: [], fitted: false }
+  { ridge, coef_: [], xtx_inv_diag: [], xtwx_inv_diag: [], fitted: false, }
 }
 
 ///|

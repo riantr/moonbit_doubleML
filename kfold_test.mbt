@@ -105,9 +105,7 @@ test "slice_matrix_rows" {
 test "build_row_unit_map_raises_missing_unit" {
   let cluster : Array[Int] = [0, 1, 5, 0] // 5 not in uniq
   let uniq : Array[Int] = [0, 1]
-  try
-    build_row_unit_map(cluster, uniq)
-  catch {
+  try build_row_unit_map(cluster, uniq) catch {
     ClusterDataError::MissingUnit(g) => inspect(g, content="5")
   } noraise {
     _ => fail("expected build_row_unit_map to raise MissingUnit on unit_id=5")

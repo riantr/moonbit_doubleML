@@ -58,7 +58,7 @@ fn outcome_indicator(y : Array[Double], theta : Double) -> Array[Double] {
 /// within a single fit. The counter is exposed via
 /// `reset_g_cross_fit_count()` / `g_cross_fit_calls()` for tests
 /// to bracket a `fit()` call.
-let g_cross_fit_count : Ref[Int] = { val: 0 }
+let g_cross_fit_count : Ref[Int] = { val: 0, }
 
 ///|
 /// Reset the g cross-fit counter to 0. Public so blackbox tests
@@ -184,14 +184,10 @@ pub fn solve_pq(
   // and, if `mean(pq_score_ipw(hi)) <= 0`, widen `hi` exponentially
   // until the bracket signs flip. After 20 widens we abort (the
   // score is structurally non-monotonic — caller's data is bad).
-  let y_min = try
-    array_min(data.y)
-  catch {
+  let y_min = array_min(data.y) catch {
     EmptyArrayError => abort("array_min: empty y array (data.y.length() == 0)")
   }
-  let y_max = try
-    array_max(data.y)
-  catch {
+  let y_max = array_max(data.y) catch {
     EmptyArrayError => abort("array_max: empty y array (data.y.length() == 0)")
   }
   let range = y_max - y_min
@@ -302,16 +298,14 @@ pub fn DoubleMLPQ::new(
 
 ///|
 pub fn DoubleMLPQ::fit(self : DoubleMLPQ) -> DoubleMLPQ {
-  let (theta, psi, deriv) = try
-    solve_pq(
-      self.data,
-      self.treatment,
-      self.quantile,
-      self.n_folds,
-      self.seed,
-      self.propensity_clip,
-    )
-  catch {
+  let (theta, psi, deriv) = solve_pq(
+    self.data,
+    self.treatment,
+    self.quantile,
+    self.n_folds,
+    self.seed,
+    self.propensity_clip,
+  ) catch {
     BracketSignError::UpperSignFailed =>
       abort(
         "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
@@ -404,31 +398,27 @@ pub fn DoubleMLQTE::fit(self : DoubleMLQTE) -> DoubleMLQTE {
   let c = Array::make(self.quantiles.length(), 0.0)
   let s = Array::make(self.quantiles.length(), 0.0)
   for j = 0; j < self.quantiles.length(); j = j + 1 {
-    let (theta1, psi1, deriv1) = try
-      solve_pq(
-        self.data,
-        1.0,
-        self.quantiles[j],
-        self.n_folds,
-        self.seed,
-        self.propensity_clip,
-      )
-    catch {
+    let (theta1, psi1, deriv1) = solve_pq(
+      self.data,
+      1.0,
+      self.quantiles[j],
+      self.n_folds,
+      self.seed,
+      self.propensity_clip,
+    ) catch {
       BracketSignError::UpperSignFailed =>
         abort(
           "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
         )
     }
-    let (theta0, psi0, deriv0) = try
-      solve_pq(
-        self.data,
-        0.0,
-        self.quantiles[j],
-        self.n_folds,
-        self.seed,
-        self.propensity_clip,
-      )
-    catch {
+    let (theta0, psi0, deriv0) = solve_pq(
+      self.data,
+      0.0,
+      self.quantiles[j],
+      self.n_folds,
+      self.seed,
+      self.propensity_clip,
+    ) catch {
       BracketSignError::UpperSignFailed =>
         abort(
           "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
@@ -534,16 +524,14 @@ pub fn DoubleMLCVAR::new(
 
 ///|
 pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
-  let (pq, _, _) = try
-    solve_pq(
-      self.data,
-      self.treatment,
-      self.quantile,
-      self.n_folds,
-      self.seed,
-      self.propensity_clip,
-    )
-  catch {
+  let (pq, _, _) = solve_pq(
+    self.data,
+    self.treatment,
+    self.quantile,
+    self.n_folds,
+    self.seed,
+    self.propensity_clip,
+  ) catch {
     BracketSignError::UpperSignFailed =>
       abort(
         "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",

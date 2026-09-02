@@ -215,13 +215,10 @@ test "panic_solve_pq_aborts_when_upper_bracket_structurally_invalid" {
 /// the exact variant (catches any future mutation that strips
 /// the variant identity).
 test "array_min_raises_on_empty" {
-  try
-    ignore(array_min([]))
-  catch {
+  try ignore(array_min([])) catch {
     EmptyArrayError => ()
   } noraise {
-    _ =>
-      fail("expected array_min to raise EmptyArrayError on empty input")
+    _ => fail("expected array_min to raise EmptyArrayError on empty input")
   }
 }
 
@@ -229,13 +226,10 @@ test "array_min_raises_on_empty" {
 /// Regression test for the v0.41.0 abort → raise conversion in
 /// `array_max`. Same pattern as `array_min_raises_on_empty` above.
 test "array_max_raises_on_empty" {
-  try
-    ignore(array_max([]))
-  catch {
+  try ignore(array_max([])) catch {
     EmptyArrayError => ()
   } noraise {
-    _ =>
-      fail("expected array_max to raise EmptyArrayError on empty input")
+    _ => fail("expected array_max to raise EmptyArrayError on empty input")
   }
 }
 
@@ -274,12 +268,12 @@ test "solve_pq_raises_on_upper_bracket_sign_failure" {
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
   let data = DoubleMLData::new(x, y, d)
-  try
-    ignore(solve_pq(data, 1.0, 0.99, 2, 3141, 1.0e-6))
-  catch {
+  try ignore(solve_pq(data, 1.0, 0.99, 2, 3141, 1.0e-6)) catch {
     BracketSignError::UpperSignFailed => ()
   } noraise {
     _ =>
-      fail("expected solve_pq to raise BracketSignError::UpperSignFailed on q=0.99 with sparse treatment")
+      fail(
+        "expected solve_pq to raise BracketSignError::UpperSignFailed on q=0.99 with sparse treatment",
+      )
   }
 }

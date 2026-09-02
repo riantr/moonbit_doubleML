@@ -18,7 +18,7 @@ pub struct LogisticRegression {
 /// to estimate the coefficients; `predict` and `coefficients` abort
 /// until then.
 pub fn LogisticRegression::new() -> LogisticRegression {
-  { fitted: false, coef_: [] }
+  { fitted: false, coef_: [], }
 }
 
 ///|
@@ -173,7 +173,7 @@ pub fn LogisticRegression::fit(
     }
     step = step + 1
   }
-  { fitted: true, coef_: beta }
+  { fitted: true, coef_: beta, }
 }
 
 ///|

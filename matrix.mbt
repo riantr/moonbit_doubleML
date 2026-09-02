@@ -15,14 +15,14 @@ struct Matrix {
 /// Create a zero matrix of the given shape.
 pub fn Matrix::zeros(nrows : Int, ncols : Int) -> Matrix {
   let data = Array::make(nrows * ncols, 0.0)
-  { nrows, ncols, data }
+  { nrows, ncols, data, }
 }
 
 ///|
 /// Create a matrix filled with ones.
 pub fn Matrix::ones(nrows : Int, ncols : Int) -> Matrix {
   let data = Array::make(nrows * ncols, 1.0)
-  { nrows, ncols, data }
+  { nrows, ncols, data, }
 }
 
 ///|
@@ -34,7 +34,7 @@ pub fn Matrix::from_array(
   ncols : Int,
 ) -> Matrix {
   require(data.length() == nrows * ncols)
-  { nrows, ncols, data }
+  { nrows, ncols, data, }
 }
 
 ///|
@@ -78,7 +78,7 @@ pub fn Matrix::copy(self : Matrix) -> Matrix {
   for i = 0; i < self.data.length(); i = i + 1 {
     data[i] = self.data[i]
   }
-  { nrows: self.nrows, ncols: self.ncols, data }
+  { nrows: self.nrows, ncols: self.ncols, data, }
 }
 
 ///|
@@ -109,7 +109,7 @@ pub fn Matrix::from_rows(rows : Array[Array[Double]]) -> Matrix {
       data[i * ncols + j] = row[j]
     }
   }
-  { nrows, ncols, data }
+  { nrows, ncols, data, }
 }
 
 ///|

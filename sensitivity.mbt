@@ -261,7 +261,12 @@ pub fn gain_statistics(
     rho_out[c] = median_sorted(col_rho)
     delta_theta_out[c] = median_sorted(col_dt)
   }
-  { cf_y: cf_y_out, cf_d: cf_d_out, rho: rho_out, delta_theta: delta_theta_out }
+  {
+    cf_y: cf_y_out,
+    cf_d: cf_d_out,
+    rho: rho_out,
+    delta_theta: delta_theta_out,
+  }
 }
 
 ///|
@@ -299,7 +304,7 @@ pub fn GainStatsSource::new(
   require(n == all_coef.length())
   require(n_rep > 0)
   require(n % n_rep == 0)
-  { var_y_residuals, nu2, all_coef, n_rep, var_y }
+  { var_y_residuals, nu2, all_coef, n_rep, var_y, }
 }
 
 ///|
@@ -359,7 +364,7 @@ pub fn GainStatsSource::from_blp(
   let var_y = blp.var_y()
   require(n_rep > 0)
   require(p % n_rep == 0)
-  { var_y_residuals, nu2, all_coef, n_rep, var_y }
+  { var_y_residuals, nu2, all_coef, n_rep, var_y, }
 }
 
 ///|
@@ -470,7 +475,7 @@ pub fn GainStatsSource::from_blp_cv(
   let n_rep = 1
   // Suppress unused-variable warnings.
   let _ = n_pred
-  { var_y_residuals, nu2, all_coef, n_rep, var_y }
+  { var_y_residuals, nu2, all_coef, n_rep, var_y, }
 }
 
 ///|
@@ -593,7 +598,7 @@ pub fn GainStatsSource::from_blp_cv_repeated(
   let all_coef = coef.copy()
   let var_y = blp.var_y()
   let n_rep = 1
-  { var_y_residuals, nu2, all_coef, n_rep, var_y }
+  { var_y_residuals, nu2, all_coef, n_rep, var_y, }
 }
 
 ///|
@@ -733,7 +738,7 @@ pub fn GainStatsSource::from_blp_hc0(
   let all_coef = coef.copy()
   let var_y = blp.var_y()
   let n_rep = 1
-  { var_y_residuals, nu2, all_coef, n_rep, var_y }
+  { var_y_residuals, nu2, all_coef, n_rep, var_y, }
 }
 
 ///|

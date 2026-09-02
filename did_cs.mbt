@@ -61,7 +61,7 @@ pub fn DoubleMLDIDCSData::new(
   }
   // Discover the unique groups and times.
   let (groups, times) = discover_groups_times(g_owned, t_owned)
-  { x, y, d, t: t_owned, id, g: g_owned, groups, times }
+  { x, y, d, t: t_owned, id, g: g_owned, groups, times, }
 }
 
 ///|

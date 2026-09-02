@@ -39,7 +39,7 @@ pub fn DoubleMLBinaryData::new(
   for yi in y {
     require(yi == 0.0 || yi == 1.0)
   }
-  { x, y, d }
+  { x, y, d, }
 }
 
 ///|
@@ -125,7 +125,7 @@ fn lplr_score_at(
     //               = psi_hat * y * (-d) * exp(-theta * d) * d_tilde
     psi_deriv[i] = psi_hat * y[i] * -d[i] * @math.exp(-theta * d[i]) * dt
   }
-  { psi, psi_deriv }
+  { psi, psi_deriv, }
 }
 
 ///|

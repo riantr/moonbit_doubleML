@@ -39,7 +39,7 @@ pub fn DoubleMLDIDData::new(
       raise DIDDataError::NonBinaryTreatment(i)
     }
   }
-  { x, y, d }
+  { x, y, d, }
 }
 
 ///|

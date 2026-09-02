@@ -57,7 +57,7 @@ pub fn DoubleMLDIDCrossSectionData::new(
     }
   }
   require(has_t0 && has_t1)
-  { x, y, d, t, name }
+  { x, y, d, t, name, }
 }
 
 ///|
@@ -936,9 +936,7 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
   // unknown method; catch and re-abort to preserve pre-v0.37.0
   // process-death behavior. Same defense-in-depth note as
   // did_multi::bootstrap.
-  let weights = try
-    draw_bootstrap_weights(method_name, n_rep_boot, n, seed)
-  catch {
+  let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed) catch {
     BootstrapMethodError::UnknownMethod(m) =>
       abort(
         "draw_bootstrap_weights: unknown method (set in DoubleMLDIDCrossSection::bootstrap): " +
@@ -986,5 +984,11 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
     }
     boot_t_stat[b] = s / denom
   }
-  { ..self, boot_t_stat, boot_method: method_name, n_rep_boot, boot_seed: seed }
+  {
+    ..self,
+    boot_t_stat,
+    boot_method: method_name,
+    n_rep_boot,
+    boot_seed: seed,
+  }
 }

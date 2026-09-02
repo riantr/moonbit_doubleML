@@ -37,7 +37,7 @@ pub fn DoubleMLDIDBinaryData::new(
   require(t.length() == n)
   require(g.length() == n)
   require(id.length() == n)
-  { x, y, d, t, g, id }
+  { x, y, d, t, g, id, }
 }
 
 ///|
@@ -231,7 +231,7 @@ fn preprocess_did_binary(
   for di in d_acc {
     require(di == 0.0 || di == 1.0)
   }
-  { x: x_mat, y: y_acc, d: d_acc, t_indicator: t_acc, eval_idx: eval_idx_acc }
+  { x: x_mat, y: y_acc, d: d_acc, t_indicator: t_acc, eval_idx: eval_idx_acc, }
 }
 
 ///|
@@ -345,15 +345,17 @@ pub fn DoubleMLDIDBinary::new(
     // practice; it exists to satisfy the `raise DIDDataError`
     // signature on DoubleMLDIDData::new.
     inner: DoubleMLDID::new(
-      try
-        DoubleMLDIDData::new(
-          Matrix::zeros(4, data.n_features()),
-          [0.0, 0.0, 0.0, 0.0],
-          [0.0, 0.0, 0.0, 0.0],
-        )
-      catch {
+      DoubleMLDIDData::new(
+        Matrix::zeros(4, data.n_features()),
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+      ) catch {
         DIDDataError::NonBinaryTreatment(i) =>
-          abort("DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")")
+          abort(
+            "DoubleMLDIDData.d must be binary {0, 1} (index " +
+            i.to_string() +
+            ")",
+          )
       },
       n_folds~,
       n_rep~,
@@ -518,11 +520,11 @@ pub fn DoubleMLDIDBinary::fit(
   // process-death behavior. The `wide.d` output of
   // `preprocess_did_binary` is normally binary (only the
   // switchers); the catch arm is a defense-in-depth measure.
-  let wide_data = try
-    DoubleMLDIDData::new(wide.x, wide.y, wide.d)
-  catch {
+  let wide_data = DoubleMLDIDData::new(wide.x, wide.y, wide.d) catch {
     DIDDataError::NonBinaryTreatment(i) =>
-      abort("DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")")
+      abort(
+        "DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")",
+      )
   }
   // v0.10.0: build the wide-format strata as
   // `G_indicator + 2 * t_indicator` (matching upstream's
@@ -588,5 +590,5 @@ pub fn DoubleMLDIDBinary::fit(
   // v0.15.0+: record the long-format `eval_idx` from the
   // preprocessing so the bootstrap can map wide-format psi
   // back to long-format.
-  { ..self, inner, eval_idx: wide.eval_idx, fitted: true }
+  { ..self, inner, eval_idx: wide.eval_idx, fitted: true, }
 }

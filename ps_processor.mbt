@@ -45,7 +45,7 @@ pub fn PSProcessorConfig::new(
   if cv_calibration && calibration_method == "none" {
     raise PSConfigError::InconsistentCVCalibration
   }
-  { clipping_threshold, extreme_threshold, calibration_method, cv_calibration }
+  { clipping_threshold, extreme_threshold, calibration_method, cv_calibration, }
 }
 
 ///|
@@ -145,18 +145,11 @@ pub fn PSProcessor::adjust_ps(
   // propagates CalibrationFittingError from isotonic_calibrate_cv;
   // we re-abort to preserve the pre-v0.38.0 behavior on a malformed
   // cv partition.
-  let calibrated = try
-    apply_calibration(self.config, ps, treatment, cv)
-  catch {
+  let calibrated = apply_calibration(self.config, ps, treatment, cv) catch {
     InvalidCalibrationError::UnknownMethod(m) =>
-      abort(
-        "unknown calibration_method (set in PSProcessorConfig::new): " +
-        m,
-      )
+      abort("unknown calibration_method (set in PSProcessorConfig::new): " + m)
     CalibrationFittingError::IncompleteCVPartition =>
-      abort(
-        "isotonic_calibrate_cv: cv partition does not cover all indices",
-      )
+      abort("isotonic_calibrate_cv: cv partition does not cover all indices")
     _ => abort("apply_calibration: unknown error")
   }
   // Clip to [eps, 1 - eps].

@@ -20,7 +20,7 @@ pub fn DoubleMLSSMData::new(
   require(x.nrows == y.length())
   require(x.nrows == d.length())
   require(x.nrows == s.length())
-  { x, y, d, s }
+  { x, y, d, s, }
 }
 
 ///|

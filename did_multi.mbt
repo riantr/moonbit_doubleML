@@ -317,7 +317,7 @@ pub fn DoubleMLDIDMulti::se_at_idx(
 /// iterates over every (g, t) cell.
 pub fn DoubleMLDIDMulti::fit(self : DoubleMLDIDMulti) -> DoubleMLDIDMulti {
   let inner = self.inner.fit()
-  { ..self, inner, fitted: true }
+  { ..self, inner, fitted: true, }
 }
 
 ///|
@@ -368,9 +368,7 @@ pub fn DoubleMLDIDMulti::bootstrap(
   // method that passes require() but doesn't reach the match
   // (currently impossible because the require and match sets
   // are aligned; kept as defense-in-depth).
-  let weights = try
-    draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed)
-  catch {
+  let weights = draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed) catch {
     BootstrapMethodError::UnknownMethod(m) =>
       abort(
         "draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap): " +
@@ -423,7 +421,13 @@ pub fn DoubleMLDIDMulti::bootstrap(
       boot_t_stat[b * n_thetas + k] = s / denom
     }
   }
-  { ..self, boot_t_stat, boot_method: method_name, n_rep_boot, boot_seed: seed }
+  {
+    ..self,
+    boot_t_stat,
+    boot_method: method_name,
+    n_rep_boot,
+    boot_seed: seed,
+  }
 }
 
 ///|

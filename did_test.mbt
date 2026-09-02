@@ -102,12 +102,12 @@ test "did_data_raises_on_non_binary_treatment" {
   let x = Matrix::zeros(3, 1)
   let y : Array[Double] = [0.0, 0.0, 0.0]
   let d : Array[Double] = [0.0, 0.5, 1.0]
-  try
-    ignore(DoubleMLDIDData::new(x, y, d))
-  catch {
+  try ignore(DoubleMLDIDData::new(x, y, d)) catch {
     DIDDataError::NonBinaryTreatment(i) => inspect(i, content="1")
   } noraise {
     _ =>
-      fail("expected DoubleMLDIDData::new to raise DIDDataError::NonBinaryTreatment on d=[0,0.5,1]")
+      fail(
+        "expected DoubleMLDIDData::new to raise DIDDataError::NonBinaryTreatment on d=[0,0.5,1]",
+      )
   }
 }

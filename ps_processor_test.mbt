@@ -61,10 +61,7 @@ test "panic_ps_processor_rejects_clip_too_large" {
 test "ps_processor_config_raises_inconsistent_cv_calibration" {
   try
     ignore(
-      PSProcessorConfig::new(
-        calibration_method="none",
-        cv_calibration=true,
-      ),
+      PSProcessorConfig::new(calibration_method="none", cv_calibration=true),
     )
   catch {
     PSConfigError::InconsistentCVCalibration => ()
@@ -393,11 +390,10 @@ test "apply_calibration_raises_unknown_method" {
   }
   let ps = [0.5, 0.1, 0.9, 0.2, 0.7]
   let treatment = [0.0, 1.0, 0.0, 1.0, 0.0]
-  try
-    ignore(apply_calibration(cfg, ps, treatment, None))
-  catch {
-    InvalidCalibrationError::UnknownMethod(m) => inspect(m, content="bogus_method")
-    _ => inspect(false, content="true")  // unreachable: only UnknownMethod can fire on bogus_method
+  try ignore(apply_calibration(cfg, ps, treatment, None)) catch {
+    InvalidCalibrationError::UnknownMethod(m) =>
+      inspect(m, content="bogus_method")
+    _ => inspect(false, content="true") // unreachable: only UnknownMethod can fire on bogus_method
   } noraise {
     _ =>
       fail(
@@ -424,12 +420,8 @@ test "isotonic_calibrate_cv_raises_incomplete_partition" {
   // This is "valid" MoonBit syntax (fold covers some indices) but
   // triggers the IncompleteCVPartition path because index 4 is never
   // in any test_idx.
-  let malformed_cv : Array[(Array[Int], Array[Int])] = [
-    ([4], [0, 1, 2, 3]),
-  ]
-  try
-    ignore(isotonic_calibrate_cv(x, y, Some(malformed_cv)))
-  catch {
+  let malformed_cv : Array[(Array[Int], Array[Int])] = [([4], [0, 1, 2, 3])]
+  try ignore(isotonic_calibrate_cv(x, y, Some(malformed_cv))) catch {
     CalibrationFittingError::IncompleteCVPartition => ()
   } noraise {
     _ =>

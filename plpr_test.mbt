@@ -269,10 +269,8 @@ test "plpr_var_est_cluster_reference" {
   let psi_deriv : Array[Double] = [1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0]
   let unit_rows : Array[Array[Int]] = [[0, 1], [2, 3], [4, 5], [6, 7]]
   let unit_fold : Array[Int] = [0, 0, 1, 1]
-  let se = try
-    var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2)
-  catch {
-    _ => 0.0  // unreachable for this input
+  let se = var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2) catch {
+    _ => 0.0 // unreachable for this input
   }
   inspect((se - (3.25 / 36.0).sqrt()).abs() < 1.0e-12, content="true")
 }
@@ -319,9 +317,7 @@ test "plpr_var_est_cluster_raises_j_too_small_on_zero_j" {
   //   }
   // The catch branch asserts the exact variant + payload; the
   // noraise branch fails the test if no error fires (catches M04).
-  try
-    var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2)
-  catch {
+  try var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2) catch {
     VarEstClusterError::JTooSmall(j, _, _) =>
       inspect(j.abs() < 1.0e-6, content="true")
   } noraise {

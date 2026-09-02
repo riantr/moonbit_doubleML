@@ -57,7 +57,7 @@ pub fn DoubleMLPanelData::new(
   require(t.length() == n)
   require(id.length() == n)
   require(n > 0)
-  { x, y, d, t, id }
+  { x, y, d, t, id, }
 }
 
 ///|
@@ -460,8 +460,7 @@ fn transform_panel(
     // `did_multi.mbt:558` (p_adjust fallback), which was
     // documented and skipped.
     abort(
-      "DoubleMLPLPR: unknown approach (set in DoubleMLPLPR::new): " +
-      approach,
+      "DoubleMLPLPR: unknown approach (set in DoubleMLPLPR::new): " + approach,
     )
   }
 }
@@ -581,9 +580,7 @@ pub fn DoubleMLPLPR::fit(
   // `build_row_unit_map` from kfold.mbt). v0.36.0: it raises
   // ClusterDataError::MissingUnit on a malformed cluster vector;
   // catch and re-abort to preserve pre-v0.36.0 behavior.
-  let row_unit = try
-    build_row_unit_map(tf.id, uniq)
-  catch {
+  let row_unit = build_row_unit_map(tf.id, uniq) catch {
     ClusterDataError::MissingUnit(g) =>
       abort(
         "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
@@ -621,92 +618,95 @@ pub fn DoubleMLPLPR::fit(
         folds_u,
         row_unit,
       )
-    l_pred = cross_fit_predict(LinearRegression::new(), tf.x, tf.y, folds_row)
-    if self.approach == "cre_normal" {
-      // ml_m gets [X, d_mean] as inputs.
-      let p = tf.x.cols()
-      let xm_flat : Array[Double] = Array::make(n * (p + 1), 0.0)
-      for i = 0; i < n; i = i + 1 {
-        for j = 0; j < p; j = j + 1 {
-          xm_flat[i * (p + 1) + j] = tf.x.get(i, j)
+      l_pred = cross_fit_predict(LinearRegression::new(), tf.x, tf.y, folds_row)
+      if self.approach == "cre_normal" {
+        // ml_m gets [X, d_mean] as inputs.
+        let p = tf.x.cols()
+        let xm_flat : Array[Double] = Array::make(n * (p + 1), 0.0)
+        for i = 0; i < n; i = i + 1 {
+          for j = 0; j < p; j = j + 1 {
+            xm_flat[i * (p + 1) + j] = tf.x.get(i, j)
+          }
+          xm_flat[i * (p + 1) + p] = tf.d_mean_row[i]
         }
-        xm_flat[i * (p + 1) + p] = tf.d_mean_row[i]
-      }
-      let xm = Matrix::from_array(xm_flat, n, p + 1)
-      m_pred = cross_fit_predict(LinearRegression::new(), xm, tf.d, folds_row)
-    } else {
-      m_pred = cross_fit_predict(LinearRegression::new(), tf.x, tf.d, folds_row)
-    }
-    // cre_general: post-hoc adjustment
-    //   m_hat* = m_hat + d_mean - mean_by_id(m_hat).
-    if self.approach == "cre_general" {
-      let mh_mean = unit_means(m_pred, tf.id)
-      for i = 0; i < n; i = i + 1 {
-        m_pred[i] = m_pred[i] + tf.d_mean_row[i] - mh_mean[i]
-      }
-    }
-    let v_hat : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      v_hat[i] = tf.d[i] - m_pred[i]
-    }
-    let (psi_a, psi_b) = if self.score == "IV-type" {
-      // theta_initial from the PO score, then g on y - theta*d.
-      let u_hat : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        u_hat[i] = tf.y[i] - l_pred[i]
-      }
-      let psi_a0 : Array[Double] = Array::make(n, 0.0)
-      let psi_b0 : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        psi_a0[i] = -v_hat[i] * v_hat[i]
-        psi_b0[i] = v_hat[i] * u_hat[i]
-      }
-      // Upstream seeds the IV-type g fit with a plain ratio of
-      // means (np.nanmean), independent of clustering.
-      let (theta_init, _) = var_est(psi_a0, psi_b0)
-      let y_resid : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        y_resid[i] = tf.y[i] - theta_init * tf.d[i]
-      }
-      let g_pred = cross_fit_predict(
-        LinearRegression::new(),
-        tf.x,
-        y_resid,
-        folds_row,
-      )
-      let psi_a_iv : Array[Double] = Array::make(n, 0.0)
-      let psi_b_iv : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        psi_a_iv[i] = -v_hat[i] * tf.d[i]
-        psi_b_iv[i] = v_hat[i] * (tf.y[i] - g_pred[i])
-      }
-      (psi_a_iv, psi_b_iv)
-    } else {
-      let u_hat : Array[Double] = Array::make(n, 0.0)
-      let psi_a_po : Array[Double] = Array::make(n, 0.0)
-      let psi_b_po : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        u_hat[i] = tf.y[i] - l_pred[i]
-        psi_a_po[i] = -v_hat[i] * v_hat[i]
-        psi_b_po[i] = v_hat[i] * u_hat[i]
-      }
-      (psi_a_po, psi_b_po)
-    }
-    // Clustered-path coefficient and standard error via the
-    // shared helper (fold-weighted cluster ratio + unit-level
-    // cluster-robust SE).
-      let (t, s) = try
-        cluster_causal_param_and_se(
-          psi_a,
-          psi_b,
+        let xm = Matrix::from_array(xm_flat, n, p + 1)
+        m_pred = cross_fit_predict(LinearRegression::new(), xm, tf.d, folds_row)
+      } else {
+        m_pred = cross_fit_predict(
+          LinearRegression::new(),
+          tf.x,
+          tf.d,
           folds_row,
-          fold_n_units,
-          unit_rows,
-          unit_fold,
-          folds_u.length(),
-          self.n_folds,
         )
-      catch {
+      }
+      // cre_general: post-hoc adjustment
+      //   m_hat* = m_hat + d_mean - mean_by_id(m_hat).
+      if self.approach == "cre_general" {
+        let mh_mean = unit_means(m_pred, tf.id)
+        for i = 0; i < n; i = i + 1 {
+          m_pred[i] = m_pred[i] + tf.d_mean_row[i] - mh_mean[i]
+        }
+      }
+      let v_hat : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        v_hat[i] = tf.d[i] - m_pred[i]
+      }
+      let (psi_a, psi_b) = if self.score == "IV-type" {
+        // theta_initial from the PO score, then g on y - theta*d.
+        let u_hat : Array[Double] = Array::make(n, 0.0)
+        for i = 0; i < n; i = i + 1 {
+          u_hat[i] = tf.y[i] - l_pred[i]
+        }
+        let psi_a0 : Array[Double] = Array::make(n, 0.0)
+        let psi_b0 : Array[Double] = Array::make(n, 0.0)
+        for i = 0; i < n; i = i + 1 {
+          psi_a0[i] = -v_hat[i] * v_hat[i]
+          psi_b0[i] = v_hat[i] * u_hat[i]
+        }
+        // Upstream seeds the IV-type g fit with a plain ratio of
+        // means (np.nanmean), independent of clustering.
+        let (theta_init, _) = var_est(psi_a0, psi_b0)
+        let y_resid : Array[Double] = Array::make(n, 0.0)
+        for i = 0; i < n; i = i + 1 {
+          y_resid[i] = tf.y[i] - theta_init * tf.d[i]
+        }
+        let g_pred = cross_fit_predict(
+          LinearRegression::new(),
+          tf.x,
+          y_resid,
+          folds_row,
+        )
+        let psi_a_iv : Array[Double] = Array::make(n, 0.0)
+        let psi_b_iv : Array[Double] = Array::make(n, 0.0)
+        for i = 0; i < n; i = i + 1 {
+          psi_a_iv[i] = -v_hat[i] * tf.d[i]
+          psi_b_iv[i] = v_hat[i] * (tf.y[i] - g_pred[i])
+        }
+        (psi_a_iv, psi_b_iv)
+      } else {
+        let u_hat : Array[Double] = Array::make(n, 0.0)
+        let psi_a_po : Array[Double] = Array::make(n, 0.0)
+        let psi_b_po : Array[Double] = Array::make(n, 0.0)
+        for i = 0; i < n; i = i + 1 {
+          u_hat[i] = tf.y[i] - l_pred[i]
+          psi_a_po[i] = -v_hat[i] * v_hat[i]
+          psi_b_po[i] = v_hat[i] * u_hat[i]
+        }
+        (psi_a_po, psi_b_po)
+      }
+      // Clustered-path coefficient and standard error via the
+      // shared helper (fold-weighted cluster ratio + unit-level
+      // cluster-robust SE).
+      let (t, s) = cluster_causal_param_and_se(
+        psi_a,
+        psi_b,
+        folds_row,
+        fold_n_units,
+        unit_rows,
+        unit_fold,
+        folds_u.length(),
+        self.n_folds,
+      ) catch {
         _ => {
           attempt = attempt + 1
           (0.0, 0.0)
