@@ -23,23 +23,28 @@ pub fn DoubleMLAPO::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
 ) -> DoubleMLAPO {
-  require(n_folds >= 2)
-  require(n_folds <= data.n_obs())
-  require(n_rep >= 1)
-  require(propensity_clip > 0.0)
-  require(propensity_clip < 0.5)
-  {
-    data,
-    treatment_level,
-    n_folds,
-    n_rep,
-    seed,
-    propensity_clip,
-    g_hat: Array::make(data.n_obs(), 0.0),
-    m_hat: Array::make(data.n_obs(), 0.0),
-    coef: 0.0,
-    se: 0.0,
-    fitted: false,
+  try {
+    require(n_folds >= 2)
+    require(n_folds <= data.n_obs())
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+    {
+      data,
+      treatment_level,
+      n_folds,
+      n_rep,
+      seed,
+      propensity_clip,
+      g_hat: Array::make(data.n_obs(), 0.0),
+      m_hat: Array::make(data.n_obs(), 0.0),
+      coef: 0.0,
+      se: 0.0,
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -56,32 +61,57 @@ pub fn DoubleMLAPO::n_features(self : DoubleMLAPO) -> Int {
 
 ///|
 pub fn DoubleMLAPO::coef(self : DoubleMLAPO) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLAPO::se(self : DoubleMLAPO) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLAPO::confint(self : DoubleMLAPO) -> (Double, Double) {
-  require(self.fitted)
-  (self.coef - 1.96 * self.se, self.coef + 1.96 * self.se)
+  try {
+    require(self.fitted)
+    (self.coef - 1.96 * self.se, self.coef + 1.96 * self.se)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLAPO::predictions_g(self : DoubleMLAPO) -> Array[Double] {
-  require(self.fitted)
-  self.g_hat
+  try {
+    require(self.fitted)
+    self.g_hat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLAPO::predictions_m(self : DoubleMLAPO) -> Array[Double] {
-  require(self.fitted)
-  self.m_hat
+  try {
+    require(self.fitted)
+    self.m_hat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

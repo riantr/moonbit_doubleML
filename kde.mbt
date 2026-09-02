@@ -12,13 +12,18 @@
 /// LPQ numerical-derivative use case where `y` is typically uniform-
 /// shaped or mildly bimodal.
 pub fn silverman_bandwidth(y : Array[Double]) -> Double {
-  let n = y.length()
-  require(n >= 2)
-  let sd = sample_sd(y)
-  let iqr_over_134 = iqr(y) / 1.34
-  let spread = if sd < iqr_over_134 { sd } else { iqr_over_134 }
-  let n_d = n.to_double()
-  0.9 * spread * @math.pow(n_d, -0.2)
+  try {
+    let n = y.length()
+    require(n >= 2)
+    let sd = sample_sd(y)
+    let iqr_over_134 = iqr(y) / 1.34
+    let spread = if sd < iqr_over_134 { sd } else { iqr_over_134 }
+    let n_d = n.to_double()
+    0.9 * spread * @math.pow(n_d, -0.2)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -81,17 +86,22 @@ fn percentile_sorted(sorted : Array[Double], p : Double) -> Double {
 /// Returns a non-negative density. The constant `sqrt(2 * pi) =
 /// 1.7724538509055159` is the standard Gaussian normalisation factor.
 pub fn gaussian_kde(y : Array[Double], x : Double, h : Double) -> Double {
-  let n = y.length()
-  require(n >= 1)
-  require(h > 0.0)
-  let inv_h = 1.0 / h
-  let inv_norm = inv_h / 2.5066282746310002 // 1 / (h * sqrt(2*pi))
-  let mut acc = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let z = (x - y[i]) * inv_h
-    acc = acc + @math.exp(-0.5 * z * z)
+  try {
+    let n = y.length()
+    require(n >= 1)
+    require(h > 0.0)
+    let inv_h = 1.0 / h
+    let inv_norm = inv_h / 2.5066282746310002 // 1 / (h * sqrt(2*pi))
+    let mut acc = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let z = (x - y[i]) * inv_h
+      acc = acc + @math.exp(-0.5 * z * z)
+    }
+    acc * inv_norm / n.to_double()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  acc * inv_norm / n.to_double()
 }
 
 ///|
@@ -118,16 +128,21 @@ pub fn gaussian_kde_weighted(
   x : Double,
   h : Double,
 ) -> Double {
-  let n = y.length()
-  require(n >= 1)
-  require(y.length() == w.length())
-  require(h > 0.0)
-  let inv_h = 1.0 / h
-  let inv_norm = inv_h / 2.5066282746310002 // 1 / (h * sqrt(2*pi))
-  let mut acc = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let z = (x - y[i]) * inv_h
-    acc = acc + w[i] * @math.exp(-0.5 * z * z)
+  try {
+    let n = y.length()
+    require(n >= 1)
+    require(y.length() == w.length())
+    require(h > 0.0)
+    let inv_h = 1.0 / h
+    let inv_norm = inv_h / 2.5066282746310002 // 1 / (h * sqrt(2*pi))
+    let mut acc = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let z = (x - y[i]) * inv_h
+      acc = acc + w[i] * @math.exp(-0.5 * z * z)
+    }
+    acc * inv_norm
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  acc * inv_norm
 }

@@ -33,8 +33,13 @@ pub fn Matrix::from_array(
   nrows : Int,
   ncols : Int,
 ) -> Matrix {
-  require(data.length() == nrows * ncols)
-  { nrows, ncols, data, }
+  try {
+    require(data.length() == nrows * ncols)
+    { nrows, ncols, data, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -98,18 +103,23 @@ pub fn Matrix::transpose(self : Matrix) -> Matrix {
 /// matrix where `ncols = rows[0].length()`. Panics if the rows do not all
 /// share the same length.
 pub fn Matrix::from_rows(rows : Array[Array[Double]]) -> Matrix {
-  let nrows = rows.length()
-  require(nrows > 0)
-  let ncols = rows[0].length()
-  let data = Array::make(nrows * ncols, 0.0)
-  for i = 0; i < nrows; i = i + 1 {
-    let row = rows[i]
-    require(row.length() == ncols)
-    for j = 0; j < ncols; j = j + 1 {
-      data[i * ncols + j] = row[j]
+  try {
+    let nrows = rows.length()
+    require(nrows > 0)
+    let ncols = rows[0].length()
+    let data = Array::make(nrows * ncols, 0.0)
+    for i = 0; i < nrows; i = i + 1 {
+      let row = rows[i]
+      require(row.length() == ncols)
+      for j = 0; j < ncols; j = j + 1 {
+        data[i * ncols + j] = row[j]
+      }
     }
+    { nrows, ncols, data, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  { nrows, ncols, data, }
 }
 
 ///|
@@ -119,25 +129,30 @@ pub fn Matrix::from_rows(rows : Array[Array[Double]]) -> Matrix {
 /// `kahan.mbt`-style compensated summation so the partial sum does not
 /// drift by `O(p * eps)` when terms of opposite sign nearly cancel.
 pub fn matmul(a : Matrix, b : Matrix) -> Matrix {
-  require(a.ncols == b.nrows)
-  let out = Matrix::zeros(a.nrows, b.ncols)
-  for i = 0; i < a.nrows; i = i + 1 {
-    for j = 0; j < b.ncols; j = j + 1 {
-      // Kahan-compensated inner-product accumulator: for fixed
-      // (i, j), sum_{k=0..a.ncols-1} a[i][k] * b[k][j].
-      let mut sum = 0.0
-      let mut c = 0.0
-      for k = 0; k < a.ncols; k = k + 1 {
-        let prod = a.data[i * a.ncols + k] * b.data[k * b.ncols + j]
-        let y = prod - c
-        let t = sum + y
-        c = t - sum - y
-        sum = t
+  try {
+    require(a.ncols == b.nrows)
+    let out = Matrix::zeros(a.nrows, b.ncols)
+    for i = 0; i < a.nrows; i = i + 1 {
+      for j = 0; j < b.ncols; j = j + 1 {
+        // Kahan-compensated inner-product accumulator: for fixed
+        // (i, j), sum_{k=0..a.ncols-1} a[i][k] * b[k][j].
+        let mut sum = 0.0
+        let mut c = 0.0
+        for k = 0; k < a.ncols; k = k + 1 {
+          let prod = a.data[i * a.ncols + k] * b.data[k * b.ncols + j]
+          let y = prod - c
+          let t = sum + y
+          c = t - sum - y
+          sum = t
+        }
+        out.data[i * b.ncols + j] = sum
       }
-      out.data[i * b.ncols + j] = sum
     }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -146,36 +161,46 @@ pub fn matmul(a : Matrix, b : Matrix) -> Matrix {
 ///
 /// The inner-product accumulator is Kahan-compensated (see `kahan.mbt`).
 pub fn matvec(a : Matrix, x : Array[Double]) -> Array[Double] {
-  require(a.ncols == x.length())
-  let out = Array::make(a.nrows, 0.0)
-  for i = 0; i < a.nrows; i = i + 1 {
-    let mut s = 0.0
-    let mut c = 0.0
-    for j = 0; j < a.ncols; j = j + 1 {
-      let prod = a.data[i * a.ncols + j] * x[j]
-      let y = prod - c
-      let t = s + y
-      c = t - s - y
-      s = t
+  try {
+    require(a.ncols == x.length())
+    let out = Array::make(a.nrows, 0.0)
+    for i = 0; i < a.nrows; i = i + 1 {
+      let mut s = 0.0
+      let mut c = 0.0
+      for j = 0; j < a.ncols; j = j + 1 {
+        let prod = a.data[i * a.ncols + j] * x[j]
+        let y = prod - c
+        let t = s + y
+        c = t - s - y
+        s = t
+      }
+      out[i] = s
     }
-    out[i] = s
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
 /// `A^T * x` matrix-vector product.
 pub fn matvec_t(a : Matrix, x : Array[Double]) -> Array[Double] {
-  require(a.nrows == x.length())
-  let out = Array::make(a.ncols, 0.0)
-  for j = 0; j < a.ncols; j = j + 1 {
-    let mut s = 0.0
-    for i = 0; i < a.nrows; i = i + 1 {
-      s = s + a.data[i * a.ncols + j] * x[i]
+  try {
+    require(a.nrows == x.length())
+    let out = Array::make(a.ncols, 0.0)
+    for j = 0; j < a.ncols; j = j + 1 {
+      let mut s = 0.0
+      for i = 0; i < a.nrows; i = i + 1 {
+        s = s + a.data[i * a.ncols + j] * x[i]
+      }
+      out[j] = s
     }
-    out[j] = s
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -184,17 +209,22 @@ pub fn matvec_t(a : Matrix, x : Array[Double]) -> Array[Double] {
 /// The accumulator is Kahan-compensated so the result is robust to
 /// near-cancellation between terms (see `kahan.mbt`).
 pub fn dot(a : Array[Double], b : Array[Double]) -> Double {
-  require(a.length() == b.length())
-  let mut s = 0.0
-  let mut c = 0.0
-  for i = 0; i < a.length(); i = i + 1 {
-    let prod = a[i] * b[i]
-    let y = prod - c
-    let t = s + y
-    c = t - s - y
-    s = t
+  try {
+    require(a.length() == b.length())
+    let mut s = 0.0
+    let mut c = 0.0
+    for i = 0; i < a.length(); i = i + 1 {
+      let prod = a[i] * b[i]
+      let y = prod - c
+      let t = s + y
+      c = t - s - y
+      s = t
+    }
+    s
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  s
 }
 
 ///|

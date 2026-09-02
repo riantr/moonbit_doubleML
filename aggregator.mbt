@@ -33,29 +33,34 @@ pub fn aggregate_coef_se(
   coefs : Array[Double],
   ses : Array[Double],
 ) -> (Double, Double) {
-  require(coefs.length() == ses.length())
-  require(coefs.length() >= 1)
-  // n_rep == 1 fast path: the general formula goes through
-  //   (median(coefs + 1.96 * ses) - median(coefs)) / 1.96
-  // which is not exactly `ses[0]` in IEEE 754. The estimator
-  // regression-protection invariant requires `(coefs[0], ses[0])`
-  // byte-equal, so return the inputs directly here.
-  if coefs.length() == 1 {
-    return (coefs[0], ses[0])
+  try {
+    require(coefs.length() == ses.length())
+    require(coefs.length() >= 1)
+    // n_rep == 1 fast path: the general formula goes through
+    //   (median(coefs + 1.96 * ses) - median(coefs)) / 1.96
+    // which is not exactly `ses[0]` in IEEE 754. The estimator
+    // regression-protection invariant requires `(coefs[0], ses[0])`
+    // byte-equal, so return the inputs directly here.
+    if coefs.length() == 1 {
+      return (coefs[0], ses[0])
+    }
+    let n = coefs.length()
+    // theta_hat = median(coefs). Copy then sort so we do not mutate the
+    // caller's array.
+    let coefs_sorted = coefs.copy()
+    coefs_sorted.sort()
+    let theta_hat = coefs_sorted[n / 2]
+    // ub = coefs + 1.96 * ses, then median.
+    let ub = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      ub[i] = coefs[i] + 1.96 * ses[i]
+    }
+    ub.sort()
+    let ub_hat = ub[n / 2]
+    let se_hat = (ub_hat - theta_hat) / 1.96
+    (theta_hat, se_hat)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  let n = coefs.length()
-  // theta_hat = median(coefs). Copy then sort so we do not mutate the
-  // caller's array.
-  let coefs_sorted = coefs.copy()
-  coefs_sorted.sort()
-  let theta_hat = coefs_sorted[n / 2]
-  // ub = coefs + 1.96 * ses, then median.
-  let ub = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    ub[i] = coefs[i] + 1.96 * ses[i]
-  }
-  ub.sort()
-  let ub_hat = ub[n / 2]
-  let se_hat = (ub_hat - theta_hat) / 1.96
-  (theta_hat, se_hat)
 }

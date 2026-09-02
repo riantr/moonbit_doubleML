@@ -41,49 +41,54 @@ pub fn aggregate_group(
   periods : Array[Int],
   group_sizes : Array[Int],
 ) -> DIDAggregationResult {
-  let n_groups = groups.length()
-  let n_periods = periods.length()
-  require(coef_matrix.length() == n_groups * n_periods)
-  require(se_matrix.length() == n_groups * n_periods)
-  require(group_sizes.length() == n_groups)
-  // Total units (denominator for the per-group share).
-  let mut total = 0
-  for i = 0; i < n_groups; i = i + 1 {
-    total = total + group_sizes[i]
-  }
-  require(total > 0)
-  // For each group g_i, average the post-treatment (t >= g_i)
-  // per-(g_i, t) ATTs with weight 1/n_periods.
-  let theta : Array[Double] = Array::make(n_groups, 0.0)
-  let se : Array[Double] = Array::make(n_groups, 0.0)
-  let names : Array[String] = Array::make(n_groups, "")
-  for i = 0; i < n_groups; i = i + 1 {
-    let g_value = groups[i]
-    let mut sum_w_theta = 0.0
-    let mut sum_w = 0.0
-    let mut sum_w2_se2 = 0.0
-    for pi = 0; pi < n_periods; pi = pi + 1 {
-      let t_eval = periods[pi]
-      if t_eval <= g_value {
-        continue
+  try {
+    let n_groups = groups.length()
+    let n_periods = periods.length()
+    require(coef_matrix.length() == n_groups * n_periods)
+    require(se_matrix.length() == n_groups * n_periods)
+    require(group_sizes.length() == n_groups)
+    // Total units (denominator for the per-group share).
+    let mut total = 0
+    for i = 0; i < n_groups; i = i + 1 {
+      total = total + group_sizes[i]
+    }
+    require(total > 0)
+    // For each group g_i, average the post-treatment (t >= g_i)
+    // per-(g_i, t) ATTs with weight 1/n_periods.
+    let theta : Array[Double] = Array::make(n_groups, 0.0)
+    let se : Array[Double] = Array::make(n_groups, 0.0)
+    let names : Array[String] = Array::make(n_groups, "")
+    for i = 0; i < n_groups; i = i + 1 {
+      let g_value = groups[i]
+      let mut sum_w_theta = 0.0
+      let mut sum_w = 0.0
+      let mut sum_w2_se2 = 0.0
+      for pi = 0; pi < n_periods; pi = pi + 1 {
+        let t_eval = periods[pi]
+        if t_eval <= g_value {
+          continue
+        }
+        let flat = i * n_periods + pi
+        let w = 1.0
+        sum_w_theta = sum_w_theta + w * coef_matrix[flat]
+        sum_w = sum_w + w
+        sum_w2_se2 = sum_w2_se2 + w * w * se_matrix[flat] * se_matrix[flat]
       }
-      let flat = i * n_periods + pi
-      let w = 1.0
-      sum_w_theta = sum_w_theta + w * coef_matrix[flat]
-      sum_w = sum_w + w
-      sum_w2_se2 = sum_w2_se2 + w * w * se_matrix[flat] * se_matrix[flat]
+      if sum_w > 0.0 {
+        theta[i] = sum_w_theta / sum_w
+        // Group-level weight for the *overall* aggregation
+        // (proportion of units in this group).
+        let w_g = group_sizes[i].to_double() / total.to_double()
+        ignore(w_g)
+        se[i] = (sum_w2_se2 / (sum_w * sum_w)).sqrt()
+      }
+      names[i] = g_value.to_string()
     }
-    if sum_w > 0.0 {
-      theta[i] = sum_w_theta / sum_w
-      // Group-level weight for the *overall* aggregation
-      // (proportion of units in this group).
-      let w_g = group_sizes[i].to_double() / total.to_double()
-      ignore(w_g)
-      se[i] = (sum_w2_se2 / (sum_w * sum_w)).sqrt()
-    }
-    names[i] = g_value.to_string()
+    { theta, se, agg_names: names, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  { theta, se, agg_names: names, }
 }
 
 ///|
@@ -101,42 +106,47 @@ pub fn aggregate_time(
   periods : Array[Int],
   group_sizes : Array[Int],
 ) -> DIDAggregationResult {
-  let n_groups = groups.length()
-  let n_periods = periods.length()
-  require(coef_matrix.length() == n_groups * n_periods)
-  require(se_matrix.length() == n_groups * n_periods)
-  require(group_sizes.length() == n_groups)
-  let mut total = 0
-  for i = 0; i < n_groups; i = i + 1 {
-    total = total + group_sizes[i]
-  }
-  require(total > 0)
-  let theta : Array[Double] = Array::make(n_periods, 0.0)
-  let se : Array[Double] = Array::make(n_periods, 0.0)
-  let names : Array[String] = Array::make(n_periods, "")
-  for pi = 0; pi < n_periods; pi = pi + 1 {
-    let t_eval = periods[pi]
-    let mut sum_w_theta = 0.0
-    let mut sum_w = 0.0
-    let mut sum_w2_se2 = 0.0
+  try {
+    let n_groups = groups.length()
+    let n_periods = periods.length()
+    require(coef_matrix.length() == n_groups * n_periods)
+    require(se_matrix.length() == n_groups * n_periods)
+    require(group_sizes.length() == n_groups)
+    let mut total = 0
     for i = 0; i < n_groups; i = i + 1 {
-      let g_value = groups[i]
-      if t_eval <= g_value {
-        continue
+      total = total + group_sizes[i]
+    }
+    require(total > 0)
+    let theta : Array[Double] = Array::make(n_periods, 0.0)
+    let se : Array[Double] = Array::make(n_periods, 0.0)
+    let names : Array[String] = Array::make(n_periods, "")
+    for pi = 0; pi < n_periods; pi = pi + 1 {
+      let t_eval = periods[pi]
+      let mut sum_w_theta = 0.0
+      let mut sum_w = 0.0
+      let mut sum_w2_se2 = 0.0
+      for i = 0; i < n_groups; i = i + 1 {
+        let g_value = groups[i]
+        if t_eval <= g_value {
+          continue
+        }
+        let flat = i * n_periods + pi
+        let w = group_sizes[i].to_double()
+        sum_w_theta = sum_w_theta + w * coef_matrix[flat]
+        sum_w = sum_w + w
+        sum_w2_se2 = sum_w2_se2 + w * w * se_matrix[flat] * se_matrix[flat]
       }
-      let flat = i * n_periods + pi
-      let w = group_sizes[i].to_double()
-      sum_w_theta = sum_w_theta + w * coef_matrix[flat]
-      sum_w = sum_w + w
-      sum_w2_se2 = sum_w2_se2 + w * w * se_matrix[flat] * se_matrix[flat]
+      if sum_w > 0.0 {
+        theta[pi] = sum_w_theta / sum_w
+        se[pi] = (sum_w2_se2 / (sum_w * sum_w)).sqrt()
+      }
+      names[pi] = t_eval.to_string()
     }
-    if sum_w > 0.0 {
-      theta[pi] = sum_w_theta / sum_w
-      se[pi] = (sum_w2_se2 / (sum_w * sum_w)).sqrt()
-    }
-    names[pi] = t_eval.to_string()
+    { theta, se, agg_names: names, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  { theta, se, agg_names: names, }
 }
 
 ///|
@@ -157,69 +167,74 @@ pub fn aggregate_event(
   periods : Array[Int],
   group_sizes : Array[Int],
 ) -> DIDAggregationResult {
-  let n_groups = groups.length()
-  let n_periods = periods.length()
-  require(coef_matrix.length() == n_groups * n_periods)
-  require(se_matrix.length() == n_groups * n_periods)
-  require(group_sizes.length() == n_groups)
-  // Collect unique event times (in ascending order).
-  let e_set : Array[Int] = []
-  let mut e_set_acc = e_set
-  for i = 0; i < n_groups; i = i + 1 {
-    let g_value = groups[i]
-    for pi = 0; pi < n_periods; pi = pi + 1 {
-      let t_eval = periods[pi]
-      let e = t_eval - g_value
-      let mut found = false
-      for k = 0; k < e_set_acc.length(); k = k + 1 {
-        if e_set_acc[k] == e {
-          found = true
-        }
-      }
-      if !found {
-        e_set_acc = e_set_acc + [e]
-      }
-    }
-  }
-  e_set_acc.sort()
-  let n_e = e_set_acc.length()
-  let theta : Array[Double] = Array::make(n_e, 0.0)
-  let se : Array[Double] = Array::make(n_e, 0.0)
-  let names : Array[String] = Array::make(n_e, "")
-  for ei = 0; ei < n_e; ei = ei + 1 {
-    let e = e_set_acc[ei]
-    // Skip the pre-treatment baseline (e = 0) cells: those are
-    // the pre-treatment `t = g` cells that `DoubleMLDIDCS`
-    // leaves at 0.0 by convention. Including them would
-    // mechanically drag the event-time-0 estimate toward 0.
-    if e <= 0 {
-      theta[ei] = 0.0
-      se[ei] = 0.0
-      names[ei] = e.to_string()
-      continue
-    }
-    let mut sum_w_theta = 0.0
-    let mut sum_w = 0.0
-    let mut sum_w2_se2 = 0.0
+  try {
+    let n_groups = groups.length()
+    let n_periods = periods.length()
+    require(coef_matrix.length() == n_groups * n_periods)
+    require(se_matrix.length() == n_groups * n_periods)
+    require(group_sizes.length() == n_groups)
+    // Collect unique event times (in ascending order).
+    let e_set : Array[Int] = []
+    let mut e_set_acc = e_set
     for i = 0; i < n_groups; i = i + 1 {
       let g_value = groups[i]
       for pi = 0; pi < n_periods; pi = pi + 1 {
         let t_eval = periods[pi]
-        if t_eval - g_value != e {
-          continue
+        let e = t_eval - g_value
+        let mut found = false
+        for k = 0; k < e_set_acc.length(); k = k + 1 {
+          if e_set_acc[k] == e {
+            found = true
+          }
         }
-        let flat = i * n_periods + pi
-        let w = group_sizes[i].to_double()
-        sum_w_theta = sum_w_theta + w * coef_matrix[flat]
-        sum_w = sum_w + w
-        sum_w2_se2 = sum_w2_se2 + w * w * se_matrix[flat] * se_matrix[flat]
+        if !found {
+          e_set_acc = e_set_acc + [e]
+        }
       }
     }
-    if sum_w > 0.0 {
-      theta[ei] = sum_w_theta / sum_w
-      se[ei] = (sum_w2_se2 / (sum_w * sum_w)).sqrt()
+    e_set_acc.sort()
+    let n_e = e_set_acc.length()
+    let theta : Array[Double] = Array::make(n_e, 0.0)
+    let se : Array[Double] = Array::make(n_e, 0.0)
+    let names : Array[String] = Array::make(n_e, "")
+    for ei = 0; ei < n_e; ei = ei + 1 {
+      let e = e_set_acc[ei]
+      // Skip the pre-treatment baseline (e = 0) cells: those are
+      // the pre-treatment `t = g` cells that `DoubleMLDIDCS`
+      // leaves at 0.0 by convention. Including them would
+      // mechanically drag the event-time-0 estimate toward 0.
+      if e <= 0 {
+        theta[ei] = 0.0
+        se[ei] = 0.0
+        names[ei] = e.to_string()
+        continue
+      }
+      let mut sum_w_theta = 0.0
+      let mut sum_w = 0.0
+      let mut sum_w2_se2 = 0.0
+      for i = 0; i < n_groups; i = i + 1 {
+        let g_value = groups[i]
+        for pi = 0; pi < n_periods; pi = pi + 1 {
+          let t_eval = periods[pi]
+          if t_eval - g_value != e {
+            continue
+          }
+          let flat = i * n_periods + pi
+          let w = group_sizes[i].to_double()
+          sum_w_theta = sum_w_theta + w * coef_matrix[flat]
+          sum_w = sum_w + w
+          sum_w2_se2 = sum_w2_se2 + w * w * se_matrix[flat] * se_matrix[flat]
+        }
+      }
+      if sum_w > 0.0 {
+        theta[ei] = sum_w_theta / sum_w
+        se[ei] = (sum_w2_se2 / (sum_w * sum_w)).sqrt()
+      }
+      names[ei] = e.to_string()
     }
-    names[ei] = e.to_string()
+    { theta, se, agg_names: names, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  { theta, se, agg_names: names, }
 }

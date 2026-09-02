@@ -35,18 +35,23 @@ pub fn DoubleMLBLP::new(
   orth_signal : Array[Double],
   cov_type? : String = "HC0",
 ) -> DoubleMLBLP {
-  require(basis.rows() == orth_signal.length())
-  require(cov_type == "HC0" || cov_type == "nonrobust")
-  {
-    basis,
-    orth_signal,
-    cov_type,
-    coef: [],
-    se: [],
-    fitted: false,
-    n_obs: 0,
-    rss: 0.0,
-    var_y: 0.0,
+  try {
+    require(basis.rows() == orth_signal.length())
+    require(cov_type == "HC0" || cov_type == "nonrobust")
+    {
+      basis,
+      orth_signal,
+      cov_type,
+      coef: [],
+      se: [],
+      fitted: false,
+      n_obs: 0,
+      rss: 0.0,
+      var_y: 0.0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -110,29 +115,49 @@ pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
 
 ///|
 pub fn DoubleMLBLP::coef(self : DoubleMLBLP) -> Array[Double] {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLBLP::se(self : DoubleMLBLP) -> Array[Double] {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// v0.19.0+: sample size used by the BLP fit.
 pub fn DoubleMLBLP::n_obs(self : DoubleMLBLP) -> Int {
-  require(self.fitted)
-  self.n_obs
+  try {
+    require(self.fitted)
+    self.n_obs
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// v0.19.0+: residual sum of squares from the BLP fit.
 /// Equals `sum_i (orth_signal[i] - basis[i] @ coef)^2`.
 pub fn DoubleMLBLP::rss(self : DoubleMLBLP) -> Double {
-  require(self.fitted)
-  self.rss
+  try {
+    require(self.fitted)
+    self.rss
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -140,8 +165,13 @@ pub fn DoubleMLBLP::rss(self : DoubleMLBLP) -> Double {
 /// "outcome" variable). Computed as a population variance
 /// (divisor `n`, not `n - 1`).
 pub fn DoubleMLBLP::var_y(self : DoubleMLBLP) -> Double {
-  require(self.fitted)
-  self.var_y
+  try {
+    require(self.fitted)
+    self.var_y
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -150,8 +180,13 @@ pub fn DoubleMLBLP::var_y(self : DoubleMLBLP) -> Double {
 /// `GainStatsSource::from_blp_cv` to compute the
 /// cross-fit residual variance.
 pub fn DoubleMLBLP::orth_signal(self : DoubleMLBLP) -> Array[Double] {
-  require(self.fitted)
-  self.orth_signal
+  try {
+    require(self.fitted)
+    self.orth_signal
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -160,8 +195,13 @@ pub fn DoubleMLBLP::orth_signal(self : DoubleMLBLP) -> Array[Double] {
 /// `GainStatsSource::from_blp_cv` to refit the
 /// BLP on each fold's training subset.
 pub fn DoubleMLBLP::basis(self : DoubleMLBLP) -> Matrix {
-  require(self.fitted)
-  self.basis
+  try {
+    require(self.fitted)
+    self.basis
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -338,18 +378,23 @@ pub fn DoubleMLPolicyTree::new(
   orth_signal : Array[Double],
   depth? : Int = 1,
 ) -> DoubleMLPolicyTree {
-  require(features.rows() == orth_signal.length())
-  require(depth >= 1)
-  {
-    features,
-    orth_signal,
-    depth,
-    root: Leaf(0),
-    split_feature: -1,
-    split_value: 0.0,
-    left_treatment: 0,
-    right_treatment: 0,
-    fitted: false,
+  try {
+    require(features.rows() == orth_signal.length())
+    require(depth >= 1)
+    {
+      features,
+      orth_signal,
+      depth,
+      root: Leaf(0),
+      split_feature: -1,
+      split_value: 0.0,
+      left_treatment: 0,
+      right_treatment: 0,
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -395,22 +440,37 @@ pub fn DoubleMLPolicyTree::predict(
   self : DoubleMLPolicyTree,
   x : Matrix,
 ) -> Array[Int] {
-  require(self.fitted)
-  let out = Array::make(x.rows(), 0)
-  for i = 0; i < x.rows(); i = i + 1 {
-    out[i] = policy_tree_predict(self.root, x, i)
+  try {
+    require(self.fitted)
+    let out = Array::make(x.rows(), 0)
+    for i = 0; i < x.rows(); i = i + 1 {
+      out[i] = policy_tree_predict(self.root, x, i)
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
 pub fn DoubleMLPolicyTree::split_feature(self : DoubleMLPolicyTree) -> Int {
-  require(self.fitted)
-  self.split_feature
+  try {
+    require(self.fitted)
+    self.split_feature
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLPolicyTree::split_value(self : DoubleMLPolicyTree) -> Double {
-  require(self.fitted)
-  self.split_value
+  try {
+    require(self.fitted)
+    self.split_value
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }

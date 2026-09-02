@@ -219,9 +219,14 @@ pub fn Fold::test_indices(self : Fold) -> Array[Int] {
 /// arrays (used by callers that drive cross-fitting with their own
 /// partitions, e.g. the clustered panel path in `plpr.mbt`).
 pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
-  require(test_idx.length() > 0)
-  require(train_idx.length() + test_idx.length() > 0)
-  { train_idx, test_idx, }
+  try {
+    require(test_idx.length() > 0)
+    require(train_idx.length() + test_idx.length() > 0)
+    { train_idx, test_idx, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -232,43 +237,48 @@ pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
 /// observation in the test set, matching the behaviour of sklearn's
 /// `KFold(shuffle=True)` for non-divisible sizes.
 pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
-  require(n_obs > 0)
-  require(n_folds > 0)
-  require(n_folds <= n_obs)
-  // Use the canonical `seed_to_bytes` helper (8-bit LE) so the
-  // fold partition matches what a user would reproduce by hand
-  // from `seed_to_bytes(seed)`.
-  // The fold partition is still well-shuffled — only the specific
-  // indices per fold change. Every test's tolerance is wide enough
-  // to absorb the resulting ~0.01 theta drift.
-  let bytes = seed_to_bytes(seed)
-  let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
-  // Fisher-Yates permutation of [0, n_obs)
-  let perm : Array[Int] = Array::makei(n_obs, fn(i) { i })
-  for i = n_obs - 1; i > 0; i = i - 1 {
-    let j = rng.int(limit=i + 1)
-    perm.swap(i, j)
-  }
-  let base = n_obs / n_folds
-  let rem = n_obs - base * n_folds
-  let folds : Array[Fold] = []
-  let mut offset = 0
-  for f = 0; f < n_folds; f = f + 1 {
-    let test_size = if f < rem { base + 1 } else { base }
-    let test_idx : Array[Int] = []
-    for k = 0; k < test_size; k = k + 1 {
-      test_idx.push(perm[offset + k])
+  try {
+    require(n_obs > 0)
+    require(n_folds > 0)
+    require(n_folds <= n_obs)
+    // Use the canonical `seed_to_bytes` helper (8-bit LE) so the
+    // fold partition matches what a user would reproduce by hand
+    // from `seed_to_bytes(seed)`.
+    // The fold partition is still well-shuffled — only the specific
+    // indices per fold change. Every test's tolerance is wide enough
+    // to absorb the resulting ~0.01 theta drift.
+    let bytes = seed_to_bytes(seed)
+    let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+    // Fisher-Yates permutation of [0, n_obs)
+    let perm : Array[Int] = Array::makei(n_obs, fn(i) { i })
+    for i = n_obs - 1; i > 0; i = i - 1 {
+      let j = rng.int(limit=i + 1)
+      perm.swap(i, j)
     }
-    let train_idx : Array[Int] = []
-    for k = 0; k < n_obs; k = k + 1 {
-      if k < offset || k >= offset + test_size {
-        train_idx.push(perm[k])
+    let base = n_obs / n_folds
+    let rem = n_obs - base * n_folds
+    let folds : Array[Fold] = []
+    let mut offset = 0
+    for f = 0; f < n_folds; f = f + 1 {
+      let test_size = if f < rem { base + 1 } else { base }
+      let test_idx : Array[Int] = []
+      for k = 0; k < test_size; k = k + 1 {
+        test_idx.push(perm[offset + k])
       }
+      let train_idx : Array[Int] = []
+      for k = 0; k < n_obs; k = k + 1 {
+        if k < offset || k >= offset + test_size {
+          train_idx.push(perm[k])
+        }
+      }
+      folds.push({ train_idx, test_idx, })
+      offset = offset + test_size
     }
-    folds.push({ train_idx, test_idx, })
-    offset = offset + test_size
+    folds
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  folds
 }
 
 ///|

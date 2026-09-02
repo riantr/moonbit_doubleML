@@ -29,8 +29,21 @@ pub fn DoubleMLDIDData::new(
   y : Array[Double],
   d : Array[Double],
 ) -> DoubleMLDIDData raise DIDDataError {
-  require(x.nrows == y.length())
-  require(x.nrows == d.length())
+  // v0.48.0: per-call wrap because the body also raises
+  // DIDDataError::NonBinaryTreatment; a block-level try/catch
+  // around the whole body would partial_match the catch.
+  ignore(
+    require(x.nrows == y.length()) catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
+  ignore(
+    require(x.nrows == d.length()) catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
   // Validate that `d` is binary `{0, 1}` (the default port supports
   // only switchers; the multi-valued `{-1, 0, 1}` Sant'Anna & Zhao
   // convention is not implemented).
@@ -175,32 +188,37 @@ pub fn DoubleMLDID::new(
   in_sample_normalization? : Bool = false,
   strata? : Array[Int] = [],
 ) -> DoubleMLDID {
-  require(n_folds >= 2)
-  require(n_folds <= data.n_obs())
-  require(n_rep >= 1)
-  require(propensity_clip > 0.0)
-  require(propensity_clip < 0.5)
-  require(score == "observational" || score == "experimental")
-  // Either no strata (empty) or strata of exact length n_obs.
-  require(strata.length() == 0 || strata.length() == data.n_obs())
-  {
-    data,
-    n_folds,
-    n_rep,
-    seed,
-    propensity_clip,
-    ps_processor,
-    score,
-    in_sample_normalization,
-    strata,
-    g0_hat: Array::make(data.n_obs(), 0.0),
-    g1_hat: Array::make(data.n_obs(), 0.0),
-    m_hat: Array::make(data.n_obs(), 0.0),
-    coef: 0.0,
-    se: 0.0,
-    psi_a: Array::make(data.n_obs(), 0.0),
-    psi_b: Array::make(data.n_obs(), 0.0),
-    fitted: false,
+  try {
+    require(n_folds >= 2)
+    require(n_folds <= data.n_obs())
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+    require(score == "observational" || score == "experimental")
+    // Either no strata (empty) or strata of exact length n_obs.
+    require(strata.length() == 0 || strata.length() == data.n_obs())
+    {
+      data,
+      n_folds,
+      n_rep,
+      seed,
+      propensity_clip,
+      ps_processor,
+      score,
+      in_sample_normalization,
+      strata,
+      g0_hat: Array::make(data.n_obs(), 0.0),
+      g1_hat: Array::make(data.n_obs(), 0.0),
+      m_hat: Array::make(data.n_obs(), 0.0),
+      coef: 0.0,
+      se: 0.0,
+      psi_a: Array::make(data.n_obs(), 0.0),
+      psi_b: Array::make(data.n_obs(), 0.0),
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -211,22 +229,37 @@ pub fn DoubleMLDID::n_obs(self : DoubleMLDID) -> Int {
 
 ///|
 pub fn DoubleMLDID::coef(self : DoubleMLDID) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLDID::se(self : DoubleMLDID) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLDID::confint(self : DoubleMLDID) -> (Double, Double) {
-  require(self.fitted)
-  let lo = self.coef - 1.96 * self.se
-  let hi = self.coef + 1.96 * self.se
-  (lo, hi)
+  try {
+    require(self.fitted)
+    let lo = self.coef - 1.96 * self.se
+    let hi = self.coef + 1.96 * self.se
+    (lo, hi)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

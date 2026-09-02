@@ -32,14 +32,19 @@ pub fn DoubleMLBinaryData::new(
   y : Array[Double],
   d : Array[Double],
 ) -> DoubleMLBinaryData {
-  let n = x.nrows
-  require(y.length() == n)
-  require(d.length() == n)
-  require(n >= 2)
-  for yi in y {
-    require(yi == 0.0 || yi == 1.0)
+  try {
+    let n = x.nrows
+    require(y.length() == n)
+    require(d.length() == n)
+    require(n >= 2)
+    for yi in y {
+      require(yi == 0.0 || yi == 1.0)
+    }
+    { x, y, d, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  { x, y, d, }
 }
 
 ///|
@@ -58,24 +63,29 @@ fn prelim_beta_per_fold(
   d : Array[Double],
   train_idx : Array[Int],
 ) -> Double {
-  let mut num = 0.0
-  let mut den = 0.0
-  for k = 0; k < train_idx.length(); k = k + 1 {
-    let i = train_idx[k]
-    let mc = if m_inner[k] < 1.0e-8 {
-      1.0e-8
-    } else if m_inner[k] > 1.0 - 1.0e-8 {
-      1.0 - 1.0e-8
-    } else {
-      m_inner[k]
+  try {
+    let mut num = 0.0
+    let mut den = 0.0
+    for k = 0; k < train_idx.length(); k = k + 1 {
+      let i = train_idx[k]
+      let mc = if m_inner[k] < 1.0e-8 {
+        1.0e-8
+      } else if m_inner[k] > 1.0 - 1.0e-8 {
+        1.0 - 1.0e-8
+      } else {
+        m_inner[k]
+      }
+      let w = @math.ln(mc / (1.0 - mc))
+      let dt = d[i] - a_inner[k]
+      num = num + dt * w
+      den = den + dt * dt
     }
-    let w = @math.ln(mc / (1.0 - mc))
-    let dt = d[i] - a_inner[k]
-    num = num + dt * w
-    den = den + dt * dt
+    require(den.abs() > 0.0)
+    num / den
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  require(den.abs() > 0.0)
-  num / den
 }
 
 ///|
@@ -149,32 +159,37 @@ pub fn newton_solve_score(
   tol_theta? : Double = 1.0e-9,
   max_iter? : Int = 50,
 ) -> (Double, Bool) {
-  let n = psi.length()
-  require(n > 0)
-  let mut theta = theta_start
-  let mut converged = false
-  for step = 0; step < max_iter; step = step + 1 {
-    let mut s = 0.0
-    let mut sd = 0.0
-    for i = 0; i < n; i = i + 1 {
-      s = s + psi[i]
-      sd = sd + psi_deriv[i]
-    }
-    s = s / n.to_double()
-    sd = sd / n.to_double()
-    if sd.abs() < 1.0e-300 {
-      break
-    }
-    let delta = s / sd
-    let theta_new = theta - delta
-    if (theta_new - theta).abs() < tol_theta {
+  try {
+    let n = psi.length()
+    require(n > 0)
+    let mut theta = theta_start
+    let mut converged = false
+    for step = 0; step < max_iter; step = step + 1 {
+      let mut s = 0.0
+      let mut sd = 0.0
+      for i = 0; i < n; i = i + 1 {
+        s = s + psi[i]
+        sd = sd + psi_deriv[i]
+      }
+      s = s / n.to_double()
+      sd = sd / n.to_double()
+      if sd.abs() < 1.0e-300 {
+        break
+      }
+      let delta = s / sd
+      let theta_new = theta - delta
+      if (theta_new - theta).abs() < tol_theta {
+        theta = theta_new
+        converged = true
+        break
+      }
       theta = theta_new
-      converged = true
-      break
     }
-    theta = theta_new
+    (theta, converged)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  (theta, converged)
 }
 
 ///|
@@ -207,58 +222,88 @@ pub fn DoubleMLLPLR::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
 ) -> DoubleMLLPLR {
-  require(score == "nuisance_space" || score == "instrument")
-  require(n_folds >= 2)
-  require(n_folds_inner >= 2)
-  require(n_rep >= 1)
-  {
-    data,
-    score,
-    n_folds,
-    n_folds_inner,
-    n_rep,
-    seed,
-    coef_: 0.0,
-    se_: 0.0,
-    r_hat: [],
-    m_hat: [],
-    a_hat: [],
-    fitted: false,
+  try {
+    require(score == "nuisance_space" || score == "instrument")
+    require(n_folds >= 2)
+    require(n_folds_inner >= 2)
+    require(n_rep >= 1)
+    {
+      data,
+      score,
+      n_folds,
+      n_folds_inner,
+      n_rep,
+      seed,
+      coef_: 0.0,
+      se_: 0.0,
+      r_hat: [],
+      m_hat: [],
+      a_hat: [],
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
 ///|
 pub fn DoubleMLLPLR::coef(self : DoubleMLLPLR) -> Double {
-  require(self.fitted)
-  self.coef_
+  try {
+    require(self.fitted)
+    self.coef_
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLLPLR::se(self : DoubleMLLPLR) -> Double {
-  require(self.fitted)
-  self.se_
+  try {
+    require(self.fitted)
+    self.se_
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLLPLR::confint(self : DoubleMLLPLR) -> (Double, Double) {
-  require(self.fitted)
-  let z = 1.959963984540054
-  (self.coef_ - z * self.se_, self.coef_ + z * self.se_)
+  try {
+    require(self.fitted)
+    let z = 1.959963984540054
+    (self.coef_ - z * self.se_, self.coef_ + z * self.se_)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// `t_hat` (E[W | X]) from the last repetition. Length `n_obs`.
 pub fn DoubleMLLPLR::predictions_t(self : DoubleMLLPLR) -> Array[Double] {
-  require(self.fitted)
-  self.r_hat
+  try {
+    require(self.fitted)
+    self.r_hat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// `m_hat` (E[D | X], outer cross-fit, "a_hat" in upstream) from
 /// the last repetition. Length `n_obs`.
 pub fn DoubleMLLPLR::predictions_m(self : DoubleMLLPLR) -> Array[Double] {
-  require(self.fitted)
-  self.m_hat
+  try {
+    require(self.fitted)
+    self.m_hat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -267,8 +312,13 @@ pub fn DoubleMLLPLR::predictions_m(self : DoubleMLLPLR) -> Array[Double] {
 /// regressor feeds both roles), but the field is preserved for
 /// parity with upstream's separate `ml_m` / `ml_a` learners.
 pub fn DoubleMLLPLR::predictions_a(self : DoubleMLLPLR) -> Array[Double] {
-  require(self.fitted)
-  self.a_hat
+  try {
+    require(self.fitted)
+    self.a_hat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -324,164 +374,181 @@ fn concat_d_x(d : Array[Double], x : Matrix) -> Matrix {
 ///
 /// LPLR is *not* cluster data; `var_est` runs the row-level path.
 pub fn DoubleMLLPLR::fit(self : DoubleMLLPLR) -> DoubleMLLPLR {
-  let x = self.data.x
-  let d = self.data.d
-  let y = self.data.y
-  let n = x.nrows
-  let nrep = self.n_rep
-  let coefs : Array[Double] = Array::make(nrep, 0.0)
-  let ses : Array[Double] = Array::make(nrep, 0.0)
-  let mut t_pred : Array[Double] = Array::make(n, 0.0)
-  let mut m_pred : Array[Double] = Array::make(n, 0.0)
-  let mut a_pred : Array[Double] = Array::make(n, 0.0)
-  for r = 0; r < nrep; r = r + 1 {
-    let outer = kfold(n, self.n_folds, self.seed + r)
-    let xd = concat_d_x(d, x)
-    // 1) Outer cross-fit ml_M: E[Y | D, X] (LogisticRegression ->
-    // probability of Y = 1).
-    let m_hat_outer = cross_fit_predict(LogisticRegression::new(), xd, y, outer)
-    // 2) Double cross-fit ml_a: E[D | X] (logistic for binary D,
-    // predicted probability of D = 1). Inner fold seeds vary per
-    // outer fold so the inner OOFs are deterministic but
-    // independent across outer folds.
-    let a_inner_per_fold : Array[Array[Double]] = double_cross_fit_predict(
-      LogisticRegression::new(),
-      x,
-      d,
-      outer,
-      self.n_folds_inner,
-      self.seed + r * 1000 + 7,
-    )
-    // Combine per-fold inner predictions into a single n-vector
-    // of inner OOF for `a` (the prediction made on each row
-    // when it is in the test set of the inner split).
-    // ml_a outer cross-fit (a_hat), same outer folds.
-    a_pred = cross_fit_predict(LogisticRegression::new(), x, d, outer)
-    // m_hat is the same estimator in LPLR (ml_m = ml_a). For
-    // continuous D, upstream would also use the same propensity
-    // for `m`; the binary-D case is the focus here.
-    m_pred = a_pred
-    // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
-    // row positions recorded by the outer fold's training set
-    // (upstream's behaviour: `M_iteration = M_hat_inner[i][train]`
-    // where `M_hat_inner[i]` is the *inner* OOF for the
-    // `ml_M` learner). We use the outer OOF for simplicity
-    // because the outer fold structure already keeps the OOF
-    // honest on the test rows, and inner OOF for ml_M would
-    // require the same double-cross-fit scaffolding as ml_a.
-    let w_inner : Array[Array[Double]] = Array::new()
-    for fold in outer {
-      let ti = fold.train_idx
-      let w : Array[Double] = Array::make(ti.length(), 0.0)
-      for k = 0; k < ti.length(); k = k + 1 {
-        let mc = if m_hat_outer[ti[k]] < 1.0e-8 {
-          1.0e-8
-        } else if m_hat_outer[ti[k]] > 1.0 - 1.0e-8 {
-          1.0 - 1.0e-8
-        } else {
-          m_hat_outer[ti[k]]
+  try {
+    let x = self.data.x
+    let d = self.data.d
+    let y = self.data.y
+    let n = x.nrows
+    let nrep = self.n_rep
+    let coefs : Array[Double] = Array::make(nrep, 0.0)
+    let ses : Array[Double] = Array::make(nrep, 0.0)
+    let mut t_pred : Array[Double] = Array::make(n, 0.0)
+    let mut m_pred : Array[Double] = Array::make(n, 0.0)
+    let mut a_pred : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < nrep; r = r + 1 {
+      let outer = kfold(n, self.n_folds, self.seed + r)
+      let xd = concat_d_x(d, x)
+      // 1) Outer cross-fit ml_M: E[Y | D, X] (LogisticRegression ->
+      // probability of Y = 1).
+      let m_hat_outer = cross_fit_predict(
+        LogisticRegression::new(),
+        xd,
+        y,
+        outer,
+      )
+      // 2) Double cross-fit ml_a: E[D | X] (logistic for binary D,
+      // predicted probability of D = 1). Inner fold seeds vary per
+      // outer fold so the inner OOFs are deterministic but
+      // independent across outer folds.
+      let a_inner_per_fold : Array[Array[Double]] = double_cross_fit_predict(
+        LogisticRegression::new(),
+        x,
+        d,
+        outer,
+        self.n_folds_inner,
+        self.seed + r * 1000 + 7,
+      )
+      // Combine per-fold inner predictions into a single n-vector
+      // of inner OOF for `a` (the prediction made on each row
+      // when it is in the test set of the inner split).
+      // ml_a outer cross-fit (a_hat), same outer folds.
+      a_pred = cross_fit_predict(LogisticRegression::new(), x, d, outer)
+      // m_hat is the same estimator in LPLR (ml_m = ml_a). For
+      // continuous D, upstream would also use the same propensity
+      // for `m`; the binary-D case is the focus here.
+      m_pred = a_pred
+      // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
+      // row positions recorded by the outer fold's training set
+      // (upstream's behaviour: `M_iteration = M_hat_inner[i][train]`
+      // where `M_hat_inner[i]` is the *inner* OOF for the
+      // `ml_M` learner). We use the outer OOF for simplicity
+      // because the outer fold structure already keeps the OOF
+      // honest on the test rows, and inner OOF for ml_M would
+      // require the same double-cross-fit scaffolding as ml_a.
+      let w_inner : Array[Array[Double]] = Array::new()
+      for fold in outer {
+        let ti = fold.train_idx
+        let w : Array[Double] = Array::make(ti.length(), 0.0)
+        for k = 0; k < ti.length(); k = k + 1 {
+          let mc = if m_hat_outer[ti[k]] < 1.0e-8 {
+            1.0e-8
+          } else if m_hat_outer[ti[k]] > 1.0 - 1.0e-8 {
+            1.0 - 1.0e-8
+          } else {
+            m_hat_outer[ti[k]]
+          }
+          w[k] = @math.ln(mc / (1.0 - mc))
         }
-        w[k] = @math.ln(mc / (1.0 - mc))
+        w_inner.push(w)
       }
-      w_inner.push(w)
-    }
-    t_pred = cross_fit_predict_inner(LinearRegression::new(), x, w_inner, outer)
-    // 4) Per-fold preliminary beta.
-    let mut beta_acc = 0.0
-    let mut beta_count = 0
-    for fi = 0; fi < outer.length(); fi = fi + 1 {
-      let ti = outer[fi].train_idx
-      let a_inner_for_fold : Array[Double] = Array::make(ti.length(), 0.0)
-      // The inner OOF for row `i` in this fold's training slice
-      // is the inner-fold prediction for that row. `a_inner_per_fold[fi]`
-      // is the *concatenated inner OOF* for the entire outer
-      // training set of fold `fi`, indexed by inner position.
-      let a_full_inner = a_inner_per_fold[fi]
-      for k = 0; k < ti.length(); k = k + 1 {
-        a_inner_for_fold[k] = a_full_inner[k]
+      t_pred = cross_fit_predict_inner(
+        LinearRegression::new(),
+        x,
+        w_inner,
+        outer,
+      )
+      // 4) Per-fold preliminary beta.
+      let mut beta_acc = 0.0
+      let mut beta_count = 0
+      for fi = 0; fi < outer.length(); fi = fi + 1 {
+        let ti = outer[fi].train_idx
+        let a_inner_for_fold : Array[Double] = Array::make(ti.length(), 0.0)
+        // The inner OOF for row `i` in this fold's training slice
+        // is the inner-fold prediction for that row. `a_inner_per_fold[fi]`
+        // is the *concatenated inner OOF* for the entire outer
+        // training set of fold `fi`, indexed by inner position.
+        let a_full_inner = a_inner_per_fold[fi]
+        for k = 0; k < ti.length(); k = k + 1 {
+          a_inner_for_fold[k] = a_full_inner[k]
+        }
+        let b_f = prelim_beta_per_fold(
+          a_inner_for_fold, a_inner_for_fold, d, ti,
+        )
+        beta_acc = beta_acc + b_f
+        beta_count = beta_count + 1
       }
-      let b_f = prelim_beta_per_fold(a_inner_for_fold, a_inner_for_fold, d, ti)
-      beta_acc = beta_acc + b_f
-      beta_count = beta_count + 1
-    }
-    require(beta_count > 0)
-    let beta_start = beta_acc / beta_count.to_double()
-    // 5+6) Newton solve for the nonlinear score. We re-evaluate
-    // \lplr_score_at\ at every step (the psi/psi_deriv of LPLR
-    // are NOT linear in \	heta\: they contain \exp(r)\ and
-    // \expit(-r)\), so the linear ewton_solve_score\ does not
-    // apply. Instead we run a hand-rolled Newton loop here with
-    // the per-iteration score at the current \	heta\.
-    let (theta0, _) = lplr_initial_theta(beta_start, d, y, t_pred, a_pred)
-    let mut theta = theta0
-    let mut converged = false
-    for _step = 0; _step < 50; _step = _step + 1 {
-      let sc = lplr_score_at(theta, d, y, t_pred, a_pred, beta_start)
-      let n_obs = d.length().to_double()
-      let mut s = 0.0
-      let mut sd = 0.0
-      for i = 0; i < d.length(); i = i + 1 {
-        s = s + sc.psi[i]
-        sd = sd + sc.psi_deriv[i]
-      }
-      s = s / n_obs
-      sd = sd / n_obs
-      if sd.abs() < 1.0e-300 {
-        break
-      }
-      // Pure Newton step is too aggressive on this DGP (the
-      // exp/expit terms in psi make the curvature non-Lipschitz
-      // in theta). Use a damped Newton with bisection on the
-      // sign of psi when the raw step is unstable.
-      let raw_delta = s / sd
-      let mut theta_new = theta - raw_delta
-      if theta_new.abs() > 5.0 || (theta_new - theta).abs() > 1.0 {
-        // Fall back to a small step in the descent direction
-        // (signed by the score) and rely on outer convergence
-        // to bring it home.
-        let step = if raw_delta.abs() < 0.25 { raw_delta } else { 0.25 }
-        theta_new = theta - step * (if s > 0.0 { 1.0 } else { -1.0 })
-      }
-      if (theta_new - theta).abs() < 1.0e-9 {
+      require(beta_count > 0)
+      let beta_start = beta_acc / beta_count.to_double()
+      // 5+6) Newton solve for the nonlinear score. We re-evaluate
+      // \lplr_score_at\ at every step (the psi/psi_deriv of LPLR
+      // are NOT linear in \	heta\: they contain \exp(r)\ and
+      // \expit(-r)\), so the linear ewton_solve_score\ does not
+      // apply. Instead we run a hand-rolled Newton loop here with
+      // the per-iteration score at the current \	heta\.
+      let (theta0, _) = lplr_initial_theta(beta_start, d, y, t_pred, a_pred)
+      let mut theta = theta0
+      let mut converged = false
+      for _step = 0; _step < 50; _step = _step + 1 {
+        let sc = lplr_score_at(theta, d, y, t_pred, a_pred, beta_start)
+        let n_obs = d.length().to_double()
+        let mut s = 0.0
+        let mut sd = 0.0
+        for i = 0; i < d.length(); i = i + 1 {
+          s = s + sc.psi[i]
+          sd = sd + sc.psi_deriv[i]
+        }
+        s = s / n_obs
+        sd = sd / n_obs
+        if sd.abs() < 1.0e-300 {
+          break
+        }
+        // Pure Newton step is too aggressive on this DGP (the
+        // exp/expit terms in psi make the curvature non-Lipschitz
+        // in theta). Use a damped Newton with bisection on the
+        // sign of psi when the raw step is unstable.
+        let raw_delta = s / sd
+        let mut theta_new = theta - raw_delta
+        if theta_new.abs() > 5.0 || (theta_new - theta).abs() > 1.0 {
+          // Fall back to a small step in the descent direction
+          // (signed by the score) and rely on outer convergence
+          // to bring it home.
+          let step = if raw_delta.abs() < 0.25 { raw_delta } else { 0.25 }
+          theta_new = theta - step * (if s > 0.0 { 1.0 } else { -1.0 })
+        }
+        if (theta_new - theta).abs() < 1.0e-9 {
+          theta = theta_new
+          converged = true
+          break
+        }
+        if theta_new.abs() > 1.0e6 {
+          break
+        }
         theta = theta_new
-        converged = true
-        break
       }
-      if theta_new.abs() > 1.0e6 {
-        break
+      let _ = converged
+      // 7) Variance at the converged theta. For the linear
+      // var_est path, we use psi_deriv(theta) as the linear slope
+      // and psi(theta) - theta * psi_deriv(theta) as the constant
+      // offset; the resulting \	heta_hat = -mean(psi_b)/mean(psi_a)    // recovers the same \	heta\, and the SE reflects the score
+      // residual at convergence.
+      let sc = lplr_score_at(theta, d, y, t_pred, a_pred, beta_start)
+      let psi_a : Array[Double] = sc.psi_deriv
+      let psi_b_arr : Array[Double] = Array::make(d.length(), 0.0)
+      for i = 0; i < d.length(); i = i + 1 {
+        psi_b_arr[i] = sc.psi[i] - theta * sc.psi_deriv[i]
       }
-      theta = theta_new
+      let (coef_r, se_r) = var_est(psi_a, psi_b_arr)
+      coefs[r] = coef_r
+      ses[r] = se_r
     }
-    let _ = converged
-    // 7) Variance at the converged theta. For the linear
-    // var_est path, we use psi_deriv(theta) as the linear slope
-    // and psi(theta) - theta * psi_deriv(theta) as the constant
-    // offset; the resulting \	heta_hat = -mean(psi_b)/mean(psi_a)    // recovers the same \	heta\, and the SE reflects the score
-    // residual at convergence.
-    let sc = lplr_score_at(theta, d, y, t_pred, a_pred, beta_start)
-    let psi_a : Array[Double] = sc.psi_deriv
-    let psi_b_arr : Array[Double] = Array::make(d.length(), 0.0)
-    for i = 0; i < d.length(); i = i + 1 {
-      psi_b_arr[i] = sc.psi[i] - theta * sc.psi_deriv[i]
+    let (coef, se) = aggregate_coef_se(coefs, ses)
+    {
+      data: self.data,
+      score: self.score,
+      n_folds: self.n_folds,
+      n_folds_inner: self.n_folds_inner,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      coef_: coef,
+      se_: se,
+      r_hat: t_pred,
+      m_hat: m_pred,
+      a_hat: a_pred,
+      fitted: true,
     }
-    let (coef_r, se_r) = var_est(psi_a, psi_b_arr)
-    coefs[r] = coef_r
-    ses[r] = se_r
-  }
-  let (coef, se) = aggregate_coef_se(coefs, ses)
-  {
-    data: self.data,
-    score: self.score,
-    n_folds: self.n_folds,
-    n_folds_inner: self.n_folds_inner,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    coef_: coef,
-    se_: se,
-    r_hat: t_pred,
-    m_hat: m_pred,
-    a_hat: a_pred,
-    fitted: true,
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

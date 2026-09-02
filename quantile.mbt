@@ -281,18 +281,23 @@ pub fn DoubleMLPQ::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
 ) -> DoubleMLPQ {
-  require(quantile > 0.0)
-  require(quantile < 1.0)
-  {
-    data,
-    treatment,
-    quantile,
-    n_folds,
-    seed,
-    propensity_clip,
-    coef: 0.0,
-    se: 0.0,
-    fitted: false,
+  try {
+    require(quantile > 0.0)
+    require(quantile < 1.0)
+    {
+      data,
+      treatment,
+      quantile,
+      n_folds,
+      seed,
+      propensity_clip,
+      coef: 0.0,
+      se: 0.0,
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -347,20 +352,35 @@ pub fn DoubleMLPQ::n_features(self : DoubleMLPQ) -> Int {
 
 ///|
 pub fn DoubleMLPQ::coef(self : DoubleMLPQ) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLPQ::se(self : DoubleMLPQ) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLPQ::confint(self : DoubleMLPQ) -> (Double, Double) {
-  require(self.fitted)
-  (self.coef - 1.96 * self.se, self.coef + 1.96 * self.se)
+  try {
+    require(self.fitted)
+    (self.coef - 1.96 * self.se, self.coef + 1.96 * self.se)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -584,12 +604,22 @@ pub fn DoubleMLCVAR::n_features(self : DoubleMLCVAR) -> Int {
 
 ///|
 pub fn DoubleMLCVAR::coef(self : DoubleMLCVAR) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLCVAR::se(self : DoubleMLCVAR) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }

@@ -14,10 +14,15 @@ pub fn DoubleMLRDDData::new(
   d : Array[Double],
   score : Array[Double],
 ) -> DoubleMLRDDData {
-  require(x.rows() == y.length())
-  require(x.rows() == d.length())
-  require(x.rows() == score.length())
-  { x, y, d, score, }
+  try {
+    require(x.rows() == y.length())
+    require(x.rows() == d.length())
+    require(x.rows() == score.length())
+    { x, y, d, score, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -55,18 +60,23 @@ pub fn DoubleMLRDD::new(
   fuzzy? : Bool = false,
   cov_type? : String = "homoskedastic",
 ) -> DoubleMLRDD {
-  require(bandwidth > 0.0)
-  require(cov_type == "homoskedastic" || cov_type == "HC0")
-  {
-    data,
-    cutoff,
-    bandwidth,
-    fuzzy,
-    cov_type,
-    coef: 0.0,
-    se: 0.0,
-    n_local: 0,
-    fitted: false,
+  try {
+    require(bandwidth > 0.0)
+    require(cov_type == "homoskedastic" || cov_type == "HC0")
+    {
+      data,
+      cutoff,
+      bandwidth,
+      fuzzy,
+      cov_type,
+      coef: 0.0,
+      se: 0.0,
+      n_local: 0,
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -279,20 +289,35 @@ pub fn DoubleMLRDD::n_features(self : DoubleMLRDD) -> Int {
 
 ///|
 pub fn DoubleMLRDD::coef(self : DoubleMLRDD) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLRDD::se(self : DoubleMLRDD) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLRDD::confint(self : DoubleMLRDD) -> (Double, Double) {
-  require(self.fitted)
-  (self.coef - 1.96 * self.se, self.coef + 1.96 * self.se)
+  try {
+    require(self.fitted)
+    (self.coef - 1.96 * self.se, self.coef + 1.96 * self.se)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

@@ -31,13 +31,18 @@ pub fn DoubleMLDIDBinaryData::new(
   g : Array[Int],
   id : Array[Int],
 ) -> DoubleMLDIDBinaryData {
-  let n = y.length()
-  require(x.nrows == n)
-  require(d.length() == n)
-  require(t.length() == n)
-  require(g.length() == n)
-  require(id.length() == n)
-  { x, y, d, t, g, id, }
+  try {
+    let n = y.length()
+    require(x.nrows == n)
+    require(d.length() == n)
+    require(t.length() == n)
+    require(g.length() == n)
+    require(id.length() == n)
+    { x, y, d, t, g, id, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -103,135 +108,146 @@ fn preprocess_did_binary(
   control_group : String,
   anticipation_periods : Int,
 ) -> WideDIDSubset {
-  let n = data.n_obs()
-  let p = data.n_features()
-  // Discover `never_treated_value` = min of all `g`. This matches
-  // the upstream convention "the smallest `g` value marks the
-  // never-treated cohort".
-  let mut never_treated_value = data.g[0]
-  for i = 1; i < n; i = i + 1 {
-    if data.g[i] < never_treated_value {
-      never_treated_value = data.g[i]
-    }
-  }
-  // Compute `max_g_value` for the `not_yet_treated` case: the
-  // largest time period at most `max(t_value_eval, g_value) +
-  // anticipation_periods`. Since panel data doesn't carry a full
-  // time-period index in the data struct, we take
-  // `max_g_value = max(t_value_eval, g_value) + anticipation_periods`.
-  let comparison_period = if t_value_eval > g_value {
-    t_value_eval
-  } else {
-    g_value
-  }
-  let max_g_value = comparison_period + anticipation_periods
-  // Build `(id, t, y, d, g, row_idx)` tuples and sort by (id, t).
-  let keys : Array[(Int, Int, Int)] = Array::makei(n, fn(i) {
-    (data.id[i], data.t[i], i)
-  })
-  keys.sort_by(fn(a, b) {
-    let c = a.0.compare(b.0)
-    if c != 0 {
-      c
-    } else {
-      a.1.compare(b.1)
-    }
-  })
-  // Walk: emit a wide-format row for every unit that has both
-  // `t_value_pre` and `t_value_eval`.
-  let x_out : Array[Double] = []
-  let y_out : Array[Double] = []
-  let d_out : Array[Double] = []
-  let t_out : Array[Double] = []
-  // v0.15.0+: long-format `eval_idx` per emitted wide row.
-  let eval_idx_out : Array[Int] = []
-  let mut x_acc = x_out
-  let mut y_acc = y_out
-  let mut d_acc = d_out
-  let mut t_acc = t_out
-  let mut eval_idx_acc = eval_idx_out
-  let mut i = 0
-  while i < n {
-    let id_cur = keys[i].0
-    // Find the contiguous range of rows for this id.
-    let mut j = i + 1
-    while j < n && keys[j].0 == id_cur {
-      j = j + 1
-    }
-    // Within [i, j), find the (at most one) row at `t_value_pre`
-    // and the (at most one) row at `t_value_eval`.
-    let mut pre_idx = -1
-    let mut eval_idx = -1
-    for k = i; k < j; k = k + 1 {
-      if keys[k].1 == t_value_pre {
-        pre_idx = keys[k].2
-      } else if keys[k].1 == t_value_eval {
-        eval_idx = keys[k].2
+  try {
+    let n = data.n_obs()
+    let p = data.n_features()
+    // Discover `never_treated_value` = min of all `g`. This matches
+    // the upstream convention "the smallest `g` value marks the
+    // never-treated cohort".
+    let mut never_treated_value = data.g[0]
+    for i = 1; i < n; i = i + 1 {
+      if data.g[i] < never_treated_value {
+        never_treated_value = data.g[i]
       }
     }
-    if pre_idx >= 0 && eval_idx >= 0 {
-      let g_unit = data.g[pre_idx]
-      // If pre and eval rows disagree on g (e.g. a never-treated
-      // unit accidentally mis-coded), we still allow the wide row
-      // but use the pre-period `g`.
-      let g_indicator = if g_unit == g_value { 1.0 } else { 0.0 }
-      let c_indicator = if control_group == "never_treated" {
-        if g_unit == never_treated_value {
+    // Compute `max_g_value` for the `not_yet_treated` case: the
+    // largest time period at most `max(t_value_eval, g_value) +
+    // anticipation_periods`. Since panel data doesn't carry a full
+    // time-period index in the data struct, we take
+    // `max_g_value = max(t_value_eval, g_value) + anticipation_periods`.
+    let comparison_period = if t_value_eval > g_value {
+      t_value_eval
+    } else {
+      g_value
+    }
+    let max_g_value = comparison_period + anticipation_periods
+    // Build `(id, t, y, d, g, row_idx)` tuples and sort by (id, t).
+    let keys : Array[(Int, Int, Int)] = Array::makei(n, fn(i) {
+      (data.id[i], data.t[i], i)
+    })
+    keys.sort_by(fn(a, b) {
+      let c = a.0.compare(b.0)
+      if c != 0 {
+        c
+      } else {
+        a.1.compare(b.1)
+      }
+    })
+    // Walk: emit a wide-format row for every unit that has both
+    // `t_value_pre` and `t_value_eval`.
+    let x_out : Array[Double] = []
+    let y_out : Array[Double] = []
+    let d_out : Array[Double] = []
+    let t_out : Array[Double] = []
+    // v0.15.0+: long-format `eval_idx` per emitted wide row.
+    let eval_idx_out : Array[Int] = []
+    let mut x_acc = x_out
+    let mut y_acc = y_out
+    let mut d_acc = d_out
+    let mut t_acc = t_out
+    let mut eval_idx_acc = eval_idx_out
+    let mut i = 0
+    while i < n {
+      let id_cur = keys[i].0
+      // Find the contiguous range of rows for this id.
+      let mut j = i + 1
+      while j < n && keys[j].0 == id_cur {
+        j = j + 1
+      }
+      // Within [i, j), find the (at most one) row at `t_value_pre`
+      // and the (at most one) row at `t_value_eval`.
+      let mut pre_idx = -1
+      let mut eval_idx = -1
+      for k = i; k < j; k = k + 1 {
+        if keys[k].1 == t_value_pre {
+          pre_idx = keys[k].2
+        } else if keys[k].1 == t_value_eval {
+          eval_idx = keys[k].2
+        }
+      }
+      if pre_idx >= 0 && eval_idx >= 0 {
+        let g_unit = data.g[pre_idx]
+        // If pre and eval rows disagree on g (e.g. a never-treated
+        // unit accidentally mis-coded), we still allow the wide row
+        // but use the pre-period `g`.
+        let g_indicator = if g_unit == g_value { 1.0 } else { 0.0 }
+        let c_indicator = if control_group == "never_treated" {
+          if g_unit == never_treated_value {
+            1.0
+          } else {
+            0.0
+          }
+          // "not_yet_treated": keep never-treated OR (G_indicator=0
+          // AND g_unit > max_g_value). The never-treated condition is
+          // the same as above; the latter is the not-yet-treated
+          // cohort.
+        } else if g_unit == never_treated_value ||
+          (g_indicator == 0.0 && g_unit > max_g_value) {
           1.0
         } else {
           0.0
         }
-        // "not_yet_treated": keep never-treated OR (G_indicator=0
-        // AND g_unit > max_g_value). The never-treated condition is
-        // the same as above; the latter is the not-yet-treated
-        // cohort.
-      } else if g_unit == never_treated_value ||
-        (g_indicator == 0.0 && g_unit > max_g_value) {
-        1.0
-      } else {
-        0.0
-      }
-      // Wide row is emitted iff G_indicator == 1 OR
-      // C_indicator == 1 (and exactly one, asserted by require).
-      if g_indicator + c_indicator == 1.0 {
-        let y_diff = data.y[eval_idx] - data.y[pre_idx]
-        // Covariates come from the **pre** period (matching
-        // upstream's wide-from-long conversion).
-        let mut x_row_acc : Array[Double] = []
-        for col = 0; col < p; col = col + 1 {
-          x_row_acc = x_row_acc + [data.x.data[pre_idx * p + col]]
+        // Wide row is emitted iff G_indicator == 1 OR
+        // C_indicator == 1 (and exactly one, asserted by require).
+        if g_indicator + c_indicator == 1.0 {
+          let y_diff = data.y[eval_idx] - data.y[pre_idx]
+          // Covariates come from the **pre** period (matching
+          // upstream's wide-from-long conversion).
+          let mut x_row_acc : Array[Double] = []
+          for col = 0; col < p; col = col + 1 {
+            x_row_acc = x_row_acc + [data.x.data[pre_idx * p + col]]
+          }
+          x_acc = x_acc + x_row_acc
+          y_acc = y_acc + [y_diff]
+          d_acc = d_acc + [g_indicator]
+          // t_indicator is 0 (pre) for the wide row, since the
+          // covariates and the `y_diff` reference the pre period.
+          // The post-period residual enters the score via `m_hat`
+          // and `g0_hat`, not via the wide `y` itself.
+          t_acc = t_acc + [0.0]
+          // v0.15.0+: record the long-format row index for the
+          // eval period. This is the index into the input
+          // `DoubleMLDIDBinaryData` (long-format) arrays; it lets
+          // the bootstrap map wide-format psi back to long-format.
+          eval_idx_acc = eval_idx_acc + [eval_idx]
         }
-        x_acc = x_acc + x_row_acc
-        y_acc = y_acc + [y_diff]
-        d_acc = d_acc + [g_indicator]
-        // t_indicator is 0 (pre) for the wide row, since the
-        // covariates and the `y_diff` reference the pre period.
-        // The post-period residual enters the score via `m_hat`
-        // and `g0_hat`, not via the wide `y` itself.
-        t_acc = t_acc + [0.0]
-        // v0.15.0+: record the long-format row index for the
-        // eval period. This is the index into the input
-        // `DoubleMLDIDBinaryData` (long-format) arrays; it lets
-        // the bootstrap map wide-format psi back to long-format.
-        eval_idx_acc = eval_idx_acc + [eval_idx]
       }
+      i = j
     }
-    i = j
+    // Build the output matrix.
+    let n_sub = x_acc.length() / p
+    require(n_sub * p == x_acc.length())
+    require(y_acc.length() == n_sub)
+    require(d_acc.length() == n_sub)
+    require(t_acc.length() == n_sub)
+    require(eval_idx_acc.length() == n_sub)
+    let x_mat = Matrix::from_array(x_acc, n_sub, p)
+    // Validate that the post-preprocess `d` is binary {0, 1} (the
+    // upstream `DoubleMLDIDData` requires this).
+    for di in d_acc {
+      require(di == 0.0 || di == 1.0)
+    }
+    {
+      x: x_mat,
+      y: y_acc,
+      d: d_acc,
+      t_indicator: t_acc,
+      eval_idx: eval_idx_acc,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  // Build the output matrix.
-  let n_sub = x_acc.length() / p
-  require(n_sub * p == x_acc.length())
-  require(y_acc.length() == n_sub)
-  require(d_acc.length() == n_sub)
-  require(t_acc.length() == n_sub)
-  require(eval_idx_acc.length() == n_sub)
-  let x_mat = Matrix::from_array(x_acc, n_sub, p)
-  // Validate that the post-preprocess `d` is binary {0, 1} (the
-  // upstream `DoubleMLDIDData` requires this).
-  for di in d_acc {
-    require(di == 0.0 || di == 1.0)
-  }
-  { x: x_mat, y: y_acc, d: d_acc, t_indicator: t_acc, eval_idx: eval_idx_acc, }
 }
 
 ///|
@@ -308,63 +324,68 @@ pub fn DoubleMLDIDBinary::new(
   score? : String = "observational",
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDBinary {
-  require(n_folds >= 2)
-  require(n_rep >= 1)
-  require(propensity_clip > 0.0)
-  require(propensity_clip < 0.5)
-  require(
-    control_group == "never_treated" || control_group == "not_yet_treated",
-  )
-  require(score == "observational" || score == "experimental")
-  require(anticipation_periods >= 0)
-  {
-    data,
-    g_value,
-    t_value_pre,
-    t_value_eval,
-    control_group,
-    anticipation_periods,
-    n_folds,
-    n_rep,
-    seed,
-    propensity_clip,
-    ps_processor,
-    score,
-    in_sample_normalization,
-    // v0.15.0+: long-format row indices. Populated by `fit`.
-    eval_idx: [],
-    // Placeholder: the real `DoubleMLDID` is built in `fit()` once
-    // the wide-format preprocessing has produced a non-empty
-    // dataset. We pass a 4-row dummy here so the
-    // `DoubleMLDID::new` precondition `n_folds <= n_obs` is not
-    // tripped at construction time (`n_folds` defaults to 2).
-    // The dummy is overwritten by the real inner model on `fit()`.
-    // v0.43.0: wrap DoubleMLDIDData::new in try/catch/re-abort to
-    // preserve pre-v0.43.0 process-death behavior. The dummy
-    // data is valid binary d, so the catch arm is unreachable in
-    // practice; it exists to satisfy the `raise DIDDataError`
-    // signature on DoubleMLDIDData::new.
-    inner: DoubleMLDID::new(
-      DoubleMLDIDData::new(
-        Matrix::zeros(4, data.n_features()),
-        [0.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-      ) catch {
-        DIDDataError::NonBinaryTreatment(i) =>
-          abort(
-            "DoubleMLDIDData.d must be binary {0, 1} (index " +
-            i.to_string() +
-            ")",
-          )
-      },
-      n_folds~,
-      n_rep~,
-      seed~,
-      propensity_clip~,
-      score~,
-      in_sample_normalization~,
-    ),
-    fitted: false,
+  try {
+    require(n_folds >= 2)
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+    require(
+      control_group == "never_treated" || control_group == "not_yet_treated",
+    )
+    require(score == "observational" || score == "experimental")
+    require(anticipation_periods >= 0)
+    {
+      data,
+      g_value,
+      t_value_pre,
+      t_value_eval,
+      control_group,
+      anticipation_periods,
+      n_folds,
+      n_rep,
+      seed,
+      propensity_clip,
+      ps_processor,
+      score,
+      in_sample_normalization,
+      // v0.15.0+: long-format row indices. Populated by `fit`.
+      eval_idx: [],
+      // Placeholder: the real `DoubleMLDID` is built in `fit()` once
+      // the wide-format preprocessing has produced a non-empty
+      // dataset. We pass a 4-row dummy here so the
+      // `DoubleMLDID::new` precondition `n_folds <= n_obs` is not
+      // tripped at construction time (`n_folds` defaults to 2).
+      // The dummy is overwritten by the real inner model on `fit()`.
+      // v0.43.0: wrap DoubleMLDIDData::new in try/catch/re-abort to
+      // preserve pre-v0.43.0 process-death behavior. The dummy
+      // data is valid binary d, so the catch arm is unreachable in
+      // practice; it exists to satisfy the `raise DIDDataError`
+      // signature on DoubleMLDIDData::new.
+      inner: DoubleMLDID::new(
+        DoubleMLDIDData::new(
+          Matrix::zeros(4, data.n_features()),
+          [0.0, 0.0, 0.0, 0.0],
+          [0.0, 0.0, 0.0, 0.0],
+        ) catch {
+          DIDDataError::NonBinaryTreatment(i) =>
+            abort(
+              "DoubleMLDIDData.d must be binary {0, 1} (index " +
+              i.to_string() +
+              ")",
+            )
+        },
+        n_folds~,
+        n_rep~,
+        seed~,
+        propensity_clip~,
+        score~,
+        in_sample_normalization~,
+      ),
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -385,22 +406,37 @@ pub fn DoubleMLDIDBinary::n_features(self : DoubleMLDIDBinary) -> Int {
 /// Point estimate (ATT) for the chosen `(g_value, t_value_pre,
 /// t_value_eval)` triple.
 pub fn DoubleMLDIDBinary::coef(self : DoubleMLDIDBinary) -> Double {
-  require(self.fitted)
-  self.inner.coef()
+  try {
+    require(self.fitted)
+    self.inner.coef()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// Standard error of the ATT point estimate.
 pub fn DoubleMLDIDBinary::se(self : DoubleMLDIDBinary) -> Double {
-  require(self.fitted)
-  self.inner.se()
+  try {
+    require(self.fitted)
+    self.inner.se()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// 95% Wald-style confidence interval.
 pub fn DoubleMLDIDBinary::confint(self : DoubleMLDIDBinary) -> (Double, Double) {
-  require(self.fitted)
-  self.inner.confint()
+  try {
+    require(self.fitted)
+    self.inner.confint()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -408,8 +444,13 @@ pub fn DoubleMLDIDBinary::confint(self : DoubleMLDIDBinary) -> (Double, Double) 
 pub fn DoubleMLDIDBinary::predictions_m(
   self : DoubleMLDIDBinary,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.inner.predictions_m()
+  try {
+    require(self.fitted)
+    self.inner.predictions_m()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -417,8 +458,13 @@ pub fn DoubleMLDIDBinary::predictions_m(
 pub fn DoubleMLDIDBinary::predictions_g0(
   self : DoubleMLDIDBinary,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.inner.predictions_g0()
+  try {
+    require(self.fitted)
+    self.inner.predictions_g0()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -426,8 +472,13 @@ pub fn DoubleMLDIDBinary::predictions_g0(
 pub fn DoubleMLDIDBinary::predictions_g1(
   self : DoubleMLDIDBinary,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.inner.predictions_g1()
+  try {
+    require(self.fitted)
+    self.inner.predictions_g1()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -440,14 +491,19 @@ pub fn DoubleMLDIDBinary::predictions_g1(
 /// used by the multiplier bootstrap in
 /// `DoubleMLDIDMulti::bootstrap`.
 pub fn DoubleMLDIDBinary::psi_a_long(self : DoubleMLDIDBinary) -> Array[Double] {
-  require(self.fitted)
-  let n_long = self.data.n_obs()
-  let out : Array[Double] = Array::make(n_long, 0.0)
-  let psi_a_wide = self.inner.psi_a
-  for k = 0; k < self.eval_idx.length(); k = k + 1 {
-    out[self.eval_idx[k]] = psi_a_wide[k]
+  try {
+    require(self.fitted)
+    let n_long = self.data.n_obs()
+    let out : Array[Double] = Array::make(n_long, 0.0)
+    let psi_a_wide = self.inner.psi_a
+    for k = 0; k < self.eval_idx.length(); k = k + 1 {
+      out[self.eval_idx[k]] = psi_a_wide[k]
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -455,14 +511,19 @@ pub fn DoubleMLDIDBinary::psi_a_long(self : DoubleMLDIDBinary) -> Array[Double] 
 /// `psi_b` mapped from the cell's wide-format data back to
 /// the long-format panel. See `psi_a_long` for details.
 pub fn DoubleMLDIDBinary::psi_b_long(self : DoubleMLDIDBinary) -> Array[Double] {
-  require(self.fitted)
-  let n_long = self.data.n_obs()
-  let out : Array[Double] = Array::make(n_long, 0.0)
-  let psi_b_wide = self.inner.psi_b
-  for k = 0; k < self.eval_idx.length(); k = k + 1 {
-    out[self.eval_idx[k]] = psi_b_wide[k]
+  try {
+    require(self.fitted)
+    let n_long = self.data.n_obs()
+    let out : Array[Double] = Array::make(n_long, 0.0)
+    let psi_b_wide = self.inner.psi_b
+    for k = 0; k < self.eval_idx.length(); k = k + 1 {
+      out[self.eval_idx[k]] = psi_b_wide[k]
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -475,8 +536,13 @@ pub fn DoubleMLDIDBinary::psi_b_long(self : DoubleMLDIDBinary) -> Array[Double] 
 pub fn DoubleMLDIDBinary::inner_psi_a(
   self : DoubleMLDIDBinary,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.inner.psi_a
+  try {
+    require(self.fitted)
+    self.inner.psi_a
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -485,8 +551,13 @@ pub fn DoubleMLDIDBinary::inner_psi_a(
 pub fn DoubleMLDIDBinary::inner_psi_b(
   self : DoubleMLDIDBinary,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.inner.psi_b
+  try {
+    require(self.fitted)
+    self.inner.psi_b
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

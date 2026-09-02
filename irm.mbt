@@ -58,23 +58,28 @@ pub fn DoubleMLIRM::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
 ) -> DoubleMLIRM {
-  require(n_folds >= 2)
-  require(n_folds <= data.n_obs())
-  require(n_rep >= 1)
-  require(propensity_clip > 0.0)
-  require(propensity_clip < 0.5)
-  {
-    data,
-    n_folds,
-    n_rep,
-    seed,
-    propensity_clip,
-    g0_hat: Array::make(data.n_obs(), 0.0),
-    g1_hat: Array::make(data.n_obs(), 0.0),
-    m_hat: Array::make(data.n_obs(), 0.0),
-    coef: 0.0,
-    se: 0.0,
-    fitted: false,
+  try {
+    require(n_folds >= 2)
+    require(n_folds <= data.n_obs())
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+    {
+      data,
+      n_folds,
+      n_rep,
+      seed,
+      propensity_clip,
+      g0_hat: Array::make(data.n_obs(), 0.0),
+      g1_hat: Array::make(data.n_obs(), 0.0),
+      m_hat: Array::make(data.n_obs(), 0.0),
+      coef: 0.0,
+      se: 0.0,
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -91,22 +96,37 @@ pub fn DoubleMLIRM::n_features(self : DoubleMLIRM) -> Int {
 
 ///|
 pub fn DoubleMLIRM::coef(self : DoubleMLIRM) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLIRM::se(self : DoubleMLIRM) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLIRM::confint(self : DoubleMLIRM) -> (Double, Double) {
-  require(self.fitted)
-  let lo = self.coef - 1.96 * self.se
-  let hi = self.coef + 1.96 * self.se
-  (lo, hi)
+  try {
+    require(self.fitted)
+    let lo = self.coef - 1.96 * self.se
+    let hi = self.coef + 1.96 * self.se
+    (lo, hi)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -173,56 +193,61 @@ fn cross_fit_irm(
   folds : Array[Fold],
   propensity_clip : Double,
 ) -> (Array[Double], Array[Double], Array[Double]) {
-  let n_obs = x.rows()
-  let g0 = Array::make(n_obs, 0.0)
-  let g1 = Array::make(n_obs, 0.0)
-  let m = Array::make(n_obs, 0.0)
-  for fold in folds {
-    let train_idx = fold.train_indices()
-    let test_idx = fold.test_indices()
-    // g0: train on D == 0
-    let train_d0 : Array[Int] = []
-    for i in train_idx {
-      if d[i] == 0.0 {
-        train_d0.push(i)
+  try {
+    let n_obs = x.rows()
+    let g0 = Array::make(n_obs, 0.0)
+    let g1 = Array::make(n_obs, 0.0)
+    let m = Array::make(n_obs, 0.0)
+    for fold in folds {
+      let train_idx = fold.train_indices()
+      let test_idx = fold.test_indices()
+      // g0: train on D == 0
+      let train_d0 : Array[Int] = []
+      for i in train_idx {
+        if d[i] == 0.0 {
+          train_d0.push(i)
+        }
+      }
+      require(train_d0.length() > 0)
+      let xt0 = slice_matrix_rows(x, train_d0)
+      let yt0 = slice_vector(y, train_d0)
+      let fitted0 = ml_g.fit(xt0, yt0)
+      let p = fitted0.predict(slice_matrix_rows(x, test_idx))
+      for k = 0; k < test_idx.length(); k = k + 1 {
+        g0[test_idx[k]] = p[k]
+      }
+      // g1: train on D == 1
+      let train_d1_only : Array[Int] = []
+      for i in train_idx {
+        if d[i] == 1.0 {
+          train_d1_only.push(i)
+        }
+      }
+      require(train_d1_only.length() > 0)
+      let xt1 = slice_matrix_rows(x, train_d1_only)
+      let yt1 = slice_vector(y, train_d1_only)
+      let fitted1 = ml_g.fit(xt1, yt1)
+      let p = fitted1.predict(slice_matrix_rows(x, test_idx))
+      for k = 0; k < test_idx.length(); k = k + 1 {
+        g1[test_idx[k]] = p[k]
+      }
+      // m: train on all
+      let fitted_m = ml_m.fit(
+        slice_matrix_rows(x, train_idx),
+        slice_vector(d, train_idx),
+      )
+      let p = fitted_m.predict(slice_matrix_rows(x, test_idx))
+      for k = 0; k < test_idx.length(); k = k + 1 {
+        m[test_idx[k]] = p[k]
       }
     }
-    require(train_d0.length() > 0)
-    let xt0 = slice_matrix_rows(x, train_d0)
-    let yt0 = slice_vector(y, train_d0)
-    let fitted0 = ml_g.fit(xt0, yt0)
-    let p = fitted0.predict(slice_matrix_rows(x, test_idx))
-    for k = 0; k < test_idx.length(); k = k + 1 {
-      g0[test_idx[k]] = p[k]
-    }
-    // g1: train on D == 1
-    let train_d1_only : Array[Int] = []
-    for i in train_idx {
-      if d[i] == 1.0 {
-        train_d1_only.push(i)
-      }
-    }
-    require(train_d1_only.length() > 0)
-    let xt1 = slice_matrix_rows(x, train_d1_only)
-    let yt1 = slice_vector(y, train_d1_only)
-    let fitted1 = ml_g.fit(xt1, yt1)
-    let p = fitted1.predict(slice_matrix_rows(x, test_idx))
-    for k = 0; k < test_idx.length(); k = k + 1 {
-      g1[test_idx[k]] = p[k]
-    }
-    // m: train on all
-    let fitted_m = ml_m.fit(
-      slice_matrix_rows(x, train_idx),
-      slice_vector(d, train_idx),
-    )
-    let p = fitted_m.predict(slice_matrix_rows(x, test_idx))
-    for k = 0; k < test_idx.length(); k = k + 1 {
-      m[test_idx[k]] = p[k]
-    }
+    // m must be clipped
+    let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
+    (g0, g1, m_clipped)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  // m must be clipped
-  let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
-  (g0, g1, m_clipped)
 }
 
 ///|
@@ -329,119 +354,124 @@ fn DoubleMLIRM::fit_cluster(
   ml_m : LinearRegression,
   max_attempts? : Int = 1,
 ) -> DoubleMLIRM {
-  require(max_attempts >= 1)
-  let cluster = self.data.cluster_vars
-  let n = self.n_obs()
-  let nrep = self.n_rep
-  let uniq = unique_units(cluster)
-  let n_units = uniq.length()
-  require(self.n_folds <= n_units)
-  // v0.36.0: build_row_unit_map raises ClusterDataError on
-  // malformed cluster vector; catch and re-abort to preserve
-  // pre-v0.36.0 behavior.
-  let row_unit = build_row_unit_map(cluster, uniq) catch {
-    ClusterDataError::MissingUnit(g) =>
-      abort(
-        "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
-        g.to_string() +
-        ")",
-      )
-  }
-  let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-    let rows : Array[Int] = []
-    rows
-  })
-  for i = 0; i < n; i = i + 1 {
-    unit_rows[row_unit[i]].push(i)
-  }
-  let coefs : Array[Double] = Array::make(nrep, 0.0)
-  let ses : Array[Double] = Array::make(nrep, 0.0)
-  let mut g0 : Array[Double] = Array::make(n, 0.0)
-  let mut g1 : Array[Double] = Array::make(n, 0.0)
-  let mut m : Array[Double] = Array::make(n, 0.0)
-  for r = 0; r < nrep; r = r + 1 {
-    // v0.40.0: retry loop on J-floor. Each retry uses a different
-    // fold split (seed = self.seed + r + attempt*nrep) so the
-    // fold-mean J is different.
-    let mut theta_r = 0.0
-    let mut se_r = 0.0
-    let mut attempt = 0
-    let mut succeeded = false
-    while attempt < max_attempts && !succeeded {
-      let rep_seed = self.seed + r + attempt * nrep
-      let folds_u = kfold(n_units, self.n_folds, rep_seed)
-      let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
-        cluster, folds_u, row_unit,
-      )
-      let (g0_r, g1_r, m_r) = cross_fit_irm(
-        ml_g,
-        ml_m,
-        self.data.x,
-        self.data.y,
-        self.data.d,
-        folds_row,
-        self.propensity_clip,
-      )
-      g0 = g0_r
-      g1 = g1_r
-      m = m_r
-      let psi_a : Array[Double] = Array::make(n, 0.0)
-      let psi_b : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        let u0 = self.data.y[i] - g0[i]
-        let u1 = self.data.y[i] - g1[i]
-        let m_i = m[i]
-        let one_minus_m = 1.0 - m_i
-        let d_over_m = self.data.d[i] * u1 / m_i
-        let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
-          u0 /
-          one_minus_m
-        psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
-        psi_a[i] = -1.0
-      }
-      let (t, s) = cluster_causal_param_and_se(
-        psi_a,
-        psi_b,
-        folds_row,
-        fold_n_units,
-        unit_rows,
-        unit_fold,
-        folds_u.length(),
-        self.n_folds,
-      ) catch {
-        _ => {
-          attempt = attempt + 1
-          (0.0, 0.0)
+  try {
+    require(max_attempts >= 1)
+    let cluster = self.data.cluster_vars
+    let n = self.n_obs()
+    let nrep = self.n_rep
+    let uniq = unique_units(cluster)
+    let n_units = uniq.length()
+    require(self.n_folds <= n_units)
+    // v0.36.0: build_row_unit_map raises ClusterDataError on
+    // malformed cluster vector; catch and re-abort to preserve
+    // pre-v0.36.0 behavior.
+    let row_unit = build_row_unit_map(cluster, uniq) catch {
+      ClusterDataError::MissingUnit(g) =>
+        abort(
+          "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
+          g.to_string() +
+          ")",
+        )
+    }
+    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int] = []
+      rows
+    })
+    for i = 0; i < n; i = i + 1 {
+      unit_rows[row_unit[i]].push(i)
+    }
+    let coefs : Array[Double] = Array::make(nrep, 0.0)
+    let ses : Array[Double] = Array::make(nrep, 0.0)
+    let mut g0 : Array[Double] = Array::make(n, 0.0)
+    let mut g1 : Array[Double] = Array::make(n, 0.0)
+    let mut m : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < nrep; r = r + 1 {
+      // v0.40.0: retry loop on J-floor. Each retry uses a different
+      // fold split (seed = self.seed + r + attempt*nrep) so the
+      // fold-mean J is different.
+      let mut theta_r = 0.0
+      let mut se_r = 0.0
+      let mut attempt = 0
+      let mut succeeded = false
+      while attempt < max_attempts && !succeeded {
+        let rep_seed = self.seed + r + attempt * nrep
+        let folds_u = kfold(n_units, self.n_folds, rep_seed)
+        let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+          cluster, folds_u, row_unit,
+        )
+        let (g0_r, g1_r, m_r) = cross_fit_irm(
+          ml_g,
+          ml_m,
+          self.data.x,
+          self.data.y,
+          self.data.d,
+          folds_row,
+          self.propensity_clip,
+        )
+        g0 = g0_r
+        g1 = g1_r
+        m = m_r
+        let psi_a : Array[Double] = Array::make(n, 0.0)
+        let psi_b : Array[Double] = Array::make(n, 0.0)
+        for i = 0; i < n; i = i + 1 {
+          let u0 = self.data.y[i] - g0[i]
+          let u1 = self.data.y[i] - g1[i]
+          let m_i = m[i]
+          let one_minus_m = 1.0 - m_i
+          let d_over_m = self.data.d[i] * u1 / m_i
+          let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
+            u0 /
+            one_minus_m
+          psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
+          psi_a[i] = -1.0
         }
+        let (t, s) = cluster_causal_param_and_se(
+          psi_a,
+          psi_b,
+          folds_row,
+          fold_n_units,
+          unit_rows,
+          unit_fold,
+          folds_u.length(),
+          self.n_folds,
+        ) catch {
+          _ => {
+            attempt = attempt + 1
+            (0.0, 0.0)
+          }
+        }
+        theta_r = t
+        se_r = s
+        succeeded = true
       }
-      theta_r = t
-      se_r = s
-      succeeded = true
+      if !succeeded {
+        abort(
+          "var_est_cluster: J-floor fired " +
+          max_attempts.to_string() +
+          " times for rep=" +
+          r.to_string() +
+          " (cluster SE numerically unstable across multiple fold splits, try a different seed or larger n_units)",
+        )
+      }
+      coefs[r] = theta_r
+      ses[r] = se_r
     }
-    if !succeeded {
-      abort(
-        "var_est_cluster: J-floor fired " +
-        max_attempts.to_string() +
-        " times for rep=" +
-        r.to_string() +
-        " (cluster SE numerically unstable across multiple fold splits, try a different seed or larger n_units)",
-      )
+    let (coef, se) = aggregate_coef_se(coefs, ses)
+    {
+      data: self.data,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      g0_hat: g0,
+      g1_hat: g1,
+      m_hat: m,
+      coef,
+      se,
+      fitted: true,
     }
-    coefs[r] = theta_r
-    ses[r] = se_r
-  }
-  let (coef, se) = aggregate_coef_se(coefs, ses)
-  {
-    data: self.data,
-    n_folds: self.n_folds,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    propensity_clip: self.propensity_clip,
-    g0_hat: g0,
-    g1_hat: g1,
-    m_hat: m,
-    coef,
-    se,
-    fitted: true,
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }

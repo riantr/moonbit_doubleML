@@ -17,10 +17,15 @@ pub fn DoubleMLSSMData::new(
   d : Array[Double],
   s : Array[Double],
 ) -> DoubleMLSSMData {
-  require(x.nrows == y.length())
-  require(x.nrows == d.length())
-  require(x.nrows == s.length())
-  { x, y, d, s, }
+  try {
+    require(x.nrows == y.length())
+    require(x.nrows == d.length())
+    require(x.nrows == s.length())
+    { x, y, d, s, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -99,24 +104,29 @@ pub fn DoubleMLSSM::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
 ) -> DoubleMLSSM {
-  require(n_folds >= 2)
-  require(n_folds <= data.n_obs())
-  require(n_rep >= 1)
-  require(propensity_clip > 0.0)
-  require(propensity_clip < 0.5)
-  {
-    data,
-    n_folds,
-    n_rep,
-    seed,
-    propensity_clip,
-    pi_hat: Array::make(data.n_obs(), 0.0),
-    m_hat: Array::make(data.n_obs(), 0.0),
-    g_d1: Array::make(data.n_obs(), 0.0),
-    g_d0: Array::make(data.n_obs(), 0.0),
-    coef: 0.0,
-    se: 0.0,
-    fitted: false,
+  try {
+    require(n_folds >= 2)
+    require(n_folds <= data.n_obs())
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+    {
+      data,
+      n_folds,
+      n_rep,
+      seed,
+      propensity_clip,
+      pi_hat: Array::make(data.n_obs(), 0.0),
+      m_hat: Array::make(data.n_obs(), 0.0),
+      g_d1: Array::make(data.n_obs(), 0.0),
+      g_d0: Array::make(data.n_obs(), 0.0),
+      coef: 0.0,
+      se: 0.0,
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -127,22 +137,37 @@ pub fn DoubleMLSSM::n_obs(self : DoubleMLSSM) -> Int {
 
 ///|
 pub fn DoubleMLSSM::coef(self : DoubleMLSSM) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLSSM::se(self : DoubleMLSSM) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLSSM::confint(self : DoubleMLSSM) -> (Double, Double) {
-  require(self.fitted)
-  let lo = self.coef - 1.96 * self.se
-  let hi = self.coef + 1.96 * self.se
-  (lo, hi)
+  try {
+    require(self.fitted)
+    let lo = self.coef - 1.96 * self.se
+    let hi = self.coef + 1.96 * self.se
+    (lo, hi)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

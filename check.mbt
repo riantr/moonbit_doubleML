@@ -1,23 +1,45 @@
 ///|
 /// Runtime precondition used by every public API and numerical kernel.
 /// `#callsite(autofill(loc))` instructs the compiler to auto-inject the
-/// call-site source location into `loc` at every call, so the abort
-/// message always points at the offending line. The `loc~` labelled
+/// call-site source location into `loc` at every call, so the error
+/// payload points at the offending line. The `loc~` labelled
 /// argument also lets callers forward their own `loc` when wrapping
 /// `check` (see `require` below).
+///
+/// v0.48.0: `check` now raises `PreconditionError::Violated(loc)`
+/// instead of aborting. Every caller is expected to either
+/// (a) declare `raise PreconditionError` in its own signature
+/// (preferred for new code), or
+/// (b) wrap the call site in `try { ... } catch { e :
+///     PreconditionError => abort(e.to_string()) }` to preserve
+///     the pre-v0.48.0 abort behavior.
+///
+/// The pre-v0.48.0 abort message format
+/// ("precondition failed at <loc>") is preserved by the
+/// re-abort pattern in callers, so the diagnostic surface is
+/// unchanged for end users.
 #callsite(autofill(loc))
-pub fn check(condition : Bool, loc~ : SourceLoc) -> Unit {
+pub fn check(
+  condition : Bool,
+  loc~ : SourceLoc,
+) -> Unit raise PreconditionError {
   if !condition {
-    abort("precondition failed at " + loc.to_string())
+    raise PreconditionError::Violated(loc)
   }
 }
 
 ///|
 /// Internal alias of `check`, kept for terse call sites that already read
-/// like `require(x == y)`. Forwards the auto-injected `loc` so the abort
-/// message still points at the offending source line.
+/// like `require(x == y)`. Forwards the auto-injected `loc` so the
+/// error payload still points at the offending source line.
+/// v0.48.0: forwards `check`'s raise as-is (no local try/catch);
+/// the per-caller wrap is responsible for converting the raise
+/// back to abort at the call site.
 #callsite(autofill(loc))
-pub fn require(condition : Bool, loc~ : SourceLoc) -> Unit {
+pub fn require(
+  condition : Bool,
+  loc~ : SourceLoc,
+) -> Unit raise PreconditionError {
   check(condition, loc~)
 }
 

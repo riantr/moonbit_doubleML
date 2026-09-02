@@ -25,32 +25,37 @@ pub fn var_est(
   psi_a : Array[Double],
   psi_b : Array[Double],
 ) -> (Double, Double) {
-  require(psi_a.length() == psi_b.length())
-  require(psi_a.length() >= 1)
-  let n = psi_a.length()
-  let mean_a = mean(psi_a)
-  let mean_b = mean(psi_b)
-  let coef = -mean_b / mean_a
-  // gamma = sum_{i=0..n-1} psi(theta_hat)^2 with Kahan-compensated
-  // accumulator (see kahan.mbt). The squared terms are non-negative
-  // and of similar magnitude for n=500, so cancellation risk is
-  // moderate; Kahan is "free insurance" against any future input
-  // distribution that pushes the partial sum towards zero.
-  let mut gamma = 0.0
-  let mut gamma_c = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let psi = coef * psi_a[i] + psi_b[i]
-    let prod = psi * psi
-    let y = prod - gamma_c
-    let t = gamma + y
-    gamma_c = t - gamma - y
-    gamma = t
+  try {
+    require(psi_a.length() == psi_b.length())
+    require(psi_a.length() >= 1)
+    let n = psi_a.length()
+    let mean_a = mean(psi_a)
+    let mean_b = mean(psi_b)
+    let coef = -mean_b / mean_a
+    // gamma = sum_{i=0..n-1} psi(theta_hat)^2 with Kahan-compensated
+    // accumulator (see kahan.mbt). The squared terms are non-negative
+    // and of similar magnitude for n=500, so cancellation risk is
+    // moderate; Kahan is "free insurance" against any future input
+    // distribution that pushes the partial sum towards zero.
+    let mut gamma = 0.0
+    let mut gamma_c = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let psi = coef * psi_a[i] + psi_b[i]
+      let prod = psi * psi
+      let y = prod - gamma_c
+      let t = gamma + y
+      gamma_c = t - gamma - y
+      gamma = t
+    }
+    gamma = gamma / n.to_double()
+    let j = mean_a
+    let sigma2 = gamma / (j * j * n.to_double())
+    let se = sigma2.sqrt()
+    (coef, se)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  gamma = gamma / n.to_double()
-  let j = mean_a
-  let sigma2 = gamma / (j * j * n.to_double())
-  let se = sigma2.sqrt()
-  (coef, se)
 }
 
 ///|
@@ -69,20 +74,25 @@ pub fn var_est(
 /// Aborts if `psi` is empty or `jacobian` is zero (which would
 /// produce an infinite SE).
 pub fn var_est_with_jacobian(psi : Array[Double], jacobian : Double) -> Double {
-  require(psi.length() >= 1)
-  require(jacobian.abs() > 0.0)
-  let n = psi.length()
-  let mut gamma = 0.0
-  let mut gamma_c = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let prod = psi[i] * psi[i]
-    let y = prod - gamma_c
-    let t = gamma + y
-    gamma_c = t - gamma - y
-    gamma = t
+  try {
+    require(psi.length() >= 1)
+    require(jacobian.abs() > 0.0)
+    let n = psi.length()
+    let mut gamma = 0.0
+    let mut gamma_c = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let prod = psi[i] * psi[i]
+      let y = prod - gamma_c
+      let t = gamma + y
+      gamma_c = t - gamma - y
+      gamma = t
+    }
+    gamma = gamma / n.to_double()
+    let n_d = n.to_double()
+    let sigma2 = gamma / (jacobian * jacobian * n_d)
+    sigma2.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  gamma = gamma / n.to_double()
-  let n_d = n.to_double()
-  let sigma2 = gamma / (jacobian * jacobian * n_d)
-  sigma2.sqrt()
 }

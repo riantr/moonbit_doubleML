@@ -27,8 +27,13 @@ pub fn LogisticRegression::new() -> LogisticRegression {
 pub fn LogisticRegression::coefficients(
   self : LogisticRegression,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.coef_
+  try {
+    require(self.fitted)
+    self.coef_
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -101,79 +106,84 @@ pub fn LogisticRegression::fit(
   tol? : Double = 1.0e-8,
   ridge? : Double = 1.0e-8,
 ) -> LogisticRegression {
-  ignore(self)
-  require(x.nrows == y.length())
-  require(x.nrows >= 2)
-  // REVIEW L12 fix (0.7.0): validate `y ∈ {0, 1}`. The doc says
-  // "Only binary outcomes (y in {0, 1}) are supported" but the
-  // pre-fix code silently produced nonsense for out-of-range y
-  // (the IRLS `z = eta + (y - p) / w` formula tolerates anything
-  // but the interpretation as a binary classification breaks).
-  // Catching at the call site is cheaper than a downstream NaN.
-  for yi in y {
-    require(yi == 0.0 || yi == 1.0)
-  }
-  let n = x.nrows
-  let xa = augment_with_intercept(x)
-  let p1 = xa.ncols
-  let mut beta = Array::make(p1, 0.0)
-  let mut step = 0
-  while step < max_iter {
-    let eta = matvec(xa, beta)
-    let p : Array[Double] = Array::make(n, 0.0)
-    let w : Array[Double] = Array::make(n, 0.0)
-    let z : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      let pi = sigmoid(eta[i])
-      // clamp to (eps, 1-eps) so w_i = p(1-p) > 0 and z stays finite
-      // even when y is exactly 0 or 1 and p is near the opposite pole.
-      let pi_ = if pi < 1.0e-12 {
-        1.0e-12
-      } else if pi > 1.0 - 1.0e-12 {
-        1.0 - 1.0e-12
-      } else {
-        pi
-      }
-      p[i] = pi_
-      let wi = pi_ * (1.0 - pi_)
-      w[i] = wi
-      z[i] = eta[i] + (y[i] - pi_) / wi
+  try {
+    ignore(self)
+    require(x.nrows == y.length())
+    require(x.nrows >= 2)
+    // REVIEW L12 fix (0.7.0): validate `y ∈ {0, 1}`. The doc says
+    // "Only binary outcomes (y in {0, 1}) are supported" but the
+    // pre-fix code silently produced nonsense for out-of-range y
+    // (the IRLS `z = eta + (y - p) / w` formula tolerates anything
+    // but the interpretation as a binary classification breaks).
+    // Catching at the call site is cheaper than a downstream NaN.
+    for yi in y {
+      require(yi == 0.0 || yi == 1.0)
     }
-    // X^T W X = (sqrt(W) X)^T (sqrt(W) X).  Build sqrt(W) X by
-    // scaling each row of X by sqrt(w_i).
-    let xw = Matrix::zeros(n, p1)
-    for i = 0; i < n; i = i + 1 {
-      let sw = w[i].sqrt()
-      for j = 0; j < p1; j = j + 1 {
-        xw.data[i * p1 + j] = sw * xa.data[i * p1 + j]
-      }
-    }
-    let xtwx = matmul(xw.transpose(), xw)
-    // X^T W z = sum_i xa[i, j] * w[i] * z[i]
-    let xtwz : Array[Double] = Array::make(p1, 0.0)
-    for j = 0; j < p1; j = j + 1 {
-      let mut s = 0.0
+    let n = x.nrows
+    let xa = augment_with_intercept(x)
+    let p1 = xa.ncols
+    let mut beta = Array::make(p1, 0.0)
+    let mut step = 0
+    while step < max_iter {
+      let eta = matvec(xa, beta)
+      let p : Array[Double] = Array::make(n, 0.0)
+      let w : Array[Double] = Array::make(n, 0.0)
+      let z : Array[Double] = Array::make(n, 0.0)
       for i = 0; i < n; i = i + 1 {
-        s = s + xa.data[i * p1 + j] * w[i] * z[i]
+        let pi = sigmoid(eta[i])
+        // clamp to (eps, 1-eps) so w_i = p(1-p) > 0 and z stays finite
+        // even when y is exactly 0 or 1 and p is near the opposite pole.
+        let pi_ = if pi < 1.0e-12 {
+          1.0e-12
+        } else if pi > 1.0 - 1.0e-12 {
+          1.0 - 1.0e-12
+        } else {
+          pi
+        }
+        p[i] = pi_
+        let wi = pi_ * (1.0 - pi_)
+        w[i] = wi
+        z[i] = eta[i] + (y[i] - pi_) / wi
       }
-      xtwz[j] = s
+      // X^T W X = (sqrt(W) X)^T (sqrt(W) X).  Build sqrt(W) X by
+      // scaling each row of X by sqrt(w_i).
+      let xw = Matrix::zeros(n, p1)
+      for i = 0; i < n; i = i + 1 {
+        let sw = w[i].sqrt()
+        for j = 0; j < p1; j = j + 1 {
+          xw.data[i * p1 + j] = sw * xa.data[i * p1 + j]
+        }
+      }
+      let xtwx = matmul(xw.transpose(), xw)
+      // X^T W z = sum_i xa[i, j] * w[i] * z[i]
+      let xtwz : Array[Double] = Array::make(p1, 0.0)
+      for j = 0; j < p1; j = j + 1 {
+        let mut s = 0.0
+        for i = 0; i < n; i = i + 1 {
+          s = s + xa.data[i * p1 + j] * w[i] * z[i]
+        }
+        xtwz[j] = s
+      }
+      let aug = add_ridge(xtwx, ridge)
+      let beta_new = solve_spd(aug, xtwz)
+      // convergence: L2 norm of the step
+      let mut diff = 0.0
+      for j = 0; j < p1; j = j + 1 {
+        let d = beta_new[j] - beta[j]
+        diff = diff + d * d
+      }
+      diff = diff.sqrt()
+      beta = beta_new
+      if diff < tol {
+        break
+      }
+      step = step + 1
     }
-    let aug = add_ridge(xtwx, ridge)
-    let beta_new = solve_spd(aug, xtwz)
-    // convergence: L2 norm of the step
-    let mut diff = 0.0
-    for j = 0; j < p1; j = j + 1 {
-      let d = beta_new[j] - beta[j]
-      diff = diff + d * d
-    }
-    diff = diff.sqrt()
-    beta = beta_new
-    if diff < tol {
-      break
-    }
-    step = step + 1
+    { fitted: true, coef_: beta, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  { fitted: true, coef_: beta, }
 }
 
 ///|
@@ -187,23 +197,28 @@ pub fn LogisticRegression::predict(
   self : LogisticRegression,
   x : Matrix,
 ) -> Array[Double] {
-  require(self.fitted)
-  require(x.ncols == self.coef_.length() - 1)
-  let xa = augment_with_intercept(x)
-  let eta = matvec(xa, self.coef_)
-  let n = x.nrows
-  let out : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    let pi = sigmoid(eta[i])
-    if pi < 1.0e-15 {
-      out[i] = 1.0e-15
-    } else if pi > 1.0 - 1.0e-15 {
-      out[i] = 1.0 - 1.0e-15
-    } else {
-      out[i] = pi
+  try {
+    require(self.fitted)
+    require(x.ncols == self.coef_.length() - 1)
+    let xa = augment_with_intercept(x)
+    let eta = matvec(xa, self.coef_)
+    let n = x.nrows
+    let out : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let pi = sigmoid(eta[i])
+      if pi < 1.0e-15 {
+        out[i] = 1.0e-15
+      } else if pi > 1.0 - 1.0e-15 {
+        out[i] = 1.0 - 1.0e-15
+      } else {
+        out[i] = pi
+      }
     }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|

@@ -35,12 +35,17 @@ pub fn DoubleMLData::new(
   d : Array[Double],
   cluster_vars? : Array[Int] = [],
 ) -> DoubleMLData {
-  require(x.nrows == y.length())
-  require(x.nrows == d.length())
-  if cluster_vars.length() > 0 {
-    require(cluster_vars.length() == x.nrows)
+  try {
+    require(x.nrows == y.length())
+    require(x.nrows == d.length())
+    if cluster_vars.length() > 0 {
+      require(cluster_vars.length() == x.nrows)
+    }
+    { x, y, d, cluster_vars, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  { x, y, d, cluster_vars, }
 }
 
 ///|

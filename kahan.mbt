@@ -56,14 +56,19 @@
 /// holds the residual. After each step `|c| <= eps * |sum|`, so the
 /// error stays `O(eps)` instead of `O(n * eps)`.
 pub fn kahan_sum(arr : Array[Double]) -> Double {
-  require(arr.length() >= 1)
-  let mut sum = 0.0
-  let mut c = 0.0
-  for i = 0; i < arr.length(); i = i + 1 {
-    let y = arr[i] - c
-    let t = sum + y
-    c = t - sum - y
-    sum = t
+  try {
+    require(arr.length() >= 1)
+    let mut sum = 0.0
+    let mut c = 0.0
+    for i = 0; i < arr.length(); i = i + 1 {
+      let y = arr[i] - c
+      let t = sum + y
+      c = t - sum - y
+      sum = t
+    }
+    sum
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  sum
 }

@@ -40,8 +40,13 @@ pub fn LinearRegression::n_features(self : LinearRegression) -> Int {
 
 ///|
 pub fn LinearRegression::coefficients(self : LinearRegression) -> Array[Double] {
-  require(self.fitted)
-  self.coef_
+  try {
+    require(self.fitted)
+    self.coef_
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -89,26 +94,31 @@ pub fn LinearRegression::fit(
   x : Matrix,
   y : Array[Double],
 ) -> LinearRegression {
-  require(x.nrows == y.length())
-  let xa = augment_with_intercept(x)
-  let xt = xa.transpose()
-  let xtx = matmul(xt, xa)
-  let xty = matvec(xt, y)
-  let coef = solve_normal_eqs(xtx, xty, self.ridge)
-  // cache (X^T X + ridge I)^{-1} diagonal for the per-coefficient SE
-  let xtx_aug = add_ridge(xtx, self.ridge)
-  let xtx_inv = inv_spd(xtx_aug)
-  let p1 = coef.length()
-  let xtx_inv_diag = Array::make(p1, 0.0)
-  for j = 0; j < p1; j = j + 1 {
-    xtx_inv_diag[j] = xtx_inv.data[j * p1 + j]
-  }
-  {
-    ridge: self.ridge,
-    coef_: coef,
-    xtx_inv_diag,
-    xtwx_inv_diag: [],
-    fitted: true,
+  try {
+    require(x.nrows == y.length())
+    let xa = augment_with_intercept(x)
+    let xt = xa.transpose()
+    let xtx = matmul(xt, xa)
+    let xty = matvec(xt, y)
+    let coef = solve_normal_eqs(xtx, xty, self.ridge)
+    // cache (X^T X + ridge I)^{-1} diagonal for the per-coefficient SE
+    let xtx_aug = add_ridge(xtx, self.ridge)
+    let xtx_inv = inv_spd(xtx_aug)
+    let p1 = coef.length()
+    let xtx_inv_diag = Array::make(p1, 0.0)
+    for j = 0; j < p1; j = j + 1 {
+      xtx_inv_diag[j] = xtx_inv.data[j * p1 + j]
+    }
+    {
+      ridge: self.ridge,
+      coef_: coef,
+      xtx_inv_diag,
+      xtwx_inv_diag: [],
+      fitted: true,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -120,8 +130,13 @@ pub fn LinearRegression::fit(
 pub fn LinearRegression::xtwx_inv_diag(
   self : LinearRegression,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.xtwx_inv_diag
+  try {
+    require(self.fitted)
+    self.xtwx_inv_diag
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -145,14 +160,19 @@ pub fn LinearRegression::covariance_diagonal(
   self : LinearRegression,
   sigma2 : Double,
 ) -> Array[Double] {
-  require(self.fitted)
-  require(sigma2 >= 0.0)
-  let p1 = self.coef_.length()
-  let out = Array::make(p1, 0.0)
-  for j = 0; j < p1; j = j + 1 {
-    out[j] = sigma2 * self.xtx_inv_diag[j]
+  try {
+    require(self.fitted)
+    require(sigma2 >= 0.0)
+    let p1 = self.coef_.length()
+    let out = Array::make(p1, 0.0)
+    for j = 0; j < p1; j = j + 1 {
+      out[j] = sigma2 * self.xtx_inv_diag[j]
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -176,49 +196,54 @@ pub fn LinearRegression::fit_weighted(
   y : Array[Double],
   w : Array[Double],
 ) -> LinearRegression {
-  require(x.nrows == y.length())
-  require(x.nrows == w.length())
-  // REVIEW L7: WLS is only meaningful with non-negative weights.
-  // Negative weights would silently flip the sign of the residual
-  // contribution; reject at construction so the bug surfaces at
-  // the call site rather than as a wrong-direction estimate.
-  for wi in w {
-    require(wi >= 0.0)
-  }
-  let n = x.nrows
-  let xa = augment_with_intercept(x)
-  let p1 = xa.ncols
-  // X^T W X (p1 x p1) and X^T W y (p1)
-  let xtwx = Matrix::zeros(p1, p1)
-  let xtwy = Array::make(p1, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    let wi = w[i]
-    for a = 0; a < p1; a = a + 1 {
-      xtwy[a] = xtwy[a] + xa.data[i * p1 + a] * wi * y[i]
-      for b = 0; b < p1; b = b + 1 {
-        xtwx.data[a * p1 + b] = xtwx.data[a * p1 + b] +
-          xa.data[i * p1 + a] * wi * xa.data[i * p1 + b]
+  try {
+    require(x.nrows == y.length())
+    require(x.nrows == w.length())
+    // REVIEW L7: WLS is only meaningful with non-negative weights.
+    // Negative weights would silently flip the sign of the residual
+    // contribution; reject at construction so the bug surfaces at
+    // the call site rather than as a wrong-direction estimate.
+    for wi in w {
+      require(wi >= 0.0)
+    }
+    let n = x.nrows
+    let xa = augment_with_intercept(x)
+    let p1 = xa.ncols
+    // X^T W X (p1 x p1) and X^T W y (p1)
+    let xtwx = Matrix::zeros(p1, p1)
+    let xtwy = Array::make(p1, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let wi = w[i]
+      for a = 0; a < p1; a = a + 1 {
+        xtwy[a] = xtwy[a] + xa.data[i * p1 + a] * wi * y[i]
+        for b = 0; b < p1; b = b + 1 {
+          xtwx.data[a * p1 + b] = xtwx.data[a * p1 + b] +
+            xa.data[i * p1 + a] * wi * xa.data[i * p1 + b]
+        }
       }
     }
-  }
-  let coef = solve_normal_eqs(xtwx, xtwy, self.ridge)
-  // The unweighted `(X^T X + ridge I)^{-1}` diagonal is only used by
-  // the non-WLS `fit` path (e.g. `DoubleMLBLP`); the WLS caller
-  // (`DoubleMLRDD`) only reads `xtwx_inv_diag`. We skip the
-  // unweighted `xtx` computation + inverse to save one matrix
-  // multiplication + one Cholesky-based inverse per fit.
-  let xtwx_aug = add_ridge(xtwx, self.ridge)
-  let xtwx_inv = inv_spd(xtwx_aug)
-  let xtwx_inv_diag = Array::make(p1, 0.0)
-  for j = 0; j < p1; j = j + 1 {
-    xtwx_inv_diag[j] = xtwx_inv.data[j * p1 + j]
-  }
-  {
-    ridge: self.ridge,
-    coef_: coef,
-    xtx_inv_diag: [],
-    xtwx_inv_diag,
-    fitted: true,
+    let coef = solve_normal_eqs(xtwx, xtwy, self.ridge)
+    // The unweighted `(X^T X + ridge I)^{-1}` diagonal is only used by
+    // the non-WLS `fit` path (e.g. `DoubleMLBLP`); the WLS caller
+    // (`DoubleMLRDD`) only reads `xtwx_inv_diag`. We skip the
+    // unweighted `xtx` computation + inverse to save one matrix
+    // multiplication + one Cholesky-based inverse per fit.
+    let xtwx_aug = add_ridge(xtwx, self.ridge)
+    let xtwx_inv = inv_spd(xtwx_aug)
+    let xtwx_inv_diag = Array::make(p1, 0.0)
+    for j = 0; j < p1; j = j + 1 {
+      xtwx_inv_diag[j] = xtwx_inv.data[j * p1 + j]
+    }
+    {
+      ridge: self.ridge,
+      coef_: coef,
+      xtx_inv_diag: [],
+      xtwx_inv_diag,
+      fitted: true,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -229,10 +254,15 @@ pub fn LinearRegression::predict(
   self : LinearRegression,
   x : Matrix,
 ) -> Array[Double] {
-  require(self.fitted)
-  require(x.ncols == self.n_features())
-  let xa = augment_with_intercept(x)
-  matvec(xa, self.coef_)
+  try {
+    require(self.fitted)
+    require(x.ncols == self.n_features())
+    let xa = augment_with_intercept(x)
+    matvec(xa, self.coef_)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -256,37 +286,42 @@ pub fn LinearRegression::sandwich_se_weighted(
   y : Array[Double],
   w : Array[Double],
 ) -> Array[Double] {
-  require(self.fitted)
-  require(x.nrows == y.length())
-  require(x.nrows == w.length())
-  let n = x.nrows
-  let p1 = self.coef_.length()
-  let xa = augment_with_intercept(x)
-  let pred = matvec(xa, self.coef_)
-  let xt = xa.transpose()
-  let xtx = matmul(xt, xa)
-  let xtx_aug = add_ridge(xtx, self.ridge)
-  // For each j, compute cov_jj = sum_i w[i]^2 * (sum_a M[j,a] * xa[i,a])^2 * e_i^2
-  // by back-solving `M[j, :] * (X^T W X + ridge I) = e_j`.
-  let ej : Array[Double] = Array::make(p1, 0.0)
-  let out = Array::make(p1, 0.0)
-  for j = 0; j < p1; j = j + 1 {
-    ej[j] = 1.0
-    let mj = solve_spd(xtx_aug, ej)
-    ej[j] = 0.0
-    let mut acc = 0.0
-    for i = 0; i < n; i = i + 1 {
-      let mut mjx = 0.0
-      for a = 0; a < p1; a = a + 1 {
-        mjx = mjx + mj[a] * xa.data[i * p1 + a]
+  try {
+    require(self.fitted)
+    require(x.nrows == y.length())
+    require(x.nrows == w.length())
+    let n = x.nrows
+    let p1 = self.coef_.length()
+    let xa = augment_with_intercept(x)
+    let pred = matvec(xa, self.coef_)
+    let xt = xa.transpose()
+    let xtx = matmul(xt, xa)
+    let xtx_aug = add_ridge(xtx, self.ridge)
+    // For each j, compute cov_jj = sum_i w[i]^2 * (sum_a M[j,a] * xa[i,a])^2 * e_i^2
+    // by back-solving `M[j, :] * (X^T W X + ridge I) = e_j`.
+    let ej : Array[Double] = Array::make(p1, 0.0)
+    let out = Array::make(p1, 0.0)
+    for j = 0; j < p1; j = j + 1 {
+      ej[j] = 1.0
+      let mj = solve_spd(xtx_aug, ej)
+      ej[j] = 0.0
+      let mut acc = 0.0
+      for i = 0; i < n; i = i + 1 {
+        let mut mjx = 0.0
+        for a = 0; a < p1; a = a + 1 {
+          mjx = mjx + mj[a] * xa.data[i * p1 + a]
+        }
+        let ei = y[i] - pred[i]
+        let wi2 = w[i] * w[i]
+        acc = acc + wi2 * mjx * mjx * ei * ei
       }
-      let ei = y[i] - pred[i]
-      let wi2 = w[i] * w[i]
-      acc = acc + wi2 * mjx * mjx * ei * ei
+      out[j] = acc
     }
-    out[j] = acc
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -313,35 +348,40 @@ pub fn LinearRegression::sandwich_se(
   x : Matrix,
   y : Array[Double],
 ) -> Array[Double] {
-  require(self.fitted)
-  require(x.nrows == y.length())
-  let n = x.nrows
-  let p1 = self.coef_.length()
-  let xa = augment_with_intercept(x)
-  let pred = matvec(xa, self.coef_)
-  let xt = xa.transpose()
-  let xtx = matmul(xt, xa)
-  let xtx_aug = add_ridge(xtx, self.ridge)
-  // For each j, compute cov_jj = sum_i (sum_a M[j,a] * xa[i,a])^2 * e_i^2
-  // by back-solving `M[j, :] * (X'X + ridge I) = e_j` for each j.
-  let ej : Array[Double] = Array::make(p1, 0.0)
-  let out = Array::make(p1, 0.0)
-  for j = 0; j < p1; j = j + 1 {
-    ej[j] = 1.0
-    let mj = solve_spd(xtx_aug, ej)
-    ej[j] = 0.0
-    let mut acc = 0.0
-    for i = 0; i < n; i = i + 1 {
-      let mut mjx = 0.0
-      for a = 0; a < p1; a = a + 1 {
-        mjx = mjx + mj[a] * xa.data[i * p1 + a]
+  try {
+    require(self.fitted)
+    require(x.nrows == y.length())
+    let n = x.nrows
+    let p1 = self.coef_.length()
+    let xa = augment_with_intercept(x)
+    let pred = matvec(xa, self.coef_)
+    let xt = xa.transpose()
+    let xtx = matmul(xt, xa)
+    let xtx_aug = add_ridge(xtx, self.ridge)
+    // For each j, compute cov_jj = sum_i (sum_a M[j,a] * xa[i,a])^2 * e_i^2
+    // by back-solving `M[j, :] * (X'X + ridge I) = e_j` for each j.
+    let ej : Array[Double] = Array::make(p1, 0.0)
+    let out = Array::make(p1, 0.0)
+    for j = 0; j < p1; j = j + 1 {
+      ej[j] = 1.0
+      let mj = solve_spd(xtx_aug, ej)
+      ej[j] = 0.0
+      let mut acc = 0.0
+      for i = 0; i < n; i = i + 1 {
+        let mut mjx = 0.0
+        for a = 0; a < p1; a = a + 1 {
+          mjx = mjx + mj[a] * xa.data[i * p1 + a]
+        }
+        let ei = y[i] - pred[i]
+        acc = acc + mjx * mjx * ei * ei
       }
-      let ei = y[i] - pred[i]
-      acc = acc + mjx * mjx * ei * ei
+      out[j] = acc
     }
-    out[j] = acc
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|

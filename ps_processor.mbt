@@ -37,11 +37,39 @@ pub fn PSProcessorConfig::new(
   calibration_method? : String = "none",
   cv_calibration? : Bool = false,
 ) -> PSProcessorConfig raise PSConfigError {
-  require(clipping_threshold > 0.0)
-  require(clipping_threshold < 0.5)
-  require(extreme_threshold > 0.0)
-  require(extreme_threshold < 0.5)
-  require(calibration_method == "none" || calibration_method == "isotonic")
+  // v0.48.0: per-call wrap on each `require` because the body also
+  // raises PSConfigError::InconsistentCVCalibration; a block-level
+  // try/catch would partial_match the catch.
+  ignore(
+    require(clipping_threshold > 0.0) catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
+  ignore(
+    require(clipping_threshold < 0.5) catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
+  ignore(
+    require(extreme_threshold > 0.0) catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
+  ignore(
+    require(extreme_threshold < 0.5) catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
+  ignore(
+    require(calibration_method == "none" || calibration_method == "isotonic") catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
   if cv_calibration && calibration_method == "none" {
     raise PSConfigError::InconsistentCVCalibration
   }
@@ -134,39 +162,46 @@ pub fn PSProcessor::adjust_ps(
   treatment : Array[Double],
   cv? : Array[(Array[Int], Array[Int])]? = None,
 ) -> Array[Double] {
-  validate_treatment(treatment)
-  require(ps.length() == treatment.length())
-  let n = ps.length()
-  require(n > 0)
-  // Calibration step. v0.37.0: extracted into apply_calibration
-  // helper that raises InvalidCalibrationError on unknown
-  // calibration method; catch and re-abort to preserve pre-v0.37.0
-  // process-death behavior. v0.38.0: apply_calibration now also
-  // propagates CalibrationFittingError from isotonic_calibrate_cv;
-  // we re-abort to preserve the pre-v0.38.0 behavior on a malformed
-  // cv partition.
-  let calibrated = apply_calibration(self.config, ps, treatment, cv) catch {
-    InvalidCalibrationError::UnknownMethod(m) =>
-      abort("unknown calibration_method (set in PSProcessorConfig::new): " + m)
-    CalibrationFittingError::IncompleteCVPartition =>
-      abort("isotonic_calibrate_cv: cv partition does not cover all indices")
-    _ => abort("apply_calibration: unknown error")
-  }
-  // Clip to [eps, 1 - eps].
-  let lo = self.config.clipping_threshold
-  let hi = 1.0 - self.config.clipping_threshold
-  let out : Array[Double] = Array::make(calibrated.length(), 0.0)
-  for i = 0; i < calibrated.length(); i = i + 1 {
-    let v = calibrated[i]
-    if v < lo {
-      out[i] = lo
-    } else if v > hi {
-      out[i] = hi
-    } else {
-      out[i] = v
+  try {
+    validate_treatment(treatment)
+    require(ps.length() == treatment.length())
+    let n = ps.length()
+    require(n > 0)
+    // Calibration step. v0.37.0: extracted into apply_calibration
+    // helper that raises InvalidCalibrationError on unknown
+    // calibration method; catch and re-abort to preserve pre-v0.37.0
+    // process-death behavior. v0.38.0: apply_calibration now also
+    // propagates CalibrationFittingError from isotonic_calibrate_cv;
+    // we re-abort to preserve the pre-v0.38.0 behavior on a malformed
+    // cv partition.
+    let calibrated = apply_calibration(self.config, ps, treatment, cv) catch {
+      InvalidCalibrationError::UnknownMethod(m) =>
+        abort(
+          "unknown calibration_method (set in PSProcessorConfig::new): " + m,
+        )
+      CalibrationFittingError::IncompleteCVPartition =>
+        abort("isotonic_calibrate_cv: cv partition does not cover all indices")
+      _ => abort("apply_calibration: unknown error")
     }
+    // Clip to [eps, 1 - eps].
+    let lo = self.config.clipping_threshold
+    let hi = 1.0 - self.config.clipping_threshold
+    let out : Array[Double] = Array::make(calibrated.length(), 0.0)
+    for i = 0; i < calibrated.length(); i = i + 1 {
+      let v = calibrated[i]
+      if v < lo {
+        out[i] = lo
+      } else if v > hi {
+        out[i] = hi
+      } else {
+        out[i] = v
+      }
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -209,8 +244,13 @@ pub fn apply_calibration(
 
 ///|
 fn validate_treatment(treatment : Array[Double]) -> Unit {
-  for t in treatment {
-    require(t == 0.0 || t == 1.0)
+  try {
+    for t in treatment {
+      require(t == 0.0 || t == 1.0)
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -243,65 +283,70 @@ fn validate_treatment(treatment : Array[Double]) -> Unit {
 /// `fit_isotonic` for the public entry point that sorts and
 /// returns the fitted model.
 pub fn pava(y : Array[Double], weights? : Array[Double] = []) -> Array[Double] {
-  let n = y.length()
-  if n == 0 {
-    return []
-  }
-  let w : Array[Double] = if weights.length() == 0 {
-    Array::make(n, 1.0)
-  } else {
-    require(weights.length() == n)
-    weights
-  }
-  // Parallel arrays as a poor man's stack of (sum_y, sum_w, size)
-  // blocks. MoonBit has no native tuple-array sort, but the
-  // per-field arrays stay synchronised because every push/pop
-  // updates all three in lockstep.
-  let block_sum : Array[Double] = []
-  let block_w : Array[Double] = []
-  let block_size : Array[Int] = []
-  for i = 0; i < n; i = i + 1 {
-    let mut cur_sum = y[i]
-    let mut cur_w = w[i]
-    let mut cur_size = 1
-    // Pool with previous blocks as long as the last block's
-    // (weighted) mean is greater than the new block's mean.
-    while block_size.length() > 0 {
-      let last_idx = block_size.length() - 1
-      let last_mean = block_sum[last_idx] / block_w[last_idx]
-      let new_mean = cur_sum / cur_w
-      if last_mean <= new_mean {
-        break
+  try {
+    let n = y.length()
+    if n == 0 {
+      return []
+    }
+    let w : Array[Double] = if weights.length() == 0 {
+      Array::make(n, 1.0)
+    } else {
+      require(weights.length() == n)
+      weights
+    }
+    // Parallel arrays as a poor man's stack of (sum_y, sum_w, size)
+    // blocks. MoonBit has no native tuple-array sort, but the
+    // per-field arrays stay synchronised because every push/pop
+    // updates all three in lockstep.
+    let block_sum : Array[Double] = []
+    let block_w : Array[Double] = []
+    let block_size : Array[Int] = []
+    for i = 0; i < n; i = i + 1 {
+      let mut cur_sum = y[i]
+      let mut cur_w = w[i]
+      let mut cur_size = 1
+      // Pool with previous blocks as long as the last block's
+      // (weighted) mean is greater than the new block's mean.
+      while block_size.length() > 0 {
+        let last_idx = block_size.length() - 1
+        let last_mean = block_sum[last_idx] / block_w[last_idx]
+        let new_mean = cur_sum / cur_w
+        if last_mean <= new_mean {
+          break
+        }
+        // Pool: pop the last block, fold its content into the new
+        // block, and continue checking.
+        cur_size = cur_size + block_size[last_idx]
+        cur_sum = cur_sum + block_sum[last_idx]
+        cur_w = cur_w + block_w[last_idx]
+        block_size.truncate(last_idx)
+        block_sum.truncate(last_idx)
+        block_w.truncate(last_idx)
       }
-      // Pool: pop the last block, fold its content into the new
-      // block, and continue checking.
-      cur_size = cur_size + block_size[last_idx]
-      cur_sum = cur_sum + block_sum[last_idx]
-      cur_w = cur_w + block_w[last_idx]
-      block_size.truncate(last_idx)
-      block_sum.truncate(last_idx)
-      block_w.truncate(last_idx)
+      block_size.push(cur_size)
+      block_sum.push(cur_sum)
+      block_w.push(cur_w)
     }
-    block_size.push(cur_size)
-    block_sum.push(cur_sum)
-    block_w.push(cur_w)
-  }
-  // Flatten the block stack back to a per-element output. Each
-  // block contributes `block_size[b]` copies of its (weighted)
-  // mean `block_sum[b] / block_w[b]`.
-  let out : Array[Double] = Array::make(n, 0.0)
-  let mut k = 0
-  for b = 0; b < block_size.length(); b = b + 1 {
-    let mean = block_sum[b] / block_w[b]
-    let size = block_size[b]
-    let mut _i = 0
-    while _i < size {
-      out[k] = mean
-      k = k + 1
-      _i = _i + 1
+    // Flatten the block stack back to a per-element output. Each
+    // block contributes `block_size[b]` copies of its (weighted)
+    // mean `block_sum[b] / block_w[b]`.
+    let out : Array[Double] = Array::make(n, 0.0)
+    let mut k = 0
+    for b = 0; b < block_size.length(); b = b + 1 {
+      let mean = block_sum[b] / block_w[b]
+      let size = block_size[b]
+      let mut _i = 0
+      while _i < size {
+        out[k] = mean
+        k = k + 1
+        _i = _i + 1
+      }
     }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -317,21 +362,26 @@ pub fn fit_isotonic(
   x : Array[Double],
   y : Array[Double],
 ) -> (Array[Double], Array[Double]) {
-  let n = x.length()
-  require(y.length() == n)
-  require(n > 0)
-  // Sort indices by x.
-  let order : Array[Int] = Array::makei(n, fn(i) { i })
-  order.sort_by(fn(a, b) { x[a].compare(x[b]) })
-  let sorted_x : Array[Double] = Array::make(n, 0.0)
-  let sorted_y : Array[Double] = Array::make(n, 0.0)
-  for k = 0; k < n; k = k + 1 {
-    let i = order[k]
-    sorted_x[k] = x[i]
-    sorted_y[k] = y[i]
+  try {
+    let n = x.length()
+    require(y.length() == n)
+    require(n > 0)
+    // Sort indices by x.
+    let order : Array[Int] = Array::makei(n, fn(i) { i })
+    order.sort_by(fn(a, b) { x[a].compare(x[b]) })
+    let sorted_x : Array[Double] = Array::make(n, 0.0)
+    let sorted_y : Array[Double] = Array::make(n, 0.0)
+    for k = 0; k < n; k = k + 1 {
+      let i = order[k]
+      sorted_x[k] = x[i]
+      sorted_y[k] = y[i]
+    }
+    let sorted_y_hat = pava(sorted_y)
+    (sorted_x, sorted_y_hat)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  let sorted_y_hat = pava(sorted_y)
-  (sorted_x, sorted_y_hat)
 }
 
 ///|
@@ -358,50 +408,55 @@ pub fn predict_isotonic(
   fitted_y_hat : Array[Double],
   x_new : Array[Double],
 ) -> Array[Double] {
-  let n_new = x_new.length()
-  let n_fit = fitted_x.length()
-  require(n_fit > 0)
-  require(fitted_y_hat.length() == n_fit)
-  let lo = fitted_y_hat[0]
-  let hi = fitted_y_hat[n_fit - 1]
-  let out : Array[Double] = Array::make(n_new, 0.0)
-  // Pre-compute the right-edge index of the block containing each
-  // fitted `x`. Since `fitted_x` is sorted in non-decreasing
-  // order, the right edge of a block is the largest `j` such
-  // that `fitted_y_hat[j]` is constant. Concretely: walk `j` from
-  // 0 to `n_fit - 1`; whenever `fitted_y_hat[j]` changes, the
-  // block ends at `j - 1`. The block containing `j` ends at the
-  // first `k > j` with `fitted_y_hat[k] != fitted_y_hat[j] - 1`.
-  // For prediction, the easiest lookup is: given `x_new[i]`,
-  // find the largest `j` with `fitted_x[j] <= x_new[i]`, then
-  // return `fitted_y_hat[j]`. We do that with a single linear
-  // scan that walks `fitted_x` and `x_new` in lockstep.
-  for i = 0; i < n_new; i = i + 1 {
-    let x = x_new[i]
-    if x < fitted_x[0] {
-      out[i] = lo
-    } else if x > fitted_x[n_fit - 1] {
-      out[i] = hi
-    } else {
-      // Find the largest j with fitted_x[j] <= x.
-      let mut j = 0
-      while j < n_fit - 1 && fitted_x[j + 1] <= x {
-        j = j + 1
-      }
-      let v = fitted_y_hat[j]
-      // Defensive clip to [0, 1] (PAVA on {0, 1} stays in [0, 1]
-      // by construction, but the clip makes the contract
-      // explicit).
-      if v < 0.0 {
-        out[i] = 0.0
-      } else if v > 1.0 {
-        out[i] = 1.0
+  try {
+    let n_new = x_new.length()
+    let n_fit = fitted_x.length()
+    require(n_fit > 0)
+    require(fitted_y_hat.length() == n_fit)
+    let lo = fitted_y_hat[0]
+    let hi = fitted_y_hat[n_fit - 1]
+    let out : Array[Double] = Array::make(n_new, 0.0)
+    // Pre-compute the right-edge index of the block containing each
+    // fitted `x`. Since `fitted_x` is sorted in non-decreasing
+    // order, the right edge of a block is the largest `j` such
+    // that `fitted_y_hat[j]` is constant. Concretely: walk `j` from
+    // 0 to `n_fit - 1`; whenever `fitted_y_hat[j]` changes, the
+    // block ends at `j - 1`. The block containing `j` ends at the
+    // first `k > j` with `fitted_y_hat[k] != fitted_y_hat[j] - 1`.
+    // For prediction, the easiest lookup is: given `x_new[i]`,
+    // find the largest `j` with `fitted_x[j] <= x_new[i]`, then
+    // return `fitted_y_hat[j]`. We do that with a single linear
+    // scan that walks `fitted_x` and `x_new` in lockstep.
+    for i = 0; i < n_new; i = i + 1 {
+      let x = x_new[i]
+      if x < fitted_x[0] {
+        out[i] = lo
+      } else if x > fitted_x[n_fit - 1] {
+        out[i] = hi
       } else {
-        out[i] = v
+        // Find the largest j with fitted_x[j] <= x.
+        let mut j = 0
+        while j < n_fit - 1 && fitted_x[j + 1] <= x {
+          j = j + 1
+        }
+        let v = fitted_y_hat[j]
+        // Defensive clip to [0, 1] (PAVA on {0, 1} stays in [0, 1]
+        // by construction, but the clip makes the contract
+        // explicit).
+        if v < 0.0 {
+          out[i] = 0.0
+        } else if v > 1.0 {
+          out[i] = 1.0
+        } else {
+          out[i] = v
+        }
       }
     }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -452,7 +507,15 @@ pub fn isotonic_calibrate_cv(
     Some(f) => f
     None => default_5fold(n)
   }
-  require(folds.length() > 0)
+  // v0.48.0: per-call wrap because the body also raises
+  // CalibrationFittingError::IncompleteCVPartition; a block-level
+  // try/catch would partial_match the catch.
+  ignore(
+    require(folds.length() > 0) catch {
+      PreconditionError::Violated(loc) =>
+        abort("precondition failed at " + loc.to_string())
+    },
+  )
   let out : Array[Double] = Array::make(n, 0.0)
   let seen : Array[Bool] = Array::make(n, false)
   for fold = 0; fold < folds.length(); fold = fold + 1 {

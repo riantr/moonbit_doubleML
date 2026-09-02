@@ -13,10 +13,15 @@ pub fn DoubleMLLPQData::new(
   d : Array[Double],
   z : Array[Double],
 ) -> DoubleMLLPQData {
-  require(x.rows() == y.length())
-  require(x.rows() == d.length())
-  require(x.rows() == z.length())
-  { x, y, d, z, }
+  try {
+    require(x.rows() == y.length())
+    require(x.rows() == d.length())
+    require(x.rows() == z.length())
+    { x, y, d, z, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -257,12 +262,22 @@ pub fn DoubleMLLPQ::n_features(self : DoubleMLLPQ) -> Int {
 
 ///|
 pub fn DoubleMLLPQ::coef(self : DoubleMLLPQ) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLLPQ::se(self : DoubleMLLPQ) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }

@@ -38,30 +38,35 @@ pub fn DoubleMLDIDCSData::new(
   id : Array[Int],
   g : Array[Int],
 ) -> DoubleMLDIDCSData {
-  let n = y.length()
-  require(x.nrows == n)
-  require(d.length() == n)
-  require(t.length() == n)
-  require(id.length() == n)
-  require(g.length() == n)
-  // Validate d is binary {0, 1}.
-  for di in d {
-    require(di == 0.0 || di == 1.0)
+  try {
+    let n = y.length()
+    require(x.nrows == n)
+    require(d.length() == n)
+    require(t.length() == n)
+    require(id.length() == n)
+    require(g.length() == n)
+    // Validate d is binary {0, 1}.
+    for di in d {
+      require(di == 0.0 || di == 1.0)
+    }
+    // Deep-copy `g` and `t` so the caller's arrays are not mutated
+    // by the in-place sort inside `discover_groups_times` (and any
+    // future in-place ops in `fit`).
+    let g_owned : Array[Int] = []
+    for v in g {
+      g_owned.push(v)
+    }
+    let t_owned : Array[Int] = []
+    for v in t {
+      t_owned.push(v)
+    }
+    // Discover the unique groups and times.
+    let (groups, times) = discover_groups_times(g_owned, t_owned)
+    { x, y, d, t: t_owned, id, g: g_owned, groups, times, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  // Deep-copy `g` and `t` so the caller's arrays are not mutated
-  // by the in-place sort inside `discover_groups_times` (and any
-  // future in-place ops in `fit`).
-  let g_owned : Array[Int] = []
-  for v in g {
-    g_owned.push(v)
-  }
-  let t_owned : Array[Int] = []
-  for v in t {
-    t_owned.push(v)
-  }
-  // Discover the unique groups and times.
-  let (groups, times) = discover_groups_times(g_owned, t_owned)
-  { x, y, d, t: t_owned, id, g: g_owned, groups, times, }
 }
 
 ///|
@@ -187,32 +192,37 @@ pub fn DoubleMLDIDCS::new(
   ps_processor? : PSProcessor = PSProcessor::new(),
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDCS {
-  require(n_folds >= 2)
-  require(n_rep >= 1)
-  require(propensity_clip > 0.0)
-  require(propensity_clip < 0.5)
-  require(
-    control_group == "never_treated" || control_group == "not_yet_treated",
-  )
-  require(anticipation_periods >= 0)
-  let n_groups = data.groups.length()
-  let n_periods = data.times.length()
-  {
-    data,
-    control_group,
-    anticipation_periods,
-    n_folds,
-    n_rep,
-    seed,
-    propensity_clip,
-    ps_processor,
-    in_sample_normalization,
-    coef_matrix: Array::make(n_groups * n_periods, 0.0),
-    se_matrix: Array::make(n_groups * n_periods, 0.0),
-    psi_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
-    n_groups,
-    n_periods,
-    fitted: false,
+  try {
+    require(n_folds >= 2)
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+    require(
+      control_group == "never_treated" || control_group == "not_yet_treated",
+    )
+    require(anticipation_periods >= 0)
+    let n_groups = data.groups.length()
+    let n_periods = data.times.length()
+    {
+      data,
+      control_group,
+      anticipation_periods,
+      n_folds,
+      n_rep,
+      seed,
+      propensity_clip,
+      ps_processor,
+      in_sample_normalization,
+      coef_matrix: Array::make(n_groups * n_periods, 0.0),
+      se_matrix: Array::make(n_groups * n_periods, 0.0),
+      psi_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
+      n_groups,
+      n_periods,
+      fitted: false,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -224,10 +234,15 @@ pub fn DoubleMLDIDCS::coef_at(
   group_idx : Int,
   period_idx : Int,
 ) -> Double {
-  require(self.fitted)
-  require(group_idx >= 0 && group_idx < self.n_groups)
-  require(period_idx >= 0 && period_idx < self.n_periods)
-  self.coef_matrix[group_idx * self.n_periods + period_idx]
+  try {
+    require(self.fitted)
+    require(group_idx >= 0 && group_idx < self.n_groups)
+    require(period_idx >= 0 && period_idx < self.n_periods)
+    self.coef_matrix[group_idx * self.n_periods + period_idx]
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -237,10 +252,15 @@ pub fn DoubleMLDIDCS::se_at(
   group_idx : Int,
   period_idx : Int,
 ) -> Double {
-  require(self.fitted)
-  require(group_idx >= 0 && group_idx < self.n_groups)
-  require(period_idx >= 0 && period_idx < self.n_periods)
-  self.se_matrix[group_idx * self.n_periods + period_idx]
+  try {
+    require(self.fitted)
+    require(group_idx >= 0 && group_idx < self.n_groups)
+    require(period_idx >= 0 && period_idx < self.n_periods)
+    self.se_matrix[group_idx * self.n_periods + period_idx]
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -258,15 +278,25 @@ pub fn DoubleMLDIDCS::n_periods(self : DoubleMLDIDCS) -> Int {
 ///|
 /// Group value at row index `i` (sorted ascending).
 pub fn DoubleMLDIDCS::group_at(self : DoubleMLDIDCS, group_idx : Int) -> Int {
-  require(group_idx >= 0 && group_idx < self.n_groups)
-  self.data.groups[group_idx]
+  try {
+    require(group_idx >= 0 && group_idx < self.n_groups)
+    self.data.groups[group_idx]
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// Time value at column index `t` (sorted ascending).
 pub fn DoubleMLDIDCS::period_at(self : DoubleMLDIDCS, period_idx : Int) -> Int {
-  require(period_idx >= 0 && period_idx < self.n_periods)
-  self.data.times[period_idx]
+  try {
+    require(period_idx >= 0 && period_idx < self.n_periods)
+    self.data.times[period_idx]
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

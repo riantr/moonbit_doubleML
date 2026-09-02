@@ -11,6 +11,113 @@ release is the canonical version.
 
 ---
 
+## [0.48.0] — `check` / `require` → `raise PreconditionError` (full cascade, abort preserved)
+
+### Changed
+- **`check.mbt::check`**: signature changed from
+  `check(condition : Bool, loc~ : SourceLoc) -> Unit` to
+  `check(condition : Bool, loc~ : SourceLoc) -> Unit
+  raise PreconditionError`. The pre-v0.48.0 `abort("precondition
+  failed at " + loc.to_string())` is replaced with
+  `raise PreconditionError::Violated(loc)`. The
+  `SourceLoc` payload is unchanged (auto-injected by
+  `#callsite(autofill(loc))`), so the diagnostic
+  surface is identical once the caller re-aborts.
+- **`check.mbt::require`**: signature changed from
+  `require(condition : Bool, loc~ : SourceLoc) -> Unit` to
+  `require(condition : Bool, loc~ : SourceLoc) -> Unit
+  raise PreconditionError`. Implementation simplified
+  to `check(condition, loc~)` (the raise propagates
+  through the call). The pre-v0.48.0 script-generated
+  try/catch wrap was removed because it would swallow
+  the raise and re-emit as abort, defeating the purpose
+  of the conversion.
+- **376 `check` / `require` call sites across 28 .mbt
+  files** now have a `try { ... } catch {
+  PreconditionError::Violated(loc) => abort("precondition
+  failed at " + loc.to_string()) }` shim that preserves
+  the pre-v0.48.0 abort behavior. Two wrap styles are
+  used:
+  - **Block-level wrap** (most common, ~370 sites):
+    the entire function body is wrapped, e.g.
+    `pub fn foo(...) -> Bar { try { require(...);
+    ...real body... } catch { PreconditionError::Violated
+    (loc) => abort(...) } }`. Used for functions whose
+    body raises only `PreconditionError`.
+  - **Per-call wrap** (4 sites, the mixed-raise
+    functions): the wrap is applied to each `require`
+    call individually, e.g. `ignore(require(x.nrows ==
+    y.length()) catch { PreconditionError::Violated(loc)
+    => abort(...) })`. Used when the body also raises
+    other suberror types (`DIDDataError`,
+    `VarEstClusterError`, `PSConfigError`,
+    `CalibrationFittingError`) and a block-level wrap
+    would trigger a `partial_match` error.
+- The pre-v0.48.0 abort message format
+  (`"precondition failed at <loc>"`) is preserved by
+  the re-abort pattern in callers, so end users see
+  no behavioral change.
+
+### Added
+- **`_verify/_wrap_check_raises.py`**: idempotent
+  batch-wrap script for the cascade. Handles
+  multi-line function headers (did.mbt, data.mbt,
+  ps_processor.mbt have 5-7 line headers with
+  default-valued parameters). Skips functions that
+  are already wrapped (first non-blank line after
+  the opening `{` is `try {`). Operates on
+  `*.mbt` in cwd, skipping `.archived` files.
+
+### Skipped
+- Functions whose body already raises a non-`PreconditionError`
+  suberror are converted to per-call wrap (4 cases:
+  `did.mbt::DoubleMLDIDData::new`,
+  `plpr.mbt::var_est_cluster`,
+  `ps_processor.mbt::PSProcessorConfig::new`,
+  `ps_processor.mbt::isotonic_calibrate_cv`) because
+  block-level wrap would trigger `partial_match` on
+  the catch arm (MoonBit's catch block does not
+  support transparent re-raise of unmatched errors).
+
+### Tests
+- 293/293 PASS (test count unchanged: no new test
+  added because the conversion preserves behavior;
+  the pre-v0.48.0 `panic_*` tests continue to exercise
+  the abort path through the wrap) on native / wasm /
+  wasm-gc / js with `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS (BLP/policy, bootstrap,
+  cluster_iv, cluster_plr, cv_repeated, did, did_binary,
+  did_cross_section, did_cs, gain_statistics, iivm, irm,
+  lplr, padjust, pava, pliv, plpr, quantile, rdd, ssm,
+  with_python).
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: 7/14 (array_min + array_max empty-array)
+- v0.42.0: 8/14 (solve_pq upper-bracket)
+- v0.43.0: 9/14 (DoubleMLDIDData non-binary-treatment)
+- v0.44.0: 10/14 (PSProcessorConfig inconsistent-cv)
+- v0.45.0: 10/14 (transform_panel dead-code skip)
+- v0.46.0: 10/14 (p_adjust dead-code skip)
+- v0.47.0: 10/14 (planning release — suberror declared)
+- v0.48.0: **11/14** (central `check`/`require` →
+  `raise PreconditionError`, full cascade, abort
+  behavior preserved at every call site)
+- Remaining 3: `did_multi.mbt:558` (p_adjust unknown-method
+  fallback, dead code), `did_multi.mbt:574` (p_adjust
+  fallback, dead code), `plpr.mbt:447`
+  (transform_panel else-branch, dead code). All three
+  are dead-code aborts documented in v0.37.0 / v0.45.0
+  / v0.46.0 with improved diagnostics. They will remain
+  in the codebase as defense-in-depth and are not
+  scheduled for conversion.
+
+---
+
 ## [0.47.0] — `PreconditionError` planning release: suberror + helper
 
 ### Added

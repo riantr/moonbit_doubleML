@@ -79,105 +79,110 @@ pub fn DoubleMLDIDMulti::new(
   ps_processor? : PSProcessor = PSProcessor::new(),
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDMulti {
-  require(n_folds >= 2)
-  require(n_rep >= 1)
-  require(anticipation_periods >= 0)
-  require(
-    control_group == "never_treated" || control_group == "not_yet_treated",
-  )
-  let n_groups = data.groups.length()
-  let n_periods = data.times.length()
-  // Resolve `gt_combinations`: explicit list wins, otherwise
-  // expand the keyword.
-  let resolved = if gt_combinations.length() > 0 {
-    gt_combinations
-  } else {
-    expand_gt_keyword(
-      gt_combinations_keyword,
-      data.groups,
-      data.times,
-      anticipation_periods,
+  try {
+    require(n_folds >= 2)
+    require(n_rep >= 1)
+    require(anticipation_periods >= 0)
+    require(
+      control_group == "never_treated" || control_group == "not_yet_treated",
     )
-  }
-  require(resolved.length() > 0)
-  // Sanity-check each triple against the data.
-  for i = 0; i < resolved.length(); i = i + 1 {
-    let (g, t_pre, t_eval) = resolved[i]
-    let mut g_found = false
-    for j = 0; j < n_groups; j = j + 1 {
-      if data.groups[j] == g {
-        g_found = true
+    let n_groups = data.groups.length()
+    let n_periods = data.times.length()
+    // Resolve `gt_combinations`: explicit list wins, otherwise
+    // expand the keyword.
+    let resolved = if gt_combinations.length() > 0 {
+      gt_combinations
+    } else {
+      expand_gt_keyword(
+        gt_combinations_keyword,
+        data.groups,
+        data.times,
+        anticipation_periods,
+      )
+    }
+    require(resolved.length() > 0)
+    // Sanity-check each triple against the data.
+    for i = 0; i < resolved.length(); i = i + 1 {
+      let (g, t_pre, t_eval) = resolved[i]
+      let mut g_found = false
+      for j = 0; j < n_groups; j = j + 1 {
+        if data.groups[j] == g {
+          g_found = true
+        }
+      }
+      let mut t_pre_found = false
+      let mut t_eval_found = false
+      for j = 0; j < n_periods; j = j + 1 {
+        if data.times[j] == t_pre {
+          t_pre_found = true
+        }
+        if data.times[j] == t_eval {
+          t_eval_found = true
+        }
+      }
+      require(g_found)
+      require(t_pre_found)
+      require(t_eval_found)
+      // Note: for "standard", `t_eval > t_pre` is
+      // enforced by the keyword expansion. For
+      // "all" / "universal", `t_eval < t_pre`
+      // (pre-treatment placebo) is explicitly
+      // allowed.
+      ignore(n_groups)
+      ignore(n_periods)
+    }
+    // Per-unit group sizes (for aggregation weights). Equal
+    // across groups: `n_total / n_groups`, with leftover units
+    // distributed in the first `n_total mod n_groups` groups.
+    let mut n_units = 0
+    // Count the unit count by finding the largest id.
+    let mut max_id = -1
+    for i = 0; i < data.id.length(); i = i + 1 {
+      if data.id[i] > max_id {
+        max_id = data.id[i]
       }
     }
-    let mut t_pre_found = false
-    let mut t_eval_found = false
-    for j = 0; j < n_periods; j = j + 1 {
-      if data.times[j] == t_pre {
-        t_pre_found = true
-      }
-      if data.times[j] == t_eval {
-        t_eval_found = true
-      }
+    n_units = max_id + 1
+    let base = n_units / n_groups
+    let rem = n_units % n_groups
+    let group_sizes : Array[Int] = Array::make(n_groups, 0)
+    for i = 0; i < n_groups; i = i + 1 {
+      group_sizes[i] = base + (if i < rem { 1 } else { 0 })
     }
-    require(g_found)
-    require(t_pre_found)
-    require(t_eval_found)
-    // Note: for "standard", `t_eval > t_pre` is
-    // enforced by the keyword expansion. For
-    // "all" / "universal", `t_eval < t_pre`
-    // (pre-treatment placebo) is explicitly
-    // allowed.
-    ignore(n_groups)
-    ignore(n_periods)
-  }
-  // Per-unit group sizes (for aggregation weights). Equal
-  // across groups: `n_total / n_groups`, with leftover units
-  // distributed in the first `n_total mod n_groups` groups.
-  let mut n_units = 0
-  // Count the unit count by finding the largest id.
-  let mut max_id = -1
-  for i = 0; i < data.id.length(); i = i + 1 {
-    if data.id[i] > max_id {
-      max_id = data.id[i]
+    // Build the inner `DoubleMLDIDCS` (its `fit` will be called
+    // by `DoubleMLDIDMulti::fit`).
+    let inner = DoubleMLDIDCS::new(
+      data,
+      control_group~,
+      anticipation_periods~,
+      n_folds~,
+      n_rep~,
+      seed~,
+      ps_processor~,
+      in_sample_normalization~,
+    )
+    ignore(control_group)
+    {
+      data,
+      gt_combinations: resolved,
+      control_group,
+      anticipation_periods,
+      n_folds,
+      n_rep,
+      seed,
+      ps_processor,
+      in_sample_normalization,
+      group_sizes,
+      inner,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 2024,
+      fitted: false,
     }
-  }
-  n_units = max_id + 1
-  let base = n_units / n_groups
-  let rem = n_units % n_groups
-  let group_sizes : Array[Int] = Array::make(n_groups, 0)
-  for i = 0; i < n_groups; i = i + 1 {
-    group_sizes[i] = base + (if i < rem { 1 } else { 0 })
-  }
-  // Build the inner `DoubleMLDIDCS` (its `fit` will be called
-  // by `DoubleMLDIDMulti::fit`).
-  let inner = DoubleMLDIDCS::new(
-    data,
-    control_group~,
-    anticipation_periods~,
-    n_folds~,
-    n_rep~,
-    seed~,
-    ps_processor~,
-    in_sample_normalization~,
-  )
-  ignore(control_group)
-  {
-    data,
-    gt_combinations: resolved,
-    control_group,
-    anticipation_periods,
-    n_folds,
-    n_rep,
-    seed,
-    ps_processor,
-    in_sample_normalization,
-    group_sizes,
-    inner,
-    boot_t_stat: [],
-    boot_method: "",
-    n_rep_boot: 0,
-    boot_seed: 2024,
-    fitted: false,
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -264,25 +269,30 @@ pub fn DoubleMLDIDMulti::coef_at_idx(
   self : DoubleMLDIDMulti,
   idx : Int,
 ) -> Double {
-  require(self.fitted)
-  require(idx >= 0 && idx < self.gt_combinations.length())
-  let (g, t_pre, t_eval) = self.gt_combinations[idx]
-  // Locate (gi, pi) in the inner per-(g, t) matrix.
-  let mut gi = -1
-  let mut pi = -1
-  for i = 0; i < self.inner.n_groups(); i = i + 1 {
-    if self.inner.group_at(i) == g {
-      gi = i
+  try {
+    require(self.fitted)
+    require(idx >= 0 && idx < self.gt_combinations.length())
+    let (g, t_pre, t_eval) = self.gt_combinations[idx]
+    // Locate (gi, pi) in the inner per-(g, t) matrix.
+    let mut gi = -1
+    let mut pi = -1
+    for i = 0; i < self.inner.n_groups(); i = i + 1 {
+      if self.inner.group_at(i) == g {
+        gi = i
+      }
     }
-  }
-  for i = 0; i < self.inner.n_periods(); i = i + 1 {
-    if self.inner.period_at(i) == t_eval {
-      pi = i
+    for i = 0; i < self.inner.n_periods(); i = i + 1 {
+      if self.inner.period_at(i) == t_eval {
+        pi = i
+      }
     }
+    require(gi >= 0 && pi >= 0)
+    ignore(t_pre)
+    self.inner.coef_at(gi, pi)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  require(gi >= 0 && pi >= 0)
-  ignore(t_pre)
-  self.inner.coef_at(gi, pi)
 }
 
 ///|
@@ -291,23 +301,28 @@ pub fn DoubleMLDIDMulti::se_at_idx(
   self : DoubleMLDIDMulti,
   idx : Int,
 ) -> Double {
-  require(self.fitted)
-  let (g, t_pre, t_eval) = self.gt_combinations[idx]
-  let mut gi = -1
-  let mut pi = -1
-  for i = 0; i < self.inner.n_groups(); i = i + 1 {
-    if self.inner.group_at(i) == g {
-      gi = i
+  try {
+    require(self.fitted)
+    let (g, t_pre, t_eval) = self.gt_combinations[idx]
+    let mut gi = -1
+    let mut pi = -1
+    for i = 0; i < self.inner.n_groups(); i = i + 1 {
+      if self.inner.group_at(i) == g {
+        gi = i
+      }
     }
-  }
-  for i = 0; i < self.inner.n_periods(); i = i + 1 {
-    if self.inner.period_at(i) == t_eval {
-      pi = i
+    for i = 0; i < self.inner.n_periods(); i = i + 1 {
+      if self.inner.period_at(i) == t_eval {
+        pi = i
+      }
     }
+    require(gi >= 0 && pi >= 0)
+    ignore(t_pre)
+    self.inner.se_at(gi, pi)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  require(gi >= 0 && pi >= 0)
-  ignore(t_pre)
-  self.inner.se_at(gi, pi)
 }
 
 ///|
@@ -350,83 +365,88 @@ pub fn DoubleMLDIDMulti::bootstrap(
   n_rep_boot? : Int = 500,
   seed? : Int = 2024,
 ) -> DoubleMLDIDMulti {
-  require(self.fitted)
-  require(
-    method_name == "normal" || method_name == "Bayes" || method_name == "wild",
-  )
-  require(n_rep_boot >= 2)
-  let n_obs = self.data.y.length()
-  let n_thetas = self.gt_combinations.length()
-  let n_groups = self.inner.n_groups()
-  let n_periods = self.inner.n_periods()
-  // Draw weights. Shape: (n_rep_boot, n_obs). v0.37.0:
-  // draw_bootstrap_weights raises BootstrapMethodError on an
-  // unknown method; catch and re-abort to preserve pre-v0.37.0
-  // process-death behavior. Note: bootstrap() itself also has
-  // a require() check that catches invalid methods first; the
-  // catch below only fires if a caller invokes bootstrap with a
-  // method that passes require() but doesn't reach the match
-  // (currently impossible because the require and match sets
-  // are aligned; kept as defense-in-depth).
-  let weights = draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed) catch {
-    BootstrapMethodError::UnknownMethod(m) =>
-      abort(
-        "draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap): " +
-        m,
-      )
-  }
-  // For each gt_combination, locate the per-cell psi on the
-  // full long-format panel and compute the t-statistic. The
-  // psi is `coef * psi_a + psi_b` (the per-observation
-  // influence function); we use the inner `psi_matrix` from
-  // `DoubleMLDIDCS`, indexed row-major as
-  // `psi_matrix[(gi * n_periods + pi) * n_obs + i_long]`.
-  let boot_t_stat : Array[Double] = Array::make(n_rep_boot * n_thetas, 0.0)
-  for b = 0; b < n_rep_boot; b = b + 1 {
-    for k = 0; k < n_thetas; k = k + 1 {
-      let (g, _t_pre, t_eval) = self.gt_combinations[k]
-      // Locate (gi, pi) in the inner matrix.
-      let mut gi = -1
-      let mut pi = -1
-      for i = 0; i < n_groups; i = i + 1 {
-        if self.inner.group_at(i) == g {
-          gi = i
-        }
-      }
-      for i = 0; i < n_periods; i = i + 1 {
-        if self.inner.period_at(i) == t_eval {
-          pi = i
-        }
-      }
-      if gi < 0 || pi < 0 {
-        continue
-      }
-      let flat = gi * n_periods + pi
-      let se_k = self.inner.se_matrix[flat]
-      // Skip empty / pre-treatment cells (se = 0).
-      if se_k == 0.0 {
-        continue
-      }
-      // `boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] /
-      // (sqrt(n) * se_k)`. The denominator makes this a
-      // t-statistic; its distribution is N(0, 1) under the
-      // null. The 1.96 critical value is for 95% pointwise;
-      // the joint CI uses the bootstrap quantile.
-      let mut s = 0.0
-      for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
-        let psi_k_i = self.inner.psi_matrix[flat * n_obs + i_long]
-        s = s + weights[b * n_obs + i_long] * psi_k_i
-      }
-      let denom = n_obs.to_double().sqrt() * se_k
-      boot_t_stat[b * n_thetas + k] = s / denom
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n_obs = self.data.y.length()
+    let n_thetas = self.gt_combinations.length()
+    let n_groups = self.inner.n_groups()
+    let n_periods = self.inner.n_periods()
+    // Draw weights. Shape: (n_rep_boot, n_obs). v0.37.0:
+    // draw_bootstrap_weights raises BootstrapMethodError on an
+    // unknown method; catch and re-abort to preserve pre-v0.37.0
+    // process-death behavior. Note: bootstrap() itself also has
+    // a require() check that catches invalid methods first; the
+    // catch below only fires if a caller invokes bootstrap with a
+    // method that passes require() but doesn't reach the match
+    // (currently impossible because the require and match sets
+    // are aligned; kept as defense-in-depth).
+    let weights = draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLDIDMulti::bootstrap): " +
+          m,
+        )
     }
-  }
-  {
-    ..self,
-    boot_t_stat,
-    boot_method: method_name,
-    n_rep_boot,
-    boot_seed: seed,
+    // For each gt_combination, locate the per-cell psi on the
+    // full long-format panel and compute the t-statistic. The
+    // psi is `coef * psi_a + psi_b` (the per-observation
+    // influence function); we use the inner `psi_matrix` from
+    // `DoubleMLDIDCS`, indexed row-major as
+    // `psi_matrix[(gi * n_periods + pi) * n_obs + i_long]`.
+    let boot_t_stat : Array[Double] = Array::make(n_rep_boot * n_thetas, 0.0)
+    for b = 0; b < n_rep_boot; b = b + 1 {
+      for k = 0; k < n_thetas; k = k + 1 {
+        let (g, _t_pre, t_eval) = self.gt_combinations[k]
+        // Locate (gi, pi) in the inner matrix.
+        let mut gi = -1
+        let mut pi = -1
+        for i = 0; i < n_groups; i = i + 1 {
+          if self.inner.group_at(i) == g {
+            gi = i
+          }
+        }
+        for i = 0; i < n_periods; i = i + 1 {
+          if self.inner.period_at(i) == t_eval {
+            pi = i
+          }
+        }
+        if gi < 0 || pi < 0 {
+          continue
+        }
+        let flat = gi * n_periods + pi
+        let se_k = self.inner.se_matrix[flat]
+        // Skip empty / pre-treatment cells (se = 0).
+        if se_k == 0.0 {
+          continue
+        }
+        // `boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] /
+        // (sqrt(n) * se_k)`. The denominator makes this a
+        // t-statistic; its distribution is N(0, 1) under the
+        // null. The 1.96 critical value is for 95% pointwise;
+        // the joint CI uses the bootstrap quantile.
+        let mut s = 0.0
+        for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
+          let psi_k_i = self.inner.psi_matrix[flat * n_obs + i_long]
+          s = s + weights[b * n_obs + i_long] * psi_k_i
+        }
+        let denom = n_obs.to_double().sqrt() * se_k
+        boot_t_stat[b * n_thetas + k] = s / denom
+      }
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -439,17 +459,22 @@ pub fn DoubleMLDIDMulti::bootstrap(
 /// t-statistics. Returns `0.0` for cells where `se_k = 0`
 /// (pre-treatment / missing cells).
 pub fn DoubleMLDIDMulti::t_stats(self : DoubleMLDIDMulti) -> Array[Double] {
-  require(self.fitted)
-  let n = self.gt_combinations.length()
-  let out : Array[Double] = Array::make(n, 0.0)
-  for k = 0; k < n; k = k + 1 {
-    let theta = self.coef_at_idx(k)
-    let se = self.se_at_idx(k)
-    if se > 0.0 {
-      out[k] = theta / se
+  try {
+    require(self.fitted)
+    let n = self.gt_combinations.length()
+    let out : Array[Double] = Array::make(n, 0.0)
+    for k = 0; k < n; k = k + 1 {
+      let theta = self.coef_at_idx(k)
+      let se = self.se_at_idx(k)
+      if se > 0.0 {
+        out[k] = theta / se
+      }
     }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 ///|
@@ -464,22 +489,27 @@ pub fn DoubleMLDIDMulti::t_stats(self : DoubleMLDIDMulti) -> Array[Double] {
 /// ~7.5e-8). MoonBit's `@math` does not expose `erfc`, so
 /// we approximate `norm.cdf` directly.
 pub fn DoubleMLDIDMulti::p_values(self : DoubleMLDIDMulti) -> Array[Double] {
-  require(self.fitted)
-  let ts = self.t_stats()
-  let n = ts.length()
-  let out : Array[Double] = Array::make(n, 1.0)
-  for k = 0; k < n; k = k + 1 {
-    let t = ts[k]
-    let abs_t = if t < 0.0 { -t } else { t }
-    // `p = 2 * (1 - norm.cdf(abs_t))` using the A&S 7.1.26
-    // approximation. The formula is
-    // `norm.cdf(x) ≈ 1 - phi(x) * (b1*t + b2*t^2 + b3*t^3
-    //   + b4*t^4 + b5*t^5)` with `t = 1 / (1 + p*x)` and
-    //   `phi(x) = exp(-x^2 / 2) / sqrt(2 pi)`.
-    let p = 2.0 * norm_sf(abs_t)
-    out[k] = if p > 1.0 { 1.0 } else { p }
+  try {
+    require(self.fitted)
+    let ts = self.t_stats()
+    let n = ts.length()
+    let out : Array[Double] = Array::make(n, 1.0)
+    for k = 0; k < n; k = k + 1 {
+      let t = ts[k]
+      let abs_t = if t < 0.0 { -t } else { t }
+      // `p = 2 * (1 - norm.cdf(abs_t))` using the A&S 7.1.26
+      // approximation. The formula is
+      // `norm.cdf(x) ≈ 1 - phi(x) * (b1*t + b2*t^2 + b3*t^3
+      //   + b4*t^4 + b5*t^5)` with `t = 1 / (1 + p*x)` and
+      //   `phi(x) = exp(-x^2 / 2) / sqrt(2 pi)`.
+      let p = 2.0 * norm_sf(abs_t)
+      out[k] = if p > 1.0 { 1.0 } else { p }
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out
 }
 
 // ---------------------------------------------------------------------------
@@ -548,54 +578,59 @@ pub fn DoubleMLDIDMulti::p_adjust(
   self : DoubleMLDIDMulti,
   method_name? : String = "romano-wolf",
 ) -> Array[Double] {
-  require(self.fitted)
-  require(
-    method_name == "romano-wolf" ||
-    method_name == "rw" ||
-    method_name == "holm" ||
-    method_name == "bonferroni" ||
-    method_name == "bh" ||
-    method_name == "by" ||
-    method_name == "fdr_bh" ||
-    method_name == "fdr_by" ||
-    method_name == "tsbh" ||
-    method_name == "tsby" ||
-    method_name == "fdr_tsbh" ||
-    method_name == "fdr_tsbky",
-  )
-  let n = self.gt_combinations.length()
-  require(n > 0)
-  let unadjusted = self.p_values()
-  match method_name {
-    "romano-wolf" | "rw" =>
-      romano_wolf_p_adjust(self.boot_t_stat, unadjusted, self.t_stats())
-    "holm" => holm_bonferroni_p_adjust(unadjusted)
-    "bonferroni" => bonferroni_p_adjust(unadjusted)
-    "bh" | "fdr_bh" => bh_fdr_p_adjust(unadjusted)
-    "by" | "fdr_by" => by_fdr_p_adjust(unadjusted)
-    "tsbh" | "fdr_tsbh" => tsbh_p_adjust(unadjusted)
-    "tsby" | "fdr_tsbky" => tsby_p_adjust(unadjusted)
-    _ =>
-      // v0.46.0: dead-code abort. The `require` above (lines
-      // 548-561) covers all 11 valid method names, and the
-      // match covers exactly the same set. The `_ =>` arm
-      // here is therefore unreachable through the public
-      // API: the `require` aborts first if a caller passes
-      // an unknown method. v0.46.0 marks this explicitly
-      // and improves the abort message to be more
-      // descriptive (mentions `DoubleMLDIDMulti::p_adjust`
-      // as the expected configuration site) so the
-      // diagnostic is actionable if the abort ever fires.
-      //
-      // Same dead-code pattern as v0.37.0's
-      // `did_multi.mbt:558` (originally skipped with
-      // documentation), v0.45.0's `plpr.mbt:447`
-      // (`transform_panel` else-branch), and v0.42.0's
-      // removed `solve_pq` lower-bracket dead abort.
-      abort(
-        "DoubleMLDIDMulti::p_adjust: unknown method (set in DoubleMLDIDMulti::p_adjust): " +
-        method_name,
-      )
+  try {
+    require(self.fitted)
+    require(
+      method_name == "romano-wolf" ||
+      method_name == "rw" ||
+      method_name == "holm" ||
+      method_name == "bonferroni" ||
+      method_name == "bh" ||
+      method_name == "by" ||
+      method_name == "fdr_bh" ||
+      method_name == "fdr_by" ||
+      method_name == "tsbh" ||
+      method_name == "tsby" ||
+      method_name == "fdr_tsbh" ||
+      method_name == "fdr_tsbky",
+    )
+    let n = self.gt_combinations.length()
+    require(n > 0)
+    let unadjusted = self.p_values()
+    match method_name {
+      "romano-wolf" | "rw" =>
+        romano_wolf_p_adjust(self.boot_t_stat, unadjusted, self.t_stats())
+      "holm" => holm_bonferroni_p_adjust(unadjusted)
+      "bonferroni" => bonferroni_p_adjust(unadjusted)
+      "bh" | "fdr_bh" => bh_fdr_p_adjust(unadjusted)
+      "by" | "fdr_by" => by_fdr_p_adjust(unadjusted)
+      "tsbh" | "fdr_tsbh" => tsbh_p_adjust(unadjusted)
+      "tsby" | "fdr_tsbky" => tsby_p_adjust(unadjusted)
+      _ =>
+        // v0.46.0: dead-code abort. The `require` above (lines
+        // 548-561) covers all 11 valid method names, and the
+        // match covers exactly the same set. The `_ =>` arm
+        // here is therefore unreachable through the public
+        // API: the `require` aborts first if a caller passes
+        // an unknown method. v0.46.0 marks this explicitly
+        // and improves the abort message to be more
+        // descriptive (mentions `DoubleMLDIDMulti::p_adjust`
+        // as the expected configuration site) so the
+        // diagnostic is actionable if the abort ever fires.
+        //
+        // Same dead-code pattern as v0.37.0's
+        // `did_multi.mbt:558` (originally skipped with
+        // documentation), v0.45.0's `plpr.mbt:447`
+        // (`transform_panel` else-branch), and v0.42.0's
+        // removed `solve_pq` lower-bracket dead abort.
+        abort(
+          "DoubleMLDIDMulti::p_adjust: unknown method (set in DoubleMLDIDMulti::p_adjust): " +
+          method_name,
+        )
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -626,80 +661,85 @@ pub fn romano_wolf_p_adjust(
   unadjusted : Array[Double],
   t_stats : Array[Double],
 ) -> Array[Double] {
-  let n = t_stats.length()
-  let n_boot = boot_t_stat.length() / n
-  require(n_boot > 0)
-  // Sort |t| descending. We use a simple O(n^2) selection
-  // sort because n is typically small (3-12 cells).
-  let stepdown_ind : Array[Int] = Array::make(n, 0)
-  for i = 0; i < n; i = i + 1 {
-    stepdown_ind[i] = i
-  }
-  let abs_t : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    let t = t_stats[i]
-    abs_t[i] = if t < 0.0 { -t } else { t }
-  }
-  // Simple insertion sort on `stepdown_ind` by descending
-  // `abs_t`.
-  for i = 1; i < n; i = i + 1 {
-    let mut j = i
-    while j > 0 && abs_t[stepdown_ind[j]] > abs_t[stepdown_ind[j - 1]] {
-      let tmp = stepdown_ind[j]
-      stepdown_ind[j] = stepdown_ind[j - 1]
-      stepdown_ind[j - 1] = tmp
-      j = j - 1
+  try {
+    let n = t_stats.length()
+    let n_boot = boot_t_stat.length() / n
+    require(n_boot > 0)
+    // Sort |t| descending. We use a simple O(n^2) selection
+    // sort because n is typically small (3-12 cells).
+    let stepdown_ind : Array[Int] = Array::make(n, 0)
+    for i = 0; i < n; i = i + 1 {
+      stepdown_ind[i] = i
     }
-  }
-  // `ro` is the inverse permutation of `stepdown_ind`:
-  // `ro[stepdown_ind[i]] = i`.
-  let ro : Array[Int] = Array::make(n, 0)
-  for i = 0; i < n; i = i + 1 {
-    ro[stepdown_ind[i]] = i
-  }
-  // Compute the stepdown p-values.
-  let p_sorted : Array[Double] = Array::make(n, 1.0)
-  for i_theta = 0; i_theta < n; i_theta = i_theta + 1 {
-    // Bootstrap critical value per replication: max
-    // |boot_t_stat[b, j]| for `j > i_theta` (in stepdown
-    // order). Use `np.delete`-equivalent: skip the cells
-    // at stepdown positions `0..i_theta`.
-    let mut p_k = 0.0
-    for b = 0; b < n_boot; b = b + 1 {
-      let mut cv = 0.0
-      for j = i_theta; j < n; j = j + 1 {
-        let idx = stepdown_ind[j]
-        let v = boot_t_stat[b * n + idx]
-        let av = if v < 0.0 { -v } else { v }
-        if av > cv {
-          cv = av
+    let abs_t : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let t = t_stats[i]
+      abs_t[i] = if t < 0.0 { -t } else { t }
+    }
+    // Simple insertion sort on `stepdown_ind` by descending
+    // `abs_t`.
+    for i = 1; i < n; i = i + 1 {
+      let mut j = i
+      while j > 0 && abs_t[stepdown_ind[j]] > abs_t[stepdown_ind[j - 1]] {
+        let tmp = stepdown_ind[j]
+        stepdown_ind[j] = stepdown_ind[j - 1]
+        stepdown_ind[j - 1] = tmp
+        j = j - 1
+      }
+    }
+    // `ro` is the inverse permutation of `stepdown_ind`:
+    // `ro[stepdown_ind[i]] = i`.
+    let ro : Array[Int] = Array::make(n, 0)
+    for i = 0; i < n; i = i + 1 {
+      ro[stepdown_ind[i]] = i
+    }
+    // Compute the stepdown p-values.
+    let p_sorted : Array[Double] = Array::make(n, 1.0)
+    for i_theta = 0; i_theta < n; i_theta = i_theta + 1 {
+      // Bootstrap critical value per replication: max
+      // |boot_t_stat[b, j]| for `j > i_theta` (in stepdown
+      // order). Use `np.delete`-equivalent: skip the cells
+      // at stepdown positions `0..i_theta`.
+      let mut p_k = 0.0
+      for b = 0; b < n_boot; b = b + 1 {
+        let mut cv = 0.0
+        for j = i_theta; j < n; j = j + 1 {
+          let idx = stepdown_ind[j]
+          let v = boot_t_stat[b * n + idx]
+          let av = if v < 0.0 { -v } else { v }
+          if av > cv {
+            cv = av
+          }
+        }
+        let t_target = abs_t[stepdown_ind[i_theta]]
+        if cv >= t_target {
+          p_k = p_k + 1.0
         }
       }
-      let t_target = abs_t[stepdown_ind[i_theta]]
-      if cv >= t_target {
-        p_k = p_k + 1.0
+      let p_k_normalised = if p_k / n_boot.to_double() > 1.0 {
+        1.0
+      } else {
+        p_k / n_boot.to_double()
+      }
+      p_sorted[i_theta] = p_k_normalised
+    }
+    // Enforce monotonicity.
+    for i_theta = 1; i_theta < n; i_theta = i_theta + 1 {
+      if p_sorted[i_theta] < p_sorted[i_theta - 1] {
+        p_sorted[i_theta] = p_sorted[i_theta - 1]
       }
     }
-    let p_k_normalised = if p_k / n_boot.to_double() > 1.0 {
-      1.0
-    } else {
-      p_k / n_boot.to_double()
+    // Re-order to original cell order via `ro`.
+    let out : Array[Double] = Array::make(n, 1.0)
+    for i = 0; i < n; i = i + 1 {
+      out[i] = p_sorted[ro[i]]
     }
-    p_sorted[i_theta] = p_k_normalised
+    ignore(unadjusted)
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  // Enforce monotonicity.
-  for i_theta = 1; i_theta < n; i_theta = i_theta + 1 {
-    if p_sorted[i_theta] < p_sorted[i_theta - 1] {
-      p_sorted[i_theta] = p_sorted[i_theta - 1]
-    }
-  }
-  // Re-order to original cell order via `ro`.
-  let out : Array[Double] = Array::make(n, 1.0)
-  for i = 0; i < n; i = i + 1 {
-    out[i] = p_sorted[ro[i]]
-  }
-  ignore(unadjusted)
-  out
 }
 
 // ---------------------------------------------------------------------------
@@ -1081,59 +1121,64 @@ pub fn DoubleMLDIDMulti::confint(
   joint? : Bool = false,
   level? : Double = 0.95,
 ) -> Array[(Double, Double)] {
-  require(self.fitted)
-  require(level > 0.0 && level < 1.0)
-  let n_thetas = self.gt_combinations.length()
-  let z_975 = 1.959963984540054 // `norm.ppf(0.975)`
-  let out : Array[(Double, Double)] = []
-  let mut out_acc = out
-  if joint {
-    require(self.boot_t_stat.length() > 0)
-    require(self.boot_method != "" && self.n_rep_boot > 0)
-    // Compute the empirical quantile of `max_k |boot_t_stat|`.
-    let max_abs : Array[Double] = Array::make(self.n_rep_boot, 0.0)
-    for b = 0; b < self.n_rep_boot; b = b + 1 {
-      let mut m = 0.0
-      for k = 0; k < n_thetas; k = k + 1 {
-        let v = self.boot_t_stat[b * n_thetas + k]
-        let av = if v < 0.0 { -v } else { v }
-        if av > m {
-          m = av
+  try {
+    require(self.fitted)
+    require(level > 0.0 && level < 1.0)
+    let n_thetas = self.gt_combinations.length()
+    let z_975 = 1.959963984540054 // `norm.ppf(0.975)`
+    let out : Array[(Double, Double)] = []
+    let mut out_acc = out
+    if joint {
+      require(self.boot_t_stat.length() > 0)
+      require(self.boot_method != "" && self.n_rep_boot > 0)
+      // Compute the empirical quantile of `max_k |boot_t_stat|`.
+      let max_abs : Array[Double] = Array::make(self.n_rep_boot, 0.0)
+      for b = 0; b < self.n_rep_boot; b = b + 1 {
+        let mut m = 0.0
+        for k = 0; k < n_thetas; k = k + 1 {
+          let v = self.boot_t_stat[b * n_thetas + k]
+          let av = if v < 0.0 { -v } else { v }
+          if av > m {
+            m = av
+          }
         }
+        max_abs[b] = m
       }
-      max_abs[b] = m
-    }
-    // `Array::sort` is in-place. `max_abs` is a fresh array, but
-    // the values may be tied. `sort` is not stable in this
-    // MoonBit build; for the empirical quantile, ties don't
-    // matter (we just need the sorted order).
-    max_abs.sort()
-    let idx = (level * self.n_rep_boot.to_double()).to_int()
-    let idx_clamped = if idx >= self.n_rep_boot {
-      self.n_rep_boot - 1
+      // `Array::sort` is in-place. `max_abs` is a fresh array, but
+      // the values may be tied. `sort` is not stable in this
+      // MoonBit build; for the empirical quantile, ties don't
+      // matter (we just need the sorted order).
+      max_abs.sort()
+      let idx = (level * self.n_rep_boot.to_double()).to_int()
+      let idx_clamped = if idx >= self.n_rep_boot {
+        self.n_rep_boot - 1
+      } else {
+        idx
+      }
+      let critical_value = max_abs[idx_clamped]
+      for k = 0; k < n_thetas; k = k + 1 {
+        let _ = self.gt_combinations[k]
+        let theta = self.coef_at_idx(k)
+        let se = self.se_at_idx(k)
+        let lo = theta - critical_value * se
+        let hi = theta + critical_value * se
+        out_acc = out_acc + [(lo, hi)]
+      }
+      ignore(z_975)
     } else {
-      idx
+      for k = 0; k < n_thetas; k = k + 1 {
+        let theta = self.coef_at_idx(k)
+        let se = self.se_at_idx(k)
+        let lo = theta - z_975 * se
+        let hi = theta + z_975 * se
+        out_acc = out_acc + [(lo, hi)]
+      }
     }
-    let critical_value = max_abs[idx_clamped]
-    for k = 0; k < n_thetas; k = k + 1 {
-      let _ = self.gt_combinations[k]
-      let theta = self.coef_at_idx(k)
-      let se = self.se_at_idx(k)
-      let lo = theta - critical_value * se
-      let hi = theta + critical_value * se
-      out_acc = out_acc + [(lo, hi)]
-    }
-    ignore(z_975)
-  } else {
-    for k = 0; k < n_thetas; k = k + 1 {
-      let theta = self.coef_at_idx(k)
-      let se = self.se_at_idx(k)
-      let lo = theta - z_975 * se
-      let hi = theta + z_975 * se
-      out_acc = out_acc + [(lo, hi)]
-    }
+    out_acc
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  out_acc
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,14 +1265,19 @@ pub fn box_muller_normal(rng : @random.Rand) -> Double {
 pub fn DoubleMLDIDMulti::aggregate_group(
   self : DoubleMLDIDMulti,
 ) -> DIDAggregationResult {
-  require(self.fitted)
-  aggregate_group(
-    self.inner.coef_matrix,
-    self.inner.se_matrix,
-    self.data.groups,
-    self.data.times,
-    self.group_sizes,
-  )
+  try {
+    require(self.fitted)
+    aggregate_group(
+      self.inner.coef_matrix,
+      self.inner.se_matrix,
+      self.data.groups,
+      self.data.times,
+      self.group_sizes,
+    )
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -1236,14 +1286,19 @@ pub fn DoubleMLDIDMulti::aggregate_group(
 pub fn DoubleMLDIDMulti::aggregate_time(
   self : DoubleMLDIDMulti,
 ) -> DIDAggregationResult {
-  require(self.fitted)
-  aggregate_time(
-    self.inner.coef_matrix,
-    self.inner.se_matrix,
-    self.data.groups,
-    self.data.times,
-    self.group_sizes,
-  )
+  try {
+    require(self.fitted)
+    aggregate_time(
+      self.inner.coef_matrix,
+      self.inner.se_matrix,
+      self.data.groups,
+      self.data.times,
+      self.group_sizes,
+    )
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -1252,12 +1307,17 @@ pub fn DoubleMLDIDMulti::aggregate_time(
 pub fn DoubleMLDIDMulti::aggregate_event(
   self : DoubleMLDIDMulti,
 ) -> DIDAggregationResult {
-  require(self.fitted)
-  aggregate_event(
-    self.inner.coef_matrix,
-    self.inner.se_matrix,
-    self.data.groups,
-    self.data.times,
-    self.group_sizes,
-  )
+  try {
+    require(self.fitted)
+    aggregate_event(
+      self.inner.coef_matrix,
+      self.inner.se_matrix,
+      self.data.groups,
+      self.data.times,
+      self.group_sizes,
+    )
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }

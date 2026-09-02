@@ -33,31 +33,36 @@ pub fn DoubleMLDIDCrossSectionData::new(
   t : Array[Int],
   name? : String = "cross_section",
 ) -> DoubleMLDIDCrossSectionData {
-  let n = y.length()
-  require(x.nrows == n)
-  require(d.length() == n)
-  require(t.length() == n)
-  // Validate d is binary {0, 1}.
-  for di in d {
-    require(di == 0.0 || di == 1.0)
-  }
-  // Validate t is binary {0, 1}.
-  for ti in t {
-    require(ti == 0 || ti == 1)
-  }
-  // Validate t has both 0 and 1 (otherwise the DID
-  // setup is degenerate).
-  let mut has_t0 = false
-  let mut has_t1 = false
-  for ti in t {
-    if ti == 0 {
-      has_t0 = true
-    } else if ti == 1 {
-      has_t1 = true
+  try {
+    let n = y.length()
+    require(x.nrows == n)
+    require(d.length() == n)
+    require(t.length() == n)
+    // Validate d is binary {0, 1}.
+    for di in d {
+      require(di == 0.0 || di == 1.0)
     }
+    // Validate t is binary {0, 1}.
+    for ti in t {
+      require(ti == 0 || ti == 1)
+    }
+    // Validate t has both 0 and 1 (otherwise the DID
+    // setup is degenerate).
+    let mut has_t0 = false
+    let mut has_t1 = false
+    for ti in t {
+      if ti == 0 {
+        has_t0 = true
+      } else if ti == 1 {
+        has_t1 = true
+      }
+    }
+    require(has_t0 && has_t1)
+    { x, y, d, t, name, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  require(has_t0 && has_t1)
-  { x, y, d, t, name, }
 }
 
 ///|
@@ -154,35 +159,40 @@ pub fn DoubleMLDIDCrossSection::new(
   propensity_clip? : Double = 1.0e-6,
   ps_processor? : PSProcessor = PSProcessor::new(),
 ) -> DoubleMLDIDCrossSection {
-  require(n_folds >= 2)
-  require(n_rep >= 1)
-  require(propensity_clip > 0.0)
-  require(propensity_clip < 0.5)
-  require(score == "observational" || score == "experimental")
-  let n = data.n_obs()
-  {
-    data,
-    n_folds,
-    n_rep,
-    seed,
-    score,
-    in_sample_normalization,
-    propensity_clip,
-    ps_processor,
-    coef: 0.0,
-    se: 0.0,
-    psi_a: Array::make(n, 0.0),
-    psi_b: Array::make(n, 0.0),
-    g_d0_t0: Array::make(n, 0.0),
-    g_d0_t1: Array::make(n, 0.0),
-    g_d1_t0: Array::make(n, 0.0),
-    g_d1_t1: Array::make(n, 0.0),
-    m_hat: Array::make(n, 0.0),
-    fitted: false,
-    boot_t_stat: [],
-    boot_method: "",
-    n_rep_boot: 0,
-    boot_seed: 0,
+  try {
+    require(n_folds >= 2)
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+    require(score == "observational" || score == "experimental")
+    let n = data.n_obs()
+    {
+      data,
+      n_folds,
+      n_rep,
+      seed,
+      score,
+      in_sample_normalization,
+      propensity_clip,
+      ps_processor,
+      coef: 0.0,
+      se: 0.0,
+      psi_a: Array::make(n, 0.0),
+      psi_b: Array::make(n, 0.0),
+      g_d0_t0: Array::make(n, 0.0),
+      g_d0_t1: Array::make(n, 0.0),
+      g_d1_t0: Array::make(n, 0.0),
+      g_d1_t1: Array::make(n, 0.0),
+      m_hat: Array::make(n, 0.0),
+      fitted: false,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -193,8 +203,13 @@ pub fn DoubleMLDIDCrossSection::new(
 pub fn DoubleMLDIDCrossSection::psi_a(
   self : DoubleMLDIDCrossSection,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.psi_a
+  try {
+    require(self.fitted)
+    self.psi_a
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -204,8 +219,13 @@ pub fn DoubleMLDIDCrossSection::psi_a(
 pub fn DoubleMLDIDCrossSection::psi_b(
   self : DoubleMLDIDCrossSection,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.psi_b
+  try {
+    require(self.fitted)
+    self.psi_b
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -214,8 +234,13 @@ pub fn DoubleMLDIDCrossSection::psi_b(
 pub fn DoubleMLDIDCrossSection::predictions_g_d0_t0(
   self : DoubleMLDIDCrossSection,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.g_d0_t0
+  try {
+    require(self.fitted)
+    self.g_d0_t0
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -224,8 +249,13 @@ pub fn DoubleMLDIDCrossSection::predictions_g_d0_t0(
 pub fn DoubleMLDIDCrossSection::predictions_g_d0_t1(
   self : DoubleMLDIDCrossSection,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.g_d0_t1
+  try {
+    require(self.fitted)
+    self.g_d0_t1
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -234,8 +264,13 @@ pub fn DoubleMLDIDCrossSection::predictions_g_d0_t1(
 pub fn DoubleMLDIDCrossSection::predictions_g_d1_t0(
   self : DoubleMLDIDCrossSection,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.g_d1_t0
+  try {
+    require(self.fitted)
+    self.g_d1_t0
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -244,8 +279,13 @@ pub fn DoubleMLDIDCrossSection::predictions_g_d1_t0(
 pub fn DoubleMLDIDCrossSection::predictions_g_d1_t1(
   self : DoubleMLDIDCrossSection,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.g_d1_t1
+  try {
+    require(self.fitted)
+    self.g_d1_t1
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -256,22 +296,37 @@ pub fn DoubleMLDIDCrossSection::predictions_g_d1_t1(
 pub fn DoubleMLDIDCrossSection::predictions_m(
   self : DoubleMLDIDCrossSection,
 ) -> Array[Double] {
-  require(self.fitted)
-  self.m_hat
+  try {
+    require(self.fitted)
+    self.m_hat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// ATT estimate from the cross-section DID fit.
 pub fn DoubleMLDIDCrossSection::coef(self : DoubleMLDIDCrossSection) -> Double {
-  require(self.fitted)
-  self.coef
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// Standard error of the ATT estimate (HC0 sandwich).
 pub fn DoubleMLDIDCrossSection::se(self : DoubleMLDIDCrossSection) -> Double {
-  require(self.fitted)
-  self.se
+  try {
+    require(self.fitted)
+    self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -296,44 +351,49 @@ pub fn DoubleMLDIDCrossSection::confint(
   joint? : Bool = false,
   level? : Double = 0.95,
 ) -> (Double, Double) {
-  require(self.fitted)
-  require(level > 0.0 && level < 1.0)
-  if joint {
-    require(self.boot_t_stat.length() > 0)
-    require(self.n_rep_boot > 0)
-    // Empirical (1 + level) / 2 quantile of |boot_t_stat|.
-    // For a scalar ATT, the joint CI coincides with
-    // the pointwise CI in terms of family-wise error
-    // rate; the joint critical value is the empirical
-    // quantile of the bootstrap t-statistic.
-    let abs_t : Array[Double] = Array::make(self.n_rep_boot, 0.0)
-    for b = 0; b < self.n_rep_boot; b = b + 1 {
-      let v = self.boot_t_stat[b]
-      abs_t[b] = if v < 0.0 { -v } else { v }
-    }
-    abs_t.sort()
-    let idx = ((1.0 + level) / 2.0 * self.n_rep_boot.to_double()).to_int()
-    let idx_clamped = if idx >= self.n_rep_boot {
-      self.n_rep_boot - 1
+  try {
+    require(self.fitted)
+    require(level > 0.0 && level < 1.0)
+    if joint {
+      require(self.boot_t_stat.length() > 0)
+      require(self.n_rep_boot > 0)
+      // Empirical (1 + level) / 2 quantile of |boot_t_stat|.
+      // For a scalar ATT, the joint CI coincides with
+      // the pointwise CI in terms of family-wise error
+      // rate; the joint critical value is the empirical
+      // quantile of the bootstrap t-statistic.
+      let abs_t : Array[Double] = Array::make(self.n_rep_boot, 0.0)
+      for b = 0; b < self.n_rep_boot; b = b + 1 {
+        let v = self.boot_t_stat[b]
+        abs_t[b] = if v < 0.0 { -v } else { v }
+      }
+      abs_t.sort()
+      let idx = ((1.0 + level) / 2.0 * self.n_rep_boot.to_double()).to_int()
+      let idx_clamped = if idx >= self.n_rep_boot {
+        self.n_rep_boot - 1
+      } else {
+        idx
+      }
+      let critical = abs_t[idx_clamped]
+      (self.coef - critical * self.se, self.coef + critical * self.se)
     } else {
-      idx
+      // z_{1 - (1 - level) / 2} = z_{(1 + level) / 2}
+      // Use the high-accuracy `norm_ppf` (bisection on
+      // `norm_sf`, accurate to ~1.3e-6 in z; more than
+      // enough for a CI half-width).
+      let alpha = (1.0 - level) / 2.0
+      let z = if (level - 0.95).abs() < 1.0e-12 {
+        // Hardcoded for the canonical 95% CI to keep
+        // the test contract bit-exact.
+        1.959963984540054
+      } else {
+        norm_ppf(1.0 - alpha)
+      }
+      (self.coef - z * self.se, self.coef + z * self.se)
     }
-    let critical = abs_t[idx_clamped]
-    (self.coef - critical * self.se, self.coef + critical * self.se)
-  } else {
-    // z_{1 - (1 - level) / 2} = z_{(1 + level) / 2}
-    // Use the high-accuracy `norm_ppf` (bisection on
-    // `norm_sf`, accurate to ~1.3e-6 in z; more than
-    // enough for a CI half-width).
-    let alpha = (1.0 - level) / 2.0
-    let z = if (level - 0.95).abs() < 1.0e-12 {
-      // Hardcoded for the canonical 95% CI to keep
-      // the test contract bit-exact.
-      1.959963984540054
-    } else {
-      norm_ppf(1.0 - alpha)
-    }
-    (self.coef - z * self.se, self.coef + z * self.se)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -542,20 +602,25 @@ pub fn norm_cdf(x : Double) -> Double {
 /// such that `P(Z <= x) = p` for a standard normal
 /// random variable `Z`.
 pub fn norm_ppf(p : Double) -> Double {
-  require(p > 0.0 && p < 1.0)
-  let mut lo = -8.0
-  let mut hi = 8.0
-  let mut mid = 0.0
-  for _iter = 0; _iter < 64; _iter = _iter + 1 {
-    mid = (lo + hi) / 2.0
-    let cdf_mid = norm_cdf(mid)
-    if cdf_mid < p {
-      lo = mid
-    } else {
-      hi = mid
+  try {
+    require(p > 0.0 && p < 1.0)
+    let mut lo = -8.0
+    let mut hi = 8.0
+    let mut mid = 0.0
+    for _iter = 0; _iter < 64; _iter = _iter + 1 {
+      mid = (lo + hi) / 2.0
+      let cdf_mid = norm_cdf(mid)
+      if cdf_mid < p {
+        lo = mid
+      } else {
+        hi = mid
+      }
     }
+    mid
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  mid
 }
 
 ///|
@@ -830,71 +895,76 @@ fn compute_score(
 pub fn DoubleMLDIDCrossSection::fit(
   self : DoubleMLDIDCrossSection,
 ) -> DoubleMLDIDCrossSection {
-  // Step 1: cross-fit the nuisance functions.
-  let (g00, g01, g10, g11, m) = crossfit_nuisance(
-    self.data,
-    self.n_folds,
-    self.n_rep,
-    self.seed,
-    self.propensity_clip,
-    self.ps_processor,
-  )
-  // Step 2: compute psi_a, psi_b.
-  let (psi_a, psi_b) = compute_score(
-    self.data.y,
-    self.data.d,
-    self.data.t,
-    g00,
-    g01,
-    g10,
-    g11,
-    m,
-    self.score,
-    self.in_sample_normalization,
-  )
-  // Step 3: theta_hat = argmin_theta sum_i (psi_a[i]
-  // + theta * psi_b[i])^2 = -<psi_a, psi_b> / ||psi_b||^2.
-  let n = self.data.n_obs()
-  let mut inner_ab = 0.0
-  let mut inner_bb = 0.0
-  for i = 0; i < n; i = i + 1 {
-    inner_ab = inner_ab + psi_a[i] * psi_b[i]
-    inner_bb = inner_bb + psi_b[i] * psi_b[i]
-  }
-  require(inner_bb > 0.0)
-  let theta = -inner_ab / inner_bb
-  // Step 4: HC0 SE. The influence function is
-  // `psi[i] = psi_a[i] + theta * psi_b[i]`, and the
-  // variance is `(1/n) * sum_i psi[i]^2 / mean_b^2`
-  // where `mean_b^2 = inner_bb / n^2` (the squared
-  // average of psi_b).
-  let n_d = n.to_double()
-  let mut ss_psi = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let psi_i = psi_a[i] + theta * psi_b[i]
-    ss_psi = ss_psi + psi_i * psi_i
-  }
-  let mean_b2 = inner_bb / (n_d * n_d)
-  require(mean_b2 > 0.0)
-  let var_theta = ss_psi / (n_d * n_d * mean_b2)
-  let se = var_theta.sqrt()
-  // Step 5: cache the nuisance predictions and psi.
-  {
-    ..self,
-    coef: theta,
-    se,
-    psi_a,
-    psi_b,
-    g_d0_t0: g00,
-    g_d0_t1: g01,
-    g_d1_t0: g10,
-    g_d1_t1: g11,
-    m_hat: m,
-    fitted: true,
-    boot_t_stat: self.boot_t_stat,
-    boot_method: self.boot_method,
-    n_rep_boot: self.n_rep_boot,
-    boot_seed: self.boot_seed,
+  try {
+    // Step 1: cross-fit the nuisance functions.
+    let (g00, g01, g10, g11, m) = crossfit_nuisance(
+      self.data,
+      self.n_folds,
+      self.n_rep,
+      self.seed,
+      self.propensity_clip,
+      self.ps_processor,
+    )
+    // Step 2: compute psi_a, psi_b.
+    let (psi_a, psi_b) = compute_score(
+      self.data.y,
+      self.data.d,
+      self.data.t,
+      g00,
+      g01,
+      g10,
+      g11,
+      m,
+      self.score,
+      self.in_sample_normalization,
+    )
+    // Step 3: theta_hat = argmin_theta sum_i (psi_a[i]
+    // + theta * psi_b[i])^2 = -<psi_a, psi_b> / ||psi_b||^2.
+    let n = self.data.n_obs()
+    let mut inner_ab = 0.0
+    let mut inner_bb = 0.0
+    for i = 0; i < n; i = i + 1 {
+      inner_ab = inner_ab + psi_a[i] * psi_b[i]
+      inner_bb = inner_bb + psi_b[i] * psi_b[i]
+    }
+    require(inner_bb > 0.0)
+    let theta = -inner_ab / inner_bb
+    // Step 4: HC0 SE. The influence function is
+    // `psi[i] = psi_a[i] + theta * psi_b[i]`, and the
+    // variance is `(1/n) * sum_i psi[i]^2 / mean_b^2`
+    // where `mean_b^2 = inner_bb / n^2` (the squared
+    // average of psi_b).
+    let n_d = n.to_double()
+    let mut ss_psi = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let psi_i = psi_a[i] + theta * psi_b[i]
+      ss_psi = ss_psi + psi_i * psi_i
+    }
+    let mean_b2 = inner_bb / (n_d * n_d)
+    require(mean_b2 > 0.0)
+    let var_theta = ss_psi / (n_d * n_d * mean_b2)
+    let se = var_theta.sqrt()
+    // Step 5: cache the nuisance predictions and psi.
+    {
+      ..self,
+      coef: theta,
+      se,
+      psi_a,
+      psi_b,
+      g_d0_t0: g00,
+      g_d0_t1: g01,
+      g_d1_t0: g10,
+      g_d1_t1: g11,
+      m_hat: m,
+      fitted: true,
+      boot_t_stat: self.boot_t_stat,
+      boot_method: self.boot_method,
+      n_rep_boot: self.n_rep_boot,
+      boot_seed: self.boot_seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -925,70 +995,75 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
   n_rep_boot? : Int = 500,
   seed? : Int = 2024,
 ) -> DoubleMLDIDCrossSection {
-  require(self.fitted)
-  require(
-    method_name == "normal" || method_name == "Bayes" || method_name == "wild",
-  )
-  require(n_rep_boot >= 2)
-  let n = self.data.n_obs()
-  // Draw weights. Shape: (n_rep_boot, n_obs). v0.37.0:
-  // draw_bootstrap_weights raises BootstrapMethodError on an
-  // unknown method; catch and re-abort to preserve pre-v0.37.0
-  // process-death behavior. Same defense-in-depth note as
-  // did_multi::bootstrap.
-  let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed) catch {
-    BootstrapMethodError::UnknownMethod(m) =>
-      abort(
-        "draw_bootstrap_weights: unknown method (set in DoubleMLDIDCrossSection::bootstrap): " +
-        m,
-      )
-  }
-  // Compute the per-observation influence function
-  // `psi[i] = psi_a[i] + theta * psi_b[i]` once.
-  let psi : Array[Double] = Array::make(n, 0.0)
-  let mut ss_psi = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
-    psi[i] = psi_i
-    ss_psi = ss_psi + psi_i * psi_i
-  }
-  // `boot_t_stat[b] = sum_i w[b, i] * psi[i] / (sqrt(n) *
-  // se_psi)` where `se_psi = sqrt(sum_i psi_i^2 / n)` is
-  // the SE of the mean of `psi`. This makes
-  // `Var[boot_t_stat] = sum_i psi_i^2 / (n * se_psi^2)
-  // = 1` under the null (independent multiplier
-  // weights with variance 1), so the bootstrap
-  // distribution has mean 0 and SD 1 (matching the
-  // standard multiplier bootstrap convention used by
-  // the panel `DoubleMLDIDMulti`).
-  let boot_t_stat : Array[Double] = Array::make(n_rep_boot, 0.0)
-  let n_d = n.to_double()
-  let se_psi = (ss_psi / n_d).sqrt()
-  let denom = n_d.sqrt() * se_psi
-  if denom <= 0.0 {
-    // Degenerate: psi sums to 0. Cannot divide.
-    // Return zeros (matches the panel DIDMulti
-    // convention for empty cells).
-    return {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n = self.data.n_obs()
+    // Draw weights. Shape: (n_rep_boot, n_obs). v0.37.0:
+    // draw_bootstrap_weights raises BootstrapMethodError on an
+    // unknown method; catch and re-abort to preserve pre-v0.37.0
+    // process-death behavior. Same defense-in-depth note as
+    // did_multi::bootstrap.
+    let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLDIDCrossSection::bootstrap): " +
+          m,
+        )
+    }
+    // Compute the per-observation influence function
+    // `psi[i] = psi_a[i] + theta * psi_b[i]` once.
+    let psi : Array[Double] = Array::make(n, 0.0)
+    let mut ss_psi = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
+      psi[i] = psi_i
+      ss_psi = ss_psi + psi_i * psi_i
+    }
+    // `boot_t_stat[b] = sum_i w[b, i] * psi[i] / (sqrt(n) *
+    // se_psi)` where `se_psi = sqrt(sum_i psi_i^2 / n)` is
+    // the SE of the mean of `psi`. This makes
+    // `Var[boot_t_stat] = sum_i psi_i^2 / (n * se_psi^2)
+    // = 1` under the null (independent multiplier
+    // weights with variance 1), so the bootstrap
+    // distribution has mean 0 and SD 1 (matching the
+    // standard multiplier bootstrap convention used by
+    // the panel `DoubleMLDIDMulti`).
+    let boot_t_stat : Array[Double] = Array::make(n_rep_boot, 0.0)
+    let n_d = n.to_double()
+    let se_psi = (ss_psi / n_d).sqrt()
+    let denom = n_d.sqrt() * se_psi
+    if denom <= 0.0 {
+      // Degenerate: psi sums to 0. Cannot divide.
+      // Return zeros (matches the panel DIDMulti
+      // convention for empty cells).
+      return {
+        ..self,
+        boot_t_stat,
+        boot_method: method_name,
+        n_rep_boot,
+        boot_seed: seed,
+      }
+    }
+    for b = 0; b < n_rep_boot; b = b + 1 {
+      let mut s = 0.0
+      for i = 0; i < n; i = i + 1 {
+        s = s + weights[b * n + i] * psi[i]
+      }
+      boot_t_stat[b] = s / denom
+    }
+    {
       ..self,
       boot_t_stat,
       boot_method: method_name,
       n_rep_boot,
       boot_seed: seed,
     }
-  }
-  for b = 0; b < n_rep_boot; b = b + 1 {
-    let mut s = 0.0
-    for i = 0; i < n; i = i + 1 {
-      s = s + weights[b * n + i] * psi[i]
-    }
-    boot_t_stat[b] = s / denom
-  }
-  {
-    ..self,
-    boot_t_stat,
-    boot_method: method_name,
-    n_rep_boot,
-    boot_seed: seed,
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
