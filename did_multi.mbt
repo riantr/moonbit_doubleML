@@ -571,7 +571,27 @@ pub fn DoubleMLDIDMulti::p_adjust(
     "by" | "fdr_by" => by_fdr_p_adjust(unadjusted)
     "tsbh" | "fdr_tsbh" => tsbh_p_adjust(unadjusted)
     "tsby" | "fdr_tsbky" => tsby_p_adjust(unadjusted)
-    _ => abort("DoubleMLDIDMulti::p_adjust: unknown method")
+    _ =>
+      // v0.46.0: dead-code abort. The `require` above (lines
+      // 548-561) covers all 11 valid method names, and the
+      // match covers exactly the same set. The `_ =>` arm
+      // here is therefore unreachable through the public
+      // API: the `require` aborts first if a caller passes
+      // an unknown method. v0.46.0 marks this explicitly
+      // and improves the abort message to be more
+      // descriptive (mentions `DoubleMLDIDMulti::p_adjust`
+      // as the expected configuration site) so the
+      // diagnostic is actionable if the abort ever fires.
+      //
+      // Same dead-code pattern as v0.37.0's
+      // `did_multi.mbt:558` (originally skipped with
+      // documentation), v0.45.0's `plpr.mbt:447`
+      // (`transform_panel` else-branch), and v0.42.0's
+      // removed `solve_pq` lower-bracket dead abort.
+      abort(
+        "DoubleMLDIDMulti::p_adjust: unknown method (set in DoubleMLDIDMulti::p_adjust): " +
+        method_name,
+      )
   }
 }
 

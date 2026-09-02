@@ -1,0 +1,74 @@
+Release 0.46.0: DoubleMLDIDMulti::p_adjust dead-code abort — documented + diagnostic improved
+
+This release tackles `did_multi.mbt:574` (the
+`DoubleMLDIDMulti::p_adjust` match fallback abort) but
+recognizes it as dead code, mirroring the v0.37.0 and
+v0.45.0 patterns.
+
+Why the abort is dead code:
+  - `DoubleMLDIDMulti::p_adjust` has a `require()` (lines
+    548-561) that covers all 11 valid method names
+    (romano-wolf, rw, holm, bonferroni, bh, by, fdr_bh,
+    fdr_by, tsbh, tsby, fdr_tsbh, fdr_tsbky).
+  - The match (lines 565-573) covers exactly the same set.
+  - The `_ =>` arm can only fire if a caller bypasses the
+    public API (e.g. via struct literal). The `require`
+    aborts first if a caller passes an unknown method.
+
+Note: did_multi.mbt:1145 (draw_bootstrap_weights) was
+already converted in v0.37.0 to `raise BootstrapMethodError`.
+The regression test draw_bootstrap_weights_raises_unknown_method
+was added in v0.37.0. No further work needed.
+
+Changes:
+  - did_multi.mbt::DoubleMLDIDMulti::p_adjust: abort message
+    improved from
+    "DoubleMLDIDMulti::p_adjust: unknown method"
+    to
+    "DoubleMLDIDMulti::p_adjust: unknown method (set in DoubleMLDIDMulti::p_adjust): " + method_name.
+  - v0.46.0 also adds a comment block above the abort
+    explaining the dead-code contract and cross-referencing
+    v0.37.0, v0.42.0, and v0.45.0 dead-code skips.
+
+Tests: 292/292 PASS (test count unchanged: no new test
+added because the abort is unreachable through the public
+API) on native/wasm/wasm-gc/js with --deny-warn.
+
+QA battery run as release gate (T470):
+- Format: moon fmt clean.
+- SAST: moon check --deny-warn 0 warnings.
+- Dup check: dupcheck.py 0 blocks.
+- Deps: only moonbitlang/core; moon.mod 0.45.0 -> 0.46.0.
+- Unit: 292/292 on native/wasm-gc/wasm/js with --deny-warn.
+- Fuzz: 11 surfaces x 300 trials 0 violations.
+- Components: cmd/plpr, cmd/lplr, cmd/main all execute.
+- Validators: 21 PASS.
+
+Whitebox conversion progress:
+  v0.35.0: 1/14 defensive aborts converted
+  v0.36.0: 2/14
+  v0.37.0: 4/14
+  v0.38.0: 5/14
+  v0.41.0: 7/14
+  v0.42.0: 8/14
+  v0.43.0: 9/14
+  v0.44.0: 10/14
+  v0.45.0: 10/14 (dead-code skip)
+  v0.46.0: 10/14 (dead-code skip)
+  Remaining 1: check.mbt:11 (central require) - cascades to
+  324 pub functions, 2-3 release effort.
+
+Summary of the abort-cleanup sequence (v0.35.0 to v0.46.0):
+  - 10 defensive aborts converted to typed raise paths
+    (var_est_cluster J-floor, build_row_unit_map
+    missing-unit, draw_bootstrap_weights, apply_calibration,
+    isotonic_calibrate_cv incomplete-cv-partition,
+    array_min/array_max empty-array, solve_pq upper-bracket,
+    DoubleMLDIDData non-binary-treatment, PSProcessorConfig
+    inconsistent-cv, did_multi:1145 already done).
+  - 3 dead-code aborts documented + diagnostic improved
+    (did_multi:558 p_adjust, plpr.mbt:447 transform_panel,
+    did_multi.mbt:574 p_adjust fallback).
+  - 1 dead-code abort removed (solve_pq lower-bracket).
+  - 1 central abort remaining (check.mbt:11) - 2-3 release
+    effort.

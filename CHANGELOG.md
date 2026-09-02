@@ -11,6 +11,67 @@ release is the canonical version.
 
 ---
 
+## [0.46.0] — `DoubleMLDIDMulti::p_adjust` dead-code abort: documented + improved diagnostic
+
+### Skipped (dead code)
+- **`did_multi.mbt:574`** (`DoubleMLDIDMulti::p_adjust` match
+  fallback abort): this abort is unreachable through the
+  public API. The `require()` in `p_adjust` (lines 548-561)
+  covers all 11 valid method names
+  (romano-wolf, rw, holm, bonferroni, bh, by, fdr_bh, fdr_by,
+  tsbh, tsby, fdr_tsbh, fdr_tsbky), and the match covers
+  exactly the same set. The `_ =>` arm can only fire if a
+  caller bypasses the public API (e.g. by constructing
+  `DoubleMLDIDMulti` via struct literal). v0.46.0 documents
+  this explicitly and improves the abort message to be
+  more descriptive (mentions the call site) so the
+  diagnostic is actionable if the abort ever fires. Same
+  dead-code pattern as v0.37.0's `did_multi.mbt:558`
+  (originally skipped), v0.45.0's `plpr.mbt:447`
+  (`transform_panel` else-branch), and v0.42.0's removed
+  `solve_pq` lower-bracket dead abort.
+
+### Changed
+- **`did_multi.mbt::DoubleMLDIDMulti::p_adjust`**: abort
+  message improved from
+  `"DoubleMLDIDMulti::p_adjust: unknown method"`
+  to
+  `"DoubleMLDIDMulti::p_adjust: unknown method (set in DoubleMLDIDMulti::p_adjust): " + method_name`.
+  v0.46.0 also adds a comment block above the abort
+  explaining the dead-code contract.
+
+### Note
+- **`did_multi.mbt:1145`** (`draw_bootstrap_weights`):
+  this abort was already converted to
+  `raise BootstrapMethodError` in **v0.37.0**. No further
+  work needed in v0.46.0. The regression test
+  `draw_bootstrap_weights_raises_unknown_method` was
+  added in v0.37.0.
+
+### Tests
+- 292/292 PASS (test count unchanged: no new test added
+  because the abort is unreachable through the public API)
+  on native/wasm/wasm-gc/js with `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 21 validators PASS.
+
+### Whitebox conversion progress
+- v0.35.0: 1/14 (var_est_cluster J-floor)
+- v0.36.0: 2/14 (build_row_unit_map missing-unit)
+- v0.37.0: 4/14 (draw_bootstrap_weights + apply_calibration)
+- v0.38.0: 5/14 (isotonic_calibrate_cv incomplete-cv-partition)
+- v0.41.0: 7/14 (array_min + array_max empty-array)
+- v0.42.0: 8/14 (solve_pq upper-bracket)
+- v0.43.0: 9/14 (DoubleMLDIDData non-binary-treatment)
+- v0.44.0: 10/14 (PSProcessorConfig inconsistent-cv)
+- v0.45.0: 10/14 (transform_panel dead-code skip)
+- v0.46.0: **10/14** (p_adjust dead-code skip)
+- Remaining 1: `check.mbt:11` (central `require`) — 2-3
+  release effort because it cascades to all 324 pub
+  functions.
+
+---
+
 ## [0.45.0] — `transform_panel` dead-code abort: documented + improved diagnostic
 
 ### Skipped (dead code)
