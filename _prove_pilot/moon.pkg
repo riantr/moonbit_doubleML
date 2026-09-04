@@ -1,0 +1,25 @@
+// _prove_pilot -- proof pilot package for dml-moonbit.
+//
+// This package exists because the dml-moonbit main package uses
+// `Array[T]` extensively in struct fields, and the MoonBit proof
+// pipeline (as of v0.10.11) does not add `use array.Array` to the
+// generated Why3 .mlw when struct fields reference `array` types --
+// the .mlw raises "unbound type symbol 'array'" and `moon prove`
+// cannot proceed for any function in the package.
+//
+// The pilot in this directory reproduces the proofs we WOULD like to
+// attach to kfold.mbt (Fold::new, kfold, build_row_unit_map) using
+// a self-contained `Fold` view that uses `FixedArray[Int]` instead
+// of `Array[Int]`. The runtime cannot be changed in the pilot scope,
+// but the proof side demonstrates the contract shape that should
+// move to kfold.mbt once the toolchain import is resolved (likely
+// by either fixing the .mlw generator to add `use array.Array`, or
+// by refactoring the kfold Fold struct to FixedArray).
+//
+// IMPORTANT: This directory is a self-contained MoonBit package
+// (its own moon.pkg). The dml-moonbit main package's moon.pkg
+// remains proof-enabled for future use, but its moon prove is
+// blocked by the Array/array symbol issue described above.
+options(
+  "proof-enabled": true,
+)

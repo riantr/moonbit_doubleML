@@ -1,0 +1,31 @@
+// _prove_pilot2 -- proof pilot for quantile.mbt::array_min/array_max.
+//
+// This is a parallel package to _prove_pilot (which targets kfold.mbt).
+// Pilot 2 tests the hypothesis: the `Array[T] -> array` Why3 lowering
+// gap identified in Pilot 1 is global (any function whose signature
+// touches `Array[T]` fails), not just scoped to struct fields. The
+// test is to apply the same leaf-function contract pattern to
+// `quantile.mbt::array_min` (a 10-line helper with no struct fields
+// and a single `Array[Double]` parameter) and observe whether the
+// gap fires. The gap DOES fire -- see QUANTILE_HANDOFF.md for the
+// reproduction.
+//
+// To demonstrate that the gap is specifically about `Array[T]`
+// (rather than the function shape, the loop, or the `<` operator),
+// this package contains a `FixedArray[Double]` mirror of
+// `array_min` / `array_max` (`array_min_view` / `array_max_view`).
+// The mirror uses the same algorithm shape but with `FixedArray`,
+// which the proof pipeline can reason about. If `moon prove` on
+// this package succeeds, it proves that the gap is exactly
+// `Array[T]` and that the migration strategy is:
+//   1. Either refactor the main package's `Array[T]` to
+//      `FixedArray[T]` in the surface we want to verify
+//      (intrusive but the cleanest path)
+//   2. Or push the proof target into a separate mirror package
+//      and reason about the math at the FixedArray level
+//      (non-intrusive; what `_prove_pilot` and this package do)
+//   3. Or fix the moon prove toolchain so `Array[T]` operations
+//      are lowered correctly (file upstream)
+options(
+  "proof-enabled": true,
+)

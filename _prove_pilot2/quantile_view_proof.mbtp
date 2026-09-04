@@ -1,0 +1,23 @@
+// quantile_view_proof.mbtp -- DISABLED in Pilot 2.
+//
+// The Double-version predicates were removed because the
+// underlying functions were removed. See `quantile_view.mbt`
+// for context. The Int-version predicates live in
+// `probe_int_proof.mbtp`.
+//
+// If the toolchain is later updated to support `Double`
+// comparison primitives, restore the predicates here:
+//
+//   predicate in_bounds_d(arr : FixedArray[Double], i : Int) {
+//     0 <= i && i < arr.length()
+//   }
+//   predicate array_min_view_ok(v : FixedArray[Double], r : Double) {
+//     v.length() > 0 &&
+//     (∀ i : Int, in_bounds_d(v, i) → v[i] >= r) &&
+//     (∃ i : Int, in_bounds_d(v, i) && v[i] == r)
+//   }
+//   predicate array_max_view_ok(v : FixedArray[Double], r : Double) {
+//     v.length() > 0 &&
+//     (∀ i : Int, in_bounds_d(v, i) → v[i] <= r) &&
+//     (∃ i : Int, in_bounds_d(v, i) && v[i] == r)
+//   }

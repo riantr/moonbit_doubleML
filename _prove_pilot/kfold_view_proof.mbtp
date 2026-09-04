@@ -1,0 +1,116 @@
+// kfold_view_proof.mbtp -- proof predicates for the kfold_view pilot.
+
+///|
+predicate in_bounds(arr : FixedArray[Int], i : Int) {
+  0 <= i && i < arr.length()
+}
+
+///|
+predicate arr_bounded(arr : FixedArray[Int], n : Int) {
+  ∀ i : Int, in_bounds(arr, i) → 0 <= arr[i] && arr[i] < n
+}
+
+///|
+predicate arr_disjoint(a : FixedArray[Int], b : FixedArray[Int]) {
+  ∀ i : Int, in_bounds(a, i) →
+    (∀ j : Int, in_bounds(b, j) → a[i] != b[j])
+}
+
+///|
+predicate fold_view_new_ok(
+  result : FoldView,
+  train : FixedArray[Int],
+  test : FixedArray[Int],
+) {
+  result.train_idx.length() == train.length() &&
+  result.test_idx.length() == test.length() &&
+  arr_disjoint(result.train_idx, result.test_idx)
+}
+
+///|
+predicate fold_well_formed_view(f : FoldView, n_obs : Int) {
+  arr_disjoint(f.train_idx, f.test_idx) &&
+  f.train_idx.length() + f.test_idx.length() == n_obs &&
+  arr_bounded(f.train_idx, n_obs) &&
+  arr_bounded(f.test_idx, n_obs)
+}
+
+///|
+predicate test_pair_disjoint_view(
+  folds : FixedArray[FoldView],
+  fi : Int,
+  fj : Int,
+) {
+  0 <= fi && fi < folds.length() &&
+  0 <= fj && fj < folds.length() &&
+  fi != fj &&
+  arr_disjoint(folds[fi].test_idx, folds[fj].test_idx)
+}
+
+///|
+predicate test_sets_disjoint_view(folds : FixedArray[FoldView]) {
+  ∀ fi : Int, ∀ fj : Int, test_pair_disjoint_view(folds, fi, fj)
+}
+
+///|
+predicate test_sets_cover_view(
+  folds : FixedArray[FoldView],
+  n_obs : Int,
+) {
+  ∀ k : Int, 0 <= k && k < n_obs →
+    (∃ f : Int, 0 <= f && f < folds.length() &&
+      (∃ i : Int, in_bounds(folds[f].test_idx, i) &&
+        folds[f].test_idx[i] == k))
+}
+
+///|
+predicate folds_partition_view(
+  folds : FixedArray[FoldView],
+  n_obs : Int,
+) {
+  test_sets_disjoint_view(folds) && test_sets_cover_view(folds, n_obs)
+}
+
+///|
+predicate kfold_view_post(
+  folds : FixedArray[FoldView],
+  n_obs : Int,
+  n_folds : Int,
+) {
+  folds.length() == n_folds &&
+  folds_partition_view(folds, n_obs) &&
+  (∀ f : Int, 0 <= f && f < folds.length() → fold_well_formed_view(folds[f], n_obs))
+}
+
+///|
+predicate row_unit_map_view_ok(
+  result : FixedArray[Int],
+  cluster : FixedArray[Int],
+  uniq : FixedArray[Int],
+) {
+  result.length() == cluster.length() &&
+  (∀ i : Int, 0 <= i && i < result.length() →
+    0 <= result[i] && result[i] < uniq.length() &&
+    uniq[result[i]] == cluster[i])
+}
+
+///|
+predicate cluster_subset_of(
+  cluster : FixedArray[Int],
+  uniq : FixedArray[Int],
+) {
+  ∀ i : Int, 0 <= i && i < cluster.length() →
+    (∃ k : Int, 0 <= k && k < uniq.length() && uniq[k] == cluster[i])
+}
+
+///|
+/// `perm` is a permutation of `[0, n)` -- contains every value in
+/// `[0, n)` exactly once. Used as a precondition for `kfold_from_perm`
+/// (the real kfold's chacha8 RNG output is opaque to the proof, so
+/// we can only state the resulting-perm property, not derive it from
+/// the shuffle algorithm).
+predicate perm_is_perm(perm : FixedArray[Int], n : Int) {
+  perm.length() == n &&
+  (∀ k : Int, 0 <= k && k < n →
+    (∃ i : Int, in_bounds(perm, i) && perm[i] == k))
+}

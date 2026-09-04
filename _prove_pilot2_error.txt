@@ -1,0 +1,64 @@
+﻿moon : Error: [4207]
+所在位置 行:1 字符: 65
++ ... rojects\DoubleMachineLearning\dml-moonbit"; moon prove . 2>&1 | Out-F ...
++                                                 ~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Error: [4207]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:13:18 ]
+    │
+ 13 │   proof_require: v.length() > 0,
+    │                  ─────┬────  
+    │                       ╰────── unsupported primitive operator in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:14:27 ]
+    │
+ 14 │   proof_ensure: result => result >= v[0] || true,
+    │                           ───────┬──────  
+    │                                  ╰──────── unsupported primitive operator in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:14:37 ]
+    │
+ 14 │   proof_ensure: result => result >= v[0] || true,
+    │                                     ──┬─  
+    │                                       ╰─── unsupported primitive operator in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:16:6 ]
+    │
+ 16 │   if v.length() < 1 {
+    │      ─────┬────  
+    │           ╰────── unsupported primitive operator in contracted function body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:17:5 ]
+    │
+ 17 │     raise EmptyArrayError
+    │     ──────────┬──────────  
+    │               ╰──────────── unsupported expression in contracted function body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:19:15 ]
+    │
+ 19 │   let mut z = v[0]
+    │               ──┬─  
+    │                 ╰─── unsupported primitive operator in contracted function body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:20:3 ]
+    │
+ 20 │ ╭─▶   for x in v {
+    ┆ ┆   
+ 24 │ ├─▶   }
+    │ │         
+    │ ╰───────── only single-binder I32 range foreach loops are supported in contracted function bodies
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit\quantile.mbt:21:8 ]
+    │
+ 21 │     if x < z {
+    │        ──┬──  
+    │          ╰──── unsupported primitive operator in contracted function body
+────╯

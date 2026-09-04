@@ -1,0 +1,18 @@
+// probe_int_proof.mbtp -- proof predicates for the Int-version
+// probe. Same shape as quantile_view_proof.mbtp but with Int
+// instead of Double, to determine whether the gap is at the
+// `Array[T]` -> `array` boundary (kfold pilot's finding) or at
+// the `Double` comparison primitive level (quantile pilot's
+// new finding).
+
+///|
+predicate in_bounds_i(arr : FixedArray[Int], i : Int) {
+  0 <= i && i < arr.length()
+}
+
+///|
+predicate array_min_view_int_ok(v : FixedArray[Int], r : Int) {
+  v.length() > 0 &&
+  (∀ i : Int, in_bounds_i(v, i) → v[i] >= r) &&
+  (∃ i : Int, in_bounds_i(v, i) && v[i] == r)
+}
