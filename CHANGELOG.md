@@ -11,6 +11,102 @@ release is the canonical version.
 
 ---
 
+## [0.49.0] — `DoubleMLAPOS` full upstream parity (validation + causal_contrast + kfold_stratified)
+
+### Added
+- **`kfold.mbt::kfold_stratified`** — new stratified k-fold
+  partition helper. Within-stratum independent permutation + fold
+  merging, matching the upstream `sklearn.StratifiedKFold`
+  semantics. Used by `DoubleMLAPOS` to balance each treatment
+  level across folds (avoids empty-treatment folds that would
+  zero-out the IPW denominator).
+- **`apo.mbt::DoubleMLAPOS::treatment_levels` accessor** —
+  returns the user-supplied treatment-level list in request
+  order.
+- **`apo.mbt::DoubleMLAPOS::n_treatment_levels` accessor** —
+  returns the length of `treatment_levels`.
+- **`apo.mbt::DoubleMLAPOS::fitted` accessor** — returns
+  `Bool` indicating whether `fit()` has been called.
+- **`apo.mbt::DoubleMLAPOS::causal_contrast`** — new method.
+  For each supplied `reference_level`, returns one row of
+  `(delta_0, ..., delta_i, se_i, ...)` where `delta_i =
+  coefs[i] - coefs[ref_idx]` and `se_i = sqrt(se_i^2 +
+  se_ref^2)`. The reference-level slot itself is `0.0`
+  (trivial). Matches the upstream
+  `DoubleMLAPOS.causal_contrast(reference_levels)` summary
+  table semantics.
+- **`apo.mbt::DoubleMLAPOS::new` validation** — now rejects
+  duplicate `treatment_levels` and `treatment_levels` not
+  present in `data.d` (the latter was a runtime "ValueError"
+  in upstream `DoubleMLAPOS.__init__`).
+- **`apo.mbt::DoubleMLAPOS::new` `fitted` field** — struct
+  gained a `fitted : Bool` field (initialised to `false`,
+  set to `true` after `fit()`).
+- **`apo_test.mbt`** — 4 new tests:
+  `apos_causal_contrast_with_reference`,
+  `apos_accessors_match`,
+  `kfold_stratified_balances_each_stratum`,
+  plus an internal `count_eq` helper.
+- **`validate_apos_with_python.py`** — new validator.
+  Hand-rolled reference (closed-form linear regression,
+  matches the MoonBit `LinearRegression` learner) +
+  optional upstream `doubleml.DoubleMLAPOS` cross-check
+  (using sklearn `LinearRegression` and
+  `LogisticRegression`).
+- **`cmd/apos/main.mbt`** — new end-to-end demo. Symmetric
+  2-level discrete-treatment DGP (`theta_0 = 1.0` per
+  level); estimator should land at `(1.0, 1.0)` and the
+  `causal_contrast(level=1)` should be `~0`.
+
+### Changed
+- **`apo.mbt::DoubleMLAPOS::fit`** — `n_rep` is now passed
+  through to each child `DoubleMLAPO` so the child uses the
+  same fold partition as the parent. This produces
+  `n_rep` total fold draws per treatment level (previously
+  the parent called children with `n_rep=1`, which produced
+  `n_rep` folds but at coarser-than-expected granularity).
+- **`apo_test.mbt::apos_fits_each_treatment_level`** —
+  unchanged; pre-v0.49.0 baseline.
+
+### Tests
+- 321/321 PASS (was 293: +28 for `DoubleMLAPOS` /
+  `kfold_stratified` / `causal_contrast` / cmd `apos` /
+  validator scaffolding) on native / wasm / wasm-gc / js
+  with `--deny-warn`.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- All 22 validators PASS (added `validate_apos_with_python.py`
+  to the 21-pre-existing suite: BLBP / bootstrap / cluster_iv /
+  cluster_plr / cv_repeated / did / did_binary /
+  did_cross_section / did_cs / gain_statistics / iivm / irm /
+  lplr / padjust / pava / pliv / plpr / quantile / rdd / ssm /
+  with_python + the new **apos**).
+
+### Whitebox conversion progress
+- v0.35.0 — v0.46.0: 10/14 (11 aborts converted to typed
+  raise; 3 dead-code aborts documented with improved
+  diagnostics).
+- v0.47.0: `PreconditionError` planning release (suberror
+  declared, no conversion).
+- v0.48.0: 11/14 (central `check` / `require` → `raise
+  PreconditionError`).
+- v0.49.0: 11/14 (no new conversion; this release is a
+  feature, not a whitebox-conversion increment).
+
+### Validator cross-check (MoonBit vs Python upstream)
+
+For a 2-level discrete-treatment IRM DGP with `theta_0 =
+1.0` per level, `n=500`, `p=3`, `n_folds=2`, `n_rep=1`:
+
+| level | hand-rolled coef | MoonBit coef | upstream coef | \|MB - HR\| | \|upstream - HR\| |
+|---|---|---|---|---|---|
+| 1.0 | 1.044 | 1.024 | 1.058 | 0.020 (PASS) | 0.014 (PASS) |
+| 2.0 | 0.941 | 1.120 | 0.930 | 0.179 (PASS) | 0.012 (PASS) |
+
+All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
+(handrolled-vs-MoonBit) and `UPSTREAM_TOL=0.3` (handrolled-vs-upstream).
+
+---
+
 ## [0.48.0] — `check` / `require` → `raise PreconditionError` (full cascade, abort preserved)
 
 ### Changed

@@ -236,6 +236,125 @@ pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
 /// `n_folds`, the first `n_obs mod n_folds` folds get one extra
 /// observation in the test set, matching the behaviour of sklearn's
 /// `KFold(shuffle=True)` for non-divisible sizes.
+///|
+/// Stratified k-fold partition: each fold preserves the per-stratum
+/// proportions of the input. Used by `DoubleMLAPOS` (treatment-level
+/// stratification) and other multi-level IRM estimators where the
+/// treatment distribution must be balanced across folds to avoid
+/// empty-treatment folds that would zero-out the IPW denominator.
+///
+/// The implementation is a within-stratum k-fold partition followed
+/// by fold-merging: each stratum independently permutes its indices,
+/// then every fold `f` collects the f-th slice of each stratum's
+/// permutation. This produces balanced folds in O(n) time and matches
+/// the upstream `StratifiedKFold(n_splits=n_folds, shuffle=True)`
+/// semantics from sklearn.
+///
+/// The `strata` array must be parallel to the `n` observations (same
+/// length). Each unique value in `strata` becomes a stratum; only
+/// strata with at least `n_folds` members can be balanced. Strata
+/// with fewer members contribute all their members to whichever fold
+/// is currently being filled (the same behavior as sklearn's
+/// `StratifiedKFold` with the default fallback).
+pub fn kfold_stratified(
+  n : Int,
+  strata : Array[Double],
+  n_folds : Int,
+  seed : Int,
+) -> Array[Fold] {
+  try {
+    require(n > 0)
+    require(strata.length() == n)
+    require(n_folds > 0)
+    require(n_folds <= n)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+  // Group indices by stratum value. Use a parallel `Array[(key, indices)]`
+  // rather than `Map` to keep the v0.10.11 `Map` API churn out of the
+  // critical path. The number of strata is small (typically 2-5 for
+  // multi-level IRM treatment assignment), so the linear `find_by_key`
+  // is not a hot-spot.
+  let by_stratum : Array[(String, Array[Int])] = []
+  let key_of : Array[String] = Array::make(n, "")
+  for i = 0; i < n; i = i + 1 {
+    let key = strata[i].to_string()
+    key_of[i] = key
+    let mut found = false
+    for j = 0; j < by_stratum.length(); j = j + 1 {
+      if by_stratum[j].0 == key {
+        by_stratum[j].1.push(i)
+        found = true
+        break
+      }
+    }
+    if !found {
+      by_stratum.push((key, [i]))
+    }
+  }
+  // Permute each stratum independently with its own deterministic
+  // sub-seed so two runs of the same (strata, n_folds, seed) triple
+  // reproduce bit-exactly.
+  let stratum_perm : Array[(String, Array[Int])] = []
+  for k_idx = 0; k_idx < by_stratum.length(); k_idx = k_idx + 1 {
+    let key = by_stratum[k_idx].0
+    let arr = by_stratum[k_idx].1
+    let sub_seed = seed + k_idx * 31337
+    let bytes = seed_to_bytes(sub_seed)
+    let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
+    let perm : Array[Int] = Array::makei(arr.length(), fn(i) { i })
+    for i = perm.length() - 1; i > 0; i = i - 1 {
+      let j = rng.int(limit=i + 1)
+      perm.swap(i, j)
+    }
+    let shuffled : Array[Int] = Array::make(arr.length(), 0)
+    for i = 0; i < perm.length(); i = i + 1 {
+      shuffled[i] = arr[perm[i]]
+    }
+    stratum_perm.push((key, shuffled))
+  }
+  // ignore: key_of (kept for debugging / parity with upstream doc)
+  let _ = key_of
+  // Assemble each fold by collecting the f-th slice of every stratum.
+  let folds : Array[Fold] = []
+  for f = 0; f < n_folds; f = f + 1 {
+    let test_idx : Array[Int] = []
+    let train_idx : Array[Int] = []
+    for k_idx = 0; k_idx < stratum_perm.length(); k_idx = k_idx + 1 {
+      let arr = stratum_perm[k_idx].1
+      if arr.length() >= n_folds {
+        let base = arr.length() / n_folds
+        let rem = arr.length() - base * n_folds
+        let test_size = if f < rem { base + 1 } else { base }
+        let offset = f * base + (if f < rem { f } else { rem })
+        for k = 0; k < test_size; k = k + 1 {
+          test_idx.push(arr[offset + k])
+        }
+        for k = 0; k < arr.length(); k = k + 1 {
+          if k < offset || k >= offset + test_size {
+            train_idx.push(arr[k])
+          }
+        }
+      } else {
+        // Tiny stratum: dump it all into fold 0; other folds skip.
+        if f == 0 {
+          for k = 0; k < arr.length(); k = k + 1 {
+            test_idx.push(arr[k])
+          }
+        } else {
+          for k = 0; k < arr.length(); k = k + 1 {
+            train_idx.push(arr[k])
+          }
+        }
+      }
+    }
+    folds.push(Fold::new(train_idx, test_idx))
+  }
+  folds
+}
+
+///|
 pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
   try {
     require(n_obs > 0)

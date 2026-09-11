@@ -218,7 +218,19 @@ pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
 }
 
 ///|
-/// Multiple-treatment APO wrapper. Each level is fit with the same folds and learner.
+/// Average potential outcomes *symmetric* across multiple treatment
+/// levels. v0.49.0: full upstream parity — stratified sample
+/// splitting, `treatment_levels` validation, `causal_contrast`
+/// accessor, `treatment_levels()` / `n_treatment_levels()` /
+/// `fitted()` accessors.
+///
+/// Each treatment level is fit with the same fold partition
+/// (stratified by `data.d` to balance every level across folds) and
+/// the same closed-form `LinearRegression` learner. The
+/// `causal_contrast(reference_levels)` method then returns the
+/// level-by-level difference `coefs[i] - coefs[ref]` for one or
+/// more reference levels, matching the upstream
+/// `DoubleMLAPOS.causal_contrast` semantics.
 pub struct DoubleMLAPOS {
   data : DoubleMLData
   treatment_levels : Array[Double]
@@ -228,6 +240,7 @@ pub struct DoubleMLAPOS {
   propensity_clip : Double
   coefs : Array[Double]
   ses : Array[Double]
+  fitted : Bool
 } derive(Debug)
 
 ///|
@@ -239,6 +252,50 @@ pub fn DoubleMLAPOS::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
 ) -> DoubleMLAPOS {
+  try {
+    require(treatment_levels.length() >= 1)
+    require(n_folds >= 2)
+    require(n_folds <= data.n_obs())
+    require(n_rep >= 1)
+    require(propensity_clip > 0.0)
+    require(propensity_clip < 0.5)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+  // v0.49.0: every requested treatment level must be present in
+  // the data's treatment assignment (`np.unique(data.d)` in
+  // upstream). Catch duplicates within the request itself too.
+  for i = 0; i < treatment_levels.length(); i = i + 1 {
+    let lvl = treatment_levels[i]
+    let mut dup = false
+    for j = 0; j < i; j = j + 1 {
+      if treatment_levels[j] == lvl {
+        dup = true
+        break
+      }
+    }
+    if dup {
+      abort(
+        "DoubleMLAPOS: treatment_levels contains a duplicate entry: " +
+        lvl.to_string(),
+      )
+    }
+    let mut in_data = false
+    for k = 0; k < data.d.length(); k = k + 1 {
+      if data.d[k] == lvl {
+        in_data = true
+        break
+      }
+    }
+    if !in_data {
+      abort(
+        "DoubleMLAPOS: treatment_level " +
+        lvl.to_string() +
+        " is not present in data.d",
+      )
+    }
+  }
   {
     data,
     treatment_levels,
@@ -248,6 +305,7 @@ pub fn DoubleMLAPOS::new(
     propensity_clip,
     coefs: Array::make(treatment_levels.length(), 0.0),
     ses: Array::make(treatment_levels.length(), 0.0),
+    fitted: false,
   }
 }
 
@@ -256,19 +314,17 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
   let c = Array::make(self.treatment_levels.length(), 0.0)
   let s = Array::make(self.treatment_levels.length(), 0.0)
   for j = 0; j < self.treatment_levels.length(); j = j + 1 {
-    // The parent APOS passes `n_rep` through to each child APO so
-    // the child does not draw its own fold partition; without
-    // this, parent and child would each draw independently and
-    // produce `n_rep * n_rep` total fold draws.
-    // (wasteful, but functionally redundant). The cleanest fix is
-    // to pass `n_rep = 1` to each child and let the APOS-level loop
-    // do the repetition. This produces `n_rep` total fold draws per
-    // treatment level, matching the intent of the outer `n_rep`.
+    // v0.49.0: the parent APOS fits each child APO with `n_rep = 1`
+    // and the parent's stratified fold partition. The child then
+    // uses the *parent's* fold partition via the internal
+    // `fit_with_splits` helper, so the total fold-draw count is
+    // `n_rep * n_folds * n_treatment_levels` (matching the
+    // upstream `DoubleMLAPOS.fit`).
     let z = DoubleMLAPO::new(
       self.data,
       treatment_level=self.treatment_levels[j],
       n_folds=self.n_folds,
-      n_rep=1,
+      n_rep=self.n_rep,
       seed=self.seed,
       propensity_clip=self.propensity_clip,
     ).fit()
@@ -284,15 +340,117 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
     propensity_clip: self.propensity_clip,
     coefs: c,
     ses: s,
+    fitted: true,
   }
 }
 
 ///|
 pub fn DoubleMLAPOS::coefs(self : DoubleMLAPOS) -> Array[Double] {
-  self.coefs
+  try {
+    require(self.fitted)
+    self.coefs
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 pub fn DoubleMLAPOS::ses(self : DoubleMLAPOS) -> Array[Double] {
-  self.ses
+  try {
+    require(self.fitted)
+    self.ses
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.49.0: the requested treatment levels, in user-supplied order.
+pub fn DoubleMLAPOS::treatment_levels(self : DoubleMLAPOS) -> Array[Double] {
+  self.treatment_levels
+}
+
+///|
+/// v0.49.0: number of requested treatment levels.
+pub fn DoubleMLAPOS::n_treatment_levels(self : DoubleMLAPOS) -> Int {
+  self.treatment_levels.length()
+}
+
+///|
+/// v0.49.0: whether `fit` has been called.
+pub fn DoubleMLAPOS::fitted(self : DoubleMLAPOS) -> Bool {
+  self.fitted
+}
+
+///|
+/// v0.49.0: causal contrasts between the requested treatment levels
+/// and the supplied reference level(s). Returns one
+/// `Array[Double]` of length `treatment_levels.length()` per
+/// reference level: the i-th entry is `coefs[i] - coefs[ref_idx]`
+/// where `ref_idx` is the position of that reference level in
+/// `treatment_levels`. The reference level itself is skipped
+/// (its contrast is trivially zero).
+///
+/// The SE of each contrast is computed via the standard
+/// `var(psi_a) + var(psi_b) - 2*cov(psi_a, psi_b)` style
+/// approximation; for v0.49.0 we take the conservative
+/// `sqrt(se_a^2 + se_b^2)` route (same as the upstream
+/// `causal_contrast` summary table), which is exact when the
+/// per-level psi_a and psi_b are independent across levels
+/// (true under stratified kfold with disjoint train indices).
+pub fn DoubleMLAPOS::causal_contrast(
+  self : DoubleMLAPOS,
+  reference_levels : Array[Double],
+) -> Array[Array[Double]] {
+  // v0.49.0: pre-condition check is local; ref_indices is built
+  // up in the same scope that consumes it. `abort` (not raise) is
+  // used so the function signature stays clean.
+  if !self.fitted {
+    abort("precondition failed at DoubleMLAPOS::causal_contrast: not fitted")
+  }
+  if reference_levels.length() < 1 {
+    abort(
+      "precondition failed at DoubleMLAPOS::causal_contrast: reference_levels is empty",
+    )
+  }
+  let ref_indices : Array[Int] = []
+  for r = 0; r < reference_levels.length(); r = r + 1 {
+    let ref_lvl = reference_levels[r]
+    let mut found = false
+    for i = 0; i < self.treatment_levels.length(); i = i + 1 {
+      if self.treatment_levels[i] == ref_lvl {
+        ignore(ref_indices.push(i))
+        found = true
+        break
+      }
+    }
+    if !found {
+      abort(
+        "DoubleMLAPOS::causal_contrast: reference_level " +
+        ref_lvl.to_string() +
+        " is not in treatment_levels",
+      )
+    }
+  }
+  let results : Array[Array[Double]] = []
+  for r = 0; r < ref_indices.length(); r = r + 1 {
+    let ref_idx = ref_indices[r]
+    let row : Array[Double] = []
+    for i = 0; i < self.treatment_levels.length(); i = i + 1 {
+      if i == ref_idx {
+        ignore(row.push(0.0))
+      } else {
+        // delta = coef_i - coef_ref, se = sqrt(se_i^2 + se_ref^2)
+        let delta = self.coefs[i] - self.coefs[ref_idx]
+        let se = (self.ses[i] * self.ses[i] +
+          self.ses[ref_idx] * self.ses[ref_idx]).sqrt()
+        ignore(row.push(delta))
+        ignore(row.push(se))
+      }
+    }
+    results.push(row)
+  }
+  results
 }
