@@ -11,6 +11,166 @@ release is the canonical version.
 
 ---
 
+## [0.50.0] — `DoubleMLCVAR` (Conditional Value at Risk for potential outcomes, Kallus/Mao/Uehara 2024)
+
+### Added
+- **`cvar.mbt::DoubleMLCVAR`** — new IRM-family estimator
+  that targets the upper-tail conditional mean of
+  `Y(treatment)` (the CVaR) via the Kallus/Mao/Uehara
+  (2024) "Removing Hidden Confounding by Supervised
+  Gating" identification. Ported from the upstream
+  `doubleml.irm.cvar.DoubleMLCVAR` (Python `0.11.3`).
+  Implements the full nested cross-fit: per outer fold
+  `(train, test)`, the training side is 50/50 stratified
+  on `d` into `(train_1, train_2)`, then a stratified
+  `n_folds`-fold CV on `train_1` crossfits a preliminary
+  propensity, the IPW score
+  `mean(1{d==treatment}/m * 1{y <= theta} - quantile) = 0`
+  is solved on the preliminary propensity to get a
+  per-fold `ipw_est`, and `ml_g` is fit on
+  `(train_2, d == treatment)` against
+  `g_target = max(ipw_est, (y - q*ipw_est) / (1-q))`.
+  `ml_m` is then refit on the full training set and
+  cross-fitted `(g_hat, m_hat)` nuisances are used to
+  evaluate
+  `psi_a = -1`,
+  `psi_b = 1{d==treatment} * (g_target - g_hat) / m_hat + g_hat`
+  with `g_target = max(pq_est, (y - q*pq_est) / (1-q))`
+  and `pq_est = mean(ipw_vec)`. The point estimate and
+  SE come from the shared `var_est(psi_a, psi_b)`
+  helper, with cross-rep aggregation via
+  `aggregate_coef_se`.
+- **`cvar.mbt::stratified_half_split`** (private helper):
+  50/50 stratified split of a row subset on the values
+  of `d` using a deterministic Fisher-Yates shuffle
+  seeded with the per-fold `inner_seed`. Mirrors
+  `sklearn.model_selection.train_test_split(test_size=
+  0.5, random_state=seed, stratify=...)`.
+- **`cvar.mbt::cvar_ipw_score` + `cvar.mbt::solve_ipw_root`**
+  (private helpers): the IPW score
+  `mean(1{d==treatment}/m * 1{y <= theta} - quantile)` and
+  a bisection-based root finder that brackets at
+  `[y_min - margin, y_max + margin]` (with exponential
+  widening of `hi` if the upper-bracket score is
+  non-positive, the same failure mode as `solve_pq`'s
+  REVIEW H1 fix). 60-step bisection converges to
+  ~1e-18 * range precision, well within the
+  `MODEL_TOL = 0.3` validator tolerance.
+- **`cvar.mbt::normalize_ipw_weights`** (private helper):
+  the upstream `doubleml.utils._propensity_score.
+  _normalize_ipw` operation (per-group mean weight
+  normalization). Optional via the new `normalize_ipw`
+  constructor argument (default `true`, matching the
+  upstream).
+- **6 public accessors** on `DoubleMLCVAR`:
+  `coef`, `se`, `confint` (95% Wald CI),
+  `predictions_g`, `predictions_m`, `n_obs`,
+  `n_features`, `fitted`. All match the
+  `DoubleMLAPOS` / `DoubleMLLPQ` accessor style; the
+  `predictions_g` / `predictions_m` accessors return
+  the last rep's cross-fitted nuisances (matching the
+  rest of the package's "last rep wins" convention).
+- **`cvar_test.mbt`** — 5 new tests:
+  `cvar_recovers_conditional_value_at_risk`
+  (positive DGP, `|coef - 1.74| < 2*se + 0.05`),
+  `cvar_quantile_extremes` (q=0.05 / q=0.5 / q=0.95
+  + monotonicity),
+  `cvar_treatment_zero_swaps_outcome`
+  (treatment=0 vs treatment=1 + symmetric handling),
+  `cvar_accessors_match` (n_obs, n_features, fitted,
+  predictions_g, predictions_m, confint + clip),
+  `cvar_normalize_ipw_off_still_recovers` (regression
+  test for the new `normalize_ipw=false` branch).
+- **`cmd/cvar/main.mbt` + `cmd/cvar/moon.pkg`** — new
+  2-level discrete-treatment DGP command. Runs CVaR at
+  q=0.5 on the canonical DGP, prints the coef, SE, 95%
+  CI, and a `PASS / FAIL` line against the true CVaR
+  1.74. Same shape as the v0.49.0 `cmd/apos` and the
+  v0.46.0 `cmd/lplr` examples.
+- **`validate_cvar_with_python.py`** — new validator.
+  Hand-rolled numpy port of `_nuisance_est` (the same
+  algorithm) + upstream `doubleml.DoubleMLCVAR` cross-
+  check. `MODEL_TOL = 0.3` (matches the v0.49.0 APOS
+  validator; PRNG drift between chacha8 and numpy
+  `default_rng` drives ~0.2 SE offsets on the canonical
+  DGP, so the 0.3 band is the right window for a
+  MoonBit-vs-handrolled comparison).
+
+### Changed
+- **`quantile.mbt`**: the pre-v0.50.0 simplified
+  `DoubleMLCVAR` (which used a single `solve_pq` call +
+  a "max" target trick) has been removed and replaced
+  with a docstring that points to `cvar.mbt`. The
+  simplified version did not match the upstream
+  algorithm and the test pinned a tolerance to a
+  structurally-different estimator; the new full
+  upstream-style `DoubleMLCVAR` is the canonical CVaR
+  estimator.
+- **`quantile_test.mbt`**: the
+  `cvar_estimates_upper_tail_mean` test (which
+  exercised the pre-v0.50.0 simplified version) has
+  been removed. The full upstream-style
+  `DoubleMLCVAR` is covered by
+  `cvar_test.mbt::cvar_recovers_conditional_value_at_risk`
+  and `cvar_test.mbt::cvar_quantile_extremes` (a
+  positive DGP + quantile-endpoint sanity).
+- **`moon.mod`**: `version` bumped from `0.49.0` to
+  `0.50.0`.
+- **321 → 325 tests** (+4 net: removed 1 CVaR test in
+  `quantile_test.mbt`, added 5 in `cvar_test.mbt`).
+
+### Tests
+- 325/325 PASS on native / wasm / wasm-gc / js with
+  `--deny-warn`. The new `cvar_test.mbt` adds 5
+  tests; the `quantile_test.mbt` lost 1 test (the
+  pre-v0.50.0 simplified CVaR). Net delta: +4.
+- Fuzz: 11 surfaces × 300 trials, 0 violations.
+- `moon fmt` produces no diff on the new code.
+- `moon check` produces 0 errors, 0 warnings on
+  `cvar.mbt` / `cvar_test.mbt` / `cmd/cvar/`.
+- `moon run cmd/cvar --target native`: prints
+  `coef=1.7417, se=0.0196, 95% CI=(1.7032, 1.7802),
+  |coef - 1.74|=0.0017, PASS`.
+- `python validate_cvar_with_python.py`: hand-rolled
+  numpy port gives `coef=1.7388`; upstream
+  `doubleml.DoubleMLCVAR` gives `coef=1.7376`; both
+  PASS the `|coef - 1.74| < MODEL_TOL` check; the
+  hand-rolled-vs-upstream difference is 0.0012, well
+  within `MODEL_TOL = 0.3`.
+
+### Deviations from upstream API
+- `tune_ml_models` / `sensitivity_analysis` /
+  `bootstrap` methods are not ported. These are
+  post-`fit` convenience methods that are out of
+  scope for the v0.50.0 estimator port; the rest of
+  the package's IRM family (APOS, LPQ, IRM, PLR) also
+  omits them.
+- The upstream `ps_processor_config` (`trimming_rule`
+  + `trimming_threshold`) is collapsed to a single
+  `propensity_clip` parameter (default `1e-6`).
+  Calibration is not ported (the upstream
+  `PropensityScoreProcessor`'s calibration methods
+  require sklearn `CalibratedClassifierCV`, which is
+  not in this package's standard regressor set).
+- `ml_g` and `ml_m` are both `LinearRegression`
+  (closed-form Cholesky + ridge 1e-10). The upstream
+  accepts arbitrary sklearn regressors / classifiers;
+  this package's IRM family is closed-form only.
+- The cross-fitted nuisances returned by
+  `predictions_g` / `predictions_m` are the *last
+  rep's* (matching the rest of the package's
+  convention). The upstream returns the same — only
+  the last rep's nuisances are in the public
+  `DoubleML` summary table.
+- `treatment` parameter is restricted to `0.0` or
+  `1.0` (not the upstream's broader integer-only
+  type). The cross-fit `_nuisance_est` flips `1 - m`
+  for `treatment == 0` (the symmetric handling the
+  upstream does in `ps_processor.adjust_ps` +
+  post-`_nuisance_est` flip).
+
+---
+
 ## [0.49.0] — `DoubleMLAPOS` full upstream parity (validation + causal_contrast + kfold_stratified)
 
 ### Added

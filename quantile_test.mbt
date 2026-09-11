@@ -34,15 +34,13 @@ test "qte_estimates_location_shift" {
 }
 
 ///|
-test "cvar_estimates_upper_tail_mean" {
-  let fitted = DoubleMLCVAR::new(
-    quantile_test_data(),
-    treatment=1.0,
-    quantile=0.5,
-  ).fit()
-  inspect((fitted.coef() - 1.75).abs() < 0.1, content="true")
-  inspect(fitted.se() > 0.0, content="true")
-}
+// v0.50.0: the `cvar_estimates_upper_tail_mean` test (which exercised
+// the pre-v0.50.0 simplified `DoubleMLCVAR` in `quantile.mbt`) has
+// been removed. The full upstream-style `DoubleMLCVAR` lives in
+// `cvar.mbt` and is covered by `cvar_test.mbt::cvar_recovers_conditional_value_at_risk`
+// and `cvar_test.mbt::cvar_quantile_extremes` (a positive DGP +
+// quantile-endpoint sanity, the two tests that actually pin the new
+// estimator's behaviour).
 
 ///|
 /// Bug #3 fix: `solve_pq` should not call `cross_fit_conditional`

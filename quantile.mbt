@@ -508,118 +508,18 @@ pub fn DoubleMLQTE::ses(self : DoubleMLQTE) -> Array[Double] {
 }
 
 ///|
-pub struct DoubleMLCVAR {
-  data : DoubleMLData
-  treatment : Double
-  quantile : Double
-  n_folds : Int
-  seed : Int
-  propensity_clip : Double
-  coef : Double
-  se : Double
-  fitted : Bool
-} derive(Debug)
-
-///|
-pub fn DoubleMLCVAR::new(
-  data : DoubleMLData,
-  treatment? : Double = 1.0,
-  quantile? : Double = 0.5,
-  n_folds? : Int = 2,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-) -> DoubleMLCVAR {
-  {
-    data,
-    treatment,
-    quantile,
-    n_folds,
-    seed,
-    propensity_clip,
-    coef: 0.0,
-    se: 0.0,
-    fitted: false,
-  }
-}
-
-///|
-pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
-  let (pq, _, _) = solve_pq(
-    self.data,
-    self.treatment,
-    self.quantile,
-    self.n_folds,
-    self.seed,
-    self.propensity_clip,
-  ) catch {
-    BracketSignError::UpperSignFailed =>
-      abort(
-        "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
-      )
-  }
-  let treated = indicator_level(self.data.d, self.treatment)
-  let folds = kfold(self.data.n_obs(), self.n_folds, self.seed)
-  let m = fit_propensity(self.data.x, treated, folds, self.propensity_clip)
-  let target = Array::make(self.data.n_obs(), 0.0)
-  for i = 0; i < target.length(); i = i + 1 {
-    let z = (self.data.y[i] - self.quantile * pq) / (1.0 - self.quantile)
-    target[i] = if z > pq { z } else { pq }
-  }
-  let g = cross_fit_conditional(self.data.x, target, treated, folds)
-  let pb = Array::make(target.length(), 0.0)
-  for i = 0; i < pb.length(); i = i + 1 {
-    pb[i] = g[i] + treated[i] * (target[i] - g[i]) / m[i]
-  }
-  let c = mean(pb)
-  let mut gamma = 0.0
-  for z in pb {
-    let u = z - c
-    gamma = gamma + u * u
-  }
-  let s = (gamma / self.data.n_obs().to_double() / self.data.n_obs().to_double()).sqrt()
-  {
-    data: self.data,
-    treatment: self.treatment,
-    quantile: self.quantile,
-    n_folds: self.n_folds,
-    seed: self.seed,
-    propensity_clip: self.propensity_clip,
-    coef: c,
-    se: s,
-    fitted: true,
-  }
-}
-
-///|
-/// Number of observations.
-pub fn DoubleMLCVAR::n_obs(self : DoubleMLCVAR) -> Int {
-  self.data.n_obs()
-}
-
-///|
-/// Number of features (covariate columns).
-pub fn DoubleMLCVAR::n_features(self : DoubleMLCVAR) -> Int {
-  self.data.n_features()
-}
-
-///|
-pub fn DoubleMLCVAR::coef(self : DoubleMLCVAR) -> Double {
-  try {
-    require(self.fitted)
-    self.coef
-  } catch {
-    PreconditionError::Violated(loc) =>
-      abort("precondition failed at " + loc.to_string())
-  }
-}
-
-///|
-pub fn DoubleMLCVAR::se(self : DoubleMLCVAR) -> Double {
-  try {
-    require(self.fitted)
-    self.se
-  } catch {
-    PreconditionError::Violated(loc) =>
-      abort("precondition failed at " + loc.to_string())
-  }
-}
+// v0.50.0: the simplified `DoubleMLCVAR` previously in this file
+// (which used `solve_pq` to get a potential quantile `pq` then fit a
+// `g` cross-fit on the target `max(pq, (y - q*pq) / (1-q))`) has been
+// removed. It is replaced by the full upstream-style nested
+// cross-fitting `DoubleMLCVAR` in `cvar.mbt`, which is the canonical
+// port of the Python `doubleml.irm.cvar.DoubleMLCVAR` (Kallus et al.,
+// "Removing Hidden Confounding by Supervised Gating", 2024). The
+// estimator solves the IPW score `mean(1{d==treatment} / m * 1{y <=
+// theta} - quantile) = 0` per outer fold to get a per-fold
+// `ipw_est[i]`, then averages these for `pq_est`, and uses the
+// cross-fitted `(g, m)` nuisances to evaluate
+// `psi_a = -1`,
+// `psi_b = 1{d==treatment} * (g_target - g_hat) / m_hat + g_hat`
+// where `g_target = max(pq_est, (y - q*pq_est) / (1-q))`. See
+// `cvar.mbt` for the full implementation.
