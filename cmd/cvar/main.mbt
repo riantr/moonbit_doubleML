@@ -18,17 +18,17 @@
 fn main {
   let n = 400
   let n_features = 2
-  let x = @mavis/dml.Matrix::zeros(n, n_features)
+  let x = @dml.Matrix::zeros(n, n_features)
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     d[i] = if i % 2 == 0 { 1.0 } else { 0.0 }
     y[i] = d[i] + (i % 100).to_double() / 100.0
   }
-  let data = @mavis/dml.DoubleMLData::new(x, y, d)
+  let data = @dml.DoubleMLData::new(x, y, d)
   // Run CVaR at q = 0.5. Use 2 folds (matches the rest
   // of the package) and 1 repetition for determinism.
-  let fitted = @mavis/dml.DoubleMLCVAR::new(
+  let fitted = @dml.DoubleMLCVAR::new(
     data,
     treatment=1.0,
     quantile=0.5,

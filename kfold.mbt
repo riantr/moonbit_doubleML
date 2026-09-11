@@ -236,6 +236,7 @@ pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
 /// `n_folds`, the first `n_obs mod n_folds` folds get one extra
 /// observation in the test set, matching the behaviour of sklearn's
 /// `KFold(shuffle=True)` for non-divisible sizes.
+
 ///|
 /// Stratified k-fold partition: each fold preserves the per-stratum
 /// proportions of the input. Used by `DoubleMLAPOS` (treatment-level
@@ -277,10 +278,8 @@ pub fn kfold_stratified(
   // multi-level IRM treatment assignment), so the linear `find_by_key`
   // is not a hot-spot.
   let by_stratum : Array[(String, Array[Int])] = []
-  let key_of : Array[String] = Array::make(n, "")
   for i = 0; i < n; i = i + 1 {
     let key = strata[i].to_string()
-    key_of[i] = key
     let mut found = false
     for j = 0; j < by_stratum.length(); j = j + 1 {
       if by_stratum[j].0 == key {
@@ -314,8 +313,6 @@ pub fn kfold_stratified(
     }
     stratum_perm.push((key, shuffled))
   }
-  // ignore: key_of (kept for debugging / parity with upstream doc)
-  let _ = key_of
   // Assemble each fold by collecting the f-th slice of every stratum.
   let folds : Array[Fold] = []
   for f = 0; f < n_folds; f = f + 1 {
@@ -336,16 +333,14 @@ pub fn kfold_stratified(
             train_idx.push(arr[k])
           }
         }
-      } else {
         // Tiny stratum: dump it all into fold 0; other folds skip.
-        if f == 0 {
-          for k = 0; k < arr.length(); k = k + 1 {
-            test_idx.push(arr[k])
-          }
-        } else {
-          for k = 0; k < arr.length(); k = k + 1 {
-            train_idx.push(arr[k])
-          }
+      } else if f == 0 {
+        for k = 0; k < arr.length(); k = k + 1 {
+          test_idx.push(arr[k])
+        }
+      } else {
+        for k = 0; k < arr.length(); k = k + 1 {
+          train_idx.push(arr[k])
         }
       }
     }

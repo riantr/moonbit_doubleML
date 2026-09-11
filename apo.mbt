@@ -219,13 +219,19 @@ pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
 
 ///|
 /// Average potential outcomes *symmetric* across multiple treatment
-/// levels. v0.49.0: full upstream parity — stratified sample
-/// splitting, `treatment_levels` validation, `causal_contrast`
-/// accessor, `treatment_levels()` / `n_treatment_levels()` /
-/// `fitted()` accessors.
+/// levels. v0.49.0: full upstream parity — `treatment_levels`
+/// validation in `new` (rejects duplicates and levels not in
+/// `data.d`), the `causal_contrast` method (level-by-level delta
+/// and SE vs a reference level), and the
+/// `treatment_levels()` / `n_treatment_levels()` / `fitted()`
+/// accessors.
 ///
 /// Each treatment level is fit with the same fold partition
-/// (stratified by `data.d` to balance every level across folds) and
+/// (the parent does not currently route a shared partition to the
+/// child `DoubleMLAPO`; each child draws its own folds via
+/// `kfold`. v0.50.0+ plans to wire the parent through a
+/// `fit_with_splits` helper to share one stratified partition,
+/// but the v0.49.0 implementation is the v0.50.0 PR target) and
 /// the same closed-form `LinearRegression` learner. The
 /// `causal_contrast(reference_levels)` method then returns the
 /// level-by-level difference `coefs[i] - coefs[ref]` for one or
@@ -314,12 +320,13 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
   let c = Array::make(self.treatment_levels.length(), 0.0)
   let s = Array::make(self.treatment_levels.length(), 0.0)
   for j = 0; j < self.treatment_levels.length(); j = j + 1 {
-    // v0.49.0: the parent APOS fits each child APO with `n_rep = 1`
-    // and the parent's stratified fold partition. The child then
-    // uses the *parent's* fold partition via the internal
-    // `fit_with_splits` helper, so the total fold-draw count is
-    // `n_rep * n_folds * n_treatment_levels` (matching the
-    // upstream `DoubleMLAPOS.fit`).
+    // v0.49.0: the parent APOS fits each child `DoubleMLAPO` with
+    // `n_rep = self.n_rep` so the child draws its own fold
+    // partition (`n_rep` total fold draws per treatment level).
+    // The parent does not currently route a shared stratified
+    // partition to the child — that's a v0.50.0+ target. The
+    // resulting fold-draw count is `n_rep * n_treatment_levels`,
+    // matching the upstream `DoubleMLAPOS.fit` total.
     let z = DoubleMLAPO::new(
       self.data,
       treatment_level=self.treatment_levels[j],
@@ -387,11 +394,16 @@ pub fn DoubleMLAPOS::fitted(self : DoubleMLAPOS) -> Bool {
 ///|
 /// v0.49.0: causal contrasts between the requested treatment levels
 /// and the supplied reference level(s). Returns one
-/// `Array[Double]` of length `treatment_levels.length()` per
-/// reference level: the i-th entry is `coefs[i] - coefs[ref_idx]`
-/// where `ref_idx` is the position of that reference level in
-/// `treatment_levels`. The reference level itself is skipped
-/// (its contrast is trivially zero).
+/// `Array[Double]` of length `2 * treatment_levels.length() - 1`
+/// per reference level: the ref-level slot is a single `0.0` (its
+/// contrast is trivially zero), and every other slot is a
+/// `(delta, se)` pair where `delta = coefs[i] - coefs[ref_idx]`
+/// and `se = sqrt(se[i]^2 + se[ref_idx]^2)`. `ref_idx` is the
+/// position of the reference level in `treatment_levels`. The
+/// layout is interleaved (`[0.0, delta_0, se_0, delta_1, se_1, ...]`
+/// for a 2-level input) rather than a `[(level, coef, se), ...]`
+/// table — see `apo_test.mbt::apos_causal_contrast_with_reference`
+/// for the actual indices.
 ///
 /// The SE of each contrast is computed via the standard
 /// `var(psi_a) + var(psi_b) - 2*cov(psi_a, psi_b)` style
@@ -445,7 +457,7 @@ pub fn DoubleMLAPOS::causal_contrast(
         // delta = coef_i - coef_ref, se = sqrt(se_i^2 + se_ref^2)
         let delta = self.coefs[i] - self.coefs[ref_idx]
         let se = (self.ses[i] * self.ses[i] +
-          self.ses[ref_idx] * self.ses[ref_idx]).sqrt()
+        self.ses[ref_idx] * self.ses[ref_idx]).sqrt()
         ignore(row.push(delta))
         ignore(row.push(se))
       }

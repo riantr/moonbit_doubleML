@@ -51,7 +51,8 @@ fn main {
     let eps = acc - 6.0
     y[i] = theta0 * (if d[i] == 1.0 { 1.0 } else { 0.0 }) +
       theta0 * (if d[i] == 2.0 { 1.0 } else { 0.0 }) +
-      0.5 * xsum + eps
+      0.5 * xsum +
+      eps
   }
 
   // ---- Estimate ----
@@ -68,13 +69,21 @@ fn main {
   println("true theta_0      = " + theta0.to_string() + " (per level)")
   let coefs = fitted.coefs()
   let ses = fitted.ses()
-  println("level 1.0: coef=" + coefs[0].to_string() + ", se=" + ses[0].to_string())
-  println("level 2.0: coef=" + coefs[1].to_string() + ", se=" + ses[1].to_string())
+  println(
+    "level 1.0: coef=" + coefs[0].to_string() + ", se=" + ses[0].to_string(),
+  )
+  println(
+    "level 2.0: coef=" + coefs[1].to_string() + ", se=" + ses[1].to_string(),
+  )
 
   // Causal contrast: 1.0 - 2.0 should be ~0 (symmetric DGP).
   let contrasts = fitted.causal_contrast([1.0])
   let delta_2_vs_1 = contrasts[0][1]
   let se_2_vs_1 = contrasts[0][2]
-  println("contrast (level 2 - level 1): delta=" + delta_2_vs_1.to_string() +
-    ", se=" + se_2_vs_1.to_string())
+  println(
+    "contrast (level 2 - level 1): delta=" +
+    delta_2_vs_1.to_string() +
+    ", se=" +
+    se_2_vs_1.to_string(),
+  )
 }

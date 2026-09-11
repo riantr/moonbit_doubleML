@@ -11,6 +11,58 @@ release is the canonical version.
 
 ---
 
+## [0.50.1] — Doc/comment drift patch for v0.49.0 + v0.50.0
+
+### Fixed
+- **`apo.mbt::DoubleMLAPOS` struct docstring** — the v0.49.0
+  docstring claimed "stratified sample splitting" and
+  "treatment levels fit with the same fold partition". The
+  child `DoubleMLAPO` actually draws its own folds via
+  `kfold` (non-stratified), and routing a shared stratified
+  partition through a `fit_with_splits` helper is a
+  v0.50.0+ target. Reworded to clarify the v0.49.0 actual
+  semantics.
+- **`apo.mbt::DoubleMLAPOS::fit` inline comment** — the
+  v0.49.0 comment referred to a non-existent
+  `fit_with_splits` helper and stated that the child uses
+  the parent's stratified fold partition (it does not).
+  Reworded to describe the actual v0.49.0 behaviour:
+  each child draws its own folds; the parent is the
+  repetition owner.
+- **`apo.mbt::DoubleMLAPOS::causal_contrast` docstring** —
+  the v0.49.0 docstring claimed each returned row has
+  length `treatment_levels.length()`. Actual layout is
+  `2 * treatment_levels.length() - 1`: the ref-level slot
+  is a single `0.0` and every other slot is a `(delta, se)`
+  pair. Reworded with the actual indices and an example
+  for a 2-level input.
+- **`kfold.mbt::kfold_stratified` dead `key_of` array** —
+  the v0.49.0 implementation built a `key_of` array per
+  row but only used it as a debugging handle (`let _ = key_of`).
+  Removed the array and the let-binding.
+
+### Documentation
+- **`CHANGELOG.md` v0.50.0 entry** — "6 public accessors"
+  corrected to **8** (the v0.50.0 `DoubleMLCVAR` exposes
+  `coef`, `se`, `confint`, `predictions_g`,
+  `predictions_m`, `n_obs`, `n_features`, `fitted`).
+- **`cmd/cvar/main.mbt` import alias** — `@mavis/dml.*`
+  replaced with `@dml.*` to match every other
+  `cmd/*/main.mbt` in the project.
+
+### Style
+- **`cmd/apos/main.mbt` formatting** — `moon fmt` produced
+  a non-empty diff on the file at v0.50.0 ship time; v0.50.1
+  reformats inline `println` calls and the Y expression
+  for consistency. No semantic change.
+
+### Tests
+- 325/325 PASS (unchanged from v0.50.0; doc-only patch).
+- All 21 validators PASS.
+- 4 backends: 325/325 PASS, 0 warnings.
+
+---
+
 ## [0.50.0] — `DoubleMLCVAR` (Conditional Value at Risk for potential outcomes, Kallus/Mao/Uehara 2024)
 
 ### Added
@@ -62,7 +114,7 @@ release is the canonical version.
   normalization). Optional via the new `normalize_ipw`
   constructor argument (default `true`, matching the
   upstream).
-- **6 public accessors** on `DoubleMLCVAR`:
+- **8 public accessors** on `DoubleMLCVAR`:
   `coef`, `se`, `confint` (95% Wald CI),
   `predictions_g`, `predictions_m`, `n_obs`,
   `n_features`, `fitted`. All match the

@@ -10,7 +10,7 @@
 // }
 name = "mavis/dml"
 
-version = "0.50.0"
+version = "0.50.1"
 
 readme = "README.mbt.md"
 
