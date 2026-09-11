@@ -1,0 +1,5 @@
+import {
+  "mavis/dml",
+}
+
+pkgtype(kind: "executable")

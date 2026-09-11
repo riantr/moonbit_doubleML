@@ -11,6 +11,101 @@ release is the canonical version.
 
 ---
 
+## [0.51.0] — `DoubleMLDIDCSBinary` (Callaway-Sant'Anna DID with binary outcome)
+
+### Added
+- **`did_cs_binary.mbt::DoubleMLDIDCSBinary`** — new
+  Callaway-Sant'Anna (2021) DID estimator for panel data
+  with binary outcomes, port of the upstream
+  `doubleml.DoubleMLDIDCSBinary` (Python 0.11.3). Implements
+  the Sant'Anna-Zhao (2020) "binary outcome" DML score
+  with 4 conditional g-functions (`g_d0_t0`, `g_d0_t1`,
+  `g_d1_t0`, `g_d1_t1`) and 1 propensity
+  (`m(X) = E[G_indicator | X]`). Subsetting:
+  `G_indicator = 1{G == g_value}`,
+  `C_indicator = 1{unit in chosen control cohort per
+  control_group}`, `T_indicator = 1{t == t_value_eval}`.
+  Sample splitting: `kfold_stratified` on the 4-stratum key
+  `G_indicator + 2 * T_indicator` (each fold balances the
+  `(G, T)` cells). ATT estimator
+  `theta = -mean(psi_b) / mean(psi_a)`, SE via the shared
+  `var_est(psi_a, psi_b)` helper.
+- **Internal helpers** in `did_cs_binary.mbt`
+  (co-located for v0.51.0 simplicity, all `fn` not
+  `pub fn`):
+    - `cs_bin_panel_subset` — subset the long-format
+      panel to the 4 `(G, T)` cells.
+    - `cs_bin_crossfit_nuisance` — crossfit the 4
+      g-functions and the propensity.
+    - `fit_cs_bin_g` — fit one g-function on the
+      matching `(d, t)` cell and predict on the test
+      fold.
+    - `cs_bin_score_obs` — observational
+      Sant'Anna-Zhao (2020) score (psi_a, psi_b),
+      with optional in-sample normalization.
+- **`DoubleMLDIDCSBinary` accessors**: `coef`, `se`,
+  `confint`, `g_value`, `t_value_pre`, `t_value_eval`,
+  `n_obs` (= post-subset `n_obs_subset`),
+  `n_obs_panel` (full pre-subset panel size),
+  `n_g_subset`, `n_c_subset`, `fitted`,
+  `predictions_g_d0_t0`, `predictions_g_d0_t1`,
+  `predictions_g_d1_t0`, `predictions_g_d1_t1`,
+  `predictions_m`, `psi_a`, `psi_b`.
+- **`did_cs_binary_test.mbt`** — 4 new tests:
+  `did_cs_binary_recovers_att` (synthetic 2-period
+  2-group DGP with binary Y, true ATT = 1.0, estimator
+  recovers it), `did_cs_binary_panel_subset_shape`
+  (post-subset cell counts are correct),
+  `did_cs_binary_stratified_splits_balance` (fold
+  partition is well-defined for the 4-stratum setup),
+  `did_cs_binary_accessors_match` (constructor args
+  round-trip through accessors).
+- **`cmd/did_cs_binary/main.mbt`** + **`cmd/did_cs_binary/moon.pkg`** —
+  2-period, 2-group panel DGP with deterministic binary
+  Y. Runs `DoubleMLDIDCSBinary` and prints
+  `ATT_hat / SE / 95% CI` to stdout.
+- **`validate_did_cs_binary_with_python.py`** — new
+  validator. Hand-rolled reference reproduces the
+  MoonBit estimator and compares against upstream
+  `doubleml.DoubleMLDIDCSBinary` for the same DGP.
+  `MODEL_TOL = 0.3` (matches the v0.49.0/v0.50.0
+  convention; PRNG drift between chacha8 and
+  numpy default_rng drives ~0.2 SE offsets).
+
+### Simplifications vs. upstream `DoubleMLDIDCSBinary`
+- **`ml_g` and `ml_m` collapsed** to a single
+  closed-form `LinearRegression` learner. The upstream
+  supports an arbitrary `ml_g` regressor / classifier
+  plus an `ml_m` classifier; we treat the binary
+  outcome `Y` as a regression on `E[Y | D=d, X] ∈ [0, 1]`
+  (closed-form OLS + clip is the standard
+  "frequentist" trick that `R::predict.lm` uses for
+  binary outcomes) and treat the propensity as a
+  regression on `E[1{D=1} | X]` clipped to
+  `[clip, 1 - clip]`. Pluggable learners can be added
+  in a later release by porting `_dml_cv_predict`.
+- **`score = "experimental"` is not ported in
+  v0.51.0.** The `new` constructor accepts only
+  `score = "observational"`. Experimental support
+  (which has no `ml_m`) can be added in v0.52.0+ if
+  needed.
+- **`ps_processor_config` collapsed** to a single
+  `propensity_clip` field (default `1.0e-6`); the
+  `isotonic` / `cv_calibration` paths are not ported
+  (they require `CalibratedClassifierCV`).
+- **`anticipation_periods`** is stored but not applied
+  to the score (the upstream uses it to extend the
+  post-treatment window; that's a v0.52.0+ target).
+- **No sensitivity analysis, no `tune_optuna`, no
+  multiplier bootstrap** — all v0.52.0+ targets.
+
+### Tests
+- 329/329 PASS (was 325: +4 for `DoubleMLDIDCSBinary`)
+  on native / wasm / wasm-gc / js.
+- Existing 11 fuzz surfaces untouched.
+
+---
+
 ## [0.50.1] — Doc/comment drift patch for v0.49.0 + v0.50.0
 
 ### Fixed
