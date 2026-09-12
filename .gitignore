@@ -94,4 +94,12 @@ _verify/_fix_*.py
 _verify/_fix_*.py.archived
 _verify/_restore_*.py
 _verify/_restore_*.py.archived
+# v0.52 reproduction / audit-scratch artefacts (verifier cycle, useful
+# for re-audits; not part of the repo). See
+# _verify/UPSTREAM_BLOCKERS.md "v0.52 reproduction audit" section.
+_verify/audit-scratch-*
+_verify/audit-bucket*
+_verify/audit_bucket*
+_verify/test-bucket*
+_verify/audit-scratch-v0.52_*
 _build-archived/
