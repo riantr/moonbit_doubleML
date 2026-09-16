@@ -451,15 +451,30 @@ viable trade-off for the user.
 baseline (17v/2t). Producer's source files unchanged.
 
 **Verification commands run** (all from `D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit`):
+
+> **Note on Experiment 1a's 17v/2t line below**: this was the v2 audit's
+> original (incorrect) report. The v3 correction (see §13) re-ran the same
+> mutation in a fresh `audit-scratch-1a/` and obtained **14v/3t** instead.
+> The line below is preserved for audit-trail purposes; the corrected result
+> supersedes it.
 ```
 moon prove _prove_pilot                  # 17v/2t (v2 baseline confirmed)
 moon prove _prove_pilot/audit-scratch    # 17v/2t (v2 baseline in scratch)
-moon prove _prove_pilot/audit-scratch    # 17v/2t (Experiment 1a: drop outer invariant)
+moon prove _prove_pilot/audit-scratch    # 17v/2t (Experiment 1a — INCORRECT, see §13 v3 correction: actual is 14v/3t)
 moon prove _prove_pilot/audit-scratch    # 14v/3t (Experiment 1b: drop inner invariant)
 moon prove _prove_pilot/audit-scratch    # 16v/3t (Experiment 2: drop arr_disjoint precondition)
 moon prove _prove_pilot/audit-scratch    # 17v/3t (Experiment 3b: Form 3b rejected)
 moon prove _prove_pilot/audit-scratch    #  1v/0t (Experiment 4: proof_axiomatized)
 moon test -p "mavis/dml/_prove_pilot"     # 4/4 runtime tests pass
+```
+
+**v3 re-verification** (see §13 for full reproduction log):
+```
+moon prove _prove_pilot/audit-scratch-1a # 17v/2t (byte-identical v2 baseline copy)
+moon prove _prove_pilot/audit-scratch-1a # 14v/3t (Experiment 1a re-run: drop outer invariant)
+moon prove _prove_pilot/audit-scratch-1a # 17v/2t (restore outer invariant)
+moon prove _prove_pilot/audit-scratch-1b # 14v/3t (Experiment 1b re-run: drop inner invariant)
+moon prove _prove_pilot/audit-scratch-2  # 16v/3t (Experiment 2 re-run: drop arr_disjoint)
 ```
 
 ---
@@ -797,3 +812,115 @@ moon test -p "mavis/dml/_prove_pilot"                   # 4/4 runtime tests pass
 `where { proof_invariant: 0 <= i && i <= n }` block stays in
 `_prove_pilot/kfold_view.mbt:132-134`. Verified byte-identical
 to v2.
+
+---
+
+## Postscript (2026-09-12) — meta-note on the v2 → v3 → v4 correction chain
+
+After the v2 audit was delivered (2026-09-03, original Finding #5
+"outer invariant is decorative" with reported Experiment 1a
+`17v/2t` unchanged), the user (parent session) ran an independent
+reproduction of Experiment 1a by directly modifying the producer's
+source `_prove_pilot/kfold_view.mbt` to drop the outer invariant and
+re-running `moon prove _prove_pilot`. The result was **14v/3t**
+(3v + 1t regression), contradicting the v2 audit's report of 17v/2t
+unchanged. The user reverted the change, restoring the producer's
+source to v2 baseline (17v/2t confirmed, 4/4 runtime tests pass).
+
+This triggered the v3 correction (this document's §13): a clean
+re-run of Experiment 1a in a fresh `_prove_pilot/audit-scratch-1a/`
+(byte-identical copy of the producer's v2 source) confirmed
+**14v/3t** regression. The original v2 audit's "outer invariant is
+decorative" claim was retracted; the v2 audit's Finding #5 was
+replaced with "outer invariant IS load-bearing" and Finding #6 was
+rescinded.
+
+The v4 self-review (§14) then independently re-verified the v3
+correction in another fresh directory (`audit-scratch-4/`), ran
+all 13 prior audit sections through a consistency check, and
+confirmed the grep residual check (no present-tense "decorative
+outer" claim anywhere outside §13's audit-trail context).
+
+### Diagnosed cause of the v2 audit error
+
+The most plausible diagnosis is that during the v2 audit session,
+the mutation step in Experiment 1a (drop outer invariant) **did
+not actually take effect on the audit-scratch file at the time
+the `moon prove` was run** — most likely because:
+
+- The edit was attempted but the saved file was still the v2
+  baseline (e.g., an editor session-restoration issue, a wrong
+  file path, or a stale read by `moon prove` from a cached
+  source). The v2 audit's Experiment 1a output `17v/2t` is
+  identical to the v2 baseline, which is exactly what would be
+  expected if the audit-scratch file was unchanged at the time
+  of the `moon prove` run.
+- The v2 audit's later Experiment 1b (drop inner invariant)
+  DID take effect, producing the correct 14v/3t regression.
+  This asymmetry — Experiment 1a's mutation silently no-op vs.
+  Experiment 1b's mutation taking effect — is consistent with
+  a session-level state-drift bug specific to the v2 audit's
+  mutation/restore cycle on the `audit-scratch/` directory, not
+  with a methodology bug.
+
+The v3 reproduction eliminates this failure mode by:
+1. Copying the producer's source to a **fresh** audit-scratch
+   path (`_prove_pilot/audit-scratch-1a/`, NOT the v2 audit's
+   `_prove_pilot/audit-scratch/` which had been through multiple
+   mutation/restore cycles).
+2. Verifying byte-identity between the copy and the producer's
+   source **before** the mutation (SHA256 hash check).
+3. Verifying byte-identity of the restored copy against the
+   producer's source **after** the mutation cycle (to confirm
+   the only delta was the outer invariant removal).
+4. Running `moon prove` immediately after each mutation and
+   after the restore, with no read-from-cache shortcuts.
+
+### Lessons (re-stated for the record)
+
+1. **Verify byte-identity of the audit-scratch before running
+   `moon prove`.** A mis-copied or un-restored audit-scratch
+   will produce the baseline result, masking the mutation
+   effect. The v2 audit skipped this sanity check; v3 adds it.
+2. **Run `moon prove` immediately after each mutation**, not
+   after a batch of mutations. The v2 audit may have batched
+   mutations and reported the output of the wrong one.
+3. **Sanity-check the mutation result against the prior
+   audit's prediction.** The v1 audit predicted the outer
+   invariant would be load-bearing; the v2 audit's "decorative"
+   conclusion was a contradiction that should have been flagged
+   and re-checked, not accepted at face value.
+4. **The audit-scratch path matters.** Re-using
+   `_prove_pilot/audit-scratch/` after multiple mutation/restore
+   cycles accumulates the risk of state drift. A fresh path
+   (`_prove_pilot/audit-scratch-1a/` or `-4/`) eliminates this
+   risk.
+
+### Final state of the v2 audit (post-v3, post-v4, post-postscript)
+
+- **Verdict: PASS (unchanged across v2, v3, v4).** The v2 fix
+  pass is sound. The 17 discharged goals are correct. The 2
+  remaining timeouts are documented as "genuinely hard" with a
+  verified analysis. The trust surface is honest (zero in
+  producer's source). The runtime tests pass (4/4).
+- **Finding #5 (v2): "outer invariant is decorative"** —
+  **RETRACTED** in v3. Replaced with Finding #5 (v3):
+  "outer invariant IS load-bearing" (see §8 Findings table
+  row 5 for the corrected text).
+- **Finding #6 (v2): "handoff overstates the outer invariant's
+  contribution"** — **RESCINDED** in v3. The handoff was
+  correct; both invariants are load-bearing.
+- **Producer's source**: unchanged across v2, v3, v4. The
+  outer `where { proof_invariant: 0 <= i && i <= n }` block
+  stays in `_prove_pilot/kfold_view.mbt:132-134`. Verified
+  byte-identical to v2 baseline throughout.
+
+### Independent of the v2/v3/v4 audit chain: upstream filing still open
+
+Independent of all three audit versions, the producer's v1
+handoff recommended filing upstream for the `Array` → `array`
+Why3 lowering gap on the main package. This is unrelated to
+the v2/v3/v4 audit findings about the `_prove_pilot/` package
+and remains open.
+
+**End of post-v4 audit chain.**
