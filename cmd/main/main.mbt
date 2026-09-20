@@ -16,7 +16,7 @@ fn main {
   let p = 5
   let theta0 = 1.0
   let seed = 1111
-  let rng = @dml.chacha8_rng(seed)
+  let rng = @moonbit_doubleML.chacha8_rng(seed)
   // build X, D1, D2, eps via a deterministic uniform->normal transform.
   // to keep the port self-contained we use a simple Box-Muller for normals.
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -69,10 +69,10 @@ fn main {
     }
     y[i] = theta0 * d1[i] + s
   }
-  let x_mat = @dml.Matrix::from_array(x_flat, n, p)
-  let data = @dml.DoubleMLData::new(x_mat, y, d1)
+  let x_mat = @moonbit_doubleML.Matrix::from_array(x_flat, n, p)
+  let data = @moonbit_doubleML.DoubleMLData::new(x_mat, y, d1)
   // -------- run DML --------
-  let model = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141)
+  let model = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141)
   let fitted = model.fit()
   let (lo, hi) = fitted.confint()
   println("=== MoonBit DML PLR (partialling out) ===")
@@ -81,7 +81,7 @@ fn main {
   println("standard error    = \{fitted.se()}")
   println("95% confint       = [\{lo}, \{hi}]")
   println("n_obs             = \{fitted.n_obs()}")
-  let model5 = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=5, seed=3141)
+  let model5 = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=5, seed=3141)
   let fitted5 = model5.fit()
   println("=== MoonBit DML PLR (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{fitted5.coef()}")
@@ -89,7 +89,7 @@ fn main {
 
   // -------- run IRM --------
   // Same DGP works for IRM too: ATE is also theta0.
-  let irm = @dml.DoubleMLIRM::new(data, n_folds=2, n_rep=1, seed=3141)
+  let irm = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=1, seed=3141)
   let irm_fitted = irm.fit()
   let (ilo, ihi) = irm_fitted.confint()
   println("")
@@ -99,7 +99,7 @@ fn main {
   println("standard error    = \{irm_fitted.se()}")
   println("95% confint       = [\{ilo}, \{ihi}]")
   println("n_obs             = \{irm_fitted.n_obs()}")
-  let irm5 = @dml.DoubleMLIRM::new(data, n_folds=2, n_rep=5, seed=3141)
+  let irm5 = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=5, seed=3141)
   let irm_fitted5 = irm5.fit()
   println("=== MoonBit DML IRM (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{irm_fitted5.coef()}")
@@ -148,8 +148,8 @@ fn main {
     }
     y_iv[i] = theta0 * d_iv[i] + s
   }
-  let pliv_data = @dml.DoubleMLPLIVData::new(x_mat, y_iv, d_iv, z)
-  let pliv = @dml.DoubleMLPLIV::new(pliv_data, n_folds=2, n_rep=1, seed=3141)
+  let pliv_data = @moonbit_doubleML.DoubleMLPLIVData::new(x_mat, y_iv, d_iv, z)
+  let pliv = @moonbit_doubleML.DoubleMLPLIV::new(pliv_data, n_folds=2, n_rep=1, seed=3141)
   let pliv_fitted = pliv.fit()
   let (plo, phi_) = pliv_fitted.confint()
   println("")
@@ -159,7 +159,7 @@ fn main {
   println("standard error    = \{pliv_fitted.se()}")
   println("95% confint       = [\{plo}, \{phi_}]")
   println("n_obs             = \{pliv_fitted.n_obs()}")
-  let pliv5 = @dml.DoubleMLPLIV::new(pliv_data, n_folds=2, n_rep=5, seed=3141)
+  let pliv5 = @moonbit_doubleML.DoubleMLPLIV::new(pliv_data, n_folds=2, n_rep=5, seed=3141)
   let pliv_fitted5 = pliv5.fit()
   println("=== MoonBit DML PLIV (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{pliv_fitted5.coef()}")
@@ -201,8 +201,8 @@ fn main {
     }
     y_iivm[i] = theta0 * d_iivm[i] + s
   }
-  let iivm_data = @dml.DoubleMLIIVMData::new(x_mat, y_iivm, d_iivm, z_iivm)
-  let iivm = @dml.DoubleMLIIVM::new(iivm_data, n_folds=2, n_rep=1, seed=3141)
+  let iivm_data = @moonbit_doubleML.DoubleMLIIVMData::new(x_mat, y_iivm, d_iivm, z_iivm)
+  let iivm = @moonbit_doubleML.DoubleMLIIVM::new(iivm_data, n_folds=2, n_rep=1, seed=3141)
   let iivm_fitted = iivm.fit()
   let (ilo_, ihi_) = iivm_fitted.confint()
   println("")
@@ -212,7 +212,7 @@ fn main {
   println("standard error    = \{iivm_fitted.se()}")
   println("95% confint       = [\{ilo_}, \{ihi_}]")
   println("n_obs             = \{iivm_fitted.n_obs()}")
-  let iivm5 = @dml.DoubleMLIIVM::new(iivm_data, n_folds=2, n_rep=5, seed=3141)
+  let iivm5 = @moonbit_doubleML.DoubleMLIIVM::new(iivm_data, n_folds=2, n_rep=5, seed=3141)
   let iivm_fitted5 = iivm5.fit()
   println("=== MoonBit DML IIVM (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{iivm_fitted5.coef()}")
@@ -229,13 +229,13 @@ fn main {
     d_did[i] = if rng.double() < p_x_ { 1.0 } else { 0.0 }
     y_did[i] = theta0 * d_did[i] + 0.3 * (i + 1).to_double() / n.to_double()
   }
-  let did_data = @dml.DoubleMLDIDData::new(x_mat, y_did, d_did) catch {
-    @dml.DIDDataError::NonBinaryTreatment(i) =>
+  let did_data = @moonbit_doubleML.DoubleMLDIDData::new(x_mat, y_did, d_did) catch {
+    @moonbit_doubleML.DIDDataError::NonBinaryTreatment(i) =>
       abort(
         "DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")",
       )
   }
-  let did = @dml.DoubleMLDID::new(did_data, n_folds=2, n_rep=1, seed=3141)
+  let did = @moonbit_doubleML.DoubleMLDID::new(did_data, n_folds=2, n_rep=1, seed=3141)
   let did_fitted = did.fit()
   let (dlo, dhi_) = did_fitted.confint()
   println("")
@@ -245,7 +245,7 @@ fn main {
   println("standard error    = \{did_fitted.se()}")
   println("95% confint       = [\{dlo}, \{dhi_}]")
   println("n_obs             = \{did_fitted.n_obs()}")
-  let did5 = @dml.DoubleMLDID::new(did_data, n_folds=2, n_rep=5, seed=3141)
+  let did5 = @moonbit_doubleML.DoubleMLDID::new(did_data, n_folds=2, n_rep=5, seed=3141)
   let did_fitted5 = did5.fit()
   println("=== MoonBit DML DID (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{did_fitted5.coef()}")
@@ -280,8 +280,8 @@ fn main {
     let y_part = theta0 * d_ssm[i] + 0.3 * x_mat.get(i, 0) * d_ssm[i]
     y_ssm[i] = y_part + noise
   }
-  let ssm_data = @dml.DoubleMLSSMData::new(x_mat, y_ssm, d_ssm, s_ssm)
-  let ssm = @dml.DoubleMLSSM::new(ssm_data, n_folds=2, n_rep=1, seed=3141)
+  let ssm_data = @moonbit_doubleML.DoubleMLSSMData::new(x_mat, y_ssm, d_ssm, s_ssm)
+  let ssm = @moonbit_doubleML.DoubleMLSSM::new(ssm_data, n_folds=2, n_rep=1, seed=3141)
   let ssm_fitted = ssm.fit()
   let (slo_, shi_) = ssm_fitted.confint()
   println("")
@@ -305,9 +305,9 @@ fn main {
     d_lpq[i] = z_lpq[i] // all compliers
     y_lpq[i] = d_lpq[i] + (i % 100).to_double() / 100.0
   }
-  let lpq_x = @dml.Matrix::zeros(n, 1)
-  let lpq_data = @dml.DoubleMLLPQData::new(lpq_x, y_lpq, d_lpq, z_lpq)
-  let lpq_fitted = @dml.DoubleMLLPQ::new(
+  let lpq_x = @moonbit_doubleML.Matrix::zeros(n, 1)
+  let lpq_data = @moonbit_doubleML.DoubleMLLPQData::new(lpq_x, y_lpq, d_lpq, z_lpq)
+  let lpq_fitted = @moonbit_doubleML.DoubleMLLPQ::new(
     lpq_data,
     treatment=1.0,
     quantile=0.5,
@@ -326,15 +326,15 @@ fn main {
   // The new IPW bisection (Bug #3) drops the per-iteration
   // g cross-fit, so the per-fit cross-fit count drops from
   // 53 to 3.
-  let pq_x = @dml.Matrix::zeros(n, 1)
+  let pq_x = @moonbit_doubleML.Matrix::zeros(n, 1)
   let d_pq : Array[Double] = Array::make(n, 0.0)
   let y_pq : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     d_pq[i] = if i % 2 == 0 { 1.0 } else { 0.0 }
     y_pq[i] = d_pq[i] + (i % 100).to_double() / 100.0
   }
-  let pq_data = @dml.DoubleMLData::new(pq_x, y_pq, d_pq)
-  let pq_fitted = @dml.DoubleMLPQ::new(
+  let pq_data = @moonbit_doubleML.DoubleMLData::new(pq_x, y_pq, d_pq)
+  let pq_fitted = @moonbit_doubleML.DoubleMLPQ::new(
     pq_data,
     treatment=1.0,
     quantile=0.5,
@@ -356,7 +356,7 @@ fn main {
   // so the new SE is very close to the buggy SE; for DGPs
   // with larger cross-covariance the new SE can be larger
   // or smaller than the buggy one (see `qte_se_*` tests).
-  let qte_fitted = @dml.DoubleMLQTE::new(
+  let qte_fitted = @moonbit_doubleML.DoubleMLQTE::new(
     pq_data,
     quantiles=[0.25, 0.5, 0.75],
     n_folds=2,
@@ -377,14 +377,14 @@ fn main {
   // pre-fix buggy quadrature SE for comparison. The post-fix
   // QTE SE is `se = sqrt(mean((psi_d1/deriv_d1 - psi_d0/deriv_d0)^2)/n)`;
   // the pre-fix SE was `sqrt(se_d1^2 + se_d0^2)`.
-  let pq_se_1 = @dml.DoubleMLPQ::new(
+  let pq_se_1 = @moonbit_doubleML.DoubleMLPQ::new(
     pq_data,
     treatment=1.0,
     quantile=0.5,
     n_folds=2,
     seed=3141,
   ).fit()
-  let pq_se_0 = @dml.DoubleMLPQ::new(
+  let pq_se_0 = @moonbit_doubleML.DoubleMLPQ::new(
     pq_data,
     treatment=0.0,
     quantile=0.5,
@@ -401,14 +401,14 @@ fn main {
   // BLP: y = 2 + 3*x (linear), so the slope and intercept should
   // match exactly. The SEs should be tiny for the (n=500, p=2)
   // well-conditioned design.
-  let blp_x = @dml.Matrix::zeros(n, 1)
+  let blp_x = @moonbit_doubleML.Matrix::zeros(n, 1)
   let blp_s : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     let z = (i.to_double() - (n / 2).to_double()) / (n / 2).to_double()
     blp_x.set(i, 0, z)
     blp_s[i] = 2.0 + 3.0 * z
   }
-  let blp_fitted = @dml.DoubleMLBLP::new(blp_x, blp_s).fit()
+  let blp_fitted = @moonbit_doubleML.DoubleMLBLP::new(blp_x, blp_s).fit()
   let blp_c = blp_fitted.coef()
   let blp_se = blp_fitted.se()
   println("")
@@ -421,25 +421,25 @@ fn main {
   // PolicyTree: signal = -1 if z<0 else +1. With the new
   // variance-reduction gain, the optimal split is at z=0, with
   // left_treatment=0 (signal ≤ 0) and right_treatment=1.
-  let pt_x = @dml.Matrix::zeros(n, 1)
+  let pt_x = @moonbit_doubleML.Matrix::zeros(n, 1)
   let pt_s : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     let z = (i.to_double() - (n / 2).to_double()) / (n / 2).to_double()
     pt_x.set(i, 0, z)
     pt_s[i] = if z < 0.0 { -1.0 } else { 1.0 }
   }
-  let pt_fitted = @dml.DoubleMLPolicyTree::new(pt_x, pt_s).fit()
+  let pt_fitted = @moonbit_doubleML.DoubleMLPolicyTree::new(pt_x, pt_s).fit()
   println("")
   println("=== MoonBit PolicyTree (Bug #8: variance-reduction gain) ===")
   println("split_feature = \{pt_fitted.split_feature()}")
   println("split_value   = \{pt_fitted.split_value()}")
-  let pt_pred = pt_fitted.predict(@dml.Matrix::from_array([-0.5, 0.5], 2, 1))
+  let pt_pred = pt_fitted.predict(@moonbit_doubleML.Matrix::from_array([-0.5, 0.5], 2, 1))
   println("predict([-0.5, 0.5]) = [\{pt_pred[0]}, \{pt_pred[1]}]")
 
   // -------- run RDD --------
   // Sharp RD: y = 2 + u + 2 * d where d = 1{u >= 0}. The local
   // linear intercept jump at the cutoff should be 2.0.
-  let rdd_x = @dml.Matrix::zeros(n, 1)
+  let rdd_x = @moonbit_doubleML.Matrix::zeros(n, 1)
   let rdd_y : Array[Double] = Array::make(n, 0.0)
   let rdd_d : Array[Double] = Array::make(n, 0.0)
   let rdd_score : Array[Double] = Array::make(n, 0.0)
@@ -449,8 +449,8 @@ fn main {
     rdd_d[i] = if u >= 0.0 { 1.0 } else { 0.0 }
     rdd_y[i] = 2.0 + u + 2.0 * rdd_d[i]
   }
-  let rdd_sharp = @dml.DoubleMLRDD::new(
-    @dml.DoubleMLRDDData::new(rdd_x, rdd_y, rdd_d, rdd_score),
+  let rdd_sharp = @moonbit_doubleML.DoubleMLRDD::new(
+    @moonbit_doubleML.DoubleMLRDDData::new(rdd_x, rdd_y, rdd_d, rdd_score),
     bandwidth=0.5,
   ).fit()
   println("")
@@ -468,8 +468,8 @@ fn main {
     rdd_d_fz[i] = if u >= 0.0 { 0.7 } else { 0.5 }
     rdd_y_fz[i] = u + 0.6 * rdd_d_fz[i]
   }
-  let rdd_fuzzy = @dml.DoubleMLRDD::new(
-    @dml.DoubleMLRDDData::new(rdd_x, rdd_y_fz, rdd_d_fz, rdd_score),
+  let rdd_fuzzy = @moonbit_doubleML.DoubleMLRDD::new(
+    @moonbit_doubleML.DoubleMLRDDData::new(rdd_x, rdd_y_fz, rdd_d_fz, rdd_score),
     bandwidth=0.5,
     fuzzy=true,
   ).fit()

@@ -10,7 +10,7 @@ fn main {
   let p = 3
   let theta0 = 1.0
   let seed = 1111
-  let rng = @dml.chacha8_rng(seed)
+  let rng = @moonbit_doubleML.chacha8_rng(seed)
 
   // ---- Build X (n, p) via CLT on chacha8 uniforms ----
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -21,7 +21,7 @@ fn main {
     }
     x_flat[k] = acc - 6.0
   }
-  let x = @dml.Matrix::from_array(x_flat, n, p)
+  let x = @moonbit_doubleML.Matrix::from_array(x_flat, n, p)
 
   // ---- Build treatment assignment d in {1, 2} ----
   // Two-level treatment with probability depending on X[:, 0].
@@ -56,8 +56,8 @@ fn main {
   }
 
   // ---- Estimate ----
-  let data = @dml.DoubleMLData::new(x, y, d)
-  let fitted = @dml.DoubleMLAPOS::new(
+  let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)
+  let fitted = @moonbit_doubleML.DoubleMLAPOS::new(
     data,
     [1.0, 2.0],
     n_folds=2,

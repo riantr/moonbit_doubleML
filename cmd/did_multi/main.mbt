@@ -18,7 +18,7 @@ fn main {
   let t_arr : Array[Int] = Array::make(n, 0)
   let g_arr : Array[Int] = Array::make(n, 0)
   let id_arr : Array[Int] = Array::make(n, 0)
-  let rng = @dml.chacha8_rng(11)
+  let rng = @moonbit_doubleML.chacha8_rng(11)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     let xu : Array[Double] = Array::make(p, 0.0)
@@ -45,15 +45,15 @@ fn main {
       y[row] = y_val
     }
   }
-  let data = @dml.DoubleMLDIDCSData::new(
-    @dml.Matrix::from_array(x_flat, n, p),
+  let data = @moonbit_doubleML.DoubleMLDIDCSData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
     y,
     d,
     t_arr,
     id_arr,
     g_arr,
   )
-  let fitted = @dml.DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let fitted = @moonbit_doubleML.DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
   println(
     "=== MoonBit DML demo: DoubleMLDIDMulti (n_units=\{n_units}, p=\{p}, true ATT=\{theta0}) ===",
   )
@@ -101,7 +101,7 @@ fn main {
   // v0.24.0+: "universal" keyword includes pre-treatment
   // placebos. The DGP has no pre-treatment effect, so
   // those cells should be near 0.
-  let fitted_u = @dml.DoubleMLDIDMulti::new(
+  let fitted_u = @moonbit_doubleML.DoubleMLDIDMulti::new(
     data,
     n_folds=2,
     seed=3141,

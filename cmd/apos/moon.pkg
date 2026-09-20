@@ -1,5 +1,5 @@
 import {
-  "mavis/dml",
+  "mavis/moonbit_doubleML",
   "moonbitlang/core/math",
 }
 

@@ -1,8 +1,8 @@
-# Verifier Audit Report (v2 re-audit) — dml-moonbit v0.48.0 proof pilot
+# Verifier Audit Report (v2 re-audit) — moonbit_doubleML v0.48.0 proof pilot
 
 **Date:** 2026-09-03
 **Branch/scope:** `_prove_pilot/` (self-contained proof pilot)
-**Project:** DoubleMachineLearning / dml-moonbit v0.48.0 (commit `474406f`)
+**Project:** DoubleMachineLearning / moonbit_doubleML v0.48.0 (commit `474406f`)
 **Auditor:** `moonbit-prove-verifier` (mvs_3eb2ec3d6ab04da1a51faf702bdd96ed)
 **Producer:** `moonbit-prover`, handoff at `_prove_pilot/HANDOFF.md`
 **Audit type:** **v2 re-audit** (follow-up to `VERIFIER_AUDIT.md`)
@@ -347,7 +347,7 @@ auto-generation, not user trust).
 | `build_row_unit_map_view` postcondition: `row_unit_map_view_ok` | (same test) | Postcondition holds at runtime; test inspects values. |
 
 **Runtime tests pass: 4/4 in `_prove_pilot/`.** Verified by
-`moon test -p "mavis/dml/_prove_pilot"`.
+`moon test -p "mavis/moonbit_doubleML/_prove_pilot"`.
 
 The preconditions are **reachable** in the runtime tests, so the proof is
 **not vacuous** for the contracted functions. The `arr_disjoint` precondition
@@ -450,7 +450,7 @@ viable trade-off for the user.
 **Audit-scratch state**: all mutations reverted; audit-scratch matches v2
 baseline (17v/2t). Producer's source files unchanged.
 
-**Verification commands run** (all from `D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit`):
+**Verification commands run** (all from `D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML`):
 
 > **Note on Experiment 1a's 17v/2t line below**: this was the v2 audit's
 > original (incorrect) report. The v3 correction (see §13) re-ran the same
@@ -465,7 +465,7 @@ moon prove _prove_pilot/audit-scratch    # 14v/3t (Experiment 1b: drop inner inv
 moon prove _prove_pilot/audit-scratch    # 16v/3t (Experiment 2: drop arr_disjoint precondition)
 moon prove _prove_pilot/audit-scratch    # 17v/3t (Experiment 3b: Form 3b rejected)
 moon prove _prove_pilot/audit-scratch    #  1v/0t (Experiment 4: proof_axiomatized)
-moon test -p "mavis/dml/_prove_pilot"     # 4/4 runtime tests pass
+moon test -p "mavis/moonbit_doubleML/_prove_pilot"     # 4/4 runtime tests pass
 ```
 
 **v3 re-verification** (see §13 for full reproduction log):
@@ -652,7 +652,7 @@ block at the end of this document.
 ### 14.1 Empirical verification (the most important check)
 
 All four `moon prove` invocations were run from
-`D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit` against
+`D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML` against
 a fresh audit-scratch-4/ copy of the producer's v2 source (SHA256
 verified byte-identical before mutation and after restore):
 
@@ -662,7 +662,7 @@ verified byte-identical before mutation and after restore):
 | 2. `audit-scratch-4/` baseline (byte-identical copy) | `moon prove .` (in `audit-scratch-4/`) | **17 goals proved, 2 timeout** | ✓ |
 | 3. **Experiment 1a**: drop ONLY the outer `where { proof_invariant: 0 <= i && i <= n }` block (kfold_view.mbt:132-134) | `moon prove .` (in `audit-scratch-4/`) | **14 goals proved, 3 timeout** | ✓ (regression: -3v / +1t) |
 | 4. Restore outer invariant (byte-identical verified again via SHA256) | `moon prove .` (in `audit-scratch-4/`) | **17 goals proved, 2 timeout** | ✓ (back to baseline) |
-| 5. Runtime tests | `moon test -p "mavis/dml/_prove_pilot"` | **4/4 passed, 0 failed** | ✓ |
+| 5. Runtime tests | `moon test -p "mavis/moonbit_doubleML/_prove_pilot"` | **4/4 passed, 0 failed** | ✓ |
 
 **v3's correction is empirically correct**: dropping the outer
 `proof_invariant` regresses 17v/2t → 14v/3t, which matches both
@@ -796,16 +796,16 @@ left in place for traceability):
 - `scratch4_baseline_prove.txt` — output of `moon prove .` on byte-identical copy (17v/2t)
 - `scratch4_drop_outer_prove.txt` — output of `moon prove .` after dropping outer invariant (14v/3t)
 - `scratch4_restored_prove.txt` — output of `moon prove .` after restoring outer invariant (17v/2t)
-- `baseline_test.txt` — output of `moon test -p "mavis/dml/_prove_pilot"` (4/4 pass)
+- `baseline_test.txt` — output of `moon test -p "mavis/moonbit_doubleML/_prove_pilot"` (4/4 pass)
 
 **Verification commands run** (v4, all from
-`D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit`):
+`D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML`):
 ```
 moon prove _prove_pilot                                # 17v/2t (v2 baseline confirmed)
 moon prove _prove_pilot/audit-scratch-4                # 17v/2t (byte-identical copy baseline)
 moon prove _prove_pilot/audit-scratch-4                # 14v/3t (Experiment 1a: drop outer invariant)
 moon prove _prove_pilot/audit-scratch-4                # 17v/2t (restore outer invariant)
-moon test -p "mavis/dml/_prove_pilot"                   # 4/4 runtime tests pass
+moon test -p "mavis/moonbit_doubleML/_prove_pilot"                   # 4/4 runtime tests pass
 ```
 
 **Producer's source**: unchanged. The outer

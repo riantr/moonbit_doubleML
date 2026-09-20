@@ -27,7 +27,7 @@ fn main {
   let p = 9
   let theta0 = 1.5
   let seed = 1111
-  let rng = @dml.chacha8_rng(seed)
+  let rng = @moonbit_doubleML.chacha8_rng(seed)
   // Draw 9 features x n + residuals: 9 * n normals from Box-Muller.
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   for i = 0; i < (n * p + 2 * n) / 2; i = i + 1 {
@@ -84,13 +84,13 @@ fn main {
     }
     y[i] = theta0 * d[i] + s
   }
-  let x_mat = @dml.Matrix::from_array(x_flat, n, p)
-  let data = @dml.DoubleMLData::new(x_mat, y, d)
+  let x_mat = @moonbit_doubleML.Matrix::from_array(x_flat, n, p)
+  let data = @moonbit_doubleML.DoubleMLData::new(x_mat, y, d)
   println(
     "=== MoonBit DML demo: synthetic 401(k)-style DGP (n=\{n}, p=\{p}) ===",
   )
   println("true theta_0      = \{theta0}")
-  let plr = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141)
+  let plr = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141)
   let plr_fit = plr.fit()
   let (lo, hi) = plr_fit.confint()
   println("")
@@ -98,12 +98,12 @@ fn main {
   println("theta_hat = \{plr_fit.coef()}")
   println("se        = \{plr_fit.se()}")
   println("95% CI    = [\{lo}, \{hi}]")
-  let plr5 = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=5, seed=3141)
+  let plr5 = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=5, seed=3141)
   let plr5_fit = plr5.fit()
   println("--- DoubleMLPLR (n_rep=5) ---")
   println("theta_hat = \{plr5_fit.coef()}")
   println("se        = \{plr5_fit.se()}")
-  let irm = @dml.DoubleMLIRM::new(data, n_folds=2, n_rep=1, seed=3141)
+  let irm = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=1, seed=3141)
   let irm_fit = irm.fit()
   let (ilo, ihi) = irm_fit.confint()
   println("")
@@ -111,7 +111,7 @@ fn main {
   println("theta_hat = \{irm_fit.coef()}")
   println("se        = \{irm_fit.se()}")
   println("95% CI    = [\{ilo}, \{ihi}]")
-  let irm5 = @dml.DoubleMLIRM::new(data, n_folds=2, n_rep=5, seed=3141)
+  let irm5 = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=5, seed=3141)
   let irm5_fit = irm5.fit()
   println("--- DoubleMLIRM (n_rep=5) ---")
   println("theta_hat = \{irm5_fit.coef()}")

@@ -1,4 +1,4 @@
-# mavis/dml — Double / Debiased Machine Learning in MoonBit
+# mavis/moonbit_doubleML — Double / Debiased Machine Learning in MoonBit
 
 Pure-MoonBit port of the
 [`doubleml`](https://github.com/DoubleML/doubleml-for-py) Python package,

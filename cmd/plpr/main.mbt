@@ -9,7 +9,7 @@ fn build_panel(
   rng : @random.Rand,
   n_units : Int,
   n_periods : Int,
-) -> @dml.DoubleMLPanelData {
+) -> @moonbit_doubleML.DoubleMLPanelData {
   let p = 2
   let n = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -37,8 +37,8 @@ fn build_panel(
         (rng.double() - 0.5) * 0.25
     }
   }
-  @dml.DoubleMLPanelData::new(
-    @dml.Matrix::from_array(x_flat, n, p),
+  @moonbit_doubleML.DoubleMLPanelData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
     y,
     d,
     t_arr,
@@ -48,7 +48,7 @@ fn build_panel(
 
 ///|
 fn main {
-  let panel = build_panel(@dml.chacha8_rng(3141), 60, 4)
+  let panel = build_panel(@moonbit_doubleML.chacha8_rng(3141), 60, 4)
   println("=== MoonBit DML demo: static panel PLPR (60 units x 4 periods) ===")
   println("true theta = 1.0 (unit FE correlated with treatment)")
   println("")
@@ -61,7 +61,7 @@ fn main {
   for i = 0; i < approaches.length(); i = i + 1 {
     let name = approaches[i].0
     let desc = approaches[i].1
-    let fitted = @dml.DoubleMLPLPR::new(
+    let fitted = @moonbit_doubleML.DoubleMLPLPR::new(
       panel,
       approach=name,
       n_folds=2,

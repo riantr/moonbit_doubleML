@@ -24,7 +24,7 @@ def run_moonbit_pava(x, y):
 
     The MoonBit entry point reads the input from a temp file
     and writes the result to stdout. We use the public `pava`
-    function from the `mavis/dml` package.
+    function from the `mavis/moonbit_doubleML` package.
     """
     raise NotImplementedError("use the end-to-end PSProcessor path instead")
 

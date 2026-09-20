@@ -14,7 +14,7 @@ fn main {
   let t_arr : Array[Int] = Array::make(n, 0)
   let g_arr : Array[Int] = Array::make(n, 0)
   let id_arr : Array[Int] = Array::make(n, 0)
-  let rng = @dml.chacha8_rng(7)
+  let rng = @moonbit_doubleML.chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let xu : Array[Double] = Array::make(p, 0.0)
     for j = 0; j < p; j = j + 1 {
@@ -41,15 +41,15 @@ fn main {
       y[row] = y_val
     }
   }
-  let data = @dml.DoubleMLDIDBinaryData::new(
-    @dml.Matrix::from_array(x_flat, n, p),
+  let data = @moonbit_doubleML.DoubleMLDIDBinaryData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
     y,
     d,
     t_arr,
     g_arr,
     id_arr,
   )
-  let fitted = @dml.DoubleMLDIDBinary::new(
+  let fitted = @moonbit_doubleML.DoubleMLDIDBinary::new(
     data,
     1,
     0,

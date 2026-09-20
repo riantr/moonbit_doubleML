@@ -25,7 +25,7 @@ test "var_est_happy_path" {
     }
     i = i + 2
   }
-  let (coef, se) = @dml.var_est(psi_a, psi_b)
+  let (coef, se) = @moonbit_doubleML.var_est(psi_a, psi_b)
   // sanity: with psi_a=ones and mean(psi_b) ≈ 0, coef ≈ 0 within 1.0
   inspect((coef - 0.0).abs() < 1.0, content="true")
   // se must be positive and below 1.0 for n = 500 with unit psi_a
@@ -40,7 +40,7 @@ test "var_est_happy_path" {
 /// which is the same `check.mbt:require` surface every other public
 /// API uses.
 test "panic_var_est_length_mismatch" {
-  let _ = @dml.var_est([1.0, 2.0], [1.0])
+  let _ = @moonbit_doubleML.var_est([1.0, 2.0], [1.0])
 }
 
 ///|
@@ -49,5 +49,5 @@ test "panic_var_est_length_mismatch" {
 /// `var_est.mbt` (the `n >= 1` precondition that guards against the
 /// zero-length mean / division-by-zero that would otherwise follow).
 test "panic_var_est_n_zero" {
-  let _ = @dml.var_est([], [])
+  let _ = @moonbit_doubleML.var_est([], [])
 }

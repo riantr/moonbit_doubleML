@@ -10,7 +10,7 @@ fn build_dgp(
   rng : @random.Rand,
   n : Int,
   alpha : Double,
-) -> @dml.DoubleMLBinaryData {
+) -> @moonbit_doubleML.DoubleMLBinaryData {
   let p = 6
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -33,7 +33,7 @@ fn build_dgp(
     let x1 = x_flat[i * p]
     let x2 = x_flat[i * p + 1]
     let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]
-    let p_t = @dml.expit(a)
+    let p_t = @moonbit_doubleML.expit(a)
     let u = rng.double()
     d[i] = if u < p_t { 1.0 } else { 0.0 }
   }
@@ -50,16 +50,16 @@ fn build_dgp(
       0.5 * @math.sin(x5) +
       (if x6 > 0.0 { 1.0 } else { 0.0 }) -
       0.5
-    let prob = @dml.expit(alpha * d[i] + r)
+    let prob = @moonbit_doubleML.expit(alpha * d[i] + r)
     let u = rng.double()
     y[i] = if u < prob { 1.0 } else { 0.0 }
   }
-  @dml.DoubleMLBinaryData::new(@dml.Matrix::from_array(x_flat, n, p), y, d)
+  @moonbit_doubleML.DoubleMLBinaryData::new(@moonbit_doubleML.Matrix::from_array(x_flat, n, p), y, d)
 }
 
 ///|
 fn main {
-  let data = build_dgp(@dml.chacha8_rng(3141), 500, 0.5)
+  let data = build_dgp(@moonbit_doubleML.chacha8_rng(3141), 500, 0.5)
   println("=== MoonBit DML demo: Partially Logistic Regression (LZZ2020) ===")
   println("true alpha = 0.5 (logit-scale causal effect)")
   println("")
@@ -71,7 +71,7 @@ fn main {
   for i = 0; i < names.length(); i = i + 1 {
     let sc_name = names[i].0
     let sc_desc = names[i].1
-    let fitted = @dml.DoubleMLLPLR::new(
+    let fitted = @moonbit_doubleML.DoubleMLLPLR::new(
       data,
       score=sc_name,
       n_folds=2,

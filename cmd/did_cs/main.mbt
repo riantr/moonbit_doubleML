@@ -22,7 +22,7 @@ fn main {
   let t_arr : Array[Int] = Array::make(n, 0)
   let g_arr : Array[Int] = Array::make(n, 0)
   let id_arr : Array[Int] = Array::make(n, 0)
-  let rng = @dml.chacha8_rng(11)
+  let rng = @moonbit_doubleML.chacha8_rng(11)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     let xu : Array[Double] = Array::make(p, 0.0)
@@ -49,15 +49,15 @@ fn main {
       y[row] = y_val
     }
   }
-  let data = @dml.DoubleMLDIDCSData::new(
-    @dml.Matrix::from_array(x_flat, n, p),
+  let data = @moonbit_doubleML.DoubleMLDIDCSData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
     y,
     d,
     t_arr,
     id_arr,
     g_arr,
   )
-  let fitted = @dml.DoubleMLDIDCS::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let fitted = @moonbit_doubleML.DoubleMLDIDCS::new(data, n_folds=2, n_rep=1, seed=3141).fit()
   println(
     "=== MoonBit DML demo: Callaway-Sant'Anna DID (staggered, n_units=\{n_units}, p=\{p}) ===",
   )

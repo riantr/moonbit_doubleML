@@ -874,7 +874,7 @@ test "panic_gain_stats_from_blp_cv_repeated_zero_repeats" {
 /// OOF residual variance to ~1e-25 — a vacuous
 /// test DGP).
 fn rng_double2(i : Int) -> Double {
-  let r = @dml.chacha8_rng(i + 1)
+  let r = @moonbit_doubleML.chacha8_rng(i + 1)
   r.double() - 0.5
 }
 
@@ -889,6 +889,6 @@ fn rng_double() -> Double {
   // from call to call.
   let _ = 0
   // Use the @random chacha8 RNG with a fixed seed.
-  let r = @dml.chacha8_rng(2024)
+  let r = @moonbit_doubleML.chacha8_rng(2024)
   r.double() - 0.5
 }

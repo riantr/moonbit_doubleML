@@ -81,7 +81,7 @@ test "pq_ipw_score_no_g_needed" {
   //   i=2: 1/0.5 * 1 - 0.5 = 1.5
   //   i=3: 0/0.5 * 0 - 0.5 = -0.5
   //   i=4: 1/0.5 * 1 - 0.5 = 1.5
-  let _ = @dml.Matrix::zeros(5, 1)
+  let _ = @moonbit_doubleML.Matrix::zeros(5, 1)
   let s = pq_score_ipw(Matrix::zeros(5, 1), y, treated, m, 1.0, 0.5)
   inspect(s.length(), content="5")
   let expected = [1.5, -0.5, 1.5, -0.5, 1.5]

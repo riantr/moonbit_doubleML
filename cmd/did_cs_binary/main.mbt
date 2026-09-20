@@ -25,7 +25,7 @@ fn main {
   let t_arr : Array[Int] = Array::make(n, 0)
   let g_arr : Array[Int] = Array::make(n, 0)
   let id_arr : Array[Int] = Array::make(n, 0)
-  let rng = @dml.chacha8_rng(7)
+  let rng = @moonbit_doubleML.chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     let xu : Array[Double] = Array::make(p, 0.0)
@@ -44,15 +44,15 @@ fn main {
       y[row] = if cohort > 0 && k >= cohort { 1.0 } else { 0.0 }
     }
   }
-  let data = @dml.DoubleMLDIDCSData::new(
-    @dml.Matrix::from_array(x_flat, n, p),
+  let data = @moonbit_doubleML.DoubleMLDIDCSData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
     y,
     d,
     t_arr,
     id_arr,
     g_arr,
   )
-  let fitted = @dml.DoubleMLDIDCSBinary::new(
+  let fitted = @moonbit_doubleML.DoubleMLDIDCSBinary::new(
     data,
     1,
     0,

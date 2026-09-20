@@ -1,4 +1,4 @@
-// Fuzz harness for mavis/dml pure functions.
+// Fuzz harness for mavis/moonbit_doubleML pure functions.
 //
 // MoonBit has no libFuzzer/AFL integration, so this is a
 // deterministic property-based fuzzer: it drives thousands of
@@ -93,12 +93,12 @@ fn fuzz_padjust(rng : @random.Rand, trials : Int) -> Unit {
       ps.push(p)
     }
     // Range/length invariants hold for every method.
-    let bh = @dml.bh_fdr_p_adjust(ps)
-    let by = @dml.by_fdr_p_adjust(ps)
-    let tsbh = @dml.tsbh_p_adjust(ps)
-    let tsby = @dml.tsby_p_adjust(ps)
-    let holm = @dml.holm_bonferroni_p_adjust(ps)
-    let bonf = @dml.bonferroni_p_adjust(ps)
+    let bh = @moonbit_doubleML.bh_fdr_p_adjust(ps)
+    let by = @moonbit_doubleML.by_fdr_p_adjust(ps)
+    let tsbh = @moonbit_doubleML.tsbh_p_adjust(ps)
+    let tsby = @moonbit_doubleML.tsby_p_adjust(ps)
+    let holm = @moonbit_doubleML.holm_bonferroni_p_adjust(ps)
+    let bonf = @moonbit_doubleML.bonferroni_p_adjust(ps)
     let names = ["bh", "by", "tsbh", "tsby", "holm", "bonferroni"]
     let outs = [bh, by, tsbh, tsby, holm, bonf]
     for mi = 0; mi < names.length(); mi = mi + 1 {
@@ -136,7 +136,7 @@ fn fuzz_kfold(rng : @random.Rand, trials : Int) -> Unit {
     let n_obs = rng.int(limit=200) + 2
     let n_folds = rng.int(limit=n_obs - 1) + 2
     let seed = rng.int(limit=1_000_000)
-    let folds = @dml.kfold(n_obs, n_folds, seed)
+    let folds = @moonbit_doubleML.kfold(n_obs, n_folds, seed)
     check(folds.length() == n_folds, "kfold: fold count")
     // Membership vector: each index in exactly one test fold.
     let seen : Array[Bool] = Array::make(n_obs, false)
@@ -188,14 +188,14 @@ fn fuzz_matmul(rng : @random.Rand, trials : Int) -> Unit {
     for i = 0; i < k * n; i = i + 1 {
       kn.push(rng.double() * 4.0 - 2.0)
     }
-    let a = @dml.Matrix::from_array(mk, n, m)
-    let b = @dml.Matrix::from_array(km, m, k)
-    let c = @dml.Matrix::from_array(kn, k, n)
+    let a = @moonbit_doubleML.Matrix::from_array(mk, n, m)
+    let b = @moonbit_doubleML.Matrix::from_array(km, m, k)
+    let c = @moonbit_doubleML.Matrix::from_array(kn, k, n)
     // (A·B)·C vs A·(B·C), computed via repeated scalar loops.
-    let ab = @dml.matmul(a, b)
-    let abc_left = @dml.matmul(ab, c)
-    let bc = @dml.matmul(b, c)
-    let abc_right = @dml.matmul(a, bc)
+    let ab = @moonbit_doubleML.matmul(a, b)
+    let abc_left = @moonbit_doubleML.matmul(ab, c)
+    let bc = @moonbit_doubleML.matmul(b, c)
+    let abc_right = @moonbit_doubleML.matmul(a, bc)
     for i = 0; i < n; i = i + 1 {
       for j = 0; j < n; j = j + 1 {
         check(
@@ -231,8 +231,8 @@ fn fuzz_linear_exact(rng : @random.Rand, trials : Int) -> Unit {
     for _i = 0; _i < n; _i = _i + 1 {
       ys.push((rng.double() - 0.5) * 10.0)
     }
-    let x_mat = @dml.Matrix::from_array(flat, n, p)
-    let model = @dml.LinearRegression::new().fit(x_mat, ys)
+    let x_mat = @moonbit_doubleML.Matrix::from_array(flat, n, p)
+    let model = @moonbit_doubleML.LinearRegression::new().fit(x_mat, ys)
     let pred = model.predict(x_mat)
     // Invariant 1: all outputs finite.
     let mut sum_r = 0.0
@@ -273,8 +273,8 @@ fn fuzz_linear_exact(rng : @random.Rand, trials : Int) -> Unit {
 fn fuzz_norm_inverse(rng : @random.Rand, trials : Int) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let p = 0.001 + rng.double() * 0.998
-    let z = @dml.norm_ppf(p)
-    let p_back = @dml.norm_cdf(z)
+    let z = @moonbit_doubleML.norm_ppf(p)
+    let p_back = @moonbit_doubleML.norm_cdf(z)
     check(
       (p_back - p).abs() < 1.0e-3,
       "norm_ppf/norm_cdf inverse consistency (p=\{p})",
@@ -296,7 +296,7 @@ fn fuzz_romano_wolf(rng : @random.Rand, trials : Int) -> Unit {
     for _b = 0; _b < n_boot * k; _b = _b + 1 {
       boot.push((rng.double() - 0.5) * 2.0)
     }
-    let adj = @dml.romano_wolf_p_adjust(boot, ts, ts)
+    let adj = @moonbit_doubleML.romano_wolf_p_adjust(boot, ts, ts)
     check(adj.length() == k, "romano-wolf: length preserved")
     for i = 0; i < k; i = i + 1 {
       check(
@@ -314,7 +314,7 @@ fn fuzz_plpr_panel(
   rng : @random.Rand,
   n_units : Int,
   n_periods : Int,
-) -> @dml.DoubleMLPanelData {
+) -> @moonbit_doubleML.DoubleMLPanelData {
   let p = 2
   let n = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -342,8 +342,8 @@ fn fuzz_plpr_panel(
         (rng.double() - 0.5) * 0.25
     }
   }
-  @dml.DoubleMLPanelData::new(
-    @dml.Matrix::from_array(x_flat, n, p),
+  @moonbit_doubleML.DoubleMLPanelData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
     y,
     d,
     t_arr,
@@ -362,9 +362,9 @@ fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
     let panel = fuzz_plpr_panel(rng, n_units, n_periods)
     let seed = rng.int(limit=100_000)
     let model = if iv {
-      @dml.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
+      @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
     } else {
-      @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+      @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, seed~).fit()
     }
     // Invariant 1: finite, positive-se estimates.
     let th = model.coef()
@@ -385,9 +385,9 @@ fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
     )
     // Invariant 3: same-seed refit is bit-exact.
     let again = if iv {
-      @dml.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
+      @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
     } else {
-      @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+      @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, seed~).fit()
     }
     check(
       again.coef() == th && again.se() == se,
@@ -408,7 +408,7 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
     let x_flat : Array[Double] = Array::make(n * p, 0.0)
     let y : Array[Double] = Array::make(n, 0.0)
     let d : Array[Double] = Array::make(n, 0.0)
-    let ch_rng = @dml.chacha8_rng(seed)
+    let ch_rng = @moonbit_doubleML.chacha8_rng(seed)
     let pool : Array[Double] = []
     while pool.length() < n * p + n {
       let u1 = ch_rng.double()
@@ -426,7 +426,7 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
       let x1 = x_flat[i * p]
       let x2 = x_flat[i * p + 1]
       let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]
-      let p_t = @dml.expit(a)
+      let p_t = @moonbit_doubleML.expit(a)
       let u = ch_rng.double()
       d[i] = if u < p_t { 1.0 } else { 0.0 }
     }
@@ -443,16 +443,16 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
         0.5 * @math.sin(x5) +
         (if x6 > 0.0 { 1.0 } else { 0.0 }) -
         0.5
-      let prob = @dml.expit(0.5 * d[i] + r)
+      let prob = @moonbit_doubleML.expit(0.5 * d[i] + r)
       let u = ch_rng.double()
       y[i] = if u < prob { 1.0 } else { 0.0 }
     }
-    let data = @dml.DoubleMLBinaryData::new(
-      @dml.Matrix::from_array(x_flat, n, p),
+    let data = @moonbit_doubleML.DoubleMLBinaryData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
       y,
       d,
     )
-    let model = @dml.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
+    let model = @moonbit_doubleML.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
     let th = model.coef()
     let se = model.se()
     check(
@@ -476,7 +476,7 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
       )
     }
     // Same-seed refit determinism.
-    let again = @dml.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
+    let again = @moonbit_doubleML.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
     check(
       again.coef() == th && again.se() == se,
       "lplr same-seed refit (trial=\{trial})",
@@ -495,7 +495,7 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
     let y : Array[Double] = Array::make(n, 0.0)
     let d : Array[Double] = Array::make(n, 0.0)
     let cluster : Array[Int] = Array::make(n, 0)
-    let ch_rng = @dml.chacha8_rng(rng.int(limit=100_000))
+    let ch_rng = @moonbit_doubleML.chacha8_rng(rng.int(limit=100_000))
     let pool : Array[Double] = []
     while pool.length() < n * p + n {
       let u1 = ch_rng.double()
@@ -533,13 +533,13 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
     }
     let seed = rng.int(limit=100_000)
     // cluster-fit: pass cluster_vars so the cluster-robust path runs.
-    let data_c = @dml.DoubleMLData::new(
-      @dml.Matrix::from_array(x_flat, n, p),
+    let data_c = @moonbit_doubleML.DoubleMLData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
       y,
       d,
       cluster_vars=cluster,
     )
-    let cluster_fit = @dml.DoubleMLPLR::new(data_c, n_folds=2, seed~).fit()
+    let cluster_fit = @moonbit_doubleML.DoubleMLPLR::new(data_c, n_folds=2, seed~).fit()
     let th_c = cluster_fit.coef()
     let se_c = cluster_fit.se()
     check(th_c.abs() < 1.0e6, "cluster-plr finite coef (trial=\{trial})")
@@ -548,12 +548,12 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
       "cluster-plr finite se (trial=\{trial})",
     )
     // row-fit (same data, no cluster_vars).
-    let data_r = @dml.DoubleMLData::new(
-      @dml.Matrix::from_array(x_flat, n, p),
+    let data_r = @moonbit_doubleML.DoubleMLData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
       y,
       d,
     )
-    let row_fit = @dml.DoubleMLPLR::new(data_r, n_folds=2, seed~).fit()
+    let row_fit = @moonbit_doubleML.DoubleMLPLR::new(data_r, n_folds=2, seed~).fit()
     let se_r = row_fit.se()
     check(
       se_r == se_r && se_r >= 0.0 && se_r < 1.0e10,
@@ -577,7 +577,7 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
       )
     }
     // Same-seed refit determinism.
-    let again = @dml.DoubleMLPLR::new(data_c, n_folds=2, seed~).fit()
+    let again = @moonbit_doubleML.DoubleMLPLR::new(data_c, n_folds=2, seed~).fit()
     check(
       again.coef() == th_c && again.se() == se_c,
       "cluster-plr same-seed refit (trial=\{trial})",
@@ -603,7 +603,7 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
     let d : Array[Double] = Array::make(n, 0.0)
     let z : Array[Double] = Array::make(n, 0.0)
     let cluster : Array[Int] = Array::make(n, 0)
-    let ch_rng = @dml.chacha8_rng(rng.int(limit=100_000))
+    let ch_rng = @moonbit_doubleML.chacha8_rng(rng.int(limit=100_000))
     let pool : Array[Double] = []
     while pool.length() < n * p + n {
       let u1 = ch_rng.double()
@@ -637,7 +637,7 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
         // cluster-fold keeps both z=0 and z=1 in every train slice
         // because both unit effects and iv_strength are non-extreme.
         let prop = 1.5 * x1 + 0.4 * alpha / 2.0 + 0.3 * unit_trait
-        let pz = @dml.expit(prop)
+        let pz = @moonbit_doubleML.expit(prop)
         let u01 = ch_rng.double()
         z[row] = if u01 < pz { 1.0 } else { 0.0 }
         y[row] = 1.0 * d[row] +
@@ -648,14 +648,14 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       }
     }
     let seed = rng.int(limit=100_000)
-    let data_c_pliv = @dml.DoubleMLPLIVData::new(
-      @dml.Matrix::from_array(x_flat, n, p),
+    let data_c_pliv = @moonbit_doubleML.DoubleMLPLIVData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
       y,
       d,
       z,
       cluster_vars=cluster,
     )
-    let pliv_fit = @dml.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
+    let pliv_fit = @moonbit_doubleML.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
     let th_p = pliv_fit.coef()
     let se_p = pliv_fit.se()
     check(
@@ -670,13 +670,13 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
     // guard (v0.33.0 lesson: catches regression where the cluster
     // path accidentally returns the row-level SE formula, and
     // detects pathological fold-split fragility).
-    let data_r_pliv = @dml.DoubleMLPLIVData::new(
-      @dml.Matrix::from_array(x_flat, n, p),
+    let data_r_pliv = @moonbit_doubleML.DoubleMLPLIVData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
       y,
       d,
       z,
     )
-    let pliv_row_fit = @dml.DoubleMLPLIV::new(data_r_pliv, n_folds=2, seed~).fit()
+    let pliv_row_fit = @moonbit_doubleML.DoubleMLPLIV::new(data_r_pliv, n_folds=2, seed~).fit()
     let se_p_row = pliv_row_fit.se()
     check(
       se_p_row == se_p_row && se_p_row >= 0.0 && se_p_row < 1.0e10,
@@ -699,19 +699,19 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
         "fuzz PLIV cluster/row SE ratio bounded (trial=\{trial}, ratio=\{ratio})",
       )
     }
-    let again = @dml.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
+    let again = @moonbit_doubleML.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
     check(
       again.coef() == th_p && again.se() == se_p,
       "fuzz PLIV same-seed refit (trial=\{trial})",
     )
-    let data_c_iivm = @dml.DoubleMLIIVMData::new(
-      @dml.Matrix::from_array(x_flat, n, p),
+    let data_c_iivm = @moonbit_doubleML.DoubleMLIIVMData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
       y,
       d,
       z,
       cluster_vars=cluster,
     )
-    let iivm_fit = @dml.DoubleMLIIVM::new(data_c_iivm, n_folds=2, seed~).fit()
+    let iivm_fit = @moonbit_doubleML.DoubleMLIIVM::new(data_c_iivm, n_folds=2, seed~).fit()
     let th_i = iivm_fit.coef()
     let se_i = iivm_fit.se()
     check(
@@ -723,13 +723,13 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       "fuzz IIVM finite se (trial=\{trial}, se=\{se_i})",
     )
     // IIVM row-fit (no cluster_vars) for cluster-vs-row SE ratio guard.
-    let data_r_iivm = @dml.DoubleMLIIVMData::new(
-      @dml.Matrix::from_array(x_flat, n, p),
+    let data_r_iivm = @moonbit_doubleML.DoubleMLIIVMData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
       y,
       d,
       z,
     )
-    let iivm_row_fit = @dml.DoubleMLIIVM::new(data_r_iivm, n_folds=2, seed~).fit()
+    let iivm_row_fit = @moonbit_doubleML.DoubleMLIIVM::new(data_r_iivm, n_folds=2, seed~).fit()
     let se_i_row = iivm_row_fit.se()
     check(
       se_i_row == se_i_row && se_i_row >= 0.0 && se_i_row < 1.0e10,
@@ -762,7 +762,7 @@ fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int) -> Unit {
     let approach = approaches[rng.int(limit=4)]
     let panel = fuzz_plpr_panel(rng, n_units, n_periods)
     let seed = rng.int(limit=100_000)
-    let model = @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+    let model = @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, seed~).fit()
     // Invariant 1: PLPR clustered fit must always produce finite
     // coef and a positive se. The J-floor defensive guard
     // (v0.34.0) aborts the process if mean(psi_deriv) lands below
@@ -795,7 +795,7 @@ fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int) -> Unit {
     let approach = approaches[rng.int(limit=4)]
     let panel = fuzz_plpr_panel(rng, n_units, n_periods)
     let seed = rng.int(limit=100_000)
-    let model = @dml.DoubleMLPLPR::new(panel, approach~, seed~).fit()
+    let model = @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, seed~).fit()
     let th = model.coef()
     let se = model.se()
     check(
@@ -822,9 +822,9 @@ fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int) -> Unit {
 ///|
 fn main {
   let trials = 300
-  println("=== mavis/dml fuzz harness (\{trials} trials per surface) ===")
+  println("=== mavis/moonbit_doubleML fuzz harness (\{trials} trials per surface) ===")
   let master = @random.Rand::chacha8(
-    seed=Bytes::from_array(@dml.seed_to_bytes(20260824)),
+    seed=Bytes::from_array(@moonbit_doubleML.seed_to_bytes(20260824)),
   )
   // Derive per-surface RNGs deterministically from the master seed.
   let s1 = master.int(limit=1_000_000)
@@ -839,37 +839,37 @@ fn main {
   let s10 = master.int(limit=1_000_000)
   let s11 = master.int(limit=1_000_000)
   println("[1/11] p_adjust family ...")
-  fuzz_padjust(@dml.chacha8_rng(s1), trials)
+  fuzz_padjust(@moonbit_doubleML.chacha8_rng(s1), trials)
   println("      OK")
   println("[2/11] kfold partition invariants ...")
-  fuzz_kfold(@dml.chacha8_rng(s2), trials)
+  fuzz_kfold(@moonbit_doubleML.chacha8_rng(s2), trials)
   println("      OK")
   println("[3/11] Matrix matmul associativity ...")
-  fuzz_matmul(@dml.chacha8_rng(s3), trials)
+  fuzz_matmul(@moonbit_doubleML.chacha8_rng(s3), trials)
   println("      OK")
   println("[4/11] LinearRegression normal-equations invariants ...")
-  fuzz_linear_exact(@dml.chacha8_rng(s4), trials)
+  fuzz_linear_exact(@moonbit_doubleML.chacha8_rng(s4), trials)
   println("      OK")
   println("[5/11] norm_ppf / norm_cdf inverse sweep ...")
-  fuzz_norm_inverse(@dml.chacha8_rng(s5), trials)
+  fuzz_norm_inverse(@moonbit_doubleML.chacha8_rng(s5), trials)
   println("      OK")
   println("[6/11] romano_wolf_p_adjust range/length ...")
-  fuzz_romano_wolf(@dml.chacha8_rng(s6), trials)
+  fuzz_romano_wolf(@moonbit_doubleML.chacha8_rng(s6), trials)
   println("      OK")
   println("[7/11] DoubleMLPLPR clustered fit invariants ...")
-  fuzz_plpr(@dml.chacha8_rng(s7), trials)
+  fuzz_plpr(@moonbit_doubleML.chacha8_rng(s7), trials)
   println("      OK")
   println("[8/11] DoubleMLLPLR nonlinear fit invariants ...")
-  fuzz_lplr(@dml.chacha8_rng(s8), trials)
+  fuzz_lplr(@moonbit_doubleML.chacha8_rng(s8), trials)
   println("      OK")
   println("[9/11] DoubleMLPLR cluster-robust vs row-level ...")
-  fuzz_cluster_plr(@dml.chacha8_rng(s9), trials)
+  fuzz_cluster_plr(@moonbit_doubleML.chacha8_rng(s9), trials)
   println("      OK")
   println("[10/11] DoubleMLPLIV/IIVM cluster-robust fits ...")
-  fuzz_cluster_iv(@dml.chacha8_rng(s10), trials)
+  fuzz_cluster_iv(@moonbit_doubleML.chacha8_rng(s10), trials)
   println("      OK")
   println("[11/11] DoubleMLPLPR cluster-path stress (small n_units) ...")
-  fuzz_plpr_cluster_stress(@dml.chacha8_rng(s11), trials)
+  fuzz_plpr_cluster_stress(@moonbit_doubleML.chacha8_rng(s11), trials)
   println("      OK")
   println("")
   println("ALL FUZZ SURFACES PASSED (no invariant violations)")

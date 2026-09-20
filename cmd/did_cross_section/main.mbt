@@ -19,7 +19,7 @@ fn main {
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let t_arr : Array[Int] = Array::make(n, 0)
-  let rng = @dml.chacha8_rng(11)
+  let rng = @moonbit_doubleML.chacha8_rng(11)
   for i = 0; i < n; i = i + 1 {
     for j = 0; j < p; j = j + 1 {
       x_flat[i * p + j] = rng.double() * 2.0 - 1.0
@@ -36,14 +36,14 @@ fn main {
     y_val = y_val + 0.05 * (rng.double() - 0.5)
     y[i] = y_val
   }
-  let data = @dml.DoubleMLDIDCrossSectionData::new(
-    @dml.Matrix::from_array(x_flat, n, p),
+  let data = @moonbit_doubleML.DoubleMLDIDCrossSectionData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
     y,
     d,
     t_arr,
     name="demo",
   )
-  let fitted = @dml.DoubleMLDIDCrossSection::new(
+  let fitted = @moonbit_doubleML.DoubleMLDIDCrossSection::new(
     data,
     n_folds=2,
     n_rep=1,

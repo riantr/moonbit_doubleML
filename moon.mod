@@ -8,7 +8,7 @@
 // import {
 //   "moonbitlang/x@0.4.6",
 // }
-name = "mavis/dml"
+name = "mavis/moonbit_doubleML"
 
 version = "0.52.0"
 
