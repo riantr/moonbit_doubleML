@@ -103,3 +103,25 @@ _verify/audit_bucket*
 _verify/test-bucket*
 _verify/audit-scratch-v0.52_*
 _build-archived/
+
+# Release-cycle scratch (release QA battery stdout logs, kept
+# locally for postmortem; never tracked).
+_v0*_*.txt
+_check_output*.txt
+_check_output*.txt.archived
+_fmt_apply.txt.archived
+_fmt_check*.txt.archived
+_fmt_output.txt.archived
+_prove_output*.txt
+_prove_output*.txt.archived
+_probe_*.mbtp
+_probe_*.mbtp.archived
+_test_*.txt
+_test_*.txt.archived
+dbg.txt
+
+# _prove_pilot/ verifier scratch (proof-pilot cycle artefacts;
+# renamed to .archived so git ignores them; re-creatable from
+# the verifier cycle commands).
+_prove_pilot/audit-scratch*
+_prove_pilot/moon_prove_help.log
