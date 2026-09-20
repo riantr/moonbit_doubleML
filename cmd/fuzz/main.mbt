@@ -409,7 +409,7 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
     let y : Array[Double] = Array::make(n, 0.0)
     let d : Array[Double] = Array::make(n, 0.0)
     let ch_rng = @dml.chacha8_rng(seed)
-    let pool : Array[Double] = Array::new()
+    let pool : Array[Double] = []
     while pool.length() < n * p + n {
       let u1 = ch_rng.double()
       let u2 = ch_rng.double()
@@ -496,7 +496,7 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
     let d : Array[Double] = Array::make(n, 0.0)
     let cluster : Array[Int] = Array::make(n, 0)
     let ch_rng = @dml.chacha8_rng(rng.int(limit=100_000))
-    let pool : Array[Double] = Array::new()
+    let pool : Array[Double] = []
     while pool.length() < n * p + n {
       let u1 = ch_rng.double()
       let u2 = ch_rng.double()
@@ -604,7 +604,7 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
     let z : Array[Double] = Array::make(n, 0.0)
     let cluster : Array[Int] = Array::make(n, 0)
     let ch_rng = @dml.chacha8_rng(rng.int(limit=100_000))
-    let pool : Array[Double] = Array::new()
+    let pool : Array[Double] = []
     while pool.length() < n * p + n {
       let u1 = ch_rng.double()
       let u2 = ch_rng.double()

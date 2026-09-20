@@ -317,9 +317,11 @@ pub fn DoubleMLAPOS::new(
 
 ///|
 pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
-  let c = Array::make(self.treatment_levels.length(), 0.0)
-  let s = Array::make(self.treatment_levels.length(), 0.0)
-  for j = 0; j < self.treatment_levels.length(); j = j + 1 {
+  try {
+    require(self.treatment_levels.length() >= 1)
+    let c = Array::make(self.treatment_levels.length(), 0.0)
+    let s = Array::make(self.treatment_levels.length(), 0.0)
+    for j = 0; j < self.treatment_levels.length(); j = j + 1 {
     // v0.49.0: the parent APOS fits each child `DoubleMLAPO` with
     // `n_rep = self.n_rep` so the child draws its own fold
     // partition (`n_rep` total fold draws per treatment level).
@@ -348,6 +350,10 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
     coefs: c,
     ses: s,
     fitted: true,
+  }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

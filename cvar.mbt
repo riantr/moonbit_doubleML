@@ -576,13 +576,15 @@ fn cvar_inner_crossfit(
 ///   5. `var_est(psi_a, psi_b)` gives the per-rep `(theta, se)`;
 ///      aggregate across reps with `aggregate_coef_se`.
 pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
-  let n = self.n_obs()
-  let treated = indicator_level(self.data.d, self.treatment)
-  // Per-rep accumulators. The per-rep nuisances are discarded
-  // except for the final rep's (which become the public
-  // `g_hat` / `m_hat`); the per-rep `(theta_r, se_r)` are
-  // aggregated.
-  let coefs : Array[Double] = Array::make(self.n_rep, 0.0)
+  try {
+    require(self.quantile > 0.0 && self.quantile < 1.0)
+    let n = self.n_obs()
+    let treated = indicator_level(self.data.d, self.treatment)
+    // Per-rep accumulators. The per-rep nuisances are discarded
+    // except for the final rep's (which become the public
+    // `g_hat` / `m_hat`); the per-rep `(theta_r, se_r)` are
+    // aggregated.
+    let coefs : Array[Double] = Array::make(self.n_rep, 0.0)
   let ses : Array[Double] = Array::make(self.n_rep, 0.0)
   let mut last_g : Array[Double] = Array::make(n, 0.0)
   let mut last_m : Array[Double] = Array::make(n, 0.0)
@@ -682,5 +684,9 @@ pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
     coef: theta,
     se,
     fitted: true,
+  }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }

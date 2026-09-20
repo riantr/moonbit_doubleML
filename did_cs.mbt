@@ -318,8 +318,10 @@ pub fn DoubleMLDIDCS::fit(
 ) -> DoubleMLDIDCS {
   ignore(ml_g)
   ignore(ml_m)
-  let n = self.data.y.length()
-  let p = self.data.x.cols()
+  try {
+    require(self.n_groups >= 1 && self.n_periods >= 1)
+    let n = self.data.y.length()
+    let p = self.data.x.cols()
   // Precompute the never-treated-value = min of g.
   let mut never_treated_value = self.data.g[0]
   for i = 1; i < n; i = i + 1 {
@@ -505,5 +507,9 @@ pub fn DoubleMLDIDCS::fit(
     se_matrix: final_se,
     psi_matrix: final_psi,
     fitted: true,
+  }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }

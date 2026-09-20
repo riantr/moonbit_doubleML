@@ -81,3 +81,39 @@ test "variance_basic" {
   let v = variance([1.0, 2.0, 3.0, 4.0, 5.0])
   inspect(v, content="2")
 }
+
+///|
+/// Regression test: `matvec_t` must use Kahan-compensated
+/// summation to keep the result of an intentionally sign-cancelling
+/// dot product within `1.0e-10` of the mathematical answer
+/// (which is `0.0`). The un-Kahan plain `s = s + a*b` accumulator
+/// drifts to ~`n * eps` for a length-`n` input; this test
+/// exercises `n = 10000` rows.
+///
+/// This is the canonical "would I notice if someone reverted the
+/// Kahan accumulator?" probe for both `matvec_t` and `variance`
+/// (both of which got the Kahan compensation in v0.52.0, per
+/// REVIEW_BACKEND.md F1 + F3).
+test "matvec_t_kahan_matches_matvec" {
+  // Build a (n x 1) matrix where column 0 alternates +0.5 /
+  // -0.5 across 10_000 rows. matvec_t of this matrix with
+  // x = Array::make(n, 1.0e-4) computes
+  //   result[0] = sum_i mat[i, 0] * x[i]
+  //             = sum_i (+/- 0.5) * 1.0e-4
+  //             = 0   (sign-cancelling perfect cancellation).
+  // With Kahan this is exactly 0.0; without Kahan the result is
+  // O(n * eps) ≈ 1.0e-12 for n=10_000, which `1.0e-10` catches.
+  let n : Int = 10000
+  let mat_data : Array[Double] = Array::makei(n, fn(i) {
+    if i % 2 == 0 { 0.5 } else { -0.5 }
+  })
+  let mat = Matrix::from_array(mat_data, n, 1)
+  let x : Array[Double] = Array::make(n, 1.0e-4)
+  let res = matvec_t(mat, x)
+  // Kahan result is exactly 0.0; tolerance is generous enough to
+  // absorb a future "improvement" that tightens the budget.
+  let drift = (res[0] - 0.0).abs()
+  if !(drift < 1.0e-10) {
+    fail("matvec_t Kahan: drift = \{drift}, expected < 1e-10")
+  }
+}

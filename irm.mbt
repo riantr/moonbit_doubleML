@@ -278,64 +278,70 @@ pub fn DoubleMLIRM::fit(
   ml_m? : LinearRegression = LinearRegression::new(),
   max_attempts? : Int = 1,
 ) -> DoubleMLIRM {
-  if self.data.is_cluster_data() {
-    return self.fit_cluster(ml_g, ml_m, max_attempts~)
-  }
-  let n = self.n_obs()
-  let nrep = self.n_rep
-  let coefs : Array[Double] = Array::make(nrep, 0.0)
-  let ses : Array[Double] = Array::make(nrep, 0.0)
-  // hold the last rep's predictions; final values land in g0_hat / g1_hat / m_hat
-  let mut g0 : Array[Double] = Array::make(n, 0.0)
-  let mut g1 : Array[Double] = Array::make(n, 0.0)
-  let mut m : Array[Double] = Array::make(n, 0.0)
-  for r = 0; r < nrep; r = r + 1 {
-    let folds = kfold(n, self.n_folds, self.seed + r)
-    let (g0_r, g1_r, m_r) = cross_fit_irm(
-      ml_g,
-      ml_m,
-      self.data.x,
-      self.data.y,
-      self.data.d,
-      folds,
-      self.propensity_clip,
-    )
-    g0 = g0_r
-    g1 = g1_r
-    m = m_r
-    // Score (ATE, weights=1, weights_bar=1) — uses THIS rep's nuisances only
-    let y = self.data.y
-    let d = self.data.d
-    let psi_a : Array[Double] = Array::make(n, 0.0)
-    let psi_b : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      let u0 = y[i] - g0[i]
-      let u1 = y[i] - g1[i]
-      let m_i = m[i]
-      let one_minus_m = 1.0 - m_i
-      let d_over_m = d[i] * u1 / m_i
-      let one_minus_d_over_one_minus_m = (1.0 - d[i]) * u0 / one_minus_m
-      psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
-      psi_a[i] = -1.0
+  try {
+    require(max_attempts >= 1)
+    if self.data.is_cluster_data() {
+      return self.fit_cluster(ml_g, ml_m, max_attempts~)
     }
-    let (coef_r, se_r) = var_est(psi_a, psi_b)
-    coefs[r] = coef_r
-    ses[r] = se_r
-  }
-  // last iteration's predictions are now in g0 / g1 / m
-  let (coef, se) = aggregate_coef_se(coefs, ses)
-  {
-    data: self.data,
-    n_folds: self.n_folds,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    propensity_clip: self.propensity_clip,
-    g0_hat: g0,
-    g1_hat: g1,
-    m_hat: m,
-    coef,
-    se,
-    fitted: true,
+    let n = self.n_obs()
+    let nrep = self.n_rep
+    let coefs : Array[Double] = Array::make(nrep, 0.0)
+    let ses : Array[Double] = Array::make(nrep, 0.0)
+    // hold the last rep's predictions; final values land in g0_hat / g1_hat / m_hat
+    let mut g0 : Array[Double] = Array::make(n, 0.0)
+    let mut g1 : Array[Double] = Array::make(n, 0.0)
+    let mut m : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < nrep; r = r + 1 {
+      let folds = kfold(n, self.n_folds, self.seed + r)
+      let (g0_r, g1_r, m_r) = cross_fit_irm(
+        ml_g,
+        ml_m,
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        folds,
+        self.propensity_clip,
+      )
+      g0 = g0_r
+      g1 = g1_r
+      m = m_r
+      // Score (ATE, weights=1, weights_bar=1) — uses THIS rep's nuisances only
+      let y = self.data.y
+      let d = self.data.d
+      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let psi_b : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        let u0 = y[i] - g0[i]
+        let u1 = y[i] - g1[i]
+        let m_i = m[i]
+        let one_minus_m = 1.0 - m_i
+        let d_over_m = d[i] * u1 / m_i
+        let one_minus_d_over_one_minus_m = (1.0 - d[i]) * u0 / one_minus_m
+        psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
+        psi_a[i] = -1.0
+      }
+      let (coef_r, se_r) = var_est(psi_a, psi_b)
+      coefs[r] = coef_r
+      ses[r] = se_r
+    }
+    // last iteration's predictions are now in g0 / g1 / m
+    let (coef, se) = aggregate_coef_se(coefs, ses)
+    {
+      data: self.data,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      g0_hat: g0,
+      g1_hat: g1,
+      m_hat: m,
+      coef,
+      se,
+      fitted: true,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

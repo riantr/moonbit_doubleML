@@ -189,7 +189,9 @@ fn rdd_side(
 
 ///|
 pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
-  let (yl, vyl, nl, res_yl) = rdd_side(
+  try {
+    require(self.bandwidth > 0.0)
+    let (yl, vyl, nl, res_yl) = rdd_side(
     self.data,
     -1.0,
     self.cutoff,
@@ -272,6 +274,10 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
     // on the same rows so the *treated* count is the same.
     n_local: nl + nr,
     fitted: true,
+  }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

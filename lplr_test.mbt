@@ -26,7 +26,7 @@ fn build_lzz2020_dgp(n : Int, alpha : Double, seed : Int) -> DoubleMLBinaryData 
   let rng = chacha8_rng(seed)
   // Box-Muller pool: enough normals for x (n*p) + noise (n).
   let need = n * p + n
-  let pool : Array[Double] = Array::new()
+  let pool : Array[Double] = []
   while pool.length() < need {
     let u1 = rng.double()
     let u2 = rng.double()
@@ -115,8 +115,8 @@ test "lplr_both_scores_accepted" {
 /// Newton at `theta_start = 1.0` returns `(1.0, true)` in one
 /// step. Independent of any DGP.
 test "lplr_newton_solve_at_root" {
-  let psi : Array[Double] = Array::new()
-  let psi_deriv : Array[Double] = Array::new()
+  let psi : Array[Double] = []
+  let psi_deriv : Array[Double] = []
   psi.push(0.0)
   psi.push(0.0)
   psi.push(0.0)

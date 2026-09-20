@@ -579,24 +579,26 @@ pub fn DoubleMLDIDBinary::fit(
 ) -> DoubleMLDIDBinary {
   ignore(ml_g)
   ignore(ml_m)
-  let wide = preprocess_did_binary(
-    self.data,
-    self.g_value,
-    self.t_value_pre,
-    self.t_value_eval,
-    self.control_group,
-    self.anticipation_periods,
-  )
-  // v0.43.0: wrap in try/catch/re-abort to preserve pre-v0.43.0
-  // process-death behavior. The `wide.d` output of
-  // `preprocess_did_binary` is normally binary (only the
-  // switchers); the catch arm is a defense-in-depth measure.
-  let wide_data = DoubleMLDIDData::new(wide.x, wide.y, wide.d) catch {
-    DIDDataError::NonBinaryTreatment(i) =>
-      abort(
-        "DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")",
-      )
-  }
+  try {
+    require(self.t_value_pre != self.t_value_eval)
+    let wide = preprocess_did_binary(
+      self.data,
+      self.g_value,
+      self.t_value_pre,
+      self.t_value_eval,
+      self.control_group,
+      self.anticipation_periods,
+    )
+    // v0.43.0: wrap in try/catch/re-abort to preserve pre-v0.43.0
+    // process-death behavior. The `wide.d` output of
+    // `preprocess_did_binary` is normally binary (only the
+    // switchers); the catch arm is a defense-in-depth measure.
+    let wide_data = DoubleMLDIDData::new(wide.x, wide.y, wide.d) catch {
+      DIDDataError::NonBinaryTreatment(i) =>
+        abort(
+          "DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")",
+        )
+    }
   // v0.10.0: build the wide-format strata as
   // `G_indicator + 2 * t_indicator` (matching upstream's
   // `self._strata = ...`), so each fold balances the (G, T) cells.
@@ -662,4 +664,8 @@ pub fn DoubleMLDIDBinary::fit(
   // preprocessing so the bootstrap can map wide-format psi
   // back to long-format.
   { ..self, inner, eval_idx: wide.eval_idx, fitted: true, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }

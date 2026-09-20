@@ -338,81 +338,87 @@ pub fn DoubleMLIIVM::fit(
   ml_r? : LinearRegression = LinearRegression::new(),
   max_attempts? : Int = 1,
 ) -> DoubleMLIIVM {
-  if self.data.is_cluster_data() {
-    return self.fit_cluster(ml_g, ml_m, ml_r, max_attempts~)
-  }
-  ignore(ml_g)
-  ignore(ml_m)
-  ignore(ml_r)
-  let n = self.n_obs()
-  let nrep = self.n_rep
-  let coefs : Array[Double] = Array::make(nrep, 0.0)
-  let ses : Array[Double] = Array::make(nrep, 0.0)
-  // hold the last rep's predictions; final values land in *_hat fields
-  let mut g0 : Array[Double] = Array::make(n, 0.0)
-  let mut g1 : Array[Double] = Array::make(n, 0.0)
-  let mut m : Array[Double] = Array::make(n, 0.0)
-  let mut r0 : Array[Double] = Array::make(n, 0.0)
-  let mut r1 : Array[Double] = Array::make(n, 0.0)
-  for r = 0; r < nrep; r = r + 1 {
-    let folds = kfold(n, self.n_folds, self.seed + r)
-    let (g0_r, g1_r, m_r, r0_r, r1_r) = cross_fit_iivm(
-      ml_g,
-      ml_m,
-      ml_r,
-      self.data.x,
-      self.data.y,
-      self.data.d,
-      self.data.z,
-      folds,
-      self.propensity_clip,
-    )
-    g0 = g0_r
-    g1 = g1_r
-    m = m_r
-    r0 = r0_r
-    r1 = r1_r
-    // LATE score for THIS rep's nuisances only
-    let y = self.data.y
-    let d = self.data.d
-    let z = self.data.z
-    let psi_a : Array[Double] = Array::make(n, 0.0)
-    let psi_b : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      let u0 = y[i] - g0[i]
-      let u1 = y[i] - g1[i]
-      let w0 = d[i] - r0[i]
-      let w1 = d[i] - r1[i]
-      let m_i = m[i]
-      let one_minus_m = 1.0 - m_i
-      psi_b[i] = g1[i] -
-        g0[i] +
-        z[i] * u1 / m_i -
-        (1.0 - z[i]) * u0 / one_minus_m
-      psi_a[i] = -(r1[i] - r0[i]) -
-        z[i] * w1 / m_i +
-        (1.0 - z[i]) * w0 / one_minus_m
+  try {
+    require(max_attempts >= 1)
+    if self.data.is_cluster_data() {
+      return self.fit_cluster(ml_g, ml_m, ml_r, max_attempts~)
     }
-    let (coef_r, se_r) = var_est(psi_a, psi_b)
-    coefs[r] = coef_r
-    ses[r] = se_r
-  }
-  // last iteration's predictions are now in g0 / g1 / m / r0 / r1
-  let (coef, se) = aggregate_coef_se(coefs, ses)
-  {
-    data: self.data,
-    n_folds: self.n_folds,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    propensity_clip: self.propensity_clip,
-    g0_hat: g0,
-    g1_hat: g1,
-    m_hat: m,
-    r0_hat: r0,
-    r1_hat: r1,
-    coef,
-    se,
-    fitted: true,
+    ignore(ml_g)
+    ignore(ml_m)
+    ignore(ml_r)
+    let n = self.n_obs()
+    let nrep = self.n_rep
+    let coefs : Array[Double] = Array::make(nrep, 0.0)
+    let ses : Array[Double] = Array::make(nrep, 0.0)
+    // hold the last rep's predictions; final values land in *_hat fields
+    let mut g0 : Array[Double] = Array::make(n, 0.0)
+    let mut g1 : Array[Double] = Array::make(n, 0.0)
+    let mut m : Array[Double] = Array::make(n, 0.0)
+    let mut r0 : Array[Double] = Array::make(n, 0.0)
+    let mut r1 : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < nrep; r = r + 1 {
+      let folds = kfold(n, self.n_folds, self.seed + r)
+      let (g0_r, g1_r, m_r, r0_r, r1_r) = cross_fit_iivm(
+        ml_g,
+        ml_m,
+        ml_r,
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        self.data.z,
+        folds,
+        self.propensity_clip,
+      )
+      g0 = g0_r
+      g1 = g1_r
+      m = m_r
+      r0 = r0_r
+      r1 = r1_r
+      // LATE score for THIS rep's nuisances only
+      let y = self.data.y
+      let d = self.data.d
+      let z = self.data.z
+      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let psi_b : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        let u0 = y[i] - g0[i]
+        let u1 = y[i] - g1[i]
+        let w0 = d[i] - r0[i]
+        let w1 = d[i] - r1[i]
+        let m_i = m[i]
+        let one_minus_m = 1.0 - m_i
+        psi_b[i] = g1[i] -
+          g0[i] +
+          z[i] * u1 / m_i -
+          (1.0 - z[i]) * u0 / one_minus_m
+        psi_a[i] = -(r1[i] - r0[i]) -
+          z[i] * w1 / m_i +
+          (1.0 - z[i]) * w0 / one_minus_m
+      }
+      let (coef_r, se_r) = var_est(psi_a, psi_b)
+      coefs[r] = coef_r
+      ses[r] = se_r
+    }
+    // last iteration's predictions are now in g0 / g1 / m / r0 / r1
+    let (coef, se) = aggregate_coef_se(coefs, ses)
+    {
+      data: self.data,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      g0_hat: g0,
+      g1_hat: g1,
+      m_hat: m,
+      r0_hat: r0,
+      r1_hat: r1,
+      coef,
+      se,
+      fitted: true,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

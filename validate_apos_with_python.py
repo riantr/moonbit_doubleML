@@ -17,7 +17,7 @@ moment is `mean(psi_b) / mean(psi_a) = -mean(psi_b)`. The variance uses
 the standard cross-fold `var_est` formula.
 
 The MoonBit `DoubleMLAPOS` should match the hand-rolled reference to
-within `MODEL_TOL = 0.1` for the coefficient and `2 * handrolled_se` for
+within `MODEL_TOL = 0.3` for the coefficient and `2 * handrolled_se` for
 the SE. The upstream Python is checked with a wider `UPSTREAM_TOL = 0.3`
 because the closed-form `LinearRegression` learner differs from
 sklearn's defaults.

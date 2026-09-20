@@ -321,8 +321,10 @@ pub fn DoubleMLSSM::fit(
   ignore(ml_g)
   ignore(ml_m)
   ignore(ml_pi)
-  let n = self.n_obs()
-  let nrep = self.n_rep
+  try {
+    require(self.n_obs() >= self.n_folds) // kfold precondition
+    let n = self.n_obs()
+    let nrep = self.n_rep
   let pi_acc : Array[Double] = Array::make(n, 0.0)
   let m_acc : Array[Double] = Array::make(n, 0.0)
   let g_d1_acc : Array[Double] = Array::make(n, 0.0)
@@ -387,5 +389,9 @@ pub fn DoubleMLSSM::fit(
     coef,
     se,
     fitted: true,
+  }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }

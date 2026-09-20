@@ -16,7 +16,7 @@ fn build_dgp(
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   // Box-Muller pool.
-  let pool : Array[Double] = Array::new()
+  let pool : Array[Double] = []
   while pool.length() < n * p + n {
     let u1 = rng.double()
     let u2 = rng.double()

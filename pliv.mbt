@@ -216,53 +216,59 @@ pub fn DoubleMLPLIV::fit(
   learner? : LinearRegression = LinearRegression::new(),
   max_attempts? : Int = 1,
 ) -> DoubleMLPLIV {
-  if self.data.is_cluster_data() {
-    return self.fit_cluster(learner, max_attempts~)
-  }
-  ignore(learner)
-  let n = self.n_obs()
-  let nrep = self.n_rep
-  let coefs : Array[Double] = Array::make(nrep, 0.0)
-  let ses : Array[Double] = Array::make(nrep, 0.0)
-  // hold the last rep's predictions; final values land in l_hat / r_hat / m_hat
-  let mut l_pred : Array[Double] = Array::make(n, 0.0)
-  let mut r_pred : Array[Double] = Array::make(n, 0.0)
-  let mut m_pred : Array[Double] = Array::make(n, 0.0)
-  for r = 0; r < nrep; r = r + 1 {
-    let folds = kfold(n, self.n_folds, self.seed + r)
-    l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds)
-    r_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds)
-    m_pred = cross_fit_predict(learner, self.data.x, self.data.z, folds)
-    // Score (partialling out, single instrument) for THIS rep's nuisances only
-    let y = self.data.y
-    let d = self.data.d
-    let z = self.data.z
-    let psi_a : Array[Double] = Array::make(n, 0.0)
-    let psi_b : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      let u = y[i] - l_pred[i]
-      let w = d[i] - r_pred[i]
-      let v = z[i] - m_pred[i]
-      psi_a[i] = -w * v
-      psi_b[i] = v * u
+  try {
+    require(max_attempts >= 1)
+    if self.data.is_cluster_data() {
+      return self.fit_cluster(learner, max_attempts~)
     }
-    let (coef_r, se_r) = var_est(psi_a, psi_b)
-    coefs[r] = coef_r
-    ses[r] = se_r
-  }
-  // last iteration's predictions are now in l_pred / r_pred / m_pred
-  let (coef, se) = aggregate_coef_se(coefs, ses)
-  {
-    data: self.data,
-    n_folds: self.n_folds,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    l_hat: l_pred,
-    r_hat: r_pred,
-    m_hat: m_pred,
-    coef,
-    se,
-    fitted: true,
+    ignore(learner)
+    let n = self.n_obs()
+    let nrep = self.n_rep
+    let coefs : Array[Double] = Array::make(nrep, 0.0)
+    let ses : Array[Double] = Array::make(nrep, 0.0)
+    // hold the last rep's predictions; final values land in l_hat / r_hat / m_hat
+    let mut l_pred : Array[Double] = Array::make(n, 0.0)
+    let mut r_pred : Array[Double] = Array::make(n, 0.0)
+    let mut m_pred : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < nrep; r = r + 1 {
+      let folds = kfold(n, self.n_folds, self.seed + r)
+      l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds)
+      r_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds)
+      m_pred = cross_fit_predict(learner, self.data.x, self.data.z, folds)
+      // Score (partialling out, single instrument) for THIS rep's nuisances only
+      let y = self.data.y
+      let d = self.data.d
+      let z = self.data.z
+      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let psi_b : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        let u = y[i] - l_pred[i]
+        let w = d[i] - r_pred[i]
+        let v = z[i] - m_pred[i]
+        psi_a[i] = -w * v
+        psi_b[i] = v * u
+      }
+      let (coef_r, se_r) = var_est(psi_a, psi_b)
+      coefs[r] = coef_r
+      ses[r] = se_r
+    }
+    // last iteration's predictions are now in l_pred / r_pred / m_pred
+    let (coef, se) = aggregate_coef_se(coefs, ses)
+    {
+      data: self.data,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      l_hat: l_pred,
+      r_hat: r_pred,
+      m_hat: m_pred,
+      coef,
+      se,
+      fitted: true,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

@@ -201,15 +201,13 @@ pub fn solve_pq(
     hi = y_max + margin
     widen_attempts = widen_attempts + 1
   }
-  // The pre-v0.42.0 source had a `lo_score >= 0.0` abort here.
-  // That check is dead code (at lo = y_min - margin < y_min,
-  // every `1{y <= lo} = 0`, so the IPW score `treated/m * 0 - q`
-  // is `-q < 0` for all `q > 0`); v0.42.0 removes it. We still
-  // compute lo_score for symmetry with hi_score (and to keep
-  // the function shape; removing both would be a separate
-  // cleanup).
-  let lo_score = mean(pq_score_ipw(data.x, data.y, treated, m, lo, q))
-  ignore(lo_score)
+  // v0.52.0: removed the `let lo_score = ...; ignore(lo_score)`
+  // block. At lo = y_min - margin < y_min, every `1{y <= lo} = 0`,
+  // so the IPW score reduces to `-q < 0` for all `q > 0`; computing
+  // `lo_score` is harmless but useless. Per the v0.42.0 audit the
+  // `lo_score >= 0.0` abort was dead; v0.52.0 also drops the
+  // redundant computation. The `hi_score` check below is the only
+  // live precondition.
   let hi_score = mean(pq_score_ipw(data.x, data.y, treated, m, hi, q))
   // The pre-v0.42.0 source had a `lo_score >= 0.0` abort here.
   // That check is dead code (at lo = y_min - margin < y_min,

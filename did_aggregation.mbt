@@ -76,10 +76,11 @@ pub fn aggregate_group(
       }
       if sum_w > 0.0 {
         theta[i] = sum_w_theta / sum_w
-        // Group-level weight for the *overall* aggregation
-        // (proportion of units in this group).
-        let w_g = group_sizes[i].to_double() / total.to_double()
-        ignore(w_g)
+        // (v0.52.0: removed dead code `let w_g = ...; ignore(w_g)`.
+        // Group-level weight for the *overall* aggregation used to be
+        // computed here but was never read by the time/overall
+        // aggregators; the package's `aggregate_*` helpers compute
+        // the same ratio internally.)
         se[i] = (sum_w2_se2 / (sum_w * sum_w)).sqrt()
       }
       names[i] = g_value.to_string()

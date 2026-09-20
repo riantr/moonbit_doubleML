@@ -2,7 +2,6 @@ import {
   "mavis/dml",
   "moonbitlang/core/random",
   "moonbitlang/core/math",
-  "moonbitlang/core/bytes",
 }
 
 pkgtype(kind: "executable")

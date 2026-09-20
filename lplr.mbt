@@ -425,7 +425,7 @@ pub fn DoubleMLLPLR::fit(self : DoubleMLLPLR) -> DoubleMLLPLR {
       // because the outer fold structure already keeps the OOF
       // honest on the test rows, and inner OOF for ml_M would
       // require the same double-cross-fit scaffolding as ml_a.
-      let w_inner : Array[Array[Double]] = Array::new()
+      let w_inner : Array[Array[Double]] = []
       for fold in outer {
         let ti = fold.train_idx
         let w : Array[Double] = Array::make(ti.length(), 0.0)

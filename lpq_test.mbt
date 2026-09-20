@@ -174,3 +174,31 @@ test "lpq_within_5pct_of_pre_fix" {
   inspect(coef_err < 0.08, content="true")
   inspect(se_err < 0.50, content="true")
 }
+
+///|
+/// v0.52.0: `DoubleMLLPQ::confint` must surface the canonical
+/// "precondition failed at ..." abort when called before `fit()`.
+/// The wrap is `try { require(self.fitted); ... } catch {
+/// PreconditionError::Violated(loc) => abort(...) }`, so the abort
+/// cascades from the underlying `require(self.fitted)` raise.
+/// MoonBit's `try ... catch ... noraise { fail }` pattern cannot
+/// intercept an `abort()` (aborts are caught by `moon_test_driver`'s
+/// `moonbit_test_driver_internal_catch_error`, not by user-level
+/// `try` blocks). Following the project's panic-prefix convention
+/// (see `panic_lplr_bad_score`, `panic_cholesky_non_psd`), the
+/// `panic_*` test name is what the MoonBit driver looks for at this
+/// layer.
+test "panic_lpq_confint_before_fit" {
+  let x = Matrix::zeros(4, 2)
+  let y = [0.0, 1.0, 0.0, 1.0]
+  let d = [0.0, 1.0, 0.0, 1.0]
+  let z = [0.0, 1.0, 0.0, 1.0]
+  let data = DoubleMLLPQData::new(x, y, d, z)
+  let model = DoubleMLLPQ::new(data)
+  // Calling `confint()` before `fit()` raises
+  // `PreconditionError::Violated(loc)` from `require(self.fitted)`,
+  // which the public `confint()` catches and re-aborts with the
+  // canonical "precondition failed at ..." message. The panic_*
+  // test driver handles this abort.
+  let _ = model.confint()
+}

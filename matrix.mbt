@@ -191,8 +191,13 @@ pub fn matvec_t(a : Matrix, x : Array[Double]) -> Array[Double] {
     let out = Array::make(a.ncols, 0.0)
     for j = 0; j < a.ncols; j = j + 1 {
       let mut s = 0.0
+      let mut s_c = 0.0
       for i = 0; i < a.nrows; i = i + 1 {
-        s = s + a.data[i * a.ncols + j] * x[i]
+        let prod = a.data[i * a.ncols + j] * x[i]
+        let y = prod - s_c
+        let t = s + y
+        s_c = t - s - y
+        s = t
       }
       out[j] = s
     }
@@ -250,15 +255,26 @@ pub fn mean(a : Array[Double]) -> Double {
 
 ///|
 /// Sample variance (population formula `sum((x - mean)^2) / n`).
+///
+/// The `sum((a[i] - m) * (a[i] - m))` accumulator is
+/// Kahan-compensated to match the sibling `mean`. Without
+/// compensation, `(a[i] - m)` vanishes near `0` and the
+/// accumulator loses low-order bits; Kahan keeps the running
+/// sum accurate to `O(eps)` independent of `n`.
 pub fn variance(a : Array[Double]) -> Double {
   if a.length() == 0 {
     return 0.0
   }
   let m = mean(a)
   let mut s = 0.0
+  let mut c = 0.0
   for i = 0; i < a.length(); i = i + 1 {
     let d = a[i] - m
-    s = s + d * d
+    let prod = d * d
+    let y = prod - c
+    let t = s + y
+    c = t - s - y
+    s = t
   }
   s / a.length().to_double()
 }

@@ -624,7 +624,7 @@ pub fn[T : Learner] double_cross_fit_predict(
   seed : Int,
 ) -> Array[Array[Double]] {
   let mut rng_state : Int = seed
-  let out : Array[Array[Double]] = Array::new()
+  let out : Array[Array[Double]] = []
   for fold in outer {
     let train_idx = fold.train_idx
     let m = train_idx.length()

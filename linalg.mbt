@@ -32,9 +32,8 @@ pub fn cholesky(a : Matrix) -> Matrix {
       let d = diag.sqrt()
       l.data[i * n + i] = d
       // off-diagonal elements in column i
-      if d == 0.0 {
-        continue
-      }
+      // (The pre-v0.52.0 `if d == 0.0 { continue }` branch was
+      // unreachable: `require(diag > 0.0)` above ensures `d > 0.0`.)
       for j = i + 1; j < n; j = j + 1 {
         // t = sum_{k < i} l[j][k] * l[i][k] (Kahan-compensated)
         let mut t = 0.0
@@ -67,6 +66,11 @@ pub fn cholesky(a : Matrix) -> Matrix {
 /// Cholesky factorisation `A = L L^T`. The system is solved in two steps:
 /// forward substitution for `L y = b`, then back substitution for
 /// `L^T x = y`.
+///
+/// Both substitution accumulators are Kahan-compensated (matching
+/// `cholesky` and `matvec`). On the hot path for every
+/// `LinearRegression::fit`, every IRLS iteration, and every
+/// sandwich-SE back-solve.
 pub fn solve_spd(a : Matrix, b : Array[Double]) -> Array[Double] {
   try {
     let n = a.nrows
@@ -77,8 +81,13 @@ pub fn solve_spd(a : Matrix, b : Array[Double]) -> Array[Double] {
     let y = Array::make(n, 0.0)
     for i = 0; i < n; i = i + 1 {
       let mut s = b[i]
+      let mut c = 0.0
       for k = 0; i > 0 && k < i; k = k + 1 {
-        s = s - l.data[i * n + k] * y[k]
+        let prod = l.data[i * n + k] * y[k]
+        let yv = prod - c
+        let t = s - yv
+        c = t - s + yv
+        s = t
       }
       y[i] = s / l.data[i * n + i]
     }
@@ -87,8 +96,13 @@ pub fn solve_spd(a : Matrix, b : Array[Double]) -> Array[Double] {
     for ri = 0; ri < n; ri = ri + 1 {
       let i = n - 1 - ri
       let mut s = y[i]
+      let mut c = 0.0
       for k = i + 1; k < n; k = k + 1 {
-        s = s - l.data[k * n + i] * x[k]
+        let prod = l.data[k * n + i] * x[k]
+        let yv = prod - c
+        let t = s - yv
+        c = t - s + yv
+        s = t
       }
       x[i] = s / l.data[i * n + i]
     }
