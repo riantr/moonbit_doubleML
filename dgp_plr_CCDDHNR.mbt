@@ -154,15 +154,3 @@ pub fn PlrCcddhnr2018::y_get(self : PlrCcddhnr2018) -> Array[Double] {
 pub fn PlrCcddhnr2018::d_get(self : PlrCcddhnr2018) -> Array[Double] {
   self.d
 }
-
-///|
-/// Box-Muller pair (mu=0, sigma=1). Mirrors the helper in
-/// `cmd/datasets/main.mbt`.
-fn box_muller_pair(rng : @random.Rand) -> (Double, Double) {
-  let u1 = rng.double()
-  let u2 = rng.double()
-  let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
-  let r = (-2.0 * @math.ln(safe)).sqrt()
-  let theta = 2.0 * 3.141592653589793 * u2
-  (r * @math.cos(theta), r * @math.sin(theta))
-}
