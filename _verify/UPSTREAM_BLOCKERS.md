@@ -1,16 +1,31 @@
 # Upstream Toolchain Blockers — MoonBit 0.9+ `moon prove` Pipeline
 
-**Discovered during**: dml-moonbit v0.48.0 formal verification pilot
+**Discovered during**: moonbit_doubleML v0.48.0 formal verification pilot
 **Reporter**: `ren-yongxiang` (gitee)
-**Pilot evidence**: `_prove_pilot/` and `_prove_pilot2/` in dml-moonbit
-**Toolchain**: moon v0.10.11+, Why3 1.7.2, CVC5 1.0.9 / Alt-Ergo 2.5.4
+**Pilot evidence**: `_prove_pilot/` and `_prove_pilot2/` in moonbit_doubleML
+**Toolchain**: moon 0.1.20260920 (914d7da 2026-09-20) / moonc v0.10.11+,
+Why3 1.7.2, CVC5 1.0.9 / Alt-Ergo 2.5.4
 
-These four blockers prevent the dml-moonbit main package's `moon prove`
+These four blockers prevent the moonbit_doubleML main package's `moon prove`
 from running end-to-end on contracts that reference `Array[T]`, use
 `Double` arithmetic, or wrap contracts around `raise` boundaries.
-Fixing them would unlock formal verification of the 15+ DML estimators
-in dml-moonbit (PLR / IRM / PLIV / IIVM / DID family / PLPR / LPLR /
-bootstrap / quantiles / resampling / cluster-robust SE).
+Fixing them would unlock formal verification of the 21 DML estimators
+in moonbit_doubleML (PLR / IRM / PLIV / IIVM / DID family / PLPR / LPLR /
+LPQ / bootstrap / quantiles / resampling / cluster-robust SE).
+
+> **Status as of v0.52.0 release (2026-09-19)**: the project shipped
+> v0.52.0 with all 21 estimators working (4 backends × 331/331 PASS,
+> 11 fuzz 0 violations, 23/23 Python validators PASS) but **without
+> any of the 4 + 2 upstream blockers resolved**. Production code in
+> moonbit_doubleML does not use formal contracts; preconditions are
+> enforced at runtime via the v0.48.0 cascade wrap
+> (`try { require(...) } catch { ... abort(...) }`). The 6 blockers
+> below remain the gate for any future v0.53+ attempt to add proof
+> contracts to the main package. The v0.52.0+ integration target
+> verdict is **NOT VIABLE** on the current toolchain — see
+> "Handoff: v0.52.0+ integration target viability" below. The 6
+> upstream issue drafts at `_verify/UPSTREAM_ISSUE_0[1-6].md` are
+> ready for filing against <https://github.com/moonbitlang/core>.
 
 ---
 
@@ -24,7 +39,7 @@ parameters), `moonc prove` lowers to Why3 and the generated `.mlw`
 defines types like:
 
 ```why3
-type mavis_dml__Matrix = { ..., mavis_dml__Matrix__data : array int }
+type mavis__moonbit_doubleML__Matrix = { ..., mavis__moonbit_doubleML__Matrix__data : array int }
 ```
 
 The lowering does **not** emit `use array.Array` in the module
@@ -104,8 +119,8 @@ Either:
 
 ### Impact
 
-All numerical contracts are blocked. Without this fix, dml-moonbit's
-15 estimators (which all compute on `Double` arrays) cannot be
+All numerical contracts are blocked. Without this fix, moonbit_doubleML's
+21 estimators (which all compute on `Double` arrays) cannot be
 verified, even with Blocker 1 resolved.
 
 ---
@@ -194,8 +209,8 @@ predicate intent.
 3. **Blocker 3** (raise in body) — fix third. Frontend extension.
 4. **Blocker 4** (for x in arr) — fix last. Cosmetic.
 
-With 1+2+3+4 fixed, dml-moonbit can resume formal verification on
-the 15+ DML estimators in the main package. Without 1, only the
+With 1+2+3+4 fixed, moonbit_doubleML can resume formal verification on
+the 21 DML estimators in the main package. Without 1, only the
 `FixedArray[Int]` mirror pattern in `_prove_pilot/` can be used,
 which limits verified surface to pure Int algorithms.
 
@@ -203,7 +218,7 @@ which limits verified surface to pure Int algorithms.
 
 ## References
 
-- dml-moonbit project: `https://gitee.com/ren-yongxiang/moonbit_double-ml`
+- moonbit_doubleML project: `https://gitee.com/ren-yongxiang/moonbit_doubleml`
 - Pilot 1 handoff: `_prove_pilot/HANDOFF.md`
 - Pilot 1 verifier audit: `_prove_pilot/VERIFIER_AUDIT.md` (v1) +
   `_prove_pilot/VERIFIER_AUDIT_v2.md` (v2 with v3 correction + v4
@@ -215,7 +230,7 @@ which limits verified surface to pure Int algorithms.
 
 ---
 
-## Reproduction log (2026-09-12, v0.51.0, moonc v0.10.11)
+## Reproduction log (2026-09-12, v0.51.0 → v0.52.0 cycle, moonc v0.10.11)
 
 **Producer**: `moonbit-prover` worker, branch session
 `mvs_5e8e4d20578c4557a866e6b000e0c5ef` (the original v0.52 main-package
@@ -223,6 +238,19 @@ contract pilot, executed immediately before the verifier audit).
 **Toolchain**: moon 0.1.20250904, moonc v0.10.11, Why3 1.7.2,
 CVC5 1.0.9 / Alt-Ergo 2.5.4.
 **HEAD at start**: `7a16b6f Release 0.51.0: DoubleMLDIDCSBinary`.
+**HEAD at v0.52.0 release**: `9e7896a Release 0.52.0: LPQ completeness + estimator fit() cascade wrap + backend math consistency`.
+
+> **Note on staleness**: this reproduction log was written during the
+> v0.51.0 → v0.52.0 development cycle. At v0.52.0 release (commit
+> `9e7896a`, 2026-09-19) the verdict below — "v0.52.0+ integration
+> NOT VIABLE" — remained the project consensus. The reproduction
+> artifacts (audit-scratch dir, kfold_proof.mbtp) were moved out of
+> the working tree at v0.52.0 release time (audit-scratch archived;
+> kfold_proof.mbtp moved to `_archived-kfold_proof.mbtp` at
+> `D:\src\MiniMax\Projects\DoubleMachineLearning\_archived-kfold_proof.mbtp`).
+> Audit logs + categorization CSV/TXT were preserved as sibling files
+> under `_verify/audit-scratch-v0.52_*.{log,csv,txt}` for any future
+> re-audit after a toolchain upgrade.
 
 ### Phase 1 — Baseline (verified)
 
@@ -245,6 +273,11 @@ Setup:
   / `arr_bounded` / `arr_disjoint` / `perm_is_perm` predicates, all
   using `Array[Int]` to match the main-package `Fold` struct fields
   (this is the surface that fires Blocker 1 on the predicate side).
+  `kfold_proof.mbtp` was archived out to
+  `_archived-kfold_proof.mbtp` (one level above the project root)
+  at v0.52.0 release time; the predicates are reproduced verbatim
+  in the audit-scratch `kfold_view_proof.mbtp` and are available
+  for re-application when the upstream picture improves.
 
 `moon prove .` produced **80 `Error: [4207]`** blocks, broken down:
 
@@ -298,10 +331,17 @@ Setup:
 
 ### Phase 5 + 6 — Reverted and confirmed
 
-- `git status`:
+- `git status` (at time of original reproduction):
   - `M _verify/UPSTREAM_BLOCKERS.md` (this appended section)
-  - `?? kfold_proof.mbtp` (new planning file, kept as v0.52.0+
-    integration artifact)
+  - `?? kfold_proof.mbtp` (new planning file, archived to
+    `_archived-kfold_proof.mbtp` at v0.52.0 release time)
+  - `moon.pkg` and `kfold.mbt`: clean (no diff)
+- `git status` (post-v0.52.0 release):
+  - `_verify/UPSTREAM_BLOCKERS.md` (still tracked; v0.52.0+ status
+    note appended at the top of the document)
+  - `kfold_proof.mbtp`: archived (see above)
+  - `_verify/audit-scratch-v0.52/`: archived; sibling log/CSV/TXT
+    files preserved
   - `moon.pkg` and `kfold.mbt`: clean (no diff)
 - `moon check`: 0 errors
   (`Finished. moon: ran 32 tasks, now up to date (40 warnings, 0 errors)`)
@@ -344,6 +384,17 @@ Buckets 2/3/4 are not on the critical path for `kfold_stratified`
 migration; it just can't be wired up to the main package until the
 upstream picture improves.
 
+**v0.52.0 release verdict**: this verdict held at v0.52.0 release
+(2026-09-19). The project shipped v0.52.0 with all 21 DML estimators
+working in production (without formal contracts), and the upstream
+toolchain picture is unchanged as of the v0.52.0 release toolchain
+(`moon 0.1.20260920 (914d7da 2026-09-20)` / `moonc v0.10.11+`).
+A re-audit is recommended whenever MoonBit publishes a proof-
+frontend release that addresses any of the 4 + 2 blockers above;
+the audit-scratch mirror at
+`_verify/audit-scratch-v0.52_*.{log,csv,txt}` is the right
+re-application surface.
+
 **Next verifier**: `moonbit-prove-verifier` (adversarial audit of the
 new `kfold_proof.mbtp` predicates and this `UPSTREAM_BLOCKERS.md`
 reproduction log; verify the categorization matches an independent
@@ -359,11 +410,12 @@ snippet genuinely triggers the documented error).
 **Toolchain observed**: moon 0.1.20260904, moonc v0.10.12+1634b282e
 (different from producer's reported v0.10.11, but compatible 鈥?see
 Finding A1).
-**Audit scratch**: `_verify/audit-scratch-v0.52/`,
-`_verify/audit-bucket2-double/`, `_verify/audit-bucket3-raise/`,
-`_verify/audit-bucket4-foreach/`, `_verify/audit-scratch-v0.52_check.log`,
-`_verify/audit-scratch-v0.52_prove.log`,
-`_verify/audit-scratch-v0.52_categorization.csv`.
+**Audit scratch** (post-v0.52.0 release state):
+`_verify/audit-scratch-v0.52/` (archived; logs preserved as
+`_verify/audit-scratch-v0.52_*.{log,csv,txt}`),
+`_verify/audit-bucket2-double/` (hyphen-named; tracked),
+`_verify/audit_bucket3_raise/` (underscore-named; tracked),
+`_verify/audit_bucket4_foreach/` (underscore-named; tracked).
 
 ### Phase 1 baseline (re-confirmed)
 
@@ -612,7 +664,7 @@ un-provable.
 **less actionable** than the producer's report suggests.
 
 **Reproduction**: see
-`_verify/audit-bucket3-raise/raise_test.mbt` + the `prove_v9.log`
+`_verify/audit_bucket3_raise/raise_test.mbt` + the `prove_v9.log`
 output (`moonc prove [options] <input files]`).
 
 **Recommendation**: this is a toolchain bug, not a project
@@ -633,7 +685,7 @@ diagnostic.
 **Severity**: minor (consistent with A3).
 
 **Reproduction**: see
-`_verify/audit-bucket4-foreach/foreach_test.mbt` + the
+`_verify/audit_bucket4_foreach/foreach_test.mbt` + the
 `prove_v2.log` output.
 
 **Recommendation**: same as A3 鈥?file upstream.
@@ -693,21 +745,32 @@ The producer's headline 4-bucket + 2-new-block categorization
 
 ### Audit-scratch cleanup
 
-The audit-scratch lives at:
-- `_verify/audit-scratch-v0.52/` (kfold mirror + 56-error log)
-- `_verify/audit-bucket2-double/` (Bucket 2 minimal reproducer)
-- `_verify/audit-bucket3-raise/` (Bucket 3 minimal reproducer,
-  moonc-help-text)
-- `_verify/audit-bucket4-foreach/` (Bucket 4 minimal reproducer,
-  moonc-help-text)
+The audit-scratch lives at (post-v0.52.0 release state, 2026-09-20):
+
+- `_verify/audit-scratch-v0.52/` — **archived at v0.52.0 release
+  time**. Logs/CSV/TXT were preserved as sibling files (see below).
+- `_verify/audit-bucket2-double/` (Bucket 2 minimal reproducer;
+  note the **hyphen** in this name — `audit-bucket2-double`,
+  distinct from bucket 3/4 below)
+- `_verify/audit_bucket3_raise/` (Bucket 3 minimal reproducer,
+  moonc-help-text; **underscore** in this name)
+- `_verify/audit_bucket4_foreach/` (Bucket 4 minimal reproducer,
+  moonc-help-text; **underscore** in this name)
 - `_verify/test-bucket3-raise/`, `_verify/test-bucket4-foreach/`
   (intermediate test directories from the audit)
-- `_verify/audit-scratch-v0.52_check.log`
-- `_verify/audit-scratch-v0.52_prove.log`
-- `_verify/audit-scratch-v0.52_categorization.csv`
-- `_verify/audit-scratch-v0.52_categorization.txt`
+- `_verify/audit-scratch-v0.52_check.log` (preserved sibling)
+- `_verify/audit-scratch-v0.52_prove.log` (preserved sibling)
+- `_verify/audit-scratch-v0.52_categorization.csv` (preserved
+  sibling)
+- `_verify/audit-scratch-v0.52_categorization.txt` (preserved
+  sibling)
 
 These should be added to `.gitignore` (or equivalent) so they
 are not committed. They are useful for re-audits; the producer
 can re-run `moon prove` against them to re-verify the
-reproduction after any toolchain upgrade.
+reproduction after any toolchain upgrade. The `.gitignore`
+patterns `audit-scratch*` (added in commit `3f6ebd3` at v0.52.0
+release time) and `*.archived` / `*.archived.*` (added in commit
+`08e3d37`) cover the audit-scratch cleanup scope; the bucket
+minimal reproducers remain tracked because their path is
+predictable (and they fit in the repo).
