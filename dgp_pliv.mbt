@@ -110,3 +110,19 @@ pub fn PlivData::d_get(self : PlivData) -> Array[Double] { self.d }
 
 ///|
 pub fn PlivData::z_get(self : PlivData) -> Array[Double] { self.z }
+
+///|
+/// Convenience factory matching the upstream
+/// `doubleml.plm.datasets._make_pliv_data.make_pliv_data`
+/// signature: `(n_obs, dim_x, theta, seed)` with no other
+/// arguments. Equivalent to `make_pliv_CHS2015(n_obs, dim_x,
+/// theta, seed)` but named for parity with the upstream
+/// factory helper.
+pub fn make_pliv_data(
+  n_obs : Int,
+  dim_x : Int,
+  theta : Double,
+  seed : Int,
+) -> PlivData {
+  make_pliv_CHS2015(n_obs, dim_x, theta, seed)
+}
