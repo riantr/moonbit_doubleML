@@ -1,4 +1,4 @@
-# BDD acceptance criteria for mavis/moonbit_doubleML
+# BDD acceptance criteria for riantr/moonbit_doubleML
 #
 # NOTE ON EXECUTABILITY: MoonBit has no native Gherkin/Cucumber
 # runner (no step-definition ecosystem). These .feature files are

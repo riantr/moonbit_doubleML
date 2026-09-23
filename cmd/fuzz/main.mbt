@@ -1,4 +1,4 @@
-// Fuzz harness for mavis/moonbit_doubleML pure functions.
+// Fuzz harness for riantr/moonbit_doubleML pure functions.
 //
 // MoonBit has no libFuzzer/AFL integration, so this is a
 // deterministic property-based fuzzer: it drives thousands of
@@ -822,7 +822,7 @@ fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int) -> Unit {
 ///|
 fn main {
   let trials = 300
-  println("=== mavis/moonbit_doubleML fuzz harness (\{trials} trials per surface) ===")
+  println("=== riantr/moonbit_doubleML fuzz harness (\{trials} trials per surface) ===")
   let master = @random.Rand::chacha8(
     seed=Bytes::from_array(@moonbit_doubleML.seed_to_bytes(20260824)),
   )

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `mavis/moonbit_doubleML` are documented here. Each TODO entry
+All notable changes to `riantr/moonbit_doubleML` are documented here. Each TODO entry
 lists the bugs / polish items fixed, the test count delta, and the
 verification verdict.
 
@@ -105,7 +105,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   additionally had unused `random` / `math` imports 鈥?pruned to
   match actual usage (`apos` + `main` keep only `math`;
   `did_binary`, `did_cross_section`, `did_cs`, `did_multi`, `cvar`
-  keep only `mavis/moonbit_doubleML`; `datasets`, `fuzz`, `lplr` keep both
+  keep only `riantr/moonbit_doubleML`; `datasets`, `fuzz`, `lplr` keep both
   `random` + `math`; `plpr` keeps only `random`). This closes
   11 `unused_package` warnings under `--deny-warn`.
 
@@ -291,7 +291,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   corrected to **8** (the v0.50.0 `DoubleMLCVAR` exposes
   `coef`, `se`, `confint`, `predictions_g`,
   `predictions_m`, `n_obs`, `n_features`, `fitted`).
-- **`cmd/cvar/main.mbt` import alias** 鈥?`@mavis/moonbit_doubleML.*`
+- **`cmd/cvar/main.mbt` import alias** 鈥?`@riantr/moonbit_doubleML.*`
   replaced with `@dml.*` to match every other
   `cmd/*/main.mbt` in the project.
 

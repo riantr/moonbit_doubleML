@@ -1,5 +1,5 @@
 import {
-  "mavis/moonbit_doubleML",
+  "riantr/moonbit_doubleML",
   "moonbitlang/core/random",
   "moonbitlang/core/math",
 }
