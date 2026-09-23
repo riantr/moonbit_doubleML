@@ -45,6 +45,11 @@ pub struct DoubleMLIRM {
   g0_hat : Array[Double]
   g1_hat : Array[Double]
   m_hat : Array[Double]
+  // Raw (pre-clipping) propensity scores. v0.53.0-dev Task 4:
+  // mirrors upstream feat "retain raw IRM propensity scores"
+  // so callers can inspect the un-clipped predictions without
+  // re-fitting.
+  m_raw : Array[Double]
   coef : Double
   se : Double
   fitted : Bool
@@ -73,6 +78,7 @@ pub fn DoubleMLIRM::new(
       g0_hat: Array::make(data.n_obs(), 0.0),
       g1_hat: Array::make(data.n_obs(), 0.0),
       m_hat: Array::make(data.n_obs(), 0.0),
+      m_raw: Array::make(data.n_obs(), 0.0),
       coef: 0.0,
       se: 0.0,
       fitted: false,
@@ -145,6 +151,17 @@ pub fn DoubleMLIRM::predictions_m(self : DoubleMLIRM) -> Array[Double] {
 }
 
 ///|
+/// Raw (pre-clipping) propensity scores, length `n_obs`.
+/// v0.53.0-dev Task 4: mirrors upstream feat "retain raw IRM
+/// propensity scores" so callers can inspect the un-clipped
+/// predictions without re-fitting.
+pub fn DoubleMLIRM::propensity_score_raw(
+  self : DoubleMLIRM,
+) -> Array[Double] {
+  self.m_raw
+}
+
+///|
 /// Filter `idx` to keep only entries `i` for which `mask[i]` is true.
 pub fn filter_indices(idx : Array[Int], mask : Array[Double]) -> Array[Int] {
   let out : Array[Int] = []
@@ -192,7 +209,7 @@ fn cross_fit_irm(
   d : Array[Double],
   folds : Array[Fold],
   propensity_clip : Double,
-) -> (Array[Double], Array[Double], Array[Double]) {
+) -> (Array[Double], Array[Double], Array[Double], Array[Double]) {
   try {
     let n_obs = x.rows()
     let g0 = Array::make(n_obs, 0.0)
@@ -243,7 +260,7 @@ fn cross_fit_irm(
     }
     // m must be clipped
     let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
-    (g0, g1, m_clipped)
+    (g0, g1, m_clipped, m)
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -291,9 +308,10 @@ pub fn DoubleMLIRM::fit(
     let mut g0 : Array[Double] = Array::make(n, 0.0)
     let mut g1 : Array[Double] = Array::make(n, 0.0)
     let mut m : Array[Double] = Array::make(n, 0.0)
+    let mut m_raw : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < nrep; r = r + 1 {
       let folds = kfold(n, self.n_folds, self.seed + r)
-      let (g0_r, g1_r, m_r) = cross_fit_irm(
+      let (g0_r, g1_r, m_r, m_raw_r) = cross_fit_irm(
         ml_g,
         ml_m,
         self.data.x,
@@ -305,6 +323,7 @@ pub fn DoubleMLIRM::fit(
       g0 = g0_r
       g1 = g1_r
       m = m_r
+      m_raw = m_raw_r
       // Score (ATE, weights=1, weights_bar=1) — uses THIS rep's nuisances only
       let y = self.data.y
       let d = self.data.d
@@ -335,6 +354,7 @@ pub fn DoubleMLIRM::fit(
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,
+      m_raw: m_raw,
       coef,
       se,
       fitted: true,
@@ -391,6 +411,7 @@ fn DoubleMLIRM::fit_cluster(
     let mut g0 : Array[Double] = Array::make(n, 0.0)
     let mut g1 : Array[Double] = Array::make(n, 0.0)
     let mut m : Array[Double] = Array::make(n, 0.0)
+    let mut m_raw : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < nrep; r = r + 1 {
       // v0.40.0: retry loop on J-floor. Each retry uses a different
       // fold split (seed = self.seed + r + attempt*nrep) so the
@@ -405,7 +426,7 @@ fn DoubleMLIRM::fit_cluster(
         let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
           cluster, folds_u, row_unit,
         )
-        let (g0_r, g1_r, m_r) = cross_fit_irm(
+        let (g0_r, g1_r, m_r, m_raw_r) = cross_fit_irm(
           ml_g,
           ml_m,
           self.data.x,
@@ -417,6 +438,7 @@ fn DoubleMLIRM::fit_cluster(
         g0 = g0_r
         g1 = g1_r
         m = m_r
+        m_raw = m_raw_r
         let psi_a : Array[Double] = Array::make(n, 0.0)
         let psi_b : Array[Double] = Array::make(n, 0.0)
         for i = 0; i < n; i = i + 1 {
@@ -472,6 +494,7 @@ fn DoubleMLIRM::fit_cluster(
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,
+      m_raw: m_raw,
       coef,
       se,
       fitted: true,

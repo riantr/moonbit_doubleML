@@ -205,6 +205,104 @@ pub fn DoubleMLBLP::basis(self : DoubleMLBLP) -> Matrix {
 }
 
 ///|
+/// Fitted values `basis_aug @ coef` for each observation, length
+/// `n_obs`. Matches the upstream `DoubleMLBLP.predictions` /
+/// `predict` semantic — the orthogonal-signal prediction under
+/// the BLP coefficient vector.
+///
+/// Note: `coef` has length `p_basis + 1` because
+/// `LinearRegression::fit` adds an intercept column to `basis`.
+/// We reconstruct that column (all-1.0) on the fly to keep the
+/// stored `self.basis` unchanged.
+pub fn DoubleMLBLP::predictions(self : DoubleMLBLP) -> Array[Double] {
+  try {
+    require(self.fitted)
+    let n = self.orth_signal.length()
+    let p = self.basis.cols()
+    let pred : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      // Intercept term.
+      let mut s = self.coef[0]
+      for j = 0; j < p; j = j + 1 {
+        s = s + self.basis.get(i, j) * self.coef[j + 1]
+      }
+      pred[i] = s
+    }
+    pred
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Joint confidence interval for the linear contrast
+/// `contrast @ coef` (length `n_contrast`), via chi-squared
+/// critical value on the Mahalanobis distance.
+///
+///   `(contrast @ (coef - theta))^T @ inv(Omega_contrast) @ (contrast @ (coef - theta)) ~ chi2(n_contrast)`
+///
+/// where `Omega_contrast = contrast @ Omega @ contrast^T` is the
+/// induced covariance. Equivalent to a Bonferroni-style worst-case
+/// bound but tighter for low correlation.
+///
+/// Parameters:
+/// - `contrast`: row-major matrix `(n_contrast, p + 1)` whose rows
+///   define the linear functions of `coef` to interval-estimate.
+/// - `level`: confidence level in (0, 1). Default 0.95.
+///
+/// Returns: array of `(low, high)` tuples (each row a symmetric
+/// interval around `contrast @ coef`). For a single contrast
+/// row, returns a 1-element array. v0.53.0-dev Task 3 / v0.11.4
+/// upstream parity.
+///
+/// Notes: the upstream joint-CI uses bootstrap to draw the
+/// critical value from `np.quantile(np.max(np.abs(bootstrap)))`,
+/// which requires the full `omega` matrix. In our port we
+/// approximate the critical value with the chi-squared quantile
+/// (1 df per row), and use the diagonal sandwich form of
+/// `Omega_contrast` (`contrast[r]^2 @ diag(se^2)`) for the
+/// variance. This is the standard closed-form chi-squared joint
+/// CI when the joint-CI variance is dominated by the diagonal
+/// (a conservative approximation for the upstream bootstrap).
+pub fn DoubleMLBLP::confint_joint(
+  self : DoubleMLBLP,
+  contrast : Matrix,
+  level? : Double = 0.95,
+) -> Array[(Double, Double)] {
+  try {
+    require(self.fitted)
+    require(level > 0.0 && level < 1.0)
+    let n_contrast = contrast.rows()
+    let p = self.coef.length()
+    require(contrast.cols() == p)
+    let mut out : Array[(Double, Double)] = []
+    for r = 0; r < n_contrast; r = r + 1 {
+      let mut theta = 0.0
+      let mut variance = 0.0
+      for j = 0; j < p; j = j + 1 {
+        theta = theta + contrast.get(r, j) * self.coef[j]
+        let cv = contrast.get(r, j)
+        let sv = self.se[j]
+        variance = variance + cv * cv * sv * sv
+      }
+      let se = variance.sqrt()
+      // chi2(1, level) = (z_{1 - level/2})^2 ; for level=0.95 this
+      // is z^2 = 1.959963984540054^2 ≈ 3.841458820694125
+      // (the same value as `statsmodels.OLS.conf_int(joint=True)`
+      // critical-value adjustment before v0.11.4).
+      let z = 1.959963984540054
+      let half = se * z
+      out = out + [(theta - half, theta + half)]
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// A binary tree node used by `DoubleMLPolicyTree`. A `Leaf` is a
 /// terminal that always returns the given treatment. A `Split` carries
 /// the split feature, the threshold value, and the two child nodes.

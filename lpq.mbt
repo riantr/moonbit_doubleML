@@ -95,6 +95,12 @@ pub struct DoubleMLLPQ {
   coef : Double
   se : Double
   fitted : Bool
+  // Cross-fitted nuisance predictions stored post-fit. Length
+  // `n_obs`. v0.53.0-dev Task 2: predictions() accessors mirror
+  // the upstream DoubleMLLPQ `predictions["g0"/"g1"/"m"]` API.
+  predictions_g0 : Array[Double]
+  predictions_g1 : Array[Double]
+  predictions_m : Array[Double]
 } derive(Debug)
 
 ///|
@@ -121,6 +127,9 @@ pub fn DoubleMLLPQ::new(
       coef: 0.0,
       se: 0.0,
       fitted: false,
+      predictions_g0: Array::make(data.y.length(), 0.0),
+      predictions_g1: Array::make(data.y.length(), 0.0),
+      predictions_m: Array::make(data.y.length(), 0.0),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -256,6 +265,9 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
       coef: theta,
       se,
       fitted: true,
+      predictions_g0: g0,
+      predictions_g1: g1,
+      predictions_m: m,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -305,6 +317,49 @@ pub fn DoubleMLLPQ::se(self : DoubleMLLPQ) -> Double {
   try {
     require(self.fitted)
     self.se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Cross-fitted outcome nuisance for Z=0 (length `n_obs`).
+/// v0.53.0-dev: matches upstream `DoubleMLLPQ.predictions["g0"]`.
+pub fn DoubleMLLPQ::predictions_g0(
+  self : DoubleMLLPQ,
+) -> Array[Double] {
+  try {
+    require(self.fitted)
+    self.predictions_g0
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Cross-fitted outcome nuisance for Z=1 (length `n_obs`).
+/// v0.53.0-dev: matches upstream `DoubleMLLPQ.predictions["g1"]`.
+pub fn DoubleMLLPQ::predictions_g1(
+  self : DoubleMLLPQ,
+) -> Array[Double] {
+  try {
+    require(self.fitted)
+    self.predictions_g1
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Cross-fitted treatment nuisance (propensity score, length `n_obs`).
+/// v0.53.0-dev: matches upstream `DoubleMLLPQ.predictions["m"]`.
+pub fn DoubleMLLPQ::predictions_m(self : DoubleMLLPQ) -> Array[Double] {
+  try {
+    require(self.fitted)
+    self.predictions_m
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

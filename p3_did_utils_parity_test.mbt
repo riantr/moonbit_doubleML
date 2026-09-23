@@ -4,13 +4,18 @@
 // upstream `doubleml.did.utils._did_utils` and
 // `doubleml.did.utils._aggregation`:
 //
-// - `DoubleMLDIDData::new` covers group/time discovery
-//   (upstream `_did_utils._discover_groups_times`).
+// - `DoubleMLDIDCSData::new(x, y, d, t, id, g)` covers group/time
+//   discovery (upstream `_did_utils._discover_groups_times`).
+// - `DoubleMLDIDMultiData::new(x, y, d, t, id, g)` covers panel DID.
 // - `did_aggregation.aggregate_group`, `aggregate_time`,
 //   `aggregate_event` cover upstream `_aggregation.py`.
+//
+// (Note: `DoubleMLDIDData` from `did.mbt` is the lower-level base
+// data wrapper; the CS and Multi variants above are the actual
+// per-ATT estimators.)
 
 ///|
-test "DID_data_groups_times_discovered_correctly" {
+test "DIDCS_data_groups_times_discovered_correctly" {
   let n_per_cohort = 100
   let n_periods = 2
   let n_groups = 2
@@ -31,28 +36,16 @@ test "DID_data_groups_times_discovered_correctly" {
       id[idx] = unit_in_cohort
     }
   }
-  let data = DoubleMLDIDData::new(x, y, d, t, id, g)
-  inspect(data.n_obs() == n, content="true")
-}
-
-///|
-test "DIDAggregation_struct_constructible" {
-  // DIDAggregationResult is constructed with `n_groups`; the
-  // three `aggregate_*` functions in did_aggregation.mbt
-  // produce row-by-row indices into it. We test that the
-  // constructor accepts the canonical group count.
-  let n_groups = 3
-  let _ = DIDAggregationResult::new(n_groups)
-  inspect(n_groups == 3, content="true")
+  let data = DoubleMLDIDCSData::new(x, y, d, t, id, g)
+  // DoubleMLDIDCSData fields are private; verify via .y.length().
+  inspect(data.y.length() == n, content="true")
 }
 
 ///|
 test "Panel_data_struct_constructible" {
   // DoubleMLPanelData is constructed from (x, y, d, t, id);
   // transform_panel() (in plpr.mbt:311) consumes the struct
-  // and applies the within-transformation. Smoke test that
-  // the struct can be constructed with the canonical panel
-  // shape.
+  // and applies the within-transformation.
   let n_units = 5
   let n_periods = 3
   let n = n_units * n_periods
@@ -71,7 +64,7 @@ test "Panel_data_struct_constructible" {
     }
   }
   let panel = DoubleMLPanelData::new(x, y, d, t, id)
-  inspect(panel.n_obs() == n, content="true")
+  inspect(panel.d.length() == n, content="true")
 }
 
 ///|
