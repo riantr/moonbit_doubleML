@@ -14,7 +14,7 @@ version = "0.52.0"
 
 readme = "README.mbt.md"
 
-repository = ""
+repository = "https://gitee.com/ren-yongxiang/moonbit_doubleml.git"
 
 license = "Apache-2.0"
 
