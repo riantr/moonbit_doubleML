@@ -1,0 +1,10 @@
+import {
+  "moonbitlang/core/math",
+  "moonbitlang/core/random",
+}
+
+supported_targets = "native+wasm+wasm-gc+js"
+
+formatter(ignore: [ "README.mbt.md" ])
+
+warnings = "-unused_package-alert_unstable"

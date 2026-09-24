@@ -15,7 +15,7 @@ surface and anti-patterns).
 - reach for `@moonbit_doubleML.*` relative imports rather than fully
   qualified `riantr/moonbit_doubleML.*` paths. The relative alias
   is what the rest of the codebase uses; the fully-qualified form
-  is only needed at the `cmd/<bin>/moon.pkg` boundary.
+  is only needed at the `examples/<bin>/moon.pkg` boundary.
 
 - cross-file field reads use the `_get()` suffix (e.g.
   `fitted.coef_get()`, `fitted.se_at(g, t)`). MoonBit requires
@@ -53,7 +53,7 @@ surface and anti-patterns).
 - 35 DGP modules live at root as `dgp_*.mbt` with sibling
   `dgp_*_test.mbt`. The shared Box-Muller helper is in `seed.mbt`.
 
-- 12 command drivers live under `cmd/<bin>/main.mbt` and each
+- 12 command drivers live under `examples/<bin>/main.mbt` and each
   declare `"riantr/moonbit_doubleML"` in their `moon.pkg`. New
   command drivers follow the same pattern.
 

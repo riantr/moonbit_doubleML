@@ -6,7 +6,7 @@ import {
   "riantr/moonbit_doubleML@0.52.0",
 }
 
-readme = "../../../README.mbt.md"
+readme = "../../README.mbt.md"
 
 repository = "https://gitee.com/ren-yongxiang/moonbit_doubleml.git"
 

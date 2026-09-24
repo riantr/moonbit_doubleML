@@ -12,8 +12,10 @@ You can browse and install extra skills here:
   blackbox test files (ending in `_test.mbt`) and whitebox test files (ending in
   `_wbtest.mbt`).
 
-- In the toplevel directory, there is a `moon.mod` file listing module
-  metadata.
+- In the `moonbit_doubleML/` subdirectory, there is a `moon.mod` file
+  listing module metadata. The project root contains a `moon.work`
+  workspace file listing all member packages (`moonbit_doubleML/`,
+  `doc/`, `examples/<bin>/` × 12).
 
 ## Coding convention
 
