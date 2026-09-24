@@ -1,4 +1,4 @@
-# riantr/moonbit_doubleML â€” Double / Debiased Machine Learning in MoonBit
+# riantr/moonbit_doubleML â€?Double / Debiased Machine Learning in MoonBit
 
 Pure-MoonBit port of the
 [`doubleml`](https://github.com/DoubleML/doubleml-for-py) Python package,
@@ -21,7 +21,7 @@ covering all 15 models currently in upstream.
 $ moon test --deny-warn
 Total tests: 241, passed: 241, failed: 0.
 
-$ moon run cmd/main
+$ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
 true theta_0      = 1
 estimated theta   = 0.9763281577675552
@@ -45,25 +45,25 @@ let (lo, hi) = fitted.confint()
 
 ## Demo entry points
 
-Six `cmd/*/main.mbt` drivers run end-to-end on synthetic DGPs. Each
+Six `examples/*/main.mbt` drivers run end-to-end on synthetic DGPs. Each
 prints the true vs. estimated coefficient plus a 95% CI:
 
 | Driver | Model | DGP | True Î¸ |
 |--------|-------|-----|--------|
-| `cmd/main` | `DoubleMLPLR` (and 5 others) | Simple partially linear, `n=500`, `p=5` | 1.0 |
-| `cmd/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=5000`, 9 controls | 1.5 |
-| `cmd/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
-| `cmd/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts Ã— 4 periods | 1.0 |
-| `cmd/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
-| `cmd/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
+| `examples/main` | `DoubleMLPLR` (and 5 others) | Simple partially linear, `n=500`, `p=5` | 1.0 |
+| `examples/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=5000`, 9 controls | 1.5 |
+| `examples/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
+| `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts Ã— 4 periods | 1.0 |
+| `examples/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
+| `examples/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
 
 ```console
-$ moon run cmd/main
-$ moon run cmd/datasets
-$ moon run cmd/did_binary
-$ moon run cmd/did_cs
-$ moon run cmd/did_multi
-$ moon run cmd/did_cross_section
+$ moon run examples/main
+$ moon run examples/datasets
+$ moon run examples/did_binary
+$ moon run examples/did_cs
+$ moon run examples/did_multi
+$ moon run examples/did_cross_section
 ```
 
 ## Models
@@ -90,7 +90,7 @@ $ moon run cmd/did_cross_section
 
 ## Design
 
-* **Pure MoonBit hot path** â€” no Python FFI, no native add-ons. The only
+* **Pure MoonBit hot path** â€?no Python FFI, no native add-ons. The only
   `moonbitlang/core` imports are `random`, `math`, and `bytes`.
 * **Single shared `LinearRegression`** learner for all nuisance functions,
   with the predicted propensity clipped to `[propensity_clip, 1 - propensity_clip]`.
@@ -111,7 +111,7 @@ moon test --target wasm    --deny-warn   # 241/241
 moon test --target js      --deny-warn   # 241/241
 ```
 
-`wasm-gc` is the project's `preferred_target`. The `cmd/main` driver
+`wasm-gc` is the project's `preferred_target`. The `examples/main` driver
 produces a native executable that runs all 6 estimators end-to-end.
 
 ## Python cross-check
@@ -125,9 +125,9 @@ $ for s in validate_*_with_python.py; do echo "=== $s ==="; python $s | tail -1;
 === validate_blp_policy_with_python.py === BLP/PolicyTree reference checks passed
 === validate_bootstrap_with_python.py === Multipliers match: PASS
 === validate_did_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 1.29e-02 ...
-=== validate_did_binary_with_python.py === Reference: run `moon run cmd/did_binary` for the MoonBit output.
+=== validate_did_binary_with_python.py === Reference: run `moon run examples/did_binary` for the MoonBit output.
 === validate_did_cross_section_with_python.py === Cross-section DID reference: PASS
-=== validate_did_cs_with_python.py === Reference: run `moon run cmd/did_cs` for the MoonBit output.
+=== validate_did_cs_with_python.py === Reference: run `moon run examples/did_cs` for the MoonBit output.
 === validate_gain_statistics_with_python.py === Gain statistics match: PASS
 === validate_iivm_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 8.58e-03 ...
 === validate_irm_with_python.py === PASS  |mb - handrolled_nrep5| (theta) = 5.24e-02 ...
@@ -250,9 +250,9 @@ let src = @dml.GainStatsSource::from_blp(blp_fitted)
 
 Each release produces two tracked artefacts under `_verify/`:
 
-* `T###-verdict.md` â€” what was added, what was tested, known
+* `T###-verdict.md` â€?what was added, what was tested, known
   limitations, grade.
-* `T###-commit-msg.txt` â€” the human-readable summary that goes
+* `T###-commit-msg.txt` â€?the human-readable summary that goes
   into the git commit message.
 
 All other `_verify/*` files are verifier scratch (build logs,
@@ -267,7 +267,7 @@ Apache-2.0. See `LICENSE`.
 
 ## See also
 
-* `CHANGELOG.md` â€” list of fixes (TODO #1â€“#11c)
-* `AGENTS.md` â€” project conventions for AI agents
-* `_verify/` â€” per-TODO verification reports
-* `doubleml-for-py/` â€” upstream Python reference (sibling directory)
+* `CHANGELOG.md` â€?list of fixes (TODO #1â€?11c)
+* `AGENTS.md` â€?project conventions for AI agents
+* `_verify/` â€?per-TODO verification reports
+* `doubleml-for-py/` â€?upstream Python reference (sibling directory)

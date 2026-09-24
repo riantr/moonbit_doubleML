@@ -1,4 +1,4 @@
-name = "local/moonbit_doubleML-cmd-cvar"
+name = "local/moonbit_doubleML-examples-apos"
 
 version = "0.52.0"
 
@@ -14,6 +14,6 @@ license = "Apache-2.0"
 
 keywords = [ "doubleml", "demo", "cli" ]
 
-description = "CVaR (conditional value-at-risk) demo driver"
+description = "APO (average potential outcome) demo driver"
 
 preferred_target = "wasm-gc"

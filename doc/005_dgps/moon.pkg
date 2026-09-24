@@ -1,0 +1,5 @@
+import {
+  "riantr/moonbit_doubleML",
+} for "test"
+
+supported_targets = "wasm-gc"

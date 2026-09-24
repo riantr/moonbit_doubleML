@@ -1,0 +1,8 @@
+[
+  { "title": "Introduction",         "path": "001_introduction", "section": "Getting Started" },
+  { "title": "Installation",         "path": "002_installation", "section": "Getting Started" },
+  { "title": "Quick Start",          "path": "003_quick_start",  "section": "Getting Started" },
+  { "title": "Estimators",           "path": "004_estimators",   "section": "API Reference" },
+  { "title": "DGP Catalogue",        "path": "005_dgps",         "section": "API Reference" },
+  { "title": "Python Cross-Check",   "path": "006_python_check", "section": "Workflow" }
+]
