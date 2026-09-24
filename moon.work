@@ -1,0 +1,15 @@
+members = [
+  ".",
+  "cmd/apos",
+  "cmd/cvar",
+  "cmd/datasets",
+  "cmd/did_binary",
+  "cmd/did_cross_section",
+  "cmd/did_cs",
+  "cmd/did_cs_binary",
+  "cmd/did_multi",
+  "cmd/fuzz",
+  "cmd/lplr",
+  "cmd/main",
+  "cmd/plpr",
+]

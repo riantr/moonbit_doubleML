@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "mavis/dml/cmd/main"
+package "local/moonbit_doubleML-cmd-main"
 
 // Values
 
