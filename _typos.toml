@@ -1,0 +1,26 @@
+# typos configuration for moonbit_doubleML
+#
+# Mirrors moonbit-community/rabbita's _typos.toml layout: per-file
+# extends for fixtures, plus a small extend-words list for
+# domain-specific terms.
+
+[files]
+extend-exclude = [
+  # Python reference output — exact byte-for-byte upstream numbers
+  "validate_*_with_python.py",
+  # Long-form synthetic-DGP seeds; not human prose
+  "*.mbt.archived",
+  # Upstream issue drafts (preserve exact upstream text)
+  "_verify/UPSTREAM_*.md",
+  # CHANGELOG historical entries — preserve names as written
+  "CHANGELOG.md",
+]
+
+[default.extend-words]
+# doubleml-for-py upstream module names — preserve as-is
+apos = "apos"
+ndout = "ndout"
+pava = "pava"
+CAUSAL = "CAUSAL"
+DML = "DML"
+dml = "dml"

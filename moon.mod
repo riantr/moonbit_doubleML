@@ -18,8 +18,10 @@ repository = "https://gitee.com/ren-yongxiang/moonbit_doubleml.git"
 
 license = "Apache-2.0"
 
-keywords = [ ]
+keywords = ["doubleml", "DML", "causal-inference", "machine-learning", "debiased-estimation"]
 
 preferred_target = "wasm-gc"
 
-description = ""
+supported_targets = "native+wasm+wasm-gc+js"
+
+description = "Pure-MoonBit port of doubleml-for-py: Double / Debiased Machine Learning for partial linear, IRM, IV, DID, SSM, APO(S), PQ, QTE, LPQ, CVaR, RDD, BLP, and policy-tree models"
