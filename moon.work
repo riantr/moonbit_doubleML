@@ -1,6 +1,7 @@
 members = [
   "moonbit_doubleML",
   "doc",
+  "examples/api_server",
   "examples/apos",
   "examples/cvar",
   "examples/datasets",
