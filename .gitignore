@@ -24,6 +24,12 @@ _verify/*.archived
 _verify/*.archived/
 _verify/*.archived.*
 
+# Dated archive suffix (the verifier cycle uses
+# `<name>.archived_<YYYY_MM_DD>[_<seq>]` for ephemeral session
+# scratch renames). Both files and directories with this suffix
+# are ignored.
+*.archived_*
+
 # Probe / scratch .mbt files (verifier droppings, not part of
 # the test suite).
 _verify/T090-probe.mbt

@@ -1,81 +1,43 @@
-global-review: tighten CI Python loop + sync estimator/example counts in docs
+gitignore: cover the .archived_<date> scratch-rename suffix
 
-A follow-up to aec880d (which fixed 4 critical bugs found by the
-v0.52 post-release global review). This commit clears the
-documentation and CI-loop drift surfaced by the same review, plus
-tracks 7 verifier-produced docs that were sitting untracked.
+The verifier / cleanup cycle has been using a dated archive
+suffix (`<name>.archived_<YYYY_MM_DD>[_<seq>]`) for ephemeral
+session-scratch renames since the v0.50+ cleanup rounds. The
+existing `.gitignore` covers the bare `.archived` and
+`.archived.<ext>` patterns but not the dated variant, so 18
+untracked files (session-scratch from the v0.52 release and
+its follow-ups) were showing up in `git ls-files
+--others --exclude-standard` even though they are clearly
+scratch by name.
 
-(a) .github/workflows/check.yml — CI step name corrected and
-    loop tightened. The python-cross-check job was titled
-    "Run all 9 validate_*.py scripts" and the loop body was
-    `python "$s" | tail -1`, which:
-      - reported the wrong count (9, not the actual 23+1);
-      - never asserted the trailing line contained `PASS`,
-        so any script that crashed silently exited 0
-        (the same gap B2 revealed for the master
-        `validate_with_python.py`).
+Added a single new pattern `*.archived_*` that catches both
+files and directories with the dated suffix:
 
-    Renamed the step to "Run all 23 validate_*_with_python.py
-    scripts" and replaced the loop with one that:
-      - captures the trailing line into a variable;
-      - fails the job (`exit 1`) with an `::error::` annotation
-        if any script's trailing line doesn't contain `PASS`;
-      - still prints the line so the success case is greppable.
-    The 23 prefixed scripts already follow the convention
-    (per `skills/moonbit_doubleML.md`); the master script that
-    didn't is now `.archived`.
+  _add_licenses.py.archived_2026_09_24
+  _commit_msg.txt.archived_2026_09_24{,_b.._g}
+  _ddebug.archived_2026_09_25/{main.mbt,moon.mod,moon.pkg}
+  _fix_examples_names.py.archived_2026_09_24
+  _gen_cmd_moon_mod.py.archived_2026_09_24
+  _rename_examples.py.archived_2026_09_24
+  _stale_root_files.txt.archived_2026_09_25
+  _syntax_test.archived_2026_09_25/{main.mbt,moon.pkg}
+  _test_t1.txt.archived_v2
 
-(b) Estimator count wording — the same drift in three places:
-      - README.md line 5 said "covering all 16 models";
-      - line 12 said "Models ported | 17 / 17";
-      - line 100 said "17 models";
-      - the Models table listed 19 rows.
-    On disk we have 22 `DoubleML*` structs in 17 files
-    (some files hold 2 structs: apo.mbt has APO+APOS,
-    quantile.mbt has PQ+QTE, blp_policy.mbt has BLP+PolicyTree).
-    19 mirror upstream doubleml-for-py; 3 are MoonBit extras
-    (DoubleMLDIDCSBinary, DoubleMLLPLR, DoubleMLPLPR).
-    Rewrote:
-      - the top-line claim to say "all 19 models in upstream
-        ... plus 3 MoonBit-specific extras";
-      - the Status table to "22 DoubleML* structs in 17 files";
-      - the Models table to 22 rows with `(upstream)` /
-        `(extra)` markers, including the 3 previously-omitted
-        entries (PLPR, LPLR, DIDCSBinary).
+Before: `git ls-files --others --exclude-standard` showed 18
+        rows; root felt cluttered; `git status` had a long
+        noise list.
+After:  same query returns 0 rows.
 
-(c) Example count wording — three counts in the same repo
-    (14 dirs on disk, 13 in moon.work before aec880d, 14 after,
-    plus README/AGENTS.md said 13 or 12 depending on context).
-    Updated:
-      - README "Demo entry points" header to "14 dirs, all in
-        moon.work; 13 run end-to-end + 1 library-user pattern";
-      - the Drivers table to add `did_cs_binary` (was already
-        there, but now tagged `DoubleMLDIDCSBinary`), replace
-        `examples/lplr | DoubleMLLPQ` (wrong: lplr.mbt is
-        `DoubleMLLPLR`, not LPQ) with the corrected entries;
-      - README "Project layout" section to "14 driver binaries
-        (all listed in moon.work)";
-      - AGENTS.md "moon.work members" to "16 total" and
-        "examples/<bin>/` × 14";
-      - skills/moonbit_doubleML.md estimator list to 22
-        entries (with the 3 extras) and "14 driver binaries".
-
-(d) Tracked 7 verifier-produced docs that were sitting
-    untracked in `_verify/`. They're not gitignored and they
-    are real content (5–15 KB each), so they belong with the
-    master `_verify/UPSTREAM_BLOCKERS.md` (already tracked).
-    Added:
-      - _verify/UPSTREAM_ISSUE_01_array_lowering.md
-      - _verify/UPSTREAM_ISSUE_02_double_values.md
-      - _verify/UPSTREAM_ISSUE_03_raise_in_body.md
-      - _verify/UPSTREAM_ISSUE_04_foreach.md
-      - _verify/UPSTREAM_ISSUE_05_call_whitelist.md
-      - _verify/UPSTREAM_ISSUE_06_block_expressions.md
-      - _verify/v0.49.0-v0.50.0-review.md
+The 13 already-gitignored variants (`*.archived`,
+`*.archived.*`, `_verify/*.archived*`) are unchanged.
 
 Verification:
-  - moon check --deny-warn           : exit=0, 0 diagnostic warnings
-  - moon test --target native        : 390 / 390
+  - git check-ignore -v <sample files>        : all match
+    the new `*.archived_*` rule (line 31)
+  - git ls-files --others --exclude-standard  : 0 rows
+  - moon check --deny-warn                     : exit=0,
+    0 diagnostic warnings (unchanged from 3965c11)
 
-No public API changes; no library code touched; no DGPs touched;
-no moon.pkg / moon.mod / moon.work changes.
+No public API changes; no library code touched. Single-line
+gitignore edit, four-line comment explaining the dated-suffix
+convention.
