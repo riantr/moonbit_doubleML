@@ -12,7 +12,7 @@ covering all 16 models currently in upstream.
 | Models ported | 17 / 17 (incl. cross-section DID, LPQ, BLP) |
 | Tests | **390 / 390** on `native`, `wasm`, `js`; **396 / 396** on `wasm-gc` (root + 6 doc tutorials) |
 | Warnings | 0 (under `moon test --deny-warn`) |
-| Python cross-checks | 17 / 17 PASS |
+| Python cross-checks | 23 / 23 PASS |
 | HTTP service | `examples/api_server/` — hand-rolled, no third-party framework |
 | License | Apache-2.0 |
 

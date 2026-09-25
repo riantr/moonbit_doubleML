@@ -30,7 +30,7 @@ What is asserted here:
      se ~0.017-0.020 on this DGP) sit inside the upstream/hand-rolled
      spread.
 
-The MoonBit-side numbers come from `moon test` / `cmd/plpr` output;
+The MoonBit-side numbers come from `moon test` / `examples/plpr` output;
 this script emits the reference values to compare against.
 """
 

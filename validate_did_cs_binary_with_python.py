@@ -63,7 +63,7 @@ def make_dgp(
 ) -> dict:
     """Build the canonical 2-period, 2-group CS Binary
     DGP with deterministic binary Y (matches
-    `cmd/did_cs_binary/main.mbt`).
+    `examples/did_cs_binary/main.mbt`).
 
     Long-format panel: `n_units = n_per_cohort * 2`
     units × `n_periods` rows each. `d` is the group
@@ -320,12 +320,12 @@ def upstream_cs_binary(dgp: dict, g_value: int = 1, t_pre: int = 0, t_eval: int 
 
 
 def moonbit_cs_binary() -> dict | None:
-    """Run the MoonBit `cmd/did_cs_binary` and parse
+    """Run the MoonBit `examples/did_cs_binary` and parse
     the `ATT_hat = ...` and `se = ...` lines.
     """
     try:
         out = subprocess.run(
-            ["moon", "run", "cmd/did_cs_binary", "--target", "native"],
+            ["moon", "run", "examples/did_cs_binary", "--target", "native"],
             cwd=REPO,
             capture_output=True,
             text=True,

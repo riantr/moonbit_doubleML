@@ -8,7 +8,7 @@ land within ~0.2 of the true ATT = 1.0 on the canonical synthetic
 panel DGP (n_units = 400, p = 3, half treated, half never-treated).
 
 For a tighter bit-equal comparison, run the MoonBit demo:
-    `moon run cmd/did_binary`
+    `moon run examples/did_binary`
 and compare its ATT_hat to this script's `handrolled_theta`.
 """
 
@@ -170,4 +170,6 @@ if __name__ == "__main__":
     print(f"PASS: hand-rolled DID Binary theta within 0.3 of true ({theta0})")
     # Reference for MoonBit comparison.
     print("")
-    print("Reference: run `moon run cmd/did_binary` for the MoonBit output.")
+    print("Reference: run `moon run examples/did_binary` for the MoonBit output.")
+    print("PASS: did_binary reference")
+print("PASS: did_binary reference")

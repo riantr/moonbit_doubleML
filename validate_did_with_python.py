@@ -6,7 +6,7 @@ Compares three implementations on the same DGP and K-fold split:
   1. A hand-rolled Python implementation that mirrors the MoonBit
      port exactly (closed-form OLS for g0/g1/m, ATT-style
      observational DID score, propensity clipping).
-  2. The MoonBit port itself, via `moon run cmd/main` and stdout
+  2. The MoonBit port itself, via `moon run examples/main` and stdout
      parsing.
 
 The upstream `DoubleMLDID` requires `ml_m` to be a classifier with
@@ -23,7 +23,7 @@ TODO #7 additionally cross-checks n_rep=5:
     (see `aggregator.mbt:32-60`).
   * The MoonBit side is parsed from the section
     `=== MoonBit DML DID (..., n_rep=5) ===` that moonbit-coder adds
-    to `cmd/main/main.mbt`.
+    to `examples/main/main.mbt`.
 
 (There is no upstream n_rep=5 comparison for DID — the existing
 validator skips the upstream entirely because the upstream
@@ -137,7 +137,7 @@ def reference_did_mimic_moonbit_n_rep5(
     return moonbit_aggregate_coef_se(coefs, ses)
 
 
-# Regex used to locate the n_rep=5 section in `moon run cmd/main` output.
+# Regex used to locate the n_rep=5 section in `moon run examples/main` output.
 # Contract: a section header `=== MoonBit DML DID ... n_rep=5 ... ===`
 # followed by `estimated theta (n_rep=5) = ...` and `se (n_rep=5) = ...`.
 _NREP5_SECTION_HEADER_RE = re.compile(
@@ -175,9 +175,9 @@ def main() -> None:
     print()
 
     print("=" * 70)
-    print("Running MoonBit port: `moon run cmd/main` ...")
+    print("Running MoonBit port: `moon run examples/main` ...")
     proc = subprocess.run(
-        ["moon", "run", "cmd/main"],
+        ["moon", "run", "examples/main"],
         cwd=Path(__file__).parent,
         capture_output=True,
         text=True,
@@ -217,7 +217,7 @@ def main() -> None:
         print("    === MoonBit DML DID ... n_rep=5 ... ===")
         print("containing `estimated theta (n_rep=5) = ...` and")
         print("`se (n_rep=5) = ...` lines.")
-        print("This block is added by moonbit-coder as part of TODO #7's cmd/main update.")
+        print("This block is added by moonbit-coder as part of TODO #7's examples/main update.")
         print("=" * 70)
         sys.exit(2)
     n5_section = stdout[m.end():]

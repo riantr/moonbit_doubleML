@@ -19,7 +19,7 @@ Assertions:
      cluster SE / row SE in [1.0, 3.0] (the structural ratio
      on this DGP), and cluster SE > row SE.
   3. The MoonBit reference values (printed by
-     `cmd/main` and `plr_cluster_test.mbt::plr_cluster_se_*`)
+     `examples/main` and `plr_cluster_test.mbt::plr_cluster_se_*`)
      match the upstream cluster pattern.
 """
 

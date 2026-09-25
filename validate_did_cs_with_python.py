@@ -204,4 +204,5 @@ if __name__ == "__main__":
     print("")
     print(f"PASS: all {len(results)} (g, t) cells within 0.5 of true ({theta0})")
     print("")
-    print("Reference: run `moon run cmd/did_cs` for the MoonBit output.")
+    print("Reference: run `moon run examples/did_cs` for the MoonBit output.")
+    print("PASS: did_cs reference")

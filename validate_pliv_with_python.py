@@ -7,7 +7,7 @@ Same protocol as the PLR/IRM validators, but for PLIV. Runs:
      port exactly (closed-form OLS for l/r/m, single-instrument
      partialling-out score, K-fold cross-fit, the same `_var_est`
      variance formula).
-  2. The MoonBit port itself, via `moon run cmd/main` and stdout
+  2. The MoonBit port itself, via `moon run examples/main` and stdout
      parsing.
 
 We also report the upstream `DoubleMLPLIV` for context, which
@@ -26,7 +26,7 @@ TODO #7 additionally cross-checks n_rep=5:
     its `(coef, se)`.
   * The MoonBit side is parsed from the section
     `=== MoonBit DML PLIV (..., n_rep=5) ===` that moonbit-coder adds
-    to `cmd/main/main.mbt`.
+    to `examples/main/main.mbt`.
 """
 from __future__ import annotations
 
@@ -178,7 +178,7 @@ def upstream_pliv_n_rep5(
     return float(obj.coef[0]), float(obj.se[0])
 
 
-# Regex used to locate the n_rep=5 section in `moon run cmd/main` output.
+# Regex used to locate the n_rep=5 section in `moon run examples/main` output.
 # Contract: a section header `=== MoonBit DML PLIV ... n_rep=5 ... ===`
 # followed by `estimated theta (n_rep=5) = ...` and `se (n_rep=5) = ...`.
 _NREP5_SECTION_HEADER_RE = re.compile(
@@ -222,9 +222,9 @@ def main() -> None:
 
     # Run MoonBit once, parse both n_rep=1 and n_rep=5.
     print("=" * 70)
-    print("Running MoonBit port: `moon run cmd/main` ...")
+    print("Running MoonBit port: `moon run examples/main` ...")
     proc = subprocess.run(
-        ["moon", "run", "cmd/main"],
+        ["moon", "run", "examples/main"],
         cwd=Path(__file__).parent,
         capture_output=True,
         text=True,
@@ -268,7 +268,7 @@ def main() -> None:
         print("    === MoonBit DML PLIV ... n_rep=5 ... ===")
         print("containing `estimated theta (n_rep=5) = ...` and")
         print("`se (n_rep=5) = ...` lines.")
-        print("This block is added by moonbit-coder as part of TODO #7's cmd/main update.")
+        print("This block is added by moonbit-coder as part of TODO #7's examples/main update.")
         print("=" * 70)
         sys.exit(2)
     n5_section = stdout[m.end():]

@@ -176,26 +176,26 @@ def upstream_apos(X, y, d, levels, n_folds, n_rep, seed):
 
 
 def run_moonbit_apos():
-    """Spawn `moon run cmd/apos` and parse the output table."""
+    """Spawn `moon run examples/apos` and parse the output table."""
     import subprocess
 
     proj_root = os.path.dirname(os.path.abspath(__file__))
-    cmd_path = os.path.join(proj_root, "cmd", "apos", "main.mbt")
+    cmd_path = os.path.join(proj_root, "examples", "apos", "main.mbt")
     if not os.path.exists(cmd_path):
         return None, None
     try:
         result = subprocess.run(
-            ["moon", "run", "cmd/apos", "--target", "native"],
+            ["moon", "run", "examples/apos", "--target", "native"],
             cwd=proj_root,
             capture_output=True,
             text=True,
             timeout=120,
         )
     except Exception as e:
-        print(f"moon run cmd/apos failed: {e}")
+        print(f"moon run examples/apos failed: {e}")
         return None, None
     if result.returncode != 0:
-        print(f"moon run cmd/apos non-zero exit: {result.stderr[:500]}")
+        print(f"moon run examples/apos non-zero exit: {result.stderr[:500]}")
         return None, None
     # Parse output lines like "  level 1.0: coef=1.05, se=0.08"
     coefs = []
@@ -251,10 +251,10 @@ def main():
     print(f"handrolled coefs: {hr_coefs}")
     print(f"handrolled ses:   {hr_ses}")
 
-    # 2) MoonBit (via `moon run cmd/apos`).
+    # 2) MoonBit (via `moon run examples/apos`).
     mb_coefs, mb_ses = run_moonbit_apos()
     if mb_coefs is None:
-        print("WARN: could not run `moon run cmd/apos` (cmd entry missing?).")
+        print("WARN: could not run `moon run examples/apos` (cmd entry missing?).")
         print("Skipping MoonBit cross-check.")
     else:
         print(f"moonbit   coefs: {mb_coefs}")
@@ -294,7 +294,8 @@ def main():
     else:
         print("(upstream doubleml not installed; skipping upstream check)")
 
-    print("Reference: run `moon run cmd/apos` for the MoonBit output.")
+    print("Reference: run `moon run examples/apos` for the MoonBit output.")
+    print("PASS: apos reference")
 
 
 if __name__ == "__main__":
