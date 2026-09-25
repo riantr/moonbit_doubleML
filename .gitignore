@@ -5,6 +5,14 @@ target
 .mooncakes/
 .moonagent/
 
+# doc/ build artefacts (per-tutorial native/wasm-gc run output).
+# Each of the six 00X_* subdirs creates its own native/debug/test tree
+# (5+ MB of .core/.c/.o/.exe/.json per backend); none of it is part of
+# the documentation source.
+doc/.moon-lock
+doc/.moon_db
+doc/native/
+
 # Auto-generated package interface; refresh with `moon info`.
 pkg.generated.mbti
 

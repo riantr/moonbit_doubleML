@@ -3,6 +3,7 @@ members = [
   "doc",
   "examples/api_server",
   "examples/apos",
+  "examples/consumer_demo",
   "examples/cvar",
   "examples/datasets",
   "examples/did_binary",

@@ -1,6 +1,5 @@
 import {
   "riantr/moonbit_doubleML",
-  "moonbitlang/core/math",
 }
 
 pkgtype(kind: "executable")
