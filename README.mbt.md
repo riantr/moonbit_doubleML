@@ -2,14 +2,17 @@
 
 Pure-MoonBit port of the
 [`doubleml`](https://github.com/DoubleML/doubleml-for-py) Python package,
-covering all 16 models currently in upstream.
+covering all 19 models in upstream `doubleml-for-py` plus
+3 MoonBit-specific extras (`DoubleMLPLPR` for static panel data,
+`DoubleMLLPLR` for binary outcomes, `DoubleMLDIDCSBinary` for
+binary-outcome CS-DID).
 
 ## Status
 
 | Item | Value |
 |------|-------|
 | Source file count | 110 production `.mbt` (flat layout, no sub-folders) |
-| Models ported | 17 / 17 (incl. cross-section DID, LPQ, BLP) |
+| Estimators | **22** `DoubleML*` structs in **17** files (19 upstream + 3 extras) |
 | Tests | **390 / 390** on `native`, `wasm`, `js`; **396 / 396** on `wasm-gc` (root + 6 doc tutorials) |
 | Warnings | 0 (under `moon test --deny-warn`) |
 | Python cross-checks | 23 / 23 PASS |
@@ -46,9 +49,13 @@ let (lo, hi) = fitted.confint()
 
 ## Demo entry points
 
-13 `examples/<bin>/main.mbt` drivers run end-to-end on synthetic DGPs.
-12 are CLI-style numeric demos (print true-vs-estimated θ and a 95%
-CI); the 13th — `examples/api_server/` — is an HTTP service.
+14 `examples/<bin>/` directories in `moon.work`. 13 run
+end-to-end on synthetic DGPs: 12 are CLI-style numeric demos
+(print true-vs-estimated θ and a 95% CI); the 13th —
+`examples/api_server/` — is an HTTP service. The 14th —
+`examples/consumer_demo/` — is the library-user pattern that
+mirrors what an external `moon add riantr/moonbit_doubleML`
+consumer would write.
 
 | Driver | Model | DGP | True θ |
 |--------|-------|-----|--------|
@@ -56,12 +63,13 @@ CI); the 13th — `examples/api_server/` — is an HTTP service.
 | `examples/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=5000`, 9 controls | 1.5 |
 | `examples/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
 | `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts × 4 periods | 1.0 |
-| `examples/did_cs_binary` | `DoubleMLDIDCS` (binary outcome) | Staggered CS-DID with binary outcome | 1.0 |
+| `examples/did_cs_binary` | `DoubleMLDIDCSBinary` | Staggered CS-DID with binary outcome | 1.0 |
 | `examples/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
 | `examples/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
-| `examples/plpr`, `examples/lplr` | `DoubleMLPLR` / `DoubleMLLPQ` | Linear / local polynomial partial-out | 1.0 |
+| `examples/plpr`, `examples/lplr` | `DoubleMLPLPR` / `DoubleMLLPLR` | Static-panel PLR / partially logistic regression | 1.0 |
 | `examples/apos`, `examples/cvar` | `DoubleMLAPOS` / `DoubleMLCVAR` | APO policy score / CVaR | 1.0 |
-| `examples/fuzz`, `examples/consumer_demo` | wrappers / library-user demo | Library API examples | n/a |
+| `examples/fuzz` | wrappers | Random-property fuzz harness across 12 surfaces | n/a |
+| `examples/consumer_demo` | library-user pattern | Minimal end-to-end PLR (no estimator-specific extras) | 1.0 |
 | `examples/api_server` | `DoubleMLPLR` + `DoubleMLIRM` | HTTP service — see below | n/a |
 
 CLI demos:
@@ -97,29 +105,36 @@ no third-party HTTP framework is pulled in.
 
 ## Models
 
-17 models, all reachable through the same `DoubleMLXxx::new(...).fit()` interface:
+22 estimators (`DoubleML*` structs) in 17 files, all reachable through
+the same `DoubleMLXxx::new(...).fit()` interface. The 19 marked
+`(upstream)` mirror the upstream `doubleml-for-py` API surface; the 3
+`(extra)` rows are MoonBit additions for static-panel PLR, partially
+logistic regression, and binary-outcome CS-DID:
 
 | Model | Score | Description |
 |-------|-------|-------------|
-| `DoubleMLPLR` | partialling-out | partially linear regression |
-| `DoubleMLIRM` | ATE | interactive regression model |
-| `DoubleMLPLIV` | partialling-out | partially linear IV regression |
-| `DoubleMLIIVM` | LATE | interactive IV model |
-| `DoubleMLDID` | observational | difference-in-differences |
-| `DoubleMLDIDBinary` | observational | DID with binary outcome |
-| `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) |
-| `DoubleMLDIDMulti` | observational | multi-period DID with group-time ATT aggregation |
-| `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID |
-| `DoubleMLSSM` | MAR | sample selection (missing-at-random) |
-| `DoubleMLAPO` | policy score | average prescriptive effect |
-| `DoubleMLAPOS` | policy score | APO with stratified treatment |
-| `DoubleMLPQ` | quantile | potential quantile |
-| `DoubleMLQTE` | quantile | quantile treatment effect |
-| `DoubleMLLPQ` | local polynomial | local potential quantile |
-| `DoubleMLCVAR` | CVaR | conditional value-at-risk |
-| `DoubleMLRDD` | observational | regression discontinuity |
-| `DoubleMLBLP` | IV | best linear predictor of treatment effect |
-| `DoubleMLPolicyTree` | policy | policy tree |
+| `DoubleMLPLR` | partialling-out | partially linear regression *(upstream)* |
+| `DoubleMLIRM` | ATE | interactive regression model *(upstream)* |
+| `DoubleMLPLIV` | partialling-out | partially linear IV regression *(upstream)* |
+| `DoubleMLIIVM` | LATE | interactive IV model *(upstream)* |
+| `DoubleMLDID` | observational | difference-in-differences *(upstream)* |
+| `DoubleMLDIDBinary` | observational | DID with binary outcome *(upstream)* |
+| `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(upstream)* |
+| `DoubleMLDIDCSBinary` | observational | CS-DID with binary outcome *(extra)* |
+| `DoubleMLDIDMulti` | observational | multi-period DID with group-time ATT aggregation *(upstream)* |
+| `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(upstream)* |
+| `DoubleMLSSM` | MAR | sample selection (missing-at-random) *(upstream)* |
+| `DoubleMLAPO` | policy score | average prescriptive effect *(upstream)* |
+| `DoubleMLAPOS` | policy score | APO with stratified treatment *(upstream)* |
+| `DoubleMLPQ` | quantile | potential quantile *(upstream)* |
+| `DoubleMLQTE` | quantile | quantile treatment effect *(upstream)* |
+| `DoubleMLLPQ` | local polynomial | local potential quantile *(upstream)* |
+| `DoubleMLLPLR` | partialling-out | partially logistic regression, Liu-Zhang-Zhou 2021 *(extra)* |
+| `DoubleMLCVAR` | CVaR | conditional value-at-risk *(upstream)* |
+| `DoubleMLRDD` | observational | regression discontinuity *(upstream)* |
+| `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |
+| `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(extra)* |
+| `DoubleMLPolicyTree` | policy | policy tree *(upstream)* |
 
 ## Project layout
 
@@ -133,7 +148,7 @@ doc/                     <- wasm-gc-targeted numbered tutorials
   ...
   006_python_check/
 
-examples/                <- 13 driver binaries
+examples/                <- 14 driver binaries (all listed in moon.work)
   main/                  <- 6 estimators, one perfect-DGP run each
   datasets/              <- 401(k)-style ATE / ATT recovery
   did_binary/            <- 2-period panel DID

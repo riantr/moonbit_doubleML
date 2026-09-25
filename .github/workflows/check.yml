@@ -62,10 +62,20 @@ jobs:
           # doubleml + numpy + pandas + statsmodels + scikit-learn
           pip install doubleml numpy pandas statsmodels scikit-learn
 
-      - name: Run all 9 validate_*.py scripts
+      - name: Run all 23 validate_*_with_python.py scripts
         run: |
           set -e
+          fail=0
           for s in validate_*_with_python.py; do
             echo "=== $s ==="
-            python "$s" | tail -1
+            line="$(python "$s" | tail -1)"
+            echo "$line"
+            case "$line" in
+              *PASS*) ;;
+              *) echo "::error::${s} trailing line did not contain PASS"; fail=1 ;;
+            esac
           done
+          if [ "$fail" -ne 0 ]; then
+            echo "One or more validators did not emit a trailing PASS line."
+            exit 1
+          fi

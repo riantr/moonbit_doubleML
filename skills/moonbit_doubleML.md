@@ -55,19 +55,23 @@ surface and anti-patterns).
 - the library lives at `moonbit_doubleML/` (workspace member). All
   production `.mbt` files are at the package root (flat layout).
 
-- The 17 estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`,
+- The 22 estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`,
   `DoubleMLIIVM`, `DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`,
-  `DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`, `DoubleMLSSM`,
-  `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`, `DoubleMLQTE`,
-  `DoubleMLLPQ`, `DoubleMLCVAR`, `DoubleMLRDD`, `DoubleMLBLP`,
-  `DoubleMLPolicyTree`) are each their own `<name>.mbt` file
-  with a sibling `<name>_test.mbt`.
+  `DoubleMLDIDCSBinary`, `DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`,
+  `DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
+  `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
+  `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
+  pack into 17 `<name>.mbt` files (some files hold 2 structs:
+  `apo.mbt` for APO+APOS, `quantile.mbt` for PQ+QTE,
+  `blp_policy.mbt` for BLP+PolicyTree). Each estimator has a
+  sibling `<name>_test.mbt`. 19 mirror upstream `doubleml-for-py`;
+  3 are MoonBit extras (`DIDCSBinary`, `LPLR`, `PLPR`).
 
 - 35 DGP modules live at root as `dgp_*.mbt` with sibling
   `dgp_*_test.mbt`. The shared Box-Muller helper is in `seed.mbt`.
 
-- 13 command drivers live under `examples/<bin>/main.mbt`. Of these:
-  - 12 (`apos`, `consumer_demo`, `cvar`, `datasets`, `did_binary`,
+- 14 driver binaries live under `examples/<bin>/main.mbt`. Of these:
+  - 13 (`apos`, `consumer_demo`, `cvar`, `datasets`, `did_binary`,
     `did_cross_section`, `did_cs`, `did_cs_binary`, `did_multi`,
     `fuzz`, `lplr`, `main`, `plpr`) are CLI-style numeric demos
     that print true-vs-estimated θ and a 95% CI.
