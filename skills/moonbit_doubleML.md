@@ -17,11 +17,23 @@ surface and anti-patterns).
   is what the rest of the codebase uses; the fully-qualified form
   is only needed at the `examples/<bin>/moon.pkg` boundary.
 
-- cross-file field reads use the `_get()` suffix (e.g.
-  `fitted.coef_get()`, `fitted.se_at(g, t)`). MoonBit requires
-  `pub` for cross-struct field access, so the getter is the
-  canonical read path. Direct field reads compile inside the same
-  file but fail across file boundaries.
+- access fitted estimates via the named accessor methods (`coef()`,
+  `se()`, `confint()`) — not via struct field reads. Cross-struct
+  field access needs `pub` getters, but MoonBit's `pub` rule and
+  the canonical method form together mean: just call the method.
+
+# Dependency rule (repo-wide)
+
+- Only official (`moonbitlang/*`) packages are allowed.
+- Non-official packages may only be `riantr/*` (this repo itself).
+- For official packages, pin to the latest published version on the
+  registry (e.g. `moonbitlang/async@0.20.3`) and upgrade when
+  bumping is intentional.
+- Notable consequence: HTTP-service code (e.g.
+  `examples/api_server/`) builds directly on `moonbitlang/async`'s
+  raw `Server` / `ServerConnection` API rather than adopting a
+  third-party web framework (no `bobzhang/crescent`,
+  `moonbit-community/rabbita`, etc.).
 
 # Tests
 
@@ -40,22 +52,28 @@ surface and anti-patterns).
 
 # Source layout
 
-- all production `.mbt` files live at the package root (flat
-  layout). The 17 estimators (`DoubleMLPLR`, `DoubleMLIRM`,
-  `DoubleMLPLIV`, `DoubleMLIIVM`, `DoubleMLDID`,
-  `DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`,
-  `DoubleMLDIDCrossSection`, `DoubleMLSSM`, `DoubleMLAPO`,
-  `DoubleMLAPOS`, `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLLPQ`,
-  `DoubleMLCVAR`, `DoubleMLRDD`, `DoubleMLBLP`,
+- the library lives at `moonbit_doubleML/` (workspace member). All
+  production `.mbt` files are at the package root (flat layout).
+
+- The 17 estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`,
+  `DoubleMLIIVM`, `DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`,
+  `DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`, `DoubleMLSSM`,
+  `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`, `DoubleMLQTE`,
+  `DoubleMLLPQ`, `DoubleMLCVAR`, `DoubleMLRDD`, `DoubleMLBLP`,
   `DoubleMLPolicyTree`) are each their own `<name>.mbt` file
   with a sibling `<name>_test.mbt`.
 
 - 35 DGP modules live at root as `dgp_*.mbt` with sibling
   `dgp_*_test.mbt`. The shared Box-Muller helper is in `seed.mbt`.
 
-- 12 command drivers live under `examples/<bin>/main.mbt` and each
-  declare `"riantr/moonbit_doubleML"` in their `moon.pkg`. New
-  command drivers follow the same pattern.
+- 13 command drivers live under `examples/<bin>/main.mbt`. Of these:
+  - 12 (`apos`, `consumer_demo`, `cvar`, `datasets`, `did_binary`,
+    `did_cross_section`, `did_cs`, `did_cs_binary`, `did_multi`,
+    `fuzz`, `lplr`, `main`, `plpr`) are CLI-style numeric demos
+    that print true-vs-estimated θ and a 95% CI.
+  - `examples/api_server/` is the HTTP service: it declares
+    `"riantr/moonbit_doubleML@0.52.0"` in `moon.mod` and consumes
+    the library through its public API.
 
 - Python cross-validators live at root as `validate_*.py`. They
   re-derive the hand-rolled reference for one model and compare
@@ -64,15 +82,21 @@ surface and anti-patterns).
 
 # Anti-patterns
 
-- do NOT introduce a `Map[K, V]`. MoonBit 0.10.11 deprecated the
-  built-in Map; use `Array[(K, V)]` and linear scan, or use a
-  per-key fixed-size array when the key range is small.
+- do NOT introduce a `Map[K, V]` **for estimator / DGP kernel
+  code**. MoonBit 0.10.11 deprecated the built-in Map; use
+  `Array[(K, V)]` and linear scan, or use a per-key fixed-size
+  array when the key range is small. The HTTP plumbing in
+  `examples/api_server/main.mbt` is exempt from this rule — it
+  uses `Map::of([])` for response headers, where the deprecation
+  caveat does not apply.
 
 - do NOT name a field `train` or `test`. Both are reserved in
   current MoonBit; use `train_idx` / `test_idx`.
 
-- do NOT use `ref`, `dyn`, `with`, `assert`, or `var` as
-  identifiers — all are reserved keywords.
+- do NOT use `ref`, `dyn`, `with`, `assert`, `var`, `method`,
+  `test`, or `train` as identifiers — all are reserved keywords.
+  In particular, `method` shows up often in HTTP handlers; use
+  `method_` (or another non-reserved name) instead.
 
 - do NOT introduce classifier learners (RandomForest, XGBoost,
   etc.). Upstream's scikit-learn interface is intentionally not
@@ -87,6 +111,12 @@ surface and anti-patterns).
 - do NOT relax `MAX(MODEL_TOL=0.1, ...)` in
   `dgp_recovery_test.mbt` without a documented reason. This is
   the contract that the upstream parity tests verify.
+
+- do NOT use non-official third-party HTTP frameworks. Per the
+  repo dependency rule, `examples/api_server/` uses
+  `moonbitlang/async`'s raw `Server` directly. Resist the urge
+  to add `bobzhang/crescent`, `moonbit-community/rabbita`, or
+  similar even if they're well-known.
 
 # Cross-validators
 
