@@ -1,43 +1,68 @@
-gitignore: cover the .archived_<date> scratch-rename suffix
+kfold: add whitebox tests for cluster-aware fold expansion
 
-The verifier / cleanup cycle has been using a dated archive
-suffix (`<name>.archived_<YYYY_MM_DD>[_<seq>]`) for ephemeral
-session-scratch renames since the v0.50+ cleanup rounds. The
-existing `.gitignore` covers the bare `.archived` and
-`.archived.<ext>` patterns but not the dated variant, so 18
-untracked files (session-scratch from the v0.52 release and
-its follow-ups) were showing up in `git ls-files
---others --exclude-standard` even though they are clearly
-scratch by name.
+The library previously had 0 whitebox tests (`*_wbtest.mbt`).
+All 390 tests were blackbox (`*_test.mbt`), exercising only
+the public surface (`Fold`, `kfold`, `kfold_stratified`,
+`slice_*`). Two package-internal helpers were unreachable from
+the blackbox side:
 
-Added a single new pattern `*.archived_*` that catches both
-files and directories with the dated suffix:
+  - `expand_unit_folds_to_rows(cluster, folds_u, row_unit)` —
+    the cluster-aware fold expansion used by every
+    clustered-DML path (PLR, IRM, PLPR, PLIV, IIVM cluster-
+    robust fits). Its contract is structural: every row of a
+    unit lands on the same side of every split, the per-fold
+    unit count equals the unit-level test fold size, and the
+    total row coverage is complete. None of these were tested
+    directly.
 
-  _add_licenses.py.archived_2026_09_24
-  _commit_msg.txt.archived_2026_09_24{,_b.._g}
-  _ddebug.archived_2026_09_25/{main.mbt,moon.mod,moon.pkg}
-  _fix_examples_names.py.archived_2026_09_24
-  _gen_cmd_moon_mod.py.archived_2026_09_24
-  _rename_examples.py.archived_2026_09_24
-  _stale_root_files.txt.archived_2026_09_25
-  _syntax_test.archived_2026_09_25/{main.mbt,moon.pkg}
-  _test_t1.txt.archived_v2
+  - `build_row_unit_map(cluster, uniq)` — the row → unit-
+    position lookup. Its contract is correctness under
+    non-contiguous unit ids (real panel data has firm ids
+    like {3, 5, 7, 11}, not {0, 1, 2, 3}). The v0.36.0
+    ClusterDataError::MissingUnit path was untested at the
+    helper level.
 
-Before: `git ls-files --others --exclude-standard` showed 18
-        rows; root felt cluttered; `git status` had a long
-        noise list.
-After:  same query returns 0 rows.
+This commit adds `kfold_wbtest.mbt` with 5 tests covering:
 
-The 13 already-gitignored variants (`*.archived`,
-`*.archived.*`, `_verify/*.archived*`) are unchanged.
+  1. `expand_unit_folds_to_rows_partition_is_row_complete` —
+     every row 0..n-1 appears exactly n_folds times across
+     all folds (once in test_indices of the fold where its
+     unit is selected for test, once in train_indices of the
+     other folds). For 2 folds, every row is visited twice.
+
+  2. `expand_unit_folds_to_rows_no_unit_straddles_split` —
+     for each fold, for each unit, the intersection of
+     `row_unit == u` with `test_indices` is either empty or
+     all-of-u. This is the cluster contract.
+
+  3. `expand_unit_folds_to_rows_fold_n_units_matches_unit_fold` —
+     the third return value equals `folds_u[f].test_indices().length()`.
+
+  4. `build_row_unit_map_non_contiguous_unit_ids` —
+     unit ids {3, 5, 7, 11} map positionally to {0, 1, 2, 3}.
+
+  5. `build_row_unit_map_raises_on_missing_unit` —
+     a cluster id not in `uniq` raises
+     `ClusterDataError::MissingUnit` (v0.36.0 path).
+
+Also updated:
+  - README.mbt.md Status table: 390/390 → 395/395 on
+    native/wasm/js; 396/396 → 401/401 on wasm-gc
+    (lib 395 + 6 doc tutorials)
+  - skills/moonbit_doubleML.md: documented the wbtest
+    convention with the kfold_wbtest.mbt example as the
+    first wbtest file in the library.
 
 Verification:
-  - git check-ignore -v <sample files>        : all match
-    the new `*.archived_*` rule (line 31)
-  - git ls-files --others --exclude-standard  : 0 rows
-  - moon check --deny-warn                     : exit=0,
-    0 diagnostic warnings (unchanged from 3965c11)
+  - moon check --deny-warn           : exit=0, 0 diagnostic warnings
+  - moon test --target native        : 395 / 395
+  - moon test --target wasm          : 395 / 395
+  - moon test --target wasm-gc       : 401 / 401 (lib + 6 doc tutorials)
+  - moon test --target js            : 395 / 395
 
-No public API changes; no library code touched. Single-line
-gitignore edit, four-line comment explaining the dated-suffix
-convention.
+No public API changes; no production code touched; no DGPs
+touched; no moon.pkg / moon.mod / moon.work changes.
+
+The wbtest convention now codified in skills/moonbit_doubleML.md
+serves as a template for any future whitebox coverage of
+package-internal helpers.

@@ -41,6 +41,14 @@ surface and anti-patterns).
   separate `tests/` directory). The `moon check` build expects
   every test file to start with `test` or `panic_test`.
 
+- whitebox tests (package-internal access) live in `*_wbtest.mbt`
+  next to the production file. Use them only for helpers that
+  `_test.mbt` cannot reach (private visibility, internal
+  contracts). The current wbtest coverage is `kfold_wbtest.mbt`
+  (5 tests for `expand_unit_folds_to_rows` and
+  `build_row_unit_map` — the cluster-aware fold expansion used
+  by every clustered-DML path).
+
 - regression tests for upstream doubleml-for-py v0.11.x go in
   `*_parity_test.mbt` and assert against the hand-rolled reference
   built by `validate_*_with_python.py`.
