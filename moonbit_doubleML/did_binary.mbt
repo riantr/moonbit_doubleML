@@ -21,6 +21,7 @@ pub struct DoubleMLDIDBinaryData {
   g : Array[Int]
   id : Array[Int]
 } derive(Debug)
+pub extend DoubleMLDIDBinaryData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLDIDBinaryData::new(
@@ -73,6 +74,7 @@ struct WideDIDSubset {
   // matches `y` / `d`.
   eval_idx : Array[Int]
 } derive(Debug)
+pub extend WideDIDSubset with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Internal: preprocess long-format panel data into the wide-format
@@ -307,6 +309,7 @@ pub struct DoubleMLDIDBinary {
   inner : DoubleMLDID
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLDIDBinary with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLDIDBinary::new(

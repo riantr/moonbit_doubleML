@@ -11,6 +11,7 @@ pub struct DoubleMLPLIVData {
   z : Array[Double]
   cluster_vars : Array[Int]
 } derive(Debug)
+pub extend DoubleMLPLIVData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Build a `DoubleMLPLIVData` from an `n x p` feature matrix, an
@@ -109,6 +110,7 @@ pub struct DoubleMLPLIV {
   se : Double
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLPLIV with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLPLIV::new(

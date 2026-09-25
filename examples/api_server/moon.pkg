@@ -11,3 +11,5 @@ import {
 pkgtype(kind: "executable")
 
 supported_targets = "-all+native+wasm"
+
+warnings = "-unused_error_type"

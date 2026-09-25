@@ -42,6 +42,7 @@ pub struct DoubleMLPanelData {
   t : Array[Int]
   id : Array[Int]
 } derive(Debug)
+pub extend DoubleMLPanelData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLPanelData::new(
@@ -80,6 +81,7 @@ struct PanelTransform {
   d_mean_row : Array[Double]
   id : Array[Int]
 } derive(Debug)
+pub extend PanelTransform with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Sort rows by (id, t) ascending and return the permutation of
@@ -506,6 +508,7 @@ pub struct DoubleMLPLPR {
   m_hat : Array[Double]
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLPLPR with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLPLPR::new(

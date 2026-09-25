@@ -54,6 +54,7 @@ pub struct DoubleMLIRM {
   se : Double
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLIRM with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLIRM::new(

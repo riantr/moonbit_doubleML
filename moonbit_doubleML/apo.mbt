@@ -13,6 +13,7 @@ pub struct DoubleMLAPO {
   se : Double
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLAPO with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLAPO::new(
@@ -248,6 +249,7 @@ pub struct DoubleMLAPOS {
   ses : Array[Double]
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLAPOS with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLAPOS::new(

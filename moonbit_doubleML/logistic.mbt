@@ -12,6 +12,7 @@ pub struct LogisticRegression {
   fitted : Bool
   coef_ : Array[Double]
 } derive(Debug)
+pub extend LogisticRegression with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Build an unfitted `LogisticRegression` learner. Call `fit(x, y)`

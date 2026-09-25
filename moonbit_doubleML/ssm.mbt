@@ -9,6 +9,7 @@ pub struct DoubleMLSSMData {
   d : Array[Double]
   s : Array[Double]
 } derive(Debug)
+pub extend DoubleMLSSMData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLSSMData::new(
@@ -95,6 +96,7 @@ pub struct DoubleMLSSM {
   se : Double
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLSSM with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLSSM::new(

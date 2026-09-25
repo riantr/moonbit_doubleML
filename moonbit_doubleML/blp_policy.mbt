@@ -28,6 +28,7 @@ pub struct DoubleMLBLP {
   rss : Double
   var_y : Double
 } derive(Debug)
+pub extend DoubleMLBLP with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLBLP::new(
@@ -312,6 +313,7 @@ pub enum PolicyTreeNode {
   Leaf(Int)
   Split(Int, Double, PolicyTreeNode, PolicyTreeNode)
 } derive(Debug)
+pub extend PolicyTreeNode with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Recursively compute the variance-reduction gain for the best split
@@ -469,6 +471,7 @@ pub struct DoubleMLPolicyTree {
   right_treatment : Int
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLPolicyTree with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLPolicyTree::new(

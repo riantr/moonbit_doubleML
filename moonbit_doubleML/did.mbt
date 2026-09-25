@@ -10,6 +10,7 @@ pub struct DoubleMLDIDData {
   y : Array[Double]
   d : Array[Double]
 } derive(Debug)
+pub extend DoubleMLDIDData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Returns `DoubleMLDIDData raise DIDDataError`: the v0.43.0
@@ -175,6 +176,7 @@ pub struct DoubleMLDID {
   psi_b : Array[Double]
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLDID with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLDID::new(

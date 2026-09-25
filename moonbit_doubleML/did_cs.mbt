@@ -28,6 +28,7 @@ pub struct DoubleMLDIDCSData {
   // `never_treated_time` sentinel.
   times : Array[Int]
 } derive(Debug)
+pub extend DoubleMLDIDCSData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLDIDCSData::new(
@@ -179,6 +180,7 @@ pub struct DoubleMLDIDCS {
   n_periods : Int
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLDIDCS with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLDIDCS::new(

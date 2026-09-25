@@ -36,6 +36,7 @@ pub struct DoubleMLCVAR {
   se : Double
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLCVAR with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Construct a `DoubleMLCVAR` estimator.

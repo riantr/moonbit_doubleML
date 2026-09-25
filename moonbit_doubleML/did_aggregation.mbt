@@ -8,6 +8,7 @@ pub struct DIDAggregationResult {
   se : Array[Double]
   agg_names : Array[String]
 } derive(Debug)
+pub extend DIDAggregationResult with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Group aggregation. For each unique group value `g_i` in

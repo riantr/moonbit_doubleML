@@ -55,6 +55,7 @@ struct CSBinPanelRow {
   g_indicator : Double // 0 or 1
   t_indicator : Double // 0 (pre) or 1 (eval)
 } derive(Debug)
+pub extend CSBinPanelRow with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// v0.51.0: subset the long-format panel to the 4
@@ -584,6 +585,7 @@ pub struct DoubleMLDIDCSBinary {
   n_c_subset : Int
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLDIDCSBinary with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// v0.51.0: construct a `DoubleMLDIDCSBinary`

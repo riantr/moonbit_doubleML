@@ -234,7 +234,7 @@ async fn write_json(
   body : Json,
 ) -> Unit {
   let bytes = @utf8.encode(body.stringify())
-  let headers : Map[String, String] = Map::of([])
+  let headers : Map[String, String] = Map::from_array([])
   headers.set("Content-Type", "application/json; charset=utf-8")
   headers.set("Content-Length", bytes.length().to_string())
   conn.send_response(code, reason, extra_headers=headers)
@@ -251,7 +251,7 @@ async fn write_text(
   body : String,
 ) -> Unit {
   let bytes = @utf8.encode(body)
-  let headers : Map[String, String] = Map::of([])
+  let headers : Map[String, String] = Map::from_array([])
   headers.set("Content-Type", content_type)
   headers.set("Content-Length", bytes.length().to_string())
   conn.send_response(code, reason, extra_headers=headers)
@@ -393,29 +393,28 @@ fn empty_body_json() -> Json {
 /// Read the request body into a `Json` value (empty object for GET).
 /// Caps the body size at 16 MiB to keep the server robust against
 /// pathological clients.
-async fn read_body_json(body : &@io.Reader, method_ : Method) -> Json raise ApiError {
+async fn read_body_json(body : &@io.Reader, method_ : Method) -> Json raise Error {
   if method_ == Get {
     return empty_body_json()
   }
   let cap = 16 * 1024 * 1024
   let buf : Array[Byte] = Array::make(0, b'0')
   // `body.read_some()` may raise a generic Error (e.g. on disconnect);
-  // we use a manual `for` loop with `try?` so the route layer sees a
-  // single error type (ApiError).
+  // we just stop accumulating on error and let the dispatch layer
+  // translate any unhandled Error into a 500.
   let mut done = false
-  while not(done) {
-    let next = (try? body.read_some())
-    match next {
-      Ok(Some(chunk)) =>
-        if buf.length() + chunk.length() >= cap {
+  while !done {
+    let chunk = body.read_some()
+    match chunk {
+      Some(bytes) =>
+        if buf.length() + bytes.length() >= cap {
           raise ApiError::Message("request body exceeds 16 MiB limit")
         } else {
-          for i = 0; i < chunk.length(); i = i + 1 {
-            buf.push(chunk[i])
+          for i = 0; i < bytes.length(); i = i + 1 {
+            buf.push(bytes[i])
           }
         }
-      Ok(None) => done = true
-      Err(_) => done = true
+      None => done = true
     }
   }
   if buf.length() == 0 {
@@ -448,6 +447,10 @@ pub async fn dispatch(req : @http.Request, body : &@io.Reader, conn : @http.Serv
   let json_body = read_body_json(body, method_) catch {
     ApiError::Message(msg) => {
       write_400(conn, msg)
+      return
+    }
+    _ => {
+      write_400(conn, "internal server error reading body")
       return
     }
   }

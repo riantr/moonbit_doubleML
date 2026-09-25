@@ -6,6 +6,7 @@ pub struct DoubleMLRDDData {
   d : Array[Double]
   score : Array[Double]
 } derive(Debug)
+pub extend DoubleMLRDDData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLRDDData::new(
@@ -51,6 +52,7 @@ pub struct DoubleMLRDD {
   n_local : Int
   fitted : Bool
 } derive(Debug)
+pub extend DoubleMLRDD with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLRDD::new(

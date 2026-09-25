@@ -97,6 +97,7 @@ pub struct GainStatsResult {
   rho : Array[Double]
   delta_theta : Array[Double]
 } derive(Debug)
+pub extend GainStatsResult with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Compute the gain-statistic benchmark values for `cf_y`,
@@ -295,6 +296,7 @@ pub struct GainStatsSource {
   n_rep : Int
   var_y : Double
 } derive(Debug)
+pub extend GainStatsSource with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Builder constructor for `GainStatsSource` that mirrors

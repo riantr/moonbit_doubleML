@@ -5,6 +5,7 @@ pub struct DoubleMLLPQData {
   d : Array[Double]
   z : Array[Double]
 } derive(Debug)
+pub extend DoubleMLLPQData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLLPQData::new(
@@ -102,6 +103,7 @@ pub struct DoubleMLLPQ {
   predictions_g1 : Array[Double]
   predictions_m : Array[Double]
 } derive(Debug)
+pub extend DoubleMLLPQ with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn DoubleMLLPQ::new(

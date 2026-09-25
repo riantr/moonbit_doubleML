@@ -18,6 +18,7 @@ pub(all) struct PSProcessorConfig {
   calibration_method : String
   cv_calibration : Bool
 } derive(Debug)
+pub extend PSProcessorConfig with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Returns `PSProcessorConfig raise PSConfigError`: the v0.44.0
@@ -109,6 +110,7 @@ pub fn PSProcessorConfig::default() -> PSProcessorConfig {
 pub struct PSProcessor {
   config : PSProcessorConfig
 } derive(Debug)
+pub extend PSProcessor with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn PSProcessor::new(
