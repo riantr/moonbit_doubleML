@@ -13,7 +13,7 @@ binary-outcome CS-DID).
 |------|-------|
 | Source file count | 110 production `.mbt` (flat layout, no sub-folders) |
 | Estimators | **22** `DoubleML*` structs in **17** files (19 upstream + 3 extras) |
-| Tests | **395 / 395** on `native`, `wasm`, `js` (390 blackbox + 5 whitebox on `kfold`); **401 / 401** on `wasm-gc` (lib + 6 doc tutorials) |
+| Tests | **401 / 401** on `native`, `wasm`, `js` (390 blackbox + 11 whitebox: 5 on `kfold`, 6 on `matrix`); **407 / 407** on `wasm-gc` (lib + 6 doc tutorials) |
 | Warnings | 0 (under `moon test --deny-warn`) |
 | Python cross-checks | 23 / 23 PASS |
 | HTTP service | `examples/api_server/` — hand-rolled, no third-party framework |

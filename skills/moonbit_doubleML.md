@@ -44,10 +44,16 @@ surface and anti-patterns).
 - whitebox tests (package-internal access) live in `*_wbtest.mbt`
   next to the production file. Use them only for helpers that
   `_test.mbt` cannot reach (private visibility, internal
-  contracts). The current wbtest coverage is `kfold_wbtest.mbt`
-  (5 tests for `expand_unit_folds_to_rows` and
-  `build_row_unit_map` — the cluster-aware fold expansion used
-  by every clustered-DML path).
+  contracts). Current wbtest coverage:
+    - `kfold_wbtest.mbt` (5 tests) — `expand_unit_folds_to_rows`
+      invariants (cluster contract: no unit straddles a split)
+      and `build_row_unit_map` under non-contiguous unit ids.
+    - `matrix_wbtest.mbt` (6 tests) — `Matrix::ones` /
+      `Matrix::from_rows` / `Matrix::copy` deep-copy semantics,
+      matmul dimension-mismatch precondition (via the
+      `panic_*` driver), involutive transpose, and matmul
+      associativity within 1e-9 (the v0.34.0+ kahan-compensation
+      invariant).
 
 - regression tests for upstream doubleml-for-py v0.11.x go in
   `*_parity_test.mbt` and assert against the hand-rolled reference

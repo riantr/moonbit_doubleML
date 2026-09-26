@@ -1,68 +1,75 @@
-kfold: add whitebox tests for cluster-aware fold expansion
+matrix: add whitebox tests for hot-path structural contracts
 
-The library previously had 0 whitebox tests (`*_wbtest.mbt`).
-All 390 tests were blackbox (`*_test.mbt`), exercising only
-the public surface (`Fold`, `kfold`, `kfold_stratified`,
-`slice_*`). Two package-internal helpers were unreachable from
-the blackbox side:
+`matrix.mbt` is the most universally-called helper in the
+library: every estimator uses `Matrix::from_array`,
+`matmul`, `matvec`, `transpose`, `dot`, `mean`, `variance`.
+The blackbox tests in `matrix_test.mbt` cover the public
+surface (10 tests: from_array zero, identity, transpose
+2x3, matmul identity, matmul known 2x2, matvec known, dot,
+mean, variance, matvec_t kahan). This wbtest file covers
+the structural contracts that the public surface relies on
+but does not exercise directly:
 
-  - `expand_unit_folds_to_rows(cluster, folds_u, row_unit)` —
-    the cluster-aware fold expansion used by every
-    clustered-DML path (PLR, IRM, PLPR, PLIV, IIVM cluster-
-    robust fits). Its contract is structural: every row of a
-    unit lands on the same side of every split, the per-fold
-    unit count equals the unit-level test fold size, and the
-    total row coverage is complete. None of these were tested
-    directly.
+  1. `matrix_ones_contents` — `Matrix::ones(3, 4)` produces
+     a 3x4 matrix whose every entry is exactly 1.0. (No
+     blackbox test asserted the actual contents of an
+     `nrows x ncols` ones matrix.)
 
-  - `build_row_unit_map(cluster, uniq)` — the row → unit-
-    position lookup. Its contract is correctness under
-    non-contiguous unit ids (real panel data has firm ids
-    like {3, 5, 7, 11}, not {0, 1, 2, 3}). The v0.36.0
-    ClusterDataError::MissingUnit path was untested at the
-    helper level.
+  2. `matrix_from_rows_2x3` — the row-list constructor takes
+     `Array[Array[Double]]`, distinct from the flat
+     `from_array(data, nrows, ncols)` constructor. Tests the
+     `[1,2,3]` / `[4,5,6]` -> {1,2,3; 4,5,6} layout.
 
-This commit adds `kfold_wbtest.mbt` with 5 tests covering:
+  3. `matrix_copy_is_deep` — the underlying `data` array
+     must be a fresh allocation. The struct copy shorthand
+     would alias it; `Matrix::copy` re-`make`s the array.
+     Test by mutating `m1[0,0]` and asserting `m2[0,0]`
+     is unchanged.
 
-  1. `expand_unit_folds_to_rows_partition_is_row_complete` —
-     every row 0..n-1 appears exactly n_folds times across
-     all folds (once in test_indices of the fold where its
-     unit is selected for test, once in train_indices of the
-     other folds). For 2 folds, every row is visited twice.
+  4. `panic_matmul_dimension_mismatch_aborts` — the
+     `require(a.ncols == b.nrows)` precondition (v0.48.0+
+     cascade pattern) must abort on mismatch. Test name uses
+     the `panic_*` convention so MoonBit's panic driver
+     catches the abort message
+     (`precondition failed at matrix.mbt:134:5-134:32`).
 
-  2. `expand_unit_folds_to_rows_no_unit_straddles_split` —
-     for each fold, for each unit, the intersection of
-     `row_unit == u` with `test_indices` is either empty or
-     all-of-u. This is the cluster contract.
+  5. `matrix_transpose_involutive` — the round-trip
+     `T(T(M)) == M` is the structural identity that justifies
+     the use of `transpose` in linear-regression plumbing
+     (`X'X` / `X'y`). Single-transpose is covered by
+     `matrix_transpose_2x3`; the round-trip was untested.
 
-  3. `expand_unit_folds_to_rows_fold_n_units_matches_unit_fold` —
-     the third return value equals `folds_u[f].test_indices().length()`.
+  6. `matmul_associativity_2x2x2` — `(A*B)*C == A*(B*C)`
+     within 1e-9 relative tolerance. This is the
+     compensated-summation invariant in `matmul`'s inner
+     loop (per the v0.34.0+ kahan comment). Without
+     compensation, naive matmul drifts at O(p * eps) and
+     fails on adversarial inputs.
 
-  4. `build_row_unit_map_non_contiguous_unit_ids` —
-     unit ids {3, 5, 7, 11} map positionally to {0, 1, 2, 3}.
-
-  5. `build_row_unit_map_raises_on_missing_unit` —
-     a cluster id not in `uniq` raises
-     `ClusterDataError::MissingUnit` (v0.36.0 path).
+These tests are package-internal (the `panic_*` test in
+particular relies on the abort-path code in `matmul`'s
+`try { ... } catch { abort(...) }` wrapper, which is
+package-private) and would not compile if moved to
+`matrix_test.mbt`.
 
 Also updated:
-  - README.mbt.md Status table: 390/390 → 395/395 on
-    native/wasm/js; 396/396 → 401/401 on wasm-gc
-    (lib 395 + 6 doc tutorials)
-  - skills/moonbit_doubleML.md: documented the wbtest
-    convention with the kfold_wbtest.mbt example as the
-    first wbtest file in the library.
+  - README.mbt.md Status table: 395/395 → 401/401 on
+    native/wasm/js; 401/401 → 407/407 on wasm-gc
+    (lib 401 + 6 doc tutorials)
+  - skills/moonbit_doubleML.md: documented `matrix_wbtest.mbt`
+    as the second wbtest file in the library.
 
 Verification:
   - moon check --deny-warn           : exit=0, 0 diagnostic warnings
-  - moon test --target native        : 395 / 395
-  - moon test --target wasm          : 395 / 395
-  - moon test --target wasm-gc       : 401 / 401 (lib + 6 doc tutorials)
-  - moon test --target js            : 395 / 395
+  - moon test --target native        : 401 / 401
+  - moon test --target wasm          : 401 / 401
+  - moon test --target wasm-gc       : 407 / 407
+  - moon test --target js            : 401 / 401
 
 No public API changes; no production code touched; no DGPs
 touched; no moon.pkg / moon.mod / moon.work changes.
 
-The wbtest convention now codified in skills/moonbit_doubleML.md
-serves as a template for any future whitebox coverage of
-package-internal helpers.
+With this commit, the library now has 11 whitebox tests
+across two files (`kfold_wbtest.mbt` + `matrix_wbtest.mbt`),
+codifying the wbtest convention documented in
+`skills/moonbit_doubleML.md` for future helpers.
