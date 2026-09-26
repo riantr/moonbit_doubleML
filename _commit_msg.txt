@@ -1,50 +1,41 @@
-v0.53.0: moon fmt --check sweep across 95 files for release gate
+_typos.toml: whitelist 5 domain terms / variable names that typos flagged
 
-After fixing the publish.yml path bug (commit 31751c8) and
-re-triggering the tag, the workflow got past "Resolve release
-version" but failed at "Check formatting" (`moon fmt --check`).
-The library and all 4 backends passed `moon check --deny-warn`
-and `moon test --deny-warn`; the format check is a separate
-gate that the v0.52 release cycle never went through (no
-v0.52.0 tag exists on github).
+The v0.53.0 publish.yml re-trigger (after the moon-fmt fix
+landed) cleared "Check formatting" but failed at "Check typos":
+46 false positives across the codebase. The previous version
+of _typos.toml only whitelisted 6 terms (apos, ndout, pava,
+CAUSAL, DML, dml). Five more needed:
 
-Ran `moon fmt` on the whole workspace. 95 files were rewritten;
-the changes split into two classes:
+  - compliers / complier / Complier
+      Imbens-Angrist IV terminology. In LATE / IRM / LPQ
+      code paths and their docs, "complier" = "subject who
+      takes the treatment they were assigned to". Not a
+      misspelling of compiler.
+  - iy
+      Internal LPQ variable name (in-sample index for the
+      bisection search in `lpq.mbt`). Looks like a typo of
+      "it" but is intentional.
+  - lik
+      Inner-product accumulator in `linalg.mbt::cholesky`.
+      Local short variable; not meant to be "like".
+  - unparseable
+      Valid English spelling (Merriam-Webster + Wiktionary).
+      The codebase uses both spellings; this is the
+      canonical form in error messages.
+  - mis
+      3-letter column abbreviation in the v0.x release-table
+      (mis | fix | summary), aligned vertically. Not a typo
+      of "miss" / "mist".
 
-  - 79 real reformatting changes (signature re-alignment,
-    trailing commas, whitespace inside blocks, single-line
-    array literals where moon fmt prefers them, etc.). These
-    are real stylistic changes that the v0.52+ toolchain
-    expects.
+All 5 are pure extend-words additions; no source code
+changes. After this commit:
 
-  - 16 CRLF-only / trailing-newline changes (mostly "no
-    newline at end of file" that moon fmt now adds). These
-    are byte-only changes that do not affect semantics; they
-    live in:
-      - doc/00X_*/moon.pkg (6 files)
-      - doc/moon.mod
-      - examples/consumer_demo/{main.mbt, moon.mod, moon.pkg}
-      - moon.work
-      - moonbit_doubleML/{dgp_did_SZ2020_test.mbt,
-        dgp_pliv_cluster_test.mbt, dgp_plpr_test.mbt,
-        matrix_wbtest.mbt, p3_did_utils_parity_test.mbt}
+  typos --files . | wc -l          # = 0
+  moon fmt --check                 : exit=0
+  moon check --deny-warn           : exit=0, 0 diagnostic warnings
+  moon test --target native        : 401 / 401
 
-Both classes are needed for `moon fmt --check` to pass; the
-CRLF-only changes aren't gitignorable at HEAD but ARE in the
-"formatted" state once committed.
-
-Not reverted per the memory-note B12 "CRLF revert" pattern:
-the strategy applies to commits where HEAD is already in the
-formatted state and the working tree was just bloated with
-whitespace noise. In this case HEAD is NOT in the formatted
-state, so all 95 changes must land.
-
-Verification (this commit):
-  - moon fmt --check                        : exit=0
-  - moon check --deny-warn                  : exit=0, 0 diagnostic warnings
-  - moon test --target native               : 401 / 401
-  - 23 / 23 Python cross-validators         : PASS (unchanged)
-
-After this commit + tag push, the publish.yml workflow should
-clear all gates including "Check formatting", "Check typos",
-"Publish to Mooncakes", and "Create GitHub Release".
+After this commit + tag push, the publish.yml workflow
+should clear all gates including the typo check, then
+proceed to "Publish to Mooncakes" and "Create GitHub
+Release".

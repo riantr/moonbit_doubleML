@@ -24,3 +24,25 @@ pava = "pava"
 CAUSAL = "CAUSAL"
 DML = "DML"
 dml = "dml"
+
+# Econometric terminology — "complier" / "compliers" are the
+# standard Imbens-Angrist terms for IV/LATE subjects who take
+# the treatment they were assigned to. Not a misspelling of
+# "compiler" / "compilers".
+compliers = "compliers"
+complier = "complier"
+Complier = "Complier"
+
+# Internal MoonBit variable names that look like typos to the
+# English-word dictionary but are intentional. `iy` is the
+# LPQ in-sample index for the bisection search; `lik` is the
+# cholesky inner-product accumulator.
+iy = "iy"
+lik = "lik"
+
+# `unparseable` is a valid English spelling (per Merriam-Webster
+# and Wiktionary). `mis` is the 3-letter abbreviation used in
+# the v0.x release-table columns ("mis|fix|summary") so the
+# columns align vertically. Both preserved as-is.
+unparseable = "unparseable"
+mis = "mis"
