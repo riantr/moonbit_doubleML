@@ -10,6 +10,120 @@ under each TODO is reset on every release 鈥?the most recent verified
 release is the canonical version.
 
 ---
+## [0.53.0] 鈥?global-review fixes + whitebox-test convention + CI loop tightening
+
+Triggered by the v0.52 post-release global review (15-member
+workspace scan + Python cross-validators + dependency-rule
+audit). The library, the example workspace, the CI loop, and
+the docs were all brought into a consistent state. No public
+API changes; the v0.52 surface is byte-identical.
+
+### Added
+
+- **Whitebox-test convention** 鈥?`*_wbtest.mbt` files for
+  package-internal helpers. Two wbtest files added (11 tests
+  total):
+  - `kfold_wbtest.mbt` (5 tests): `expand_unit_folds_to_rows`
+    invariants (cluster contract 鈥?no unit straddles a split;
+    per-fold unit count matches unit-level fold size; total
+    row coverage complete) and `build_row_unit_map` correctness
+    under non-contiguous unit ids + the v0.36.0
+    `ClusterDataError::MissingUnit` raise path.
+  - `matrix_wbtest.mbt` (6 tests): `Matrix::ones` / `from_rows`
+    / `copy` deep-copy semantics, matmul dimension-mismatch
+    precondition (via `panic_*` driver), involutive transpose,
+    and matmul associativity within 1e-9 (the v0.34.0+ kahan
+    compensation invariant).
+  - Convention codified in `skills/moonbit_doubleML.md` so
+    future helpers follow the same pattern.
+
+### Fixed (CI / housekeeping)
+
+- **`examples/consumer_demo/` workspace registration** 鈥?
+  the 14th on-disk example (a `moon.mod` v0.1.0 package
+  intended as the library-user pattern demo for
+  `moon add riantr/moonbit_doubleML`) was not in `moon.work`,
+  so moon never compiled it. Added to `moon.work`. Also
+  dropped the unused `moonbitlang/core/math` import from
+  `examples/consumer_demo/moon.pkg`.
+
+- **`__pycache__/validate_with_python.cpython-313.pyc`
+  force-tracked** 鈥?`__pycache__/` is in `.gitignore` but
+  the file was force-added; `git rm --cached` removed it.
+
+- **`doc/native/` build artefacts untracked** 鈥?six
+  `doc/00X_*` tutorials were each producing a `native/`
+  build tree (559 untracked files: `.core`, `.mbt`, `.json`,
+  `.exe`, plus `doc/.moon-lock` and `doc/.moon_db`).
+  Added `doc/.moon-lock`, `doc/.moon_db`, `doc/native/` to
+  `.gitignore`.
+
+- **`validate_with_python.py` master script stale** 鈥?
+  referenced the deleted `cmd/main` path and emitted no
+  trailing `PASS`. Renamed to
+  `validate_with_python.py.archived_2026_09_25` so it
+  exits the `validate_*_with_python.py` CI glob and matches
+  the existing `*.archived.*` ignore rule.
+
+- **`.archived_<date>` scratch suffix not gitignored** 鈥?
+  the verifier / cleanup cycle uses `<name>.archived_<date>`
+  renames that were not covered by `*.archived` /
+  `*.archived.*`. 18 untracked scratch files from the v0.52
+  release and follow-ups were cluttering the root. Added
+  `*.archived_*` to `.gitignore`.
+
+- **`python-cross-check` CI loop silently passed on
+  missing PASS** 鈥?the loop was `python "$s" | tail -1`,
+  which never asserted the trailing line contained `PASS`,
+  so any script that crashed silently exited 0. Renamed the
+  step to "Run all 23 validate_*_with_python.py scripts"
+  and replaced the loop body with one that fails the job
+  with an `::error::` annotation if any script's trailing
+  line doesn't contain `PASS`.
+
+### Changed (docs)
+
+- **Estimator count wording** 鈥?README/AGENTS/skills all
+  updated from "17 models" to the accurate "22 estimators
+  in 17 files (19 upstream + 3 extras: `DIDCSBinary`, `LPLR`,
+  `PLPR`)". Models table expanded from 19 to 22 rows with
+  `(upstream)` / `(extra)` markers.
+
+- **Example count wording** 鈥?README "Demo entry points"
+  and "Project layout" sections, AGENTS.md "moon.work
+  members", and skills all aligned on "14 dirs in moon.work,
+  13 CLI demos + 1 library-user pattern + 1 HTTP service".
+  Also corrected the `examples/lplr` driver row (was tagged
+  `DoubleMLLPQ`, actually `DoubleMLLPLR`).
+
+- **README Models table** 鈥?corrected `did_cs_binary` entry
+  from "DoubleMLDIDCS (binary outcome)" to
+  "DoubleMLDIDCSBinary" (now its own estimator struct in
+  `did_cs_binary.mbt`).
+
+### Verified
+
+- `moon check --deny-warn`           : exit=0, 0 diagnostic warnings
+- `moon test --target native`        : 401 / 401  (390 blackbox + 11 wbtest)
+- `moon test --target wasm`          : 401 / 401
+- `moon test --target wasm-gc`       : 407 / 407  (lib + 6 doc tutorials)
+- `moon test --target js`            : 401 / 401
+- `examples/fuzz` smoke (native)     : 11 / 11 invariant surfaces
+- 23 / 23 Python cross-validators    : PASS, 0 FAIL
+- `moon build examples/consumer_demo`: exit=0  (now actually compiles)
+- `moon build examples/api_server`   : exit=0  (unchanged)
+
+### Internal commits
+
+| commit  | what |
+|---------|------|
+| `aec880d` | global-review: 4 critical workspace / CI-cleanliness bugs |
+| `3965c11` | global-review: tighten CI Python loop + sync counts in docs |
+| `8b040c9` | gitignore: cover `.archived_<date>` scratch suffix |
+| `926fd46` | kfold: add whitebox tests for cluster-aware fold expansion |
+| `701ee5b` | matrix: add whitebox tests for hot-path structural contracts |
+
+---
 ## [0.52.0] 鈥?`LPQ` completeness + estimator fit() cascade wrap + backend math consistency
 
 Triggered by the v0.52 reproduction review cycle

@@ -1,75 +1,56 @@
-matrix: add whitebox tests for hot-path structural contracts
+v0.53.0: global-review fixes + whitebox-test convention + CI loop tightening
 
-`matrix.mbt` is the most universally-called helper in the
-library: every estimator uses `Matrix::from_array`,
-`matmul`, `matvec`, `transpose`, `dot`, `mean`, `variance`.
-The blackbox tests in `matrix_test.mbt` cover the public
-surface (10 tests: from_array zero, identity, transpose
-2x3, matmul identity, matmul known 2x2, matvec known, dot,
-mean, variance, matvec_t kahan). This wbtest file covers
-the structural contracts that the public surface relies on
-but does not exercise directly:
+Bumps moon.mod version from 0.52.0 to 0.53.0 and inserts a
+new CHANGELOG section covering the 5 follow-up commits that
+landed since v0.52.0:
 
-  1. `matrix_ones_contents` — `Matrix::ones(3, 4)` produces
-     a 3x4 matrix whose every entry is exactly 1.0. (No
-     blackbox test asserted the actual contents of an
-     `nrows x ncols` ones matrix.)
+  aec880d global-review: 4 critical workspace / CI-cleanliness bugs
+  3965c11 global-review: tighten CI Python loop + sync counts in docs
+  8b040c9 gitignore: cover `.archived_<date>` scratch suffix
+  926fd46 kfold: add whitebox tests for cluster-aware fold expansion
+  701ee5b matrix: add whitebox tests for hot-path structural contracts
 
-  2. `matrix_from_rows_2x3` — the row-list constructor takes
-     `Array[Array[Double]]`, distinct from the flat
-     `from_array(data, nrows, ncols)` constructor. Tests the
-     `[1,2,3]` / `[4,5,6]` -> {1,2,3; 4,5,6} layout.
+Highlights (full CHANGELOG entry details each):
 
-  3. `matrix_copy_is_deep` — the underlying `data` array
-     must be a fresh allocation. The struct copy shorthand
-     would alias it; `Matrix::copy` re-`make`s the array.
-     Test by mutating `m1[0,0]` and asserting `m2[0,0]`
-     is unchanged.
+Added
+  - whitebox-test convention (`*_wbtest.mbt`); 11 tests across
+    kfold_wbtest.mbt (5) + matrix_wbtest.mbt (6); codified in
+    skills/moonbit_doubleML.md
 
-  4. `panic_matmul_dimension_mismatch_aborts` — the
-     `require(a.ncols == b.nrows)` precondition (v0.48.0+
-     cascade pattern) must abort on mismatch. Test name uses
-     the `panic_*` convention so MoonBit's panic driver
-     catches the abort message
-     (`precondition failed at matrix.mbt:134:5-134:32`).
+Fixed (CI / housekeeping)
+  - examples/consumer_demo registered in moon.work
+  - tracked __pycache__/*.pyc removed
+  - doc/native/ + doc/.moon-lock + doc/.moon_db gitignored
+  - validate_with_python.py renamed to .archived_2026_09_25
+  - *.archived_<date> pattern added to .gitignore (18 files)
+  - python-cross-check CI loop now asserts PASS instead of
+    silently exiting 0
 
-  5. `matrix_transpose_involutive` — the round-trip
-     `T(T(M)) == M` is the structural identity that justifies
-     the use of `transpose` in linear-regression plumbing
-     (`X'X` / `X'y`). Single-transpose is covered by
-     `matrix_transpose_2x3`; the round-trip was untested.
+Changed (docs)
+  - estimator count 17 → 22 (19 upstream + 3 extras:
+    DIDCSBinary, LPLR, PLPR); Models table expanded
+  - example count wording unified to "14 dirs in moon.work"
+  - lplr entry corrected from DoubleMLLPQ to DoubleMLLPLR
+  - did_cs_binary entry corrected to DoubleMLDIDCSBinary
 
-  6. `matmul_associativity_2x2x2` — `(A*B)*C == A*(B*C)`
-     within 1e-9 relative tolerance. This is the
-     compensated-summation invariant in `matmul`'s inner
-     loop (per the v0.34.0+ kahan comment). Without
-     compensation, naive matmul drifts at O(p * eps) and
-     fails on adversarial inputs.
-
-These tests are package-internal (the `panic_*` test in
-particular relies on the abort-path code in `matmul`'s
-`try { ... } catch { abort(...) }` wrapper, which is
-package-private) and would not compile if moved to
-`matrix_test.mbt`.
-
-Also updated:
-  - README.mbt.md Status table: 395/395 → 401/401 on
-    native/wasm/js; 401/401 → 407/407 on wasm-gc
-    (lib 401 + 6 doc tutorials)
-  - skills/moonbit_doubleML.md: documented `matrix_wbtest.mbt`
-    as the second wbtest file in the library.
-
-Verification:
+Verified (v0.53.0 release gate)
   - moon check --deny-warn           : exit=0, 0 diagnostic warnings
-  - moon test --target native        : 401 / 401
+  - moon test --target native        : 401 / 401 (390 blackbox + 11 wbtest)
   - moon test --target wasm          : 401 / 401
-  - moon test --target wasm-gc       : 407 / 407
+  - moon test --target wasm-gc       : 407 / 407 (lib + 6 doc tutorials)
   - moon test --target js            : 401 / 401
+  - examples/fuzz smoke (native)     : 11 / 11 invariant surfaces
+  - 23 / 23 Python cross-validators  : PASS, 0 FAIL
 
-No public API changes; no production code touched; no DGPs
-touched; no moon.pkg / moon.mod / moon.work changes.
+Public API: unchanged (CI-cleanliness + tests + docs only).
+The v0.52 surface is byte-identical.
 
-With this commit, the library now has 11 whitebox tests
-across two files (`kfold_wbtest.mbt` + `matrix_wbtest.mbt`),
-codifying the wbtest convention documented in
-`skills/moonbit_doubleML.md` for future helpers.
+Tag-and-publish step:
+  git tag v0.53.0
+  git push origin master v0.53.0
+  git push github master:main v0.53.0
+
+The github tag push triggers .github/workflows/publish.yml,
+which runs moon check + moon test on all 4 backends, then
+`moon publish` to Mooncakes and `gh release create` on
+github.
