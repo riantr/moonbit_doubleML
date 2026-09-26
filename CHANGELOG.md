@@ -10,6 +10,104 @@ under each TODO is reset on every release 鈥?the most recent verified
 release is the canonical version.
 
 ---
+## [0.54.0] -- `p_adjust` extraction + `score=` parameter + Learner injection + TUNE_DESIGN
+
+Cycle-driven from the user's "还有哪些未moonbit化的组件?" review
+(2026-09-26). Three landed items + one design doc, all
+backwards-compatible: the public API surface gains the
+`learner_l~` / `learner_m~` labeled params on `DoubleMLPLR::new`
+and the `score?` labeled param on `DoubleMLPLR::fit`, but the
+default behaviour is byte-identical to v0.53.0. No `Deprecate` /
+no `BREAKING CHANGE`.
+
+### Added
+
+- **`p_adjust.mbt` extraction** -- lifted 7 p-adjust algorithms
+  (`romano_wolf`, `holm_bonferroni`, `bonferroni`, `bh_fdr`,
+  `by_fdr`, `tsbh`, `tsby`) + an `argsort_asc` helper + a public
+  `p_adjust(method_name, unadjusted, boot_t_stat?, t_stats?)`
+  dispatcher out of `did_multi.mbt` (-470 lines) into a sibling
+  `moonbit_doubleML/p_adjust.mbt` (16.9 KB). The DID-multi wrapper
+  retains a 16-line reference comment pointing to the new file.
+  11 wbtests in `p_adjust_wbtest.mbt` cover the 7 algorithm
+  primitives directly (identity for n=1, monotonicity, BH-BY
+  relationship, tsbh/tsby power gain, romano_wolf bootstrap with
+  critical_value boundary, and dispatcher routing).
+
+- **`score=` parameter on `DoubleMLPLR::fit`** -- new
+  `score? : String = "partialling-out"` labeled param. Accepts
+  `"partialling-out"` (the v0.54.0 default, identical to v0.53.0),
+  `"iv-type"`, and `"IV-type"`. The IV-type score requires an
+  instrument vector Z in `DoubleMLData` that is not yet ported;
+  calling `fit` with `"iv-type"` / `"IV-type"` raises
+  `PreconditionError` via the v0.48.0+ cascade pattern
+  (`require(false)` in a `try`/`catch`), describing the v0.55+
+  blocker. The actual port lands in v0.55+.
+
+- **Learner injection on `DoubleMLPLR::new`** --
+  `moonbit_doubleML/learner.mbt` (new) declares `ConstantLearner`
+  (constant-predictor) and `NoopLearner` (zero-predictor), both
+  with `derive(Debug)` + `pub extend ... Debug::{to_repr}` + `pub
+  extend ... Learner::{fit, predict}` (suppresses the implicit-
+  promotion deprecation), both implementing the existing `Learner`
+  trait in `linear.mbt`. A `LearnerDispatch` enum (LinearRegression
+  / Constant / Noop) + a `cross_fit_predict_dispatch` helper
+  pattern-match and call the generic `cross_fit_predict[T :
+  Learner]` per arm, keeping `DoubleMLPLR`'s struct non-generic.
+  `DoubleMLPLR::new` now accepts `learner_l~` / `learner_m~`
+  labeled params (defaulting to `LearnerDispatch::linear_regression()`);
+  `fit` and `fit_cluster` route their cross-fit calls through the
+  dispatch helper. 7 wbtests in `learner_wbtest.mbt` cover
+  constant_predict, constant_fit, noop_predict, dispatch_constant_routes,
+  dispatch_noop_routes, `plr_with_constant_l_finite` (DML
+  orthogonality sanity), and `plr_with_noop_both_nuisances_finite`
+  (pathological J-floor recovery).
+
+- **`TUNE_DESIGN.md` design doc** -- 11.5 KB architecture sketch
+  for `DoubleMLPLR::tune()` (no implementation). Covers grid-
+  search over `LearnerDispatch` combinations scored by MSE on
+  outcome nuisance, fold-aware caching via `SHA256(folds || learner_l
+  || learner_m)`, scoring_method dispatcher, scoring_target key,
+  edge cases (empty grid, divergent learner recovery), Path A
+  (in-package `RFLearner` + `GBLearner` ~200-400 lines each)
+  vs Path B (external ML package) trade-off. Six `[OPEN]`
+  decision points flagged for v0.55+ review.
+
+### Verified
+
+- `moon check --deny-warn --target native`    : exit=0
+- `moon check --deny-warn --target wasm`      : exit=0
+- `moon check --deny-warn --target wasm-gc`   : exit=0
+- `moon check --deny-warn --target js`        : exit=0
+- `moon test --target native`                 : 419 / 419
+- `moon test --target wasm`                   : 419 / 419
+- `moon test --target wasm-gc`                : 425 / 425
+- `moon test --target js`                     : 419 / 419
+- Python cross-validators (`doubleml` v0.11.3): **23 / 23** PASS in 115.6 s
+- `_verify/run_all_validators.py`             : driver script committed (1156 lines including report)
+- `_verify/validate_results.txt`              : NOT tracked (transient runner output, will be overwritten on next run)
+
+### Internal commits
+
+| commit  | what |
+|---------|------|
+| `c1e1c72` | `_typos.toml`: whitelist 5 domain terms (`compliers`, `iy`, `lik`, `unparseable`, `mis`) |
+| `55e81c6` | `moon fmt --check` sweep across 95 files (v0.53.0 publish gate) |
+| `31751c8` | `publish.yml`: fix `moon.mod` path bug at line 51 (was: root `moon.mod`, fix: `moonbit_doubleML/moon.mod`) |
+| `de88d69` | v0.53.0: global-review fixes + whitebox-test convention + CI loop tightening |
+| `2c42512` | **v0.54.0 cycle**: p_adjust extraction + score= param + Learner injection + TUNE_DESIGN |
+
+### Carry-over from v0.53.0
+
+The v0.53.0 release cycle landed at commit `55e81c6` (github tag
+`v0.53.0`). The post-release `c1e1c72` typos fix and the full
+v0.54.0 cycle `2c42512` both caught up to github `main` after the
+github.com:443 outage recovered (~24 h intermittent blocking). The
+`v0.53.0` tag stays at `55e81c6` -- it was the shipped release
+point and the v0.54.0 work is a forward-merge, not a retroactive
+v0.53.0 patch.
+
+---
 ## [0.53.0] 鈥?global-review fixes + whitebox-test convention + CI loop tightening
 
 Triggered by the v0.52 post-release global review (15-member
