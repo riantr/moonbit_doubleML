@@ -48,7 +48,7 @@ jobs:
               ;;
           esac
 
-          manifest_version="$(awk -F'"' '/^version = / { print $2; exit }' moon.mod)"
+          manifest_version="$(awk -F'"' '/^version = / { print $2; exit }' moonbit_doubleML/moon.mod)"
           if [ "$version" != "$manifest_version" ]; then
             echo "Tag version $version does not match moon.mod version $manifest_version" >&2
             exit 1
