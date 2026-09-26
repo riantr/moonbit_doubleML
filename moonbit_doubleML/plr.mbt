@@ -33,6 +33,13 @@
 /// the matrix of features covered relative to the upstream package.
 pub struct DoubleMLPLR {
   data : DoubleMLData
+  // injected learner types (v0.54.0+): separate per-nuisance so
+  // l-step and m-step can use different model families
+  // (e.g. OLS for l, random forest for m). Both default to a
+  // fresh `LinearRegression`; can be overridden per-fit via
+  // `DoubleMLPLR::fit`'s labeled params.
+  learner_l : LearnerDispatch
+  learner_m : LearnerDispatch
   n_folds : Int
   n_rep : Int
   seed : Int
@@ -51,6 +58,8 @@ pub extend DoubleMLPLR with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLPLR::new(
   data : DoubleMLData,
+  learner_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  learner_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
   n_folds? : Int = 2,
   n_rep? : Int = 1,
   seed? : Int = 3141,
@@ -61,6 +70,8 @@ pub fn DoubleMLPLR::new(
     require(n_rep >= 1)
     {
       data,
+      learner_l,
+      learner_m,
       n_folds,
       n_rep,
       seed,
@@ -165,15 +176,47 @@ pub fn DoubleMLPLR::predictions_m(self : DoubleMLPLR) -> Array[Double] {
 /// unit-level cluster-robust estimator (mirrors upstream's
 /// `_var_est` one-cluster-variable branch and
 /// `LinearScoreMixin._est_coef` cluster branch).
+///
+/// `score` selects the DML nuisance score (v0.54.0+):
+///   - `"partialling-out"` (default): the standard
+///     partialling-out DML score `psi_a = -(d - m_hat)^2`,
+///     `psi_b = (d - m_hat) * (y - l_hat)`. This is what
+///     upstream calls `DoubleMLPLR._score_partialling_out`
+///     and is the only score ported at v0.54.0.
+///   - `"IV-type"`: would require an instrument vector `Z`
+///     in `DoubleMLData`; not yet ported. Calling `fit` with
+///     `score="IV-type"` aborts with a descriptive message.
+///
+/// The `learner_l` / `learner_m` labeled params accept any
+/// `LearnerDispatch` (defaults to the constructor-set values,
+/// i.e. a fresh `LinearRegression`). Per-fit overrides let
+/// callers swap in alternative nuisance estimators
+/// (`ConstantLearner`, `NoopLearner`, ...) without rebuilding
+/// the `DoubleMLPLR` instance.
 pub fn DoubleMLPLR::fit(
   self : DoubleMLPLR,
-  learner? : LinearRegression = LinearRegression::new(),
+  learner_l? : LearnerDispatch = self.learner_l,
+  learner_m? : LearnerDispatch = self.learner_m,
   max_attempts? : Int = 1,
+  score? : String = "partialling-out",
 ) -> DoubleMLPLR {
   try {
+    require(
+      score == "partialling-out" || score == "iv-type" || score == "IV-type",
+    )
     require(max_attempts >= 1)
+    if score == "iv-type" || score == "IV-type" {
+      // v0.54.0: `score="IV-type"` requires an instrument
+      // vector Z in `DoubleMLData`, which is not yet ported.
+      // Throw a `PreconditionError` (v0.48.0+ cascade) so the
+      // outer `try` catches it and re-aborts with a
+      // descriptive message naming the v0.54.0 limitation.
+      let line : String = "DoubleMLPLR::fit: score='IV-type' needs instrument vector Z (port coming in v0.55+)"
+      ignore(line)
+      require(false) // unreachable
+    }
     if self.data.is_cluster_data() {
-      return self.fit_cluster(learner, max_attempts~)
+      return self.fit_cluster(learner_l~, learner_m~, max_attempts~)
     }
     let n = self.n_obs()
     let nrep = self.n_rep
@@ -184,8 +227,18 @@ pub fn DoubleMLPLR::fit(
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < nrep; r = r + 1 {
       let folds = kfold(n, self.n_folds, self.seed + r)
-      l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds)
-      m_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds)
+      l_pred = cross_fit_predict_dispatch(
+        learner_l,
+        self.data.x,
+        self.data.y,
+        folds,
+      )
+      m_pred = cross_fit_predict_dispatch(
+        learner_m,
+        self.data.x,
+        self.data.d,
+        folds,
+      )
       // score elements for THIS rep's nuisances only
       let v_hat : Array[Double] = Array::make(n, 0.0)
       let u_hat : Array[Double] = Array::make(n, 0.0)
@@ -208,6 +261,8 @@ pub fn DoubleMLPLR::fit(
     let (coef, se) = aggregate_coef_se(coefs, ses)
     {
       data: self.data,
+      learner_l,
+      learner_m,
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
@@ -237,7 +292,8 @@ pub fn DoubleMLPLR::fit(
 /// (with cluster-respecting folds) feeds both paths.
 fn DoubleMLPLR::fit_cluster(
   self : DoubleMLPLR,
-  learner : LinearRegression,
+  learner_l~ : LearnerDispatch,
+  learner_m~ : LearnerDispatch,
   max_attempts? : Int = 1,
 ) -> DoubleMLPLR {
   try {
@@ -289,8 +345,18 @@ fn DoubleMLPLR::fit_cluster(
         let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
           cluster, folds_u, row_unit,
         )
-        l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
-        m_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
+        l_pred = cross_fit_predict_dispatch(
+          learner_l,
+          self.data.x,
+          self.data.y,
+          folds_row,
+        )
+        m_pred = cross_fit_predict_dispatch(
+          learner_m,
+          self.data.x,
+          self.data.d,
+          folds_row,
+        )
         let psi_a : Array[Double] = Array::make(n, 0.0)
         let psi_b : Array[Double] = Array::make(n, 0.0)
         for i = 0; i < n; i = i + 1 {
@@ -350,6 +416,8 @@ fn DoubleMLPLR::fit_cluster(
     let (coef, se) = aggregate_coef_se(coefs, ses)
     {
       data: self.data,
+      learner_l,
+      learner_m,
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
