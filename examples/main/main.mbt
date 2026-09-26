@@ -72,7 +72,12 @@ fn main {
   let x_mat = @moonbit_doubleML.Matrix::from_array(x_flat, n, p)
   let data = @moonbit_doubleML.DoubleMLData::new(x_mat, y, d1)
   // -------- run DML --------
-  let model = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141)
+  let model = @moonbit_doubleML.DoubleMLPLR::new(
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let fitted = model.fit()
   let (lo, hi) = fitted.confint()
   println("=== MoonBit DML PLR (partialling out) ===")
@@ -81,7 +86,12 @@ fn main {
   println("standard error    = \{fitted.se()}")
   println("95% confint       = [\{lo}, \{hi}]")
   println("n_obs             = \{fitted.n_obs()}")
-  let model5 = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=5, seed=3141)
+  let model5 = @moonbit_doubleML.DoubleMLPLR::new(
+    data,
+    n_folds=2,
+    n_rep=5,
+    seed=3141,
+  )
   let fitted5 = model5.fit()
   println("=== MoonBit DML PLR (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{fitted5.coef()}")
@@ -89,7 +99,12 @@ fn main {
 
   // -------- run IRM --------
   // Same DGP works for IRM too: ATE is also theta0.
-  let irm = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=1, seed=3141)
+  let irm = @moonbit_doubleML.DoubleMLIRM::new(
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let irm_fitted = irm.fit()
   let (ilo, ihi) = irm_fitted.confint()
   println("")
@@ -99,7 +114,12 @@ fn main {
   println("standard error    = \{irm_fitted.se()}")
   println("95% confint       = [\{ilo}, \{ihi}]")
   println("n_obs             = \{irm_fitted.n_obs()}")
-  let irm5 = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=5, seed=3141)
+  let irm5 = @moonbit_doubleML.DoubleMLIRM::new(
+    data,
+    n_folds=2,
+    n_rep=5,
+    seed=3141,
+  )
   let irm_fitted5 = irm5.fit()
   println("=== MoonBit DML IRM (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{irm_fitted5.coef()}")
@@ -149,7 +169,12 @@ fn main {
     y_iv[i] = theta0 * d_iv[i] + s
   }
   let pliv_data = @moonbit_doubleML.DoubleMLPLIVData::new(x_mat, y_iv, d_iv, z)
-  let pliv = @moonbit_doubleML.DoubleMLPLIV::new(pliv_data, n_folds=2, n_rep=1, seed=3141)
+  let pliv = @moonbit_doubleML.DoubleMLPLIV::new(
+    pliv_data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let pliv_fitted = pliv.fit()
   let (plo, phi_) = pliv_fitted.confint()
   println("")
@@ -159,7 +184,12 @@ fn main {
   println("standard error    = \{pliv_fitted.se()}")
   println("95% confint       = [\{plo}, \{phi_}]")
   println("n_obs             = \{pliv_fitted.n_obs()}")
-  let pliv5 = @moonbit_doubleML.DoubleMLPLIV::new(pliv_data, n_folds=2, n_rep=5, seed=3141)
+  let pliv5 = @moonbit_doubleML.DoubleMLPLIV::new(
+    pliv_data,
+    n_folds=2,
+    n_rep=5,
+    seed=3141,
+  )
   let pliv_fitted5 = pliv5.fit()
   println("=== MoonBit DML PLIV (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{pliv_fitted5.coef()}")
@@ -201,8 +231,15 @@ fn main {
     }
     y_iivm[i] = theta0 * d_iivm[i] + s
   }
-  let iivm_data = @moonbit_doubleML.DoubleMLIIVMData::new(x_mat, y_iivm, d_iivm, z_iivm)
-  let iivm = @moonbit_doubleML.DoubleMLIIVM::new(iivm_data, n_folds=2, n_rep=1, seed=3141)
+  let iivm_data = @moonbit_doubleML.DoubleMLIIVMData::new(
+    x_mat, y_iivm, d_iivm, z_iivm,
+  )
+  let iivm = @moonbit_doubleML.DoubleMLIIVM::new(
+    iivm_data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let iivm_fitted = iivm.fit()
   let (ilo_, ihi_) = iivm_fitted.confint()
   println("")
@@ -212,7 +249,12 @@ fn main {
   println("standard error    = \{iivm_fitted.se()}")
   println("95% confint       = [\{ilo_}, \{ihi_}]")
   println("n_obs             = \{iivm_fitted.n_obs()}")
-  let iivm5 = @moonbit_doubleML.DoubleMLIIVM::new(iivm_data, n_folds=2, n_rep=5, seed=3141)
+  let iivm5 = @moonbit_doubleML.DoubleMLIIVM::new(
+    iivm_data,
+    n_folds=2,
+    n_rep=5,
+    seed=3141,
+  )
   let iivm_fitted5 = iivm5.fit()
   println("=== MoonBit DML IIVM (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{iivm_fitted5.coef()}")
@@ -235,7 +277,12 @@ fn main {
         "DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")",
       )
   }
-  let did = @moonbit_doubleML.DoubleMLDID::new(did_data, n_folds=2, n_rep=1, seed=3141)
+  let did = @moonbit_doubleML.DoubleMLDID::new(
+    did_data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let did_fitted = did.fit()
   let (dlo, dhi_) = did_fitted.confint()
   println("")
@@ -245,7 +292,12 @@ fn main {
   println("standard error    = \{did_fitted.se()}")
   println("95% confint       = [\{dlo}, \{dhi_}]")
   println("n_obs             = \{did_fitted.n_obs()}")
-  let did5 = @moonbit_doubleML.DoubleMLDID::new(did_data, n_folds=2, n_rep=5, seed=3141)
+  let did5 = @moonbit_doubleML.DoubleMLDID::new(
+    did_data,
+    n_folds=2,
+    n_rep=5,
+    seed=3141,
+  )
   let did_fitted5 = did5.fit()
   println("=== MoonBit DML DID (n_rep=5) ===")
   println("estimated theta (n_rep=5) = \{did_fitted5.coef()}")
@@ -280,8 +332,15 @@ fn main {
     let y_part = theta0 * d_ssm[i] + 0.3 * x_mat.get(i, 0) * d_ssm[i]
     y_ssm[i] = y_part + noise
   }
-  let ssm_data = @moonbit_doubleML.DoubleMLSSMData::new(x_mat, y_ssm, d_ssm, s_ssm)
-  let ssm = @moonbit_doubleML.DoubleMLSSM::new(ssm_data, n_folds=2, n_rep=1, seed=3141)
+  let ssm_data = @moonbit_doubleML.DoubleMLSSMData::new(
+    x_mat, y_ssm, d_ssm, s_ssm,
+  )
+  let ssm = @moonbit_doubleML.DoubleMLSSM::new(
+    ssm_data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let ssm_fitted = ssm.fit()
   let (slo_, shi_) = ssm_fitted.confint()
   println("")
@@ -306,7 +365,9 @@ fn main {
     y_lpq[i] = d_lpq[i] + (i % 100).to_double() / 100.0
   }
   let lpq_x = @moonbit_doubleML.Matrix::zeros(n, 1)
-  let lpq_data = @moonbit_doubleML.DoubleMLLPQData::new(lpq_x, y_lpq, d_lpq, z_lpq)
+  let lpq_data = @moonbit_doubleML.DoubleMLLPQData::new(
+    lpq_x, y_lpq, d_lpq, z_lpq,
+  )
   let lpq_fitted = @moonbit_doubleML.DoubleMLLPQ::new(
     lpq_data,
     treatment=1.0,
@@ -433,7 +494,9 @@ fn main {
   println("=== MoonBit PolicyTree (Bug #8: variance-reduction gain) ===")
   println("split_feature = \{pt_fitted.split_feature()}")
   println("split_value   = \{pt_fitted.split_value()}")
-  let pt_pred = pt_fitted.predict(@moonbit_doubleML.Matrix::from_array([-0.5, 0.5], 2, 1))
+  let pt_pred = pt_fitted.predict(
+    @moonbit_doubleML.Matrix::from_array([-0.5, 0.5], 2, 1),
+  )
   println("predict([-0.5, 0.5]) = [\{pt_pred[0]}, \{pt_pred[1]}]")
 
   // -------- run RDD --------

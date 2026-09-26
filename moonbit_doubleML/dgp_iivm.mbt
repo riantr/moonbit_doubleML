@@ -112,7 +112,7 @@ pub fn make_iivm_data(
     y[i] = theta * d[i] + xb + v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d, z }
+  { theta, x: x_mat, y, d, z, }
 }
 
 ///|

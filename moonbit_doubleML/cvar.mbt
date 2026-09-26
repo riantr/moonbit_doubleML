@@ -36,6 +36,8 @@ pub struct DoubleMLCVAR {
   se : Double
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLCVAR with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -586,106 +588,106 @@ pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
     // `g_hat` / `m_hat`); the per-rep `(theta_r, se_r)` are
     // aggregated.
     let coefs : Array[Double] = Array::make(self.n_rep, 0.0)
-  let ses : Array[Double] = Array::make(self.n_rep, 0.0)
-  let mut last_g : Array[Double] = Array::make(n, 0.0)
-  let mut last_m : Array[Double] = Array::make(n, 0.0)
-  for r = 0; r < self.n_rep; r = r + 1 {
-    let folds = kfold(n, self.n_folds, self.seed + r)
-    let g_hat = Array::make(n, 0.0)
-    let m_hat = Array::make(n, 0.0)
-    let ipw_vec : Array[Double] = Array::make(folds.length(), 0.0)
-    for i_fold = 0; i_fold < folds.length(); i_fold = i_fold + 1 {
-      let train = folds[i_fold].train_indices()
-      let eval_set = folds[i_fold].test_indices()
-      // Per-fold sub-seed for the inner 50/50 split. The
-      // upstream `train_test_split` uses `random_state=42`
-      // (constant); we mirror that choice with a fixed
-      // constant seed so the deterministic test replay
-      // matches.
-      let inner_seed = 42 + r * 1000 + i_fold * 17
-      let (g_test, m_test, ipw_est) = cvar_inner_crossfit(
-        self.data.x,
-        self.data.y,
-        self.data.d,
-        treated,
-        train,
-        eval_set,
-        self.n_folds,
-        inner_seed,
-        self.quantile,
-        self.treatment,
+    let ses : Array[Double] = Array::make(self.n_rep, 0.0)
+    let mut last_g : Array[Double] = Array::make(n, 0.0)
+    let mut last_m : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < self.n_rep; r = r + 1 {
+      let folds = kfold(n, self.n_folds, self.seed + r)
+      let g_hat = Array::make(n, 0.0)
+      let m_hat = Array::make(n, 0.0)
+      let ipw_vec : Array[Double] = Array::make(folds.length(), 0.0)
+      for i_fold = 0; i_fold < folds.length(); i_fold = i_fold + 1 {
+        let train = folds[i_fold].train_indices()
+        let eval_set = folds[i_fold].test_indices()
+        // Per-fold sub-seed for the inner 50/50 split. The
+        // upstream `train_test_split` uses `random_state=42`
+        // (constant); we mirror that choice with a fixed
+        // constant seed so the deterministic test replay
+        // matches.
+        let inner_seed = 42 + r * 1000 + i_fold * 17
+        let (g_test, m_test, ipw_est) = cvar_inner_crossfit(
+          self.data.x,
+          self.data.y,
+          self.data.d,
+          treated,
+          train,
+          eval_set,
+          self.n_folds,
+          inner_seed,
+          self.quantile,
+          self.treatment,
+          self.propensity_clip,
+          self.normalize_ipw,
+        )
+        for k = 0; k < eval_set.length(); k = k + 1 {
+          g_hat[eval_set[k]] = g_test[k]
+          m_hat[eval_set[k]] = m_test[k]
+        }
+        ipw_vec[i_fold] = ipw_est
+      }
+      // Post-fold adjustments: clip, normalize, treat=0 flip.
+      // These match the upstream
+      // `m_hat["preds"] = ps_processor.adjust_ps(m_hat["preds"],
+      // d, cv=smpls); if normalize: m_hat_adj = _normalize_ipw(
+      // ...); if treatment==0: m_hat_adj = 1 - m_hat_adj`.
+      let m_clipped = clip_vec(
+        m_hat,
         self.propensity_clip,
-        self.normalize_ipw,
+        1.0 - self.propensity_clip,
       )
-      for k = 0; k < eval_set.length(); k = k + 1 {
-        g_hat[eval_set[k]] = g_test[k]
-        m_hat[eval_set[k]] = m_test[k]
+      let m_adj = if self.normalize_ipw {
+        normalize_ipw_weights(m_clipped, self.data.d)
+      } else {
+        m_clipped
       }
-      ipw_vec[i_fold] = ipw_est
-    }
-    // Post-fold adjustments: clip, normalize, treat=0 flip.
-    // These match the upstream
-    // `m_hat["preds"] = ps_processor.adjust_ps(m_hat["preds"],
-    // d, cv=smpls); if normalize: m_hat_adj = _normalize_ipw(
-    // ...); if treatment==0: m_hat_adj = 1 - m_hat_adj`.
-    let m_clipped = clip_vec(
-      m_hat,
-      self.propensity_clip,
-      1.0 - self.propensity_clip,
-    )
-    let m_adj = if self.normalize_ipw {
-      normalize_ipw_weights(m_clipped, self.data.d)
-    } else {
-      m_clipped
-    }
-    let m_final = if self.treatment == 0.0 {
-      let flipped = Array::make(m_adj.length(), 0.0)
-      for i = 0; i < m_adj.length(); i = i + 1 {
-        flipped[i] = 1.0 - m_adj[i]
+      let m_final = if self.treatment == 0.0 {
+        let flipped = Array::make(m_adj.length(), 0.0)
+        for i = 0; i < m_adj.length(); i = i + 1 {
+          flipped[i] = 1.0 - m_adj[i]
+        }
+        flipped
+      } else {
+        m_adj
       }
-      flipped
-    } else {
-      m_adj
+      // `pq_est = mean(ipw_vec)`. Matches the upstream
+      // `pq_est = np.mean(ipw_vec)` (Kallus et al., p.4).
+      let pq_est = mean(ipw_vec)
+      // psi_a, psi_b with `g_target = max(pq_est, (y - q*pq_est)
+      // / (1-q))`.
+      let psi_a = Array::make(n, -1.0)
+      let psi_b = Array::make(n, 0.0)
+      let q_comp = 1.0 - self.quantile
+      for i = 0; i < n; i = i + 1 {
+        let z = (self.data.y[i] - self.quantile * pq_est) / q_comp
+        let g_target = if z > pq_est { z } else { pq_est }
+        psi_b[i] = treated[i] * (g_target - g_hat[i]) / m_final[i] + g_hat[i]
+      }
+      let (theta_r, se_r) = var_est(psi_a, psi_b)
+      coefs[r] = theta_r
+      ses[r] = se_r
+      // The public accessors return the *last* rep's
+      // `g_hat` / `m_hat`, matching the rest of the package's
+      // convention (and the upstream `doubleml.DoubleML` summary
+      // table, which only carries the last rep's nuisances).
+      last_g = g_hat
+      last_m = m_final
     }
-    // `pq_est = mean(ipw_vec)`. Matches the upstream
-    // `pq_est = np.mean(ipw_vec)` (Kallus et al., p.4).
-    let pq_est = mean(ipw_vec)
-    // psi_a, psi_b with `g_target = max(pq_est, (y - q*pq_est)
-    // / (1-q))`.
-    let psi_a = Array::make(n, -1.0)
-    let psi_b = Array::make(n, 0.0)
-    let q_comp = 1.0 - self.quantile
-    for i = 0; i < n; i = i + 1 {
-      let z = (self.data.y[i] - self.quantile * pq_est) / q_comp
-      let g_target = if z > pq_est { z } else { pq_est }
-      psi_b[i] = treated[i] * (g_target - g_hat[i]) / m_final[i] + g_hat[i]
+    let (theta, se) = aggregate_coef_se(coefs, ses)
+    {
+      data: self.data,
+      treatment: self.treatment,
+      quantile: self.quantile,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      normalize_ipw: self.normalize_ipw,
+      g_hat: last_g,
+      m_hat: last_m,
+      coef: theta,
+      se,
+      fitted: true,
     }
-    let (theta_r, se_r) = var_est(psi_a, psi_b)
-    coefs[r] = theta_r
-    ses[r] = se_r
-    // The public accessors return the *last* rep's
-    // `g_hat` / `m_hat`, matching the rest of the package's
-    // convention (and the upstream `doubleml.DoubleML` summary
-    // table, which only carries the last rep's nuisances).
-    last_g = g_hat
-    last_m = m_final
-  }
-  let (theta, se) = aggregate_coef_se(coefs, ses)
-  {
-    data: self.data,
-    treatment: self.treatment,
-    quantile: self.quantile,
-    n_folds: self.n_folds,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    propensity_clip: self.propensity_clip,
-    normalize_ipw: self.normalize_ipw,
-    g_hat: last_g,
-    m_hat: last_m,
-    coef: theta,
-    se,
-    fitted: true,
-  }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

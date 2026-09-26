@@ -1,3 +1,4 @@
+///|
 test "doc/003_quick_start/readme.mbt.md end-to-end PLR" {
   let n = 100
   let x_data : Array[Double] = Array::make(n * 5, 0.0)
@@ -19,7 +20,10 @@ test "doc/003_quick_start/readme.mbt.md end-to-end PLR" {
   }
   let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)
   let fitted = @moonbit_doubleML.DoubleMLPLR::new(
-    data, n_folds=2, n_rep=1, seed=3141,
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
   ).fit()
   ignore(fitted.coef())
   ignore(fitted.se())

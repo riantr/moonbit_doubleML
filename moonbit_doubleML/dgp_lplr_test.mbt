@@ -18,8 +18,8 @@ test "LPLR_d_and_y_are_binary" {
   for i = 0; i < d_arr.length(); i = i + 1 {
     let v_d = d_arr[i]
     let v_y = y_arr[i]
-    inspect((v_d == 0.0) || (v_d == 1.0), content="true")
-    inspect((v_y == 0.0) || (v_y == 1.0), content="true")
+    inspect(v_d == 0.0 || v_d == 1.0, content="true")
+    inspect(v_y == 0.0 || v_y == 1.0, content="true")
   }
 }
 
@@ -40,9 +40,7 @@ test "LPLR_deterministic_in_seed" {
 ///|
 test "LPLR_estimator_recovers_theta" {
   let data = make_lplr_LZZ2020(500, 0.5, 3141)
-  let fitted = DoubleMLLPLR::new(
-    data.data_get(), n_folds=2, n_folds_inner=2,
-  ).fit()
+  let fitted = DoubleMLLPLR::new(data.data_get(), n_folds=2, n_folds_inner=2).fit()
   let theta_hat = fitted.coef()
   // Loose tolerance: theta_hat lands ~0.46 on this DGP per the
   // upstream reference; we accept a +/- 1.0 band to absorb fold-RNG

@@ -13,13 +13,7 @@ repository = "https://gitee.com/ren-yongxiang/moonbit_doubleml.git"
 
 license = "Apache-2.0"
 
-keywords = [
-  "doubleml",
-  "example",
-  "api",
-  "http",
-  "wasm",
-]
+keywords = [ "doubleml", "example", "api", "http", "wasm" ]
 
 description = "Minimal HTTP API server wrapping moonbit_doubleML estimators (PLR, IRM). Runs on --target native and --target wasm (moonrun). Exposes POST /fit/{plr,irm} plus /healthz, /ping, /version."
 

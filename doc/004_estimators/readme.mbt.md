@@ -34,11 +34,12 @@ separate `.mbt` files for parallel maintainability.
 Every estimator follows:
 
 ```moonbit nocheck
+///|
 let fitted = @moonbit_doubleML.DoubleMLXxx::new(
-  data,           // or some estimator-specific arg
-  n_folds=2,      // K for K-fold cross-fitting
-  n_rep=1,        // number of independent fold partitions
-  seed=3141,      // deterministic seed for chacha8
+  data, // or some estimator-specific arg
+  n_folds=2, // K for K-fold cross-fitting
+  n_rep=1, // number of independent fold partitions
+  seed=3141, // deterministic seed for chacha8
 ).fit()
 ```
 

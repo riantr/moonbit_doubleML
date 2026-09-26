@@ -21,7 +21,11 @@ test "LPQ_predictions_g0_g1_m_have_correct_length" {
   }
   let data = DoubleMLLPQData::new(x, y, d, z)
   let fitted = DoubleMLLPQ::new(
-    data, treatment=1.0, quantile=0.5, n_folds=2, seed=3141,
+    data,
+    treatment=1.0,
+    quantile=0.5,
+    n_folds=2,
+    seed=3141,
   ).fit()
   let g0 = fitted.predictions_g0()
   let g1 = fitted.predictions_g1()
@@ -46,7 +50,9 @@ test "BLP_predictions_match_basis_times_coef" {
   let n_obs = 4
   let p_basis = 2
   let basis = Matrix::from_array(
-    [1.0, 0.5, 1.0, 1.0, 1.0, 0.0, 1.0, 0.7], n_obs, p_basis,
+    [1.0, 0.5, 1.0, 1.0, 1.0, 0.0, 1.0, 0.7],
+    n_obs,
+    p_basis,
   )
   let orth_signal : Array[Double] = [1.5, 2.0, 1.8, 2.5]
   let blp = DoubleMLBLP::new(basis, orth_signal, cov_type="HC0").fit()
@@ -74,7 +80,9 @@ test "BLP_confint_joint_returns_symmetric_intervals" {
   let n_obs = 4
   let p_basis = 2
   let basis = Matrix::from_array(
-    [1.0, 0.5, 1.0, 1.0, 1.0, 0.0, 1.0, 0.7], n_obs, p_basis,
+    [1.0, 0.5, 1.0, 1.0, 1.0, 0.0, 1.0, 0.7],
+    n_obs,
+    p_basis,
   )
   let orth_signal : Array[Double] = [1.5, 2.0, 1.8, 2.5]
   let blp = DoubleMLBLP::new(basis, orth_signal, cov_type="HC0").fit()
@@ -115,7 +123,11 @@ test "IRM_propensity_score_raw_matches_m_hat_in_range" {
   }
   let data = DoubleMLData::new(x, y, d)
   let fit = DoubleMLIRM::new(
-    data, n_folds=2, n_rep=1, seed=3141, propensity_clip=1.0e-6,
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+    propensity_clip=1.0e-6,
   ).fit()
   let m_raw = fit.propensity_score_raw()
   inspect(m_raw.length() == n, content="true")
@@ -153,7 +165,11 @@ test "IRM_propensity_score_raw_differs_from_clipped" {
   }
   let data = DoubleMLData::new(x, y, d)
   let fit = DoubleMLIRM::new(
-    data, n_folds=2, n_rep=1, seed=3141, propensity_clip=1.0e-6,
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+    propensity_clip=1.0e-6,
   ).fit()
   let m_raw = fit.propensity_score_raw()
   let m_clipped = fit.predictions_m()
@@ -196,7 +212,9 @@ test "BLP_predictions_aborts_before_fit" {
   // shared with other accessors (coef / se / basis) and is
   // exercised by them.
   let basis = Matrix::from_array(
-    [1.0, 0.5, 0.2, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0], 3, 3,
+    [1.0, 0.5, 0.2, 1.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+    3,
+    3,
   )
   let orth_signal : Array[Double] = [1.5, 2.0, 1.8]
   let blp = DoubleMLBLP::new(basis, orth_signal, cov_type="HC0").fit()

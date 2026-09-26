@@ -14,12 +14,14 @@
 test "DIDCS_DGP_estimator_recovers_true_ATT" {
   let data = make_did_cs_CS2021(800, 3, 1.0, 3141)
   let dml_data = DoubleMLDIDCSData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-    data.t_get(), data.id_get(), data.g_get(),
+    data.x_get(),
+    data.y_get(),
+    data.d_get(),
+    data.t_get(),
+    data.id_get(),
+    data.g_get(),
   )
-  let fitted = DoubleMLDIDCS::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  ).fit()
+  let fitted = DoubleMLDIDCS::new(dml_data, n_folds=2, n_rep=1, seed=3141).fit()
   // 2 cohorts, 2 periods -> only 1 post-treatment cell:
   //   (g=1, t=1) with true ATT = 1.0
   // DIDCS::n_groups is the number of treated cohorts
@@ -69,12 +71,14 @@ test "DIDCS_DGP_estimator_recovers_true_ATT" {
 test "DIDMulti_DGP_estimator_recovers_some_ATT" {
   let data = make_did_CS2021(1600, 3, 1.0, 3141)
   let dml_data = DoubleMLDIDCSData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-    data.t_get(), data.id_get(), data.g_get(),
+    data.x_get(),
+    data.y_get(),
+    data.d_get(),
+    data.t_get(),
+    data.id_get(),
+    data.g_get(),
   )
-  let fitted = DoubleMLDIDCS::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  ).fit()
+  let fitted = DoubleMLDIDCS::new(dml_data, n_folds=2, n_rep=1, seed=3141).fit()
   // 4 cohorts (3 treated + 1 never-treated sentinel) -> 3 post-treatment groups.
   let n_groups = fitted.n_groups()
   let n_periods = fitted.n_periods()
@@ -132,8 +136,12 @@ test "PLPR_DGP_estimator_recovers_within_band" {
   }
   let panel = DoubleMLPanelData::new(data.x_get(), y, d, t_arr, id_arr)
   let fitted = DoubleMLPLPR::new(
-    panel, approach="fd_exact", score="partialling out",
-    n_folds=2, n_rep=1, seed=3141,
+    panel,
+    approach="fd_exact",
+    score="partialling out",
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
   ).fit()
   let theta_hat = fitted.coef()
   let se = fitted.se()

@@ -8,6 +8,8 @@ pub struct DIDAggregationResult {
   se : Array[Double]
   agg_names : Array[String]
 } derive(Debug)
+
+///|
 pub extend DIDAggregationResult with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

@@ -121,31 +121,51 @@ pub fn make_plpr_CP2025(
       let x2 = x_flat[idx * dim_x + 2]
       // Continuous D with unit FE and time-invariant component.
       let z_it = if rng.double() < 0.5 { 1.0 } else { 0.0 }
-      d[idx] = alpha[u] + 0.5 * x1 + 0.5 * x2 + 1.0 * z_it + 0.5 * alpha[u] +
+      d[idx] = alpha[u] +
+        0.5 * x1 +
+        0.5 * x2 +
+        1.0 * z_it +
+        0.5 * alpha[u] +
         0.3 * beta_t[p]
       let _ = z_it
-      y[idx] = theta * d[idx] + alpha[u] + beta_t[p] +
-        0.5 * x1 + 0.5 * x2 + eps[idx]
+      y[idx] = theta * d[idx] +
+        alpha[u] +
+        beta_t[p] +
+        0.5 * x1 +
+        0.5 * x2 +
+        eps[idx]
     }
   }
   let x_mat = Matrix::from_array(x_flat, true_n, dim_x)
-  { theta, n_units, n_periods, y, d, x: x_mat }
+  { theta, n_units, n_periods, y, d, x: x_mat, }
 }
 
 ///|
-pub fn PlprData::theta_get(self : PlprData) -> Double { self.theta }
+pub fn PlprData::theta_get(self : PlprData) -> Double {
+  self.theta
+}
 
 ///|
-pub fn PlprData::y_get(self : PlprData) -> Array[Double] { self.y }
+pub fn PlprData::y_get(self : PlprData) -> Array[Double] {
+  self.y
+}
 
 ///|
-pub fn PlprData::d_get(self : PlprData) -> Array[Double] { self.d }
+pub fn PlprData::d_get(self : PlprData) -> Array[Double] {
+  self.d
+}
 
 ///|
-pub fn PlprData::x_get(self : PlprData) -> Matrix { self.x }
+pub fn PlprData::x_get(self : PlprData) -> Matrix {
+  self.x
+}
 
 ///|
-pub fn PlprData::n_units_get(self : PlprData) -> Int { self.n_units }
+pub fn PlprData::n_units_get(self : PlprData) -> Int {
+  self.n_units
+}
 
 ///|
-pub fn PlprData::n_periods_get(self : PlprData) -> Int { self.n_periods }
+pub fn PlprData::n_periods_get(self : PlprData) -> Int {
+  self.n_periods
+}

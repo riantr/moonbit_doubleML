@@ -96,7 +96,7 @@ pub fn make_irm_discrete_treatments(
     y[i] = theta * d_i + 0.5 * x1 + 0.5 * x2 + v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d }
+  { theta, x: x_mat, y, d, }
 }
 
 ///|
@@ -105,7 +105,9 @@ pub fn IrmDiscreteData::theta_get(self : IrmDiscreteData) -> Double {
 }
 
 ///|
-pub fn IrmDiscreteData::x_get(self : IrmDiscreteData) -> Matrix { self.x }
+pub fn IrmDiscreteData::x_get(self : IrmDiscreteData) -> Matrix {
+  self.x
+}
 
 ///|
 pub fn IrmDiscreteData::y_get(self : IrmDiscreteData) -> Array[Double] {

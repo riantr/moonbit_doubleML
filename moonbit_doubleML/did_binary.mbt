@@ -21,6 +21,8 @@ pub struct DoubleMLDIDBinaryData {
   g : Array[Int]
   id : Array[Int]
 } derive(Debug)
+
+///|
 pub extend DoubleMLDIDBinaryData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -74,6 +76,8 @@ struct WideDIDSubset {
   // matches `y` / `d`.
   eval_idx : Array[Int]
 } derive(Debug)
+
+///|
 pub extend WideDIDSubset with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -309,6 +313,8 @@ pub struct DoubleMLDIDBinary {
   inner : DoubleMLDID
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLDIDBinary with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -599,74 +605,77 @@ pub fn DoubleMLDIDBinary::fit(
     let wide_data = DoubleMLDIDData::new(wide.x, wide.y, wide.d) catch {
       DIDDataError::NonBinaryTreatment(i) =>
         abort(
-          "DoubleMLDIDData.d must be binary {0, 1} (index " + i.to_string() + ")",
+          "DoubleMLDIDData.d must be binary {0, 1} (index " +
+          i.to_string() +
+          ")",
         )
     }
-  // v0.10.0: build the wide-format strata as
-  // `G_indicator + 2 * t_indicator` (matching upstream's
-  // `self._strata = ...`), so each fold balances the (G, T) cells.
-  // In the y_diff view the wide row is always anchored to the
-  // pre period (t_indicator = 0), so the effective strata is
-  // `G_indicator` (1-D, G-vs-C balance). We pass both arrays so
-  // upstream-equivalent cells (0, 0), (0, 1), (1, 0), (1, 1) are
-  // represented if the data layout changes in a future port.
-  //
-  // Guard: `stratified_kfold` requires `n_folds <= min stratum
-  // size`. If any stratum is too small (e.g. a tiny control
-  // cohort), fall back to plain `kfold` by passing an empty
-  // `strata` array, which `DoubleMLDID::fit` interprets as
-  // "no stratification".
-  let strata : Array[Int] = []
-  let mut strata_acc = strata
-  let mut use_strata = true
-  for i = 0; i < wide.d.length(); i = i + 1 {
-    strata_acc = strata_acc + [(wide.d[i] + 2.0 * wide.t_indicator[i]).to_int()]
-  }
-  // Per-stratum min-size check.
-  let counts : Array[Int] = []
-  let mut counts_acc = counts
-  let seen : Array[Int] = []
-  let mut seen_acc = seen
-  for i = 0; i < strata_acc.length(); i = i + 1 {
-    let s = strata_acc[i]
-    let mut found = false
-    let mut found_idx = 0
-    for j = 0; j < seen_acc.length(); j = j + 1 {
-      if seen_acc[j] == s {
-        found = true
-        found_idx = j
+    // v0.10.0: build the wide-format strata as
+    // `G_indicator + 2 * t_indicator` (matching upstream's
+    // `self._strata = ...`), so each fold balances the (G, T) cells.
+    // In the y_diff view the wide row is always anchored to the
+    // pre period (t_indicator = 0), so the effective strata is
+    // `G_indicator` (1-D, G-vs-C balance). We pass both arrays so
+    // upstream-equivalent cells (0, 0), (0, 1), (1, 0), (1, 1) are
+    // represented if the data layout changes in a future port.
+    //
+    // Guard: `stratified_kfold` requires `n_folds <= min stratum
+    // size`. If any stratum is too small (e.g. a tiny control
+    // cohort), fall back to plain `kfold` by passing an empty
+    // `strata` array, which `DoubleMLDID::fit` interprets as
+    // "no stratification".
+    let strata : Array[Int] = []
+    let mut strata_acc = strata
+    let mut use_strata = true
+    for i = 0; i < wide.d.length(); i = i + 1 {
+      strata_acc = strata_acc +
+        [(wide.d[i] + 2.0 * wide.t_indicator[i]).to_int()]
+    }
+    // Per-stratum min-size check.
+    let counts : Array[Int] = []
+    let mut counts_acc = counts
+    let seen : Array[Int] = []
+    let mut seen_acc = seen
+    for i = 0; i < strata_acc.length(); i = i + 1 {
+      let s = strata_acc[i]
+      let mut found = false
+      let mut found_idx = 0
+      for j = 0; j < seen_acc.length(); j = j + 1 {
+        if seen_acc[j] == s {
+          found = true
+          found_idx = j
+        }
+      }
+      if found {
+        counts_acc[found_idx] = counts_acc[found_idx] + 1
+      } else {
+        seen_acc = seen_acc + [s]
+        counts_acc = counts_acc + [1]
       }
     }
-    if found {
-      counts_acc[found_idx] = counts_acc[found_idx] + 1
-    } else {
-      seen_acc = seen_acc + [s]
-      counts_acc = counts_acc + [1]
+    for i = 0; i < counts_acc.length(); i = i + 1 {
+      if counts_acc[i] < self.n_folds {
+        use_strata = false
+      }
     }
-  }
-  for i = 0; i < counts_acc.length(); i = i + 1 {
-    if counts_acc[i] < self.n_folds {
-      use_strata = false
+    if !use_strata {
+      strata_acc = []
     }
-  }
-  if !use_strata {
-    strata_acc = []
-  }
-  let inner = DoubleMLDID::new(
-    wide_data,
-    n_folds=self.n_folds,
-    n_rep=self.n_rep,
-    seed=self.seed,
-    propensity_clip=self.propensity_clip,
-    ps_processor=self.ps_processor,
-    score=self.score,
-    in_sample_normalization=self.in_sample_normalization,
-    strata=strata_acc,
-  ).fit()
-  // v0.15.0+: record the long-format `eval_idx` from the
-  // preprocessing so the bootstrap can map wide-format psi
-  // back to long-format.
-  { ..self, inner, eval_idx: wide.eval_idx, fitted: true, }
+    let inner = DoubleMLDID::new(
+      wide_data,
+      n_folds=self.n_folds,
+      n_rep=self.n_rep,
+      seed=self.seed,
+      propensity_clip=self.propensity_clip,
+      ps_processor=self.ps_processor,
+      score=self.score,
+      in_sample_normalization=self.in_sample_normalization,
+      strata=strata_acc,
+    ).fit()
+    // v0.15.0+: record the long-format `eval_idx` from the
+    // preprocessing so the bootstrap can map wide-format psi
+    // back to long-format.
+    { ..self, inner, eval_idx: wide.eval_idx, fitted: true, }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

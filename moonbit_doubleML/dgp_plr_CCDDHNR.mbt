@@ -128,7 +128,7 @@ pub fn make_plr_CCDDHNR2018(
     y[i] = theta * d[i] + b_0 * sig1 + b_1 * x3 + s_2 * zeta_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d }
+  { theta, x: x_mat, y, d, }
 }
 
 ///|

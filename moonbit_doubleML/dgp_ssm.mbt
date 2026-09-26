@@ -105,7 +105,7 @@ pub fn make_ssm_data(
     y[i] = theta * d[i] + 0.5 * x1 + 0.5 * x2 + v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d, s }
+  { theta, x: x_mat, y, d, s, }
 }
 
 ///|

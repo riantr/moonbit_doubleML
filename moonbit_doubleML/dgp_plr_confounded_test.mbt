@@ -18,8 +18,8 @@ test "PLRConfounded_c_and_d_are_binary" {
   for i = 0; i < c.length(); i = i + 1 {
     let v_c = c[i]
     let v_d = d[i]
-    inspect((v_c == 0.0) || (v_c == 1.0), content="true")
-    inspect((v_d == 0.0) || (v_d == 1.0), content="true")
+    inspect(v_c == 0.0 || v_c == 1.0, content="true")
+    inspect(v_d == 0.0 || v_d == 1.0, content="true")
   }
 }
 
@@ -43,12 +43,8 @@ test "PLRConfounded_deterministic_in_seed" {
 ///|
 test "PLRConfounded_estimator_recovers_theta" {
   let data = make_confounded_plr_data(5000, 20, 0.5, 3141)
-  let dml_data = DoubleMLData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-  )
-  let plr = DoubleMLPLR::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  )
+  let dml_data = DoubleMLData::new(data.x_get(), data.y_get(), data.d_get())
+  let plr = DoubleMLPLR::new(dml_data, n_folds=2, n_rep=1, seed=3141)
   let fit = plr.fit()
   let theta_hat = fit.coef()
   let se = fit.se()

@@ -85,5 +85,5 @@ pub fn make_plr_turrell2018(
     y[i] = theta * d[i] + 0.5 * (x1 * x1 + x2 * x2) + heterosked * v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d }
+  { theta, x: x_mat, y, d, }
 }

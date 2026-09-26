@@ -1,39 +1,50 @@
-publish.yml: fix moon.mod path (root → moonbit_doubleML/) for v0.53.0 release
+v0.53.0: moon fmt --check sweep across 95 files for release gate
 
-The v0.53.0 tag push to github triggered .github/workflows/publish.yml,
-which immediately failed at the "Resolve release version" step with
-"Process completed with exit code 2". The reason: commit `fe2dd9c`
-("project cleanup #4: root package → moonbit_doubleML/ subdir")
-moved `moon.mod` from the repo root to `moonbit_doubleML/moon.mod`,
-but publish.yml's version-extraction awk still read from the old
-root path:
+After fixing the publish.yml path bug (commit 31751c8) and
+re-triggering the tag, the workflow got past "Resolve release
+version" but failed at "Check formatting" (`moon fmt --check`).
+The library and all 4 backends passed `moon check --deny-warn`
+and `moon test --deny-warn`; the format check is a separate
+gate that the v0.52 release cycle never went through (no
+v0.52.0 tag exists on github).
 
-  manifest_version="$(awk -F'"' '/^version = / { print $2; exit }' moon.mod)"
-                                                                ^^^^^^^^
+Ran `moon fmt` on the whole workspace. 95 files were rewritten;
+the changes split into two classes:
 
-The root no longer has a `moon.mod`, so `awk` produces empty
-output, the version comparison fails, and the step exits non-zero
-before the release ever gets a chance to compile or publish.
+  - 79 real reformatting changes (signature re-alignment,
+    trailing commas, whitespace inside blocks, single-line
+    array literals where moon fmt prefers them, etc.). These
+    are real stylistic changes that the v0.52+ toolchain
+    expects.
 
-This is a pre-existing bug from the v0.52 cycle — v0.52.0 was
-released without going through the github CI workflow (no v0.52.0
-tag exists on github), so the broken path was never caught.
+  - 16 CRLF-only / trailing-newline changes (mostly "no
+    newline at end of file" that moon fmt now adds). These
+    are byte-only changes that do not affect semantics; they
+    live in:
+      - doc/00X_*/moon.pkg (6 files)
+      - doc/moon.mod
+      - examples/consumer_demo/{main.mbt, moon.mod, moon.pkg}
+      - moon.work
+      - moonbit_doubleML/{dgp_did_SZ2020_test.mbt,
+        dgp_pliv_cluster_test.mbt, dgp_plpr_test.mbt,
+        matrix_wbtest.mbt, p3_did_utils_parity_test.mbt}
 
-Fix: change the awk source path from `moon.mod` to
-`moonbit_doubleML/moon.mod`. Single line, surgical.
+Both classes are needed for `moon fmt --check` to pass; the
+CRLF-only changes aren't gitignorable at HEAD but ARE in the
+"formatted" state once committed.
 
-After this commit, deleting the broken `v0.53.0` tag (locally +
-on both remotes) and re-pushing it triggers a fresh
-publish.yml run that gets past the version-resolution step.
+Not reverted per the memory-note B12 "CRLF revert" pattern:
+the strategy applies to commits where HEAD is already in the
+formatted state and the working tree was just bloated with
+whitespace noise. In this case HEAD is NOT in the formatted
+state, so all 95 changes must land.
 
-No other path in publish.yml needs adjustment:
-  - `moon check --target {native,wasm,wasm-gc,js} --deny-warn`
-    runs from the repo root and picks up `moon.work` (16 members
-    including `moonbit_doubleML/`)
-  - `moon test --target ... --deny-warn` ditto
-  - `moon info --target js` ditto
-  - `moon fmt --check` ditto
-  - `moon publish` runs from the root and detects the workspace
-    member being published via moon.work
-  - `typos` reads the repo
-  - `gh release create` reads $GITHUB_REF_NAME which is `v0.53.0`
+Verification (this commit):
+  - moon fmt --check                        : exit=0
+  - moon check --deny-warn                  : exit=0, 0 diagnostic warnings
+  - moon test --target native               : 401 / 401
+  - 23 / 23 Python cross-validators         : PASS (unchanged)
+
+After this commit + tag push, the publish.yml workflow should
+clear all gates including "Check formatting", "Check typos",
+"Publish to Mooncakes", and "Create GitHub Release".

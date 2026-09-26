@@ -9,6 +9,8 @@ pub struct DoubleMLSSMData {
   d : Array[Double]
   s : Array[Double]
 } derive(Debug)
+
+///|
 pub extend DoubleMLSSMData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -96,6 +98,8 @@ pub struct DoubleMLSSM {
   se : Double
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLSSM with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -327,71 +331,74 @@ pub fn DoubleMLSSM::fit(
     require(self.n_obs() >= self.n_folds) // kfold precondition
     let n = self.n_obs()
     let nrep = self.n_rep
-  let pi_acc : Array[Double] = Array::make(n, 0.0)
-  let m_acc : Array[Double] = Array::make(n, 0.0)
-  let g_d1_acc : Array[Double] = Array::make(n, 0.0)
-  let g_d0_acc : Array[Double] = Array::make(n, 0.0)
-  for r = 0; r < nrep; r = r + 1 {
-    let folds = kfold(n, self.n_folds, self.seed + r)
-    let (pi, m, gd1, gd0) = cross_fit_ssm(
-      ml_g,
-      ml_m,
-      ml_pi,
-      self.data.x,
-      self.data.y,
-      self.data.d,
-      self.data.s,
-      folds,
-      self.propensity_clip,
-    )
-    for i = 0; i < n; i = i + 1 {
-      pi_acc[i] = pi_acc[i] + pi[i]
-      m_acc[i] = m_acc[i] + m[i]
-      g_d1_acc[i] = g_d1_acc[i] + gd1[i]
-      g_d0_acc[i] = g_d0_acc[i] + gd0[i]
+    let pi_acc : Array[Double] = Array::make(n, 0.0)
+    let m_acc : Array[Double] = Array::make(n, 0.0)
+    let g_d1_acc : Array[Double] = Array::make(n, 0.0)
+    let g_d0_acc : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < nrep; r = r + 1 {
+      let folds = kfold(n, self.n_folds, self.seed + r)
+      let (pi, m, gd1, gd0) = cross_fit_ssm(
+        ml_g,
+        ml_m,
+        ml_pi,
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        self.data.s,
+        folds,
+        self.propensity_clip,
+      )
+      for i = 0; i < n; i = i + 1 {
+        pi_acc[i] = pi_acc[i] + pi[i]
+        m_acc[i] = m_acc[i] + m[i]
+        g_d1_acc[i] = g_d1_acc[i] + gd1[i]
+        g_d0_acc[i] = g_d0_acc[i] + gd0[i]
+      }
     }
-  }
-  let inv = 1.0 / nrep.to_double()
-  let pi_hat : Array[Double] = Array::make(n, 0.0)
-  let m_hat : Array[Double] = Array::make(n, 0.0)
-  let g_d1 : Array[Double] = Array::make(n, 0.0)
-  let g_d0 : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    pi_hat[i] = pi_acc[i] * inv
-    m_hat[i] = m_acc[i] * inv
-    g_d1[i] = g_d1_acc[i] * inv
-    g_d0[i] = g_d0_acc[i] * inv
-  }
-  // MAR score (un-normalized IPW)
-  let y = self.data.y
-  let d = self.data.d
-  let s = self.data.s
-  let psi_a : Array[Double] = Array::make(n, 0.0)
-  let psi_b : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    let m_i = m_hat[i]
-    let pi_i = pi_hat[i]
-    let one_minus_m = 1.0 - m_i
-    psi_a[i] = -1.0
-    psi_b[i] = d[i] * s[i] * (y[i] - g_d1[i]) / (m_i * pi_i) +
-      g_d1[i] -
-      ((1.0 - d[i]) * s[i] * (y[i] - g_d0[i]) / (one_minus_m * pi_i) + g_d0[i])
-  }
-  let (coef, se) = var_est(psi_a, psi_b)
-  {
-    data: self.data,
-    n_folds: self.n_folds,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    propensity_clip: self.propensity_clip,
-    pi_hat,
-    m_hat,
-    g_d1,
-    g_d0,
-    coef,
-    se,
-    fitted: true,
-  }
+    let inv = 1.0 / nrep.to_double()
+    let pi_hat : Array[Double] = Array::make(n, 0.0)
+    let m_hat : Array[Double] = Array::make(n, 0.0)
+    let g_d1 : Array[Double] = Array::make(n, 0.0)
+    let g_d0 : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      pi_hat[i] = pi_acc[i] * inv
+      m_hat[i] = m_acc[i] * inv
+      g_d1[i] = g_d1_acc[i] * inv
+      g_d0[i] = g_d0_acc[i] * inv
+    }
+    // MAR score (un-normalized IPW)
+    let y = self.data.y
+    let d = self.data.d
+    let s = self.data.s
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    let psi_b : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let m_i = m_hat[i]
+      let pi_i = pi_hat[i]
+      let one_minus_m = 1.0 - m_i
+      psi_a[i] = -1.0
+      psi_b[i] = d[i] * s[i] * (y[i] - g_d1[i]) / (m_i * pi_i) +
+        g_d1[i] -
+        (
+          (1.0 - d[i]) * s[i] * (y[i] - g_d0[i]) / (one_minus_m * pi_i) +
+          g_d0[i]
+        )
+    }
+    let (coef, se) = var_est(psi_a, psi_b)
+    {
+      data: self.data,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      pi_hat,
+      m_hat,
+      g_d1,
+      g_d0,
+      coef,
+      se,
+      fitted: true,
+    }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

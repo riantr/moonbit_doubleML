@@ -18,7 +18,13 @@ repository = "https://gitee.com/ren-yongxiang/moonbit_doubleml.git"
 
 license = "Apache-2.0"
 
-keywords = ["doubleml", "DML", "causal-inference", "machine-learning", "debiased-estimation"]
+keywords = [
+  "doubleml",
+  "DML",
+  "causal-inference",
+  "machine-learning",
+  "debiased-estimation",
+]
 
 preferred_target = "wasm-gc"
 

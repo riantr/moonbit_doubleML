@@ -90,7 +90,12 @@ fn main {
     "=== MoonBit DML demo: synthetic 401(k)-style DGP (n=\{n}, p=\{p}) ===",
   )
   println("true theta_0      = \{theta0}")
-  let plr = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141)
+  let plr = @moonbit_doubleML.DoubleMLPLR::new(
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let plr_fit = plr.fit()
   let (lo, hi) = plr_fit.confint()
   println("")
@@ -98,12 +103,22 @@ fn main {
   println("theta_hat = \{plr_fit.coef()}")
   println("se        = \{plr_fit.se()}")
   println("95% CI    = [\{lo}, \{hi}]")
-  let plr5 = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=5, seed=3141)
+  let plr5 = @moonbit_doubleML.DoubleMLPLR::new(
+    data,
+    n_folds=2,
+    n_rep=5,
+    seed=3141,
+  )
   let plr5_fit = plr5.fit()
   println("--- DoubleMLPLR (n_rep=5) ---")
   println("theta_hat = \{plr5_fit.coef()}")
   println("se        = \{plr5_fit.se()}")
-  let irm = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=1, seed=3141)
+  let irm = @moonbit_doubleML.DoubleMLIRM::new(
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  )
   let irm_fit = irm.fit()
   let (ilo, ihi) = irm_fit.confint()
   println("")
@@ -111,7 +126,12 @@ fn main {
   println("theta_hat = \{irm_fit.coef()}")
   println("se        = \{irm_fit.se()}")
   println("95% CI    = [\{ilo}, \{ihi}]")
-  let irm5 = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds=2, n_rep=5, seed=3141)
+  let irm5 = @moonbit_doubleML.DoubleMLIRM::new(
+    data,
+    n_folds=2,
+    n_rep=5,
+    seed=3141,
+  )
   let irm5_fit = irm5.fit()
   println("--- DoubleMLIRM (n_rep=5) ---")
   println("theta_hat = \{irm5_fit.coef()}")

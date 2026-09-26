@@ -22,8 +22,8 @@ test "IIVM_d_and_z_are_binary" {
   for i = 0; i < d.length(); i = i + 1 {
     let v_d = d[i]
     let v_z = z[i]
-    inspect((v_d == 0.0) || (v_d == 1.0), content="true")
-    inspect((v_z == 0.0) || (v_z == 1.0), content="true")
+    inspect(v_d == 0.0 || v_d == 1.0, content="true")
+    inspect(v_z == 0.0 || v_z == 1.0, content="true")
   }
 }
 

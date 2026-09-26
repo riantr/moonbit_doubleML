@@ -24,7 +24,11 @@ pub struct DoubleMLDIDCrossSectionData {
   // `DoubleMLDIDCrossSection` error messages.
   name : String
 } derive(Debug)
-pub extend DoubleMLDIDCrossSectionData with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+pub extend DoubleMLDIDCrossSectionData with @moonbitlang/core/debug.Debug::{
+  to_repr,
+}
 
 ///|
 pub fn DoubleMLDIDCrossSectionData::new(
@@ -148,6 +152,8 @@ pub struct DoubleMLDIDCrossSection {
   n_rep_boot : Int
   boot_seed : Int
 } derive(Debug)
+
+///|
 pub extend DoubleMLDIDCrossSection with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

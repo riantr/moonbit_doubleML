@@ -62,9 +62,7 @@ test "expand_unit_folds_to_rows_no_unit_straddles_split" {
   let cluster : Array[Int] = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0]
   let row_unit : Array[Int] = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0]
   let folds_u = kfold(3, 3, 7)
-  let (folds_row, _, _) = expand_unit_folds_to_rows(
-    cluster, folds_u, row_unit,
-  )
+  let (folds_row, _, _) = expand_unit_folds_to_rows(cluster, folds_u, row_unit)
   for fold in folds_row {
     let test_set : Array[Bool] = Array::make(10, false)
     for i in fold.test_indices() {
@@ -104,7 +102,10 @@ test "expand_unit_folds_to_rows_fold_n_units_matches_unit_fold" {
   )
   inspect(fold_n_units.length(), content="4")
   for f = 0; f < 4; f = f + 1 {
-    inspect(fold_n_units[f], content=folds_u[f].test_indices().length().to_string())
+    inspect(
+      fold_n_units[f],
+      content=folds_u[f].test_indices().length().to_string(),
+    )
   }
 }
 
@@ -138,11 +139,11 @@ test "build_row_unit_map_raises_on_missing_unit" {
   // pre-v0.36.0 behaviour was an `abort()`.
   let cluster : Array[Int] = [0, 1, 99]
   let uniq : Array[Int] = [0, 1]
-  let raised = (try {
+  let raised = try {
     ignore(build_row_unit_map(cluster, uniq))
     false
   } catch {
     ClusterDataError::MissingUnit(_) => true
-  })
+  }
   inspect(raised, content="true")
 }

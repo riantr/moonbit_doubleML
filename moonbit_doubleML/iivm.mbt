@@ -9,6 +9,8 @@ pub struct DoubleMLIIVMData {
   z : Array[Double]
   cluster_vars : Array[Int]
 } derive(Debug)
+
+///|
 pub extend DoubleMLIIVMData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -110,6 +112,8 @@ pub struct DoubleMLIIVM {
   se : Double
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLIIVM with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

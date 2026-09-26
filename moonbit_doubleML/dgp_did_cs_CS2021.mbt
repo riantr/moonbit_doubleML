@@ -153,7 +153,7 @@ pub fn make_did_cs_CS2021(
     }
   }
   let x_panel = Matrix::from_array(x_panel_flat, true_n, dim_x)
-  { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel }
+  { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel, }
 }
 
 ///|

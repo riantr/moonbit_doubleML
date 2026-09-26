@@ -28,6 +28,8 @@ pub struct DoubleMLDIDCSData {
   // `never_treated_time` sentinel.
   times : Array[Int]
 } derive(Debug)
+
+///|
 pub extend DoubleMLDIDCSData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -180,6 +182,8 @@ pub struct DoubleMLDIDCS {
   n_periods : Int
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLDIDCS with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -324,192 +328,192 @@ pub fn DoubleMLDIDCS::fit(
     require(self.n_groups >= 1 && self.n_periods >= 1)
     let n = self.data.y.length()
     let p = self.data.x.cols()
-  // Precompute the never-treated-value = min of g.
-  let mut never_treated_value = self.data.g[0]
-  for i = 1; i < n; i = i + 1 {
-    if self.data.g[i] < never_treated_value {
-      never_treated_value = self.data.g[i]
-    }
-  }
-  let coef_values : Array[Double] = []
-  let se_values : Array[Double] = []
-  let mut coef_values_acc = coef_values
-  let mut se_values_acc = se_values
-  // v0.15.0+: per-cell influence function on long-format panel.
-  let psi_values : Array[Array[Double]] = []
-  let mut psi_values_acc = psi_values
-  for gi = 0; gi < self.n_groups; gi = gi + 1 {
-    let g_value = self.data.groups[gi]
-    // Find the index of the period equal to g_value (the
-    // pre-treatment baseline).
-    let mut pre_period_idx = -1
-    for pi = 0; pi < self.n_periods; pi = pi + 1 {
-      if self.data.times[pi] == g_value {
-        pre_period_idx = pi
+    // Precompute the never-treated-value = min of g.
+    let mut never_treated_value = self.data.g[0]
+    for i = 1; i < n; i = i + 1 {
+      if self.data.g[i] < never_treated_value {
+        never_treated_value = self.data.g[i]
       }
     }
-    if pre_period_idx < 0 {
-      // The cohort's pre-treatment period isn't observed; skip
-      // all (g_value, t_eval) cells for this group.
-      continue
-    }
-    let pre_period = g_value
-    for pi = 0; pi < self.n_periods; pi = pi + 1 {
-      let eval_period = self.data.times[pi]
-      if eval_period <= pre_period {
+    let coef_values : Array[Double] = []
+    let se_values : Array[Double] = []
+    let mut coef_values_acc = coef_values
+    let mut se_values_acc = se_values
+    // v0.15.0+: per-cell influence function on long-format panel.
+    let psi_values : Array[Array[Double]] = []
+    let mut psi_values_acc = psi_values
+    for gi = 0; gi < self.n_groups; gi = gi + 1 {
+      let g_value = self.data.groups[gi]
+      // Find the index of the period equal to g_value (the
+      // pre-treatment baseline).
+      let mut pre_period_idx = -1
+      for pi = 0; pi < self.n_periods; pi = pi + 1 {
+        if self.data.times[pi] == g_value {
+          pre_period_idx = pi
+        }
+      }
+      if pre_period_idx < 0 {
+        // The cohort's pre-treatment period isn't observed; skip
+        // all (g_value, t_eval) cells for this group.
         continue
       }
-      // Restrict the panel to: (g == g_value) ∪ (g == never_treated_value).
-      let mut sub_n = 0
-      let mut x_sub_acc : Array[Double] = []
-      let mut y_sub_acc : Array[Double] = []
-      let mut d_sub_acc : Array[Double] = []
-      let mut t_sub_acc : Array[Int] = []
-      let mut id_sub_acc : Array[Int] = []
-      let mut g_sub_acc : Array[Int] = []
-      // v0.15.0+: track the full long-format index for each
-      // sub row, so we can map wide-format psi back to the
-      // full long-format panel for the multiplier bootstrap.
-      let mut full_idx_acc : Array[Int] = []
-      for i = 0; i < n; i = i + 1 {
-        let gv = self.data.g[i]
-        let tv = self.data.t[i]
-        // Only keep rows in the pre or eval periods, for the G or
-        // C cohort.
-        if tv != pre_period && tv != eval_period {
+      let pre_period = g_value
+      for pi = 0; pi < self.n_periods; pi = pi + 1 {
+        let eval_period = self.data.times[pi]
+        if eval_period <= pre_period {
           continue
         }
-        if gv != g_value && gv != never_treated_value {
+        // Restrict the panel to: (g == g_value) ∪ (g == never_treated_value).
+        let mut sub_n = 0
+        let mut x_sub_acc : Array[Double] = []
+        let mut y_sub_acc : Array[Double] = []
+        let mut d_sub_acc : Array[Double] = []
+        let mut t_sub_acc : Array[Int] = []
+        let mut id_sub_acc : Array[Int] = []
+        let mut g_sub_acc : Array[Int] = []
+        // v0.15.0+: track the full long-format index for each
+        // sub row, so we can map wide-format psi back to the
+        // full long-format panel for the multiplier bootstrap.
+        let mut full_idx_acc : Array[Int] = []
+        for i = 0; i < n; i = i + 1 {
+          let gv = self.data.g[i]
+          let tv = self.data.t[i]
+          // Only keep rows in the pre or eval periods, for the G or
+          // C cohort.
+          if tv != pre_period && tv != eval_period {
+            continue
+          }
+          if gv != g_value && gv != never_treated_value {
+            continue
+          }
+          // Recompute `d` for the sub-DID: 1 iff the unit is
+          // in the G cohort AND in the eval period.
+          let di = if gv == g_value && tv == eval_period { 1.0 } else { 0.0 }
+          // Copy the row.
+          for j = 0; j < p; j = j + 1 {
+            x_sub_acc = x_sub_acc + [self.data.x.data[i * p + j]]
+          }
+          y_sub_acc = y_sub_acc + [self.data.y[i]]
+          d_sub_acc = d_sub_acc + [di]
+          t_sub_acc = t_sub_acc + [tv]
+          id_sub_acc = id_sub_acc + [self.data.id[i]]
+          g_sub_acc = g_sub_acc + [gv]
+          // Record the full long-format index for the bootstrap.
+          full_idx_acc = full_idx_acc + [i]
+          sub_n = sub_n + 1
+        }
+        if sub_n == 0 {
           continue
         }
-        // Recompute `d` for the sub-DID: 1 iff the unit is
-        // in the G cohort AND in the eval period.
-        let di = if gv == g_value && tv == eval_period { 1.0 } else { 0.0 }
-        // Copy the row.
-        for j = 0; j < p; j = j + 1 {
-          x_sub_acc = x_sub_acc + [self.data.x.data[i * p + j]]
+        // Build the panel data and run DoubleMLDIDBinary.
+        let sub_data = DoubleMLDIDBinaryData::new(
+          Matrix::from_array(x_sub_acc, sub_n, p),
+          y_sub_acc,
+          d_sub_acc,
+          t_sub_acc,
+          g_sub_acc,
+          id_sub_acc,
+        )
+        let sub_fitted = DoubleMLDIDBinary::new(
+          sub_data,
+          g_value,
+          pre_period,
+          eval_period,
+          control_group=self.control_group,
+          anticipation_periods=self.anticipation_periods,
+          n_folds=self.n_folds,
+          n_rep=self.n_rep,
+          seed=self.seed,
+          propensity_clip=self.propensity_clip,
+          ps_processor=self.ps_processor,
+          score="observational",
+          in_sample_normalization=self.in_sample_normalization,
+        ).fit()
+        // Append the (g, t) ATT to the running arrays; we will
+        // reassemble the per-row-major matrix after the loop (so
+        // missing cells — pre / eval combinations with t_eval <= g
+        // — stay at 0.0 as the default).
+        coef_values_acc = coef_values_acc + [sub_fitted.coef()]
+        se_values_acc = se_values_acc + [sub_fitted.se()]
+        // v0.15.0+: per-cell influence function
+        // `psi = psi_a + theta * psi_b` on the long-format
+        // panel. The inner DoubleMLDID's psi is on the
+        // wide-format (sub-panel after preprocess_did_binary);
+        // we map it back to the full long-format panel via
+        // `sub_fitted.eval_idx` (wide -> sub) and
+        // `full_idx_acc` (sub -> full). Rows not in the cell
+        // stay at 0.0. Used by the multiplier bootstrap in
+        // `DoubleMLDIDMulti::bootstrap`.
+        let theta = sub_fitted.coef()
+        let inner_psi_a = sub_fitted.inner_psi_a()
+        let inner_psi_b = sub_fitted.inner_psi_b()
+        let sub_to_wide = sub_fitted.eval_idx
+        let psi_long : Array[Double] = Array::make(n, 0.0)
+        for k_wide = 0; k_wide < sub_to_wide.length(); k_wide = k_wide + 1 {
+          let k_sub = sub_to_wide[k_wide]
+          let full_i = full_idx_acc[k_sub]
+          psi_long[full_i] = inner_psi_a[k_wide] + theta * inner_psi_b[k_wide]
         }
-        y_sub_acc = y_sub_acc + [self.data.y[i]]
-        d_sub_acc = d_sub_acc + [di]
-        t_sub_acc = t_sub_acc + [tv]
-        id_sub_acc = id_sub_acc + [self.data.id[i]]
-        g_sub_acc = g_sub_acc + [gv]
-        // Record the full long-format index for the bootstrap.
-        full_idx_acc = full_idx_acc + [i]
-        sub_n = sub_n + 1
-      }
-      if sub_n == 0 {
-        continue
-      }
-      // Build the panel data and run DoubleMLDIDBinary.
-      let sub_data = DoubleMLDIDBinaryData::new(
-        Matrix::from_array(x_sub_acc, sub_n, p),
-        y_sub_acc,
-        d_sub_acc,
-        t_sub_acc,
-        g_sub_acc,
-        id_sub_acc,
-      )
-      let sub_fitted = DoubleMLDIDBinary::new(
-        sub_data,
-        g_value,
-        pre_period,
-        eval_period,
-        control_group=self.control_group,
-        anticipation_periods=self.anticipation_periods,
-        n_folds=self.n_folds,
-        n_rep=self.n_rep,
-        seed=self.seed,
-        propensity_clip=self.propensity_clip,
-        ps_processor=self.ps_processor,
-        score="observational",
-        in_sample_normalization=self.in_sample_normalization,
-      ).fit()
-      // Append the (g, t) ATT to the running arrays; we will
-      // reassemble the per-row-major matrix after the loop (so
-      // missing cells — pre / eval combinations with t_eval <= g
-      // — stay at 0.0 as the default).
-      coef_values_acc = coef_values_acc + [sub_fitted.coef()]
-      se_values_acc = se_values_acc + [sub_fitted.se()]
-      // v0.15.0+: per-cell influence function
-      // `psi = psi_a + theta * psi_b` on the long-format
-      // panel. The inner DoubleMLDID's psi is on the
-      // wide-format (sub-panel after preprocess_did_binary);
-      // we map it back to the full long-format panel via
-      // `sub_fitted.eval_idx` (wide -> sub) and
-      // `full_idx_acc` (sub -> full). Rows not in the cell
-      // stay at 0.0. Used by the multiplier bootstrap in
-      // `DoubleMLDIDMulti::bootstrap`.
-      let theta = sub_fitted.coef()
-      let inner_psi_a = sub_fitted.inner_psi_a()
-      let inner_psi_b = sub_fitted.inner_psi_b()
-      let sub_to_wide = sub_fitted.eval_idx
-      let psi_long : Array[Double] = Array::make(n, 0.0)
-      for k_wide = 0; k_wide < sub_to_wide.length(); k_wide = k_wide + 1 {
-        let k_sub = sub_to_wide[k_wide]
-        let full_i = full_idx_acc[k_sub]
-        psi_long[full_i] = inner_psi_a[k_wide] + theta * inner_psi_b[k_wide]
-      }
-      psi_values_acc = psi_values_acc + [psi_long]
-    }
-  }
-  // Reassemble the row-major matrix. For missing cells (g, t) with
-  // `t_eval <= g` or no pre-treatment period observed, the entry
-  // stays at 0.0. The accumulated `coef_values_acc` /
-  // `se_values_acc` arrays are written into the matching flat
-  // index in `final_coef` / `final_se`. A single O(n) pass over
-  // (gi, pi) reconstructs the indexing.
-  let final_coef : Array[Double] = Array::make(
-    self.n_groups * self.n_periods,
-    0.0,
-  )
-  let final_se : Array[Double] = Array::make(
-    self.n_groups * self.n_periods,
-    0.0,
-  )
-  // v0.15.0+: per-cell influence function `psi = psi_a + theta *
-  // psi_b` on the long-format panel, used by the multiplier
-  // bootstrap. Empty cells (no psi) are left at 0.0.
-  let final_psi : Array[Double] = Array::make(
-    self.n_groups * self.n_periods * n,
-    0.0,
-  )
-  let mut coef_idx = 0
-  for gi = 0; gi < self.n_groups; gi = gi + 1 {
-    let g_value = self.data.groups[gi]
-    // Locate the pre-treatment period (g_value itself) in the
-    // time index; if absent, the whole group is skipped.
-    let mut has_pre = false
-    for pi = 0; pi < self.n_periods; pi = pi + 1 {
-      if self.data.times[pi] == g_value {
-        has_pre = true
+        psi_values_acc = psi_values_acc + [psi_long]
       }
     }
-    for pi = 0; pi < self.n_periods; pi = pi + 1 {
-      let eval_period = self.data.times[pi]
-      let flat = gi * self.n_periods + pi
-      if !has_pre || eval_period <= g_value {
-        continue
+    // Reassemble the row-major matrix. For missing cells (g, t) with
+    // `t_eval <= g` or no pre-treatment period observed, the entry
+    // stays at 0.0. The accumulated `coef_values_acc` /
+    // `se_values_acc` arrays are written into the matching flat
+    // index in `final_coef` / `final_se`. A single O(n) pass over
+    // (gi, pi) reconstructs the indexing.
+    let final_coef : Array[Double] = Array::make(
+      self.n_groups * self.n_periods,
+      0.0,
+    )
+    let final_se : Array[Double] = Array::make(
+      self.n_groups * self.n_periods,
+      0.0,
+    )
+    // v0.15.0+: per-cell influence function `psi = psi_a + theta *
+    // psi_b` on the long-format panel, used by the multiplier
+    // bootstrap. Empty cells (no psi) are left at 0.0.
+    let final_psi : Array[Double] = Array::make(
+      self.n_groups * self.n_periods * n,
+      0.0,
+    )
+    let mut coef_idx = 0
+    for gi = 0; gi < self.n_groups; gi = gi + 1 {
+      let g_value = self.data.groups[gi]
+      // Locate the pre-treatment period (g_value itself) in the
+      // time index; if absent, the whole group is skipped.
+      let mut has_pre = false
+      for pi = 0; pi < self.n_periods; pi = pi + 1 {
+        if self.data.times[pi] == g_value {
+          has_pre = true
+        }
       }
-      final_coef[flat] = coef_values_acc[coef_idx]
-      final_se[flat] = se_values_acc[coef_idx]
-      // Copy the per-cell psi into the row-major slot. The
-      // psi is a length-`n` array; we flatten it into
-      // `final_psi[flat * n .. (flat + 1) * n]`.
-      let psi_k = psi_values_acc[coef_idx]
-      for k = 0; k < n; k = k + 1 {
-        final_psi[flat * n + k] = psi_k[k]
+      for pi = 0; pi < self.n_periods; pi = pi + 1 {
+        let eval_period = self.data.times[pi]
+        let flat = gi * self.n_periods + pi
+        if !has_pre || eval_period <= g_value {
+          continue
+        }
+        final_coef[flat] = coef_values_acc[coef_idx]
+        final_se[flat] = se_values_acc[coef_idx]
+        // Copy the per-cell psi into the row-major slot. The
+        // psi is a length-`n` array; we flatten it into
+        // `final_psi[flat * n .. (flat + 1) * n]`.
+        let psi_k = psi_values_acc[coef_idx]
+        for k = 0; k < n; k = k + 1 {
+          final_psi[flat * n + k] = psi_k[k]
+        }
+        coef_idx = coef_idx + 1
       }
-      coef_idx = coef_idx + 1
     }
-  }
-  {
-    ..self,
-    coef_matrix: final_coef,
-    se_matrix: final_se,
-    psi_matrix: final_psi,
-    fitted: true,
-  }
+    {
+      ..self,
+      coef_matrix: final_coef,
+      se_matrix: final_se,
+      psi_matrix: final_psi,
+      fitted: true,
+    }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

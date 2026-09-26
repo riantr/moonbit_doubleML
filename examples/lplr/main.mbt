@@ -54,7 +54,11 @@ fn build_dgp(
     let u = rng.double()
     y[i] = if u < prob { 1.0 } else { 0.0 }
   }
-  @moonbit_doubleML.DoubleMLBinaryData::new(@moonbit_doubleML.Matrix::from_array(x_flat, n, p), y, d)
+  @moonbit_doubleML.DoubleMLBinaryData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
+    y,
+    d,
+  )
 }
 
 ///|

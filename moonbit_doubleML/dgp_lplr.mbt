@@ -34,11 +34,7 @@ struct LplrData {
 
 ///|
 /// Generate the LPLR LZZ2020 DGP.
-pub fn make_lplr_LZZ2020(
-  n : Int,
-  alpha : Double,
-  seed : Int,
-) -> LplrData {
+pub fn make_lplr_LZZ2020(n : Int, alpha : Double, seed : Int) -> LplrData {
   let p = 6
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
@@ -89,15 +85,15 @@ pub fn make_lplr_LZZ2020(
     let u = rng.double()
     y[i] = if u < prob { 1.0 } else { 0.0 }
   }
-  let data = DoubleMLBinaryData::new(
-    Matrix::from_array(x_flat, n, p), y, d,
-  )
-  { theta: alpha, data }
+  let data = DoubleMLBinaryData::new(Matrix::from_array(x_flat, n, p), y, d)
+  { theta: alpha, data, }
 }
 
 ///|
 /// Get the true causal parameter.
-pub fn LplrData::theta_get(self : LplrData) -> Double { self.theta }
+pub fn LplrData::theta_get(self : LplrData) -> Double {
+  self.theta
+}
 
 ///|
 /// Get the underlying `DoubleMLBinaryData`.

@@ -105,7 +105,11 @@ test "matvec_t_kahan_matches_matvec" {
   // O(n * eps) ≈ 1.0e-12 for n=10_000, which `1.0e-10` catches.
   let n : Int = 10000
   let mat_data : Array[Double] = Array::makei(n, fn(i) {
-    if i % 2 == 0 { 0.5 } else { -0.5 }
+    if i % 2 == 0 {
+      0.5
+    } else {
+      -0.5
+    }
   })
   let mat = Matrix::from_array(mat_data, n, 1)
   let x : Array[Double] = Array::make(n, 1.0e-4)

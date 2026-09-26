@@ -54,6 +54,8 @@ pub struct DoubleMLIRM {
   se : Double
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLIRM with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -156,9 +158,7 @@ pub fn DoubleMLIRM::predictions_m(self : DoubleMLIRM) -> Array[Double] {
 /// v0.53.0-dev Task 4: mirrors upstream feat "retain raw IRM
 /// propensity scores" so callers can inspect the un-clipped
 /// predictions without re-fitting.
-pub fn DoubleMLIRM::propensity_score_raw(
-  self : DoubleMLIRM,
-) -> Array[Double] {
+pub fn DoubleMLIRM::propensity_score_raw(self : DoubleMLIRM) -> Array[Double] {
   self.m_raw
 }
 
@@ -355,7 +355,7 @@ pub fn DoubleMLIRM::fit(
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,
-      m_raw: m_raw,
+      m_raw,
       coef,
       se,
       fitted: true,
@@ -495,7 +495,7 @@ fn DoubleMLIRM::fit_cluster(
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,
-      m_raw: m_raw,
+      m_raw,
       coef,
       se,
       fitted: true,

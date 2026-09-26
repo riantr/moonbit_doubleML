@@ -5,6 +5,8 @@ pub struct DoubleMLLPQData {
   d : Array[Double]
   z : Array[Double]
 } derive(Debug)
+
+///|
 pub extend DoubleMLLPQData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -103,6 +105,8 @@ pub struct DoubleMLLPQ {
   predictions_g1 : Array[Double]
   predictions_m : Array[Double]
 } derive(Debug)
+
+///|
 pub extend DoubleMLLPQ with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -147,7 +151,12 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     let nf = n.to_double()
     let tr = indicator_level(self.data.d, self.treatment)
     let folds = kfold(n, self.n_folds, self.seed)
-    let m = fit_propensity(self.data.x, self.data.z, folds, self.propensity_clip)
+    let m = fit_propensity(
+      self.data.x,
+      self.data.z,
+      folds,
+      self.propensity_clip,
+    )
     let z0 = Array::make(n, 0.0)
     let z1 = Array::make(n, 0.0)
     for i = 0; i < n; i = i + 1 {
@@ -181,10 +190,12 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     // drops the total g cross-fit count from `2 * 50 = 100`
     // (bisection) + 4 (derivative) = 104 to 2 + 4 = 6.
     let y_min = array_min(self.data.y) catch {
-      EmptyArrayError => abort("array_min: empty y array (data.y.length() == 0)")
+      EmptyArrayError =>
+        abort("array_min: empty y array (data.y.length() == 0)")
     }
     let y_max = array_max(self.data.y) catch {
-      EmptyArrayError => abort("array_max: empty y array (data.y.length() == 0)")
+      EmptyArrayError =>
+        abort("array_max: empty y array (data.y.length() == 0)")
     }
     let y_range = y_max - y_min
     let margin = if y_range > 0.0 { y_range * 0.1 } else { 1.0 }
@@ -328,9 +339,7 @@ pub fn DoubleMLLPQ::se(self : DoubleMLLPQ) -> Double {
 ///|
 /// Cross-fitted outcome nuisance for Z=0 (length `n_obs`).
 /// v0.53.0-dev: matches upstream `DoubleMLLPQ.predictions["g0"]`.
-pub fn DoubleMLLPQ::predictions_g0(
-  self : DoubleMLLPQ,
-) -> Array[Double] {
+pub fn DoubleMLLPQ::predictions_g0(self : DoubleMLLPQ) -> Array[Double] {
   try {
     require(self.fitted)
     self.predictions_g0
@@ -343,9 +352,7 @@ pub fn DoubleMLLPQ::predictions_g0(
 ///|
 /// Cross-fitted outcome nuisance for Z=1 (length `n_obs`).
 /// v0.53.0-dev: matches upstream `DoubleMLLPQ.predictions["g1"]`.
-pub fn DoubleMLLPQ::predictions_g1(
-  self : DoubleMLLPQ,
-) -> Array[Double] {
+pub fn DoubleMLLPQ::predictions_g1(self : DoubleMLLPQ) -> Array[Double] {
   try {
     require(self.fitted)
     self.predictions_g1

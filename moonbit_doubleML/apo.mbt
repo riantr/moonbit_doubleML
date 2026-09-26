@@ -13,6 +13,8 @@ pub struct DoubleMLAPO {
   se : Double
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLAPO with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -249,6 +251,8 @@ pub struct DoubleMLAPOS {
   ses : Array[Double]
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLAPOS with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -324,35 +328,35 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
     let c = Array::make(self.treatment_levels.length(), 0.0)
     let s = Array::make(self.treatment_levels.length(), 0.0)
     for j = 0; j < self.treatment_levels.length(); j = j + 1 {
-    // v0.49.0: the parent APOS fits each child `DoubleMLAPO` with
-    // `n_rep = self.n_rep` so the child draws its own fold
-    // partition (`n_rep` total fold draws per treatment level).
-    // The parent does not currently route a shared stratified
-    // partition to the child — that's a v0.50.0+ target. The
-    // resulting fold-draw count is `n_rep * n_treatment_levels`,
-    // matching the upstream `DoubleMLAPOS.fit` total.
-    let z = DoubleMLAPO::new(
-      self.data,
-      treatment_level=self.treatment_levels[j],
-      n_folds=self.n_folds,
-      n_rep=self.n_rep,
-      seed=self.seed,
-      propensity_clip=self.propensity_clip,
-    ).fit()
-    c[j] = z.coef()
-    s[j] = z.se()
-  }
-  {
-    data: self.data,
-    treatment_levels: self.treatment_levels,
-    n_folds: self.n_folds,
-    n_rep: self.n_rep,
-    seed: self.seed,
-    propensity_clip: self.propensity_clip,
-    coefs: c,
-    ses: s,
-    fitted: true,
-  }
+      // v0.49.0: the parent APOS fits each child `DoubleMLAPO` with
+      // `n_rep = self.n_rep` so the child draws its own fold
+      // partition (`n_rep` total fold draws per treatment level).
+      // The parent does not currently route a shared stratified
+      // partition to the child — that's a v0.50.0+ target. The
+      // resulting fold-draw count is `n_rep * n_treatment_levels`,
+      // matching the upstream `DoubleMLAPOS.fit` total.
+      let z = DoubleMLAPO::new(
+        self.data,
+        treatment_level=self.treatment_levels[j],
+        n_folds=self.n_folds,
+        n_rep=self.n_rep,
+        seed=self.seed,
+        propensity_clip=self.propensity_clip,
+      ).fit()
+      c[j] = z.coef()
+      s[j] = z.se()
+    }
+    {
+      data: self.data,
+      treatment_levels: self.treatment_levels,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      coefs: c,
+      ses: s,
+      fitted: true,
+    }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

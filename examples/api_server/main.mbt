@@ -76,7 +76,10 @@ fn json_to_doubles(node : Json, label : String) -> Array[Double] raise ApiError 
 }
 
 ///|
-fn json_to_matrix(node : Json, label : String) -> (Array[Double], Int, Int) raise ApiError {
+fn json_to_matrix(
+  node : Json,
+  label : String,
+) -> (Array[Double], Int, Int) raise ApiError {
   match node {
     Json::Array(rows) => {
       if rows.length() == 0 {
@@ -153,7 +156,9 @@ fn json_opt_int(obj : Json, key : String, default : Int) -> Int raise ApiError {
 }
 
 ///|
-fn parse_fit_request(body : Json) -> (Array[Double], Int, Int, Array[Double], Array[Double], Int, Int, Int) raise ApiError {
+fn parse_fit_request(
+  body : Json,
+) -> (Array[Double], Int, Int, Array[Double], Array[Double], Int, Int, Int) raise ApiError {
   match body {
     Json::Object(obj) => {
       let x_node = match obj.get("x") {
@@ -167,9 +172,7 @@ fn parse_fit_request(body : Json) -> (Array[Double], Int, Int, Array[Double], Ar
       }
       let y = json_to_doubles(y_node, "y")
       if y.length() != n {
-        raise ApiError::Message(
-          "field 'y': length \{y.length()} != n_obs \{n}",
-        )
+        raise ApiError::Message("field 'y': length \{y.length()} != n_obs \{n}")
       }
       let d_node = match obj.get("d") {
         Some(v) => v
@@ -177,9 +180,7 @@ fn parse_fit_request(body : Json) -> (Array[Double], Int, Int, Array[Double], Ar
       }
       let d = json_to_doubles(d_node, "d")
       if d.length() != n {
-        raise ApiError::Message(
-          "field 'd': length \{d.length()} != n_obs \{n}",
-        )
+        raise ApiError::Message("field 'd': length \{d.length()} != n_obs \{n}")
       }
       let n_folds = json_opt_int(body, "n_folds", 2)
       let n_rep = json_opt_int(body, "n_rep", 1)
@@ -266,12 +267,22 @@ async fn write_400(conn : @http.ServerConnection, msg : String) -> Unit {
 
 ///|
 async fn write_404(conn : @http.ServerConnection) -> Unit {
-  write_json(conn, 404, "Not Found", ToJson::to_json({ error: "route not found", }))
+  write_json(
+    conn,
+    404,
+    "Not Found",
+    ToJson::to_json({ error: "route not found", }),
+  )
 }
 
 ///|
 async fn write_405(conn : @http.ServerConnection) -> Unit {
-  write_json(conn, 405, "Method Not Allowed", ToJson::to_json({ error: "method not allowed", }))
+  write_json(
+    conn,
+    405,
+    "Method Not Allowed",
+    ToJson::to_json({ error: "method not allowed", }),
+  )
 }
 
 // ============================================================
@@ -300,12 +311,7 @@ fn handler_fit_plr(body : Json) -> Json raise ApiError {
   let (x_data, n, p, y, d, n_folds, n_rep, seed) = parse_fit_request(body)
   let x_mat = @moonbit_doubleML.Matrix::from_array(x_data, n, p)
   let data = @moonbit_doubleML.DoubleMLData::new(x_mat, y, d)
-  let fitted = @moonbit_doubleML.DoubleMLPLR::new(
-    data,
-    n_folds~,
-    n_rep~,
-    seed~,
-  ).fit()
+  let fitted = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds~, n_rep~, seed~).fit()
   let (lo, hi) = fitted.confint()
   ToJson::to_json({
     estimator: "plr",
@@ -323,12 +329,7 @@ fn handler_fit_irm(body : Json) -> Json raise ApiError {
   let (x_data, n, p, y, d, n_folds, n_rep, seed) = parse_fit_request(body)
   let x_mat = @moonbit_doubleML.Matrix::from_array(x_data, n, p)
   let data = @moonbit_doubleML.DoubleMLData::new(x_mat, y, d)
-  let fitted = @moonbit_doubleML.DoubleMLIRM::new(
-    data,
-    n_folds~,
-    n_rep~,
-    seed~,
-  ).fit()
+  let fitted = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds~, n_rep~, seed~).fit()
   let (lo, hi) = fitted.confint()
   ToJson::to_json({
     estimator: "irm",
@@ -360,10 +361,10 @@ priv struct Route {
 
 ///|
 let routes : Array[Route] = [
-  { method_: Get, path: "/healthz", handler: handler_healthz },
-  { method_: Get, path: "/version", handler: handler_version },
-  { method_: Post, path: "/fit/plr", handler: handler_fit_plr },
-  { method_: Post, path: "/fit/irm", handler: handler_fit_irm },
+  { method_: Get, path: "/healthz", handler: handler_healthz, },
+  { method_: Get, path: "/version", handler: handler_version, },
+  { method_: Post, path: "/fit/plr", handler: handler_fit_plr, },
+  { method_: Post, path: "/fit/irm", handler: handler_fit_irm, },
 ]
 
 ///|
@@ -386,14 +387,17 @@ fn lookup(method_ : Method, path : String) -> ((Json) -> Json raise ApiError)? {
 /// `Json::Null` are flagged readonly by the compiler when
 /// constructed inside async fn bodies.
 fn empty_body_json() -> Json {
-  ToJson::to_json(Empty::{})
+  ToJson::to_json(Empty::{ })
 }
 
 ///|
 /// Read the request body into a `Json` value (empty object for GET).
 /// Caps the body size at 16 MiB to keep the server robust against
 /// pathological clients.
-async fn read_body_json(body : &@io.Reader, method_ : Method) -> Json raise Error {
+async fn read_body_json(
+  body : &@io.Reader,
+  method_ : Method,
+) -> Json raise Error {
   if method_ == Get {
     return empty_body_json()
   }
@@ -430,7 +434,11 @@ async fn read_body_json(body : &@io.Reader, method_ : Method) -> Json raise Erro
 }
 
 ///|
-pub async fn dispatch(req : @http.Request, body : &@io.Reader, conn : @http.ServerConnection) -> Unit {
+pub async fn dispatch(
+  req : @http.Request,
+  body : &@io.Reader,
+  conn : @http.ServerConnection,
+) -> Unit {
   let method_ : Method = match req.meth {
     @http.Get => Get
     @http.Post => Post

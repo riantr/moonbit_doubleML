@@ -362,7 +362,12 @@ fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
     let panel = fuzz_plpr_panel(rng, n_units, n_periods)
     let seed = rng.int(limit=100_000)
     let model = if iv {
-      @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
+      @moonbit_doubleML.DoubleMLPLPR::new(
+        panel,
+        approach~,
+        score="IV-type",
+        seed~,
+      ).fit()
     } else {
       @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, seed~).fit()
     }
@@ -385,7 +390,12 @@ fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
     )
     // Invariant 3: same-seed refit is bit-exact.
     let again = if iv {
-      @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, score="IV-type", seed~).fit()
+      @moonbit_doubleML.DoubleMLPLPR::new(
+        panel,
+        approach~,
+        score="IV-type",
+        seed~,
+      ).fit()
     } else {
       @moonbit_doubleML.DoubleMLPLPR::new(panel, approach~, seed~).fit()
     }
@@ -452,7 +462,12 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
       y,
       d,
     )
-    let model = @moonbit_doubleML.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
+    let model = @moonbit_doubleML.DoubleMLLPLR::new(
+      data,
+      n_folds=2,
+      n_folds_inner=2,
+      seed~,
+    ).fit()
     let th = model.coef()
     let se = model.se()
     check(
@@ -476,7 +491,12 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
       )
     }
     // Same-seed refit determinism.
-    let again = @moonbit_doubleML.DoubleMLLPLR::new(data, n_folds=2, n_folds_inner=2, seed~).fit()
+    let again = @moonbit_doubleML.DoubleMLLPLR::new(
+      data,
+      n_folds=2,
+      n_folds_inner=2,
+      seed~,
+    ).fit()
     check(
       again.coef() == th && again.se() == se,
       "lplr same-seed refit (trial=\{trial})",
@@ -539,7 +559,11 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
       d,
       cluster_vars=cluster,
     )
-    let cluster_fit = @moonbit_doubleML.DoubleMLPLR::new(data_c, n_folds=2, seed~).fit()
+    let cluster_fit = @moonbit_doubleML.DoubleMLPLR::new(
+      data_c,
+      n_folds=2,
+      seed~,
+    ).fit()
     let th_c = cluster_fit.coef()
     let se_c = cluster_fit.se()
     check(th_c.abs() < 1.0e6, "cluster-plr finite coef (trial=\{trial})")
@@ -655,7 +679,11 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       z,
       cluster_vars=cluster,
     )
-    let pliv_fit = @moonbit_doubleML.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
+    let pliv_fit = @moonbit_doubleML.DoubleMLPLIV::new(
+      data_c_pliv,
+      n_folds=2,
+      seed~,
+    ).fit()
     let th_p = pliv_fit.coef()
     let se_p = pliv_fit.se()
     check(
@@ -676,7 +704,11 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       d,
       z,
     )
-    let pliv_row_fit = @moonbit_doubleML.DoubleMLPLIV::new(data_r_pliv, n_folds=2, seed~).fit()
+    let pliv_row_fit = @moonbit_doubleML.DoubleMLPLIV::new(
+      data_r_pliv,
+      n_folds=2,
+      seed~,
+    ).fit()
     let se_p_row = pliv_row_fit.se()
     check(
       se_p_row == se_p_row && se_p_row >= 0.0 && se_p_row < 1.0e10,
@@ -699,7 +731,11 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
         "fuzz PLIV cluster/row SE ratio bounded (trial=\{trial}, ratio=\{ratio})",
       )
     }
-    let again = @moonbit_doubleML.DoubleMLPLIV::new(data_c_pliv, n_folds=2, seed~).fit()
+    let again = @moonbit_doubleML.DoubleMLPLIV::new(
+      data_c_pliv,
+      n_folds=2,
+      seed~,
+    ).fit()
     check(
       again.coef() == th_p && again.se() == se_p,
       "fuzz PLIV same-seed refit (trial=\{trial})",
@@ -711,7 +747,11 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       z,
       cluster_vars=cluster,
     )
-    let iivm_fit = @moonbit_doubleML.DoubleMLIIVM::new(data_c_iivm, n_folds=2, seed~).fit()
+    let iivm_fit = @moonbit_doubleML.DoubleMLIIVM::new(
+      data_c_iivm,
+      n_folds=2,
+      seed~,
+    ).fit()
     let th_i = iivm_fit.coef()
     let se_i = iivm_fit.se()
     check(
@@ -729,7 +769,11 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
       d,
       z,
     )
-    let iivm_row_fit = @moonbit_doubleML.DoubleMLIIVM::new(data_r_iivm, n_folds=2, seed~).fit()
+    let iivm_row_fit = @moonbit_doubleML.DoubleMLIIVM::new(
+      data_r_iivm,
+      n_folds=2,
+      seed~,
+    ).fit()
     let se_i_row = iivm_row_fit.se()
     check(
       se_i_row == se_i_row && se_i_row >= 0.0 && se_i_row < 1.0e10,
@@ -822,7 +866,9 @@ fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int) -> Unit {
 ///|
 fn main {
   let trials = 300
-  println("=== riantr/moonbit_doubleML fuzz harness (\{trials} trials per surface) ===")
+  println(
+    "=== riantr/moonbit_doubleML fuzz harness (\{trials} trials per surface) ===",
+  )
   let master = @random.Rand::chacha8(
     seed=Bytes::from_array(@moonbit_doubleML.seed_to_bytes(20260824)),
   )

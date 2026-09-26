@@ -115,14 +115,17 @@ pub fn make_pliv_multiway_cluster(
     z[i] = if rng.double() < 0.5 { 1.0 } else { 0.0 }
     let x1 = x_flat[i * dim_x + 1]
     let x2 = x_flat[i * dim_x + 2]
-    let p_score = 0.5 * x1 + 0.5 * x2 + 1.0 * z[i] +
-      ca_effects[cluster_a[i]] + cb_effects[cluster_b[i]]
+    let p_score = 0.5 * x1 +
+      0.5 * x2 +
+      1.0 * z[i] +
+      ca_effects[cluster_a[i]] +
+      cb_effects[cluster_b[i]]
     let p = 1.0 / (1.0 + @math.exp(-p_score))
     d[i] = if rng.double() < p { 1.0 } else { 0.0 }
     y[i] = theta * d[i] + 0.5 * x1 + 0.5 * x2 + v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d, z, cluster_a, cluster_b }
+  { theta, x: x_mat, y, d, z, cluster_a, cluster_b, }
 }
 
 ///|
@@ -131,7 +134,9 @@ pub fn PlivClusterData::theta_get(self : PlivClusterData) -> Double {
 }
 
 ///|
-pub fn PlivClusterData::x_get(self : PlivClusterData) -> Matrix { self.x }
+pub fn PlivClusterData::x_get(self : PlivClusterData) -> Matrix {
+  self.x
+}
 
 ///|
 pub fn PlivClusterData::y_get(self : PlivClusterData) -> Array[Double] {
@@ -149,15 +154,11 @@ pub fn PlivClusterData::z_get(self : PlivClusterData) -> Array[Double] {
 }
 
 ///|
-pub fn PlivClusterData::cluster_a_get(
-  self : PlivClusterData,
-) -> Array[Int] {
+pub fn PlivClusterData::cluster_a_get(self : PlivClusterData) -> Array[Int] {
   self.cluster_a
 }
 
 ///|
-pub fn PlivClusterData::cluster_b_get(
-  self : PlivClusterData,
-) -> Array[Int] {
+pub fn PlivClusterData::cluster_b_get(self : PlivClusterData) -> Array[Int] {
   self.cluster_b
 }

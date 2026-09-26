@@ -269,6 +269,8 @@ pub struct DoubleMLPQ {
   se : Double
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLPQ with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -392,6 +394,8 @@ pub struct DoubleMLQTE {
   coefs : Array[Double]
   ses : Array[Double]
 } derive(Debug)
+
+///|
 pub extend DoubleMLQTE with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

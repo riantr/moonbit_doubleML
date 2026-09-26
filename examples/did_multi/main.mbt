@@ -53,7 +53,11 @@ fn main {
     id_arr,
     g_arr,
   )
-  let fitted = @moonbit_doubleML.DoubleMLDIDMulti::new(data, n_folds=2, seed=3141).fit()
+  let fitted = @moonbit_doubleML.DoubleMLDIDMulti::new(
+    data,
+    n_folds=2,
+    seed=3141,
+  ).fit()
   println(
     "=== MoonBit DML demo: DoubleMLDIDMulti (n_units=\{n_units}, p=\{p}, true ATT=\{theta0}) ===",
   )

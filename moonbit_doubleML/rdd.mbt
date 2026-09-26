@@ -6,6 +6,8 @@ pub struct DoubleMLRDDData {
   d : Array[Double]
   score : Array[Double]
 } derive(Debug)
+
+///|
 pub extend DoubleMLRDDData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -52,6 +54,8 @@ pub struct DoubleMLRDD {
   n_local : Int
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLRDD with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -194,89 +198,89 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
   try {
     require(self.bandwidth > 0.0)
     let (yl, vyl, nl, res_yl) = rdd_side(
-    self.data,
-    -1.0,
-    self.cutoff,
-    self.bandwidth,
-    false,
-    self.cov_type,
-  )
-  let (yr, vyr, nr, res_yr) = rdd_side(
-    self.data,
-    1.0,
-    self.cutoff,
-    self.bandwidth,
-    false,
-    self.cov_type,
-  )
-  let mut c = yr - yl
-  let mut variance = vyl + vyr
-  if self.fuzzy {
-    let (dl, vdl, _, res_dl) = rdd_side(
       self.data,
       -1.0,
       self.cutoff,
       self.bandwidth,
-      true,
+      false,
       self.cov_type,
     )
-    let (dr, vdr, _, res_dr) = rdd_side(
+    let (yr, vyr, nr, res_yr) = rdd_side(
       self.data,
       1.0,
       self.cutoff,
       self.bandwidth,
-      true,
+      false,
       self.cov_type,
     )
-    let jump = dr - dl
-    let raw = c
-    c = raw / jump
-    // Bug #7 fix: the full delta-method variance for `c = raw / jump`
-    // is
-    //   var(c) = (var(raw) + c^2 * var(jump) - 2 c cov(raw, jump))
-    //            / jump^2
-    // The previous implementation omitted the `cov(raw, jump)` cross
-    // term. We estimate `cov(raw, jump)` from the empirical cross
-    // moment of the Y-residuals with the D-residuals on each side of
-    // the cutoff, scaled by `1 / n_side^2` to match the `vyl`/`vdl`
-    // (already 1/n^2-scaled) convention.
-    let mut cov_num_l = 0.0
-    for k = 0; k < res_yl.length(); k = k + 1 {
-      cov_num_l = cov_num_l + res_yl[k] * res_dl[k]
+    let mut c = yr - yl
+    let mut variance = vyl + vyr
+    if self.fuzzy {
+      let (dl, vdl, _, res_dl) = rdd_side(
+        self.data,
+        -1.0,
+        self.cutoff,
+        self.bandwidth,
+        true,
+        self.cov_type,
+      )
+      let (dr, vdr, _, res_dr) = rdd_side(
+        self.data,
+        1.0,
+        self.cutoff,
+        self.bandwidth,
+        true,
+        self.cov_type,
+      )
+      let jump = dr - dl
+      let raw = c
+      c = raw / jump
+      // Bug #7 fix: the full delta-method variance for `c = raw / jump`
+      // is
+      //   var(c) = (var(raw) + c^2 * var(jump) - 2 c cov(raw, jump))
+      //            / jump^2
+      // The previous implementation omitted the `cov(raw, jump)` cross
+      // term. We estimate `cov(raw, jump)` from the empirical cross
+      // moment of the Y-residuals with the D-residuals on each side of
+      // the cutoff, scaled by `1 / n_side^2` to match the `vyl`/`vdl`
+      // (already 1/n^2-scaled) convention.
+      let mut cov_num_l = 0.0
+      for k = 0; k < res_yl.length(); k = k + 1 {
+        cov_num_l = cov_num_l + res_yl[k] * res_dl[k]
+      }
+      let mut cov_num_r = 0.0
+      for k = 0; k < res_yr.length(); k = k + 1 {
+        cov_num_r = cov_num_r + res_yr[k] * res_dr[k]
+      }
+      let n_l = res_yl.length().to_double()
+      let n_r = res_yr.length().to_double()
+      let mut cov_raw_jump = 0.0
+      if n_l > 0.0 {
+        cov_raw_jump = cov_raw_jump + cov_num_l / (n_l * n_l)
+      }
+      if n_r > 0.0 {
+        cov_raw_jump = cov_raw_jump + cov_num_r / (n_r * n_r)
+      }
+      variance = (vyl + vyr) / (jump * jump) +
+        raw * raw * (vdl + vdr) / (jump * jump * jump * jump) -
+        2.0 * raw * cov_raw_jump / (jump * jump * jump)
     }
-    let mut cov_num_r = 0.0
-    for k = 0; k < res_yr.length(); k = k + 1 {
-      cov_num_r = cov_num_r + res_yr[k] * res_dr[k]
+    let se = variance.sqrt()
+    {
+      data: self.data,
+      cutoff: self.cutoff,
+      bandwidth: self.bandwidth,
+      fuzzy: self.fuzzy,
+      cov_type: self.cov_type,
+      coef: c,
+      se,
+      // `n_local` is the count of *outcome* observations that fall
+      // inside the bandwidth on both sides of the cutoff. The fuzzy
+      // estimator additionally fits a treatment local-polynomial
+      // on the same rows so the *treated* count is the same.
+      n_local: nl + nr,
+      fitted: true,
     }
-    let n_l = res_yl.length().to_double()
-    let n_r = res_yr.length().to_double()
-    let mut cov_raw_jump = 0.0
-    if n_l > 0.0 {
-      cov_raw_jump = cov_raw_jump + cov_num_l / (n_l * n_l)
-    }
-    if n_r > 0.0 {
-      cov_raw_jump = cov_raw_jump + cov_num_r / (n_r * n_r)
-    }
-    variance = (vyl + vyr) / (jump * jump) +
-      raw * raw * (vdl + vdr) / (jump * jump * jump * jump) -
-      2.0 * raw * cov_raw_jump / (jump * jump * jump)
-  }
-  let se = variance.sqrt()
-  {
-    data: self.data,
-    cutoff: self.cutoff,
-    bandwidth: self.bandwidth,
-    fuzzy: self.fuzzy,
-    cov_type: self.cov_type,
-    coef: c,
-    se,
-    // `n_local` is the count of *outcome* observations that fall
-    // inside the bandwidth on both sides of the cutoff. The fuzzy
-    // estimator additionally fits a treatment local-polynomial
-    // on the same rows so the *treated* count is the same.
-    n_local: nl + nr,
-    fitted: true,
-  }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

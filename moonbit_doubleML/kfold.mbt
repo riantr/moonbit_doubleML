@@ -201,6 +201,8 @@ pub struct Fold {
   train_idx : Array[Int]
   test_idx : Array[Int]
 } derive(Debug)
+
+///|
 pub extend Fold with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

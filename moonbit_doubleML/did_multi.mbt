@@ -53,6 +53,8 @@ pub struct DoubleMLDIDMulti {
   boot_seed : Int
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLDIDMulti with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

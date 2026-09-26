@@ -57,7 +57,12 @@ fn main {
     id_arr,
     g_arr,
   )
-  let fitted = @moonbit_doubleML.DoubleMLDIDCS::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let fitted = @moonbit_doubleML.DoubleMLDIDCS::new(
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+  ).fit()
   println(
     "=== MoonBit DML demo: Callaway-Sant'Anna DID (staggered, n_units=\{n_units}, p=\{p}) ===",
   )

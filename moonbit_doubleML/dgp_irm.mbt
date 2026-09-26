@@ -106,7 +106,7 @@ pub fn make_irm_data(
     y[i] = theta * d[i] + 0.5 * sig1 + 0.5 * sig2 + v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d }
+  { theta, x: x_mat, y, d, }
 }
 
 ///|

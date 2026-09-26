@@ -93,23 +93,33 @@ pub fn make_pliv_CHS2015(
     y[i] = theta * d[i] + x1 + x2 + v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d, z }
+  { theta, x: x_mat, y, d, z, }
 }
 
 ///|
-pub fn PlivData::theta_get(self : PlivData) -> Double { self.theta }
+pub fn PlivData::theta_get(self : PlivData) -> Double {
+  self.theta
+}
 
 ///|
-pub fn PlivData::x_get(self : PlivData) -> Matrix { self.x }
+pub fn PlivData::x_get(self : PlivData) -> Matrix {
+  self.x
+}
 
 ///|
-pub fn PlivData::y_get(self : PlivData) -> Array[Double] { self.y }
+pub fn PlivData::y_get(self : PlivData) -> Array[Double] {
+  self.y
+}
 
 ///|
-pub fn PlivData::d_get(self : PlivData) -> Array[Double] { self.d }
+pub fn PlivData::d_get(self : PlivData) -> Array[Double] {
+  self.d
+}
 
 ///|
-pub fn PlivData::z_get(self : PlivData) -> Array[Double] { self.z }
+pub fn PlivData::z_get(self : PlivData) -> Array[Double] {
+  self.z
+}
 
 ///|
 /// Convenience factory matching the upstream

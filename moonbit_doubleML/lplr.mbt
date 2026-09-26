@@ -25,6 +25,8 @@ pub struct DoubleMLBinaryData {
   y : Array[Double]
   d : Array[Double]
 } derive(Debug)
+
+///|
 pub extend DoubleMLBinaryData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
@@ -213,6 +215,8 @@ pub struct DoubleMLLPLR {
   a_hat : Array[Double]
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend DoubleMLLPLR with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

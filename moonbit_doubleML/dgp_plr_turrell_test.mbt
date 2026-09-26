@@ -16,7 +16,7 @@ test "PLRTurrell_d_is_binary" {
   let d = data.d_get()
   for i = 0; i < d.length(); i = i + 1 {
     let v = d[i]
-    inspect((v == 0.0) || (v == 1.0), content="true")
+    inspect(v == 0.0 || v == 1.0, content="true")
   }
 }
 

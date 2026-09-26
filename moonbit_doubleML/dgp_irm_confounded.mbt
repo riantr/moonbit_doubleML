@@ -93,7 +93,7 @@ pub fn make_irm_confounded_data(
     y[i] = theta * d[i] + 0.5 * x1 + c[i] + v_flat[i]
   }
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d, c }
+  { theta, x: x_mat, y, d, c, }
 }
 
 ///|

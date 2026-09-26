@@ -22,6 +22,8 @@ pub struct DoubleMLData {
   d : Array[Double]
   cluster_vars : Array[Int]
 } derive(Debug)
+
+///|
 pub extend DoubleMLData with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

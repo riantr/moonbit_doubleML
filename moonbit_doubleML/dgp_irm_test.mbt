@@ -20,7 +20,7 @@ test "IRM_treatment_is_binary" {
   let d = data.d_get()
   for i = 0; i < d.length(); i = i + 1 {
     let v = d[i]
-    inspect((v == 0.0) || (v == 1.0), content="true")
+    inspect(v == 0.0 || v == 1.0, content="true")
   }
 }
 
@@ -57,12 +57,8 @@ test "IRM_deterministic_in_seed" {
 ///|
 test "IRM_estimator_recovers_true_theta" {
   let data = make_irm_data(5000, 20, 0.5, 3141)
-  let dml_data = DoubleMLData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-  )
-  let irm = DoubleMLIRM::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  )
+  let dml_data = DoubleMLData::new(data.x_get(), data.y_get(), data.d_get())
+  let irm = DoubleMLIRM::new(dml_data, n_folds=2, n_rep=1, seed=3141)
   let fit = irm.fit()
   let theta_hat = fit.coef()
   let se = fit.se()
@@ -74,12 +70,8 @@ test "IRM_estimator_recovers_true_theta" {
 ///|
 test "IRM_confint_well_formed" {
   let data = make_irm_data(5000, 20, 0.5, 3141)
-  let dml_data = DoubleMLData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-  )
-  let irm = DoubleMLIRM::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  )
+  let dml_data = DoubleMLData::new(data.x_get(), data.y_get(), data.d_get())
+  let irm = DoubleMLIRM::new(dml_data, n_folds=2, n_rep=1, seed=3141)
   let fit = irm.fit()
   let (lo, hi) = fit.confint()
   inspect(lo < hi, content="true")

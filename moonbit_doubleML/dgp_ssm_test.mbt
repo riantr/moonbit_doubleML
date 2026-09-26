@@ -22,8 +22,8 @@ test "SSM_d_and_s_are_binary" {
   for i = 0; i < d.length(); i = i + 1 {
     let v_d = d[i]
     let v_s = s[i]
-    inspect((v_d == 0.0) || (v_d == 1.0), content="true")
-    inspect((v_s == 0.0) || (v_s == 1.0), content="true")
+    inspect(v_d == 0.0 || v_d == 1.0, content="true")
+    inspect(v_s == 0.0 || v_s == 1.0, content="true")
   }
 }
 

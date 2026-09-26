@@ -70,7 +70,7 @@ pub fn make_simple_rdd_dgp(
     score[i] = 1.0
     y[i] = 0.5 * x[i] * x[i] + theta * d[i] + v_flat[i]
   }
-  { theta, x, y, d, score }
+  { theta, x, y, d, score, }
 }
 
 ///|

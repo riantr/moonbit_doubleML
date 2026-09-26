@@ -23,21 +23,19 @@ test "RDD_d_is_binary_and_discontinuous_at_zero" {
   let mut below_zero_d_zero = 0
   for i = 0; i < x.length(); i = i + 1 {
     let v = d[i]
-    inspect((v == 0.0) || (v == 1.0), content="true")
+    inspect(v == 0.0 || v == 1.0, content="true")
     if x[i] > 0.0 {
       above_zero_count = above_zero_count + 1
       if v == 1.0 {
         above_zero_d_one = above_zero_d_one + 1
       }
-    } else {
-      if v == 0.0 {
-        below_zero_d_zero = below_zero_d_zero + 1
-      }
+    } else if v == 0.0 {
+      below_zero_d_zero = below_zero_d_zero + 1
     }
   }
   // Sharp assignment: D = 1{X > 0} deterministically.
   inspect(above_zero_count == above_zero_d_one, content="true")
-  inspect(above_zero_count == (1000 - below_zero_d_zero), content="true")
+  inspect(above_zero_count == 1000 - below_zero_d_zero, content="true")
 }
 
 ///|

@@ -22,6 +22,8 @@ pub struct LinearRegression {
   xtwx_inv_diag : Array[Double]
   fitted : Bool
 } derive(Debug)
+
+///|
 pub extend LinearRegression with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

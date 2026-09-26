@@ -37,12 +37,8 @@ test "IRMHeterogeneous_deterministic_in_seed" {
 ///|
 test "IRMHeterogeneous_estimator_recovers_ate" {
   let data = make_irm_heterogeneous_data(5000, 20, 3141)
-  let dml_data = DoubleMLData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-  )
-  let irm = DoubleMLIRM::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  )
+  let dml_data = DoubleMLData::new(data.x_get(), data.y_get(), data.d_get())
+  let irm = DoubleMLIRM::new(dml_data, n_folds=2, n_rep=1, seed=3141)
   let fit = irm.fit()
   let theta_hat = fit.coef()
   let se = fit.se()

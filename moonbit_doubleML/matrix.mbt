@@ -10,6 +10,8 @@ struct Matrix {
   ncols : Int
   data : Array[Double] // length = nrows * ncols, row-major
 } derive(Debug)
+
+///|
 pub extend Matrix with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|

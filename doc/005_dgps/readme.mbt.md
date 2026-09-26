@@ -31,8 +31,13 @@ root.
 Every DGP follows the same shape:
 
 ```moonbit nocheck
+///|
 let rng = chacha8_rng(3141)
+
+///|
 let data = make_plr_CCDDHNR2018(rng, n_obs=500, n_features=5, theta=1.0)
+
+///|
 let fitted = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, seed=3141).fit()
 // fitted.coef_get() should be within MAX(MODEL_TOL=0.1, 2.0 * handrolled_se) of 1.0
 ```

@@ -99,7 +99,7 @@ pub fn make_irm_heterogeneous_data(
   }
   let theta = theta_sum / n_obs.to_double()
   let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d }
+  { theta, x: x_mat, y, d, }
 }
 
 ///|

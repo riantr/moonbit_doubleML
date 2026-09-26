@@ -110,8 +110,11 @@ pub fn make_did_SZ2020(
       for k = 0; k < dim_x; k = k + 1 {
         x_dot_gamma = x_dot_gamma + 0.5 * x_unit[u * dim_x + k]
       }
-      y[idx] = alpha[u] + beta_t[period] + theta * d[idx] +
-        x_dot_gamma + eps[idx]
+      y[idx] = alpha[u] +
+        beta_t[period] +
+        theta * d[idx] +
+        x_dot_gamma +
+        eps[idx]
       t[idx] = period
       g[idx] = cohort
       id[idx] = unit_in_cohort
@@ -127,5 +130,5 @@ pub fn make_did_SZ2020(
     }
   }
   let x_panel = Matrix::from_array(x_panel_flat, true_n, dim_x)
-  { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel }
+  { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel, }
 }

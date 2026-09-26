@@ -81,12 +81,8 @@ test "PLR_CCDDHNR_different_seeds_differ" {
 ///|
 test "PLR_CCDDHNR_estimator_recovers_true_theta" {
   let data = make_plr_CCDDHNR2018(5000, 20, 0.5, 3141)
-  let dml_data = DoubleMLData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-  )
-  let plr = DoubleMLPLR::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  )
+  let dml_data = DoubleMLData::new(data.x_get(), data.y_get(), data.d_get())
+  let plr = DoubleMLPLR::new(dml_data, n_folds=2, n_rep=1, seed=3141)
   let fit = plr.fit()
   let theta_hat = fit.coef()
   let se = fit.se()
@@ -98,12 +94,8 @@ test "PLR_CCDDHNR_estimator_recovers_true_theta" {
 ///|
 test "PLR_CCDDHNR_confint_well_formed" {
   let data = make_plr_CCDDHNR2018(5000, 20, 0.5, 3141)
-  let dml_data = DoubleMLData::new(
-    data.x_get(), data.y_get(), data.d_get(),
-  )
-  let plr = DoubleMLPLR::new(
-    dml_data, n_folds=2, n_rep=1, seed=3141,
-  )
+  let dml_data = DoubleMLData::new(data.x_get(), data.y_get(), data.d_get())
+  let plr = DoubleMLPLR::new(dml_data, n_folds=2, n_rep=1, seed=3141)
   let fit = plr.fit()
   let (lo, hi) = fit.confint()
   inspect(lo < hi, content="true")
