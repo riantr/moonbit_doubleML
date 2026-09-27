@@ -255,3 +255,61 @@ test "plr_iv_type_wbtest_fit_cluster_iv_type_routes" {
   inspect(se.is_nan() == false, content="true")
   inspect(se > 0.0, content="true")
 }
+
+///|
+test "plr_via_random_forest_learner_runs_end_to_end" {
+  // v0.56.0: wire `RFLearner` (Path A) through `DoubleMLPLR::fit`
+  // by passing `learner_l=LearnerDispatch::random_forest(rf)`
+  // as the per-fit override. Same DGP as the existing
+  // PLR-on-O DGP test (y = 1.5*d + 0.5*x0 + small noise) but
+  // with RF learners on both nuisances. PLR with RF should
+  // produce a finite coef + se without aborting.
+  let n = 200
+  let rng = chacha8_rng(42)
+  let x_data : Array[Double] = Array::make(n * 3, 0.0)
+  let y_data : Array[Double] = Array::make(n, 0.0)
+  let d_data : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let x0 = rng.double() * 2.0 - 1.0
+    let x1 = rng.double() * 2.0 - 1.0
+    let x2 = rng.double() * 2.0 - 1.0
+    x_data[i * 3 + 0] = x0
+    x_data[i * 3 + 1] = x1
+    x_data[i * 3 + 2] = x2
+    let eps = (rng.double() - 0.5) * 0.4
+    let d_i = (x0 + x1 + x2 + (rng.double() - 0.5) * 0.6) / 3.0
+    d_data[i] = d_i
+    y_data[i] = 1.5 * d_i + 0.5 * x0 + eps
+  }
+  let x = Matrix::from_array(x_data, n, 3)
+  let data = DoubleMLData::new(x, y_data, d_data)
+  let rf_l = RFLearner::new(
+    n_trees=20,
+    max_depth=8,
+    min_samples_leaf=3,
+    bootstrap_seed=11,
+  )
+  let rf_m = RFLearner::new(
+    n_trees=20,
+    max_depth=8,
+    min_samples_leaf=3,
+    bootstrap_seed=22,
+  )
+  let plr = DoubleMLPLR::new(
+    data,
+    n_folds=4,
+    seed=3141,
+  ).fit(
+    learner_l=LearnerDispatch::random_forest(rf_l),
+    learner_m=LearnerDispatch::random_forest(rf_m),
+  )
+  let coef = plr.coef()
+  let se = plr.se()
+  inspect(coef.is_nan() == false, content="true")
+  inspect(se.is_nan() == false, content="true")
+  inspect(se > 0.0, content="true")
+  // coef should be in the same ballpark as the OLS-DGP theta=1.5
+  // (RF DML is consistent; finite-sample bias from 200 obs is
+  // bounded by SE).
+  inspect(coef.abs() > 0.1, content="true")
+}

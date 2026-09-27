@@ -125,6 +125,9 @@ pub enum LearnerDispatch {
   Constant(ConstantLearner)
   /// Zero-predictor learner (see `NoopLearner`)
   Noop(NoopLearner)
+  /// Pure-MoonBit random forest (Breiman 2001 regression).
+  /// v0.56.0+: Path A — first non-OLS learner.
+  RandomForest(RFLearner)
 } derive(Debug)
 
 ///|
@@ -151,6 +154,15 @@ pub fn LearnerDispatch::noop() -> LearnerDispatch {
 }
 
 ///|
+/// Wrap an `RFLearner` in a `LearnerDispatch`. v0.56.0+.
+/// Factory for the Path A random-forest learner; callers can
+/// override n_trees / max_depth / min_samples_leaf / mtry via
+/// `RFLearner::new(...)` before wrapping.
+pub fn LearnerDispatch::random_forest(rf : RFLearner) -> LearnerDispatch {
+  RandomForest(rf)
+}
+
+///|
 /// Cross-fit a `LearnerDispatch` over the given folds. This
 /// is the dispatch wrapper around `cross_fit_predict[T : Learner]`
 /// (which is generic in `T`); each match arm binds a concrete
@@ -168,5 +180,6 @@ pub fn cross_fit_predict_dispatch(
     LinearRegression(lr) => cross_fit_predict(lr, x, y, folds)
     Constant(c) => cross_fit_predict(c, x, y, folds)
     Noop(n) => cross_fit_predict(n, x, y, folds)
+    RandomForest(rf) => cross_fit_predict(rf, x, y, folds)
   }
 }
