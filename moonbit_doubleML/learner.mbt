@@ -128,6 +128,9 @@ pub enum LearnerDispatch {
   /// Pure-MoonBit random forest (Breiman 2001 regression).
   /// v0.56.0+: Path A — first non-OLS learner.
   RandomForest(RFLearner)
+  /// Pure-MoonBit gradient boosting (Friedman 2001 regression).
+  /// v0.57.0+: Path A — second non-OLS learner.
+  GradientBoosting(GBLearner)
 } derive(Debug)
 
 ///|
@@ -163,6 +166,15 @@ pub fn LearnerDispatch::random_forest(rf : RFLearner) -> LearnerDispatch {
 }
 
 ///|
+/// Wrap a `GBLearner` in a `LearnerDispatch`. v0.57.0+.
+/// Factory for the Path A gradient-boosting learner; callers
+/// can override n_trees / learning_rate / max_depth / subsample
+/// via `GBLearner::new(...)` before wrapping.
+pub fn LearnerDispatch::gradient_boosting(gb : GBLearner) -> LearnerDispatch {
+  GradientBoosting(gb)
+}
+
+///|
 /// Cross-fit a `LearnerDispatch` over the given folds. This
 /// is the dispatch wrapper around `cross_fit_predict[T : Learner]`
 /// (which is generic in `T`); each match arm binds a concrete
@@ -181,5 +193,6 @@ pub fn cross_fit_predict_dispatch(
     Constant(c) => cross_fit_predict(c, x, y, folds)
     Noop(n) => cross_fit_predict(n, x, y, folds)
     RandomForest(rf) => cross_fit_predict(rf, x, y, folds)
+    GradientBoosting(gb) => cross_fit_predict(gb, x, y, folds)
   }
 }
