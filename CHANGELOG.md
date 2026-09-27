@@ -10,6 +10,113 @@ under each TODO is reset on every release 鈥?the most recent verified
 release is the canonical version.
 
 ---
+## [0.57.0] -- Path A `GBLearner` (gradient boosting regression)
+
+Cycle-driven from the user's "做1 2 3 4 5" decision after
+v0.56.0 shipped. This release is **Item 2** of that batch
+(5 items): the second non-OLS `Learner` (Friedman 2001
+gradient boosting regression) implemented in pure MoonBit
+and wired into `LearnerDispatch`. Items 3-5 (`tune()`,
+Learner injection on 11 other estimators, bootstrap() on
+non-DID estimators) follow in subsequent releases.
+
+### Added
+
+- **`GBLearner` (gbl.mbt, 7.7 KB)** -- pure-MoonBit
+  gradient boosting regression. Implements the `Learner`
+  trait; reuses the CART tree + `cart_fit` / `cart_predict`
+  helpers from `rfl.mbt` via package-private access (no
+  public-API exposure of the CART internals).
+
+  Public API:
+  - `pub struct GBLearner { n_trees, learning_rate, max_depth,
+    min_samples_leaf, mtry, subsample, bootstrap_seed,
+    initial : Double, trees : Array[CART] }`. The `trees`
+    field is private but accessible via the
+    `LearnerDispatch::gradient_boosting` arm of
+    `LearnerDispatch`.
+  - `GBLearner::new(n_trees?, learning_rate?, max_depth?,
+    min_samples_leaf?, mtry?, subsample?, bootstrap_seed?)`
+    -- 7 labeled optional params, defaults (n_trees=100,
+    learning_rate=0.1, max_depth=3, min_samples_leaf=5,
+    mtry=-1 = floor(sqrt(n_features)), subsample=1.0,
+    bootstrap_seed=3141) match sklearn's
+    `GradientBoostingRegressor` (modulo subsample which is
+    here on by default).
+  - `GBLearner::n_trees()` / `GBLearner::initial()`
+    accessors (return 0 / 0.0 before `fit`).
+
+  Algorithm (Friedman 2001, squared-error loss):
+  - `F_0(x) = mean(y)` -- initial constant prediction
+    (squared-error-optimal under L2 loss; matches sklearn's
+    `init=None` default).
+  - For each round `r`:
+    - `r_i = y_i - F_{r-1}(x_i)` -- pseudo-residual (negative
+      gradient of L2 loss).
+    - `h_r = cart_fit(x, r, ...)` -- CART fit to the residuals
+      using a fresh per-tree RNG stream
+      `chacha8_rng(bootstrap_seed + n_trees + r)`.
+    - `F_r(x) = F_{r-1}(x) + learning_rate * h_r(x)`.
+  - `predict(x)` sums `initial + sum_{t} learning_rate *
+    cart_predict(tree_t, x, i)` for each row.
+
+  `subsample < 1.0` enables stochastic gradient boosting
+  (Friedman 1999): take a random subset of rows for each tree
+  fit. Default `subsample = 1.0` keeps the deterministic
+  behaviour.
+
+- **`LearnerDispatch::gradient_boosting(gb)`** factory +
+  the `GradientBoosting(GBLearner)` arm in
+  `cross_fit_predict_dispatch` (learner.mbt). The dispatch
+  path lets `DoubleMLPLR::fit` (and any future Learner-using
+  estimator) accept a GB learner via
+  `learner_l=LearnerDispatch::gradient_boosting(gb)`.
+
+### Verified
+
+- `moon check --deny-warn --target native`    : exit=0
+- `moon check --deny-warn --target wasm`      : exit=0
+- `moon check --deny-warn --target wasm-gc`   : exit=0
+- `moon check --deny-warn --target js`        : exit=0
+- `moon test --target native`                 : 454 / 454  (+10 wbtests vs v0.56.0)
+- `moon test --target wasm`                   : 454 / 454
+- `moon test --target wasm-gc`                : 460 / 460
+- `moon test --target js`                     : 454 / 454
+- Python cross-validators (`doubleml` v0.11.3): **23 / 23** PASS in 54.6 s
+- `DoubleMLPLR` end-to-end with `learner_l=GB`,
+  `learner_m=GB` on a 200-obs linear DGP: finite coef + se
+  with `coef ≈ 1.5`; no abort.
+- non-linear `y = sin(x0 * pi) + 0.3*x1 + noise` DGP:
+  GB R^2 > 0.3 (vs OLS R^2 near 0 on this DGP; sanity
+  check that GB captures non-linear signal).
+
+### Internal commits
+
+| commit  | what |
+|---------|------|
+| `c1e1c72` | `_typos.toml`: whitelist 5 domain terms |
+| `55e81c6` | `moon fmt --check` sweep |
+| `31751c8` | `publish.yml`: fix `moon.mod` path |
+| `de88d69` | v0.53.0: global-review fixes |
+| `2c42512` | v0.54.0: p_adjust extraction + score= + Learner injection |
+| `a8cbe16` | v0.55.0 Item 1: bootstrap.mbt extraction |
+| `e79ce02` | v0.54.0: bump moon.mod |
+| `268c812` | v0.55.0 Item 2: real IV-type score |
+| `2eae862` | v0.55.0: bump moon.mod |
+| `e3dbfc9` | v0.56.0 cycle Item 1: Path A `RFLearner` |
+| `e8010ef` | v0.56.0: bump moon.mod |
+| `b857f3b` | **v0.57.0 cycle Item 2**: Path A `GBLearner` |
+
+### Carry-over from v0.56.0
+
+v0.56.0 added the first non-OLS learner (RF). v0.57.0 adds
+the second (GB). Both plug into the same `LearnerDispatch`
+machinery and the same `cross_fit_predict_dispatch` helper.
+Default behaviour for users who don't pass a learner
+override is byte-identical to v0.56.0 (PLR still uses
+`LinearRegression`).
+
+---
 ## [0.56.0] -- Path A `RFLearner` (random forest regression)
 
 Cycle-driven from the user's "做1 2 3 4 5" decision after
