@@ -10,6 +10,128 @@ under each TODO is reset on every release 鈥?the most recent verified
 release is the canonical version.
 
 ---
+## [0.55.0] -- `bootstrap.mbt` extraction + real `score="IV-type"` on `DoubleMLPLR`
+
+Cycle-driven from the user's "先做1+2" decision after v0.54.0
+shipped. Both items finish the v0.54.0 deferred list: bootstrap
+helper extracted into a sibling module, and the IV-type DML score
+that previously aborted now actually computes a theta. The
+public API surface changes are backwards-compatible: every
+existing caller of `DoubleMLData::new` keeps working without
+the new `z=` labeled arg (which defaults to `[]`), and
+`DoubleMLPLR::fit` with the default `score="partialling-out"`
+is byte-identical to v0.54.0. No `Deprecate` /
+no `BREAKING CHANGE`.
+
+### Added
+
+- **`bootstrap.mbt` extraction** -- lifted the per-cell
+  multiplier-bootstrap t-statistic formula
+  `boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] /
+  (sqrt(n) * se_k)` out of `DoubleMLDIDMulti::bootstrap`
+  (did_multi.mbt:365) and `DoubleMLDIDCrossSection::bootstrap`
+  (did_cross_section.mbt:1000) into a sibling
+  `moonbit_doubleML/bootstrap.mbt` (3.8 KB).
+
+  Public API: `did_bootstrap_t_stat(weights, psi, se,
+  n_rep_boot, n_obs, n_thetas) -> Array[Double]`. Flat
+  row-major `[n_rep_boot, n_thetas]` output, indexed as
+  `boot_t_stat[b * n_thetas + k]`. Skips rows where `se[k] = 0`
+  (empty / pre-treatment cells in panel DID, matching the
+  v0.16.0+ convention). Both estimator `bootstrap()` calls now
+  delegate to the helper; the byte-equality is preserved (the
+  per-row formula was lifted as-is).
+
+  6 wbtests in `bootstrap_wbtest.mbt` cover: n_thetas=1 manual
+  match, n_thetas=3 + n_rep_boot=4 matrix-product match (rel
+  tol 1e-9), skipped `se[k]=0` rows produce zeros, negative
+  weights (Bayes / centred Rademacher) work without
+  sign-flipping, all-zero psi produces all-zero output,
+  determinism (same inputs -> same outputs, bit-exact).
+
+- **`DoubleMLData::z` instrument vector** (data.mbt) --
+  `pub struct DoubleMLData` gains a `z : Array[Double]` field
+  (default empty), and `DoubleMLData::new` gains a
+  `z? : Array[Double] = []` labeled optional param. The
+  constructor requires `z.length() == n_obs` if `z` is
+  non-empty (or aborts via the v0.48.0+ cascade). New accessors
+  `DoubleMLData::z(self) : Array[Double]` and
+  `DoubleMLData::is_instrument_data(self) : Bool`.
+
+  Backward-compat: every existing caller passes only positional
+  `x / y / d` (or the existing `cluster_vars=` labeled arg);
+  the new `z=` labeled arg defaults to `[]`. No existing call
+  site is broken. Validated by `23/23 Python cross-validators`
+  passing.
+
+- **Real `score="IV-type"` branch on `DoubleMLPLR`** (plr.mbt) --
+  replaces the v0.54.0 `require(false)` cascade with the
+  instrument-residual-maker DML score (Chernozhukov et al.
+  2018): `psi_a[i] = -z[i] * (d[i] - m_hat[i])`,
+  `psi_b[i] =  z[i] * (y[i] - l_hat[i])`. On missing
+  instrument, the v0.48.0+ `PreconditionError` -> `catch` ->
+  `abort` flow fires with a descriptive message naming the
+  missing `z=` arg.
+
+  Implementation:
+  - new helper `plr_score_elements(n, v_hat, u_hat, z, score)`
+    unifies the per-row psi formula (partialling-out +
+    IV-type) so `fit()` and `fit_cluster()` share the same
+    score branch.
+  - `DoubleMLPLR::fit` accepts `score?` (unchanged) and now
+    routes through the helper; `score="iv-type"` / `"IV-type"`
+    triggers `require(self.data.z.length() == self.n_obs())`.
+  - `fit_cluster` accepts the same `score?` labeled param
+    and the same require-check, so the cluster-aware path
+    is IV-type-capable too.
+
+  8 wbtests in `plr_iv_type_wbtest.mbt` cover: data-extension
+  backward-compat (default `z=[]`), data-extension with z,
+  well-formed-constructor (bad-length abort is covered by
+  panic_* drivers in `check_test.mbt` since MoonBit try/catch
+  doesn't catch process-level `abort`), `z=d` vs
+  partialling-out sanity (both produce finite, ballpark-
+  correct coefs), `z=x0` strong-instrument recovery,
+  `is_instrument_data=false` on a no-z constructor, default
+  score unchanged (score omitted or `"partialling-out"` with
+  `z=[]` == v0.54.0 result bit-exact), cluster-aware IV-type
+  routes through `fit_cluster` and produces finite coef + se.
+
+### Verified
+
+- `moon check --deny-warn --target native`    : exit=0
+- `moon check --deny-warn --target wasm`      : exit=0
+- `moon check --deny-warn --target wasm-gc`   : exit=0
+- `moon check --deny-warn --target js`        : exit=0
+- `moon test --target native`                 : 433 / 433  (was 419, +14 wbtests vs v0.53.0 baseline; +8 vs v0.54.0)
+- `moon test --target wasm`                   : 433 / 433
+- `moon test --target wasm-gc`                : 439 / 439
+- `moon test --target js`                     : 433 / 433
+- Python cross-validators (`doubleml` v0.11.3): **23 / 23** PASS in 53.2 s
+
+### Internal commits
+
+| commit  | what |
+|---------|------|
+| `c1e1c72` | `_typos.toml`: whitelist 5 domain terms (`compliers`, `iy`, `lik`, `unparseable`, `mis`) |
+| `55e81c6` | `moon fmt --check` sweep across 95 files (v0.53.0 publish gate) |
+| `31751c8` | `publish.yml`: fix `moon.mod` path bug at line 51 |
+| `de88d69` | v0.53.0: global-review fixes + whitebox-test convention + CI loop tightening |
+| `2c42512` | **v0.54.0 cycle**: p_adjust extraction + score= param + Learner injection + TUNE_DESIGN |
+| `a8cbe16` | **v0.55.0 cycle Item 1**: `bootstrap.mbt` extraction (helper + 6 wbtests; both DID estimators route through it) |
+| `e79ce02` | v0.54.0: bump moon.mod 0.53.0 → 0.54.0 + CHANGELOG entry |
+| `268c812` | **v0.55.0 cycle Item 2**: real IV-type score on `DoubleMLPLR` (data.mbt extension + plr_score_elements helper + fit/fit_cluster routing + 8 wbtests) |
+
+### Carry-over from v0.54.0
+
+The v0.54.0 release cycle landed at commit `2c42512` (github
+tag `v0.54.0`). v0.55.0 completes the deferred items from
+that cycle: bootstrap.mbt extraction and the IV-type score
+implementation. Public API surface is backwards-compatible:
+default `score="partialling-out"` callers see no change;
+`DoubleMLData::new` callers without `z=` see no change.
+
+---
 ## [0.54.0] -- `p_adjust` extraction + `score=` parameter + Learner injection + TUNE_DESIGN
 
 Cycle-driven from the user's "还有哪些未moonbit化的组件?" review
