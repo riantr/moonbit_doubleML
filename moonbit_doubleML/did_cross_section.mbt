@@ -1040,29 +1040,29 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
     // distribution has mean 0 and SD 1 (matching the
     // standard multiplier bootstrap convention used by
     // the panel `DoubleMLDIDMulti`).
-    let boot_t_stat : Array[Double] = Array::make(n_rep_boot, 0.0)
     let n_d = n.to_double()
     let se_psi = (ss_psi / n_d).sqrt()
-    let denom = n_d.sqrt() * se_psi
-    if denom <= 0.0 {
+    if se_psi <= 0.0 {
       // Degenerate: psi sums to 0. Cannot divide.
       // Return zeros (matches the panel DIDMulti
       // convention for empty cells).
+      let boot_t_stat_zero : Array[Double] = Array::make(n_rep_boot, 0.0)
       return {
         ..self,
-        boot_t_stat,
+        boot_t_stat: boot_t_stat_zero,
         boot_method: method_name,
         n_rep_boot,
         boot_seed: seed,
       }
     }
-    for b = 0; b < n_rep_boot; b = b + 1 {
-      let mut s = 0.0
-      for i = 0; i < n; i = i + 1 {
-        s = s + weights[b * n + i] * psi[i]
-      }
-      boot_t_stat[b] = s / denom
-    }
+    // v0.55.0: refactored to call `did_bootstrap_t_stat` from
+    // `bootstrap.mbt`. Cross-section is the n_thetas=1 case:
+    // `psi_flat = [psi]`, `se_flat = [se_psi]`. The helper
+    // computes the same `boot_t_stat[b * 1 + 0]` per row.
+    let se_flat : Array[Double] = [se_psi]
+    let boot_t_stat = did_bootstrap_t_stat(
+      weights, psi, se_flat, n_rep_boot, n, 1,
+    )
     {
       ..self,
       boot_t_stat,

@@ -394,52 +394,46 @@ pub fn DoubleMLDIDMulti::bootstrap(
           m,
         )
     }
-    // For each gt_combination, locate the per-cell psi on the
-    // full long-format panel and compute the t-statistic. The
-    // psi is `coef * psi_a + psi_b` (the per-observation
-    // influence function); we use the inner `psi_matrix` from
-    // `DoubleMLDIDCS`, indexed row-major as
-    // `psi_matrix[(gi * n_periods + pi) * n_obs + i_long]`.
-    let boot_t_stat : Array[Double] = Array::make(n_rep_boot * n_thetas, 0.0)
-    for b = 0; b < n_rep_boot; b = b + 1 {
-      for k = 0; k < n_thetas; k = k + 1 {
-        let (g, _t_pre, t_eval) = self.gt_combinations[k]
-        // Locate (gi, pi) in the inner matrix.
-        let mut gi = -1
-        let mut pi = -1
-        for i = 0; i < n_groups; i = i + 1 {
-          if self.inner.group_at(i) == g {
-            gi = i
-          }
+    // v0.55.0: refactored to call `did_bootstrap_t_stat` from
+    // `bootstrap.mbt`. The helper takes a flat `[n_thetas,
+    // n_obs]` psi matrix; we materialise it here by locating
+    // each (gi, pi) in the inner `psi_matrix` (long-format
+    // panel indexed as `psi_matrix[(gi * n_periods + pi) *
+    // n_obs + i_long]`).
+    let psi_flat : Array[Double] = Array::make(n_thetas * n_obs, 0.0)
+    let se_flat : Array[Double] = Array::make(n_thetas, 0.0)
+    for k = 0; k < n_thetas; k = k + 1 {
+      let (g, _t_pre, t_eval) = self.gt_combinations[k]
+      let mut gi = -1
+      let mut pi = -1
+      for i = 0; i < n_groups; i = i + 1 {
+        if self.inner.group_at(i) == g {
+          gi = i
         }
-        for i = 0; i < n_periods; i = i + 1 {
-          if self.inner.period_at(i) == t_eval {
-            pi = i
-          }
+      }
+      for i = 0; i < n_periods; i = i + 1 {
+        if self.inner.period_at(i) == t_eval {
+          pi = i
         }
-        if gi < 0 || pi < 0 {
-          continue
-        }
-        let flat = gi * n_periods + pi
-        let se_k = self.inner.se_matrix[flat]
-        // Skip empty / pre-treatment cells (se = 0).
-        if se_k == 0.0 {
-          continue
-        }
-        // `boot_t_stat[b, k] = sum_i w[b, i] * psi_k[i] /
-        // (sqrt(n) * se_k)`. The denominator makes this a
-        // t-statistic; its distribution is N(0, 1) under the
-        // null. The 1.96 critical value is for 95% pointwise;
-        // the joint CI uses the bootstrap quantile.
-        let mut s = 0.0
-        for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
-          let psi_k_i = self.inner.psi_matrix[flat * n_obs + i_long]
-          s = s + weights[b * n_obs + i_long] * psi_k_i
-        }
-        let denom = n_obs.to_double().sqrt() * se_k
-        boot_t_stat[b * n_thetas + k] = s / denom
+      }
+      if gi < 0 || pi < 0 {
+        continue
+      }
+      let flat = gi * n_periods + pi
+      se_flat[k] = self.inner.se_matrix[flat]
+      // Copy row `flat` of `psi_matrix` into row `k` of `psi_flat`.
+      // Skip if se = 0 (empty / pre-treatment cell); the helper
+      // also skips those and writes 0 into boot_t_stat.
+      if se_flat[k] == 0.0 {
+        continue
+      }
+      for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
+        psi_flat[k * n_obs + i_long] = self.inner.psi_matrix[flat * n_obs + i_long]
       }
     }
+    let boot_t_stat = did_bootstrap_t_stat(
+      weights, psi_flat, se_flat, n_rep_boot, n_obs, n_thetas,
+    )
     {
       ..self,
       boot_t_stat,
