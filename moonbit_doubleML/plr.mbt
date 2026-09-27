@@ -177,16 +177,79 @@ pub fn DoubleMLPLR::predictions_m(self : DoubleMLPLR) -> Array[Double] {
 /// `_var_est` one-cluster-variable branch and
 /// `LinearScoreMixin._est_coef` cluster branch).
 ///
-/// `score` selects the DML nuisance score (v0.54.0+):
-///   - `"partialling-out"` (default): the standard
+/// `score` selects the DML nuisance score (v0.55.0+):
+///   - `"partialling-out"` (default, v0.54.0): the standard
 ///     partialling-out DML score `psi_a = -(d - m_hat)^2`,
 ///     `psi_b = (d - m_hat) * (y - l_hat)`. This is what
-///     upstream calls `DoubleMLPLR._score_partialling_out`
-///     and is the only score ported at v0.54.0.
-///   - `"IV-type"`: would require an instrument vector `Z`
-///     in `DoubleMLData`; not yet ported. Calling `fit` with
-///     `score="IV-type"` aborts with a descriptive message.
+///     upstream calls `DoubleMLPLR._score_partialling_out`.
+///     Works without `DoubleMLData.z` (the v0.54.0 default).
+///   - `"IV-type"` / `"iv-type"` (v0.55.0+): the
+///     instrument-residual-maker DML score
+///     `psi_a = -z * (d - m_hat)`,
+///     `psi_b =  z * (y - l_hat)`,
+///     where `z = DoubleMLData::new(..., z=...)`. Requires
+///     `data.is_instrument_data()` to be true; calling `fit`
+///     with this score and no instrument aborts with a
+///     descriptive message naming the missing `z=` arg.
 ///
+///|
+/// Per-row DML score elements for `DoubleMLPLR`. v0.55.0:
+/// factored out of `DoubleMLPLR::fit` / `fit_cluster` so the
+/// `"partialling-out"` and `"IV-type"` score branches share
+/// one helper.
+///
+/// `partialling-out` (the v0.54.0 default):
+///   psi_a[i] = -v_hat[i] * v_hat[i]
+///   psi_b[i] =  v_hat[i] * u_hat[i]
+///
+/// `IV-type` (v0.55.0+; requires instrument vector Z):
+///   psi_a[i] = -z[i] * v_hat[i]
+///   psi_b[i] =  z[i] * u_hat[i]
+///
+/// where `v_hat = d - m_hat`, `u_hat = y - l_hat`. The IV-type
+/// score is the standard "instrumental residual-maker" DML
+/// score (Chernozhukov et al. 2018): substituting `z` for `d`
+/// in the partialling-out formula makes the score exogenous
+/// from `X` (via the exclusion restriction), recovering a
+/// consistent IV-style theta even when the treatment is
+/// endogenous.
+///
+/// The caller must validate that `z.length() == n` (for IV-type)
+/// or that `z.length() == 0` (the v0.54.0 default,
+/// partialling-out path) before invoking this helper. No
+/// precondition check here — the caller has richer error
+/// context (e.g. names the offending `DoubleMLPLR::fit`
+/// call site).
+fn plr_score_elements(
+  n : Int,
+  v_hat : Array[Double],
+  u_hat : Array[Double],
+  z : Array[Double],
+  score : String,
+) -> (Array[Double], Array[Double]) {
+  let psi_a : Array[Double] = Array::make(n, 0.0)
+  let psi_b : Array[Double] = Array::make(n, 0.0)
+  if score == "iv-type" || score == "IV-type" {
+    // IV-type: z[i] is the instrument (length n is caller's
+    // responsibility; the array index below would panic if z
+    // is shorter). The default `z = []` (length 0) on
+    // DoubleMLData never reaches here because the caller
+    // pre-validates with `require(z.length() == n)`.
+    for i = 0; i < n; i = i + 1 {
+      psi_a[i] = -z[i] * v_hat[i]
+      psi_b[i] = z[i] * u_hat[i]
+    }
+  } else {
+    // partialling-out (default): v_hat[i] is the treatment residual.
+    for i = 0; i < n; i = i + 1 {
+      psi_a[i] = -v_hat[i] * v_hat[i]
+      psi_b[i] = v_hat[i] * u_hat[i]
+    }
+  }
+  (psi_a, psi_b)
+}
+
+///|
 /// The `learner_l` / `learner_m` labeled params accept any
 /// `LearnerDispatch` (defaults to the constructor-set values,
 /// i.e. a fresh `LinearRegression`). Per-fit overrides let
@@ -205,18 +268,16 @@ pub fn DoubleMLPLR::fit(
       score == "partialling-out" || score == "iv-type" || score == "IV-type",
     )
     require(max_attempts >= 1)
+    // v0.55.0: real IV-type branch. Caller must have built
+    // `DoubleMLData` with a non-empty `z` vector of length `n_obs`.
+    // The require below is the v0.48.0+ cascade: false here
+    // throws `PreconditionError::Violated(loc)` which the outer
+    // `try` catches and re-aborts with a descriptive message.
     if score == "iv-type" || score == "IV-type" {
-      // v0.54.0: `score="IV-type"` requires an instrument
-      // vector Z in `DoubleMLData`, which is not yet ported.
-      // Throw a `PreconditionError` (v0.48.0+ cascade) so the
-      // outer `try` catches it and re-aborts with a
-      // descriptive message naming the v0.54.0 limitation.
-      let line : String = "DoubleMLPLR::fit: score='IV-type' needs instrument vector Z (port coming in v0.55+)"
-      ignore(line)
-      require(false) // unreachable
+      require(self.data.z.length() == self.n_obs())
     }
     if self.data.is_cluster_data() {
-      return self.fit_cluster(learner_l~, learner_m~, max_attempts~)
+      return self.fit_cluster(learner_l~, learner_m~, max_attempts~, score~)
     }
     let n = self.n_obs()
     let nrep = self.n_rep
@@ -246,12 +307,9 @@ pub fn DoubleMLPLR::fit(
         v_hat[i] = self.data.d[i] - m_pred[i]
         u_hat[i] = self.data.y[i] - l_pred[i]
       }
-      let psi_a : Array[Double] = Array::make(n, 0.0)
-      let psi_b : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        psi_a[i] = -v_hat[i] * v_hat[i]
-        psi_b[i] = v_hat[i] * u_hat[i]
-      }
+      let (psi_a, psi_b) = plr_score_elements(
+        n, v_hat, u_hat, self.data.z, score,
+      )
       // point estimate + variance come from the shared DML formula
       let (coef_r, se_r) = var_est(psi_a, psi_b)
       coefs[r] = coef_r
@@ -295,9 +353,17 @@ fn DoubleMLPLR::fit_cluster(
   learner_l~ : LearnerDispatch,
   learner_m~ : LearnerDispatch,
   max_attempts? : Int = 1,
+  score? : String = "partialling-out",
 ) -> DoubleMLPLR {
   try {
     require(max_attempts >= 1)
+    // v0.55.0: real IV-type branch. Caller must have built
+    // `DoubleMLData` with a non-empty `z` vector. Same
+    // require-cascade as `fit()` for the v0.48.0+
+    // `PreconditionError::Violated(loc)` -> `abort(...)` flow.
+    if score == "iv-type" || score == "IV-type" {
+      require(self.data.z.length() == self.n_obs())
+    }
     let cluster = self.data.cluster_vars
     let n = self.n_obs()
     let nrep = self.n_rep
@@ -357,14 +423,18 @@ fn DoubleMLPLR::fit_cluster(
           self.data.d,
           folds_row,
         )
-        let psi_a : Array[Double] = Array::make(n, 0.0)
-        let psi_b : Array[Double] = Array::make(n, 0.0)
+        let v_hat : Array[Double] = Array::make(n, 0.0)
+        let u_hat : Array[Double] = Array::make(n, 0.0)
         for i = 0; i < n; i = i + 1 {
-          let v = self.data.d[i] - m_pred[i]
-          let u = self.data.y[i] - l_pred[i]
-          psi_a[i] = -v * v
-          psi_b[i] = v * u
+          v_hat[i] = self.data.d[i] - m_pred[i]
+          u_hat[i] = self.data.y[i] - l_pred[i]
         }
+        // v0.55.0: route through the shared score helper so the
+        // IV-type branch (cluster-aware variant) uses the same
+        // psi_a / psi_b formula as `DoubleMLPLR::fit`.
+        let (psi_a, psi_b) = plr_score_elements(
+          n, v_hat, u_hat, self.data.z, score,
+        )
         // The cluster helper can raise VarEstClusterError::JTooSmall
         // on a fold split where mean(psi_deriv) lands below 1e-6.
         // The catch arm below records the failure and tries again

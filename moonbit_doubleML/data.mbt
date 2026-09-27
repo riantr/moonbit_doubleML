@@ -21,6 +21,12 @@ pub struct DoubleMLData {
   y : Array[Double]
   d : Array[Double]
   cluster_vars : Array[Int]
+  // v0.55.0: optional instrument vector Z (length n_obs). Pass
+  // a non-empty `z` to enable the IV-type DML score on
+  // `DoubleMLPLR`; pass `[]` (the default) for the standard
+  // partialling-out path. Empty by default to preserve the
+  // v0.54.0 surface.
+  z : Array[Double]
 } derive(Debug)
 
 ///|
@@ -37,6 +43,7 @@ pub fn DoubleMLData::new(
   y : Array[Double],
   d : Array[Double],
   cluster_vars? : Array[Int] = [],
+  z? : Array[Double] = [],
 ) -> DoubleMLData {
   try {
     require(x.nrows == y.length())
@@ -44,7 +51,10 @@ pub fn DoubleMLData::new(
     if cluster_vars.length() > 0 {
       require(cluster_vars.length() == x.nrows)
     }
-    { x, y, d, cluster_vars, }
+    if z.length() > 0 {
+      require(z.length() == x.nrows)
+    }
+    { x, y, d, cluster_vars, z, }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -74,4 +84,21 @@ pub fn DoubleMLData::is_cluster_data(self : DoubleMLData) -> Bool {
 /// Length of the cluster_vars vector (0 when not clustered).
 pub fn DoubleMLData::n_cluster_vars(self : DoubleMLData) -> Int {
   self.cluster_vars.length()
+}
+
+///|
+/// v0.55.0: instrument vector Z (length `n_obs`) for the
+/// IV-type DML score on `DoubleMLPLR`. Returns an empty
+/// array when no instrument was passed to `new`.
+pub fn DoubleMLData::z(self : DoubleMLData) -> Array[Double] {
+  self.z
+}
+
+///|
+/// True iff the data is set up for IV-type DML (a non-empty
+/// `z` vector was passed to `new`). The IV-type score on
+/// `DoubleMLPLR::fit(score="IV-type")` requires this; calling
+/// `fit` with `score="IV-type"` and no instrument aborts.
+pub fn DoubleMLData::is_instrument_data(self : DoubleMLData) -> Bool {
+  self.z.length() > 0
 }
