@@ -10,6 +10,102 @@ under each TODO is reset on every release 鈥?the most recent verified
 release is the canonical version.
 
 ---
+## [0.56.0] -- Path A `RFLearner` (random forest regression)
+
+Cycle-driven from the user's "做1 2 3 4 5" decision after
+v0.55.0 shipped. This release is **Item 1** of that batch
+(5 items): the first non-OLS `Learner` (Breiman 2001 random
+forest) implemented in pure MoonBit and wired into
+`LearnerDispatch`. Items 2-5 (GBLearner, `tune()`, Learner
+injection on 11 other estimators, bootstrap() extension to
+non-DID estimators) follow in subsequent releases.
+
+### Added
+
+- **`RFLearner` (rfl.mbt, 13.9 KB)** -- pure-MoonBit CART tree
+  + bootstrap-bagged random forest. Implements the `Learner`
+  trait so it plugs into the v0.54.0 `LearnerDispatch` machinery
+  and the v0.55.0 `cross_fit_predict_dispatch` helper without
+  any other code changes.
+
+  Public API:
+  - `pub enum CART { Leaf(Double) Split(Int, Double, CART, CART) }`
+    -- immutable binary-tree node (one `Leaf` payload = the
+    per-leaf mean prediction; one `Split` payload = feature
+    index + threshold + left/right subtrees).
+  - `pub struct RFLearner { n_trees, max_depth, min_samples_leaf,
+    mtry, bootstrap_seed, trees : Array[CART], n_features }`.
+  - `RFLearner::new(n_trees?, max_depth?, min_samples_leaf?,
+    mtry?, bootstrap_seed?)` -- 5 labeled optional params,
+    defaults (n_trees=100, max_depth=10, min_samples_leaf=5,
+    mtry=-1 = floor(sqrt(n_features)), bootstrap_seed=3141)
+    match sklearn's `RandomForestRegressor`.
+  - `RFLearner::n_features()` / `RFLearner::n_trees()` --
+    accessors (return -1 / 0 before `fit`).
+
+  Algorithm (Breiman 2001 random forest, regression):
+  - For each tree: draw a bootstrap sample (with replacement)
+    using `chacha8_rng(bootstrap_seed + b)`; build a CART on
+    the sample using a fresh RNG stream
+    `chacha8_rng(bootstrap_seed + n_trees + b)` for the per-
+    tree feature sampling. At each CART node, pick `mtry`
+    random features (Fisher-Yates partial shuffle on `[0,
+    n_features)`); find the binary split with minimum weighted
+    MSE reduction via the standard `sum_left / mean_left /
+    ss_left + sum_right / mean_right / ss_right` sweep over
+    sorted sample indices (insertion sort for small n);
+    recurse until `max_depth` or `n < 2 * min_samples_leaf`.
+    Leaf value = mean(y in leaf).
+  - `predict(x)` averages leaf values across all trees for each
+    row of `x`. Unfitted learner returns zeros (lenient
+    fallback matching v0.54.0 `ConstantLearner` / `NoopLearner`
+    behavior).
+
+- **`LearnerDispatch::random_forest(rf)`** factory + the
+  `RandomForest(RFLearner)` arm in `cross_fit_predict_dispatch`
+  (learner.mbt). The dispatch path lets `DoubleMLPLR::fit` (and
+  any future Learner-using estimator) accept an RF learner
+  via `learner_l=LearnerDispatch::random_forest(rf)` without
+  any change to the estimator code.
+
+### Verified
+
+- `moon check --deny-warn --target native`    : exit=0
+- `moon check --deny-warn --target wasm`      : exit=0
+- `moon check --deny-warn --target wasm-gc`   : exit=0
+- `moon check --deny-warn --target js`        : exit=0
+- `moon test --target native`                 : 444 / 444  (+11 wbtests vs v0.55.0)
+- `moon test --target wasm`                   : 444 / 444
+- `moon test --target wasm-gc`                : 450 / 450
+- `moon test --target js`                     : 444 / 444
+- Python cross-validators (`doubleml` v0.11.3): **23 / 23** PASS in 81.9 s
+- `DoubleMLPLR` end-to-end with `learner_l=RF`,
+  `learner_m=RF` on a 200-obs linear DGP: finite coef + se
+  with `coef ≈ 1.5` (the DGP theta); no abort.
+
+### Internal commits
+
+| commit  | what |
+|---------|------|
+| `c1e1c72` | `_typos.toml`: whitelist 5 domain terms |
+| `55e81c6` | `moon fmt --check` sweep |
+| `31751c8` | `publish.yml`: fix `moon.mod` path |
+| `de88d69` | v0.53.0: global-review fixes |
+| `2c42512` | v0.54.0: p_adjust extraction + score= + Learner injection |
+| `a8cbe16` | v0.55.0 Item 1: bootstrap.mbt extraction |
+| `e79ce02` | v0.54.0: bump moon.mod |
+| `268c812` | v0.55.0 Item 2: real IV-type score |
+| `2eae862` | v0.55.0: bump moon.mod |
+| `e3dbfc9` | **v0.56.0 cycle Item 1**: Path A `RFLearner` |
+
+### Carry-over from v0.55.0
+
+v0.55.0 landed `bootstrap.mbt` extraction + IV-type score
+(commits `a8cbe16` + `268c812`). v0.56.0 (this release) adds
+the first non-OLS learner. Default behaviour for users who
+don't pass a learner override is byte-identical to v0.55.0.
+
+---
 ## [0.55.0] -- `bootstrap.mbt` extraction + real `score="IV-type"` on `DoubleMLPLR`
 
 Cycle-driven from the user's "先做1+2" decision after v0.54.0
