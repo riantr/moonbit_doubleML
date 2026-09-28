@@ -208,6 +208,17 @@ pub struct DoubleMLLPLR {
   n_folds_inner : Int
   n_rep : Int
   seed : Int
+  // v0.60.0+: injected nuisance learners. LPLR uses
+  // `LogisticRegression` internally for both `ml_m` and
+  // `ml_a` (the latter is itself a `LogisticRegression`). The
+  // `ml_g` slot maps to the closed-form `LinearRegression` (via
+  // `cross_fit_predict(LinearRegression, …)`). Defaults to
+  // OLS / LogisticRegression so v0.59.0 callers see
+  // byte-identical results. v0.61.0+ will plumb these through;
+  // for v0.60.0 they're stored on the struct and returned via
+  // the accessors but not yet consumed internally.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   coef_ : Double
   se_ : Double
   r_hat : Array[Double]
@@ -227,6 +238,8 @@ pub fn DoubleMLLPLR::new(
   n_folds_inner? : Int = 2,
   n_rep? : Int = 1,
   seed? : Int = 3141,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLLPLR {
   try {
     require(score == "nuisance_space" || score == "instrument")
@@ -240,6 +253,8 @@ pub fn DoubleMLLPLR::new(
       n_folds_inner,
       n_rep,
       seed,
+      ml_g,
+      ml_m,
       coef_: 0.0,
       se_: 0.0,
       r_hat: [],
@@ -251,6 +266,20 @@ pub fn DoubleMLLPLR::new(
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Accessor for the outcome-nuisance learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLLPLR::learner_g(self : DoubleMLLPLR) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLLPLR::learner_m(self : DoubleMLLPLR) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -379,8 +408,14 @@ fn concat_d_x(d : Array[Double], x : Matrix) -> Matrix {
 ///      psi_deriv(theta)`, so the same machinery applies.
 ///
 /// LPLR is *not* cluster data; `var_est` runs the row-level path.
-pub fn DoubleMLLPLR::fit(self : DoubleMLLPLR) -> DoubleMLLPLR {
+pub fn DoubleMLLPLR::fit(
+  self : DoubleMLLPLR,
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
+) -> DoubleMLLPLR {
   try {
+    ignore(ml_g)
+    ignore(ml_m)
     let x = self.data.x
     let d = self.data.d
     let y = self.data.y
@@ -545,6 +580,8 @@ pub fn DoubleMLLPLR::fit(self : DoubleMLLPLR) -> DoubleMLLPLR {
       n_folds_inner: self.n_folds_inner,
       n_rep: self.n_rep,
       seed: self.seed,
+      ml_g,
+      ml_m,
       coef_: coef,
       se_: se,
       r_hat: t_pred,

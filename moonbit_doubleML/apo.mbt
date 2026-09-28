@@ -7,6 +7,14 @@ pub struct DoubleMLAPO {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // v0.60.0+: injected nuisance learners. Defaults to
+  // `LearnerDispatch::linear_regression()` so v0.59.0 callers
+  // see byte-identical results. v0.61.0+ will plumb these
+  // through `cross_fit_predict` for `g_hat` and `m_hat`; for
+  // v0.60.0 they're stored on the struct and returned via the
+  // accessors but not yet consumed internally.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   g_hat : Array[Double]
   m_hat : Array[Double]
   coef : Double
@@ -25,6 +33,8 @@ pub fn DoubleMLAPO::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLAPO {
   try {
     require(n_folds >= 2)
@@ -39,6 +49,8 @@ pub fn DoubleMLAPO::new(
       n_rep,
       seed,
       propensity_clip,
+      ml_g,
+      ml_m,
       g_hat: Array::make(data.n_obs(), 0.0),
       m_hat: Array::make(data.n_obs(), 0.0),
       coef: 0.0,
@@ -60,6 +72,20 @@ pub fn DoubleMLAPO::n_obs(self : DoubleMLAPO) -> Int {
 /// Number of features (covariate columns).
 pub fn DoubleMLAPO::n_features(self : DoubleMLAPO) -> Int {
   self.data.n_features()
+}
+
+///|
+/// Accessor for the outcome-nuisance learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLAPO::learner_g(self : DoubleMLAPO) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLAPO::learner_m(self : DoubleMLAPO) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -169,7 +195,13 @@ fn cross_fit_apo(
 }
 
 ///|
-pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
+pub fn DoubleMLAPO::fit(
+  self : DoubleMLAPO,
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
+) -> DoubleMLAPO {
+  ignore(ml_g)
+  ignore(ml_m)
   let n = self.n_obs()
   let treated = indicator_level(self.data.d, self.treatment_level)
   // Accumulate `g` and `m` directly in the storage arrays; divide
@@ -212,6 +244,8 @@ pub fn DoubleMLAPO::fit(self : DoubleMLAPO) -> DoubleMLAPO {
     n_rep: self.n_rep,
     seed: self.seed,
     propensity_clip: self.propensity_clip,
+    ml_g,
+    ml_m,
     g_hat: g,
     m_hat: m,
     coef: theta,
@@ -247,6 +281,11 @@ pub struct DoubleMLAPOS {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // v0.60.0+: injected nuisance learners (forwarded to
+  // each child `DoubleMLAPO` on fit). Same forward-compat
+  // story as the rest of the v0.60.0 estimator set.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   coefs : Array[Double]
   ses : Array[Double]
   fitted : Bool
@@ -263,6 +302,8 @@ pub fn DoubleMLAPOS::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLAPOS {
   try {
     require(treatment_levels.length() >= 1)
@@ -315,6 +356,8 @@ pub fn DoubleMLAPOS::new(
     n_rep,
     seed,
     propensity_clip,
+    ml_g,
+    ml_m,
     coefs: Array::make(treatment_levels.length(), 0.0),
     ses: Array::make(treatment_levels.length(), 0.0),
     fitted: false,
@@ -322,8 +365,14 @@ pub fn DoubleMLAPOS::new(
 }
 
 ///|
-pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
+pub fn DoubleMLAPOS::fit(
+  self : DoubleMLAPOS,
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
+) -> DoubleMLAPOS {
   try {
+    ignore(ml_g)
+    ignore(ml_m)
     require(self.treatment_levels.length() >= 1)
     let c = Array::make(self.treatment_levels.length(), 0.0)
     let s = Array::make(self.treatment_levels.length(), 0.0)
@@ -353,6 +402,8 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
       n_rep: self.n_rep,
       seed: self.seed,
       propensity_clip: self.propensity_clip,
+      ml_g,
+      ml_m,
       coefs: c,
       ses: s,
       fitted: true,
@@ -361,6 +412,20 @@ pub fn DoubleMLAPOS::fit(self : DoubleMLAPOS) -> DoubleMLAPOS {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Accessor for the outcome-nuisance learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLAPOS::learner_g(self : DoubleMLAPOS) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLAPOS::learner_m(self : DoubleMLAPOS) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|

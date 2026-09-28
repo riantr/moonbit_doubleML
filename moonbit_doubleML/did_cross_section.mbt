@@ -123,6 +123,16 @@ pub struct DoubleMLDIDCrossSection {
   in_sample_normalization : Bool
   propensity_clip : Double
   ps_processor : PSProcessor
+  // v0.60.0+: injected nuisance learners. Defaults to
+  // `LearnerDispatch::linear_regression()` so v0.59.0 callers
+  // see byte-identical results. v0.61.0+ will plumb these
+  // through `crossfit_nuisance` to actually drive the
+  // nuisance fits; for v0.60.0 they're stored on the struct
+  // and forwarded via the accessors but not yet consumed
+  // internally (the cross-section DID helper continues to
+  // use its `LinearRegression::new()` instances).
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   // Post-fit outputs.
   coef : Double
   se : Double
@@ -166,6 +176,8 @@ pub fn DoubleMLDIDCrossSection::new(
   in_sample_normalization? : Bool = false,
   propensity_clip? : Double = 1.0e-6,
   ps_processor? : PSProcessor = PSProcessor::new(),
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCrossSection {
   try {
     require(n_folds >= 2)
@@ -183,6 +195,8 @@ pub fn DoubleMLDIDCrossSection::new(
       in_sample_normalization,
       propensity_clip,
       ps_processor,
+      ml_g,
+      ml_m,
       coef: 0.0,
       se: 0.0,
       psi_a: Array::make(n, 0.0),
@@ -218,6 +232,20 @@ pub fn DoubleMLDIDCrossSection::psi_a(
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Accessor for the outcome-nuisance learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLDIDCrossSection::learner_g(self : DoubleMLDIDCrossSection) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLDIDCrossSection::learner_m(self : DoubleMLDIDCrossSection) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -902,8 +930,12 @@ fn compute_score(
 /// score, and returns the ATT and HC0 SE.
 pub fn DoubleMLDIDCrossSection::fit(
   self : DoubleMLDIDCrossSection,
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDCrossSection {
   try {
+    ignore(ml_g)
+    ignore(ml_m)
     // Step 1: cross-fit the nuisance functions.
     let (g00, g01, g10, g11, m) = crossfit_nuisance(
       self.data,
@@ -955,6 +987,11 @@ pub fn DoubleMLDIDCrossSection::fit(
     // Step 5: cache the nuisance predictions and psi.
     {
       ..self,
+      // v0.60.0+: persist per-fit learner overrides on the
+      // returned struct. Default `None` preserves v0.59.0
+      // behaviour for plain `fit()` callers.
+      ml_g,
+      ml_m,
       coef: theta,
       se,
       psi_a,

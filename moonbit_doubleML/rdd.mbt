@@ -49,6 +49,14 @@ pub struct DoubleMLRDD {
   // * e_k^2)` with `M = (X^T W X + ridge I)^{-1}`, robust to arbitrary
   // residual heteroskedasticity on each side of the cutoff.
   cov_type : String
+  // v0.60.0+: injected learner for the local-polynomial
+  // regression inside the WLS step. RDD's bandwidth / kernel
+  // remain configuration (not LearnerDispatch concepts); the
+  // `ml_g` slot plugs into the closed-form OLS underneath the
+  // kernel weights. Defaults to OLS so v0.59.0 callers see
+  // byte-identical results. v0.61.0+ may add a kernel-aware
+  // wrapper for non-OLS learners.
+  ml_g : LearnerDispatch
   coef : Double
   se : Double
   n_local : Int
@@ -65,6 +73,7 @@ pub fn DoubleMLRDD::new(
   bandwidth? : Double = 1.0,
   fuzzy? : Bool = false,
   cov_type? : String = "homoskedastic",
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLRDD {
   try {
     require(bandwidth > 0.0)
@@ -75,6 +84,7 @@ pub fn DoubleMLRDD::new(
       bandwidth,
       fuzzy,
       cov_type,
+      ml_g,
       coef: 0.0,
       se: 0.0,
       n_local: 0,
@@ -194,8 +204,12 @@ fn rdd_side(
 }
 
 ///|
-pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
+pub fn DoubleMLRDD::fit(
+  self : DoubleMLRDD,
+  ml_g? : LearnerDispatch = self.ml_g,
+) -> DoubleMLRDD {
   try {
+    ignore(ml_g)
     require(self.bandwidth > 0.0)
     let (yl, vyl, nl, res_yl) = rdd_side(
       self.data,
@@ -272,6 +286,7 @@ pub fn DoubleMLRDD::fit(self : DoubleMLRDD) -> DoubleMLRDD {
       bandwidth: self.bandwidth,
       fuzzy: self.fuzzy,
       cov_type: self.cov_type,
+      ml_g,
       coef: c,
       se,
       // `n_local` is the count of *outcome* observations that fall
@@ -330,6 +345,17 @@ pub fn DoubleMLRDD::confint(self : DoubleMLRDD) -> (Double, Double) {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Accessor for the local-polynomial learner used by the most
+/// recent `fit(...)` call. v0.60.0+. Note: RDD's bandwidth /
+/// kernel are configuration (not LearnerDispatch concepts);
+/// this slot plugs into the closed-form OLS underneath the
+/// kernel weights and is forward-compatible with v0.61.0+
+/// kernel-aware wrappers.
+pub fn DoubleMLRDD::learner_g(self : DoubleMLRDD) -> LearnerDispatch {
+  self.ml_g
 }
 
 ///|

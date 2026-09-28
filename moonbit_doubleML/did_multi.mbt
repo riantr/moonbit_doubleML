@@ -34,6 +34,11 @@ pub struct DoubleMLDIDMulti {
   seed : Int
   ps_processor : PSProcessor
   in_sample_normalization : Bool
+  // v0.60.0+: injected nuisance learners (forwarded to the
+  // inner `DoubleMLDIDCS` -> `DoubleMLDIDBinary` -> `DoubleMLDID`
+  // chain via `inner.fit(ml_g, ml_m)`).
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   // Per-unit group sizes for aggregation weights. Filled in
   // `fit` from the data.
   group_sizes : Array[Int]
@@ -81,6 +86,8 @@ pub fn DoubleMLDIDMulti::new(
   seed? : Int = 3141,
   ps_processor? : PSProcessor = PSProcessor::new(),
   in_sample_normalization? : Bool = false,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDMulti {
   try {
     require(n_folds >= 2)
@@ -175,6 +182,8 @@ pub fn DoubleMLDIDMulti::new(
       seed,
       ps_processor,
       in_sample_normalization,
+      ml_g,
+      ml_m,
       group_sizes,
       inner,
       boot_t_stat: [],
@@ -266,6 +275,23 @@ pub fn DoubleMLDIDMulti::n_combinations(self : DoubleMLDIDMulti) -> Int {
 }
 
 ///|
+///|
+/// Accessor for the outcome-nuisance learner forwarded to the
+/// inner `DoubleMLDIDCS` on the most recent `fit(...)` call.
+/// v0.60.0+.
+pub fn DoubleMLDIDMulti::learner_g(self : DoubleMLDIDMulti) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// Accessor for the propensity-score learner forwarded to the
+/// inner `DoubleMLDIDCS` on the most recent `fit(...)` call.
+/// v0.60.0+.
+pub fn DoubleMLDIDMulti::learner_m(self : DoubleMLDIDMulti) -> LearnerDispatch {
+  self.ml_m
+}
+
+///|
 /// The inner per-(g, t) ATT at row-major index `idx` (matching
 /// the canonical `gt_combinations[i]` ordering).
 pub fn DoubleMLDIDMulti::coef_at_idx(
@@ -333,9 +359,13 @@ pub fn DoubleMLDIDMulti::se_at_idx(
 /// matrix for downstream aggregation. The actual per-cell
 /// fitting is delegated to `DoubleMLDIDCS::fit`, which already
 /// iterates over every (g, t) cell.
-pub fn DoubleMLDIDMulti::fit(self : DoubleMLDIDMulti) -> DoubleMLDIDMulti {
-  let inner = self.inner.fit()
-  { ..self, inner, fitted: true, }
+pub fn DoubleMLDIDMulti::fit(
+  self : DoubleMLDIDMulti,
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
+) -> DoubleMLDIDMulti {
+  let inner = self.inner.fit(ml_g=ml_g, ml_m=ml_m)
+  { ..self, inner, ml_g, ml_m, fitted: true, }
 }
 
 ///|

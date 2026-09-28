@@ -30,6 +30,14 @@ pub struct DoubleMLCVAR {
   seed : Int
   propensity_clip : Double
   normalize_ipw : Bool
+  // v0.60.0+: injected nuisance learners. Defaults to
+  // `LearnerDispatch::linear_regression()` so v0.59.0 callers
+  // see byte-identical results. v0.61.0+ will plumb these
+  // through `cross_fit_cvar_inner` / `solve_for_cvar`. For
+  // v0.60.0 they're stored on the struct and returned via
+  // `learner_g() / learner_m()` but not yet consumed internally.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   g_hat : Array[Double]
   m_hat : Array[Double]
   coef : Double
@@ -72,6 +80,8 @@ pub fn DoubleMLCVAR::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   normalize_ipw? : Bool = true,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLCVAR {
   try {
     require(treatment == 0.0 || treatment == 1.0)
@@ -95,6 +105,8 @@ pub fn DoubleMLCVAR::new(
     seed,
     propensity_clip,
     normalize_ipw,
+    ml_g,
+    ml_m,
     g_hat: Array::make(data.n_obs(), 0.0),
     m_hat: Array::make(data.n_obs(), 0.0),
     coef: 0.0,
@@ -119,6 +131,20 @@ pub fn DoubleMLCVAR::n_features(self : DoubleMLCVAR) -> Int {
 /// v0.50.0: `True` iff `fit` has been called.
 pub fn DoubleMLCVAR::fitted(self : DoubleMLCVAR) -> Bool {
   self.fitted
+}
+
+///|
+/// Accessor for the outcome-quantile-nuisance learner used by
+/// the most recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLCVAR::learner_g(self : DoubleMLCVAR) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLCVAR::learner_m(self : DoubleMLCVAR) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -578,8 +604,14 @@ fn cvar_inner_crossfit(
 ///      pq_est) / (1-q))`.
 ///   5. `var_est(psi_a, psi_b)` gives the per-rep `(theta, se)`;
 ///      aggregate across reps with `aggregate_coef_se`.
-pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
+pub fn DoubleMLCVAR::fit(
+  self : DoubleMLCVAR,
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
+) -> DoubleMLCVAR {
   try {
+    ignore(ml_g)
+    ignore(ml_m)
     require(self.quantile > 0.0 && self.quantile < 1.0)
     let n = self.n_obs()
     let treated = indicator_level(self.data.d, self.treatment)
@@ -682,6 +714,8 @@ pub fn DoubleMLCVAR::fit(self : DoubleMLCVAR) -> DoubleMLCVAR {
       seed: self.seed,
       propensity_clip: self.propensity_clip,
       normalize_ipw: self.normalize_ipw,
+      ml_g,
+      ml_m,
       g_hat: last_g,
       m_hat: last_m,
       coef: theta,

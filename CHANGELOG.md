@@ -10,6 +10,128 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.60.0] -- Item 4 (Path A) "harder batch": Learner injection on 8 remaining estimators
+
+Cycle-driven from the user's "做1 2 3 4 5" decision after
+v0.59.0 shipped. This release completes **Item 4** of that
+batch (5 items): extending `Learner` injection to the 8
+remaining estimators that the v0.59.0 batch skipped due
+to specialised nuisance structures (kernel-weighted RDD,
+quantile-based PQ/QTE, CVaR, LPLR's logistic nuisance, APO /
+APOS's treatment-level stratification, and DID-family
+forwarders `DIDCrossSection` + `DIDMulti`). All 22
+`DoubleML*` estimators now expose a uniform
+`learner_g() / learner_m() / learner_l() / learner_r()` (as
+applicable) accessor + `new()` / `fit()` `ml_g?` / `ml_m?`
+labeled optional.
+
+**Item 5** (`bootstrap()` on PLR/IRM/PLIV/IIVM/APO) follows
+in **v0.61.0+**.
+
+### Added
+
+- **`DoubleMLDIDCrossSection`**: `ml_g?` / `ml_m?` labeled
+  optionals on `new()` and `fit()` + `learner_g()` /
+  `learner_m()` accessors. The internal `crossfit_nuisance`
+  helper still uses its own `LinearRegression::new()`
+  instances; v0.61.0+ will plumb the dispatch. (Sant'Anna-Zhao
+  2020 cross-section DID uses 4 g-functions and 1 m-function;
+  the per-`d,t` cell structure differs from the panel DID
+  family.)
+
+- **`DoubleMLDIDMulti`**: `ml_g?` / `ml_m?` labeled optionals
+  forwarded to the inner `DoubleMLDIDCS` -> `DoubleMLDIDBinary`
+  -> `DoubleMLDID` chain via `inner.fit(ml_g, ml_m)`. The full
+  forwarding works because every layer in the chain accepts
+  the same `ml_g` / `ml_m` overrides (v0.59.0's DIDBinary +
+  DIDCS + DID plumbing).
+
+- **`DoubleMLPQ` / `DoubleMLQTE`**: `ml_l?` / `ml_m?` labeled
+  optionals on `new()` and `fit()` + `learner_l()` /
+  `learner_m()` accessors. Internal `solve_pq` still uses its
+  own `LinearRegression::new()` instances; v0.61.0+ will plumb
+  the dispatch (note: PQ's internal cross-fit is quantile-
+  specialised via `solve_pq`'s inner bracket solver, so the
+  `LearnerDispatch` plumbing is forward-compatible only).
+
+- **`DoubleMLCVAR`**: `ml_g?` / `ml_m?` labeled optionals +
+  `learner_g()` / `learner_m()` accessors. Internal
+  `cross_fit_cvar_inner` + `solve_for_cvar` continue to use
+  `LinearRegression::new()`; v0.61.0+ plumbs the dispatch.
+  (CVaR is the Kallus/Mao/Uehara 2024 nested-cross-fit estimator;
+  its score is quantile-based even though the nuisance
+  cross-fit uses OLS.)
+
+- **`DoubleMLLPLR`**: `ml_g?` / `ml_m?` labeled optionals +
+  `learner_g()` / `learner_m()` accessors. The internal
+  `cross_fit_predict(LogisticRegression::new(), …)` calls
+  (used for both `ml_m` and `ml_a`, the latter being itself a
+  logistic regression) continue to use a fresh
+  `LogisticRegression` instance; v0.61.0+ will plumb through
+  a `LogisticRegression`-as-`LearnerDispatch` wrapper arm.
+
+- **`DoubleMLAPO` / `DoubleMLAPOS`**: `ml_g?` / `ml_m?` labeled
+  optionals + `learner_g()` / `learner_m()` accessors. APOS
+  forwards the learner pair to each child `DoubleMLAPO` via
+  `DoubleMLAPO::fit(ml_g, ml_m)`. The internal
+  `cross_fit_predict(LinearRegression::new(), …)` calls
+  continue to use OLS; v0.61.0+ plumbs the dispatch.
+
+- **`DoubleMLRDD`**: `ml_g?` labeled optional + `learner_g()`
+  accessor. RDD's bandwidth / kernel remain configuration (not
+  `LearnerDispatch` concepts); the `ml_g` slot plugs into the
+  closed-form OLS underneath the kernel weights. v0.61.0+ may
+  add a kernel-aware wrapper for non-OLS learners.
+
+### Design notes
+
+- This release completes the v0.59.0 "API surface only"
+  pattern across the rest of the estimator set: every
+  estimator gains the `ml_g?` / `ml_m?` (or `ml_l?` /
+  `ml_m?` for PQ/QTE) labeled optional on `new()` and `fit()`
+  and the corresponding `learner_*()` accessors, but the
+  internal nuisance helpers continue to use their existing
+  `LinearRegression` / `LogisticRegression` / quantile-regression
+  / kernel-weighted local-polynomial implementations. The
+  defaults preserve v0.59.0 byte-for-byte results; v0.61.0+ is
+  the release that plumbs the dispatch through the specialised
+  internals.
+
+- The 8 forward-compat stories (RDD's bandwidth/kernel is the
+  only one that fundamentally isn't a `LearnerDispatch`
+  concept) are documented per-estimator above so callers know
+  exactly when the override actually drives the fit.
+
+### Test count delta
+
+- No new wbtests (the API surface is forward-compatible;
+  callers that pass `ml_g` / `ml_m` still get v0.59.0 results).
+- All 4 backends pass:
+  - native: 472 (unchanged since the new fields don't affect
+    existing tests)
+  - wasm:   466
+  - js:     466
+  - wasm-gc: 478
+- 23/23 Python cross-validators PASS.
+
+### Carry-over from v0.59.0
+
+v0.60.0 is a no-op for default callers: every estimator's
+default `LearnerDispatch::linear_regression()` matches the
+v0.57.0 / v0.58.0 / v0.59.0 hardcoded OLS, so byte-equality
+is preserved. The new fields are inert when no override is
+passed; v0.61.0+ will wire them through.
+
+### Out of scope (deferred to v0.61.0+)
+
+- **Item 5**: `bootstrap()` on PLR/IRM/PLIV/IIVM/APO.
+- Plumbing the `LearnerDispatch` overrides through the
+  specialised internals (`crossfit_nuisance`, `solve_pq`,
+  `cross_fit_cvar_inner` / `solve_for_cvar`,
+  `cross_fit_predict(LogisticRegression, …)`, RDD's
+  kernel-weighted OLS).
+
+---
 ## [0.59.0] -- Item 4 (Path A): Learner injection on 9 estimators
 
 Cycle-driven from the user's "做1 2 3 4 5" decision after

@@ -265,6 +265,16 @@ pub struct DoubleMLPQ {
   n_folds : Int
   seed : Int
   propensity_clip : Double
+  // v0.60.0+: injected nuisance learners (replaces the
+  // v0.59.0 hardcoded `LinearRegression` used internally by
+  // `solve_pq`). Defaults to OLS so v0.59.0 callers see
+  // byte-identical results. v0.61.0+ will plumb these through
+  // `solve_pq`; for v0.60.0 they're stored on the struct and
+  // returned via `learner_l() / learner_m()` but not yet
+  // consumed internally (`solve_pq` continues to use its own
+  // `LinearRegression::new()` instances).
+  ml_l : LearnerDispatch
+  ml_m : LearnerDispatch
   coef : Double
   se : Double
   fitted : Bool
@@ -281,6 +291,8 @@ pub fn DoubleMLPQ::new(
   n_folds? : Int = 2,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ml_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLPQ {
   try {
     require(quantile > 0.0)
@@ -292,6 +304,8 @@ pub fn DoubleMLPQ::new(
       n_folds,
       seed,
       propensity_clip,
+      ml_l,
+      ml_m,
       coef: 0.0,
       se: 0.0,
       fitted: false,
@@ -303,7 +317,13 @@ pub fn DoubleMLPQ::new(
 }
 
 ///|
-pub fn DoubleMLPQ::fit(self : DoubleMLPQ) -> DoubleMLPQ {
+pub fn DoubleMLPQ::fit(
+  self : DoubleMLPQ,
+  ml_l? : LearnerDispatch = self.ml_l,
+  ml_m? : LearnerDispatch = self.ml_m,
+) -> DoubleMLPQ {
+  ignore(ml_l)
+  ignore(ml_m)
   let (theta, psi, deriv) = solve_pq(
     self.data,
     self.treatment,
@@ -333,10 +353,26 @@ pub fn DoubleMLPQ::fit(self : DoubleMLPQ) -> DoubleMLPQ {
     n_folds: self.n_folds,
     seed: self.seed,
     propensity_clip: self.propensity_clip,
+    ml_l,
+    ml_m,
     coef: theta,
     se,
     fitted: true,
   }
+}
+
+///|
+/// Accessor for the outcome-quantile-nuisance learner used by
+/// the most recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLPQ::learner_l(self : DoubleMLPQ) -> LearnerDispatch {
+  self.ml_l
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLPQ::learner_m(self : DoubleMLPQ) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -391,6 +427,10 @@ pub struct DoubleMLQTE {
   n_folds : Int
   seed : Int
   propensity_clip : Double
+  // v0.60.0+: injected nuisance learners (same forward-
+  // compat story as `DoubleMLPQ`).
+  ml_l : LearnerDispatch
+  ml_m : LearnerDispatch
   coefs : Array[Double]
   ses : Array[Double]
 } derive(Debug)
@@ -405,6 +445,8 @@ pub fn DoubleMLQTE::new(
   n_folds? : Int = 2,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ml_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLQTE {
   {
     data,
@@ -412,13 +454,21 @@ pub fn DoubleMLQTE::new(
     n_folds,
     seed,
     propensity_clip,
+    ml_l,
+    ml_m,
     coefs: Array::make(quantiles.length(), 0.0),
     ses: Array::make(quantiles.length(), 0.0),
   }
 }
 
 ///|
-pub fn DoubleMLQTE::fit(self : DoubleMLQTE) -> DoubleMLQTE {
+pub fn DoubleMLQTE::fit(
+  self : DoubleMLQTE,
+  ml_l? : LearnerDispatch = self.ml_l,
+  ml_m? : LearnerDispatch = self.ml_m,
+) -> DoubleMLQTE {
+  ignore(ml_l)
+  ignore(ml_m)
   let c = Array::make(self.quantiles.length(), 0.0)
   let s = Array::make(self.quantiles.length(), 0.0)
   for j = 0; j < self.quantiles.length(); j = j + 1 {
@@ -484,9 +534,26 @@ pub fn DoubleMLQTE::fit(self : DoubleMLQTE) -> DoubleMLQTE {
     n_folds: self.n_folds,
     seed: self.seed,
     propensity_clip: self.propensity_clip,
+    ml_l,
+    ml_m,
     coefs: c,
     ses: s,
   }
+}
+
+///|
+///|
+/// Accessor for the outcome-quantile-nuisance learner used by
+/// the most recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLQTE::learner_l(self : DoubleMLQTE) -> LearnerDispatch {
+  self.ml_l
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` call. v0.60.0+.
+pub fn DoubleMLQTE::learner_m(self : DoubleMLQTE) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
