@@ -20,6 +20,22 @@ pub struct DoubleMLAPO {
   coef : Double
   se : Double
   fitted : Bool
+  // v0.61.0+: per-observation influence function components
+  // for the multiplier bootstrap. APO policy score:
+  //   psi_a[i] = -1                              (constant)
+  //   psi_b[i] = g[i] + treated[i] * (y[i] - g[i]) / m[i]
+  // where `treated[i] = 1{d[i] == treatment_level}`,
+  // `g = E[Y | X]`, `m = P(D = treatment_level | X)` (clipped).
+  // Length `n_obs`. Populated by `fit(...)`.
+  psi_a : Array[Double]
+  psi_b : Array[Double]
+  // v0.61.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -56,6 +72,12 @@ pub fn DoubleMLAPO::new(
       coef: 0.0,
       se: 0.0,
       fitted: false,
+      psi_a: Array::make(data.n_obs(), -1.0),
+      psi_b: Array::make(data.n_obs(), 0.0),
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -251,6 +273,105 @@ pub fn DoubleMLAPO::fit(
     coef: theta,
     se,
     fitted: true,
+    // v0.61.0: persist `pa` / `pb` as `psi_a` / `psi_b` for
+    // the multiplier bootstrap (`pa` is constant -1, `pb` is
+    // the IPW-centred potential-outcome score).
+    psi_a: pa,
+    psi_b: pb,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
+  }
+}
+
+///|
+/// v0.61.0+: multiplier bootstrap for `DoubleMLAPO`. The
+/// per-observation influence function is
+///
+///   psi[i] = psi_a[i] + theta * psi_b[i]
+///          = -1 + theta * pb[i]
+///
+/// where `pb[i] = g[i] + treated[i] * (y[i] - g[i]) / m[i]`
+/// is the IPW-centred potential-outcome score, computed at
+/// the fitted `coef` from the stored `g_hat` / `m_hat`.
+/// Draws `n_rep_boot` weight vectors of length `n_obs` from
+/// the chosen multiplier distribution, and returns a fitted
+/// model with `boot_t_stat[b] = sum_i w[b, i] * psi[i] /
+/// (sqrt(n) * se_psi)` populated where
+/// `se_psi = sqrt(mean(psi^2))`.
+///
+/// `method_name` selects the multiplier distribution:
+///   - `"normal"` (default): `w[i] ~ N(0, 1)`.
+///   - `"Bayes"`: `w[i] = exp(1) - 1` (mean 0, var 1).
+///   - `"wild"`: `w[i] = x[i] / sqrt(2) + (y[i]^2 - 1) / 2`
+///     with `x, y ~ N(0, 1)`.
+///
+/// Calling `bootstrap` requires the model to be fitted; calling
+/// on an un-fit model aborts with `PreconditionError`. The
+/// helper is `did_bootstrap_t_stat` (v0.55.0 extracted from
+/// `DoubleMLDIDCrossSection::bootstrap`); APO is the
+/// `n_thetas=1` case.
+pub fn DoubleMLAPO::bootstrap(
+  self : DoubleMLAPO,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLAPO {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n = self.n_obs()
+    // Draw weights. Shape: (n_rep_boot, n_obs).
+    let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLAPO::bootstrap): " +
+          m,
+        )
+    }
+    // Compute psi[i] = psi_a[i] + coef * psi_b[i] and
+    // ss_psi = sum(psi[i]^2) once. `psi_a[i] = -1` and
+    // `psi_b` is the IPW-centred potential-outcome score,
+    // both populated by `fit(...)`.
+    let psi : Array[Double] = Array::make(n, 0.0)
+    let mut ss_psi = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
+      psi[i] = psi_i
+      ss_psi = ss_psi + psi_i * psi_i
+    }
+    let n_d = n.to_double()
+    let se_psi = (ss_psi / n_d).sqrt()
+    if se_psi <= 0.0 {
+      // Degenerate: psi sums to 0. Cannot divide.
+      let boot_t_stat_zero : Array[Double] = Array::make(n_rep_boot, 0.0)
+      return {
+        ..self,
+        boot_t_stat: boot_t_stat_zero,
+        boot_method: method_name,
+        n_rep_boot,
+        boot_seed: seed,
+      }
+    }
+    // n_thetas=1 case.
+    let se_flat : Array[Double] = [se_psi]
+    let boot_t_stat = did_bootstrap_t_stat(
+      weights, psi, se_flat, n_rep_boot, n, 1,
+    )
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

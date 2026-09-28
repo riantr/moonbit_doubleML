@@ -50,6 +50,18 @@ pub struct DoubleMLPLR {
   coef : Double
   se : Double
   fitted : Bool
+  // v0.61.0+: per-observation influence function components
+  // `psi_a[i] + theta * psi_b[i]` for the multiplier bootstrap.
+  // Populated by `fit(...)` (and re-cleared on re-fit). Length `n_obs`.
+  psi_a : Array[Double]
+  psi_b : Array[Double]
+  // v0.61.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
   // v0.58.0+: populated by `DoubleMLPLR::tune(...)` with the
   // chosen candidate and per-candidate scores. `None` for models
   // built via `DoubleMLPLR::new(...)` or re-fit via
@@ -86,6 +98,12 @@ pub fn DoubleMLPLR::new(
       coef: 0.0,
       se: 0.0,
       fitted: false,
+      psi_a: [],
+      psi_b: [],
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
       tune_result: None,
     }
   } catch {
@@ -340,6 +358,20 @@ pub fn DoubleMLPLR::fit(
     }
     // last iteration's predictions are now in l_pred / m_pred
     let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.61.0: per-observation influence function for the
+    // multiplier bootstrap. Recompute `psi_a / psi_b` from the
+    // last rep's cross-fitted nuisances so the stored arrays
+    // align with `l_hat` / `m_hat` and `coef` (matches the
+    // v0.20.0+ `DoubleMLDIDCrossSection::fit` convention).
+    let v_hat_last : Array[Double] = Array::make(n, 0.0)
+    let u_hat_last : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      v_hat_last[i] = self.data.d[i] - m_pred[i]
+      u_hat_last[i] = self.data.y[i] - l_pred[i]
+    }
+    let (psi_a, psi_b) = plr_score_elements(
+      n, v_hat_last, u_hat_last, self.data.z, score,
+    )
     {
       data: self.data,
       learner_l,
@@ -352,6 +384,12 @@ pub fn DoubleMLPLR::fit(
       coef,
       se,
       fitted: true,
+      psi_a,
+      psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
       // honor the caller's tune_result override (set by
       // `DoubleMLPLR::tune`); default `None` preserves v0.57.0
       // behavior for plain `fit(...)` callers.
@@ -512,6 +550,19 @@ fn DoubleMLPLR::fit_cluster(
       ses[r] = se_r
     }
     let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.61.0: per-observation influence function for the
+    // multiplier bootstrap. Same convention as `fit()`:
+    // recompute from the last rep's nuisances so the stored
+    // arrays align with `l_hat` / `m_hat` and `coef`.
+    let v_hat_last : Array[Double] = Array::make(n, 0.0)
+    let u_hat_last : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      v_hat_last[i] = self.data.d[i] - m_pred[i]
+      u_hat_last[i] = self.data.y[i] - l_pred[i]
+    }
+    let (psi_a, psi_b) = plr_score_elements(
+      n, v_hat_last, u_hat_last, self.data.z, score,
+    )
     {
       data: self.data,
       learner_l,
@@ -524,10 +575,111 @@ fn DoubleMLPLR::fit_cluster(
       coef,
       se,
       fitted: true,
+      psi_a,
+      psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
       // cluster path: honor caller's tune_result override
       // (set by `DoubleMLPLR::tune`); default `None` preserves
       // v0.57.0 behavior for plain `fit(...)` callers.
       tune_result,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.61.0+: multiplier bootstrap for `DoubleMLPLR`. The
+/// per-observation influence function is
+///
+///   psi[i] = psi_a[i] + theta * psi_b[i]
+///
+/// (computed at the fitted `coef` from the last rep's
+/// cross-fitted nuisances `l_hat` / `m_hat`). Draws
+/// `n_rep_boot` weight vectors of length `n_obs` from the
+/// chosen multiplier distribution, and returns a fitted model
+/// with `boot_t_stat[b] = sum_i w[b, i] * psi[i] /
+/// (sqrt(n) * se_psi)` populated where
+/// `se_psi = sqrt(mean(psi^2))`.
+///
+/// `method_name` selects the multiplier distribution:
+///   - `"normal"` (default): `w[i] ~ N(0, 1)`. Matches the
+///     upstream `bootstrap(method="normal")` default.
+///   - `"Bayes"`: `w[i] = exp(1) - 1` (mean 0, var 1).
+///   - `"wild"`: `w[i] = x[i] / sqrt(2) + (y[i]^2 - 1) / 2`
+///     with `x, y ~ N(0, 1)`. Robust to heteroskedasticity.
+///
+/// Calling `bootstrap` requires the model to be fitted; calling
+/// on an un-fit model aborts with `PreconditionError`. The
+/// helper is `did_bootstrap_t_stat` (v0.55.0 extracted from
+/// `DoubleMLDIDCrossSection::bootstrap`); PLR is the
+/// `n_thetas=1` case with `psi[i] = psi_a[i] + coef * psi_b[i]`.
+pub fn DoubleMLPLR::bootstrap(
+  self : DoubleMLPLR,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLPLR {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n = self.n_obs()
+    // Draw weights. Shape: (n_rep_boot, n_obs).
+    // v0.37.0+: draw_bootstrap_weights raises
+    // BootstrapMethodError on an unknown method; catch and
+    // re-abort to preserve pre-v0.37.0 process-death behavior.
+    let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLPLR::bootstrap): " +
+          m,
+        )
+    }
+    // Compute psi[i] = psi_a[i] + coef * psi_b[i] and
+    // ss_psi = sum(psi[i]^2) once. `psi_a` / `psi_b` were
+    // populated by `fit(...)` from the last rep's nuisances
+    // (matching `l_hat` / `m_hat`); the bootstrap is run at the
+    // already-fitted `coef`, no re-estimation.
+    let psi : Array[Double] = Array::make(n, 0.0)
+    let mut ss_psi = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
+      psi[i] = psi_i
+      ss_psi = ss_psi + psi_i * psi_i
+    }
+    let n_d = n.to_double()
+    let se_psi = (ss_psi / n_d).sqrt()
+    if se_psi <= 0.0 {
+      // Degenerate: psi sums to 0 (constant IF). Cannot divide.
+      // Return zeros (matches the DIDCrossSection convention).
+      let boot_t_stat_zero : Array[Double] = Array::make(n_rep_boot, 0.0)
+      return {
+        ..self,
+        boot_t_stat: boot_t_stat_zero,
+        boot_method: method_name,
+        n_rep_boot,
+        boot_seed: seed,
+      }
+    }
+    // v0.55.0 extracted helper. PLR is `n_thetas=1`:
+    // `psi_flat = [psi]`, `se_flat = [se_psi]`.
+    let se_flat : Array[Double] = [se_psi]
+    let boot_t_stat = did_bootstrap_t_stat(
+      weights, psi, se_flat, n_rep_boot, n, 1,
+    )
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
     }
   } catch {
     PreconditionError::Violated(loc) =>

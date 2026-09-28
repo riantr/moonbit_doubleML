@@ -10,6 +10,112 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.61.0] -- Item 5: multiplier bootstrap on PLR / IRM / PLIV / IIVM / APO
+
+Cycle-driven from the user's "继续推Item5" decision after
+v0.60.0 shipped. This release implements **Item 5** of the
+5-item roadmap: `bootstrap()` (multiplier bootstrap for
+score-based confidence intervals) on the 5 base DML
+estimators that don't already have one (DIDCrossSection and
+DIDMulti got their `bootstrap()` in v0.55.0). All 5 share
+the same `did_bootstrap_t_stat(weights, psi, se, n_rep_boot,
+n_obs, n_thetas)` helper extracted in v0.55.0; this release
+calls it with `n_thetas = 1`.
+
+### Added
+
+- **`DoubleMLPLR::bootstrap`**:
+  - `psi_a[i] = -v_hat[i]^2`, `psi_b[i] = v_hat[i] * u_hat[i]`
+    (partialling-out, default score, length `n_obs`).
+    `psi_a[i] = -z[i] * v_hat[i]`, `psi_b[i] = z[i] * u_hat[i]`
+    for the IV-type score (`z = DoubleMLData::z`).
+  - `psi[i] = psi_a[i] + theta * psi_b[i]` at the fitted
+    `coef`; `se_psi = sqrt(mean(psi^2))`.
+  - `boot_t_stat[b] = sum_i w[b, i] * psi[i] / (sqrt(n) * se_psi)`.
+  - `method_name ∈ {"normal", "Bayes", "wild"}`, default
+    `"normal"` (matches upstream `bootstrap(method="normal")`).
+  - `seed` defaults to `2024`; `n_rep_boot` defaults to `500`.
+
+- **`DoubleMLIRM::bootstrap`** (ATE score):
+  - `psi_a[i] = -1` (constant), `psi_b[i] = (g1 - g0)[i] +
+    (D*u1/m - (1-D)*u0/(1-m))[i]` clipped `m ∈ [eps, 1-eps]`.
+
+- **`DoubleMLPLIV::bootstrap`** (partialling-out single
+  instrument):
+  - `psi_a[i] = -w_hat[i] * v_hat[i]`, `psi_b[i] = v_hat[i] *
+    u_hat[i]` where `w_hat = d - r_hat`, `v_hat = z - m_hat`,
+    `u_hat = y - l_hat`.
+
+- **`DoubleMLIIVM::bootstrap`** (LATE score):
+  - `psi_a[i] = -(r1 - r0)[i] - Z[i]*w1[i]/m[i] +
+    (1-Z[i])*w0[i]/(1-m[i])`,
+    `psi_b[i] = (g1 - g0)[i] + Z[i]*u1[i]/m[i] -
+    (1-Z[i])*u0[i]/(1-m[i])` with `m ∈ [eps, 1-eps]`.
+
+- **`DoubleMLAPO::bootstrap`** (policy score):
+  - `psi_a[i] = -1` (constant), `psi_b[i] = g[i] +
+    treated[i] * (y[i] - g[i]) / m[i]`.
+
+- **Struct field additions** (all 5 estimators): `psi_a`,
+  `psi_b`, `boot_t_stat`, `boot_method`, `n_rep_boot`,
+  `boot_seed`. `psi_a` / `psi_b` are populated by `fit(...)`
+  from the last repetition's cross-fitted nuisances
+  (`l_hat` / `m_hat` for PLR; `g0_hat` / `g1_hat` / `m_hat`
+  for IRM/APO; `l_hat` / `r_hat` / `m_hat` for PLIV;
+  `g0_hat` / `g1_hat` / `m_hat` / `r0_hat` / `r1_hat` for
+  IIVM). `boot_*` fields are populated by `bootstrap(...)`.
+  The `fit()`-side cluster paths (`fit_cluster` for PLR/IRM/
+  PLIV/IIVM) populate the same fields from the cluster path's
+  last repetition's nuisances.
+
+- **`bootstrap_v061_wbtest.mbt`** (7 tests, 8942 bytes):
+  - `plr_bootstrap_populates_psi_arrays_and_boot_t_stat`
+  - `plr_bootstrap_reproducible_under_seed`
+  - `plr_bootstrap_bayes_method_runs`
+  - `irm_bootstrap_populates_boot_t_stat`
+  - `pliv_bootstrap_populates_boot_t_stat`
+  - `iivm_bootstrap_populates_boot_t_stat`
+  - `apo_bootstrap_populates_boot_t_stat`
+  Covers: `boot_t_stat` length = `n_rep_boot`, all entries
+  finite, mean ≈ 0 (asymptotic), reproducible under fixed
+  seed, `method_name="Bayes"` path runs, IRM/PLIV/IIVM/APO
+  `bootstrap` end-to-end on a small synthetic DGP.
+
+### Verification (this release)
+
+- `moon check --deny-warn`: 0 errors (only the pre-existing
+  `examples/* supported_targets` warnings from upstream-style
+  examples, unchanged from v0.59.0).
+- `moon test --target native`: 479 / 479 PASS
+  (+7 over the v0.60.0 baseline of 472 — the 7 new bootstrap
+  wbtests).
+- `moon test --target wasm`: 479 / 479 PASS.
+- `moon test --target wasm-gc`: 485 / 485 PASS (+13 over the
+  v0.60.0 baseline of 472 — wasm-gc runs the 7 new tests plus
+  some wasm-gc-specific backend variants).
+- `moon test --target js`: 479 / 479 PASS.
+- `python _verify/run_all_validators.py`: 23 / 23 PASS in 87.9 s
+  (no Python cross-validator regressed; Item 5 only added
+  new API surface, no behaviour change in `fit()` /
+  `coef()` / `se()` / `confint()` for any estimator).
+
+### Notes / follow-up
+
+- All 5 `bootstrap` methods abort (process-level) on the
+  unfitted-model path via `PreconditionError`; the wbtest
+  file deliberately omits that case because MoonBit's
+  `try/catch` doesn't intercept process-level aborts
+  (the DID `bootstrap_wbtest` follows the same convention).
+- The `psi_a` / `psi_b` fields are package-private on the
+  struct (no public accessor) — they're implementation
+  detail of `bootstrap`. Callers who want them should use
+  `bootstrap(...)` to obtain `boot_t_stat` and let the helper
+  consume the IF internally.
+- All 5 `bootstrap` methods share the `did_bootstrap_t_stat`
+  helper from `bootstrap.mbt` (v0.55.0 extraction); no
+  duplication, no new helper introduced.
+
+---
 ## [0.60.0] -- Item 4 (Path A) "harder batch": Learner injection on 8 remaining estimators
 
 Cycle-driven from the user's "做1 2 3 4 5" decision after

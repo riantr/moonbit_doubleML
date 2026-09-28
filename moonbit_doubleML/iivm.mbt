@@ -117,6 +117,24 @@ pub struct DoubleMLIIVM {
   coef : Double
   se : Double
   fitted : Bool
+  // v0.61.0+: per-observation influence function components
+  // for the multiplier bootstrap. IIVM LATE score:
+  //   psi_a[i] = -(r1 - r0)[i] - Z[i]*w1[i]/m[i]
+  //              + (1-Z[i])*w0[i]/(1-m[i])
+  //   psi_b[i] = (g1 - g0)[i] + Z[i]*u1[i]/m[i]
+  //              - (1-Z[i])*u0[i]/(1-m[i])
+  // where `w0/1 = D - r0/1`, `u0/1 = Y - g0/1`, `m = clip(m_hat)`.
+  // Length `n_obs`. Populated by `fit(...)` from the last
+  // rep's nuisances.
+  psi_a : Array[Double]
+  psi_b : Array[Double]
+  // v0.61.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -156,6 +174,12 @@ pub fn DoubleMLIIVM::new(
       coef: 0.0,
       se: 0.0,
       fitted: false,
+      psi_a: Array::make(data.n_obs(), 0.0),
+      psi_b: Array::make(data.n_obs(), 0.0),
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -424,6 +448,32 @@ pub fn DoubleMLIIVM::fit(
     }
     // last iteration's predictions are now in g0 / g1 / m / r0 / r1
     let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.61.0: per-observation influence function for the
+    // multiplier bootstrap. Recompute `psi_a / psi_b` (LATE
+    // score) from the last rep's nuisances so the stored
+    // arrays align with `g0_hat` / `g1_hat` / `m_hat` /
+    // `r0_hat` / `r1_hat` and `coef` (matches the v0.20.0+
+    // DID convention).
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    let psi_b : Array[Double] = Array::make(n, 0.0)
+    let y_last = self.data.y
+    let d_last = self.data.d
+    let z_last = self.data.z
+    for i = 0; i < n; i = i + 1 {
+      let u0 = y_last[i] - g0[i]
+      let u1 = y_last[i] - g1[i]
+      let w0 = d_last[i] - r0[i]
+      let w1 = d_last[i] - r1[i]
+      let m_i = m[i]
+      let one_minus_m = 1.0 - m_i
+      psi_b[i] = g1[i] -
+        g0[i] +
+        z_last[i] * u1 / m_i -
+        (1.0 - z_last[i]) * u0 / one_minus_m
+      psi_a[i] = -(r1[i] - r0[i]) -
+        z_last[i] * w1 / m_i +
+        (1.0 - z_last[i]) * w0 / one_minus_m
+    }
     {
       data: self.data,
       n_folds: self.n_folds,
@@ -441,6 +491,12 @@ pub fn DoubleMLIIVM::fit(
       coef,
       se,
       fitted: true,
+      psi_a,
+      psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -581,6 +637,28 @@ fn DoubleMLIIVM::fit_cluster(
       ses[r] = se_r
     }
     let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.61.0: per-observation influence function for the
+    // multiplier bootstrap. Same convention as `fit()`:
+    // recompute from the last rep's nuisances so the stored
+    // arrays align with `g0_hat` / `g1_hat` / `m_hat` /
+    // `r0_hat` / `r1_hat` and `coef`.
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    let psi_b : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let u0 = self.data.y[i] - g0[i]
+      let u1 = self.data.y[i] - g1[i]
+      let w0 = self.data.d[i] - r0[i]
+      let w1 = self.data.d[i] - r1[i]
+      let m_i = m[i]
+      let one_minus_m = 1.0 - m_i
+      psi_b[i] = g1[i] -
+        g0[i] +
+        self.data.z[i] * u1 / m_i -
+        (1.0 - self.data.z[i]) * u0 / one_minus_m
+      psi_a[i] = -(r1[i] - r0[i]) -
+        self.data.z[i] * w1 / m_i +
+        (1.0 - self.data.z[i]) * w0 / one_minus_m
+    }
     {
       data: self.data,
       n_folds: self.n_folds,
@@ -598,6 +676,102 @@ fn DoubleMLIIVM::fit_cluster(
       coef,
       se,
       fitted: true,
+      psi_a,
+      psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.61.0+: multiplier bootstrap for `DoubleMLIIVM`. The
+/// per-observation influence function is
+///
+///   psi[i] = psi_a[i] + theta * psi_b[i]
+///
+/// where `psi_a` and `psi_b` are the LATE score elements
+/// (defined in the module doc) computed at the fitted `coef`
+/// from the last rep's cross-fitted nuisances `g0_hat` /
+/// `g1_hat` / `m_hat` / `r0_hat` / `r1_hat`. Draws
+/// `n_rep_boot` weight vectors of length `n_obs` from the
+/// chosen multiplier distribution, and returns a fitted model
+/// with `boot_t_stat[b] = sum_i w[b, i] * psi[i] /
+/// (sqrt(n) * se_psi)` populated where
+/// `se_psi = sqrt(mean(psi^2))`.
+///
+/// `method_name` selects the multiplier distribution:
+///   - `"normal"` (default): `w[i] ~ N(0, 1)`.
+///   - `"Bayes"`: `w[i] = exp(1) - 1` (mean 0, var 1).
+///   - `"wild"`: `w[i] = x[i] / sqrt(2) + (y[i]^2 - 1) / 2`
+///     with `x, y ~ N(0, 1)`.
+///
+/// Calling `bootstrap` requires the model to be fitted; calling
+/// on an un-fit model aborts with `PreconditionError`. The
+/// helper is `did_bootstrap_t_stat` (v0.55.0 extracted from
+/// `DoubleMLDIDCrossSection::bootstrap`); IIVM is the
+/// `n_thetas=1` case.
+pub fn DoubleMLIIVM::bootstrap(
+  self : DoubleMLIIVM,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLIIVM {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n = self.n_obs()
+    // Draw weights. Shape: (n_rep_boot, n_obs).
+    let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLIIVM::bootstrap): " +
+          m,
+        )
+    }
+    // Compute psi[i] = psi_a[i] + coef * psi_b[i] and
+    // ss_psi = sum(psi[i]^2) once. Both `psi_a` and `psi_b`
+    // were populated by `fit(...)` from the last rep's
+    // nuisances.
+    let psi : Array[Double] = Array::make(n, 0.0)
+    let mut ss_psi = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
+      psi[i] = psi_i
+      ss_psi = ss_psi + psi_i * psi_i
+    }
+    let n_d = n.to_double()
+    let se_psi = (ss_psi / n_d).sqrt()
+    if se_psi <= 0.0 {
+      // Degenerate: psi sums to 0. Cannot divide.
+      let boot_t_stat_zero : Array[Double] = Array::make(n_rep_boot, 0.0)
+      return {
+        ..self,
+        boot_t_stat: boot_t_stat_zero,
+        boot_method: method_name,
+        n_rep_boot,
+        boot_seed: seed,
+      }
+    }
+    // n_thetas=1 case.
+    let se_flat : Array[Double] = [se_psi]
+    let boot_t_stat = did_bootstrap_t_stat(
+      weights, psi, se_flat, n_rep_boot, n, 1,
+    )
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
     }
   } catch {
     PreconditionError::Violated(loc) =>
