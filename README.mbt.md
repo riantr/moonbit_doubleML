@@ -139,7 +139,7 @@ logistic regression, and binary-outcome CS-DID:
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.52.0, 110 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.59.0, 127 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
