@@ -1,29 +1,108 @@
-# riantr/moonbit_doubleML · Double / Debiased Machine Learning in MoonBit
+# moonbit_doubleML · Double / Debiased Machine Learning in MoonBit
 
-Pure-MoonBit port of the
-[`doubleml`](https://github.com/DoubleML/doubleml-for-py) Python package,
-covering all 19 models in upstream `doubleml-for-py` plus
-3 MoonBit-specific extras (`DoubleMLPLPR` for static panel data,
-`DoubleMLLPLR` for binary outcomes, `DoubleMLDIDCSBinary` for
+A pure-MoonBit port of the
+[`doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py) Python
+package — the Python ecosystem's most mature Double / Debiased Machine
+Learning implementation — covering **all 19 models** in upstream
+plus **3 MoonBit-specific extras** (`DoubleMLPLPR` for static panel
+data, `DoubleMLLPLR` for binary outcomes, `DoubleMLDIDCSBinary` for
 binary-outcome CS-DID).
 
-## Status
+Targets library authors and tool developers who need causal inference,
+panel data estimation, instrumental variable estimation, regression
+discontinuity, policy evaluation, or interpretable machine learning
+inside the MoonBit ecosystem. Delivers a unified
+`DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` API across all
+22 estimators, robust variance estimation, propensity-score
+processing, multiple-testing correction, and a reproducible validation
+pipeline (23 / 23 Python reference scripts PASS) — on `native`,
+`wasm`, `wasm-gc`, and `js` backends under `moon test --deny-warn`.
+
+#Status
 
 | Item | Value |
 |------|-------|
-| Source file count | 110 production `.mbt` (flat layout, no sub-folders) |
-| Estimators | **22** `DoubleML*` structs in **17** files (19 upstream + 3 extras) |
-| Tests | **401 / 401** on `native`, `wasm`, `js` (390 blackbox + 11 whitebox: 5 on `kfold`, 6 on `matrix`); **407 / 407** on `wasm-gc` (lib + 6 doc tutorials) |
-| Warnings | 0 (under `moon test --deny-warn`) |
-| Python cross-checks | 23 / 23 PASS |
-| HTTP service | `examples/api_server/` — hand-rolled, no third-party framework |
-| License | Apache-2.0 |
+| Repository | `https://github.com/riantr/moonbit_doubleML` |
+| Author | `riantr` |
+| License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
+| `moon.mod` version | **0.59.0** |
+| Source layout | flat, `moonbit_doubleML/` (the library) |
+| `.mbt` file count | 127 production files |
+| Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
+| Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
+| Tests (native / wasm / js) | **466 / 466** |
+| Tests (wasm-gc) | **472 / 472** (lib + 6 doc tutorials) |
+| Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
+| HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
-## Quick start
+#Features
+
+**Pure-MoonBit, all-4-backends port of `doubleml-for-py`** — 22 `DoubleML*`
+estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,
+`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`,
+`DoubleMLDIDCSBinary`, `DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`,
+`DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
+`DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
+`DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
+in 17 source files. The 19 marked *(upstream)* mirror the upstream
+`doubleml-for-py` API; the 3 marked *(extra)* are MoonBit-specific
+additions for static-panel PLR, partially-logistic regression, and
+binary-outcome CS-DID.
+
+**Unified API surface** — every estimator follows the same
+`DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` shape and returns
+the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
+No per-estimator interface drift.
+
+**Cross-fitting infrastructure** — `kfold`, repeated cross-fitting,
+stratified K-fold (`kfold_stratified`), `chaCha8_rng`-based seeded
+PRNG (`chacha8_rng(seed)`), and Kahan summation. Default `seed=3141`;
+same seed yields byte-identical DGP outputs across runs.
+
+**Propensity-score processor (`PSProcessor`)** — `clipping_threshold`
+clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)
+calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
+`DoubleMLDID` and the rest of the IPW-based models.
+
+**Robust variance & inference** — heteroskedasticity-consistent (HC)
+standard errors, cluster-robust variance, multiplier bootstrap
+confidence intervals, joint CIs, and Romano-Wolf multiple-testing
+p-value adjustment. Reused via the `bootstrap.mbt` helper extracted
+in v0.55.0.
+
+**Coverage by class**:
+
+- *Observational / quasi-experimental*: `DoubleMLDID`,
+  `DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
+  `DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`, `DoubleMLRDD`,
+  `DoubleMLSSM`.
+- *Strategy & distributional*: `DoubleMLAPO` / `DoubleMLAPOS`,
+  `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLCVAR`,
+  `DoubleMLBLP`, `DoubleMLPolicyTree`.
+
+**Reproducible DGPs + Python reference validation** — 23 Python
+scripts (`validate_*_with_python.py`) drive 23 DGPs
+(`plr_CCDDHNR`, `plr_turrell`, `plr_confounded`, `irm_discrete`,
+`irm_heterogeneous`, `irm_confounded`, `iivm`, `pliv` /
+`pliv_cluster`, `SSM`, `simple_rdd`, `DID SZ2020` / `CS2021`, etc.)
+and check within-tolerance equivalence against the upstream Python
+outputs. CI greps the trailing `PASS` line from each script.
+
+**Docs & demos** — 6 `doc/<NNN_…>/` tutorials targeting `wasm-gc`,
+plus 14 `examples/<bin>/` driver binaries (all listed in
+`moon.work`), of which `examples/api_server/` is an HTTP service
+built directly on `moonbitlang/async@0.20.3` — no third-party HTTP
+framework is pulled in.
+
+**Strict dependency hygiene** — only official `moonbitlang/*` packages
+in the library. Non-official deps restricted to `riantr/*` (this
+repo). Reproducible builds, minimal supply-chain surface.
+
+#Quick Start
 
 ```console
 $ moon test --deny-warn
-Total tests: 390, passed: 390, failed: 0.
+Total tests: 466, passed: 466, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
@@ -37,24 +116,27 @@ $ python validate_irm_with_python.py
 PASS  |mb - handrolled_nrep5| (theta) = 5.24e-02 < max(MODEL_TOL=0.1, 2.0*handrolled_n5_se) = 1.91e-01
 ```
 
-## Library use
+#Library Use
 
 ```moonbit nocheck
 let data = @dml.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]
 let fitted = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141).fit()
 let coef = fitted.coef()      // Double
-let se = fitted.se()          // Double
+let se   = fitted.se()        // Double
 let (lo, hi) = fitted.confint()
 ```
 
-## Demo entry points
+Same shape for every other estimator — e.g.
+`@dml.DoubleMLIRM::new(data, ml_g?, ml_m?, n_folds?, n_rep?, seed?).
+fit()`, `@dml.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
 
-14 `examples/<bin>/` directories in `moon.work`. 13 run
-end-to-end on synthetic DGPs: 12 are CLI-style numeric demos
-(print true-vs-estimated θ and a 95% CI); the 13th —
-`examples/api_server/` — is an HTTP service. The 14th —
-`examples/consumer_demo/` — is the library-user pattern that
-mirrors what an external `moon add riantr/moonbit_doubleML`
+#Examples
+
+14 `examples/<bin>/` directories in `moon.work`. 13 run end-to-end on
+synthetic DGPs: 12 are CLI-style numeric demos (print true-vs-estimated
+θ and a 95 % CI); the 13th — `examples/api_server/` — is an HTTP
+service. The 14th — `examples/consumer_demo/` — is the library-user
+pattern that mirrors what an external `moon add riantr/moonbit_doubleML`
 consumer would write.
 
 | Driver | Model | DGP | True θ |
@@ -103,13 +185,13 @@ The same `api_server.wasm` also runs under `moonrun --port 4000`
 The service is built directly on `moonbitlang/async@0.20.3` —
 no third-party HTTP framework is pulled in.
 
-## Models
+#Models
 
 22 estimators (`DoubleML*` structs) in 17 files, all reachable through
 the same `DoubleMLXxx::new(...).fit()` interface. The 19 marked
-`(upstream)` mirror the upstream `doubleml-for-py` API surface; the 3
-`(extra)` rows are MoonBit additions for static-panel PLR, partially
-logistic regression, and binary-outcome CS-DID:
+*(upstream)* mirror the upstream `doubleml-for-py` API surface; the 3
+*(extra)* rows are MoonBit additions for static-panel PLR,
+partially-logistic regression, and binary-outcome CS-DID:
 
 | Model | Score | Description |
 |-------|-------|-------------|
@@ -136,7 +218,7 @@ logistic regression, and binary-outcome CS-DID:
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(extra)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)* |
 
-## Project layout
+#Project layout
 
 ```
 moonbit_doubleML/        <- the library (moon.mod v0.59.0, 127 .mbt files)
@@ -166,7 +248,7 @@ AGENTS.md                <- this file (per moonbit agent convention)
 skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 ```
 
-## Dependency rule (per `skills/moonbit_doubleML.md`)
+#Dependency rule (per `skills/moonbit_doubleML.md`)
 
 - Only official `moonbitlang/*` packages.
 - Non-official packages may only be `riantr/*` (this repo).
@@ -175,7 +257,7 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `moonbitlang/async`'s raw `Server` API. No third-party HTTP
   framework is allowed.
 
-## Determinism & validation
+#Determinism & validation
 
 - All randomness flows through `chacha8_rng(seed)` (`seed.mbt`).
   Default `seed=3141`; same seed ⇒ byte-identical DGP outputs.
@@ -185,3 +267,34 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 - `dgp_recovery_test.mbt` enforces `|coef - theta| < MAX(MODEL_TOL=0.1,
   2.0 * handrolled_se)`. The tolerance is contractual.
 
+#Attribution
+
+`moonbit_doubleML` is a port of the upstream
+[`DoubleML/doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py)
+package (BSD 3-Clause License). All 19 upstream models are faithfully
+re-implemented in pure MoonBit with the same score formulae and
+variance estimators; the 3 MoonBit-only additions (`DoubleMLPLPR`,
+`DoubleMLLPLR`, `DoubleMLDIDCSBinary`) are extensions beyond the
+upstream scope.
+
+### Differences from upstream `doubleml-for-py`
+
+- Native MoonBit package layout, type system, and test organization.
+- Independent implementations of `Matrix`, linear / logistic
+  regression, stratified K-fold, ChaCha8 PRNG, and Kahan summation
+  in MoonBit; **no NumPy / scikit-learn dependency**.
+- `DoubleMLData` / `DoubleMLXxx::new().fit()` as the canonical
+  MoonBit-idiomatic API, with optional JSON in/out for native /
+  wasm-gc / wasm / js backends (Serverless / Wasm / edge
+  deployments).
+- Behaviour-level parity check via the 23 Python reference scripts:
+  `within-tolerance equivalence` rather than bit-exact re-implementation.
+  This keeps the port resilient to upstream refactors.
+- Strict dependency rule (see above): only `moonbitlang/*` official
+  packages. Minimal supply-chain surface.
+
+#Used By
+
+- `examples/api_server/` — this repo's HTTP service.
+- `examples/consumer_demo/` — minimal end-to-end PLR showing the
+  consumer-side import pattern (`moon add riantr/moonbit_doubleML`).
