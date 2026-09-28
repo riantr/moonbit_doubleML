@@ -10,6 +10,191 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.59.0] -- Item 4 (Path A): Learner injection on 9 estimators
+
+Cycle-driven from the user's "做1 2 3 4 5" decision after
+v0.58.0 shipped. This release is **Item 4** of that batch
+(5 items): extending `Learner` injection beyond `DoubleMLPLR`
+to 9 additional estimators (`DoubleMLIRM`, `DoubleMLPLIV`,
+`DoubleMLIIVM`, `DoubleMLPLPR`, `DoubleMLSSM`, `DoubleMLDID`,
+`DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`).
+
+The remaining estimators (`DoubleMLAPO`, `DoubleMLAPOS`,
+`DoubleMLCVaR`, `DoubleMLLPLR`, `DoubleMLRDD`,
+`DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLDIDCrossSection`,
+`DoubleMLDIDMulti`) require deeper refactors (specialised
+quantile / kernel / logistic-regression nuisances, or
+non-cross_fit cross-fit loops) and land in **v0.60.0** as
+the "harder batch" follow-up. Item 5 (`bootstrap()` on
+PLR/IRM/PLIV/IIVM/APO) follows in **v0.60.0** as well.
+
+### Added
+
+- **`LearnerDispatch` injection on `DoubleMLIRM`** (`irm.mbt`)
+  -- `ml_g?` (outcome-nuisance learner) and `ml_m?`
+  (propensity learner) labeled optionals on `new()` and
+  per-fit overrides on `fit()` / `fit_cluster()`. `learner_g()` /
+  `learner_m()` accessors. The `cross_fit_irm` helper was
+  refactored to use `cross_fit_predict_dispatch` with single-fold
+  `Fold::new` constructions for each conditional subset
+  (`{D=0}`, `{D=1}`, all).
+
+- **`LearnerDispatch` injection on `DoubleMLPLIV`** (`pliv.mbt`)
+  -- single `learner?` labeled optional on `new()` /
+  `fit()` / `fit_cluster()`. The hardcoded `LinearRegression::new()`
+  in the cross_fit_predict calls inside `fit_cluster` was
+  replaced with the injected `learner`.
+
+- **`LearnerDispatch` injection on `DoubleMLIIVM`** (`iivm.mbt`)
+  -- `ml_g?`, `ml_m?`, `ml_r?` labeled optionals on `new()`
+  and per-fit overrides on `fit()` / `fit_cluster()`. The
+  `cross_fit_iivm` helper was refactored to use
+  `cross_fit_predict_dispatch` for all 5 nuisances (g0, g1,
+  m, r0, r1).
+
+- **`LearnerDispatch` injection on `DoubleMLPLPR`** (`plpr.mbt`)
+  -- single `learner?` labeled optional on `new()` /
+  `fit()`. All 4 `cross_fit_predict(LinearRegression::new(), ...)`
+  calls inside `fit()` were replaced with
+  `cross_fit_predict_dispatch(learner, ...)`.
+
+- **`LearnerDispatch` injection on `DoubleMLSSM`** (`ssm.mbt`)
+  -- `ml_g?`, `ml_m?`, `ml_pi?` labeled optionals on `new()`
+  and per-fit overrides on `fit()`. The `cross_fit_ssm` helper
+  was refactored to use `cross_fit_predict_dispatch` for
+  m and g0/g1. The pi fit uses the new
+  `fit_predict_one_dispatch` helper (see below) because
+  pi is trained on the augmented `[X, D]` matrix.
+
+- **`LearnerDispatch` injection on `DoubleMLDID`** (`did.mbt`)
+  -- `ml_g?`, `ml_m?` labeled optionals on `new()` and
+  per-fit overrides on `fit()`. The `cross_fit_did` helper
+  was refactored to use `cross_fit_predict_dispatch` for
+  all 3 nuisances (g0, g1, m) with conditional `{D=0}`,
+  `{D=1}` filters.
+
+- **`LearnerDispatch` injection on `DoubleMLDIDBinary`**
+  (`did_binary.mbt`) -- `ml_g?`, `ml_m?` labeled optionals on
+  `fit()` (forwarded to the inner `DoubleMLDID`). The
+  `DoubleMLDIDBinary` struct itself does NOT carry the
+  learner as a field (the inner `DoubleMLDID` is constructed
+  inside `fit()` from the wide-format preprocessing, not at
+  `new()` time).
+
+- **`LearnerDispatch` injection on `DoubleMLDIDCS`** (`did_cs.mbt`)
+  -- `ml_g?`, `ml_m?` labeled optionals on `fit()` (forwarded
+  to the per-cell `DoubleMLDIDBinary::fit(...)` call inside
+  the `for (g, t)` loop).
+
+- **`LearnerDispatch` injection on `DoubleMLDIDCSBinary`**
+  (`did_cs_binary.mbt`) -- `ml_g?`, `ml_m?` labeled optionals
+  on `fit()`. The internal `cs_bin_panel_subset` /
+  `cs_bin_panel_row_subset` helpers continue to use a
+  fresh `LinearRegression` instance for v0.59.0 (the
+  v0.60.0 item plumbs LearnerDispatch through them).
+
+- **`fit_predict_one_dispatch` (learner.mbt, v0.59.0+)** --
+  single-fit + single-predict helper for a `LearnerDispatch`,
+  for cases that don't fit the
+  `cross_fit_predict_dispatch` shape (e.g. augmented
+  feature matrices, single-fold nested loops, or
+  pre/post-window restricted sample splits). Used by
+  `DoubleMLSSM` for the pi fit on `[X, D]` (where the
+  augmented matrix has `p+1` columns rather than the
+  base `p`, so slicing by `train_idx` / `test_idx` from
+  a single base matrix doesn't apply).
+
+### Design notes
+
+- The IRM / IIVM / DID / SSM helpers use
+  `Fold::new(cond_subset, test_idx)` with
+  `cross_fit_predict_dispatch(...folds=[single_fold])` to
+  capture the conditional-sample nuisance pattern (fit on
+  `cond_subset` of `train_idx`, predict on `test_idx`).
+  This keeps the existing test/fold structure intact
+  while routing through the new dispatch entry point.
+  Critically, the returned `preds` array is indexed by
+  ORIGINAL row index (length `n_obs`), so the caller must
+  index it as `preds[test_idx[k]]` -- NOT `preds[k]`.
+  (See the `g0[row] = p0[row]` pattern in the affected
+  helpers; the bug-catching convention is documented
+  in the `fit_predict_one_dispatch` docstring and the
+  IRM v0.59.0 wbtest suite.)
+
+- Backwards-compat: every `new()` constructor defaults
+  its `ml_g?` / `ml_m?` / `learner?` labeled optional to
+  `LearnerDispatch::linear_regression()` (a fresh OLS
+  learner), matching the v0.57.0 / v0.58.0 hardcoded
+  behavior byte-for-byte. v0.57.0 callers see no
+  behavioral change.
+
+- The DID-family (Binary / CS / CSBinary) wrappers do
+  NOT carry the learner as a struct field -- the inner
+  `DoubleMLDID` is constructed at `fit()` time from
+  the wide-format preprocessing, so the learner is
+  passed as a per-fit labeled optional through the
+  `inner.fit(ml_g, ml_m)` chain.
+
+### Test count delta
+
+- `item4_learner_injection_wbtest.mbt` adds **6 wbtests**
+  (PLIV default + RF override, IIVM default, DID default
+  + RF override, SSM default).
+- `irm_wbtest.mbt` adds **3 wbtests** (`learner_g/m`
+  accessors + per-fit override persistence + constructor
+  learner-param persistence).
+- All 4 backends pass:
+  - native:  472 (was 466)
+  - wasm:    466 (was 463)
+  - js:      466 (was 463)
+  - wasm-gc: 478 (was 469)
+- 23/23 Python cross-validators PASS in 47.3s.
+
+### Carry-over from v0.58.0
+
+v0.59.0 does not regress the v0.58.0 surface: every
+estimator's default `LearnerDispatch::linear_regression()`
+matches the v0.57.0 / v0.58.0 hardcoded OLS, so
+byte-equality is preserved. The `tune()` method from
+v0.58.0 is unchanged (still only on `DoubleMLPLR`; cross-
+estimator `tune()` lands in v0.60.0+ once all 11
+estimators have learner injection).
+
+### Out of scope (deferred to v0.60.0)
+
+- `DoubleMLAPO`, `DoubleMLAPOS`: specialised
+  treatment-level stratification + grouped OLS nuisance;
+  requires a new `apox_score_elements` helper and
+  per-stratum `cross_fit_predict_dispatch` plumbing.
+- `DoubleMLCVaR`: quantile-regression-based CVaR
+  nuisance (the closed-form OLS used in v0.50.0 doesn't
+  compose with the LearnerDispatch enum's 5-arm match);
+  v0.60.0 ships a `QuantileRegression` learner + an
+  auxiliary `quantile_cross_fit_predict`.
+- `DoubleMLLPLR`: uses `LogisticRegression` (not OLS)
+  for the propensity / outcome nuisances; v0.60.0 adds
+  a `LogisticRegression` arm to `LearnerDispatch` (or
+  a wrapper that preserves the existing logistic fit
+  path while accepting `LearnerDispatch` overrides).
+- `DoubleMLRDD`: kernel-weighted local-polynomial
+  regression; the kernel weights aren't currently
+  produced by a `LearnerDispatch` (the bandwidth and
+  kernel type are configuration, not a learner), so
+  the v0.60.0 item ships a thin wrapper.
+- `DoubleMLPQ`, `DoubleMLQTE`: quantile regression
+  (same QuantileRegression dependency as CVaR).
+- `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti`:
+  delegate to inner DID estimators; v0.60.0 wires
+  the learner through the same forwarding pattern
+  as DIDBinary.
+- **Item 5**: `bootstrap()` on PLR/IRM/PLIV/IIVM/APO.
+  Builds on the v0.55.0 `did_bootstrap_t_stat` helper
+  (already used by DID / DIDCS / DIDCSBinary / DIDMulti
+  / DIDCrossSection); v0.60.0 extends the per-row
+  `psi_matrix` + `se` plumbing to PLR / IRM / PLIV /
+  IIVM / APO.
+
+---
 ## [0.58.0] -- `DoubleMLPLR::tune()` (grid search over nuisance learners)
 
 Cycle-driven from the user's "做1 2 3 4 5" decision after

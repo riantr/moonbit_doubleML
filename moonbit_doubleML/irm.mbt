@@ -42,6 +42,14 @@ pub struct DoubleMLIRM {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // v0.59.0+: injected nuisance learners (replaces the
+  // v0.57.0 hardcoded `LinearRegression`). Defaults to a
+  // fresh `LinearRegression` so v0.57.0 callers see
+  // byte-identical results. Both fields are package-private
+  // to enforce that nuisance changes go through `fit(...)` /
+  // `fit_cluster(...)` overrides.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   g0_hat : Array[Double]
   g1_hat : Array[Double]
   m_hat : Array[Double]
@@ -65,6 +73,8 @@ pub fn DoubleMLIRM::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLIRM {
   try {
     require(n_folds >= 2)
@@ -78,6 +88,8 @@ pub fn DoubleMLIRM::new(
       n_rep,
       seed,
       propensity_clip,
+      ml_g,
+      ml_m,
       g0_hat: Array::make(data.n_obs(), 0.0),
       g1_hat: Array::make(data.n_obs(), 0.0),
       m_hat: Array::make(data.n_obs(), 0.0),
@@ -163,6 +175,20 @@ pub fn DoubleMLIRM::propensity_score_raw(self : DoubleMLIRM) -> Array[Double] {
 }
 
 ///|
+/// Accessor for the outcome-nuisance learner used by the most
+/// recent `fit(...)` / `fit_cluster(...)` call. v0.59.0+.
+pub fn DoubleMLIRM::learner_g(self : DoubleMLIRM) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// Accessor for the propensity-score learner used by the most
+/// recent `fit(...)` / `fit_cluster(...)` call. v0.59.0+.
+pub fn DoubleMLIRM::learner_m(self : DoubleMLIRM) -> LearnerDispatch {
+  self.ml_m
+}
+
+///|
 /// Filter `idx` to keep only entries `i` for which `mask[i]` is true.
 pub fn filter_indices(idx : Array[Int], mask : Array[Double]) -> Array[Int] {
   let out : Array[Int] = []
@@ -203,8 +229,8 @@ pub fn clip_vec(v : Array[Double], lo : Double, hi : Double) -> Array[Double] {
 /// `require(...)` rather than silently writing zero predictions —
 /// silently-zero nuisance predictions would corrupt the ATE score.
 fn cross_fit_irm(
-  ml_g : LinearRegression,
-  ml_m : LinearRegression,
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
@@ -219,7 +245,10 @@ fn cross_fit_irm(
     for fold in folds {
       let train_idx = fold.train_indices()
       let test_idx = fold.test_indices()
-      // g0: train on D == 0
+      // g0: train on D == 0 — build a single Fold covering
+      // (train_d0, test_idx) and call `cross_fit_predict_dispatch`
+      // with [single_fold]. The standard cross_fit helper handles
+      // the LearnerDispatch enum dispatch (5 arms) for us.
       let train_d0 : Array[Int] = []
       for i in train_idx {
         if d[i] == 0.0 {
@@ -227,14 +256,14 @@ fn cross_fit_irm(
         }
       }
       require(train_d0.length() > 0)
-      let xt0 = slice_matrix_rows(x, train_d0)
-      let yt0 = slice_vector(y, train_d0)
-      let fitted0 = ml_g.fit(xt0, yt0)
-      let p = fitted0.predict(slice_matrix_rows(x, test_idx))
+      let p0 = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_d0, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        g0[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        g0[row] = p0[row]
       }
-      // g1: train on D == 1
+      // g1: train on D == 1 — same single-fold dispatch pattern.
       let train_d1_only : Array[Int] = []
       for i in train_idx {
         if d[i] == 1.0 {
@@ -242,21 +271,21 @@ fn cross_fit_irm(
         }
       }
       require(train_d1_only.length() > 0)
-      let xt1 = slice_matrix_rows(x, train_d1_only)
-      let yt1 = slice_vector(y, train_d1_only)
-      let fitted1 = ml_g.fit(xt1, yt1)
-      let p = fitted1.predict(slice_matrix_rows(x, test_idx))
-      for k = 0; k < test_idx.length(); k = k + 1 {
-        g1[test_idx[k]] = p[k]
-      }
-      // m: train on all
-      let fitted_m = ml_m.fit(
-        slice_matrix_rows(x, train_idx),
-        slice_vector(d, train_idx),
+      let p1 = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_d1_only, test_idx)],
       )
-      let p = fitted_m.predict(slice_matrix_rows(x, test_idx))
       for k = 0; k < test_idx.length(); k = k + 1 {
-        m[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        g1[row] = p1[row]
+      }
+      // m: train on all rows of train_idx — single fold covering
+      // (train_idx, test_idx). Uses `ml_m` (the propensity learner).
+      let pm = cross_fit_predict_dispatch(
+        ml_m, x, d, [Fold::new(train_idx, test_idx)],
+      )
+      for k = 0; k < test_idx.length(); k = k + 1 {
+        let row = test_idx[k]
+        m[row] = pm[row]
       }
     }
     // m must be clipped
@@ -292,14 +321,14 @@ fn cross_fit_irm(
 /// score sums, and the SE is unit-level cluster-robust.
 pub fn DoubleMLIRM::fit(
   self : DoubleMLIRM,
-  ml_g? : LinearRegression = LinearRegression::new(),
-  ml_m? : LinearRegression = LinearRegression::new(),
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
   max_attempts? : Int = 1,
 ) -> DoubleMLIRM {
   try {
     require(max_attempts >= 1)
     if self.data.is_cluster_data() {
-      return self.fit_cluster(ml_g, ml_m, max_attempts~)
+      return self.fit_cluster(ml_g~, ml_m~, max_attempts~)
     }
     let n = self.n_obs()
     let nrep = self.n_rep
@@ -352,6 +381,11 @@ pub fn DoubleMLIRM::fit(
       n_rep: self.n_rep,
       seed: self.seed,
       propensity_clip: self.propensity_clip,
+      // v0.59.0+: persist the per-fit learner overrides onto
+      // the returned struct. Defaults preserve v0.57.0 surface
+      // when callers don't override.
+      ml_g,
+      ml_m,
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,
@@ -377,8 +411,8 @@ pub fn DoubleMLIRM::fit(
 /// unit-level cluster-robust `var_est_cluster`.
 fn DoubleMLIRM::fit_cluster(
   self : DoubleMLIRM,
-  ml_g : LinearRegression,
-  ml_m : LinearRegression,
+  ml_g~ : LearnerDispatch,
+  ml_m~ : LearnerDispatch,
   max_attempts? : Int = 1,
 ) -> DoubleMLIRM {
   try {
@@ -492,6 +526,11 @@ fn DoubleMLIRM::fit_cluster(
       n_rep: self.n_rep,
       seed: self.seed,
       propensity_clip: self.propensity_clip,
+      // v0.59.0+: persist per-fit learner overrides on the
+      // cluster-path return struct too. Defaults preserve
+      // v0.57.0 surface for plain `fit_cluster` callers.
+      ml_g,
+      ml_m,
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,

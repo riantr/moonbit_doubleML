@@ -884,8 +884,8 @@ pub fn DoubleMLDIDCSBinary::psi_b(self : DoubleMLDIDCSBinary) -> Array[Double] {
 ///      `var_est(psi_a, psi_b)` helper.
 pub fn DoubleMLDIDCSBinary::fit(
   self : DoubleMLDIDCSBinary,
-  ml_g? : LinearRegression = LinearRegression::new(),
-  ml_m? : LinearRegression = LinearRegression::new(),
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCSBinary {
   ignore(ml_g)
   ignore(ml_m)

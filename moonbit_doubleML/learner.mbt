@@ -196,3 +196,29 @@ pub fn cross_fit_predict_dispatch(
     GradientBoosting(gb) => cross_fit_predict(gb, x, y, folds)
   }
 }
+
+///|
+/// Single-fit + single-predict helper for a `LearnerDispatch`.
+/// Used by estimators (e.g. `DoubleMLSSM` for the augmented
+/// `(X, D) -> S` pi fit, `DoubleMLIIVM` for conditional subsets
+/// where the augmenting column changes the feature matrix shape)
+/// that need a one-off `fit` on a subset followed by a `predict`
+/// on a different-shape test set — i.e. cases where
+/// `cross_fit_predict_dispatch` (which slices a single matrix
+/// by train/test indices) doesn't apply.
+///
+/// v0.59.0+.
+pub fn fit_predict_one_dispatch(
+  learner : LearnerDispatch,
+  x_train : Matrix,
+  y_train : Array[Double],
+  x_test : Matrix,
+) -> Array[Double] {
+  match learner {
+    LinearRegression(lr) => lr.fit(x_train, y_train).predict(x_test)
+    Constant(c) => c.fit(x_train, y_train).predict(x_test)
+    Noop(n) => n.fit(x_train, y_train).predict(x_test)
+    RandomForest(rf) => rf.fit(x_train, y_train).predict(x_test)
+    GradientBoosting(gb) => gb.fit(x_train, y_train).predict(x_test)
+  }
+}

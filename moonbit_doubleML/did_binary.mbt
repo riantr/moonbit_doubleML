@@ -583,8 +583,8 @@ pub fn DoubleMLDIDBinary::inner_psi_b(
 /// uses the earlier period's covariates as the regressors.
 pub fn DoubleMLDIDBinary::fit(
   self : DoubleMLDIDBinary,
-  ml_g? : LinearRegression = LinearRegression::new(),
-  ml_m? : LinearRegression = LinearRegression::new(),
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDBinary {
   ignore(ml_g)
   ignore(ml_m)
@@ -671,6 +671,8 @@ pub fn DoubleMLDIDBinary::fit(
       score=self.score,
       in_sample_normalization=self.in_sample_normalization,
       strata=strata_acc,
+      ml_g=ml_g,
+      ml_m=ml_m,
     ).fit()
     // v0.15.0+: record the long-format `eval_idx` from the
     // preprocessing so the bootstrap can map wide-format psi

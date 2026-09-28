@@ -319,8 +319,8 @@ pub fn DoubleMLDIDCS::period_at(self : DoubleMLDIDCS, period_idx : Int) -> Int {
 /// layers can drop them via the `nan`-aware aggregator).
 pub fn DoubleMLDIDCS::fit(
   self : DoubleMLDIDCS,
-  ml_g? : LinearRegression = LinearRegression::new(),
-  ml_m? : LinearRegression = LinearRegression::new(),
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCS {
   ignore(ml_g)
   ignore(ml_m)
@@ -428,7 +428,10 @@ pub fn DoubleMLDIDCS::fit(
           ps_processor=self.ps_processor,
           score="observational",
           in_sample_normalization=self.in_sample_normalization,
-        ).fit()
+        ).fit(
+          ml_g=ml_g,
+          ml_m=ml_m,
+        )
         // Append the (g, t) ATT to the running arrays; we will
         // reassemble the per-row-major matrix after the loop (so
         // missing cells — pre / eval combinations with t_eval <= g

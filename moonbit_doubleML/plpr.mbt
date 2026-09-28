@@ -506,6 +506,10 @@ pub struct DoubleMLPLPR {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.59.0+: injected nuisance learner (replaces the v0.57.0
+  // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
+  // callers see byte-identical results.
+  learner : LearnerDispatch
   coef_ : Double
   se_ : Double
   l_hat : Array[Double]
@@ -524,6 +528,7 @@ pub fn DoubleMLPLPR::new(
   n_folds? : Int = 2,
   n_rep? : Int = 1,
   seed? : Int = 3141,
+  learner? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLPLPR {
   try {
     require(
@@ -542,6 +547,7 @@ pub fn DoubleMLPLPR::new(
       n_folds,
       n_rep,
       seed,
+      learner,
       coef_: 0.0,
       se_: 0.0,
       l_hat: [],
@@ -621,7 +627,7 @@ pub fn DoubleMLPLPR::predictions_m(self : DoubleMLPLPR) -> Array[Double] {
 /// cluster-robust SE).
 pub fn DoubleMLPLPR::fit(
   self : DoubleMLPLPR,
-  learner? : LinearRegression = LinearRegression::new(),
+  learner? : LearnerDispatch = self.learner,
   max_attempts? : Int = 1,
 ) -> DoubleMLPLPR {
   try {
@@ -681,8 +687,8 @@ pub fn DoubleMLPLPR::fit(
           folds_u,
           row_unit,
         )
-        l_pred = cross_fit_predict(
-          LinearRegression::new(),
+        l_pred = cross_fit_predict_dispatch(
+          learner,
           tf.x,
           tf.y,
           folds_row,
@@ -698,15 +704,15 @@ pub fn DoubleMLPLPR::fit(
             xm_flat[i * (p + 1) + p] = tf.d_mean_row[i]
           }
           let xm = Matrix::from_array(xm_flat, n, p + 1)
-          m_pred = cross_fit_predict(
-            LinearRegression::new(),
+          m_pred = cross_fit_predict_dispatch(
+            learner,
             xm,
             tf.d,
             folds_row,
           )
         } else {
-          m_pred = cross_fit_predict(
-            LinearRegression::new(),
+          m_pred = cross_fit_predict_dispatch(
+            learner,
             tf.x,
             tf.d,
             folds_row,
@@ -743,8 +749,8 @@ pub fn DoubleMLPLPR::fit(
           for i = 0; i < n; i = i + 1 {
             y_resid[i] = tf.y[i] - theta_init * tf.d[i]
           }
-          let g_pred = cross_fit_predict(
-            LinearRegression::new(),
+          let g_pred = cross_fit_predict_dispatch(
+            learner,
             tf.x,
             y_resid,
             folds_row,
@@ -809,6 +815,7 @@ pub fn DoubleMLPLPR::fit(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      learner,
       coef_: coef,
       se_: se,
       l_hat: l_pred,

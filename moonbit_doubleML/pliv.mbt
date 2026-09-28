@@ -105,6 +105,10 @@ pub struct DoubleMLPLIV {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.59.0+: injected nuisance learner (replaces the v0.57.0
+  // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
+  // callers see byte-identical results.
+  learner : LearnerDispatch
   l_hat : Array[Double]
   r_hat : Array[Double]
   m_hat : Array[Double]
@@ -122,6 +126,7 @@ pub fn DoubleMLPLIV::new(
   n_folds? : Int = 2,
   n_rep? : Int = 1,
   seed? : Int = 3141,
+  learner? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLPLIV {
   try {
     require(n_folds >= 2)
@@ -132,6 +137,7 @@ pub fn DoubleMLPLIV::new(
       n_folds,
       n_rep,
       seed,
+      learner,
       l_hat: Array::make(data.n_obs(), 0.0),
       r_hat: Array::make(data.n_obs(), 0.0),
       m_hat: Array::make(data.n_obs(), 0.0),
@@ -219,15 +225,14 @@ pub fn DoubleMLPLIV::predictions_m(self : DoubleMLPLIV) -> Array[Double] {
 /// upstream `doubleml`), not a cross-rep average.
 pub fn DoubleMLPLIV::fit(
   self : DoubleMLPLIV,
-  learner? : LinearRegression = LinearRegression::new(),
+  learner? : LearnerDispatch = LearnerDispatch::linear_regression(),
   max_attempts? : Int = 1,
 ) -> DoubleMLPLIV {
   try {
     require(max_attempts >= 1)
     if self.data.is_cluster_data() {
-      return self.fit_cluster(learner, max_attempts~)
+      return self.fit_cluster(learner~, max_attempts~)
     }
-    ignore(learner)
     let n = self.n_obs()
     let nrep = self.n_rep
     let coefs : Array[Double] = Array::make(nrep, 0.0)
@@ -238,9 +243,9 @@ pub fn DoubleMLPLIV::fit(
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < nrep; r = r + 1 {
       let folds = kfold(n, self.n_folds, self.seed + r)
-      l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds)
-      r_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds)
-      m_pred = cross_fit_predict(learner, self.data.x, self.data.z, folds)
+      l_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.y, folds)
+      r_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.d, folds)
+      m_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.z, folds)
       // Score (partialling out, single instrument) for THIS rep's nuisances only
       let y = self.data.y
       let d = self.data.d
@@ -265,6 +270,8 @@ pub fn DoubleMLPLIV::fit(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.59.0+: persist per-fit learner override on the struct
+      learner,
       l_hat: l_pred,
       r_hat: r_pred,
       m_hat: m_pred,
@@ -292,7 +299,7 @@ pub fn DoubleMLPLIV::fit(
 /// (`psi_a = -w_hat * v_hat`, `psi_b = v_hat * u_hat`).
 fn DoubleMLPLIV::fit_cluster(
   self : DoubleMLPLIV,
-  learner : LinearRegression,
+  learner~ : LearnerDispatch,
   max_attempts? : Int = 1,
 ) -> DoubleMLPLIV {
   try {
@@ -338,9 +345,9 @@ fn DoubleMLPLIV::fit_cluster(
         let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
           cluster, folds_u, row_unit,
         )
-        l_pred = cross_fit_predict(learner, self.data.x, self.data.y, folds_row)
-        r_pred = cross_fit_predict(learner, self.data.x, self.data.d, folds_row)
-        m_pred = cross_fit_predict(learner, self.data.x, self.data.z, folds_row)
+        l_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.y, folds_row)
+        r_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.d, folds_row)
+        m_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.z, folds_row)
         let y = self.data.y
         let d = self.data.d
         let z = self.data.z
@@ -390,6 +397,9 @@ fn DoubleMLPLIV::fit_cluster(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.59.0+: persist per-fit learner override on the
+      // cluster-path return struct.
+      learner,
       l_hat: l_pred,
       r_hat: r_pred,
       m_hat: m_pred,

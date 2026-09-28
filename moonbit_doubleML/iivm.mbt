@@ -103,6 +103,12 @@ pub struct DoubleMLIIVM {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // v0.59.0+: injected nuisance learners (replaces the v0.57.0
+  // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
+  // callers see byte-identical results.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
+  ml_r : LearnerDispatch
   g0_hat : Array[Double]
   g1_hat : Array[Double]
   m_hat : Array[Double]
@@ -123,6 +129,9 @@ pub fn DoubleMLIIVM::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_r? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLIIVM {
   try {
     require(n_folds >= 2)
@@ -136,6 +145,9 @@ pub fn DoubleMLIIVM::new(
       n_rep,
       seed,
       propensity_clip,
+      ml_g,
+      ml_m,
+      ml_r,
       g0_hat: Array::make(data.n_obs(), 0.0),
       g1_hat: Array::make(data.n_obs(), 0.0),
       m_hat: Array::make(data.n_obs(), 0.0),
@@ -255,9 +267,9 @@ pub fn filter_by_value(
 /// `require(...)` rather than silently writing zero predictions —
 /// silently-zero nuisance predictions would corrupt the LATE score.
 fn cross_fit_iivm(
-  ml_g : LinearRegression,
-  ml_m : LinearRegression,
-  ml_r : LinearRegression,
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
+  ml_r : LearnerDispatch,
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
@@ -279,40 +291,45 @@ fn cross_fit_iivm(
       let train_z1 = filter_by_value(train_idx, z, 1.0)
       require(train_z0.length() > 0)
       require(train_z1.length() > 0)
-      // g0
-      let xt = slice_matrix_rows(x, train_z0)
-      let yt = slice_vector(y, train_z0)
-      let p = ml_g.fit(xt, yt).predict(slice_matrix_rows(x, test_idx))
+      // g0: train on z == 0 subset
+      let p0 = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_z0, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        g0[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        g0[row] = p0[row]
       }
-      // g1
-      let xt = slice_matrix_rows(x, train_z1)
-      let yt = slice_vector(y, train_z1)
-      let p = ml_g.fit(xt, yt).predict(slice_matrix_rows(x, test_idx))
+      // g1: train on z == 1 subset
+      let p1 = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_z1, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        g1[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        g1[row] = p1[row]
       }
-      // m (trained on all)
-      let p = ml_m
-        .fit(slice_matrix_rows(x, train_idx), slice_vector(z, train_idx))
-        .predict(slice_matrix_rows(x, test_idx))
+      // m: train on all rows (instrument as y)
+      let pm = cross_fit_predict_dispatch(
+        ml_m, x, z, [Fold::new(train_idx, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        m[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        m[row] = pm[row]
       }
-      // r0
-      let xt = slice_matrix_rows(x, train_z0)
-      let dt = slice_vector(d, train_z0)
-      let p = ml_r.fit(xt, dt).predict(slice_matrix_rows(x, test_idx))
+      // r0: train on z == 0 subset (treatment as y)
+      let pr0 = cross_fit_predict_dispatch(
+        ml_r, x, d, [Fold::new(train_z0, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        r0[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        r0[row] = pr0[row]
       }
-      // r1
-      let xt = slice_matrix_rows(x, train_z1)
-      let dt = slice_vector(d, train_z1)
-      let p = ml_r.fit(xt, dt).predict(slice_matrix_rows(x, test_idx))
+      // r1: train on z == 1 subset (treatment as y)
+      let pr1 = cross_fit_predict_dispatch(
+        ml_r, x, d, [Fold::new(train_z1, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        r1[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        r1[row] = pr1[row]
       }
     }
     let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
@@ -339,15 +356,15 @@ fn cross_fit_iivm(
 /// choice in upstream `doubleml`), not a cross-rep average.
 pub fn DoubleMLIIVM::fit(
   self : DoubleMLIIVM,
-  ml_g? : LinearRegression = LinearRegression::new(),
-  ml_m? : LinearRegression = LinearRegression::new(),
-  ml_r? : LinearRegression = LinearRegression::new(),
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
+  ml_r? : LearnerDispatch = self.ml_r,
   max_attempts? : Int = 1,
 ) -> DoubleMLIIVM {
   try {
     require(max_attempts >= 1)
     if self.data.is_cluster_data() {
-      return self.fit_cluster(ml_g, ml_m, ml_r, max_attempts~)
+      return self.fit_cluster(ml_g~, ml_m~, ml_r~, max_attempts~)
     }
     ignore(ml_g)
     ignore(ml_m)
@@ -413,6 +430,9 @@ pub fn DoubleMLIIVM::fit(
       n_rep: self.n_rep,
       seed: self.seed,
       propensity_clip: self.propensity_clip,
+      ml_g,
+      ml_m,
+      ml_r,
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,
@@ -443,9 +463,9 @@ pub fn DoubleMLIIVM::fit(
 /// `psi_b = g1 - g0 + z u1/m - (1 - z) u0/(1 - m)`).
 fn DoubleMLIIVM::fit_cluster(
   self : DoubleMLIIVM,
-  ml_g : LinearRegression,
-  ml_m : LinearRegression,
-  ml_r : LinearRegression,
+  ml_g~ : LearnerDispatch,
+  ml_m~ : LearnerDispatch,
+  ml_r~ : LearnerDispatch,
   max_attempts? : Int = 1,
 ) -> DoubleMLIIVM {
   try {
@@ -567,6 +587,9 @@ fn DoubleMLIIVM::fit_cluster(
       n_rep: self.n_rep,
       seed: self.seed,
       propensity_clip: self.propensity_clip,
+      ml_g,
+      ml_m,
+      ml_r,
       g0_hat: g0,
       g1_hat: g1,
       m_hat: m,

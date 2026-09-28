@@ -90,6 +90,11 @@ pub struct DoubleMLSSM {
   n_rep : Int
   seed : Int
   propensity_clip : Double
+  // v0.59.0+: injected nuisance learners (replaces the v0.57.0
+  // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
+  // callers see byte-identical results.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   pi_hat : Array[Double]
   m_hat : Array[Double]
   g_d1 : Array[Double]
@@ -109,6 +114,8 @@ pub fn DoubleMLSSM::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLSSM {
   try {
     require(n_folds >= 2)
@@ -122,6 +129,8 @@ pub fn DoubleMLSSM::new(
       n_rep,
       seed,
       propensity_clip,
+      ml_g,
+      ml_m,
       pi_hat: Array::make(data.n_obs(), 0.0),
       m_hat: Array::make(data.n_obs(), 0.0),
       g_d1: Array::make(data.n_obs(), 0.0),
@@ -247,9 +256,9 @@ pub fn filter_two_values(
 /// subsample `{D=d, S=1}` for the cross-fit partitions; the
 /// `pi_hat` is still used in the score formula.
 fn cross_fit_ssm(
-  ml_g : LinearRegression,
-  ml_m : LinearRegression,
-  ml_pi : LinearRegression,
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
+  ml_pi : LearnerDispatch,
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
@@ -266,11 +275,12 @@ fn cross_fit_ssm(
     let train_idx = fold.train_indices()
     let test_idx = fold.test_indices()
     // m_hat on X -> D (all obs)
-    let m_pred = ml_m
-      .fit(slice_matrix_rows(x, train_idx), slice_vector(d, train_idx))
-      .predict(slice_matrix_rows(x, test_idx))
+    let pm = cross_fit_predict_dispatch(
+      ml_m, x, d, [Fold::new(train_idx, test_idx)],
+    )
     for k = 0; k < test_idx.length(); k = k + 1 {
-      m[test_idx[k]] = m_pred[k]
+      let row = test_idx[k]
+      m[row] = pm[row]
     }
     // pi_hat on (X, D) -> S
     let xd_train = augment_one_col(
@@ -281,33 +291,36 @@ fn cross_fit_ssm(
       slice_matrix_rows(x, test_idx),
       slice_vector(d, test_idx),
     )
-    let pi_pred = ml_pi
-      .fit(xd_train, slice_vector(s, train_idx))
-      .predict(xd_test)
+    let pi_pred = fit_predict_one_dispatch(
+      ml_pi,
+      xd_train,
+      slice_vector(s, train_idx),
+      xd_test,
+    )
     for k = 0; k < test_idx.length(); k = k + 1 {
-      pi[test_idx[k]] = pi_pred[k]
+      let row = test_idx[k]
+      pi[row] = pi_pred[k]
     }
-    // g_d1: train on {D=1, S=1}, features = X only. (Bug #1: do NOT
-    // append `pi` — the upstream MAR fit uses X alone.)
+    // g_d1: train on {D=1, S=1}, features = X only.
     let train_d1_s1 = filter_two_values(train_idx, d, 1.0, s, 1.0)
     if train_d1_s1.length() > 0 {
-      let x_train = slice_matrix_rows(x, train_d1_s1)
-      let x_test = slice_matrix_rows(x, test_idx)
-      let yt = slice_vector(y, train_d1_s1)
-      let p = ml_g.fit(x_train, yt).predict(x_test)
+      let pg = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_d1_s1, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        gd1[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        gd1[row] = pg[row]
       }
     }
     // g_d0: train on {D=0, S=1}, features = X only.
     let train_d0_s1 = filter_two_values(train_idx, d, 0.0, s, 1.0)
     if train_d0_s1.length() > 0 {
-      let x_train = slice_matrix_rows(x, train_d0_s1)
-      let x_test = slice_matrix_rows(x, test_idx)
-      let yt = slice_vector(y, train_d0_s1)
-      let p = ml_g.fit(x_train, yt).predict(x_test)
+      let pg0 = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_d0_s1, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        gd0[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        gd0[row] = pg0[row]
       }
     }
   }
@@ -320,9 +333,9 @@ fn cross_fit_ssm(
 /// Run the SSM estimation.
 pub fn DoubleMLSSM::fit(
   self : DoubleMLSSM,
-  ml_g? : LinearRegression = LinearRegression::new(),
-  ml_m? : LinearRegression = LinearRegression::new(),
-  ml_pi? : LinearRegression = LinearRegression::new(),
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
+  ml_pi? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLSSM {
   ignore(ml_g)
   ignore(ml_m)
@@ -391,6 +404,8 @@ pub fn DoubleMLSSM::fit(
       n_rep: self.n_rep,
       seed: self.seed,
       propensity_clip: self.propensity_clip,
+      ml_g,
+      ml_m,
       pi_hat,
       m_hat,
       g_d1,

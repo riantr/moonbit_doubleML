@@ -151,6 +151,11 @@ pub struct DoubleMLDID {
   // differs in finite samples. Default is `false` to preserve
   // pre-0.8.0 bit-equality with the prior `DoubleMLDID` port.
   in_sample_normalization : Bool
+  // v0.59.0+: injected nuisance learners (replaces the v0.57.0
+  // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
+  // callers see byte-identical results.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
   // Optional per-observation stratum label for stratified K-fold
   // sample splitting. If non-empty, `fit` calls
   // `stratified_kfold` instead of `kfold`; fold `f` of the resulting
@@ -193,6 +198,8 @@ pub fn DoubleMLDID::new(
   score? : String = "observational",
   in_sample_normalization? : Bool = false,
   strata? : Array[Int] = [],
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDID {
   try {
     require(n_folds >= 2)
@@ -212,6 +219,8 @@ pub fn DoubleMLDID::new(
       ps_processor,
       score,
       in_sample_normalization,
+      ml_g,
+      ml_m,
       strata,
       g0_hat: Array::make(data.n_obs(), 0.0),
       g1_hat: Array::make(data.n_obs(), 0.0),
@@ -288,8 +297,8 @@ pub fn DoubleMLDID::predictions_m(self : DoubleMLDID) -> Array[Double] {
 /// `g1` (D = 1 only), `m` (all observations). Each returns length-`n_obs`
 /// vectors. The test folds cover the full observation set.
 fn cross_fit_did(
-  ml_g : LinearRegression,
-  ml_m : LinearRegression,
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
@@ -306,26 +315,29 @@ fn cross_fit_did(
     let train_d0 = filter_by_value(train_idx, d, 0.0)
     let train_d1 = filter_by_value(train_idx, d, 1.0)
     if train_d0.length() > 0 {
-      let xt = slice_matrix_rows(x, train_d0)
-      let yt = slice_vector(y, train_d0)
-      let p = ml_g.fit(xt, yt).predict(slice_matrix_rows(x, test_idx))
+      let p = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_d0, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        g0[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        g0[row] = p[row]
       }
     }
     if train_d1.length() > 0 {
-      let xt = slice_matrix_rows(x, train_d1)
-      let yt = slice_vector(y, train_d1)
-      let p = ml_g.fit(xt, yt).predict(slice_matrix_rows(x, test_idx))
+      let p = cross_fit_predict_dispatch(
+        ml_g, x, y, [Fold::new(train_d1, test_idx)],
+      )
       for k = 0; k < test_idx.length(); k = k + 1 {
-        g1[test_idx[k]] = p[k]
+        let row = test_idx[k]
+        g1[row] = p[row]
       }
     }
-    let p = ml_m
-      .fit(slice_matrix_rows(x, train_idx), slice_vector(d, train_idx))
-      .predict(slice_matrix_rows(x, test_idx))
+    let p = cross_fit_predict_dispatch(
+      ml_m, x, d, [Fold::new(train_idx, test_idx)],
+    )
     for k = 0; k < test_idx.length(); k = k + 1 {
-      m[test_idx[k]] = p[k]
+      let row = test_idx[k]
+      m[row] = p[row]
     }
   }
   let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
@@ -336,8 +348,8 @@ fn cross_fit_did(
 /// Run the DID estimation.
 pub fn DoubleMLDID::fit(
   self : DoubleMLDID,
-  ml_g? : LinearRegression = LinearRegression::new(),
-  ml_m? : LinearRegression = LinearRegression::new(),
+  ml_g? : LearnerDispatch = self.ml_g,
+  ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDID {
   ignore(ml_g)
   ignore(ml_m)
@@ -473,6 +485,8 @@ pub fn DoubleMLDID::fit(
     propensity_clip: self.propensity_clip,
     ps_processor: self.ps_processor,
     score: self.score,
+    ml_g,
+    ml_m,
     in_sample_normalization: self.in_sample_normalization,
     strata: self.strata,
     g0_hat,
