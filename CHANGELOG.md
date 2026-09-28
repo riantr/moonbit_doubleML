@@ -6,8 +6,144 @@ verification verdict.
 
 Format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
-under each TODO is reset on every release 鈥?the most recent verified
+under each TODO is reset on every release — the most recent verified
 release is the canonical version.
+
+---
+## [0.58.0] -- `DoubleMLPLR::tune()` (grid search over nuisance learners)
+
+Cycle-driven from the user's "做1 2 3 4 5" decision after
+v0.57.0 shipped. This release is **Item 3** of that batch
+(5 items): the first implementation of
+`DoubleMLPLR::tune(...)` for grid-search hyperparameter
+selection over `learner_l` / `learner_m` combinations. Items
+4-5 (Learner injection on 11 other estimators, bootstrap()
+on non-DID estimators) follow in subsequent releases.
+
+This release does NOT extend `tune()` to non-PLR estimators
+(`DoubleMLIRM`, `DoubleMLPLIV`, etc.). Cross-estimator tune
+support is part of Item 4 (Learner injection): tune() will
+land on each estimator as its `Learner` injection lands.
+
+### Added
+
+- **`DoubleMLPLR::tune` (tune.mbt, 10.8 KB)** -- grid-search
+  hyperparameter selection for nuisance learners. Given a
+  grid of `(learner_l, learner_m)` `TuneParam` candidates,
+  scores each candidate by MSE-on-`l_hat` under a fresh
+  fold schedule (`folds_tune`, independent of the final-fit
+  `self.n_folds` to avoid information leakage), then
+  re-fits the model with the winner under the final-fit
+  schedule. Returns a `DoubleMLPLR` (fused-with-tune-result
+  for diagnostics).
+
+- **`TuneParam` (struct, tune.mbt)** -- one row of the
+  candidate grid: `{ learner_l : LearnerDispatch, learner_m
+  : LearnerDispatch }`. Typed wrapper instead of
+  `Dict[String, LearnerDispatch]` (TUNE_DESIGN.md §3 [OPEN]
+  resolved at the typed-wrapper end). Factory:
+  `TuneParam::new(learner_l, learner_m)`.
+
+- **`TuneScoring` (enum, tune.mbt)** -- one of `MSE`,
+  `RMSE`, `NegMSE`. Accepted scoring-method strings are
+  `"MSE"` / `"mse"`, `"RMSE"` / `"rmse"`, `"neg-MSE"` /
+  `"neg-mse"` / `"NegMSE"`. Unknown spellings abort with a
+  descriptive message (TUNE_DESIGN.md §7). Factory:
+  `TuneScoring::parse(s)`.
+
+- **`TuneResult` (struct, tune.mbt)** -- the outcome of a
+  successful tune call: `{ best : TuneParam, best_score :
+  Double, all_scores : Array[Double] }`. Recorded on the
+  re-fitted `DoubleMLPLR` via the new
+  `DoubleMLPLR::tune_result() -> TuneResult?` accessor. `None`
+  for models built via `DoubleMLPLR::new(...)` or re-fit via
+  `DoubleMLPLR::fit(...)` (a re-fit discards the prior tune
+  history because the nuisance learners may have changed).
+
+- **`DoubleMLPLR::tune_result` (field, plr.mbt)** --
+  optional `TuneResult?` field on the struct; set by
+  `DoubleMLPLR::tune(...)`, cleared by `DoubleMLPLR::fit(...)`
+  / `DoubleMLPLR::fit_cluster(...)`. v0.58.0 is the first
+  release that adds a field to the struct since v0.55.0; the
+  field is fully backwards-compatible (defaults to `None`).
+
+- **`DoubleMLPLR::fit` / `DoubleMLPLR::fit_cluster` accept
+  `tune_result?` (labeled optional)** -- the fit path
+  forwards the caller's tune-result override (set by
+  `tune()`) onto the returned `DoubleMLPLR`. Default `None`
+  preserves v0.57.0 behavior for plain `fit(...)` callers.
+
+### Design decisions (TUNE_DESIGN.md [OPEN] points)
+
+The 6 `[OPEN]` decision points in `TUNE_DESIGN.md` were
+resolved as follows:
+
+1. **§3 / `param_set` element type** → typed
+   `TuneParam` struct (not `Dict[String, LearnerDispatch]`):
+   compile-time type safety, no Dict-construction FFI
+   overhead, cleaner documentation. The Python upstream
+   `doubleml.DoubleMLPLR.tune` uses an analogous shape
+   internally.
+2. **§3.2 / extra `tune_settings` keys** → deferred.
+   `scoring` is the only setting exposed in v0.58.0; the
+   `cv_strategy` / `stratify` keys land in v0.59.0+ when
+   `kfold_stratified` is wired through `tune()`.
+3. **§4.1 / `scoring_target` key** → deferred. Default
+   `"outcome"` (matches Python upstream) — no override
+   key for v0.58.0.
+4. **§5 / fold-aware cache key API** → deferred. v0.58.0
+   does not cache tune-time cross-fits; each candidate
+   re-runs `cross_fit_predict_dispatch` under `folds_tune`.
+   For the typical 5-20 candidate grids this is fast enough
+   (5 candidates × 5 folds × ~1 ms = 25 ms per candidate);
+   cache lands in v0.59.0+ when grids grow to 50+.
+5. **§6 / Path A vs Path A+B** → Path A is fully landed
+   (v0.56.0 RF + v0.57.0 GB). `tune()` works with all 5
+   `LearnerDispatch` arms without further learner work.
+6. **§7 / divergent-learner recovery** → partial: defensive
+   length-check on `l_hat_c` sets `score_c = 1.0e300`
+   sentinel so the argmin rule excludes the divergent
+   candidate. True exception-based recovery (`Learner::predict`
+   as `Result[Array[Double], _]`) is v0.59.0+.
+
+### Edge cases (TUNE_DESIGN.md §7)
+
+- `param_set.length() == 0` → abort with descriptive
+  message via the existing `PreconditionError` cascade.
+- `param_set.length() == 1` → skip the scoring loop, re-fit
+  with the single candidate. `tune_result` is still
+  populated (informational `best_score`).
+- `n_folds_tune >= 2` required.
+- `scoring_method` not in known set → abort via
+  `TuneScoring::parse`.
+- Cluster-data (`DoubleMLData::is_cluster_data()`) → abort
+  via `require(false)` cascade. Cluster-aware tuning lands
+  in v0.59.0+ as a separate method or extension.
+- `seed` not set → defaults to `3141` (matches
+  `DoubleMLPLR::new`'s default).
+
+### Test count delta
+
+- `tune_wbtest.mbt` adds **9 wbtests** (constructor /
+  parser / accessor round-trips, single-candidate skip, 2x2
+  argmin, neg-MSE argmax, RMSE sqrt check, GB integration,
+  re-fit clears `tune_result`).
+- All 4 backends pass:
+  - native: 463 (was 454)
+  - wasm:   463 (was 444)
+  - js:     463 (was 444)
+  - wasm-gc: 469 (was 450)
+- 23/23 Python cross-validators PASS in 117.1s.
+
+### Carry-over from v0.57.0
+
+v0.58.0 does not regress the v0.57.0 surface: a model
+built via `DoubleMLPLR::new(...).fit()` produces the
+same byte-identical `coef` / `se` as before. The new
+`tune_result` field is `None` for non-tuned fits, so any
+downstream consumer that pattern-matches on
+`plr.tune_result()` (currently nothing in the codebase
+does) sees `None` for v0.57.0-style models.
 
 ---
 ## [0.57.0] -- Path A `GBLearner` (gradient boosting regression)

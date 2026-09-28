@@ -50,6 +50,12 @@ pub struct DoubleMLPLR {
   coef : Double
   se : Double
   fitted : Bool
+  // v0.58.0+: populated by `DoubleMLPLR::tune(...)` with the
+  // chosen candidate and per-candidate scores. `None` for models
+  // built via `DoubleMLPLR::new(...)` or re-fit via
+  // `DoubleMLPLR::fit(...)` (a re-fit discards the prior tune
+  // history because the nuisance learners may have changed).
+  tune_result : TuneResult?
 } derive(Debug)
 
 ///|
@@ -80,6 +86,7 @@ pub fn DoubleMLPLR::new(
       coef: 0.0,
       se: 0.0,
       fitted: false,
+      tune_result: None,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -148,6 +155,21 @@ pub fn DoubleMLPLR::predictions_l(self : DoubleMLPLR) -> Array[Double] {
 /// Cross-fitted nuisance predictions for the treatment (length `n`).
 pub fn DoubleMLPLR::predictions_m(self : DoubleMLPLR) -> Array[Double] {
   self.m_hat
+}
+
+///|
+/// Accessor for the `tune_result` populated by
+/// `DoubleMLPLR::tune(...)` (v0.58.0+). Returns `None` for
+/// models built via `DoubleMLPLR::new(...)` or re-fit via
+/// `DoubleMLPLR::fit(...)` (a re-fit discards the prior tune
+/// history because the nuisance learners may have changed).
+///
+/// Inspect the returned `TuneResult` to see which `(learner_l,
+/// learner_m)` combination won under the chosen scoring rule,
+/// what the best score was, and the per-candidate score vector
+/// (in `param_set` order).
+pub fn DoubleMLPLR::tune_result(self : DoubleMLPLR) -> TuneResult? {
+  self.tune_result
 }
 
 ///|
@@ -262,6 +284,7 @@ pub fn DoubleMLPLR::fit(
   learner_m? : LearnerDispatch = self.learner_m,
   max_attempts? : Int = 1,
   score? : String = "partialling-out",
+  tune_result? : TuneResult? = None,
 ) -> DoubleMLPLR {
   try {
     require(
@@ -277,7 +300,7 @@ pub fn DoubleMLPLR::fit(
       require(self.data.z.length() == self.n_obs())
     }
     if self.data.is_cluster_data() {
-      return self.fit_cluster(learner_l~, learner_m~, max_attempts~, score~)
+      return self.fit_cluster(learner_l~, learner_m~, max_attempts~, score~, tune_result~)
     }
     let n = self.n_obs()
     let nrep = self.n_rep
@@ -329,6 +352,10 @@ pub fn DoubleMLPLR::fit(
       coef,
       se,
       fitted: true,
+      // honor the caller's tune_result override (set by
+      // `DoubleMLPLR::tune`); default `None` preserves v0.57.0
+      // behavior for plain `fit(...)` callers.
+      tune_result,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -354,6 +381,7 @@ fn DoubleMLPLR::fit_cluster(
   learner_m~ : LearnerDispatch,
   max_attempts? : Int = 1,
   score? : String = "partialling-out",
+  tune_result? : TuneResult? = None,
 ) -> DoubleMLPLR {
   try {
     require(max_attempts >= 1)
@@ -496,6 +524,10 @@ fn DoubleMLPLR::fit_cluster(
       coef,
       se,
       fitted: true,
+      // cluster path: honor caller's tune_result override
+      // (set by `DoubleMLPLR::tune`); default `None` preserves
+      // v0.57.0 behavior for plain `fit(...)` callers.
+      tune_result,
     }
   } catch {
     PreconditionError::Violated(loc) =>
