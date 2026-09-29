@@ -10,6 +10,56 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.62.1] -- docs: README refinements (rabbita style)
+
+Cycle-driven from the user's "现在修订README(保持rabitta风格)，然后推一版到mooncakes"
+after v0.62.0 shipped. The user asked for a README refresh that
+(a) keeps the rabbita-style `#SectionName` heading format the
+v0.60.0 cycle established and (b) surfaces the v0.62.0
+LearnerDispatch-plumbing story more prominently.
+
+This is a docs-only release — no `.mbt` code changed, all 4
+backends still PASS 485/485 (native / wasm / js) and 491/491
+(wasm-gc), 23/23 Python cross-validators still PASS.
+
+### Changed
+
+- **#Features**: expanded the `LearnerDispatch` bullet to enumerate
+  the 6 built-in learner variants (`LinearRegression`,
+  `ConstantLearner`, `NoopLearner`, `RFLearner`, `GBLearner`,
+  `LogisticRegression` — last one added in v0.62.0) and to call
+  out the v0.62.0 plumbing reach-throughs: which 5 specialised
+  internals now route through `LearnerDispatch`
+  (`DoubleMLDIDCrossSection::crossfit_nuisance`,
+  `DoubleMLDIDCSBinary::cs_bin_crossfit_nuisance`,
+  `DoubleMLPQ::solve_pq` / `DoubleMLQTE::solve_pq`,
+  `DoubleMLCVAR::cvar_inner_crossfit`,
+  `DoubleMLLPLR::cross_fit_predict_dispatch` family,
+  `DoubleMLRDD::rdd_side`).
+- **#Models**: clarified the file-count story — 22 estimator
+  structs in 22 files (one per struct), 129 `.mbt` files total
+  (the supporting DGPs / nuisance kernels / score helpers make up
+  the other 107). The 17-file number from the v0.60.0 README was
+  stale (pre-v0.61.0 + v0.62.0 cycle).
+- **#Determinism & validation**: pinned the v0.62.0 verified
+  counts (485 / 485 native / wasm / js; 491 / 491 wasm-gc; 23 / 23
+  Python cross-validators in ~70 s; `moon fmt --check` clean).
+- **#Status (table)**: 0.62.1 (this release). All other table
+  cells preserved.
+- **#Quick Start**: console block updated to the v0.62.0
+  `moon test --deny-warn` line (`485 / 485`).
+
+### Verified (no code change)
+
+- `moon check --deny-warn`: 0 errors.
+- `moon fmt --check`: clean (no diff).
+- `moon test --target native`: 485 / 485 PASS.
+- `moon test --target wasm`: 485 / 485 PASS.
+- `moon test --target wasm-gc`: 491 / 491 PASS.
+- `moon test --target js`: 485 / 485 PASS.
+- `python _verify/run_all_validators.py`: 23 / 23 PASS in 69.6 s.
+
+---
 ## [0.62.0] -- Item 6: LearnerDispatch plumbing into 5 specialised internals
 
 Cycle-driven from the user's "1+2" decision after v0.61.0 shipped:

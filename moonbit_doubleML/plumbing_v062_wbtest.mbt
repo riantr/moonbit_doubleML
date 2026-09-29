@@ -98,19 +98,20 @@ test "pq_rf_learning_actually_runs" {
       x_flat[i * p + j] = rng.double()
     }
     d[i] = if rng.double() > 0.5 { 1.0 } else { 0.0 }
-    y[i] = 1.0 * d[i] +
-      0.5 * x_flat[i * p + 0] +
-      rng.double() * 0.5
+    y[i] = 1.0 * d[i] + 0.5 * x_flat[i * p + 0] + rng.double() * 0.5
   }
   let x = Matrix::from_array(x_flat, n, p)
   let data = DoubleMLData::new(x, y, d)
   let rf = LearnerDispatch::random_forest(
     RFLearner::new(n_trees=4, max_depth=3, bootstrap_seed=5),
   )
-  let fitted = DoubleMLPQ::new(data, treatment=1.0, quantile=0.5, n_folds=2, seed=202).fit(
-    ml_l=rf,
-    ml_m=rf,
-  )
+  let fitted = DoubleMLPQ::new(
+    data,
+    treatment=1.0,
+    quantile=0.5,
+    n_folds=2,
+    seed=202,
+  ).fit(ml_l=rf, ml_m=rf)
   assert_true(fitted.coef().is_nan() == false)
   assert_true(fitted.se() > 0.0)
 }
@@ -132,19 +133,20 @@ test "cvar_rf_learning_actually_runs" {
       x_flat[i * p + j] = rng.double()
     }
     d[i] = if rng.double() > 0.5 { 1.0 } else { 0.0 }
-    y[i] = 1.0 * d[i] +
-      0.5 * x_flat[i * p + 0] +
-      (rng.double() - 0.5) * 0.2
+    y[i] = 1.0 * d[i] + 0.5 * x_flat[i * p + 0] + (rng.double() - 0.5) * 0.2
   }
   let x = Matrix::from_array(x_flat, n, p)
   let data = DoubleMLData::new(x, y, d)
   let rf = LearnerDispatch::random_forest(
     RFLearner::new(n_trees=4, max_depth=3, bootstrap_seed=9),
   )
-  let fitted = DoubleMLCVAR::new(data, treatment=1.0, quantile=0.7, n_folds=2, seed=303).fit(
-    ml_g=rf,
-    ml_m=rf,
-  )
+  let fitted = DoubleMLCVAR::new(
+    data,
+    treatment=1.0,
+    quantile=0.7,
+    n_folds=2,
+    seed=303,
+  ).fit(ml_g=rf, ml_m=rf)
   assert_true(fitted.coef().is_nan() == false)
   assert_true(fitted.se() > 0.0)
 }
@@ -202,23 +204,22 @@ test "rdd_rf_learning_actually_runs" {
       x_flat[i * p + j] = rng.double()
     }
     score[i] = rng.double()
-    let xb = 1.0 * (score[i] - 0.5) +
-      0.5 * x_flat[i * p + 0]
+    let xb = 1.0 * (score[i] - 0.5) + 0.5 * x_flat[i * p + 0]
     y[i] = xb + (rng.double() - 0.5) * 0.2
-    d[i] = if rng.double() < 0.5 + 0.4 * (score[i] - 0.5) {
-      1.0
-    } else {
-      0.0
-    }
+    d[i] = if rng.double() < 0.5 + 0.4 * (score[i] - 0.5) { 1.0 } else { 0.0 }
   }
   let x = Matrix::from_array(x_flat, n, p)
   let data = DoubleMLRDDData::new(x, y, d, score)
   let rf = LearnerDispatch::random_forest(
     RFLearner::new(n_trees=4, max_depth=3, bootstrap_seed=15),
   )
-  let fitted = DoubleMLRDD::new(data, cutoff=0.5, bandwidth=0.5, fuzzy=false, cov_type="HC0").fit(
-    ml_g=rf,
-  )
+  let fitted = DoubleMLRDD::new(
+    data,
+    cutoff=0.5,
+    bandwidth=0.5,
+    fuzzy=false,
+    cov_type="HC0",
+  ).fit(ml_g=rf)
   assert_true(fitted.coef().is_nan() == false)
   assert_true(fitted.se() > 0.0)
 }

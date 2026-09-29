@@ -675,11 +675,9 @@ pub fn double_cross_fit_predict_dispatch(
   match learner {
     LinearRegression(lr) =>
       double_cross_fit_predict(lr, x, y, outer, n_inner, seed)
-    Constant(c) =>
-      double_cross_fit_predict(c, x, y, outer, n_inner, seed)
+    Constant(c) => double_cross_fit_predict(c, x, y, outer, n_inner, seed)
     Noop(n) => double_cross_fit_predict(n, x, y, outer, n_inner, seed)
-    RandomForest(rf) =>
-      double_cross_fit_predict(rf, x, y, outer, n_inner, seed)
+    RandomForest(rf) => double_cross_fit_predict(rf, x, y, outer, n_inner, seed)
     GradientBoosting(gb) =>
       double_cross_fit_predict(gb, x, y, outer, n_inner, seed)
     LogisticRegression(lr) =>

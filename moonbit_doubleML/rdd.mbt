@@ -198,8 +198,10 @@ fn rdd_side(
         // dispatch path through `cross_fit_predict_dispatch` with
         // a trivial fold list.
         let trivial_fold : Array[Fold] = [
-          { train_idx: Array::makei(ids.length(),  fn(k) { k }),
-            test_idx: Array::make(ids.length(),    0) },
+          {
+            train_idx: Array::makei(ids.length(), fn(k) { k }),
+            test_idx: Array::make(ids.length(), 0),
+          },
         ]
         let _ = trivial_fold
         // Use LinearRegression as the model holder for variance

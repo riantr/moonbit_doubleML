@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.62.0** |
+| `moon.mod` version | **0.62.1** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 129 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -98,11 +98,28 @@ framework is pulled in.
 in the library. Non-official deps restricted to `riantr/*` (this
 repo). Reproducible builds, minimal supply-chain surface.
 
+**Learner injection via `LearnerDispatch`** — every estimator's
+`new()` / `fit()` accept `ml_g` / `ml_m` / `ml_l` / `ml_r` typed
+optionals. Default is `LearnerDispatch::linear_regression()` (OLS);
+v0.62.0+ also accepts `LearnerDispatch::logistic_regression(LR)` for
+LPLR's binary-classification slots. Built-in learners:
+`LinearRegression`, `ConstantLearner`, `NoopLearner`,
+`RFLearner` (Breiman 2001 regression), `GBLearner` (Friedman 2001
+regression). `RFLearner` and `GBLearner` now reach the 5 specialised
+internals — `DoubleMLDIDCrossSection::crossfit_nuisance`,
+`DoubleMLDIDCSBinary::cs_bin_crossfit_nuisance`,
+`DoubleMLPQ::solve_pq` / `DoubleMLQTE::solve_pq`,
+`DoubleMLCVAR::cvar_inner_crossfit`, and
+`DoubleMLLPLR::cross_fit_predict_dispatch` (binary classifier slots) /
+`DoubleMLRDD::rdd_side` (kernel-weighted OLS for `ml_g = LinearRegression`,
+unweighted fallback for other learners). Defaults preserve v0.61.0
+byte-equality; non-default overrides change the IF and the coef.
+
 #Quick Start
 
 ```console
 $ moon test --deny-warn
-Total tests: 466, passed: 466, failed: 0.
+Total tests: 485, passed: 485, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
@@ -187,11 +204,13 @@ no third-party HTTP framework is pulled in.
 
 #Models
 
-22 estimators (`DoubleML*` structs) in 17 files, all reachable through
-the same `DoubleMLXxx::new(...).fit()` interface. The 19 marked
-*(upstream)* mirror the upstream `doubleml-for-py` API surface; the 3
-*(extra)* rows are MoonBit additions for static-panel PLR,
-partially-logistic regression, and binary-outcome CS-DID:
+22 estimators (`DoubleML*` structs) in 22 files (one struct per file,
+plus the supporting DGPs and score / nuisance kernels in 129 files
+total), all reachable through the same `DoubleMLXxx::new(...).fit()`
+interface. The 19 marked *(upstream)* mirror the upstream
+`doubleml-for-py` API surface; the 3 *(extra)* rows are MoonBit
+additions for static-panel PLR, partially-logistic regression, and
+binary-outcome CS-DID:
 
 | Model | Score | Description |
 |-------|-------|-------------|
@@ -221,7 +240,7 @@ partially-logistic regression, and binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.62.0, 129 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.62.1, 129 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -266,6 +285,10 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `PASS` line from each script.
 - `dgp_recovery_test.mbt` enforces `|coef - theta| < MAX(MODEL_TOL=0.1,
   2.0 * handrolled_se)`. The tolerance is contractual.
+- v0.62.0 verified counts: `moon test` 485 / 485 (native & wasm &
+  js) and 491 / 491 (wasm-gc); `python _verify/run_all_validators.py`
+  23 / 23 PASS in ~70 s. `moon fmt --check` is now clean (was
+  failing on every release since v0.57.0).
 
 #Attribution
 

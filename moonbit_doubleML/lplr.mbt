@@ -666,16 +666,12 @@ fn cross_fit_predict_inner_dispatch(
   folds : Array[Fold],
 ) -> Array[Double] {
   match learner {
-    LinearRegression(lr) =>
-      cross_fit_predict_inner(lr, x, targets, folds)
+    LinearRegression(lr) => cross_fit_predict_inner(lr, x, targets, folds)
     Constant(c) => cross_fit_predict_inner(c, x, targets, folds)
     Noop(n) => cross_fit_predict_inner(n, x, targets, folds)
-    RandomForest(rf) =>
-      cross_fit_predict_inner(rf, x, targets, folds)
-    GradientBoosting(gb) =>
-      cross_fit_predict_inner(gb, x, targets, folds)
-    LogisticRegression(lr) =>
-      cross_fit_predict_inner(lr, x, targets, folds)
+    RandomForest(rf) => cross_fit_predict_inner(rf, x, targets, folds)
+    GradientBoosting(gb) => cross_fit_predict_inner(gb, x, targets, folds)
+    LogisticRegression(lr) => cross_fit_predict_inner(lr, x, targets, folds)
   }
 }
 
