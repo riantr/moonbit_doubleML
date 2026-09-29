@@ -58,11 +58,7 @@ test "gbl_wbtest_constructor_explicit" {
 ///|
 test "gbl_wbtest_predict_unfitted_returns_zeros" {
   let gb = GBLearner::new(n_trees=10)
-  let x : Matrix = {
-    nrows: 3,
-    ncols: 2,
-    data: [1.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-  }
+  let x : Matrix = { nrows: 3, ncols: 2, data: [1.0, 0.0, 0.0, 1.0, 1.0, 1.0], }
   let out = gb.predict(x)
   inspect(out.length(), content="3")
   // Unfitted: trees.length() == 0, returns the initial (= 0.0)
@@ -78,7 +74,7 @@ test "gbl_wbtest_predict_empty_input" {
     Matrix::from_array([1.0, 2.0, 3.0, 4.0], 2, 2),
     [10.0, 20.0],
   )
-  let x_empty : Matrix = { nrows: 0, ncols: 2, data: [] }
+  let x_empty : Matrix = { nrows: 0, ncols: 2, data: [], }
   let out = gb.predict(x_empty)
   inspect(out.length(), content="0")
 }
@@ -101,7 +97,7 @@ test "gbl_wbtest_initial_equals_mean_y_after_fit" {
     x, y_data,
   )
   inspect(gb.initial(), content=mean_y.to_string())
-  let _ = mean_y  // silence unused warning if inspection is no-op
+  let _ = mean_y // silence unused warning if inspection is no-op
 }
 
 ///|
@@ -118,12 +114,12 @@ test "gbl_wbtest_determinism_same_seed" {
     y_data[i] = x0 + 2.0 * x1 + (rng.double() - 0.5) * 0.1
   }
   let x = Matrix::from_array(x_data, n, 2)
-  let gb_a = GBLearner::new(
-    n_trees=10, learning_rate=0.1, bootstrap_seed=42,
-  ).fit(x, y_data)
-  let gb_b = GBLearner::new(
-    n_trees=10, learning_rate=0.1, bootstrap_seed=42,
-  ).fit(x, y_data)
+  let gb_a = GBLearner::new(n_trees=10, learning_rate=0.1, bootstrap_seed=42).fit(
+    x, y_data,
+  )
+  let gb_b = GBLearner::new(n_trees=10, learning_rate=0.1, bootstrap_seed=42).fit(
+    x, y_data,
+  )
   inspect(gb_a.n_trees(), content="10")
   inspect(gb_b.n_trees(), content="10")
   let preds_a = gb_a.predict(x)
@@ -155,8 +151,11 @@ test "gbl_wbtest_linear_dgp_recovers_signal" {
   }
   let x = Matrix::from_array(x_data, n, 2)
   let gb = GBLearner::new(
-    n_trees=80, learning_rate=0.05, max_depth=4,
-    min_samples_leaf=3, mtry=2,
+    n_trees=80,
+    learning_rate=0.05,
+    max_depth=4,
+    min_samples_leaf=3,
+    mtry=2,
   ).fit(x, y_data)
   let preds = gb.predict(x)
   let mut sum_y = 0.0
@@ -198,8 +197,11 @@ test "gbl_wbtest_nonlinear_dgp_beats_linear_baseline" {
   }
   let x = Matrix::from_array(x_data, n, 2)
   let gb = GBLearner::new(
-    n_trees=100, learning_rate=0.1, max_depth=5,
-    min_samples_leaf=3, mtry=2,
+    n_trees=100,
+    learning_rate=0.1,
+    max_depth=5,
+    min_samples_leaf=3,
+    mtry=2,
   ).fit(x, y_data)
   let preds = gb.predict(x)
   let mut sum_y = 0.0
@@ -210,7 +212,8 @@ test "gbl_wbtest_nonlinear_dgp_beats_linear_baseline" {
   let mut ss_res = 0.0
   let mut ss_tot = 0.0
   for i = 0; i < n; i = i + 1 {
-    let noise_free = sin_safe(x_data[i * 2 + 0] * 3.14159265) + 0.3 * x_data[i * 2 + 1]
+    let noise_free = sin_safe(x_data[i * 2 + 0] * 3.14159265) +
+      0.3 * x_data[i * 2 + 1]
     let pred_i = preds[i]
     ss_res = ss_res + (noise_free - pred_i) * (noise_free - pred_i)
     ss_tot = ss_tot + (noise_free - mean_y) * (noise_free - mean_y)
@@ -236,8 +239,11 @@ test "gbl_wbtest_subsample_stochastic_gb_runs" {
   }
   let x = Matrix::from_array(x_data, n, 2)
   let gb = GBLearner::new(
-    n_trees=20, learning_rate=0.1, max_depth=3,
-    subsample=0.7, bootstrap_seed=22,
+    n_trees=20,
+    learning_rate=0.1,
+    max_depth=3,
+    subsample=0.7,
+    bootstrap_seed=22,
   ).fit(x, y_data)
   inspect(gb.n_trees(), content="20")
   let preds = gb.predict(x)
@@ -270,16 +276,18 @@ test "gbl_wbtest_plr_via_gradient_boosting_runs_end_to_end" {
   let x = Matrix::from_array(x_data, n, 3)
   let data = DoubleMLData::new(x, y_data, d_data)
   let gb_l = GBLearner::new(
-    n_trees=30, learning_rate=0.1, max_depth=3, bootstrap_seed=11,
+    n_trees=30,
+    learning_rate=0.1,
+    max_depth=3,
+    bootstrap_seed=11,
   )
   let gb_m = GBLearner::new(
-    n_trees=30, learning_rate=0.1, max_depth=3, bootstrap_seed=22,
+    n_trees=30,
+    learning_rate=0.1,
+    max_depth=3,
+    bootstrap_seed=22,
   )
-  let plr = DoubleMLPLR::new(
-    data,
-    n_folds=4,
-    seed=3141,
-  ).fit(
+  let plr = DoubleMLPLR::new(data, n_folds=4, seed=3141).fit(
     learner_l=LearnerDispatch::gradient_boosting(gb_l),
     learner_m=LearnerDispatch::gradient_boosting(gb_m),
   )
@@ -295,6 +303,8 @@ test "gbl_wbtest_plr_via_gradient_boosting_runs_end_to_end" {
 // dependency-free; for the small range of inputs in the
 // nonlinear DGP test, tanh(1.5*x) is within 1% of sin(pi*x)
 // on [-1, 1].
+
+///|
 fn sin_safe(x : Double) -> Double {
   // tanh-based sine approximation: sin(pi*x) ≈ tanh(2*x) for
   // x in [-1, 1]; this avoids the @math.sin FFI dependency
@@ -306,6 +316,8 @@ fn sin_safe(x : Double) -> Double {
 
 // exp_safe: uses MoonBit's @math.exp Double path; doubles
 // are fine for the small input range here.
+
+///|
 fn exp_safe(x : Double) -> Double {
   @math.exp(x)
 }

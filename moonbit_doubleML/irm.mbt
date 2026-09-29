@@ -277,9 +277,9 @@ fn cross_fit_irm(
         }
       }
       require(train_d0.length() > 0)
-      let p0 = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_d0, test_idx)],
-      )
+      let p0 = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_d0, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         g0[row] = p0[row]
@@ -292,18 +292,18 @@ fn cross_fit_irm(
         }
       }
       require(train_d1_only.length() > 0)
-      let p1 = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_d1_only, test_idx)],
-      )
+      let p1 = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_d1_only, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         g1[row] = p1[row]
       }
       // m: train on all rows of train_idx — single fold covering
       // (train_idx, test_idx). Uses `ml_m` (the propensity learner).
-      let pm = cross_fit_predict_dispatch(
-        ml_m, x, d, [Fold::new(train_idx, test_idx)],
-      )
+      let pm = cross_fit_predict_dispatch(ml_m, x, d, [
+        Fold::new(train_idx, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         m[row] = pm[row]
@@ -579,7 +579,8 @@ fn DoubleMLIRM::fit_cluster(
       let m_i = m[i]
       let one_minus_m = 1.0 - m_i
       let d_over_m = self.data.d[i] * u1 / m_i
-      let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) * u0 /
+      let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
+        u0 /
         one_minus_m
       psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
       psi_a[i] = -1.0

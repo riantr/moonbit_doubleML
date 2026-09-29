@@ -33,7 +33,7 @@ pub fn TuneParam::new(
   learner_l : LearnerDispatch,
   learner_m : LearnerDispatch,
 ) -> TuneParam {
-  { learner_l, learner_m }
+  { learner_l, learner_m, }
 }
 
 ///|
@@ -225,7 +225,10 @@ pub fn DoubleMLPLR::tune(
       let n = self.n_obs()
       let folds_tune = kfold(n, n_folds_tune, seed)
       let l_hat_0 = cross_fit_predict_dispatch(
-        c0.learner_l, self.data.x, self.data.y, folds_tune,
+        c0.learner_l,
+        self.data.x,
+        self.data.y,
+        folds_tune,
       )
       let score_0 = if l_hat_0.length() == n {
         tune_score_outcome(self.data.y, l_hat_0, scoring)
@@ -258,7 +261,10 @@ pub fn DoubleMLPLR::tune(
       // recovery is deferred to v0.59.0+ when `Learner::predict`
       // becomes Result-typed.
       let l_hat_c = cross_fit_predict_dispatch(
-        c.learner_l, self.data.x, self.data.y, folds_tune,
+        c.learner_l,
+        self.data.x,
+        self.data.y,
+        folds_tune,
       )
       scores[i] = if l_hat_c.length() == n {
         tune_score_outcome(self.data.y, l_hat_c, scoring)

@@ -84,7 +84,9 @@ test "bootstrap_wbtest_t_stat_n_thetas_3_known_weights" {
       weights[b * n_obs + i] = (b + 1).to_double()
     }
   }
-  let boot = did_bootstrap_t_stat(weights, psi, se_flat, n_rep_boot, n_obs, n_thetas)
+  let boot = did_bootstrap_t_stat(
+    weights, psi, se_flat, n_rep_boot, n_obs, n_thetas,
+  )
   inspect(boot.length(), content="12")
   let n_d = n_obs.to_double()
   let sqrt_n = n_d.sqrt()
@@ -116,7 +118,9 @@ test "bootstrap_wbtest_t_stat_skips_zero_se_rows" {
   let psi : Array[Double] = Array::make(n_thetas * n_obs, 1.0) // all 1's
   let se_flat : Array[Double] = [1.0, 0.0] // theta 1 has se=0
   let weights : Array[Double] = Array::make(n_rep_boot * n_obs, 2.0) // all 2's
-  let boot = did_bootstrap_t_stat(weights, psi, se_flat, n_rep_boot, n_obs, n_thetas)
+  let boot = did_bootstrap_t_stat(
+    weights, psi, se_flat, n_rep_boot, n_obs, n_thetas,
+  )
   // theta 0 (se=1) rows should be non-zero; theta 1 (se=0) rows should be 0.
   for b = 0; b < n_rep_boot; b = b + 1 {
     let actual_zero_row = boot[b * n_thetas + 1]
@@ -141,7 +145,9 @@ test "bootstrap_wbtest_t_stat_negative_weights" {
   let se_flat : Array[Double] = [1.0]
   // Weights: rep 0 = [+1, -1, +1, -1], rep 1 = [+2, -2, +2, -2].
   let weights : Array[Double] = [1.0, -1.0, 1.0, -1.0, 2.0, -2.0, 2.0, -2.0]
-  let boot = did_bootstrap_t_stat(weights, psi, se_flat, n_rep_boot, n_obs, n_thetas)
+  let boot = did_bootstrap_t_stat(
+    weights, psi, se_flat, n_rep_boot, n_obs, n_thetas,
+  )
   let sqrt_n = 2.0 // sqrt(4)
   // rep 0: (+1)*1 + (-1)*2 + (+1)*3 + (-1)*4 = 1-2+3-4 = -2
   // rep 1: 2*(-2) = -4
@@ -164,7 +170,9 @@ test "bootstrap_wbtest_t_stat_zero_psi_no_op" {
   let psi : Array[Double] = Array::make(n_thetas * n_obs, 0.0)
   let se_flat : Array[Double] = [1.0, 1.0]
   let weights : Array[Double] = Array::make(n_rep_boot * n_obs, 5.0) // all 5's
-  let boot = did_bootstrap_t_stat(weights, psi, se_flat, n_rep_boot, n_obs, n_thetas)
+  let boot = did_bootstrap_t_stat(
+    weights, psi, se_flat, n_rep_boot, n_obs, n_thetas,
+  )
   for i = 0; i < boot.length(); i = i + 1 {
     inspect(boot[i], content="0")
   }
@@ -190,8 +198,12 @@ test "bootstrap_wbtest_t_stat_determinism" {
       weights[b * n_obs + i] = ((b + 1) * (i + 1)).to_double() * 0.07
     }
   }
-  let boot_a = did_bootstrap_t_stat(weights, psi, se_flat, n_rep_boot, n_obs, n_thetas)
-  let boot_b = did_bootstrap_t_stat(weights, psi, se_flat, n_rep_boot, n_obs, n_thetas)
+  let boot_a = did_bootstrap_t_stat(
+    weights, psi, se_flat, n_rep_boot, n_obs, n_thetas,
+  )
+  let boot_b = did_bootstrap_t_stat(
+    weights, psi, se_flat, n_rep_boot, n_obs, n_thetas,
+  )
   inspect(boot_a.length(), content="15")
   inspect(boot_b.length(), content="15")
   for i = 0; i < boot_a.length(); i = i + 1 {

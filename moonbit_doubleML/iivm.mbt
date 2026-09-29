@@ -316,41 +316,41 @@ fn cross_fit_iivm(
       require(train_z0.length() > 0)
       require(train_z1.length() > 0)
       // g0: train on z == 0 subset
-      let p0 = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_z0, test_idx)],
-      )
+      let p0 = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_z0, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         g0[row] = p0[row]
       }
       // g1: train on z == 1 subset
-      let p1 = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_z1, test_idx)],
-      )
+      let p1 = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_z1, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         g1[row] = p1[row]
       }
       // m: train on all rows (instrument as y)
-      let pm = cross_fit_predict_dispatch(
-        ml_m, x, z, [Fold::new(train_idx, test_idx)],
-      )
+      let pm = cross_fit_predict_dispatch(ml_m, x, z, [
+        Fold::new(train_idx, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         m[row] = pm[row]
       }
       // r0: train on z == 0 subset (treatment as y)
-      let pr0 = cross_fit_predict_dispatch(
-        ml_r, x, d, [Fold::new(train_z0, test_idx)],
-      )
+      let pr0 = cross_fit_predict_dispatch(ml_r, x, d, [
+        Fold::new(train_z0, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         r0[row] = pr0[row]
       }
       // r1: train on z == 1 subset (treatment as y)
-      let pr1 = cross_fit_predict_dispatch(
-        ml_r, x, d, [Fold::new(train_z1, test_idx)],
-      )
+      let pr1 = cross_fit_predict_dispatch(ml_r, x, d, [
+        Fold::new(train_z1, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         r1[row] = pr1[row]

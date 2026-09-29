@@ -671,8 +671,8 @@ pub fn DoubleMLDIDBinary::fit(
       score=self.score,
       in_sample_normalization=self.in_sample_normalization,
       strata=strata_acc,
-      ml_g=ml_g,
-      ml_m=ml_m,
+      ml_g~,
+      ml_m~,
     ).fit()
     // v0.15.0+: record the long-format `eval_idx` from the
     // preprocessing so the bootstrap can map wide-format psi

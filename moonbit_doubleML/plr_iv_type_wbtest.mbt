@@ -38,7 +38,10 @@
 //      routes through fit_cluster; sanity-check it doesn't abort.
 
 ///|
-fn plr_iv_test_dgp(n : Int, seed : Int) -> (Matrix, Array[Double], Array[Double], Array[Double]) {
+fn plr_iv_test_dgp(
+  n : Int,
+  seed : Int,
+) -> (Matrix, Array[Double], Array[Double], Array[Double]) {
   // Standard DML DGP: y = theta * d + 0.5 * x0 + eps;
   // d = 0.3 * x0 + 0.4 * x1 + v; eps ~ N(0, 0.5); v ~ N(0, 0.3).
   let rng = chacha8_rng(seed)
@@ -83,7 +86,7 @@ test "plr_iv_type_wbtest_data_extension_with_z" {
   // Use x as a synthetic instrument (z length n, no length check fail).
   let z_arr : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
-    z_arr[i] = xd[i * 3 + 0]  // z = x0 (the regressor that drives d)
+    z_arr[i] = xd[i * 3 + 0] // z = x0 (the regressor that drives d)
   }
   let data = DoubleMLData::new(x, y, d, z=z_arr)
   inspect(data.z().length(), content="50")
@@ -121,16 +124,10 @@ test "plr_iv_type_wbtest_fit_iv_type_with_z_equals_d_sanity" {
   // z = d (treatment as own instrument)
   let data_p = DoubleMLData::new(x, y, d)
   let data_iv = DoubleMLData::new(x, y, d, z=d)
-  let plr_p = DoubleMLPLR::new(
-    data_p,
-    n_folds=4,
-    seed=3141,
-  ).fit()
-  let plr_iv = DoubleMLPLR::new(
-    data_iv,
-    n_folds=4,
-    seed=3141,
-  ).fit(score="IV-type")
+  let plr_p = DoubleMLPLR::new(data_p, n_folds=4, seed=3141).fit()
+  let plr_iv = DoubleMLPLR::new(data_iv, n_folds=4, seed=3141).fit(
+    score="IV-type",
+  )
   let coef_p = plr_p.coef()
   let coef_iv = plr_iv.coef()
   // Both should be finite and in the same ballpark as the DGP
@@ -159,11 +156,9 @@ test "plr_iv_type_wbtest_fit_iv_type_with_x0_as_instrument" {
     z_arr[i] = xd[i * 3 + 0]
   }
   let data_iv = DoubleMLData::new(x, y, d, z=z_arr)
-  let plr_iv = DoubleMLPLR::new(
-    data_iv,
-    n_folds=4,
-    seed=3141,
-  ).fit(score="IV-type")
+  let plr_iv = DoubleMLPLR::new(data_iv, n_folds=4, seed=3141).fit(
+    score="IV-type",
+  )
   let coef_iv = plr_iv.coef()
   let se_iv = plr_iv.se()
   inspect(coef_iv.is_nan() == false, content="true")
@@ -199,7 +194,7 @@ test "plr_iv_type_wbtest_fit_default_score_unchanged" {
   // partialling-out result.
   let n = 200
   let (x, y, d, _xd) = plr_iv_test_dgp(n, 42)
-  let data = DoubleMLData::new(x, y, d)  // no z
+  let data = DoubleMLData::new(x, y, d) // no z
   let plr_default = DoubleMLPLR::new(data, n_folds=4, seed=3141).fit()
   let plr_explicit_p = DoubleMLPLR::new(data, n_folds=4, seed=3141).fit(
     score="partialling-out",
@@ -238,17 +233,19 @@ test "plr_iv_type_wbtest_fit_cluster_iv_type_routes" {
       let d_i = 0.3 * x0 + 0.5 * alpha + v
       d_data[i] = d_i
       y_data[i] = 1.2 * d_i + 0.3 * x0 + (rng.double() - 0.5) * 0.5
-      z_data[i] = x0  // x0 is the instrument for d
+      z_data[i] = x0 // x0 is the instrument for d
       cluster[i] = u
     }
   }
   let x = Matrix::from_array(x_data, n, 2)
-  let data = DoubleMLData::new(x, y_data, d_data, z=z_data, cluster_vars=cluster)
-  let plr = DoubleMLPLR::new(
-    data,
-    n_folds=4,
-    seed=11,
-  ).fit(score="IV-type")
+  let data = DoubleMLData::new(
+    x,
+    y_data,
+    d_data,
+    z=z_data,
+    cluster_vars=cluster,
+  )
+  let plr = DoubleMLPLR::new(data, n_folds=4, seed=11).fit(score="IV-type")
   let coef = plr.coef()
   let se = plr.se()
   inspect(coef.is_nan() == false, content="true")
@@ -295,11 +292,7 @@ test "plr_via_random_forest_learner_runs_end_to_end" {
     min_samples_leaf=3,
     bootstrap_seed=22,
   )
-  let plr = DoubleMLPLR::new(
-    data,
-    n_folds=4,
-    seed=3141,
-  ).fit(
+  let plr = DoubleMLPLR::new(data, n_folds=4, seed=3141).fit(
     learner_l=LearnerDispatch::random_forest(rf_l),
     learner_m=LearnerDispatch::random_forest(rf_m),
   )

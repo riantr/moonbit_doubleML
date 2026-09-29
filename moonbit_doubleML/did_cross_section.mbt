@@ -237,14 +237,18 @@ pub fn DoubleMLDIDCrossSection::psi_a(
 ///|
 /// Accessor for the outcome-nuisance learner used by the most
 /// recent `fit(...)` call. v0.60.0+.
-pub fn DoubleMLDIDCrossSection::learner_g(self : DoubleMLDIDCrossSection) -> LearnerDispatch {
+pub fn DoubleMLDIDCrossSection::learner_g(
+  self : DoubleMLDIDCrossSection,
+) -> LearnerDispatch {
   self.ml_g
 }
 
 ///|
 /// Accessor for the propensity-score learner used by the most
 /// recent `fit(...)` call. v0.60.0+.
-pub fn DoubleMLDIDCrossSection::learner_m(self : DoubleMLDIDCrossSection) -> LearnerDispatch {
+pub fn DoubleMLDIDCrossSection::learner_m(
+  self : DoubleMLDIDCrossSection,
+) -> LearnerDispatch {
   self.ml_m
 }
 

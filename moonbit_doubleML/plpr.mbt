@@ -687,12 +687,7 @@ pub fn DoubleMLPLPR::fit(
           folds_u,
           row_unit,
         )
-        l_pred = cross_fit_predict_dispatch(
-          learner,
-          tf.x,
-          tf.y,
-          folds_row,
-        )
+        l_pred = cross_fit_predict_dispatch(learner, tf.x, tf.y, folds_row)
         if self.approach == "cre_normal" {
           // ml_m gets [X, d_mean] as inputs.
           let p = tf.x.cols()
@@ -704,19 +699,9 @@ pub fn DoubleMLPLPR::fit(
             xm_flat[i * (p + 1) + p] = tf.d_mean_row[i]
           }
           let xm = Matrix::from_array(xm_flat, n, p + 1)
-          m_pred = cross_fit_predict_dispatch(
-            learner,
-            xm,
-            tf.d,
-            folds_row,
-          )
+          m_pred = cross_fit_predict_dispatch(learner, xm, tf.d, folds_row)
         } else {
-          m_pred = cross_fit_predict_dispatch(
-            learner,
-            tf.x,
-            tf.d,
-            folds_row,
-          )
+          m_pred = cross_fit_predict_dispatch(learner, tf.x, tf.d, folds_row)
         }
         // cre_general: post-hoc adjustment
         //   m_hat* = m_hat + d_mean - mean_by_id(m_hat).

@@ -24,11 +24,11 @@ test "irm_learner_g_accessor_returns_default" {
   // Accessor must be callable pre-fit: returns the
   // constructor-set default (LinearRegression). Match on the
   // enum to verify.
-  match (m.learner_g()) {
+  match m.learner_g() {
     LinearRegression(_) => ()
     _ => abort("expected default LearnerDispatch::LinearRegression")
   }
-  match (m.learner_m()) {
+  match m.learner_m() {
     LinearRegression(_) => ()
     _ => abort("expected default LearnerDispatch::LinearRegression")
   }
@@ -67,11 +67,11 @@ test "irm_per_fit_override_persists_learner" {
     ml_m=rf_m,
   )
   // accessor returns the persisted per-fit override
-  match (fitted.learner_g()) {
+  match fitted.learner_g() {
     RandomForest(_) => ()
     _ => abort("expected per-fit RandomForest override on learner_g")
   }
-  match (fitted.learner_m()) {
+  match fitted.learner_m() {
     RandomForest(_) => ()
     _ => abort("expected per-fit RandomForest override on learner_m")
   }
@@ -104,18 +104,13 @@ test "irm_constructor_learner_param_persists_pre_fit" {
   let gb = LearnerDispatch::gradient_boosting(
     GBLearner::new(n_trees=8, learning_rate=0.1, max_depth=3, bootstrap_seed=1),
   )
-  let m = DoubleMLIRM::new(
-    data,
-    n_folds=2,
-    seed=3141,
-    ml_g=gb,
-  )
-  match (m.learner_g()) {
+  let m = DoubleMLIRM::new(data, n_folds=2, seed=3141, ml_g=gb)
+  match m.learner_g() {
     GradientBoosting(_) => ()
     _ => abort("expected constructor-set GradientBoosting learner_g")
   }
   // ml_m defaults to LinearRegression
-  match (m.learner_m()) {
+  match m.learner_m() {
     LinearRegression(_) => ()
     _ => abort("expected default LinearRegression learner_m")
   }

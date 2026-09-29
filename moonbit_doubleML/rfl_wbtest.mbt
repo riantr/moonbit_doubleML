@@ -53,11 +53,7 @@ test "rfl_wbtest_predict_unfitted_returns_zeros" {
   // NoopLearner behaviour (predict on unfitted learner
   // returns zeros, no abort).
   let rf = RFLearner::new(n_trees=10)
-  let x : Matrix = {
-    nrows: 3,
-    ncols: 2,
-    data: [1.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-  }
+  let x : Matrix = { nrows: 3, ncols: 2, data: [1.0, 0.0, 0.0, 1.0, 1.0, 1.0], }
   let out = rf.predict(x)
   inspect(out.length(), content="3")
   inspect(out[0], content="0")
@@ -72,7 +68,7 @@ test "rfl_wbtest_predict_empty_input" {
     Matrix::from_array([1.0, 2.0, 3.0, 4.0], 2, 2),
     [10.0, 20.0],
   )
-  let x_empty : Matrix = { nrows: 0, ncols: 2, data: [] }
+  let x_empty : Matrix = { nrows: 0, ncols: 2, data: [], }
   let out = rf.predict(x_empty)
   inspect(out.length(), content="0")
 }
@@ -81,16 +77,8 @@ test "rfl_wbtest_predict_empty_input" {
 test "rfl_wbtest_single_row_leaf_value" {
   // With 1 row, min_samples_leaf=5 -> early leaf.
   // Expected prediction = y[0] = 42.0 for that single row.
-  let rf = RFLearner::new(
-    n_trees=1,
-    max_depth=10,
-    min_samples_leaf=5,
-  )
-  let x : Matrix = {
-    nrows: 1,
-    ncols: 1,
-    data: [1.0],
-  }
+  let rf = RFLearner::new(n_trees=1, max_depth=10, min_samples_leaf=5)
+  let x : Matrix = { nrows: 1, ncols: 1, data: [1.0], }
   let y : Array[Double] = [42.0]
   let fitted = rf.fit(x, y)
   let out = fitted.predict(x)
@@ -116,12 +104,9 @@ test "rfl_wbtest_linear_dgp_recovers_signal" {
     y_data[i] = 3.0 * x0 + 0.5 * x1 + noise
   }
   let x = Matrix::from_array(x_data, n, 2)
-  let rf = RFLearner::new(
-    n_trees=50,
-    max_depth=8,
-    min_samples_leaf=3,
-    mtry=2,
-  ).fit(x, y_data)
+  let rf = RFLearner::new(n_trees=50, max_depth=8, min_samples_leaf=3, mtry=2).fit(
+    x, y_data,
+  )
   let preds = rf.predict(x)
   // Compute R^2 of predictions vs noise-free target.
   let mut sum_y = 0.0
@@ -183,7 +168,7 @@ test "rfl_wbtest_n_trees_1_single_cart" {
   for i = 0; i < n; i = i + 1 {
     let xi = i.to_double() / n.to_double() * 4.0 - 2.0
     x_data[i] = xi
-    y_data[i] = xi * xi  // quadratic DGP; CART can approximate
+    y_data[i] = xi * xi // quadratic DGP; CART can approximate
   }
   let x = Matrix::from_array(x_data, n, 1)
   let rf = RFLearner::new(n_trees=1, max_depth=5).fit(x, y_data)
@@ -202,10 +187,7 @@ test "rfl_wbtest_mtry_default_resolves_to_sqrt" {
   // Build a forest and confirm n_features() is set (sanity
   // that fit completed and the resolved mtry doesn't crash).
   let x_data : Array[Double] = [
-    0.0, 0.0, 0.0, 0.0,
-    1.0, 0.0, 1.0, 1.0,
-    0.0, 1.0, 1.0, 0.0,
-    1.0, 1.0, 0.0, 1.0,
+    0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0,
     0.5, 0.5, 0.5, 0.5,
   ]
   let x = Matrix::from_array(x_data, 5, 4)
@@ -235,11 +217,41 @@ test "rfl_wbtest_via_LearnerDispatch_random_forest" {
   }
   let x = Matrix::from_array(x_data, n, 2)
   let folds : Array[Fold] = [
-    { train_idx: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39], test_idx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
-    { train_idx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49], test_idx: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19] },
-    { train_idx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49], test_idx: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29] },
-    { train_idx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29], test_idx: [30, 31, 32, 33, 34, 35, 36, 37, 38, 39] },
-    { train_idx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39], test_idx: [40, 41, 42, 43, 44, 45, 46, 47, 48, 49] },
+    {
+      train_idx: [
+        10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+        29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+      ],
+      test_idx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    },
+    {
+      train_idx: [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+        41, 42, 43, 44, 45, 46, 47, 48, 49,
+      ],
+      test_idx: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+    },
+    {
+      train_idx: [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 40,
+        41, 42, 43, 44, 45, 46, 47, 48, 49,
+      ],
+      test_idx: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+    },
+    {
+      train_idx: [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29,
+      ],
+      test_idx: [30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+    },
+    {
+      train_idx: [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+      ],
+      test_idx: [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+    },
   ]
   // Wrap RFLearner in LearnerDispatch + run cross_fit_predict_dispatch.
   let rf = RFLearner::new(n_trees=10, max_depth=5, bootstrap_seed=2024)
@@ -254,8 +266,12 @@ test "rfl_wbtest_via_LearnerDispatch_random_forest" {
   let mut mn = oof[0]
   let mut mx = oof[0]
   for i = 1; i < n; i = i + 1 {
-    if oof[i] < mn { mn = oof[i] }
-    if oof[i] > mx { mx = oof[i] }
+    if oof[i] < mn {
+      mn = oof[i]
+    }
+    if oof[i] > mx {
+      mx = oof[i]
+    }
   }
   let spread = mx - mn
   inspect(spread > 0.5, content="true")

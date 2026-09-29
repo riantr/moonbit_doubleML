@@ -428,10 +428,7 @@ pub fn DoubleMLDIDCS::fit(
           ps_processor=self.ps_processor,
           score="observational",
           in_sample_normalization=self.in_sample_normalization,
-        ).fit(
-          ml_g=ml_g,
-          ml_m=ml_m,
-        )
+        ).fit(ml_g~, ml_m~)
         // Append the (g, t) ATT to the running arrays; we will
         // reassemble the per-row-major matrix after the loop (so
         // missing cells — pre / eval combinations with t_eval <= g

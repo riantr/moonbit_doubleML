@@ -51,12 +51,12 @@ pub struct GBLearner {
   learning_rate : Double
   max_depth : Int
   min_samples_leaf : Int
-  mtry : Int  // -1 = floor(sqrt(n_features)) at fit time
-  subsample : Double  // row subsampling fraction per tree (default 1.0)
+  mtry : Int // -1 = floor(sqrt(n_features)) at fit time
+  subsample : Double // row subsampling fraction per tree (default 1.0)
   bootstrap_seed : Int
   // Fitted state (empty until `fit` is called).
-  initial : Double  // = mean(y) at fit time
-  trees : Array[CART]  // CART tree per boosting round
+  initial : Double // = mean(y) at fit time
+  trees : Array[CART] // CART tree per boosting round
 } derive(Debug)
 
 ///|
@@ -145,7 +145,13 @@ impl Learner for GBLearner with fn fit(self, x, y) {
       // random subset of size floor(n_obs * subsample).
       let sample_idx : Array[Int] = if self.subsample < 1.0 {
         let n_sub = (n_obs.to_double() * self.subsample).to_int()
-        let n_sub_eff = if n_sub < 1 { 1 } else if n_sub > n_obs { n_obs } else { n_sub }
+        let n_sub_eff = if n_sub < 1 {
+          1
+        } else if n_sub > n_obs {
+          n_obs
+        } else {
+          n_sub
+        }
         let full = bootstrap_indices(n_obs, self.bootstrap_seed + r)
         Array::makei(n_sub_eff, fn(j) { full[j] })
       } else {
@@ -169,16 +175,20 @@ impl Learner for GBLearner with fn fit(self, x, y) {
       }
       let feature_rng = chacha8_rng(self.bootstrap_seed + self.n_trees + r)
       let tree = cart_fit(
-        x_sub, y_sub, Array::makei(sample_idx.length(), fn(j) { j }),
-        0, self.max_depth, self.min_samples_leaf, self.mtry,
+        x_sub,
+        y_sub,
+        Array::makei(sample_idx.length(), fn(j) { j }),
+        0,
+        self.max_depth,
+        self.min_samples_leaf,
+        self.mtry,
         feature_rng,
       )
       trees.push(tree)
       // Update current_pred[i] += learning_rate * tree(x[i]).
       for i = 0; i < n_obs; i = i + 1 {
-        current_pred[i] = current_pred[i] + self.learning_rate * cart_predict(
-          tree, x, i,
-        )
+        current_pred[i] = current_pred[i] +
+          self.learning_rate * cart_predict(tree, x, i)
       }
     }
     { ..self, initial, trees, }

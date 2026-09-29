@@ -275,6 +275,7 @@ pub fn DoubleMLDIDMulti::n_combinations(self : DoubleMLDIDMulti) -> Int {
 }
 
 ///|
+
 ///|
 /// Accessor for the outcome-nuisance learner forwarded to the
 /// inner `DoubleMLDIDCS` on the most recent `fit(...)` call.
@@ -364,7 +365,7 @@ pub fn DoubleMLDIDMulti::fit(
   ml_g? : LearnerDispatch = self.ml_g,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDMulti {
-  let inner = self.inner.fit(ml_g=ml_g, ml_m=ml_m)
+  let inner = self.inner.fit(ml_g~, ml_m~)
   { ..self, inner, ml_g, ml_m, fitted: true, }
 }
 
@@ -458,7 +459,8 @@ pub fn DoubleMLDIDMulti::bootstrap(
         continue
       }
       for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
-        psi_flat[k * n_obs + i_long] = self.inner.psi_matrix[flat * n_obs + i_long]
+        psi_flat[k * n_obs + i_long] = self.inner.psi_matrix[flat * n_obs +
+          i_long]
       }
     }
     let boot_t_stat = did_bootstrap_t_stat(

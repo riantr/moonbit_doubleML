@@ -265,9 +265,24 @@ pub fn DoubleMLPLIV::fit(
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < nrep; r = r + 1 {
       let folds = kfold(n, self.n_folds, self.seed + r)
-      l_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.y, folds)
-      r_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.d, folds)
-      m_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.z, folds)
+      l_pred = cross_fit_predict_dispatch(
+        learner,
+        self.data.x,
+        self.data.y,
+        folds,
+      )
+      r_pred = cross_fit_predict_dispatch(
+        learner,
+        self.data.x,
+        self.data.d,
+        folds,
+      )
+      m_pred = cross_fit_predict_dispatch(
+        learner,
+        self.data.x,
+        self.data.z,
+        folds,
+      )
       // Score (partialling out, single instrument) for THIS rep's nuisances only
       let y = self.data.y
       let d = self.data.d
@@ -387,9 +402,24 @@ fn DoubleMLPLIV::fit_cluster(
         let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
           cluster, folds_u, row_unit,
         )
-        l_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.y, folds_row)
-        r_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.d, folds_row)
-        m_pred = cross_fit_predict_dispatch(learner, self.data.x, self.data.z, folds_row)
+        l_pred = cross_fit_predict_dispatch(
+          learner,
+          self.data.x,
+          self.data.y,
+          folds_row,
+        )
+        r_pred = cross_fit_predict_dispatch(
+          learner,
+          self.data.x,
+          self.data.d,
+          folds_row,
+        )
+        m_pred = cross_fit_predict_dispatch(
+          learner,
+          self.data.x,
+          self.data.z,
+          folds_row,
+        )
         let y = self.data.y
         let d = self.data.d
         let z = self.data.z

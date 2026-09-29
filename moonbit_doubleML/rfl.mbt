@@ -75,7 +75,7 @@ pub struct RFLearner {
   n_trees : Int
   max_depth : Int
   min_samples_leaf : Int
-  mtry : Int  // -1 = sqrt(n_features) at fit time
+  mtry : Int // -1 = sqrt(n_features) at fit time
   bootstrap_seed : Int
   // Fitted state (empty until `fit` is called).
   trees : Array[CART]
@@ -192,7 +192,7 @@ fn cart_fit(
     while s * s <= n_features {
       s = s + 1
     }
-    s - 1  // floor(sqrt(n_features))
+    s - 1 // floor(sqrt(n_features))
   } else {
     mtry
   }
@@ -207,7 +207,7 @@ fn cart_fit(
     feat_pool[j] = tmp
   }
   // Search each candidate feature for the best split.
-  let mut best_score = 1.0e300  // sentinel "no split found yet"
+  let mut best_score = 1.0e300 // sentinel "no split found yet"
   let mut best_feature = -1
   let mut best_threshold = 0.0
   let mut best_left : Array[Int] = []
@@ -274,11 +274,23 @@ fn cart_fit(
     return CART::Leaf(cart_leaf_value(y, sample_idx))
   }
   let left_tree = cart_fit(
-    x, y, best_left, depth + 1, max_depth, min_samples_leaf, mtry,
+    x,
+    y,
+    best_left,
+    depth + 1,
+    max_depth,
+    min_samples_leaf,
+    mtry,
     feature_rng,
   )
   let right_tree = cart_fit(
-    x, y, best_right, depth + 1, max_depth, min_samples_leaf, mtry,
+    x,
+    y,
+    best_right,
+    depth + 1,
+    max_depth,
+    min_samples_leaf,
+    mtry,
     feature_rng,
   )
   CART::Split(best_feature, best_threshold, left_tree, right_tree)
@@ -325,7 +337,7 @@ fn sort_indices_by_feature(
     }
     out[j + 1] = key
   }
-  ignore(y)  // unused; sorted by feature value only
+  ignore(y) // unused; sorted by feature value only
   out
 }
 
@@ -375,7 +387,13 @@ impl Learner for RFLearner with fn fit(self, x, y) {
       // feature sampling is independent of the bootstrap draws.
       let feature_rng = chacha8_rng(self.bootstrap_seed + self.n_trees + b)
       let tree = cart_fit(
-        x, y, sample_idx, 0, self.max_depth, self.min_samples_leaf, self.mtry,
+        x,
+        y,
+        sample_idx,
+        0,
+        self.max_depth,
+        self.min_samples_leaf,
+        self.mtry,
         feature_rng,
       )
       trees.push(tree)

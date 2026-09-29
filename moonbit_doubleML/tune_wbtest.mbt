@@ -302,10 +302,20 @@ test "tune_with_gradient_boosting_runs_end_to_end" {
   let data = DoubleMLData::new(x, y_data, d_data)
   let lr = LearnerDispatch::linear_regression()
   let gb_l_d = LearnerDispatch::gradient_boosting(
-    GBLearner::new(n_trees=15, learning_rate=0.2, max_depth=3, bootstrap_seed=11),
+    GBLearner::new(
+      n_trees=15,
+      learning_rate=0.2,
+      max_depth=3,
+      bootstrap_seed=11,
+    ),
   )
   let gb_m_d = LearnerDispatch::gradient_boosting(
-    GBLearner::new(n_trees=15, learning_rate=0.2, max_depth=3, bootstrap_seed=22),
+    GBLearner::new(
+      n_trees=15,
+      learning_rate=0.2,
+      max_depth=3,
+      bootstrap_seed=22,
+    ),
   )
   let grid : Array[TuneParam] = [
     TuneParam::new(lr, lr),

@@ -542,6 +542,7 @@ pub fn DoubleMLQTE::fit(
 }
 
 ///|
+
 ///|
 /// Accessor for the outcome-quantile-nuisance learner used by
 /// the most recent `fit(...)` call. v0.60.0+.

@@ -16,7 +16,10 @@
 // ---------------------------------------------------------------------------
 
 ///|
-fn make_simple_plr_data(n : Int, seed : Int) -> (Matrix, Array[Double], Array[Double]) {
+fn make_simple_plr_data(
+  n : Int,
+  seed : Int,
+) -> (Matrix, Array[Double], Array[Double]) {
   let rng = chacha8_rng(seed)
   let p = 2
   let x_flat : Array[Double] = Array::make(n * p, 0.0)

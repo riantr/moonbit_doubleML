@@ -315,26 +315,26 @@ fn cross_fit_did(
     let train_d0 = filter_by_value(train_idx, d, 0.0)
     let train_d1 = filter_by_value(train_idx, d, 1.0)
     if train_d0.length() > 0 {
-      let p = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_d0, test_idx)],
-      )
+      let p = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_d0, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         g0[row] = p[row]
       }
     }
     if train_d1.length() > 0 {
-      let p = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_d1, test_idx)],
-      )
+      let p = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_d1, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         g1[row] = p[row]
       }
     }
-    let p = cross_fit_predict_dispatch(
-      ml_m, x, d, [Fold::new(train_idx, test_idx)],
-    )
+    let p = cross_fit_predict_dispatch(ml_m, x, d, [
+      Fold::new(train_idx, test_idx),
+    ])
     for k = 0; k < test_idx.length(); k = k + 1 {
       let row = test_idx[k]
       m[row] = p[row]

@@ -52,9 +52,7 @@ test "pliv_learner_override_with_rf" {
   let rf = LearnerDispatch::random_forest(
     RFLearner::new(n_trees=8, max_depth=4, bootstrap_seed=42),
   )
-  let fitted = DoubleMLPLIV::new(data, n_folds=2, seed=3141).fit(
-    learner=rf,
-  )
+  let fitted = DoubleMLPLIV::new(data, n_folds=2, seed=3141).fit(learner=rf)
   assert_true(fitted.coef().is_nan() == false)
   assert_true(fitted.se() > 0.0)
 }

@@ -232,6 +232,7 @@ pub fn DoubleMLPLR::tune_result(self : DoubleMLPLR) -> TuneResult? {
 ///     with this score and no instrument aborts with a
 ///     descriptive message naming the missing `z=` arg.
 ///
+
 ///|
 /// Per-row DML score elements for `DoubleMLPLR`. v0.55.0:
 /// factored out of `DoubleMLPLR::fit` / `fit_cluster` so the
@@ -318,7 +319,13 @@ pub fn DoubleMLPLR::fit(
       require(self.data.z.length() == self.n_obs())
     }
     if self.data.is_cluster_data() {
-      return self.fit_cluster(learner_l~, learner_m~, max_attempts~, score~, tune_result~)
+      return self.fit_cluster(
+        learner_l~,
+        learner_m~,
+        max_attempts~,
+        score~,
+        tune_result~,
+      )
     }
     let n = self.n_obs()
     let nrep = self.n_rep
@@ -349,7 +356,11 @@ pub fn DoubleMLPLR::fit(
         u_hat[i] = self.data.y[i] - l_pred[i]
       }
       let (psi_a, psi_b) = plr_score_elements(
-        n, v_hat, u_hat, self.data.z, score,
+        n,
+        v_hat,
+        u_hat,
+        self.data.z,
+        score,
       )
       // point estimate + variance come from the shared DML formula
       let (coef_r, se_r) = var_est(psi_a, psi_b)
@@ -370,7 +381,11 @@ pub fn DoubleMLPLR::fit(
       u_hat_last[i] = self.data.y[i] - l_pred[i]
     }
     let (psi_a, psi_b) = plr_score_elements(
-      n, v_hat_last, u_hat_last, self.data.z, score,
+      n,
+      v_hat_last,
+      u_hat_last,
+      self.data.z,
+      score,
     )
     {
       data: self.data,
@@ -499,7 +514,11 @@ fn DoubleMLPLR::fit_cluster(
         // IV-type branch (cluster-aware variant) uses the same
         // psi_a / psi_b formula as `DoubleMLPLR::fit`.
         let (psi_a, psi_b) = plr_score_elements(
-          n, v_hat, u_hat, self.data.z, score,
+          n,
+          v_hat,
+          u_hat,
+          self.data.z,
+          score,
         )
         // The cluster helper can raise VarEstClusterError::JTooSmall
         // on a fold split where mean(psi_deriv) lands below 1e-6.
@@ -561,7 +580,11 @@ fn DoubleMLPLR::fit_cluster(
       u_hat_last[i] = self.data.y[i] - l_pred[i]
     }
     let (psi_a, psi_b) = plr_score_elements(
-      n, v_hat_last, u_hat_last, self.data.z, score,
+      n,
+      v_hat_last,
+      u_hat_last,
+      self.data.z,
+      score,
     )
     {
       data: self.data,

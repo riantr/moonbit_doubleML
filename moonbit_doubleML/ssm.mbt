@@ -275,9 +275,9 @@ fn cross_fit_ssm(
     let train_idx = fold.train_indices()
     let test_idx = fold.test_indices()
     // m_hat on X -> D (all obs)
-    let pm = cross_fit_predict_dispatch(
-      ml_m, x, d, [Fold::new(train_idx, test_idx)],
-    )
+    let pm = cross_fit_predict_dispatch(ml_m, x, d, [
+      Fold::new(train_idx, test_idx),
+    ])
     for k = 0; k < test_idx.length(); k = k + 1 {
       let row = test_idx[k]
       m[row] = pm[row]
@@ -304,9 +304,9 @@ fn cross_fit_ssm(
     // g_d1: train on {D=1, S=1}, features = X only.
     let train_d1_s1 = filter_two_values(train_idx, d, 1.0, s, 1.0)
     if train_d1_s1.length() > 0 {
-      let pg = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_d1_s1, test_idx)],
-      )
+      let pg = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_d1_s1, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         gd1[row] = pg[row]
@@ -315,9 +315,9 @@ fn cross_fit_ssm(
     // g_d0: train on {D=0, S=1}, features = X only.
     let train_d0_s1 = filter_two_values(train_idx, d, 0.0, s, 1.0)
     if train_d0_s1.length() > 0 {
-      let pg0 = cross_fit_predict_dispatch(
-        ml_g, x, y, [Fold::new(train_d0_s1, test_idx)],
-      )
+      let pg0 = cross_fit_predict_dispatch(ml_g, x, y, [
+        Fold::new(train_d0_s1, test_idx),
+      ])
       for k = 0; k < test_idx.length(); k = k + 1 {
         let row = test_idx[k]
         gd0[row] = pg0[row]
