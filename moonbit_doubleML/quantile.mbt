@@ -75,6 +75,7 @@ pub fn g_cross_fit_calls() -> Int {
 
 ///|
 fn cross_fit_conditional(
+  learner : LearnerDispatch,
   x : Matrix,
   target : Array[Double],
   group : Array[Double],
@@ -86,9 +87,12 @@ fn cross_fit_conditional(
     let tr = filter_indices(fold.train_indices(), group)
     let te = fold.test_indices()
     if tr.length() > 0 {
-      let p = LinearRegression::new()
-        .fit(slice_matrix_rows(x, tr), slice_vector(target, tr))
-        .predict(slice_matrix_rows(x, te))
+      let p = fit_predict_one_dispatch(
+        learner,
+        slice_matrix_rows(x, tr),
+        slice_vector(target, tr),
+        slice_matrix_rows(x, te),
+      )
       for k = 0; k < te.length(); k = k + 1 {
         out[te[k]] = p[k]
       }
@@ -127,6 +131,7 @@ pub fn pq_score_ipw(
 
 ///|
 fn fit_propensity(
+  learner : LearnerDispatch,
   x : Matrix,
   treated : Array[Double],
   folds : Array[Fold],
@@ -136,9 +141,12 @@ fn fit_propensity(
   for fold in folds {
     let tr = fold.train_indices()
     let te = fold.test_indices()
-    let p = LinearRegression::new()
-      .fit(slice_matrix_rows(x, tr), slice_vector(treated, tr))
-      .predict(slice_matrix_rows(x, te))
+    let p = fit_predict_one_dispatch(
+      learner,
+      slice_matrix_rows(x, tr),
+      slice_vector(treated, tr),
+      slice_matrix_rows(x, te),
+    )
     for k = 0; k < te.length(); k = k + 1 {
       m[te[k]] = p[k]
     }
@@ -163,6 +171,8 @@ fn fit_propensity(
 /// `DoubleMLCVAR`) all live in this same package and could call a
 /// `_for_test` variant; the public API is kept for clarity.
 pub fn solve_pq(
+  ml_l : LearnerDispatch,
+  ml_m : LearnerDispatch,
   data : DoubleMLData,
   treatment : Double,
   q : Double,
@@ -172,7 +182,7 @@ pub fn solve_pq(
 ) -> (Double, Array[Double], Double) raise BracketSignError {
   let treated = indicator_level(data.d, treatment)
   let folds = kfold(data.n_obs(), n_folds, seed)
-  let m = fit_propensity(data.x, treated, folds, clip)
+  let m = fit_propensity(ml_m, data.x, treated, folds, clip)
   // Widen the bracket slightly beyond [min(y), max(y)] so the
   // IPW score is provably sign-changed at both endpoints:
   //   - at very low theta,  1{y <= theta} = 0  => score = -q < 0
@@ -232,7 +242,7 @@ pub fn solve_pq(
   // g cross-fit from the pre-fix code, which did 50 g fits per
   // bisection).
   let iy = outcome_indicator(data.y, theta)
-  let g = cross_fit_conditional(data.x, iy, treated, folds)
+  let g = cross_fit_conditional(ml_l, data.x, iy, treated, folds)
   // Build the influence-function psi using g(theta).
   let psi = Array::make(data.n_obs(), 0.0)
   for i = 0; i < data.n_obs(); i = i + 1 {
@@ -242,8 +252,8 @@ pub fn solve_pq(
   let h = (y_max - y_min) * 1.0e-2 + 1.0e-8
   let iyp = outcome_indicator(data.y, theta + h)
   let iym = outcome_indicator(data.y, theta - h)
-  let gp = cross_fit_conditional(data.x, iyp, treated, folds)
-  let gm = cross_fit_conditional(data.x, iym, treated, folds)
+  let gp = cross_fit_conditional(ml_l, data.x, iyp, treated, folds)
+  let gm = cross_fit_conditional(ml_l, data.x, iym, treated, folds)
   let n_d = data.n_obs().to_double()
   let mut sum_p = 0.0
   let mut sum_m = 0.0
@@ -322,9 +332,9 @@ pub fn DoubleMLPQ::fit(
   ml_l? : LearnerDispatch = self.ml_l,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLPQ {
-  ignore(ml_l)
-  ignore(ml_m)
   let (theta, psi, deriv) = solve_pq(
+    ml_l,
+    ml_m,
     self.data,
     self.treatment,
     self.quantile,
@@ -467,12 +477,12 @@ pub fn DoubleMLQTE::fit(
   ml_l? : LearnerDispatch = self.ml_l,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLQTE {
-  ignore(ml_l)
-  ignore(ml_m)
   let c = Array::make(self.quantiles.length(), 0.0)
   let s = Array::make(self.quantiles.length(), 0.0)
   for j = 0; j < self.quantiles.length(); j = j + 1 {
     let (theta1, psi1, deriv1) = solve_pq(
+      ml_l,
+      ml_m,
       self.data,
       1.0,
       self.quantiles[j],
@@ -486,6 +496,8 @@ pub fn DoubleMLQTE::fit(
         )
     }
     let (theta0, psi0, deriv0) = solve_pq(
+      ml_l,
+      ml_m,
       self.data,
       0.0,
       self.quantiles[j],

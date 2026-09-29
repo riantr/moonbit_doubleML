@@ -414,8 +414,9 @@ pub fn DoubleMLLPLR::fit(
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLLPLR {
   try {
-    ignore(ml_g)
-    ignore(ml_m)
+    // v0.62.0+: route `ml_g` to the `ml_t` slot (W regressor) and
+    // `ml_m` to the binary-classification slots (`ml_M`, `ml_a`,
+    // `ml_m`). Defaults preserve v0.61.0 byte-equality.
     let x = self.data.x
     let d = self.data.d
     let y = self.data.y
@@ -430,19 +431,17 @@ pub fn DoubleMLLPLR::fit(
       let outer = kfold(n, self.n_folds, self.seed + r)
       let xd = concat_d_x(d, x)
       // 1) Outer cross-fit ml_M: E[Y | D, X] (LogisticRegression ->
-      // probability of Y = 1).
-      let m_hat_outer = cross_fit_predict(
-        LogisticRegression::new(),
-        xd,
-        y,
-        outer,
-      )
+      // probability of Y = 1). v0.62.0+: routed through
+      // `cross_fit_predict_dispatch` so `ml_m` reaches ml_M.
+      let m_hat_outer = cross_fit_predict_dispatch(ml_m, xd, y, outer)
       // 2) Double cross-fit ml_a: E[D | X] (logistic for binary D,
       // predicted probability of D = 1). Inner fold seeds vary per
       // outer fold so the inner OOFs are deterministic but
-      // independent across outer folds.
-      let a_inner_per_fold : Array[Array[Double]] = double_cross_fit_predict(
-        LogisticRegression::new(),
+      // independent across outer folds. v0.62.0+: routed through
+      // `double_cross_fit_predict_dispatch` (new generic wrapper
+      // around `double_cross_fit_predict`).
+      let a_inner_per_fold : Array[Array[Double]] = double_cross_fit_predict_dispatch(
+        ml_m,
         x,
         d,
         outer,
@@ -453,7 +452,7 @@ pub fn DoubleMLLPLR::fit(
       // of inner OOF for `a` (the prediction made on each row
       // when it is in the test set of the inner split).
       // ml_a outer cross-fit (a_hat), same outer folds.
-      a_pred = cross_fit_predict(LogisticRegression::new(), x, d, outer)
+      a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
       // m_hat is the same estimator in LPLR (ml_m = ml_a). For
       // continuous D, upstream would also use the same propensity
       // for `m`; the binary-D case is the focus here.
@@ -482,12 +481,7 @@ pub fn DoubleMLLPLR::fit(
         }
         w_inner.push(w)
       }
-      t_pred = cross_fit_predict_inner(
-        LinearRegression::new(),
-        x,
-        w_inner,
-        outer,
-      )
+      t_pred = cross_fit_predict_inner_dispatch(ml_g, x, w_inner, outer)
       // 4) Per-fold preliminary beta.
       let mut beta_acc = 0.0
       let mut beta_count = 0
@@ -636,8 +630,13 @@ fn lplr_initial_theta(
 /// fold's `target[that fold's training set]` is used. (For
 /// `ml_t` the test-row prediction does not depend on the test
 /// row's own W — `t_hat` is purely a function of `x`.)
-fn cross_fit_predict_inner(
-  learner : LinearRegression,
+///
+/// v0.62.0+: generalized from a hardcoded `LinearRegression` to
+/// any `T : Learner`. The `ml_t` slot still defaults to OLS
+/// for byte-equality with v0.61.0 callers, but the function
+/// accepts any dispatch-compatible learner.
+fn[T : Learner] cross_fit_predict_inner(
+  learner : T,
   x : Matrix,
   targets : Array[Array[Double]],
   folds : Array[Fold],
@@ -654,6 +653,30 @@ fn cross_fit_predict_inner(
     }
   }
   preds
+}
+
+///|
+/// v0.62.0+: dispatch wrapper around `cross_fit_predict_inner`.
+/// Routes through `LearnerDispatch` so the per-fit `ml_g` /
+/// `ml_m` override reaches the LPLR per-fold inner fits.
+fn cross_fit_predict_inner_dispatch(
+  learner : LearnerDispatch,
+  x : Matrix,
+  targets : Array[Array[Double]],
+  folds : Array[Fold],
+) -> Array[Double] {
+  match learner {
+    LinearRegression(lr) =>
+      cross_fit_predict_inner(lr, x, targets, folds)
+    Constant(c) => cross_fit_predict_inner(c, x, targets, folds)
+    Noop(n) => cross_fit_predict_inner(n, x, targets, folds)
+    RandomForest(rf) =>
+      cross_fit_predict_inner(rf, x, targets, folds)
+    GradientBoosting(gb) =>
+      cross_fit_predict_inner(gb, x, targets, folds)
+    LogisticRegression(lr) =>
+      cross_fit_predict_inner(lr, x, targets, folds)
+  }
 }
 
 ///|

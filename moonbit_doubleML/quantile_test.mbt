@@ -153,8 +153,26 @@ test "qte_se_includes_covariance" {
 test "qte_se_hand_computation" {
   let data = quantile_test_data()
   // Re-derive the QTE for q=0.5 by hand.
-  let (theta1, psi1, deriv1) = solve_pq(data, 1.0, 0.5, 2, 3141, 1.0e-6)
-  let (theta0, psi0, deriv0) = solve_pq(data, 0.0, 0.5, 2, 3141, 1.0e-6)
+  let (theta1, psi1, deriv1) = solve_pq(
+    LearnerDispatch::linear_regression(),
+    LearnerDispatch::linear_regression(),
+    data,
+    1.0,
+    0.5,
+    2,
+    3141,
+    1.0e-6,
+  )
+  let (theta0, psi0, deriv0) = solve_pq(
+    LearnerDispatch::linear_regression(),
+    LearnerDispatch::linear_regression(),
+    data,
+    0.0,
+    0.5,
+    2,
+    3141,
+    1.0e-6,
+  )
   let n = data.n_obs().to_double()
   // Coef = theta1 - theta0
   let coef = theta1 - theta0
@@ -195,7 +213,16 @@ test "panic_solve_pq_aborts_when_upper_bracket_structurally_invalid" {
     y[i] = (i % 50).to_double() / 50.0
   }
   let data = DoubleMLData::new(x, y, d)
-  let _ = solve_pq(data, 1.0, 0.99, 2, 3141, 1.0e-6)
+  let _ = solve_pq(
+    LearnerDispatch::linear_regression(),
+    LearnerDispatch::linear_regression(),
+    data,
+    1.0,
+    0.99,
+    2,
+    3141,
+    1.0e-6,
+  )
   // unreachable: the upper bracket should have aborted
   inspect(
     false,
@@ -266,7 +293,20 @@ test "solve_pq_raises_on_upper_bracket_sign_failure" {
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
   let data = DoubleMLData::new(x, y, d)
-  try ignore(solve_pq(data, 1.0, 0.99, 2, 3141, 1.0e-6)) catch {
+  try
+    ignore(
+      solve_pq(
+        LearnerDispatch::linear_regression(),
+        LearnerDispatch::linear_regression(),
+        data,
+        1.0,
+        0.99,
+        2,
+        3141,
+        1.0e-6,
+      ),
+    )
+  catch {
     BracketSignError::UpperSignFailed => ()
   } noraise {
     _ =>

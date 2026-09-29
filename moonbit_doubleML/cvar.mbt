@@ -444,6 +444,8 @@ fn normalize_ipw_weights(
 ///   7. Append `ipw_est` to `ipw_vec` (the per-fold preliminary
 ///      potential-quantile estimates).
 fn cvar_inner_crossfit(
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
@@ -486,11 +488,12 @@ fn cvar_inner_crossfit(
       prelim_test_pos.length(),
       fn(k) { train_1[prelim_test_pos[k]] },
     )
-    let fitted = LinearRegression::new().fit(
+    let p = fit_predict_one_dispatch(
+      ml_m,
       slice_matrix_rows(x, prelim_train_global),
       slice_vector(treated, prelim_train_global),
+      slice_matrix_rows(x, prelim_test_global),
     )
-    let p = fitted.predict(slice_matrix_rows(x, prelim_test_global))
     for k = 0; k < prelim_test_global.length(); k = k + 1 {
       // `prelim_test_pos[k]` is the position in `train_1`,
       // and `train_1[prelim_test_pos[k]]` is the global index
@@ -572,19 +575,22 @@ fn cvar_inner_crossfit(
   // via `g_hat["targets"]` filtering; we just skip the fit
   // and leave g[eval] = 0.0).
   let g_hat_test : Array[Double] = if train_2_treat.length() > 0 {
-    LinearRegression::new()
-    .fit(
+    fit_predict_one_dispatch(
+      ml_g,
       slice_matrix_rows(x, train_2_treat),
       slice_vector(g_target, train_2_treat),
+      slice_matrix_rows(x, eval_set),
     )
-    .predict(slice_matrix_rows(x, eval_set))
   } else {
     Array::make(eval_set.length(), 0.0)
   }
   // 6) refit `ml_m` on the full `train` and predict on `eval_set`.
-  let m_hat_test = LinearRegression::new()
-    .fit(slice_matrix_rows(x, train), slice_vector(d, train))
-    .predict(slice_matrix_rows(x, eval_set))
+  let m_hat_test = fit_predict_one_dispatch(
+    ml_m,
+    slice_matrix_rows(x, train),
+    slice_vector(d, train),
+    slice_matrix_rows(x, eval_set),
+  )
   (g_hat_test, m_hat_test, ipw_est)
 }
 
@@ -610,8 +616,6 @@ pub fn DoubleMLCVAR::fit(
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLCVAR {
   try {
-    ignore(ml_g)
-    ignore(ml_m)
     require(self.quantile > 0.0 && self.quantile < 1.0)
     let n = self.n_obs()
     let treated = indicator_level(self.data.d, self.treatment)
@@ -638,6 +642,8 @@ pub fn DoubleMLCVAR::fit(
         // matches.
         let inner_seed = 42 + r * 1000 + i_fold * 17
         let (g_test, m_test, ipw_est) = cvar_inner_crossfit(
+          ml_g,
+          ml_m,
           self.data.x,
           self.data.y,
           self.data.d,

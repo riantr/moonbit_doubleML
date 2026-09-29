@@ -131,6 +131,10 @@ pub enum LearnerDispatch {
   /// Pure-MoonBit gradient boosting (Friedman 2001 regression).
   /// v0.57.0+: Path A — second non-OLS learner.
   GradientBoosting(GBLearner)
+  /// Pure-MoonBit logistic regression (binary classification,
+  /// IRLS Newton-Raphson). v0.62.0+: added for LPLR plumbing.
+  /// `predict` returns P(y = 1 | x) for every row.
+  LogisticRegression(LogisticRegression)
 } derive(Debug)
 
 ///|
@@ -175,6 +179,16 @@ pub fn LearnerDispatch::gradient_boosting(gb : GBLearner) -> LearnerDispatch {
 }
 
 ///|
+/// Wrap a `LogisticRegression` in a `LearnerDispatch`.
+/// v0.62.0+: LPLR plumbing — binary classification for the
+/// double cross-fit path (`ml_M`, `ml_a`, `ml_m`).
+pub fn LearnerDispatch::logistic_regression(
+  lr : LogisticRegression,
+) -> LearnerDispatch {
+  LogisticRegression(lr)
+}
+
+///|
 /// Cross-fit a `LearnerDispatch` over the given folds. This
 /// is the dispatch wrapper around `cross_fit_predict[T : Learner]`
 /// (which is generic in `T`); each match arm binds a concrete
@@ -194,6 +208,7 @@ pub fn cross_fit_predict_dispatch(
     Noop(n) => cross_fit_predict(n, x, y, folds)
     RandomForest(rf) => cross_fit_predict(rf, x, y, folds)
     GradientBoosting(gb) => cross_fit_predict(gb, x, y, folds)
+    LogisticRegression(lr) => cross_fit_predict(lr, x, y, folds)
   }
 }
 
@@ -220,5 +235,6 @@ pub fn fit_predict_one_dispatch(
     Noop(n) => n.fit(x_train, y_train).predict(x_test)
     RandomForest(rf) => rf.fit(x_train, y_train).predict(x_test)
     GradientBoosting(gb) => gb.fit(x_train, y_train).predict(x_test)
+    LogisticRegression(lr) => lr.fit(x_train, y_train).predict(x_test)
   }
 }

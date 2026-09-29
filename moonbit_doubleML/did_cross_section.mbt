@@ -461,6 +461,8 @@ fn crossfit_nuisance(
   seed : Int,
   propensity_clip : Double,
   ps_processor : PSProcessor,
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
 ) -> (Array[Double], Array[Double], Array[Double], Array[Double], Array[Double]) {
   let n = data.n_obs()
   let p = data.n_features()
@@ -506,20 +508,19 @@ fn crossfit_nuisance(
       // Fit the 4 g-functions on the training subset
       // and predict on the test subset.
       let pred_g00 = fit_g_subset_predict(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 0,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 0,
       )
       let pred_g01 = fit_g_subset_predict(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 1,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 1,
       )
       let pred_g10 = fit_g_subset_predict(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 0,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 0,
       )
       let pred_g11 = fit_g_subset_predict(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 1,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 1,
       )
       // Fit the propensity.
-      let m_model = LinearRegression::new().fit(x_train, d_train_acc)
-      let pred_m = m_model.predict(x_test)
+      let pred_m = fit_predict_one_dispatch(ml_m, x_train, d_train_acc, x_test)
       // Scatter the test-fold predictions into the
       // accumulators.
       for k = 0; k < n_test; k = k + 1 {
@@ -559,8 +560,13 @@ fn crossfit_nuisance(
 /// Internal: fit a g-function on a training subset
 /// restricted to `(d == d_value) ∧ (t == t_value)` and
 /// predict on a test sub-matrix. Returns the test-fold
-/// predictions.
+/// predictions. v0.62.0+: routes through
+/// `fit_predict_one_dispatch` so the per-fit `ml_g` override
+/// actually reaches the 4 g-functions (previously
+/// hardcoded `LinearRegression::new()`; defaults preserve
+/// v0.60.0 byte-identical results).
 fn fit_g_subset_predict(
+  learner : LearnerDispatch,
   x_train : Matrix,
   y_train : Array[Double],
   d_train : Array[Double],
@@ -591,8 +597,7 @@ fn fit_g_subset_predict(
     return Array::make(n_test, 0.0)
   }
   let x_sub = Matrix::from_array(x_sub_acc, sub_n, p)
-  let model = LinearRegression::new().fit(x_sub, y_sub_acc)
-  model.predict(x_test)
+  fit_predict_one_dispatch(learner, x_sub, y_sub_acc, x_test)
 }
 
 // ---------------------------------------------------------------------------
@@ -938,9 +943,8 @@ pub fn DoubleMLDIDCrossSection::fit(
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDCrossSection {
   try {
-    ignore(ml_g)
-    ignore(ml_m)
-    // Step 1: cross-fit the nuisance functions.
+    // Step 1: cross-fit the nuisance functions (v0.62.0+:
+    // routes `ml_g` and `ml_m` through `crossfit_nuisance`).
     let (g00, g01, g10, g11, m) = crossfit_nuisance(
       self.data,
       self.n_folds,
@@ -948,6 +952,8 @@ pub fn DoubleMLDIDCrossSection::fit(
       self.seed,
       self.propensity_clip,
       self.ps_processor,
+      ml_g,
+      ml_m,
     )
     // Step 2: compute psi_a, psi_b.
     let (psi_a, psi_b) = compute_score(

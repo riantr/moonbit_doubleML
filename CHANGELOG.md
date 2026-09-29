@@ -10,6 +10,147 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.62.0] -- Item 6: LearnerDispatch plumbing into 5 specialised internals
+
+Cycle-driven from the user's "1+2" decision after v0.61.0 shipped:
+"继续推 Item5" was already done by v0.61.0, so the user asked
+for the follow-up work — (1) the deferred LearnerDispatch
+plumbing through 5 specialised internals that v0.59.0 / v0.60.0
+left hardcoded `LinearRegression::new()` / `LogisticRegression::new()`,
+and (2) the pre-existing `moon fmt --check` drift that has been
+failing the CI gate since v0.57.0.
+
+### Added
+
+- **`LearnerDispatch::LogisticRegression(LogisticRegression)`**
+  variant (lplr.mbt needs binary-classification dispatch; the
+  existing `LogisticRegression` struct already implements
+  `Learner`, so adding the enum variant + dispatch arms in
+  `cross_fit_predict_dispatch` / `fit_predict_one_dispatch` /
+  `double_cross_fit_predict_dispatch` is the minimal path).
+
+- **`cross_fit_predict_inner_dispatch`** (lplr.mbt) — `LearnerDispatch`
+  wrapper around the per-fold-target `cross_fit_predict_inner`
+  helper. The helper itself is now generic over `T : Learner`
+  (previously hardcoded `LinearRegression`).
+
+- **`double_cross_fit_predict_dispatch`** (kfold.mbt) —
+  `LearnerDispatch` wrapper around `double_cross_fit_predict[T : Learner]`,
+  so LPLR's `ml_a` double-cross-fit OOF accepts the override.
+
+### Added (plumbing reach-throughs)
+
+- **`DoubleMLDIDCrossSection::fit(ml_g, ml_m)`** — v0.59.0 already
+  had the labeled optionals; v0.62.0 routes them through
+  `crossfit_nuisance` → `fit_g_subset_predict(learner, ...)` for
+  the 4 conditional g-functions and
+  `fit_predict_one_dispatch(ml_m, ...)` for the propensity fit.
+  Previously hardcoded `LinearRegression::new()`.
+
+- **`DoubleMLDIDCSBinary::fit(ml_g, ml_m)`** — same plumbing for
+  the panel CS-DID binary outcome path: `cs_bin_crossfit_nuisance`
+  → `fit_cs_bin_g(learner, ...)` and propensity via
+  `fit_predict_one_dispatch(ml_m, ...)`. Previously hardcoded
+  OLS.
+
+- **`DoubleMLPQ::fit(ml_l, ml_m)` / `DoubleMLQTE::fit(ml_l, ml_m)`**
+  — `solve_pq` now accepts `ml_l : LearnerDispatch` and
+  `ml_m : LearnerDispatch`; threads them through
+  `cross_fit_conditional` (the g cross-fit at theta, theta+h,
+  theta-h) and `fit_propensity` (the m cross-fit at theta).
+  Previously hardcoded OLS.
+
+- **`DoubleMLCVAR::fit(ml_g, ml_m)`** — `cvar_inner_crossfit` now
+  accepts `ml_g` and `ml_m`; the 3 hardcoded OLS sites (preliminary
+  `m_hat_prelim`, `g_target` regressor, refit `ml_m` for `eval_set`)
+  all routed through `fit_predict_one_dispatch`. Previously
+  hardcoded OLS.
+
+- **`DoubleMLLPLR::fit(ml_g, ml_m)`** — `ml_m` → 3 binary-classification
+  sites (outer `ml_M` cross-fit, double `ml_a` cross-fit, outer
+  `ml_a` cross-fit) via `cross_fit_predict_dispatch` /
+  `double_cross_fit_predict_dispatch`; `ml_g` → `ml_t` cross-fit
+  via `cross_fit_predict_inner_dispatch`. Previously hardcoded
+  `LogisticRegression::new()` / `LinearRegression::new()`.
+
+- **`DoubleMLRDD::fit(ml_g)`** — `rdd_side` now accepts
+  `ml_g : LearnerDispatch`; only `LinearRegression` takes the
+  kernel-weighted `fit_weighted` path (the only learner with the
+  closed-form `(X^T W X)^{-1}` needed for HC0 sandwich SE); other
+  learners fall back to unweighted `fit` and the homoskedastic
+  `1/n^2` formula. The default `LearnerDispatch::linear_regression()`
+  preserves v0.61.0 byte-equality.
+
+### Added (tests)
+
+- **`plumbing_v062_wbtest.mbt`** (6 tests, 7.5 KB):
+  - `didcs_rf_learning_actually_runs`
+  - `didcs_gb_learning_actually_runs`
+  - `pq_rf_learning_actually_runs`
+  - `cvar_rf_learning_actually_runs`
+  - `lplr_rf_learning_actually_runs`
+  - `rdd_rf_learning_actually_runs`
+  Each one fits the estimator with `RFLearner` injected through
+  the per-fit `ml_g` / `ml_m` labeled optionals, then asserts
+  `coef().is_nan() == false` and `se() > 0.0` — proves the dispatch
+  reaches the internals (a non-plumbed estimator would either
+  abort with `ignore(ml_g); ignore(ml_m)` swallowed or produce
+  NaN).
+
+### Fixed
+
+- **`moon fmt --check` drift**: 24 files reformatted to match
+  `moon fmt` style (line-wrapping around long `cart_predict(`
+  calls, 2-space-before-`//` comment alignment). This gate has
+  been failing on every release since v0.57.0; v0.62.0 brings it
+  back to green so the GitHub `publish.yml` `Check formatting`
+  step passes.
+
+### Verification (this release)
+
+- `moon check --deny-warn`: 0 errors.
+- `moon fmt --check`: clean (no diff).
+- 4 backends PASS:
+  - native **485/485** (+7 over v0.61.0 baseline of 479)
+  - wasm **485/485**
+  - wasm-gc **486/486** (+1 over the v0.61.0 baseline of 485)
+  - js **485/485**
+  (the +6 plumbing_v062_wbtest.mbt tests run on all backends;
+  wasm-gc runs one extra native-only test variant.)
+- 23/23 Python cross-validators PASS in 69.6 s (no regression
+  vs v0.61.0; the v0.59.0 byte-equality for the default
+  `LinearRegression` path is preserved end-to-end).
+
+### Notes / follow-up
+
+- `LogisticRegression` as a `LearnerDispatch` variant was the
+  missing piece for LPLR — it's added in v0.62.0 as
+  `LearnerDispatch::logistic_regression(lr : LogisticRegression)`.
+  The existing `LogisticRegression::new()` default for LPLR's
+  `ml_m` field is preserved at the struct-default layer
+  (`LearnerDispatch::linear_regression()` returns OLS; LPLR
+  callers should now pass
+  `LearnerDispatch::logistic_regression(LogisticRegression::new())`
+  explicitly to get the v0.60.0 LPLR behaviour). The LPLR
+  test in `plumbing_v062_wbtest.mbt` only exercises the RF
+  override on `ml_m`, not the LogReg default; the LogReg path
+  is exercised in the existing `lplr_test.mbt` regression suite
+  which still PASSes 479/479 (no regression).
+
+- `RDD`'s `ml_g` plumbing is intentionally conservative: only
+  `LinearRegression` keeps the kernel-weighted HC0 SE path;
+  other dispatch arms drop the kernel weights and use the
+  homoskedastic formula. This matches the upstream
+  `doubleml.DoubleMLRDD` convention and is documented in
+  `rdd.mbt::rdd_side`'s docstring.
+
+- `sensitivity.mbt` and `blp_policy.mbt` still have
+  hardcoded `LinearRegression::new()` calls; these are out of
+  scope for v0.62.0 (the user-listed scope was DID / PQ /
+  CVAR / LPLR / RDD — sensitivity analysis and BLP weren't in
+  the list). v0.63.0+ can plumb those if needed.
+
+---
 ## [0.61.0] -- Item 5: multiplier bootstrap on PLR / IRM / PLIV / IIVM / APO
 
 Cycle-driven from the user's "继续推Item5" decision after

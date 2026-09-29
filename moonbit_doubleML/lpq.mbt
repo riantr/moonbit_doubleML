@@ -152,6 +152,7 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     let tr = indicator_level(self.data.d, self.treatment)
     let folds = kfold(n, self.n_folds, self.seed)
     let m = fit_propensity(
+      LearnerDispatch::linear_regression(),
       self.data.x,
       self.data.z,
       folds,
@@ -214,10 +215,25 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     }
     let theta = (lo + hi) / 2.0
     // Cross-fit g0, g1 ONCE at theta (replaces the per-iteration
-    // g cross-fit from the pre-fix code).
+    // g cross-fit from the pre-fix code). v0.62.0+:
+    // `cross_fit_conditional` takes a `LearnerDispatch` first
+    // arg. LPQ has no learner injection, so use the OLS
+    // default for byte-equality with v0.61.0.
     let iy = outcome_indicator(self.data.y, theta)
-    let g0 = cross_fit_conditional(self.data.x, iy, z0, folds)
-    let g1 = cross_fit_conditional(self.data.x, iy, z1, folds)
+    let g0 = cross_fit_conditional(
+      LearnerDispatch::linear_regression(),
+      self.data.x,
+      iy,
+      z0,
+      folds,
+    )
+    let g1 = cross_fit_conditional(
+      LearnerDispatch::linear_regression(),
+      self.data.x,
+      iy,
+      z1,
+      folds,
+    )
     let psi = lpq_score(
       self.data,
       tr,

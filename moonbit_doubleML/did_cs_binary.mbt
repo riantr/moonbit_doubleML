@@ -205,6 +205,8 @@ fn cs_bin_crossfit_nuisance(
   seed : Int,
   propensity_clip : Double,
   ps_processor : PSProcessor,
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
 ) -> (Array[Double], Array[Double], Array[Double], Array[Double], Array[Double]) {
   let n = rows.length()
   let n_folds = folds.length()
@@ -262,24 +264,26 @@ fn cs_bin_crossfit_nuisance(
       let x_test = Matrix::from_array(x_test_acc, n_test, p)
       // 4 conditional g-functions, each fit on the
       // matching (d, t) cell of the training fold and
-      // predicted on the full test fold.
+      // predicted on the full test fold. v0.62.0+: routes
+      // `ml_g` through `fit_cs_bin_g`; previously hardcoded
+      // OLS. Defaults preserve v0.60.0 byte-equality.
       let pred_g00 = fit_cs_bin_g(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 0.0,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 0.0,
       )
       let pred_g01 = fit_cs_bin_g(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 1.0,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 0.0, 1.0,
       )
       let pred_g10 = fit_cs_bin_g(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 0.0,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 0.0,
       )
       let pred_g11 = fit_cs_bin_g(
-        x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 1.0,
+        ml_g, x_train, y_train_acc, d_train_acc, t_train_acc, x_test, 1.0, 1.0,
       )
       // Propensity: fit on the full training fold
       // (no D, T conditioning), predict on the test
-      // fold.
-      let m_model = LinearRegression::new().fit(x_train, d_train_acc)
-      let pred_m = m_model.predict(x_test)
+      // fold. v0.62.0+: routes `ml_m` via
+      // `fit_predict_one_dispatch`.
+      let pred_m = fit_predict_one_dispatch(ml_m, x_train, d_train_acc, x_test)
       // Scatter the test-fold predictions into the
       // accumulators.
       for k = 0; k < n_test; k = k + 1 {
@@ -322,7 +326,12 @@ fn cs_bin_crossfit_nuisance(
 /// smaller than `p + 1` (so the linear regression is
 /// under-determined), predict zeros (matches the
 /// fallback in `did_cross_section.mbt::fit_g_subset_predict`).
+/// v0.62.0+: takes a `LearnerDispatch` and routes through
+/// `fit_predict_one_dispatch` so the per-fit `ml_g` override
+/// actually reaches the conditional g-functions
+/// (previously hardcoded `LinearRegression::new()`).
 fn fit_cs_bin_g(
+  learner : LearnerDispatch,
   x_train : Matrix,
   y_train : Array[Double],
   d_train : Array[Double],
@@ -352,8 +361,7 @@ fn fit_cs_bin_g(
     return Array::make(n_test, 0.0)
   }
   let x_sub = Matrix::from_array(x_sub_acc, sub_n, p)
-  let model = LinearRegression::new().fit(x_sub, y_sub_acc)
-  model.predict(x_test)
+  fit_predict_one_dispatch(learner, x_sub, y_sub_acc, x_test)
 }
 
 // ---------------------------------------------------------------------------
@@ -887,8 +895,6 @@ pub fn DoubleMLDIDCSBinary::fit(
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCSBinary {
-  ignore(ml_g)
-  ignore(ml_m)
   // Step 1: panel subset.
   let p = self.data.x.cols()
   let (rows, _never_treated_value, n_g, n_c) = cs_bin_panel_subset(
@@ -906,7 +912,8 @@ pub fn DoubleMLDIDCSBinary::fit(
     strata[i] = rows[i].g_indicator + 2.0 * rows[i].t_indicator
   }
   let folds = kfold_stratified(n_sub, strata, self.n_folds, self.seed)
-  // Crossfit the 4 g-functions + the propensity.
+  // Crossfit the 4 g-functions + the propensity. v0.62.0+:
+  // routes `ml_g` and `ml_m` through `cs_bin_crossfit_nuisance`.
   let (g00, g01, g10, g11, m) = cs_bin_crossfit_nuisance(
     rows,
     p,
@@ -915,6 +922,8 @@ pub fn DoubleMLDIDCSBinary::fit(
     self.seed,
     self.propensity_clip,
     self.ps_processor,
+    ml_g,
+    ml_m,
   )
   // Materialize the y / d / t arrays for the score.
   let y : Array[Double] = Array::make(n_sub, 0.0)

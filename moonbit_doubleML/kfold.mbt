@@ -657,3 +657,32 @@ pub fn[T : Learner] double_cross_fit_predict(
   }
   out
 }
+
+///|
+/// v0.62.0+: `LearnerDispatch` wrapper around
+/// `double_cross_fit_predict[T : Learner]`. Routes through the
+/// same enum pattern as `cross_fit_predict_dispatch` so the
+/// `ml_m` per-fit override (typically `LogisticRegression` for
+/// LPLR) actually reaches the inner OOF predictions.
+pub fn double_cross_fit_predict_dispatch(
+  learner : LearnerDispatch,
+  x : Matrix,
+  y : Array[Double],
+  outer : Array[Fold],
+  n_inner : Int,
+  seed : Int,
+) -> Array[Array[Double]] {
+  match learner {
+    LinearRegression(lr) =>
+      double_cross_fit_predict(lr, x, y, outer, n_inner, seed)
+    Constant(c) =>
+      double_cross_fit_predict(c, x, y, outer, n_inner, seed)
+    Noop(n) => double_cross_fit_predict(n, x, y, outer, n_inner, seed)
+    RandomForest(rf) =>
+      double_cross_fit_predict(rf, x, y, outer, n_inner, seed)
+    GradientBoosting(gb) =>
+      double_cross_fit_predict(gb, x, y, outer, n_inner, seed)
+    LogisticRegression(lr) =>
+      double_cross_fit_predict(lr, x, y, outer, n_inner, seed)
+  }
+}
