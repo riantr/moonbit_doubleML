@@ -312,6 +312,13 @@ pub struct DoubleMLDIDBinary {
   // called; `coef`/`se`/`confint` accessors guard on `fitted`.
   inner : DoubleMLDID
   fitted : Bool
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for the inner
+  // ATT. Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -391,6 +398,10 @@ pub fn DoubleMLDIDBinary::new(
         in_sample_normalization~,
       ),
       fitted: false,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -677,7 +688,50 @@ pub fn DoubleMLDIDBinary::fit(
     // v0.15.0+: record the long-format `eval_idx` from the
     // preprocessing so the bootstrap can map wide-format psi
     // back to long-format.
-    { ..self, inner, eval_idx: wide.eval_idx, fitted: true, }
+    {
+      ..self,
+      inner,
+      eval_idx: wide.eval_idx,
+      fitted: true,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLDIDBinary`.
+/// Delegates to the inner `DoubleMLDID::bootstrap(...)` (the
+/// wide-format ATT sub-model). The returned `boot_t_stat` is
+/// the inner's t-statistic array — same meaning, same shape,
+/// same RNG (the inner is re-bootstrapped on each call so the
+/// long-format row mapping in `eval_idx` is preserved).
+///
+/// `method_name` / `n_rep_boot` / `seed` are passed through to
+/// the inner call. Calling on an un-fit model aborts via
+/// `PreconditionError`.
+pub fn DoubleMLDIDBinary::bootstrap(
+  self : DoubleMLDIDBinary,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLDIDBinary {
+  try {
+    require(self.fitted)
+    let inner_boot = self.inner.bootstrap(method_name~, n_rep_boot~, seed~)
+    {
+      ..self,
+      inner: inner_boot,
+      boot_t_stat: inner_boot.boot_t_stat,
+      boot_method: inner_boot.boot_method,
+      n_rep_boot: inner_boot.n_rep_boot,
+      boot_seed: inner_boot.boot_seed,
+    }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

@@ -10,7 +10,7 @@
 // }
 name = "riantr/moonbit_doubleML"
 
-version = "0.63.0"
+version = "0.64.0"
 
 readme = "README.mbt.md"
 

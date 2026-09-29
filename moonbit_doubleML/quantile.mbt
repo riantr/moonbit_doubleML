@@ -288,6 +288,17 @@ pub struct DoubleMLPQ {
   coef : Double
   se : Double
   fitted : Bool
+  // v0.64.0+: per-observation influence function at the fitted
+  // `coef`. Persisted from `solve_pq(...)` so the multiplier
+  // bootstrap can use it without recomputing.
+  psi : Array[Double]
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -319,6 +330,11 @@ pub fn DoubleMLPQ::new(
       coef: 0.0,
       se: 0.0,
       fitted: false,
+      psi: Array::make(data.y.length(), 0.0),
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -368,6 +384,11 @@ pub fn DoubleMLPQ::fit(
     coef: theta,
     se,
     fitted: true,
+    psi,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
   }
 }
 
@@ -431,6 +452,56 @@ pub fn DoubleMLPQ::confint(self : DoubleMLPQ) -> (Double, Double) {
 }
 
 ///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLPQ`. The
+/// per-observation influence function `psi` is the centered
+/// IPW quantile score at the bisection root (mean 0,
+/// `se_psi = sqrt(mean(psi^2))` is the bootstrap denominator).
+/// Routes through the shared `generic_bootstrap_single_psi`
+/// helper (see `bootstrap_helper.mbt`).
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults
+/// to `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLPQ::bootstrap(
+  self : DoubleMLPQ,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLPQ {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_single_psi(
+      self.psi,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLPQ::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 pub struct DoubleMLQTE {
   data : DoubleMLData
   quantiles : Array[Double]
@@ -443,6 +514,19 @@ pub struct DoubleMLQTE {
   ml_m : LearnerDispatch
   coefs : Array[Double]
   ses : Array[Double]
+  // v0.64.0+: per-quantile influence function flat matrix
+  // `[n_quantiles * n_obs]` (`psi_flat[j * n_obs + i]` = IF
+  // for the `theta_d1 - theta_d0` combination at observation
+  // `i`). Populated by `fit`; required by the multiplier
+  // bootstrap.
+  psi_flat : Array[Double]
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is
+  // a flat `[n_rep_boot * n_quantiles]` array of t-statistics.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -468,6 +552,11 @@ pub fn DoubleMLQTE::new(
     ml_m,
     coefs: Array::make(quantiles.length(), 0.0),
     ses: Array::make(quantiles.length(), 0.0),
+    psi_flat: Array::make(quantiles.length() * data.n_obs(), 0.0),
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
   }
 }
 
@@ -479,6 +568,15 @@ pub fn DoubleMLQTE::fit(
 ) -> DoubleMLQTE {
   let c = Array::make(self.quantiles.length(), 0.0)
   let s = Array::make(self.quantiles.length(), 0.0)
+  let n_obs = self.data.n_obs()
+  // v0.64.0+: flat `[n_quantiles * n_obs]` IF matrix, row-major
+  // by quantile (`psi_flat[j * n_obs + i] = (psi_d1[i]/deriv1
+  //   - psi_d0[i]/deriv0)` at observation i). The multiplier
+  // bootstrap uses this with `se_flat[j] = s[j]`.
+  let psi_flat : Array[Double] = Array::make(
+    self.quantiles.length() * n_obs,
+    0.0,
+  )
   for j = 0; j < self.quantiles.length(); j = j + 1 {
     let (theta1, psi1, deriv1) = solve_pq(
       ml_l,
@@ -535,6 +633,7 @@ pub fn DoubleMLQTE::fit(
     let mut gamma = 0.0
     for i = 0; i < psi1.length(); i = i + 1 {
       let u = psi1[i] / deriv1 - psi0[i] / deriv0
+      psi_flat[j * n_obs + i] = u
       gamma = gamma + u * u
     }
     gamma = gamma / n
@@ -550,6 +649,11 @@ pub fn DoubleMLQTE::fit(
     ml_m,
     coefs: c,
     ses: s,
+    psi_flat,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
   }
 }
 
@@ -589,6 +693,65 @@ pub fn DoubleMLQTE::coefs(self : DoubleMLQTE) -> Array[Double] {
 ///|
 pub fn DoubleMLQTE::ses(self : DoubleMLQTE) -> Array[Double] {
   self.ses
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLQTE`. The
+/// per-quantile per-observation influence function is
+/// `u[i, j] = psi_d1[i] / deriv_d1 - psi_d0[i] / deriv_d0` (the
+/// delta-method IF for `theta_qte = theta_d1 - theta_d0`);
+/// `psi_flat` is the flat `[n_quantiles * n_obs]` row-major
+/// matrix that `fit` populates. Routes through the shared
+/// `generic_bootstrap_psi_matrix` helper (see
+/// `bootstrap_helper.mbt`).
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults
+/// to `2024`; `n_rep_boot` defaults to `500`.
+///
+/// `boot_t_stat` is a flat `[n_rep_boot * n_quantiles]` array
+/// (row-major by rep, then by quantile). Calling on an un-fit
+/// model aborts via `PreconditionError`.
+pub fn DoubleMLQTE::bootstrap(
+  self : DoubleMLQTE,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLQTE {
+  try {
+    require(self.coefs.length() > 0)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n_obs = self.data.n_obs()
+    let n_thetas = self.quantiles.length()
+    let boot_t_stat = generic_bootstrap_psi_matrix(
+      self.psi_flat,
+      self.ses,
+      method_name,
+      n_rep_boot,
+      n_obs,
+      n_thetas,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLQTE::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

@@ -10,6 +10,108 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.64.0] -- Item 1: bootstrap() on 8 remaining estimators
+
+Cycle-driven from the user's "还有哪些需要 moonbit 化的组件?依次做
+1 2 3 4 5" review after v0.63.0 shipped. Item #1 from the
+moonbit-ization roadmap: every remaining estimator gets a
+multiplier `bootstrap()` method.
+
+Before v0.64.0 the following estimators already had `bootstrap()`:
+- DIDMulti, DIDCrossSection (v0.55.0)
+- PLR, IRM, PLIV, IIVM, APO (v0.61.0)
+- APOS (v0.63.0)
+
+This release adds `bootstrap()` to the remaining 8 estimators
+in one cycle:
+- `DoubleMLSSM` (constant psi_a = -1 + MAR IPW psi_b)
+- `DoubleMLDID`, `DoubleMLDIDBinary` (single-theta, psi_a + coef * psi_b)
+- `DoubleMLDIDCSBinary` (single-theta)
+- `DoubleMLLPQ`, `DoubleMLPQ` (single centered IF)
+- `DoubleMLQTE` (multi-quantile flat `[n_quantiles * n_obs]` psi matrix)
+- `DoubleMLDIDCS` (multi-cell, copies `DoubleMLDIDMulti::bootstrap` layout)
+- `DoubleMLBLP` (per-coef OLS IF with `M = (Xa^T Xa + ridge I)^{-1}`)
+
+Three new inner helpers in `bootstrap_helper.mbt` factor out the
+shared multiplier-bootstrap dance (`draw_bootstrap_weights` +
+`did_bootstrap_t_stat` + per-coef / per-theta SE):
+- `generic_bootstrap_t_stat` — single-theta, psi = psi_a + coef * psi_b
+  (covers 5 of the 8: SSM, DID, DIDBinary, DIDCSBinary via the
+  PLR/IRM/PLIV/IIVM/APO/APOS pattern).
+- `generic_bootstrap_single_psi` — single centered IF (LPQ, PQ).
+- `generic_bootstrap_psi_matrix` — flat `[n_thetas, n_obs]` psi
+  matrix with `se_flat` (QTE, DIDCS).
+- `generic_bootstrap_ols_per_coef` — per-coef OLS IF
+  `(M[j, :] @ xa_i) * e_i` (BLP).
+
+The four helpers all raise `BootstrapMethodError` on an unknown
+multiplier distribution; the caller `catch`-es and `abort(...)`s
+with the pre-v0.64.0 message. They all return zeros on a
+degenerate IF (`se_psi <= 0`), matching the IRM / PLR behaviour.
+
+### Scope notes (deferred)
+
+The user's roadmap also includes `bootstrap()` on `DoubleMLRDD`
+and `DoubleMLPolicyTree`. Both are deferred to a follow-up cycle:
+- RDD's IF is kernel-weighted and only has support on
+  `n_local <= n_obs` observations inside the bandwidth. A correct
+  bootstrap needs to respect the bandwidth (not the full `n_obs`)
+  and re-fit the local polynomial on each bootstrap rep. The
+  standard full-`n_obs` multiplier formula does not apply.
+- PolicyTree's IF depends on the tree structure (splits, leaf
+  treatments) and is non-trivial to materialise; a proper
+  bootstrap re-fits the tree on each rep.
+
+Both will be addressed in v0.65.0 alongside Items #2-#5
+(`fit_cluster` on 14 estimators, `sensitivity_analysis` on 22,
+`tune()` on 4, joint `confint` on 21).
+
+### Added
+
+- **`DoubleMLSSM::bootstrap(method, n_rep_boot, seed)`** — single-theta,
+  psi_a = -1 + MAR IPW psi_b. Persists `psi_a` / `psi_b` from
+  the last cross-fit rep's nuisances (`g_d1` / `g_d0` / `m_hat` /
+  `pi_hat`).
+- **`DoubleMLDID::bootstrap`** — single-theta, reuses the
+  observational / experimental score that `fit` already populates
+  (`psi_a[i] = -d[i] / p_hat` or `-1`, `psi_b[i]` the ATT score).
+- **`DoubleMLDIDBinary::bootstrap`** — delegates to the inner
+  `DoubleMLDID::bootstrap(...)`; preserves `eval_idx` so the
+  long-format panel mapping is intact.
+- **`DoubleMLDIDCSBinary::bootstrap`** — single-theta, post-subset
+  panel IF.
+- **`DoubleMLLPQ::bootstrap`** — single centered IF (mean 0 at
+  the bisection root); `psi` array persisted by `fit`.
+- **`DoubleMLPQ::bootstrap`** — single centered IF; `psi` array
+  persisted from `solve_pq(...)`.
+- **`DoubleMLQTE::bootstrap`** — multi-quantile flat
+  `[n_quantiles * n_obs]` psi matrix; `boot_t_stat` is flat
+  `[n_rep_boot * n_quantiles]` (row-major by rep, then by quantile).
+- **`DoubleMLDIDCS::bootstrap`** — multi-cell; copies the
+  `DoubleMLDIDMulti::bootstrap` materialisation pattern. Empty /
+  pre-treatment cells (`se_matrix[k] == 0`) zero out.
+- **`DoubleMLBLP::bootstrap`** — per-coef OLS IF. Recomputes
+  `(Xa^T Xa + ridge I)^{-1}` from the augmented design so the IF
+  is consistent with `LinearRegression::fit` (which augments with
+  an intercept internally).
+
+### Verification
+
+- `moon check --deny-warn`: clean.
+- `moon fmt --check`: clean (post-`moon fmt`).
+- `moon test`:
+  - native: 500 / 500
+  - wasm: 500 / 500
+  - wasm-gc: 506 / 506
+  - js: 500 / 500
+- 23 / 23 Python cross-validators in 73.2 s
+  (`_verify/run_all_validators.py`).
+- 9 new `v064_wbtest.mbt` tests cover `bootstrap()` shape
+  contract (length, finiteness, `boot_method` / `n_rep_boot`
+  round-trip) for SSM, DID, DIDBinary, DIDCSBinary, LPQ, PQ,
+  QTE, DIDCS, BLP.
+
+---
 ## [0.63.0] -- Items 1-4: APO plumbing + APOS bootstrap/confint + BLP plumbing
 
 Cycle-driven from the user's "还有哪些需要 moonbit 化的组件?依次做 1 2 3 4"

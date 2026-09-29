@@ -104,6 +104,18 @@ pub struct DoubleMLLPQ {
   predictions_g0 : Array[Double]
   predictions_g1 : Array[Double]
   predictions_m : Array[Double]
+  // v0.64.0+: per-observation influence function at the fitted
+  // `coef`. Already centered (mean 0 at the bisection root);
+  // `sqrt(mean(psi^2))` is the multiplier-bootstrap denominator.
+  // Persisted for `bootstrap(...)`.
+  psi : Array[Double]
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -136,6 +148,11 @@ pub fn DoubleMLLPQ::new(
       predictions_g0: Array::make(data.y.length(), 0.0),
       predictions_g1: Array::make(data.y.length(), 0.0),
       predictions_m: Array::make(data.y.length(), 0.0),
+      psi: Array::make(data.y.length(), 0.0),
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -297,6 +314,61 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
       predictions_g0: g0,
       predictions_g1: g1,
       predictions_m: m,
+      psi,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLLPQ`. The
+/// per-observation influence function `psi` is the centered
+/// score at the bisection root (mean 0, `se_psi =
+/// sqrt(mean(psi^2))` is the bootstrap denominator). Routes
+/// through the shared `generic_bootstrap_single_psi` helper
+/// (see `bootstrap_helper.mbt`).
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults
+/// to `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLLPQ::bootstrap(
+  self : DoubleMLLPQ,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLLPQ {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_single_psi(
+      self.psi,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLLPQ::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
     }
   } catch {
     PreconditionError::Violated(loc) =>

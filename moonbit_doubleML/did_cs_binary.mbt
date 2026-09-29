@@ -594,6 +594,13 @@ pub struct DoubleMLDIDCSBinary {
   // post-subset panel.
   n_c_subset : Int
   fitted : Bool
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -660,6 +667,10 @@ pub fn DoubleMLDIDCSBinary::new(
       n_g_subset: 0,
       n_c_subset: 0,
       fitted: false,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -962,5 +973,65 @@ pub fn DoubleMLDIDCSBinary::fit(
     n_g_subset: n_g,
     n_c_subset: n_c,
     fitted: true,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
+  }
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLDIDCSBinary`.
+/// The per-observation influence function is
+///
+///   `psi[i] = psi_a[i] + theta * psi_b[i]`
+///
+/// where `psi_a[i]` and `psi_b[i]` are the per-row
+/// ATT-score elements (computed in `fit` on the post-subset
+/// panel). Routes through the shared
+/// `generic_bootstrap_t_stat` helper (see
+/// `bootstrap_helper.mbt`).
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults to
+/// `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLDIDCSBinary::bootstrap(
+  self : DoubleMLDIDCSBinary,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLDIDCSBinary {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_t_stat(
+      self.psi_a,
+      self.psi_b,
+      self.coef,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLDIDCSBinary::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }

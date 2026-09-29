@@ -182,6 +182,13 @@ pub struct DoubleMLDID {
   psi_a : Array[Double]
   psi_b : Array[Double]
   fitted : Bool
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -230,6 +237,10 @@ pub fn DoubleMLDID::new(
       psi_a: Array::make(data.n_obs(), 0.0),
       psi_b: Array::make(data.n_obs(), 0.0),
       fitted: false,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -497,5 +508,66 @@ pub fn DoubleMLDID::fit(
     psi_a,
     psi_b,
     fitted: true,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
+  }
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLDID`. The
+/// per-observation influence function is
+///
+///   `psi[i] = psi_a[i] + theta * psi_b[i]`
+///
+/// where `psi_a[i] = -d[i] / p_hat` (or `-1` for the
+/// experimental score) and `psi_b[i]` is the per-observation
+/// ATT score, both populated by `fit(...)` from the last rep's
+/// cross-fitted nuisances. Routes through the shared
+/// `generic_bootstrap_t_stat` helper (see
+/// `bootstrap_helper.mbt`).
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults to
+/// `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLDID::bootstrap(
+  self : DoubleMLDID,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLDID {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_t_stat(
+      self.psi_a,
+      self.psi_b,
+      self.coef,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLDID::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }

@@ -102,6 +102,22 @@ pub struct DoubleMLSSM {
   coef : Double
   se : Double
   fitted : Bool
+  // v0.64.0+: per-observation influence-function components
+  // for the multiplier bootstrap. SSM score:
+  //   psi_a[i] = -1                              (constant)
+  //   psi_b[i] = psi_b1[i] - psi_b0[i]            (the per-observation IPW score)
+  // Populated by `fit(...)` from the last cross-fit repetition's
+  // nuisances (`g_d1` / `g_d0` / `m_hat` / `pi_hat`); length
+  // `n_obs`.
+  psi_a : Array[Double]
+  psi_b : Array[Double]
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -138,6 +154,12 @@ pub fn DoubleMLSSM::new(
       coef: 0.0,
       se: 0.0,
       fitted: false,
+      psi_a: Array::make(data.n_obs(), 0.0),
+      psi_b: Array::make(data.n_obs(), 0.0),
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -203,6 +225,84 @@ pub fn DoubleMLSSM::predictions_g_d1(self : DoubleMLSSM) -> Array[Double] {
 ///|
 pub fn DoubleMLSSM::predictions_g_d0(self : DoubleMLSSM) -> Array[Double] {
   self.g_d0
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLSSM`. The
+/// per-observation influence function is
+///
+///   `psi[i] = psi_a[i] + theta * psi_b[i]`
+///
+/// where `psi_a[i] = -1` (constant) and `psi_b[i]` is the
+/// MAR-score element defined in the file header. Routes through
+/// the shared `generic_bootstrap_t_stat` helper (see
+/// `bootstrap_helper.mbt`).
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults to
+/// `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLSSM::bootstrap(
+  self : DoubleMLSSM,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLSSM {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_t_stat(
+      self.psi_a,
+      self.psi_b,
+      self.coef,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLSSM::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.64.0+: per-observation IF accessors.
+pub fn DoubleMLSSM::psi_a(self : DoubleMLSSM) -> Array[Double] {
+  try {
+    require(self.fitted)
+    self.psi_a
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+pub fn DoubleMLSSM::psi_b(self : DoubleMLSSM) -> Array[Double] {
+  try {
+    require(self.fitted)
+    self.psi_b
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
@@ -398,6 +498,10 @@ pub fn DoubleMLSSM::fit(
         )
     }
     let (coef, se) = var_est(psi_a, psi_b)
+    // v0.64.0+: persist the last repetition's `psi_a` / `psi_b`
+    // for the multiplier bootstrap. SSM's `psi_a = -1` is a
+    // constant; the helper `generic_bootstrap_t_stat` accepts
+    // both constant and non-constant arrays.
     {
       data: self.data,
       n_folds: self.n_folds,
@@ -413,6 +517,12 @@ pub fn DoubleMLSSM::fit(
       coef,
       se,
       fitted: true,
+      psi_a,
+      psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>

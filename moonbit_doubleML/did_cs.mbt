@@ -181,6 +181,15 @@ pub struct DoubleMLDIDCS {
   n_groups : Int
   n_periods : Int
   fitted : Bool
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // flat `[n_rep_boot * n_cells]` array of t-statistics in
+  // row-major order (rep-major, then cell-major — the same
+  // order as `DoubleMLDIDMulti::boot_t_stat`). Populated by
+  // `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -225,6 +234,10 @@ pub fn DoubleMLDIDCS::new(
       n_groups,
       n_periods,
       fitted: false,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -513,6 +526,77 @@ pub fn DoubleMLDIDCS::fit(
       se_matrix: final_se,
       psi_matrix: final_psi,
       fitted: true,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLDIDCS`. For
+/// each (g, t) cell that has a non-zero SE, materialises the
+/// per-cell IF row (`psi_matrix[(gi * n_periods + pi) *
+/// n_obs + i_long]`) into a flat `[n_cells, n_obs]` psi
+/// matrix and calls the shared `generic_bootstrap_psi_matrix`
+/// helper. `boot_t_stat` is a flat `[n_rep_boot * n_cells]`
+/// array, row-major by rep, then by cell — the same layout as
+/// `DoubleMLDIDMulti::boot_t_stat`. Pre-treatment or empty
+/// cells (`se_matrix[k] == 0`) are zeroed out by the helper.
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults
+/// to `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLDIDCS::bootstrap(
+  self : DoubleMLDIDCS,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLDIDCS {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n_obs = self.data.y.length()
+    let n_cells = self.n_groups * self.n_periods
+    let psi_flat : Array[Double] = Array::make(n_cells * n_obs, 0.0)
+    for k = 0; k < n_cells; k = k + 1 {
+      if self.se_matrix[k] <= 0.0 {
+        continue
+      }
+      for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
+        psi_flat[k * n_obs + i_long] = self.psi_matrix[k * n_obs + i_long]
+      }
+    }
+    let boot_t_stat = generic_bootstrap_psi_matrix(
+      psi_flat,
+      self.se_matrix,
+      method_name,
+      n_rep_boot,
+      n_obs,
+      n_cells,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLDIDCS::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
     }
   } catch {
     PreconditionError::Violated(loc) =>

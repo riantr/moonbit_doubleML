@@ -35,6 +35,19 @@ pub struct DoubleMLBLP {
   n_obs : Int
   rss : Double
   var_y : Double
+  // v0.64.0+: per-observation residual vector at the fitted
+  // OLS projection. Length `n_obs`. Persisted for the
+  // multiplier bootstrap.
+  residuals : Array[Double]
+  // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is
+  // a flat `[n_rep_boot * (p + 1)]` array of t-statistics
+  // (row-major by rep, then by coef — same layout as the
+  // rest of the package). Populated by `bootstrap(...)`;
+  // empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -61,6 +74,11 @@ pub fn DoubleMLBLP::new(
       n_obs: 0,
       rss: 0.0,
       var_y: 0.0,
+      residuals: Array::make(basis.rows(), 0.0),
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -107,8 +125,10 @@ pub fn DoubleMLBLP::fit(
     self.basis,
   )
   let mut rss = 0.0
+  let residuals : Array[Double] = Array::make(n_obs, 0.0)
   for i = 0; i < n_obs; i = i + 1 {
     let e = self.orth_signal[i] - pred[i]
+    residuals[i] = e
     rss = rss + e * e
   }
   // `var_y` = variance of the orthogonal signal (the BLP's
@@ -146,6 +166,11 @@ pub fn DoubleMLBLP::fit(
     n_obs,
     rss,
     var_y,
+    residuals,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
   }
 }
 
@@ -177,6 +202,76 @@ pub fn DoubleMLBLP::n_obs(self : DoubleMLBLP) -> Int {
   try {
     require(self.fitted)
     self.n_obs
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.64.0+: multiplier bootstrap for `DoubleMLBLP`. BLP is
+/// the OLS projection of `orth_signal` onto the augmented
+/// design `[1, basis]`; per-observation IF is
+/// `psi[i, j] = M[j, :] @ xa_i * e_i` where
+/// `M = (Xa^T Xa + ridge I)^{-1}` and `xa_i = [1, basis[i, :]]`.
+/// `se_flat` is the per-coefficient SE (HC0 sandwich diagonal
+/// under `cov_type = "HC0"`, `sqrt(sigma^2 * (X^T X)^{-1}_{jj})`
+/// under `cov_type = "nonrobust"`); the helper skips a
+/// coefficient when `se[j] = 0`. Routes through the shared
+/// `generic_bootstrap_ols_per_coef` helper (see
+/// `bootstrap_helper.mbt`).
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`. `seed` defaults
+/// to `2024`; `n_rep_boot` defaults to `500`.
+///
+/// `boot_t_stat` is a flat `[n_rep_boot * (p + 1)]` array of
+/// t-statistics (row-major by rep, then by coef). Calling on
+/// an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLBLP::bootstrap(
+  self : DoubleMLBLP,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLBLP {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    // Recompute (Xa^T Xa + ridge I)^{-1} from the augmented
+    // design so the IF rows `psi[i, j] = M[j, :] @ xa_i * e_i`
+    // are consistent with `LinearRegression::fit` (which
+    // augments with an intercept internally and applies the
+    // same ridge regularisation to the normal equations).
+    let xa = augment_with_intercept(self.basis)
+    let xa_t = xa.transpose()
+    let xtx = matmul(xa_t, xa)
+    let xtx_aug = add_ridge(xtx, 1.0e-10)
+    let xtx_inv = inv_spd(xtx_aug)
+    let boot_t_stat = generic_bootstrap_ols_per_coef(
+      xa,
+      self.residuals,
+      xtx_inv,
+      self.se,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLBLP::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
