@@ -10,13 +10,13 @@
 // }
 name = "riantr/moonbit_doubleML"
 
-version = "0.62.1"
+version = "0.62.2"
 
 readme = "README.mbt.md"
 
 repository = "https://gitee.com/ren-yongxiang/moonbit_doubleml.git"
 
-license = "Apache-2.0"
+license = "MIT"
 
 keywords = [
   "doubleml",

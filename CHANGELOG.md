@@ -10,6 +10,73 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.62.2] -- docs: README correctness sweep for mooncakes
+
+Cycle-driven from the user's "publish 出去的内容中应该没有一系列的
+validate*.py 文件,你看下是否需要修订用于 publish 的 README" review
+after v0.62.1 shipped. The user pointed out that the published zip
+on mooncakes is the user-facing surface and asked for a correctness
+review of the README. (The published zip is in fact clean — only
+132 `.mbt` source files + `moon.mod` + `README.mbt.md`, no
+`validate_*.py` scripts leak through — but the README itself had
+several factual / usability bugs that needed fixing.)
+
+This is a docs-only release — no `.mbt` code changed, all 4
+backends still PASS 485 / 485 (native / wasm / js) and 491 / 491
+(wasm-gc), 23 / 23 Python cross-validators still PASS.
+
+### Fixed (README correctness / usability)
+
+- **Import path bug** (#Library Use): the snippet used
+  `@dml.DoubleMLData::new(...)` but the actual published import
+  path is `@moonbit_doubleML.DoubleMLData::new(...)` (the package
+  is published as `riantr/moonbit_doubleML`, not under the
+  shortcut namespace `@dml`). A `moon add` user would get an
+  "unknown package" error following the README. Fixed to use the
+  full import path. Same fix for the `@moonbit_doubleML.DoubleMLIRM`
+  and `@moonbit_doubleML.DoubleMLDID` follow-up examples.
+
+- **`examples/main` estimator count** (#Examples + #Project
+  layout): the README claimed "6 estimators" but the file
+  (`examples/main/main.mbt`, 533 lines) actually instantiates 12
+  estimators — PLR / IRM / PLIV / IIVM / DID / SSM / BLP / RDD /
+  PQ / QTE / LPQ / PolicyTree. Fixed in both places
+  (`#Examples` table row + `#Project layout` block).
+
+- **`chaCha8_rng` typo** (#Features): the function is
+  `chacha8_rng` (lowercase, per `seed.mbt`); the README used a
+  capital-`C` "chaCha8" once and lowercase elsewhere. Fixed to
+  `chacha8_rng` for consistency.
+
+- **API server example precondition violation** (#Examples, HTTP
+  service block): the JSON request had `"x": [[1.0,0.5],[2.0,1.5]]`
+  (n_obs=2) with `n_folds=2` — the library preconditions `n_folds <=
+  n_obs` and would abort with `PreconditionError::Violated`.
+  Expanded the example to `n_obs=6, n_features=2, n_folds=2` so
+  the response payload matches what the server actually returns.
+
+- **License mismatch**: `moon.mod` declared `license = "Apache-2.0"`
+  but the README said "MIT (port of upstream `doubleml-for-py`,
+  BSD-3-Clause)" — and the original `项目申报书` rewrote the
+  license to MIT in the v0.60.0 cycle. Fixed `moon.mod` to
+  `license = "MIT"` so mooncakes.io displays the right SPDX tag.
+
+### Verified (no code change)
+
+- `moon check --deny-warn`: 0 errors.
+- `moon fmt --check`: clean.
+- `moon test --target native`: 485 / 485 PASS.
+- `moon test --target wasm`: 485 / 485 PASS.
+- `moon test --target wasm-gc`: 491 / 491 PASS.
+- `moon test --target js`: 485 / 485 PASS.
+- `python _verify/run_all_validators.py`: 23 / 23 PASS in 69.6 s.
+- Published zip (`_build/publish/riantr-moonbit_doubleML-0.62.2.zip`)
+  contains: 132 `.mbt` source files + `README.mbt.md` (15552 bytes
+  after the README refresh) + `moon.mod`. **No** `validate_*.py`,
+  no log files, no `_verify/` contents — the user-facing surface
+  is exactly the library source + README.
+
+---
 ## [0.62.1] -- docs: README refinements (rabbita style)
 
 Cycle-driven from the user's "现在修订README(保持rabitta风格)，然后推一版到mooncakes"

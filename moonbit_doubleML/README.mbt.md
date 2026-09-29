@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.62.1** |
+| `moon.mod` version | **0.62.2** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 129 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -55,7 +55,7 @@ the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
 No per-estimator interface drift.
 
 **Cross-fitting infrastructure** — `kfold`, repeated cross-fitting,
-stratified K-fold (`kfold_stratified`), `chaCha8_rng`-based seeded
+stratified K-fold (`kfold_stratified`), `chacha8_rng`-based seeded
 PRNG (`chacha8_rng(seed)`), and Kahan summation. Default `seed=3141`;
 same seed yields byte-identical DGP outputs across runs.
 
@@ -136,16 +136,16 @@ PASS  |mb - handrolled_nrep5| (theta) = 5.24e-02 < max(MODEL_TOL=0.1, 2.0*handro
 #Library Use
 
 ```moonbit nocheck
-let data = @dml.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]
-let fitted = @dml.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]
+let fitted = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141).fit()
 let coef = fitted.coef()      // Double
 let se   = fitted.se()        // Double
 let (lo, hi) = fitted.confint()
 ```
 
 Same shape for every other estimator — e.g.
-`@dml.DoubleMLIRM::new(data, ml_g?, ml_m?, n_folds?, n_rep?, seed?).
-fit()`, `@dml.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
+`@moonbit_doubleML.DoubleMLIRM::new(data, ml_g?, ml_m?, n_folds?, n_rep?, seed?).
+fit()`, `@moonbit_doubleML.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
 
 #Examples
 
@@ -158,7 +158,7 @@ consumer would write.
 
 | Driver | Model | DGP | True θ |
 |--------|-------|-----|--------|
-| `examples/main` | `DoubleMLPLR` (and 5 others) | Simple partially linear, `n=500`, `p=5` | 1.0 |
+| `examples/main` | `DoubleMLPLR` + 11 others (IRM / PLIV / IIVM / DID / SSM / BLP / RDD / PQ / QTE / LPQ / PolicyTree) | Simple partially linear, `n=500`, `p=5` | 1.0 |
 | `examples/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=5000`, 9 controls | 1.5 |
 | `examples/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
 | `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts × 4 periods | 1.0 |
@@ -193,8 +193,8 @@ $ curl -s http://127.0.0.1:4000/healthz
 
 $ curl -s -X POST http://127.0.0.1:4000/fit/plr \
     -H 'Content-Type: application/json' \
-    -d '{"x":[[1.0,0.5],[2.0,1.5]],"y":[2.0,4.0],"d":[1.0,2.0],"n_folds":2,"seed":3141}'
-{"estimator":"plr","coef":2,"se":0,"ci_lo":2,"ci_hi":2,"n_obs":2,"n_features":2}
+    -d '{"x":[[1.0,0.5],[2.0,1.5],[3.0,2.5],[4.0,3.5],[5.0,4.5],[6.0,5.5]],"y":[2.0,4.0,6.0,8.0,10.0,12.0],"d":[1.0,2.0,3.0,4.0,5.0,6.0],"n_folds":2,"seed":3141}'
+{"estimator":"plr","coef":2,"se":0,"ci_lo":2,"ci_hi":2,"n_obs":6,"n_features":2}
 ```
 
 The same `api_server.wasm` also runs under `moonrun --port 4000`
@@ -240,7 +240,7 @@ binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.62.1, 129 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.62.2, 129 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -250,7 +250,7 @@ doc/                     <- wasm-gc-targeted numbered tutorials
   006_python_check/
 
 examples/                <- 14 driver binaries (all listed in moon.work)
-  main/                  <- 6 estimators, one perfect-DGP run each
+  main/                  <- 12 estimators, one perfect-DGP run each
   datasets/              <- 401(k)-style ATE / ATT recovery
   did_binary/            <- 2-period panel DID
   did_cs/                <- staggered CS-DID
