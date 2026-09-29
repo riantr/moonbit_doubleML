@@ -184,7 +184,15 @@ fn indicator_level(d : Array[Double], level : Double) -> Array[Double] {
 /// default 0.0 if no fold has yet seen them); rows with `treated = 1`
 /// receive both a `g` (on the treated subset) and a propensity
 /// update. Matches the upstream `DoubleMLAPO` convention.
+///
+/// v0.63.0+: routes `ml_g` (for the conditional outcome on the
+/// treated subset) and `ml_m` (for the propensity on the full
+/// fold) through `LearnerDispatch`. Defaults preserve v0.62.2
+/// byte-equality (default `LearnerDispatch::linear_regression()`
+/// gives the v0.62.2 OLS path).
 fn cross_fit_apo(
+  ml_g : LearnerDispatch,
+  ml_m : LearnerDispatch,
   x : Matrix,
   y : Array[Double],
   treated : Array[Double],
@@ -199,16 +207,22 @@ fn cross_fit_apo(
     let te = fold.test_indices()
     let tg = filter_indices(tr, treated)
     if tg.length() > 0 {
-      let p = LinearRegression::new()
-        .fit(slice_matrix_rows(x, tg), slice_vector(y, tg))
-        .predict(slice_matrix_rows(x, te))
+      let p = fit_predict_one_dispatch(
+        ml_g,
+        slice_matrix_rows(x, tg),
+        slice_vector(y, tg),
+        slice_matrix_rows(x, te),
+      )
       for k = 0; k < te.length(); k = k + 1 {
         g[te[k]] = p[k]
       }
     }
-    let p = LinearRegression::new()
-      .fit(slice_matrix_rows(x, tr), slice_vector(treated, tr))
-      .predict(slice_matrix_rows(x, te))
+    let p = fit_predict_one_dispatch(
+      ml_m,
+      slice_matrix_rows(x, tr),
+      slice_vector(treated, tr),
+      slice_matrix_rows(x, te),
+    )
     for k = 0; k < te.length(); k = k + 1 {
       m[te[k]] = p[k]
     }
@@ -222,8 +236,6 @@ pub fn DoubleMLAPO::fit(
   ml_g? : LearnerDispatch = self.ml_g,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLAPO {
-  ignore(ml_g)
-  ignore(ml_m)
   let n = self.n_obs()
   let treated = indicator_level(self.data.d, self.treatment_level)
   // Accumulate `g` and `m` directly in the storage arrays; divide
@@ -232,6 +244,8 @@ pub fn DoubleMLAPO::fit(
   let m = Array::make(n, 0.0)
   for r = 0; r < self.n_rep; r = r + 1 {
     let (gr, mr) = cross_fit_apo(
+      ml_g,
+      ml_m,
       self.data.x,
       self.data.y,
       treated,
@@ -410,6 +424,14 @@ pub struct DoubleMLAPOS {
   coefs : Array[Double]
   ses : Array[Double]
   fitted : Bool
+  // v0.63.0+: multiplier-bootstrap state. `boot_t_stat[j]` is
+  // the length-`n_rep_boot` t-stat array for `coefs[j]`
+  // (the APO coefficient at treatment level `j`).
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Array[Double]]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -482,6 +504,10 @@ pub fn DoubleMLAPOS::new(
     coefs: Array::make(treatment_levels.length(), 0.0),
     ses: Array::make(treatment_levels.length(), 0.0),
     fitted: false,
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
   }
 }
 
@@ -528,6 +554,10 @@ pub fn DoubleMLAPOS::fit(
       coefs: c,
       ses: s,
       fitted: true,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -581,6 +611,113 @@ pub fn DoubleMLAPOS::treatment_levels(self : DoubleMLAPOS) -> Array[Double] {
 /// v0.49.0: number of requested treatment levels.
 pub fn DoubleMLAPOS::n_treatment_levels(self : DoubleMLAPOS) -> Int {
   self.treatment_levels.length()
+}
+
+///|
+/// Per-level multiplier bootstrap for `DoubleMLAPOS`. Each
+/// treatment level's child `DoubleMLAPO` is re-fit (deterministic
+/// given `seed`) and its `bootstrap(...)` invoked; the per-level
+/// `boot_t_stat` arrays are concatenated into a length-`n_levels`
+/// `Array[Array[Double]]` and also written to `self.boot_t_stat`.
+///
+/// `method_name` selects the multiplier distribution: `"normal"`
+/// (default), `"Bayes"`, `"wild"` — see `DoubleMLAPO::bootstrap`.
+/// `n_rep_boot` defaults to 500; `seed` defaults to 2024.
+pub fn DoubleMLAPOS::bootstrap(
+  self : DoubleMLAPOS,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLAPOS {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n_levels = self.treatment_levels.length()
+    let per_level : Array[Array[Double]] = Array::make(n_levels, [])
+    for j = 0; j < n_levels; j = j + 1 {
+      let child = DoubleMLAPO::new(
+        self.data,
+        treatment_level=self.treatment_levels[j],
+        n_folds=self.n_folds,
+        n_rep=self.n_rep,
+        seed=self.seed,
+        propensity_clip=self.propensity_clip,
+        ml_g=self.ml_g,
+        ml_m=self.ml_m,
+      )
+      let fitted_child = child.fit()
+      let booted = fitted_child.bootstrap(method_name~, n_rep_boot~, seed~)
+      per_level[j] = booted.boot_t_stat
+    }
+    {
+      ..self,
+      boot_t_stat: per_level,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Per-level Wald confidence intervals `(coef - z * se, coef + z * se)`
+/// for `DoubleMLAPOS`. Returns one `(lo, hi)` tuple per treatment
+/// level, in user-supplied order. `level` defaults to 0.95 (z =
+/// 1.959963984540054 for the standard normal).
+pub fn DoubleMLAPOS::confint(
+  self : DoubleMLAPOS,
+  level? : Double = 0.95,
+) -> Array[(Double, Double)] {
+  try {
+    require(self.fitted)
+    require(level > 0.0 && level < 1.0)
+    let alpha = 1.0 - level
+    let z = norm_ppf(1.0 - alpha / 2.0)
+    let n_levels = self.treatment_levels.length()
+    let out : Array[(Double, Double)] = Array::make(n_levels, (0.0, 0.0))
+    for j = 0; j < n_levels; j = j + 1 {
+      let lo = self.coefs[j] - z * self.ses[j]
+      let hi = self.coefs[j] + z * self.ses[j]
+      out[j] = (lo, hi)
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Per-level `boot_t_stat` accessors (v0.63.0+).
+pub fn DoubleMLAPOS::boot_t_stats(self : DoubleMLAPOS) -> Array[Array[Double]] {
+  try {
+    require(self.fitted)
+    self.boot_t_stat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+pub fn DoubleMLAPOS::boot_method(self : DoubleMLAPOS) -> String {
+  self.boot_method
+}
+
+///|
+pub fn DoubleMLAPOS::n_rep_boot(self : DoubleMLAPOS) -> Int {
+  self.n_rep_boot
+}
+
+///|
+pub fn DoubleMLAPOS::boot_seed(self : DoubleMLAPOS) -> Int {
+  self.boot_seed
 }
 
 ///|

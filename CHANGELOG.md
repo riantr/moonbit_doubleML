@@ -10,6 +10,108 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.63.0] -- Items 1-4: APO plumbing + APOS bootstrap/confint + BLP plumbing
+
+Cycle-driven from the user's "还有哪些需要 moonbit 化的组件?依次做 1 2 3 4"
+review after v0.62.2 shipped. Four follow-up items identified in the
+audit:
+
+1. `DoubleMLAPO::fit` still hardcoded `LinearRegression::new()` in
+   `cross_fit_apo` (the `ml_g` / `ml_m` fields were stored but
+   `fit()` did `ignore(ml_g); ignore(ml_m)`).
+2. `DoubleMLAPOS` had no `bootstrap()` — only the per-level `APO`
+   got one in v0.61.0.
+3. `DoubleMLAPOS` had no `confint()` — only `causal_contrast`.
+4. `DoubleMLBLP::fit` hardcoded `LinearRegression::new()` —
+   didn't even have an `ml_g?` field.
+
+All four are done in v0.63.0; no code path regresses (v0.62.2
+byte-equality preserved at the default `LearnerDispatch::linear_regression()`).
+
+### Added
+
+- **`DoubleMLAPO::fit(ml_g, ml_m)` plumbing** (item #1):
+  `cross_fit_apo` signature took `(ml_g, ml_m, x, y, treated, folds, clip)`;
+  the 2 hardcoded `LinearRegression::new()` sites replaced with
+  `fit_predict_one_dispatch(ml_g|ml_m, …)` so the per-fit `ml_g` /
+  `ml_m` labelled optionals actually reach the conditional `g` /
+  propensity `m` cross-fit. v0.62.2 byte-equality preserved for
+  default `LearnerDispatch::linear_regression()`.
+
+- **`DoubleMLAPOS::bootstrap(method, n_rep_boot, seed)`** (item #2):
+  for each treatment level, re-fits the child `DoubleMLAPO` with
+  the same parameters (deterministic given `seed`) and forwards
+  `bootstrap(...)` to it. The per-level `boot_t_stat` arrays are
+  concatenated into a length-`n_levels` `Array[Array[Double]]` and
+  also written to `self.boot_t_stat`. New accessors
+  `DoubleMLAPOS::boot_t_stats()`, `boot_method()`, `n_rep_boot()`,
+  `boot_seed()`.
+
+- **`DoubleMLAPOS::confint(level)`** (item #3): per-level Wald
+  confidence intervals `(coef - z * se, coef + z * se)` using the
+  shared `norm_ppf` helper for the 1.96-equivalent `z` at the
+  requested `level` (default 0.95). Returns an
+  `Array[(Double, Double)]` of length `n_levels`.
+
+- **`DoubleMLBLP::new(ml_g?)` / `DoubleMLBLP::fit(ml_g?)`** (item #4):
+  BLP gains a `ml_g : LearnerDispatch` field. The closed-form
+  `(X^T X)^{-1}` machinery stays on OLS (BLP is by definition the
+  OLS projection), but the residual / RSS computation routes
+  through `fit_predict_one_dispatch(ml_g, basis, orth_signal, basis)`.
+  For default `LearnerDispatch::linear_regression()` this matches
+  v0.62.2 byte-for-byte (the dispatch wrapper calls
+  `lr.fit(basis, orth_signal).predict(basis)` internally). For
+  non-OLS learners, RSS reflects the non-OLS fit while the
+  closed-form SE machinery stays on OLS — forward-compat for a
+  full non-OLS-aware sandwich SE in v0.64.0+.
+
+### Added (tests)
+
+- **`v063_wbtest.mbt`** (6 tests, 5.8 KB):
+  - `apo_rf_learning_reaches_internal_helper`
+  - `apos_bootstrap_forwards_to_children`
+  - `apos_bayes_bootstrap_works`
+  - `apos_confint_per_level`
+  - `blp_default_linear_regression_byte_equal` (sanity: BLP ~ 1.0, 2.0, 3.0 for the canonical DGP)
+  - `blp_rf_learning_does_not_abort`
+
+### Verification (this release)
+
+- `moon check --deny-warn`: 0 errors.
+- `moon fmt --check`: clean.
+- 4 backends PASS:
+  - native **491 / 491** (+6 over v0.62.2 baseline of 485)
+  - wasm **491 / 491**
+  - wasm-gc **497 / 497** (+6 over the v0.62.2 baseline of 491)
+  - js **491 / 491**
+  (the +6 `v063_wbtest.mbt` tests run on all backends; wasm-gc
+  also runs extra backend-specific variants.)
+- 23 / 23 Python cross-validators PASS in 90.3 s (no regression
+  vs v0.62.2; the v0.62.2 byte-equality for default
+  `LearnerDispatch::linear_regression()` is preserved end-to-end).
+
+### Notes / follow-up
+
+- `BLP`'s non-OLS plumbing is intentionally limited: the
+  `coef` / `(X^T X)^{-1}` machinery stays on the OLS path (BLP is
+  the OLS projection by construction); only `pred` / `rss` use
+  the dispatch learner. A full non-OLS-aware sandwich SE (kernel
+  weights, leave-one-out residuals for the RF / GB / Logistic
+  paths) is a v0.64.0+ target.
+
+- `APOS`'s `bootstrap()` re-fits each child `DoubleMLAPO` from
+  scratch (deterministic given `seed`). For large
+  `n_treatment_levels * n_rep_boot * n_rep` the cumulative
+  re-fit cost is non-trivial; future v0.64.0+ can cache the child
+  fits and only re-derive `boot_t_stat` if needed.
+
+- The `norm_ppf` helper (`did_cross_section.mbt`) is now reused by
+  `DoubleMLAPOS::confint`. Existing `DoubleMLPLR::confint` and
+  friends hand-roll the 1.96 z-score via `@math.ln` / `norm_ppf`
+  chains; consolidating on `norm_ppf` for all Wald-CI callers is
+  a v0.64.0+ refactor.
+
+---
 ## [0.62.2] -- docs: README correctness sweep for mooncakes
 
 Cycle-driven from the user's "publish 出去的内容中应该没有一系列的

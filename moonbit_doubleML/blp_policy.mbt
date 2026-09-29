@@ -13,10 +13,18 @@
 /// REVIEW L5: the field is currently stored on the struct for forward
 /// compatibility (post-fit introspection), but is not used outside
 /// `fit`. Construct via `DoubleMLBLP::new` to validate the value.
+///
+/// v0.63.0+: `ml_g?` field accepts a `LearnerDispatch`. The
+/// `coef` / `(X^T X)^{-1}` machinery is always the closed-form OLS
+/// path (BLP is by definition the OLS projection); the dispatch
+/// learner only affects the residual / RSS computation. Defaults
+/// to `LearnerDispatch::linear_regression()` which preserves the
+/// v0.62.2 byte-equality behaviour for the standard fit.
 pub struct DoubleMLBLP {
   basis : Matrix
   orth_signal : Array[Double]
   cov_type : String
+  ml_g : LearnerDispatch
   coef : Array[Double]
   se : Array[Double]
   fitted : Bool
@@ -37,6 +45,7 @@ pub fn DoubleMLBLP::new(
   basis : Matrix,
   orth_signal : Array[Double],
   cov_type? : String = "HC0",
+  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLBLP {
   try {
     require(basis.rows() == orth_signal.length())
@@ -45,6 +54,7 @@ pub fn DoubleMLBLP::new(
       basis,
       orth_signal,
       cov_type,
+      ml_g,
       coef: [],
       se: [],
       fitted: false,
@@ -59,9 +69,20 @@ pub fn DoubleMLBLP::new(
 }
 
 ///|
-pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
-  let model = LinearRegression::new().fit(self.basis, self.orth_signal)
-  let c = model.coefficients()
+pub fn DoubleMLBLP::fit(
+  self : DoubleMLBLP,
+  ml_g? : LearnerDispatch = self.ml_g,
+) -> DoubleMLBLP {
+  // v0.63.0+: route through `LearnerDispatch` so the per-fit
+  // `ml_g` override reaches the BLP fit. Defaults preserve
+  // v0.62.2 byte-equality (default `LearnerDispatch::linear_regression()`
+  // matches the hardcoded `LinearRegression::new()` path).
+  // The closed-form `(X^T X)^{-1}` machinery stays on the
+  // OLS path (BLP is by construction the OLS projection);
+  // the dispatch learner only affects the residual / RSS
+  // computation.
+  let ols_model = LinearRegression::new().fit(self.basis, self.orth_signal)
+  let c = ols_model.coefficients()
   let p = c.length()
   let s = Array::make(p, 0.0)
   // Per-coefficient SE. Two flavours:
@@ -73,7 +94,18 @@ pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
   // Per-coefficient SE (Bug #5 fix); HC0 default matches
   // upstream `statsmodels.OLS(cov_type='HC0')`.
   let n_obs = self.orth_signal.length()
-  let pred = model.predict(self.basis)
+  // v0.63.0+: route through `fit_predict_one_dispatch` so the
+  // per-fit `ml_g` override drives the residual computation.
+  // For the default `LearnerDispatch::linear_regression()` this
+  // matches the v0.62.2 `model.predict(self.basis)` path
+  // byte-for-byte (the dispatch wrapper calls `lr.fit(basis,
+  // orth_signal).predict(basis)` internally).
+  let pred = fit_predict_one_dispatch(
+    ml_g,
+    self.basis,
+    self.orth_signal,
+    self.basis,
+  )
   let mut rss = 0.0
   for i = 0; i < n_obs; i = i + 1 {
     let e = self.orth_signal[i] - pred[i]
@@ -95,10 +127,10 @@ pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
   }
   let var_y = ss_y / n_obs.to_double()
   let cov_diag = if self.cov_type == "HC0" {
-    model.sandwich_se(self.basis, self.orth_signal)
+    ols_model.sandwich_se(self.basis, self.orth_signal)
   } else {
     let sigma2 = rss / (n_obs.to_double() - p.to_double())
-    model.covariance_diagonal(sigma2)
+    ols_model.covariance_diagonal(sigma2)
   }
   for j = 0; j < p; j = j + 1 {
     s[j] = cov_diag[j].sqrt()
@@ -107,6 +139,7 @@ pub fn DoubleMLBLP::fit(self : DoubleMLBLP) -> DoubleMLBLP {
     basis: self.basis,
     orth_signal: self.orth_signal,
     cov_type: self.cov_type,
+    ml_g,
     coef: c,
     se: s,
     fitted: true,
