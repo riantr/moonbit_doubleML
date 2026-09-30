@@ -10,6 +10,113 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.65.0] -- Items #2 + #4: APO/APOS cluster-aware DML + tune() on IRM/PLIV/IIVM/APO
+
+Cycle-driven from the user's "继续 #2 至 #5" review after
+v0.64.0 shipped. Items #2 and #4 from the moonbit-ization
+roadmap.
+
+Before v0.65.0 the cluster-aware fit path was implemented on
+`DoubleMLPLR` / `DoubleMLIRM` / `DoubleMLPLIV` / `DoubleMLIIVM`
+/ `DoubleMLPLPR` (5 estimators). The tune() method was only on
+`DoubleMLPLR`. This release:
+
+- Adds `DoubleMLAPO::fit_cluster` (and routes `DoubleMLAPO::fit`
+  through it when `cluster_vars` is non-empty); `DoubleMLAPOS`
+  inherits the cluster dispatch transparently since APOS::fit
+  calls `DoubleMLAPO::new(...).fit()` per treatment level.
+- Adds `DoubleMLIRM::tune` / `DoubleMLPLIV::tune` /
+  `DoubleMLIIVM::tune` / `DoubleMLAPO::tune`. PLIV tunes a
+  single learner slot (the `learner` field is shared by all
+  three nuisances); IRM/IIVM/APO tune the (ml_g, ml_m) pair
+  via MSE-on-g_hat cross-fitting under `n_folds_tune=5`
+  (default). For IIVM, `ml_r` is held fixed at `self.ml_r`
+  during both the tune stage and the re-fit.
+- Adds `v065_wbtest.mbt` (5 tests) covering the new methods.
+
+### Scope notes (deferred)
+
+`fit_cluster` is NOT added to `DoubleMLPQ` / `DoubleMLQTE` in
+this cycle. `solve_pq` internally calls `kfold(n, n_folds,
+seed)` to construct the bisection-step folds (line 184 of
+quantile.mbt); the bisection cannot accept pre-built cluster
+folds without a refactor of the bracket-sign detection logic.
+A proper PQ/QTE cluster-aware DML requires either:
+- a `solve_pq_with_folds` variant that takes pre-built cluster
+  folds and re-uses the same bracket-widening logic, or
+- refactoring `solve_pq` to accept `folds? : Array[Fold]` as
+  an optional override.
+Both are deferred to v0.66.0 alongside Items #3
+(`sensitivity_analysis` on 22 estimators) and #5 (joint
+`confint` on 21 estimators).
+
+The "naive cluster bootstrap" workaround (use row-level
+folds for the bisection, then compute cluster SE from the
+post-hoc `psi_res`) is explicitly rejected here because it
+defeats the cross-fitting guarantee that nuisance predictions
+at row `i` are computed without leakage from sibling rows
+in the same cluster.
+
+### Added
+
+- **`DoubleMLAPO::fit_cluster(ml_g, ml_m, max_attempts)`**:
+  cluster-aware folds (`kfold` on unique cluster ids, expanded
+  to row folds via `expand_unit_folds_to_rows` + cluster-aware
+  `cross_fit_apo`); cluster-robust SE via
+  `cluster_causal_param_and_se` (raises `VarEstClusterError`
+  on J-floor; `max_attempts=1` matches the PLR/IRM default).
+  Per-rep `psi_a` (=-1) and `psi_b = g + treated * (y - g) /
+  m` are recomputed from the last rep's cluster nuisances and
+  persisted for the v0.64.0 multiplier bootstrap.
+
+- **`DoubleMLAPOS::fit`** cluster dispatch: APOS already calls
+  `DoubleMLAPO::new(...).fit()` per treatment level, and the
+  new dispatch in `DoubleMLAPO::fit` routes through
+  `fit_cluster` when `cluster_vars` is non-empty. No code
+  change in `DoubleMLAPOS::fit` itself.
+
+- **`DoubleMLIRM::tune(param_set, scoring_method?,
+  n_folds_tune?, seed?)`**: tunes the `(ml_g, ml_m)` pair;
+  cluster data rejected (`require(!self.data.is_cluster_data())`).
+
+- **`DoubleMLPLIV::tune(param_set, ...)`**: tunes the single
+  nuisance `learner` field (PLIV has only one learner slot —
+  `l` / `r` / `m` share it). `param_set` is
+  `Array[LearnerDispatch]` (no `TuneParam` wrapper since
+  there's only one nuisance to choose).
+
+- **`DoubleMLIIVM::tune(param_set, ...)`**: tunes the
+  `(ml_g, ml_m)` pair; `ml_r` is held fixed at `self.ml_r`
+  during both tune and re-fit.
+
+- **`DoubleMLAPO::tune(param_set, ...)`**: tunes the
+  `(ml_g, ml_m)` pair; `treatment_level` is held fixed at
+  `self.treatment_level`.
+
+All four `tune()` methods share the same shape: scores via
+`tune_score_outcome(self.data.y, g_hat, scoring)` (matches
+the PLR `tune.mbt` §4.1 convention), pick the argmin/argmax
+per `scoring_method` (`"MSE"` argmin / `"NegMSE"` argmax /
+`"RMSE"` argmin — `RMSE` argmin is equivalent to MSE argmin
+since `sqrt` is monotonic), then re-fit with the chosen
+learner pair. The chosen pair is visible via `ml_g` / `ml_m`
+on the returned model (no `tune_result` field persisted —
+that audit field is reserved for PLR-style estimators).
+
+### Verification
+
+- `moon check --deny-warn`: clean.
+- `moon test`:
+  - native: 506 / 506
+  - wasm: 506 / 506
+  - wasm-gc: 512 / 512
+  - js: 506 / 506
+- 23 / 23 Python cross-validators PASS in 106.6 s.
+- 5 new `v065_wbtest.mbt` tests cover tune smoke (IRM / PLIV /
+  IIVM / APO) and `fit_cluster` smoke (IRM / APO with
+  `cluster_vars` non-empty).
+
+---
 ## [0.64.0] -- Item 1: bootstrap() on 8 remaining estimators
 
 Cycle-driven from the user's "还有哪些需要 moonbit 化的组件?依次做

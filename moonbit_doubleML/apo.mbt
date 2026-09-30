@@ -236,6 +236,12 @@ pub fn DoubleMLAPO::fit(
   ml_g? : LearnerDispatch = self.ml_g,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLAPO {
+  // v0.65.0+: cluster-data dispatch — when `cluster_vars` is
+  // non-empty, route through `fit_cluster` (cluster-aware
+  // folds, unit-level cluster-robust SE).
+  if self.data.is_cluster_data() {
+    return self.fit_cluster(ml_g~, ml_m~)
+  }
   let n = self.n_obs()
   let treated = indicator_level(self.data.d, self.treatment_level)
   // Accumulate `g` and `m` directly in the storage arrays; divide
@@ -296,6 +302,150 @@ pub fn DoubleMLAPO::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+  }
+}
+
+///|
+/// v0.65.0+: clustered-DML path for `DoubleMLAPO`. Folds
+/// partition whole units (`kfold` on unique cluster ids,
+/// expanded to row folds); nuisances are cross-fitted under
+/// cluster folds; `psi_a = -1` (constant), `psi_b = g +
+/// treated * (y - g) / m` is computed from the cluster
+/// nuisances; coefficient is the fold-weighted ratio of
+/// cluster score sums and SE is unit-level cluster-robust
+/// (`cluster_causal_param_and_se`). The cluster path
+/// differs from the row-level path only in the fold partition
+/// and the two aggregation steps; the per-row score elements
+/// are identical, so a single nuisances cross-fit (with
+/// cluster-respecting folds) feeds both paths.
+fn DoubleMLAPO::fit_cluster(
+  self : DoubleMLAPO,
+  ml_g~ : LearnerDispatch,
+  ml_m~ : LearnerDispatch,
+  max_attempts? : Int = 1,
+) -> DoubleMLAPO {
+  try {
+    require(max_attempts >= 1)
+    let cluster = self.data.cluster_vars
+    let n = self.n_obs()
+    let nrep = self.n_rep
+    let uniq = unique_units(cluster)
+    let n_units = uniq.length()
+    require(self.n_folds <= n_units)
+    let row_unit = build_row_unit_map(cluster, uniq) catch {
+      ClusterDataError::MissingUnit(g) =>
+        abort(
+          "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
+          g.to_string() +
+          ")",
+        )
+    }
+    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int] = []
+      rows
+    })
+    for i = 0; i < n; i = i + 1 {
+      unit_rows[row_unit[i]].push(i)
+    }
+    let treated = indicator_level(self.data.d, self.treatment_level)
+    let coefs : Array[Double] = Array::make(nrep, 0.0)
+    let ses : Array[Double] = Array::make(nrep, 0.0)
+    let mut g : Array[Double] = Array::make(n, 0.0)
+    let mut m : Array[Double] = Array::make(n, 0.0)
+    for r = 0; r < nrep; r = r + 1 {
+      let mut theta_r = 0.0
+      let mut se_r = 0.0
+      let mut attempt = 0
+      let mut succeeded = false
+      while attempt < max_attempts && !succeeded {
+        let rep_seed = self.seed + r + attempt * nrep
+        let folds_u = kfold(n_units, self.n_folds, rep_seed)
+        let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+          cluster, folds_u, row_unit,
+        )
+        let (g_r, m_r) = cross_fit_apo(
+          ml_g,
+          ml_m,
+          self.data.x,
+          self.data.y,
+          treated,
+          folds_row,
+          self.propensity_clip,
+        )
+        g = g_r
+        m = m_r
+        let pa : Array[Double] = Array::make(n, 0.0)
+        let pb : Array[Double] = Array::make(n, 0.0)
+        for i = 0; i < n; i = i + 1 {
+          pa[i] = -1.0
+          pb[i] = g[i] + treated[i] * (self.data.y[i] - g[i]) / m[i]
+        }
+        let (t, s) = cluster_causal_param_and_se(
+          pa,
+          pb,
+          folds_row,
+          fold_n_units,
+          unit_rows,
+          unit_fold,
+          folds_u.length(),
+          self.n_folds,
+        ) catch {
+          _ => {
+            attempt = attempt + 1
+            (0.0, 0.0)
+          }
+        }
+        theta_r = t
+        se_r = s
+        succeeded = true
+      }
+      if !succeeded {
+        abort(
+          "var_est_cluster: J-floor fired " +
+          max_attempts.to_string() +
+          " times for rep=" +
+          r.to_string() +
+          " (cluster SE numerically unstable across multiple fold splits, try a different seed or larger n_units)",
+        )
+      }
+      coefs[r] = theta_r
+      ses[r] = se_r
+    }
+    let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.65.0+: per-observation IF (constant -1 + IPW score)
+    // persisted for the multiplier bootstrap; recomputed from
+    // the last rep's cluster-aware nuisances so the stored
+    // arrays align with `g_hat` / `m_hat` and `coef`.
+    let pa : Array[Double] = Array::make(n, 0.0)
+    let pb : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      pa[i] = -1.0
+      pb[i] = g[i] + treated[i] * (self.data.y[i] - g[i]) / m[i]
+    }
+    {
+      data: self.data,
+      treatment_level: self.treatment_level,
+      n_folds: self.n_folds,
+      n_rep: self.n_rep,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      ml_g,
+      ml_m,
+      g_hat: g,
+      m_hat: m,
+      coef,
+      se,
+      fitted: true,
+      psi_a: pa,
+      psi_b: pb,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -383,6 +533,74 @@ pub fn DoubleMLAPO::bootstrap(
       n_rep_boot,
       boot_seed: seed,
     }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.65.0+: tune the (ml_g, ml_m) nuisance-learner pair via
+/// MSE-on-g_hat cross-fitting. The chosen `(learner_g,
+/// learner_m)` is then re-fit on the FINAL-FIT fold partition
+/// (`self.n_folds`) under `DoubleMLAPO::fit`. `treatment_level`
+/// is held fixed at `self.treatment_level`.
+///
+/// `param_set` is an `Array[TuneParam]`; each entry is a
+/// `(learner_g, learner_m)` pair. `scoring_method` is
+/// `"MSE"` (default), `"RMSE"`, or `"NegMSE"`. Returns a
+/// re-fitted `DoubleMLAPO` with the chosen pair applied.
+pub fn DoubleMLAPO::tune(
+  self : DoubleMLAPO,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLAPO {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let folds_tune = kfold(self.n_obs(), n_folds_tune, seed)
+    let n = self.n_obs()
+    let scores : Array[Double] = Array::make(param_set.length(), 0.0)
+    for i = 0; i < param_set.length(); i = i + 1 {
+      let c = param_set[i]
+      let g_hat_c = cross_fit_predict_dispatch(
+        c.learner_l,
+        self.data.x,
+        self.data.y,
+        folds_tune,
+      )
+      scores[i] = if g_hat_c.length() == n {
+        tune_score_outcome(self.data.y, g_hat_c, scoring)
+      } else {
+        TUNE_SCORE_FAIL_SENTINEL
+      }
+    }
+    let best_idx = if scoring is NegMSE {
+      let mut bi = 0
+      let mut bv = scores[0]
+      for i = 1; i < scores.length(); i = i + 1 {
+        if scores[i] > bv {
+          bv = scores[i]
+          bi = i
+        }
+      }
+      bi
+    } else {
+      let mut bi = 0
+      let mut bv = scores[0]
+      for i = 1; i < scores.length(); i = i + 1 {
+        if scores[i] < bv {
+          bv = scores[i]
+          bi = i
+        }
+      }
+      bi
+    }
+    let best_param = param_set[best_idx]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

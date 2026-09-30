@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.64.0** |
+| `moon.mod` version | **0.65.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 131 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -240,7 +240,7 @@ binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.64.0, 131 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.65.0, 131 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -300,6 +300,13 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   shared inner helpers in `bootstrap_helper.mbt`. RDD and
   PolicyTree bootstrap deferred to v0.65.0 (kernel-weighted n_local
   IF and tree IF need a different multiplier formula).
+- v0.65.0 verified counts: `moon test` 506 / 506 (native, wasm, js)
+  and 512 / 512 (wasm-gc); 23 / 23 Python cross-validators PASS in
+  ~107 s. Adds `DoubleMLAPO::fit_cluster` (with `DoubleMLAPOS`
+  inheriting the cluster dispatch transparently) and `tune()` on
+  IRM / PLIV / IIVM / APO. PQ / QTE `fit_cluster` deferred to
+  v0.66.0 (`solve_pq` bisection requires a folds-override refactor
+  for true cluster-aware cross-fitting).
 
 #Attribution
 

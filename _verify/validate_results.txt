@@ -1,26 +1,26 @@
 Total: 23, PASS: 23, FAIL: 0
-Elapsed: 73.2s
+Elapsed: 106.6s
 
-[PASS   ] validate_apos_with_python.py                         32.5s exit=0
+[PASS   ] validate_apos_with_python.py                         61.9s exit=0
 [PASS   ] validate_blp_policy_with_python.py                    0.2s exit=0
-[PASS   ] validate_bootstrap_with_python.py                     0.2s exit=0
+[PASS   ] validate_bootstrap_with_python.py                     0.3s exit=0
 [PASS   ] validate_cluster_iv_with_python.py                    3.6s exit=0
-[PASS   ] validate_cluster_plr_with_python.py                   2.9s exit=0
-[PASS   ] validate_cv_repeated_with_python.py                   1.8s exit=0
-[PASS   ] validate_cvar_with_python.py                          3.3s exit=0
-[PASS   ] validate_did_binary_with_python.py                    0.2s exit=0
-[PASS   ] validate_did_cross_section_with_python.py             0.2s exit=0
-[PASS   ] validate_did_cs_binary_with_python.py                 4.6s exit=0
-[PASS   ] validate_did_cs_with_python.py                        0.2s exit=0
-[PASS   ] validate_did_with_python.py                           2.7s exit=0
+[PASS   ] validate_cluster_plr_with_python.py                   3.4s exit=0
+[PASS   ] validate_cv_repeated_with_python.py                   2.0s exit=0
+[PASS   ] validate_cvar_with_python.py                          4.1s exit=0
+[PASS   ] validate_did_binary_with_python.py                    0.3s exit=0
+[PASS   ] validate_did_cross_section_with_python.py             0.3s exit=0
+[PASS   ] validate_did_cs_binary_with_python.py                 5.4s exit=0
+[PASS   ] validate_did_cs_with_python.py                        0.3s exit=0
+[PASS   ] validate_did_with_python.py                           3.0s exit=0
 [PASS   ] validate_gain_statistics_with_python.py               0.2s exit=0
-[PASS   ] validate_iivm_with_python.py                          3.1s exit=0
-[PASS   ] validate_irm_with_python.py                           3.1s exit=0
-[PASS   ] validate_lplr_with_python.py                          2.9s exit=0
-[PASS   ] validate_padjust_with_python.py                       1.4s exit=0
-[PASS   ] validate_pava_with_python.py                          1.7s exit=0
-[PASS   ] validate_pliv_with_python.py                          3.1s exit=0
+[PASS   ] validate_iivm_with_python.py                          3.2s exit=0
+[PASS   ] validate_irm_with_python.py                           3.3s exit=0
+[PASS   ] validate_lplr_with_python.py                          3.2s exit=0
+[PASS   ] validate_padjust_with_python.py                       1.6s exit=0
+[PASS   ] validate_pava_with_python.py                          1.8s exit=0
+[PASS   ] validate_pliv_with_python.py                          3.3s exit=0
 [PASS   ] validate_plpr_with_python.py                          3.1s exit=0
 [PASS   ] validate_quantile_with_python.py                      0.2s exit=0
 [PASS   ] validate_rdd_with_python.py                           0.2s exit=0
-[PASS   ] validate_ssm_with_python.py                           1.7s exit=0
+[PASS   ] validate_ssm_with_python.py                           1.8s exit=0

@@ -594,3 +594,75 @@ pub fn DoubleMLPLIV::bootstrap(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.65.0+: tune the single nuisance `learner` (used for all
+/// three nuisances `l` / `r` / `m`) via MSE-on-l_hat
+/// cross-fitting (matches `DoubleMLPLR::tune`'s
+/// MSE-on-l_hat scoring convention; see tune.mbt §4.1). The
+/// chosen `learner` is then re-fit on the FINAL-FIT fold
+/// partition (`self.n_folds`) under `DoubleMLPLIV::fit`.
+/// Cluster-DML is not supported in tune (mirrors the PLR
+/// behaviour — `tune` requires `!self.data.is_cluster_data()`).
+///
+/// `param_set` is an `Array[LearnerDispatch]` (each entry is a
+/// candidate nuisance learner; PLIV has only one nuisance slot
+/// so the TuneParam wrapper is unnecessary). Returns a
+/// re-fitted `DoubleMLPLIV` with the chosen learner applied
+/// via the `learner` field. `scoring_method` is `"MSE"`
+/// (default), `"RMSE"`, or `"NegMSE"`.
+pub fn DoubleMLPLIV::tune(
+  self : DoubleMLPLIV,
+  param_set~ : Array[LearnerDispatch],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLPLIV {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    require(!self.data.is_cluster_data())
+    let scoring = TuneScoring::parse(scoring_method)
+    let folds_tune = kfold(self.n_obs(), n_folds_tune, seed)
+    let n = self.n_obs()
+    let scores : Array[Double] = Array::make(param_set.length(), 0.0)
+    for i = 0; i < param_set.length(); i = i + 1 {
+      let l_hat_c = cross_fit_predict_dispatch(
+        param_set[i],
+        self.data.x,
+        self.data.y,
+        folds_tune,
+      )
+      scores[i] = if l_hat_c.length() == n {
+        tune_score_outcome(self.data.y, l_hat_c, scoring)
+      } else {
+        TUNE_SCORE_FAIL_SENTINEL
+      }
+    }
+    let best_idx = if scoring is NegMSE {
+      let mut bi = 0
+      let mut bv = scores[0]
+      for i = 1; i < scores.length(); i = i + 1 {
+        if scores[i] > bv {
+          bv = scores[i]
+          bi = i
+        }
+      }
+      bi
+    } else {
+      let mut bi = 0
+      let mut bv = scores[0]
+      for i = 1; i < scores.length(); i = i + 1 {
+        if scores[i] < bv {
+          bv = scores[i]
+          bi = i
+        }
+      }
+      bi
+    }
+    self.fit(learner=param_set[best_idx])
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
