@@ -1035,3 +1035,27 @@ pub fn DoubleMLDIDCSBinary::bootstrap(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis. Outcome residual is
+/// `y - g_d0_t0 - (g_d1_t0 - g_d0_t0) * d` on the
+/// post-subset panel; the Riesz-representer variance is
+/// `mean(psi_a^2)`. Routes through the shared
+/// `irm_style_sensitivity` helper.
+pub fn DoubleMLDIDCSBinary::sensitivity_analysis(
+  self : DoubleMLDIDCSBinary,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g00 = self.predictions_g_d0_t0()
+  let g10 = self.predictions_g_d1_t0()
+  let d = self.data.d
+  let n = g00.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
+  }
+  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+}

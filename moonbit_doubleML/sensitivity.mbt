@@ -1,4 +1,112 @@
 ///|
+/// v0.66.0+: shared inner for the IRM-style
+/// `sensitivity_analysis` (PLR / IRM / PLIV / IIVM / APO /
+/// APOS / SSM / DID / DIDBinary / DIDCS / DIDCSBinary).
+/// Caller passes the outcome-residual array
+/// (`residuals[i] = y[i] - l_hat[i]`, where `l_hat` is the
+/// outcome nuisance prediction) and the per-observation
+/// influence-function denominator `psi_a` (already
+/// persisted by v0.64.0). Returns a `SensitivityResult`
+/// with `rv`, `sigma2`, `nu2`, `cf_y`, `cf_d`, `max_bias`.
+///
+/// The underlying formula follows Cinelli & Hazlett (2020):
+///
+///   sigma2 = mean(residuals^2)
+///   nu2    = mean(psi_a^2)
+///   psi_sigma2[i] = residuals[i]^2 - sigma2  (centered)
+///   psi_nu2[i]    = psi_a[i]^2 - nu2         (centered)
+///   (max_bias, _) = compute_sensitivity_bias(sigma2, nu2,
+///                                          psi_sigma2,
+///                                          psi_nu2)
+///   max_bias_scalar = mean(max_bias)
+///   rv = |theta| / max_bias_scalar  (degenerates to 1e300
+///                                    when either is 0).
+///
+/// `cf_y` / `cf_d` are user-supplied benchmarking upper
+/// bounds (defaults 0.05). They are passed through
+/// unmodified — the actual robustness analysis is unchanged
+/// for either choice; they are documented in the result for
+/// upstream parity.
+pub fn irm_style_sensitivity(
+  theta : Double,
+  residuals : Array[Double],
+  psi_a : Array[Double],
+  cf_y : Double,
+  cf_d : Double,
+) -> SensitivityResult raise {
+  let n = residuals.length()
+  require(n == psi_a.length())
+  require(n > 0)
+  let n_d = n.to_double()
+  let mut ss_resid = 0.0
+  let mut ss_psi_a = 0.0
+  for i = 0; i < n; i = i + 1 {
+    ss_resid = ss_resid + residuals[i] * residuals[i]
+    ss_psi_a = ss_psi_a + psi_a[i] * psi_a[i]
+  }
+  let sigma2 = ss_resid / n_d
+  let nu2 = ss_psi_a / n_d
+  let psi_sigma2 : Array[Double] = Array::make(n, 0.0)
+  let psi_nu2 : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    psi_sigma2[i] = residuals[i] * residuals[i] - sigma2
+    psi_nu2[i] = psi_a[i] * psi_a[i] - nu2
+  }
+  let (max_bias_arr, _) = compute_sensitivity_bias(
+    sigma2, nu2, psi_sigma2, psi_nu2,
+  )
+  let mut mb_sum = 0.0
+  for v in max_bias_arr {
+    mb_sum = mb_sum + v
+  }
+  let max_bias = mb_sum / n_d
+  let rv = robustness_value(theta, max_bias_arr)
+  { rv, sigma2, nu2, cf_y, cf_d, max_bias, }
+}
+
+///|
+/// v0.66.0+: empirical (1 - `q`) quantile of an `Array[Double]`
+/// via insertion sort. Used by the joint confidence-interval
+/// max-|t| critical-value computation (the per-rep max |t|
+/// over all thetas is collected into a length-`n_rep_boot`
+/// array; the (1 - alpha) quantile is the joint critical
+/// value). Insertion sort is O(n^2) but `n` is small
+/// (`n_rep_boot` is typically 500), so the cost is
+/// negligible compared to the bootstrap itself.
+pub fn empirical_quantile(arr : Array[Double], q : Double) -> Double raise {
+  require(arr.length() > 0)
+  require(q >= 0.0 && q <= 1.0)
+  let s = arr.copy()
+  let n = s.length()
+  // Insertion sort ascending.
+  for i = 1; i < n; i = i + 1 {
+    let v = s[i]
+    let mut j = i
+    while j > 0 && s[j - 1] > v {
+      s[j] = s[j - 1]
+      j = j - 1
+    }
+    s[j] = v
+  }
+  let idx = ((n - 1).to_double() * q).to_int()
+  s[idx]
+}
+
+///|
+// v0.66.0+: result struct for `DoubleMLXXX::sensitivity_analysis`.
+pub struct SensitivityResult {
+  rv : Double
+  sigma2 : Double
+  nu2 : Double
+  cf_y : Double
+  cf_d : Double
+  max_bias : Double
+} derive(Debug)
+
+///|
+pub extend SensitivityResult with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
 /// Cinelli & Hazlett (2020) omitted-variable bias analysis for DML
 /// estimators. Given the per-density influence-function scalars
 /// `sigma2`, `nu2`, `psi_sigma2`, `psi_nu2`, this helper computes the

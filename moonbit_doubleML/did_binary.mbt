@@ -737,3 +737,18 @@ pub fn DoubleMLDIDBinary::bootstrap(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis. Delegates to the inner `DoubleMLDID::sensitivity_analysis`
+/// on the wide-format ATT sub-model; the long-format row
+/// mapping in `eval_idx` is preserved (the residual is
+/// computed on the inner's row space).
+pub fn DoubleMLDIDBinary::sensitivity_analysis(
+  self : DoubleMLDIDBinary,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  self.inner.sensitivity_analysis(cf_y~, cf_d~)
+}

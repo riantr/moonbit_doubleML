@@ -608,6 +608,28 @@ pub fn DoubleMLAPO::tune(
 }
 
 ///|
+/// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis. Outcome residual is `y - g_hat` (the APO is
+/// conditioned on `treated=1`); the Riesz-representer
+/// variance is `mean(psi_a^2) = 1` for the APO score
+/// (`psi_a = -1` constant). Routes through the shared
+/// `irm_style_sensitivity` helper.
+pub fn DoubleMLAPO::sensitivity_analysis(
+  self : DoubleMLAPO,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g_hat = self.predictions_g()
+  let n = g_hat.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g_hat[i]
+  }
+  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+}
+
+///|
 /// Average potential outcomes *symmetric* across multiple treatment
 /// levels. v0.49.0: full upstream parity — `treatment_levels`
 /// validation in `new` (rejects duplicates and levels not in
@@ -891,14 +913,43 @@ pub fn DoubleMLAPOS::bootstrap(
 pub fn DoubleMLAPOS::confint(
   self : DoubleMLAPOS,
   level? : Double = 0.95,
+  joint? : Bool = false,
 ) -> Array[(Double, Double)] {
   try {
     require(self.fitted)
     require(level > 0.0 && level < 1.0)
+    if joint {
+      require(self.boot_t_stat.length() > 0)
+    }
     let alpha = 1.0 - level
-    let z = norm_ppf(1.0 - alpha / 2.0)
+    let mut z = norm_ppf(1.0 - alpha / 2.0)
     let n_levels = self.treatment_levels.length()
     let out : Array[(Double, Double)] = Array::make(n_levels, (0.0, 0.0))
+    if joint {
+      // Joint critical value: (1 - alpha) quantile of max |t|
+      // over the n_levels t-statistics per bootstrap rep.
+      // `boot_t_stat : Array[Array[Double]]` of length
+      // `n_levels`; each per-level array is length
+      // `n_rep_boot`.
+      let n_boot = self.n_rep_boot
+      let max_t_arr : Array[Double] = Array::make(n_boot, 0.0)
+      for b = 0; b < n_boot; b = b + 1 {
+        let mut mx = 0.0
+        for j = 0; j < n_levels; j = j + 1 {
+          let per_level = self.boot_t_stat[j]
+          let t : Double = per_level[b]
+          let abs_t : Double = if t < 0.0 { -t } else { t }
+          if abs_t > mx {
+            mx = abs_t
+          }
+        }
+        max_t_arr[b] = mx
+      }
+      // Inline empirical_quantile (insertion sort, no helper).
+      max_t_arr.sort()
+      let idx = ((n_boot - 1).to_double() * (1.0 - alpha)).to_int()
+      z = max_t_arr[idx]
+    }
     for j = 0; j < n_levels; j = j + 1 {
       let lo = self.coefs[j] - z * self.ses[j]
       let hi = self.coefs[j] + z * self.ses[j]

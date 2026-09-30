@@ -709,3 +709,29 @@ pub fn DoubleMLPLR::bootstrap(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis. Outcome residual is `y - l_hat`; the
+/// Riesz-representer variance is `mean(psi_a^2)` where
+/// `psi_a = -v^2` for the partialling-out score
+/// (`v = d - m_hat`). Routes through the shared
+/// `irm_style_sensitivity` helper (see sensitivity.mbt).
+///
+/// `cf_y` / `cf_d` are the confounding-strength upper bounds
+/// (defaults 0.05) and are passed through to the result for
+/// upstream parity.
+pub fn DoubleMLPLR::sensitivity_analysis(
+  self : DoubleMLPLR,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let l_hat = self.predictions_l()
+  let n = l_hat.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - l_hat[i]
+  }
+  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+}

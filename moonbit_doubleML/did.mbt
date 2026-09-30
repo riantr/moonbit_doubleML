@@ -571,3 +571,27 @@ pub fn DoubleMLDID::bootstrap(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis. Outcome residual is
+/// `y - g0_hat - (g1_hat - g0_hat) * d`; the
+/// Riesz-representer variance is `mean(psi_a^2)` for the
+/// DID ATT score. Routes through the shared
+/// `irm_style_sensitivity` helper.
+pub fn DoubleMLDID::sensitivity_analysis(
+  self : DoubleMLDID,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g0 = self.predictions_g0()
+  let g1 = self.predictions_g1()
+  let d = self.data.d
+  let n = g0.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g0[i] - (g1[i] - g0[i]) * d[i]
+  }
+  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+}

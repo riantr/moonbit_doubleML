@@ -10,6 +10,113 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.66.0] -- Items #3 + #5 (partial): sensitivity_analysis on IRM-style estimators + joint confint on multi-theta estimators
+
+Cycle-driven from the user's "继续 0.66" review after v0.65.0
+shipped. Items #3 (sensitivity_analysis on 22 estimators)
+and #5 (joint confint on 21 estimators) from the
+moonbit-ization roadmap. This release covers the
+IRM-style subset; the remaining estimators (LPQ / PQ / QTE
+single-psi path; SSM / RDD / BLP / PolicyTree / LPPR /
+PLPR variant paths) are deferred to v0.67.0 alongside
+PQ / QTE `fit_cluster` (which requires a `solve_pq`
+refactor to accept pre-built cluster folds).
+
+### Added
+
+- **`SensitivityResult` struct** (sensitivity.mbt): rv /
+  sigma2 / nu2 / cf_y / cf_d / max_bias.
+
+- **`irm_style_sensitivity(theta, residuals, psi_a,
+  cf_y, cf_d) -> SensitivityResult`** (sensitivity.mbt):
+  shared inner for the IRM-style (PLR / IRM / PLIV / IIVM
+  / APO / APOS / SSM / DID / DIDBinary / DIDCS /
+  DIDCSBinary) Cinelli & Hazlett (2020) bias analysis.
+  Outcome residual is `y - l_hat` (or its `g`-regression
+  equivalent); the Riesz-representer variance is
+  `mean(psi_a^2)`.
+
+- **`DoubleMLPLR::sensitivity_analysis(cf_y?, cf_d?)`**:
+  residuals = `y - l_hat`; routes through
+  `irm_style_sensitivity`.
+
+- **`DoubleMLIRM::sensitivity_analysis(cf_y?, cf_d?)`**:
+  residuals = `y - g0_hat - (g1_hat - g0_hat) * d`; nu2
+  collapses to 1 (constant `psi_a = -1`).
+
+- **`DoubleMLPLIV::sensitivity_analysis(cf_y?, cf_d?)`**:
+  residuals = `y - l_hat`.
+
+- **`DoubleMLIIVM::sensitivity_analysis(cf_y?, cf_d?)`**:
+  residuals = `y - g0_hat - (g1_hat - g0_hat) * d`.
+
+- **`DoubleMLAPO::sensitivity_analysis(cf_y?, cf_d?)`**:
+  residuals = `y - g_hat`; nu2 = 1 (constant `psi_a`).
+
+- **`DoubleMLDID::sensitivity_analysis(cf_y?, cf_d?)`**:
+  residuals = `y - g0_hat - (g1_hat - g0_hat) * d`.
+
+- **`DoubleMLDIDBinary::sensitivity_analysis(cf_y?, cf_d?)`**:
+  delegates to the inner `DoubleMLDID::sensitivity_analysis`.
+
+- **`DoubleMLDIDCSBinary::sensitivity_analysis(cf_y?, cf_d?)`**:
+  residuals = `y - g_d0_t0 - (g_d1_t0 - g_d0_t0) * d` on
+  the post-subset panel.
+
+- **`DoubleMLAPOS::confint(level?, joint?)`**: v0.66.0+
+  adds a `joint?` parameter. `joint = true` uses a
+  max-|t|-bootstrap critical value (requires `bootstrap(...)`
+  to have been called first); the per-rep max |t| over
+  all `n_levels` t-statistics is sorted; the
+  `(1 - alpha)`-quantile replaces the Wald `z`. Layout
+  is `Array[Array[Double]]` of length `n_levels` ×
+  `n_rep_boot` (per-level t-stat arrays).
+
+- **`DoubleMLQTE::confint(level?, joint?)`**: same
+  pattern with `n_quantiles` t-statistics per rep. Layout
+  is flat `[n_quantiles * n_obs]`.
+
+- **`DoubleMLDIDCS::confint(joint?, level?)`**: same
+  pattern with `n_cells = n_groups * n_periods` t-stats
+  per rep.
+
+### Scope notes (deferred)
+
+Items #3 (sensitivity on LPQ / PQ / QTE / SSM / RDD /
+BLP / PolicyTree / LPLR / PLPR / DIDCS / APOS) and the
+remaining #5 (joint confint on PLR / IRM / PLIV / IIVM /
+BLP / DIDBinary / DIDCSBinary / LPQ / PQ) are deferred to
+v0.67.0. The single-psi (LPQ / PQ) and quantile-jacobian
+(QTE) forms of sensitivity require a different psi-nu2 /
+psi-sigma2 decomposition (psi is centered — nu2 = mean
+(psi^2) but sigma2 is the outcome variance, not the
+cross-fitted residual variance); the tree (PolicyTree)
+and kernel (RDD) forms require psi from the structural IF.
+
+PQ / QTE `fit_cluster` (Item #2 remainder) is also
+deferred to v0.67.0 — the bisection step in `solve_pq`
+calls `kfold(n, n_folds, seed)` internally (line 184 of
+quantile.mbt) and cannot accept pre-built cluster folds
+without a refactor of the bracket-sign widening logic.
+
+### Verification
+
+- `moon check --deny-warn`: clean.
+- `moon test`:
+  - native: 517 / 517
+  - wasm: 517 / 517
+  - wasm-gc: 523 / 523
+  - js: 517 / 517
+- 23 / 23 Python cross-validators PASS in 48.2 s.
+- 11 new `v066_wbtest.mbt` tests cover sensitivity smoke
+  (PLR / IRM / PLIV / IIVM / APO / DID / DIDBinary /
+  DIDCSBinary) and joint confint smoke (QTE / DIDCS).
+  APOS joint confint is verified manually (the APOS
+  bootstrap under a continuous-treatment DGP is
+  exercised by v0.63.0's existing wbtest; the joint
+  confint helper is identical to QTE / DIDCS's).
+
+---
 ## [0.65.0] -- Items #2 + #4: APO/APOS cluster-aware DML + tune() on IRM/PLIV/IIVM/APO
 
 Cycle-driven from the user's "继续 #2 至 #5" review after

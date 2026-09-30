@@ -603,3 +603,59 @@ pub fn DoubleMLDIDCS::bootstrap(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.66.0+: confidence interval for the per-(g, t) ATT.
+/// When `joint = false` (default), uses the Wald-style
+/// `theta ± 1.96 * se` interval. When `joint = true`, uses
+/// the bootstrap: `theta ± critical_value * se` where
+/// `critical_value` is the (1 - alpha) quantile of
+/// `max_k |boot_t_stat[b, k]|` over bootstrap replications
+/// `b` (the joint critical value). Requires `bootstrap()`
+/// to have been called.
+pub fn DoubleMLDIDCS::confint(
+  self : DoubleMLDIDCS,
+  joint? : Bool = false,
+  level? : Double = 0.95,
+) -> Array[(Double, Double)] {
+  try {
+    require(self.fitted)
+    require(level > 0.0 && level < 1.0)
+    if joint {
+      require(self.boot_t_stat.length() > 0)
+    }
+    let alpha = 1.0 - level
+    let mut z = norm_ppf(1.0 - alpha / 2.0)
+    let n_cells = self.n_groups * self.n_periods
+    let out : Array[(Double, Double)] = Array::make(n_cells, (0.0, 0.0))
+    if joint {
+      let n_boot = self.n_rep_boot
+      let max_t_arr : Array[Double] = Array::make(n_boot, 0.0)
+      for b = 0; b < n_boot; b = b + 1 {
+        let mut mx = 0.0
+        for k = 0; k < n_cells; k = k + 1 {
+          let t : Double = self.boot_t_stat[b * n_cells + k]
+          let abs_t : Double = if t < 0.0 { -t } else { t }
+          if abs_t > mx {
+            mx = abs_t
+          }
+        }
+        max_t_arr[b] = mx
+      }
+      max_t_arr.sort()
+      let idx = ((n_boot - 1).to_double() * (1.0 - alpha)).to_int()
+      z = max_t_arr[idx]
+    }
+    for k = 0; k < n_cells; k = k + 1 {
+      let coef = self.coef_matrix[k]
+      let se = self.se_matrix[k]
+      let lo = coef - z * se
+      let hi = coef + z * se
+      out[k] = (lo, hi)
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

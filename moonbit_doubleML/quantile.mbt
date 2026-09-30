@@ -696,6 +696,58 @@ pub fn DoubleMLQTE::ses(self : DoubleMLQTE) -> Array[Double] {
 }
 
 ///|
+/// v0.66.0+: Wald-style 95% pointwise confidence intervals
+/// for `DoubleMLQTE`. Returns one `(lo, hi)` tuple per
+/// quantile, in user-supplied order. `joint = true` uses a
+/// max-|t|-bootstrap critical value (requires
+/// `bootstrap(...)` to have been called); the returned CIs
+/// are wider.
+pub fn DoubleMLQTE::confint(
+  self : DoubleMLQTE,
+  level? : Double = 0.95,
+  joint? : Bool = false,
+) -> Array[(Double, Double)] {
+  try {
+    require(self.coefs.length() > 0)
+    require(level > 0.0 && level < 1.0)
+    if joint {
+      require(self.boot_t_stat.length() > 0)
+    }
+    let alpha = 1.0 - level
+    let mut z = norm_ppf(1.0 - alpha / 2.0)
+    let n_q = self.quantiles.length()
+    let out : Array[(Double, Double)] = Array::make(n_q, (0.0, 0.0))
+    if joint {
+      let n_boot = self.n_rep_boot
+      let max_t_arr : Array[Double] = Array::make(n_boot, 0.0)
+      for b = 0; b < n_boot; b = b + 1 {
+        let mut mx = 0.0
+        for j = 0; j < n_q; j = j + 1 {
+          let t : Double = self.boot_t_stat[b * n_q + j]
+          let abs_t : Double = if t < 0.0 { -t } else { t }
+          if abs_t > mx {
+            mx = abs_t
+          }
+        }
+        max_t_arr[b] = mx
+      }
+      max_t_arr.sort()
+      let idx = ((n_boot - 1).to_double() * (1.0 - alpha)).to_int()
+      z = max_t_arr[idx]
+    }
+    for j = 0; j < n_q; j = j + 1 {
+      let lo = self.coefs[j] - z * self.ses[j]
+      let hi = self.coefs[j] + z * self.ses[j]
+      out[j] = (lo, hi)
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.64.0+: multiplier bootstrap for `DoubleMLQTE`. The
 /// per-quantile per-observation influence function is
 /// `u[i, j] = psi_d1[i] / deriv_d1 - psi_d0[i] / deriv_d0` (the
