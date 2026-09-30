@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.67.0** |
+| `moon.mod` version | **0.68.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 132 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -240,7 +240,7 @@ binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.66.0, 132 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.68.0, 132 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -324,6 +324,13 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   API parity to 9 single-theta estimators. Adds
   `sensitivity_analysis()` on LPQ / PQ via a shared
   `single_psi_sensitivity` helper (centered-IF form).
+- v0.68.0 verified counts: `moon test` 524 / 524 (native, wasm, js)
+  and 530 / 530 (wasm-gc); 23 / 23 Python cross-validators PASS in
+  ~47 s. Adds `sensitivity_analysis()` on SSM (psi_a = -1,
+  residuals = y - g_d1_hat) and APOS (per-level re-fit pattern).
+  DIDCS / BLP / RDD / PolicyTree sensitivity deferred to v0.69.0+
+  (each requires a structural IF / nuisance-persistence plumbing
+  beyond the shared helpers already in place).
 
 #Attribution
 

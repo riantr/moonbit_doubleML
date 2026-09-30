@@ -1070,3 +1070,45 @@ pub fn DoubleMLAPOS::causal_contrast(
   }
   results
 }
+
+///|
+/// v0.68.0+: per-level Cinelli & Hazlett (2020)
+/// omitted-variable bias analysis for `DoubleMLAPOS`.
+/// Re-fits a child `DoubleMLAPO` at each treatment level
+/// and delegates to its `sensitivity_analysis(...)`. The
+/// per-level `SensitivityResult` is returned in
+/// user-supplied order; cross-level aggregation (e.g. for
+/// a joint sensitivity bound) is the caller's
+/// responsibility. Mirrors the `DoubleMLAPOS::bootstrap`
+/// pattern (re-fit each child, capture per-level
+/// results).
+pub fn DoubleMLAPOS::sensitivity_analysis(
+  self : DoubleMLAPOS,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let n_levels = self.treatment_levels.length()
+  let out : Array[SensitivityResult] = Array::make(n_levels, {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  })
+  for j = 0; j < n_levels; j = j + 1 {
+    let child = DoubleMLAPO::new(
+      self.data,
+      treatment_level=self.treatment_levels[j],
+      n_folds=self.n_folds,
+      n_rep=self.n_rep,
+      seed=self.seed,
+      propensity_clip=self.propensity_clip,
+      ml_g=self.ml_g,
+      ml_m=self.ml_m,
+    )
+    out[j] = child.fit().sensitivity_analysis(cf_y~, cf_d~)
+  }
+  out
+}

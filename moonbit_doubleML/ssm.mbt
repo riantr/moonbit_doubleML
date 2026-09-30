@@ -306,6 +306,29 @@ pub fn DoubleMLSSM::psi_b(self : DoubleMLSSM) -> Array[Double] {
 }
 
 ///|
+/// v0.68.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis for `DoubleMLSSM`. Outcome residual is
+/// `y - g_d1_hat` (the selection-on-treated regression at
+/// the cross-fitted propensity / outcome nuisances); the
+/// Riesz-representer variance is `mean(psi_a^2) = 1` for
+/// the SSM MAR IPW score (`psi_a = -1` constant). Routes
+/// through the shared `irm_style_sensitivity` helper.
+pub fn DoubleMLSSM::sensitivity_analysis(
+  self : DoubleMLSSM,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g_d1 = self.predictions_g_d1()
+  let n = g_d1.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g_d1[i]
+  }
+  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+}
+
+///|
 /// Augment a feature matrix with one extra column (used to add `pi_hat`
 /// to the design matrix for the conditional-outcome learners).
 pub fn augment_one_col(x : Matrix, extra : Array[Double]) -> Matrix {

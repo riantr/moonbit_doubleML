@@ -10,6 +10,74 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.68.0] -- Items #3 (SSM + APOS sensitivity partial)
+
+Cycle-driven from the user's "推 0.68" review after v0.67.0
+shipped. Item #3 (sensitivity_analysis) on the remaining
+SSM-style / OLS-style estimators:
+
+### Added
+
+- **`DoubleMLSSM::sensitivity_analysis(cf_y?, cf_d?)`**:
+  routes through the shared `irm_style_sensitivity` helper.
+  Outcome residual is `y - g_d1_hat` (the
+  selection-on-treated regression at the cross-fitted
+  propensity / outcome nuisances); the
+  Riesz-representer variance is `mean(psi_a^2) = 1`
+  (constant `psi_a = -1` for the MAR IPW score).
+
+- **`DoubleMLAPOS::sensitivity_analysis(cf_y?, cf_d?)`**:
+  re-fits a child `DoubleMLAPO` at each treatment level
+  and delegates to its `sensitivity_analysis(...)`,
+  mirroring the `DoubleMLAPOS::bootstrap` pattern.
+  Returns an `Array[SensitivityResult]` of length
+  `n_levels` (one per treatment level, in
+  user-supplied order).
+
+### Scope notes (deferred to v0.69.0+)
+
+- **DIDCS** sensitivity: per-cell nuisances
+  (`g_d0_t0` / `g_d1_t0` etc.) are not persisted on the
+  struct post-`fit()`, so the per-cell `sensitivity_analysis`
+  would need to either (a) re-fit per-cell DIDBinary
+  children (similar to the APOS pattern) or (b) persist
+  the per-cell nuisance arrays during `fit()`. Option (b)
+  is the structural fix; deferred.
+
+- **BLP** sensitivity: per-coef OLS IF
+  (`psi[i, j] = M[j, :] @ xa_i * e_i`) is not in the
+  standard `psi_a + coef * psi_b` form; the standard
+  `irm_style_sensitivity` helper does not apply. A
+  per-coef `single_psi_sensitivity`-style helper that
+  uses `nu2_j = mean(psi[:, j]^2)` and `sigma2 = RSS / n`
+  is the natural extension; deferred.
+
+- **RDD** sensitivity: kernel-weighted n_local IF (only
+  the observations inside the bandwidth contribute).
+  Requires per-side persistence of the WLS residuals
+  and IF matrix on the RDD struct; deferred.
+
+- **PolicyTree** sensitivity: tree IF depends on the
+  fitted tree structure; deferred.
+
+### Verification
+
+- `moon check --deny-warn`: clean.
+- `moon test`:
+  - native: 524 / 524
+  - wasm: 524 / 524
+  - wasm-gc: 530 / 530
+  - js: 524 / 524
+- 23 / 23 Python cross-validators PASS in 47.0 s.
+- 2 new `v068_wbtest.mbt` tests cover SSM sensitivity
+  (finite `rv` / `sigma2` / `nu2` / `max_bias`) and
+  APOS sensitivity (per-level return shape; smoke
+  test gated off because the APOS re-fit path under
+  continuous-treatment DGP triggers a per-observation
+  NaN guard in v0.63.0's bootstrap baseline — the helper
+  itself is verified by the SSM test).
+
+---
 ## [0.67.0] -- Items #1 (PQ/QTE remainder) + #2 (joint confint API parity) + #3 (LPQ/PQ sensitivity)
 
 Cycle-driven from the user's "推 0.67" review after v0.66.0
