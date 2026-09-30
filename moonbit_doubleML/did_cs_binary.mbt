@@ -705,13 +705,16 @@ pub fn DoubleMLDIDCSBinary::se(self : DoubleMLDIDCSBinary) -> Double {
 
 ///|
 /// v0.51.0: 95% Wald-style confidence interval.
+/// v0.67.0+: `joint` is a no-op for single-theta estimators.
 pub fn DoubleMLDIDCSBinary::confint(
   self : DoubleMLDIDCSBinary,
+  joint? : Bool = false,
   level? : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
     require(level > 0.0 && level < 1.0)
+    ignore(joint)
     let z = if (level - 0.95).abs() < 1.0e-12 {
       1.959963984540054
     } else {

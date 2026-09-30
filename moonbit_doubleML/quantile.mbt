@@ -179,9 +179,14 @@ pub fn solve_pq(
   n_folds : Int,
   seed : Int,
   clip : Double,
+  folds? : Array[Fold] = [],
 ) -> (Double, Array[Double], Double) raise BracketSignError {
   let treated = indicator_level(data.d, treatment)
-  let folds = kfold(data.n_obs(), n_folds, seed)
+  let folds = if folds.length() == 0 {
+    kfold(data.n_obs(), n_folds, seed)
+  } else {
+    folds
+  }
   let m = fit_propensity(ml_m, data.x, treated, folds, clip)
   // Widen the bracket slightly beyond [min(y), max(y)] so the
   // IPW score is provably sign-changed at both endpoints:
@@ -348,6 +353,12 @@ pub fn DoubleMLPQ::fit(
   ml_l? : LearnerDispatch = self.ml_l,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLPQ {
+  // v0.67.0+: cluster-data dispatch — when `cluster_vars` is
+  // non-empty, route through `fit_cluster` (cluster-aware
+  // folds, unit-level cluster-robust SE).
+  if self.data.is_cluster_data() {
+    return self.fit_cluster(ml_l~, ml_m~)
+  }
   let (theta, psi, deriv) = solve_pq(
     ml_l,
     ml_m,
@@ -389,6 +400,111 @@ pub fn DoubleMLPQ::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+  }
+}
+
+///|
+/// v0.67.0+: clustered-DML path for `DoubleMLPQ`. Builds
+/// cluster folds via `kfold` on unique unit ids +
+/// `expand_unit_folds_to_rows`, runs `solve_pq` with the
+/// cluster folds for cross-fit (so the propensity and
+/// outcome nuisances are computed without sibling-row
+/// leakage), and computes a unit-level cluster-robust SE
+/// from the per-observation IF `psi`. Aggregates
+/// `theta` and `se` across reps via mean (matches the IRM
+/// cluster path's `aggregate_coef_se`).
+fn DoubleMLPQ::fit_cluster(
+  self : DoubleMLPQ,
+  ml_l~ : LearnerDispatch,
+  ml_m~ : LearnerDispatch,
+) -> DoubleMLPQ {
+  try {
+    let cluster = self.data.cluster_vars
+    let n = self.n_obs()
+    let uniq = unique_units(cluster)
+    let n_units = uniq.length()
+    require(self.n_folds <= n_units)
+    let row_unit = build_row_unit_map(cluster, uniq) catch {
+      ClusterDataError::MissingUnit(g) =>
+        abort(
+          "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
+          g.to_string() +
+          ")",
+        )
+    }
+    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int] = []
+      rows
+    })
+    for i = 0; i < n; i = i + 1 {
+      unit_rows[row_unit[i]].push(i)
+    }
+    let coefs : Array[Double] = Array::make(1, 0.0)
+    let ses : Array[Double] = Array::make(1, 0.0)
+    let mut last_psi : Array[Double] = Array::make(n, 0.0)
+    // PQ is a single-fit estimator (no `n_rep`). The cluster
+    // path runs `solve_pq` once under cluster folds and
+    // computes the cluster SE from that single rep.
+    let rep_seed = self.seed
+    let folds_u = kfold(n_units, self.n_folds, rep_seed)
+    let (folds_row, _unit_fold, _fold_n_units) = expand_unit_folds_to_rows(
+      cluster, folds_u, row_unit,
+    )
+    let (theta_r, psi_r, deriv_r) = solve_pq(
+      ml_l,
+      ml_m,
+      self.data,
+      self.treatment,
+      self.quantile,
+      self.n_folds,
+      rep_seed,
+      self.propensity_clip,
+      folds=folds_row,
+    ) catch {
+      BracketSignError::UpperSignFailed =>
+        abort(
+          "solve_pq: upper bracket sign failed after 20 widens (cluster-aware folds)",
+        )
+    }
+    let n_units_d = n_units.to_double()
+    let mut sum_units = 0.0
+    let mut ss_units = 0.0
+    for u = 0; u < n_units; u = u + 1 {
+      let mut s_u = 0.0
+      for idx in unit_rows[u] {
+        s_u = s_u + psi_r[idx]
+      }
+      sum_units = sum_units + s_u
+      ss_units = ss_units + s_u * s_u
+    }
+    let mean_unit = sum_units / n_units_d
+    let var_unit = (ss_units - n_units_d * mean_unit * mean_unit) / n_units_d
+    let se_r = (var_unit / (deriv_r * deriv_r * n_units_d)).sqrt()
+    coefs[0] = theta_r
+    ses[0] = se_r
+    last_psi = psi_r
+    let (coef, se) = aggregate_coef_se(coefs, ses)
+    {
+      data: self.data,
+      treatment: self.treatment,
+      quantile: self.quantile,
+      n_folds: self.n_folds,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      ml_l,
+      ml_m,
+      coef,
+      se,
+      fitted: true,
+      psi: last_psi,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -441,10 +557,19 @@ pub fn DoubleMLPQ::se(self : DoubleMLPQ) -> Double {
 }
 
 ///|
-pub fn DoubleMLPQ::confint(self : DoubleMLPQ) -> (Double, Double) {
+/// v0.67.0+: `joint` is a no-op for single-theta estimators;
+/// accepted for API parity.
+pub fn DoubleMLPQ::confint(
+  self : DoubleMLPQ,
+  joint? : Bool = false,
+  level? : Double = 0.95,
+) -> (Double, Double) {
   try {
     require(self.fitted)
-    (self.coef - 1.96 * self.se, self.coef + 1.96 * self.se)
+    require(level > 0.0 && level < 1.0)
+    let z = norm_ppf(1.0 - (1.0 - level) / 2.0)
+    ignore(joint)
+    (self.coef - z * self.se, self.coef + z * self.se)
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -499,6 +624,22 @@ pub fn DoubleMLPQ::bootstrap(
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.67.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis for `DoubleMLPQ` (partial quantile). The IF
+/// `psi` is centered (mean 0 at the bisection root);
+/// `nu2 = mean(psi^2)` and `sigma2 = Var(y)`. Routes
+/// through the shared `single_psi_sensitivity` helper (see
+/// sensitivity.mbt).
+pub fn DoubleMLPQ::sensitivity_analysis(
+  self : DoubleMLPQ,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  single_psi_sensitivity(self.coef, self.psi, self.data.y, cf_y, cf_d)
 }
 
 ///|
@@ -566,13 +707,15 @@ pub fn DoubleMLQTE::fit(
   ml_l? : LearnerDispatch = self.ml_l,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLQTE {
+  // v0.67.0+: cluster-data dispatch — when `cluster_vars` is
+  // non-empty, route through `fit_cluster` (cluster-aware
+  // folds, unit-level cluster-robust SE).
+  if self.data.is_cluster_data() {
+    return self.fit_cluster(ml_l~, ml_m~)
+  }
   let c = Array::make(self.quantiles.length(), 0.0)
   let s = Array::make(self.quantiles.length(), 0.0)
   let n_obs = self.data.n_obs()
-  // v0.64.0+: flat `[n_quantiles * n_obs]` IF matrix, row-major
-  // by quantile (`psi_flat[j * n_obs + i] = (psi_d1[i]/deriv1
-  //   - psi_d0[i]/deriv0)` at observation i). The multiplier
-  // bootstrap uses this with `se_flat[j] = s[j]`.
   let psi_flat : Array[Double] = Array::make(
     self.quantiles.length() * n_obs,
     0.0,
@@ -609,26 +752,6 @@ pub fn DoubleMLQTE::fit(
         )
     }
     c[j] = theta1 - theta0
-    // Bug #2 fix: the QTE SE must use the joint variance of
-    // `(psi_d1, psi_d0)`, NOT the quadrature
-    // `sqrt(SE_d1^2 + SE_d0^2)`. The two per-treatment PQs
-    // share the same `m` and the same folds, so their
-    // influence functions are correlated, and the quadrature
-    // formula only holds under zero covariance.
-    //
-    // The QTE is a *derived* parameter
-    // `theta_qte = theta_d1 - theta_d0` from the joint
-    // Z-estimator `(theta_d1, theta_d0)`. The delta-method
-    // variance (as in the upstream `DoubleMLFramework.__sub__`)
-    // is
-    //   `se_qte^2 = mean((psi_d1/J_d1 - psi_d0/J_d0)^2) / n`
-    // where `J_d1 = mean(d psi_d1 / d theta_d1)` and
-    // `J_d0 = mean(d psi_d0 / d theta_d0)` are the per-arm
-    // Jacobians (`deriv1` and `deriv0` here). For zero
-    // cross-covariance this reduces to the quadrature
-    // formula; for positive cross-covariance (as is typical
-    // when both arms share `m` and folds) the new SE is
-    // smaller than `sqrt(SE_d1^2 + SE_d0^2)`.
     let n = self.data.n_obs().to_double()
     let mut gamma = 0.0
     for i = 0; i < psi1.length(); i = i + 1 {
@@ -654,6 +777,127 @@ pub fn DoubleMLQTE::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+  }
+}
+
+///|
+/// v0.67.0+: clustered-DML path for `DoubleMLQTE`. Same
+/// pattern as `DoubleMLPQ::fit_cluster` but with two
+/// `solve_pq` calls per quantile (treated `d=1` and
+/// control `d=0`) and the delta-method SE formula
+/// `se_qte^2 = mean_unit((u)^2) / n_units` where
+/// `u[i] = psi_d1[i] / deriv_d1 - psi_d0[i] / deriv_d0` is
+/// the per-observation QTE influence function.
+fn DoubleMLQTE::fit_cluster(
+  self : DoubleMLQTE,
+  ml_l~ : LearnerDispatch,
+  ml_m~ : LearnerDispatch,
+) -> DoubleMLQTE {
+  try {
+    let cluster = self.data.cluster_vars
+    let n_obs = self.data.n_obs()
+    let uniq = unique_units(cluster)
+    let n_units = uniq.length()
+    require(self.n_folds <= n_units)
+    let row_unit = build_row_unit_map(cluster, uniq) catch {
+      ClusterDataError::MissingUnit(g) =>
+        abort(
+          "expand_unit_folds_to_rows: row without a unit id (unit_id=" +
+          g.to_string() +
+          ")",
+        )
+    }
+    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int] = []
+      rows
+    })
+    for i = 0; i < n_obs; i = i + 1 {
+      unit_rows[row_unit[i]].push(i)
+    }
+    let c = Array::make(self.quantiles.length(), 0.0)
+    let s = Array::make(self.quantiles.length(), 0.0)
+    let psi_flat : Array[Double] = Array::make(
+      self.quantiles.length() * n_obs,
+      0.0,
+    )
+    let rep_seed = self.seed
+    let folds_u = kfold(n_units, self.n_folds, rep_seed)
+    let (folds_row, _unit_fold, _fold_n_units) = expand_unit_folds_to_rows(
+      cluster, folds_u, row_unit,
+    )
+    let n_units_d = n_units.to_double()
+    for j = 0; j < self.quantiles.length(); j = j + 1 {
+      let (theta1, psi1, deriv1) = solve_pq(
+        ml_l,
+        ml_m,
+        self.data,
+        1.0,
+        self.quantiles[j],
+        self.n_folds,
+        rep_seed,
+        self.propensity_clip,
+        folds=folds_row,
+      ) catch {
+        BracketSignError::UpperSignFailed =>
+          abort(
+            "solve_pq: upper bracket sign failed after 20 widens (cluster-aware folds)",
+          )
+      }
+      let (theta0, psi0, deriv0) = solve_pq(
+        ml_l,
+        ml_m,
+        self.data,
+        0.0,
+        self.quantiles[j],
+        self.n_folds,
+        rep_seed,
+        self.propensity_clip,
+        folds=folds_row,
+      ) catch {
+        BracketSignError::UpperSignFailed =>
+          abort(
+            "solve_pq: upper bracket sign failed after 20 widens (cluster-aware folds)",
+          )
+      }
+      c[j] = theta1 - theta0
+      let u : Array[Double] = Array::make(n_obs, 0.0)
+      for i = 0; i < n_obs; i = i + 1 {
+        u[i] = psi1[i] / deriv1 - psi0[i] / deriv0
+        psi_flat[j * n_obs + i] = u[i]
+      }
+      let mut sum_units = 0.0
+      let mut ss_units = 0.0
+      for u_idx = 0; u_idx < n_units; u_idx = u_idx + 1 {
+        let mut s_u = 0.0
+        for idx in unit_rows[u_idx] {
+          s_u = s_u + u[idx]
+        }
+        sum_units = sum_units + s_u
+        ss_units = ss_units + s_u * s_u
+      }
+      let mean_unit = sum_units / n_units_d
+      let var_unit = (ss_units - n_units_d * mean_unit * mean_unit) / n_units_d
+      s[j] = (var_unit / n_units_d).sqrt()
+    }
+    {
+      data: self.data,
+      quantiles: self.quantiles,
+      n_folds: self.n_folds,
+      seed: self.seed,
+      propensity_clip: self.propensity_clip,
+      ml_l,
+      ml_m,
+      coefs: c,
+      ses: s,
+      psi_flat,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 

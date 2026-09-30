@@ -449,10 +449,17 @@ pub fn DoubleMLDIDBinary::se(self : DoubleMLDIDBinary) -> Double {
 
 ///|
 /// 95% Wald-style confidence interval.
-pub fn DoubleMLDIDBinary::confint(self : DoubleMLDIDBinary) -> (Double, Double) {
+/// v0.67.0+: `joint` is a no-op for single-theta estimators;
+/// delegates to the inner `DoubleMLDID::confint`.
+pub fn DoubleMLDIDBinary::confint(
+  self : DoubleMLDIDBinary,
+  joint? : Bool = false,
+  level? : Double = 0.95,
+) -> (Double, Double) {
   try {
     require(self.fitted)
-    self.inner.confint()
+    ignore(joint)
+    self.inner.confint(level~)
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

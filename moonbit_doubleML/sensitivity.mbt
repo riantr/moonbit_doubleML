@@ -93,6 +93,58 @@ pub fn empirical_quantile(arr : Array[Double], q : Double) -> Double raise {
 }
 
 ///|
+/// v0.67.0+: shared inner for the centered single-IF
+/// `sensitivity_analysis` (LPQ / PQ). The IF `psi` is already
+/// centered (mean 0 at the bisection root); the
+/// Riesz-representer variance is `nu2 = mean(psi^2)`. The
+/// outcome nuisance variance `sigma2 = Var(y)` (population,
+/// i.e. `mean((y - mean(y))^2)`) plays the role of
+/// `sigma2` in the C&H formula. Returns a
+/// `SensitivityResult` matching the IRM-style path's shape.
+pub fn single_psi_sensitivity(
+  theta : Double,
+  psi : Array[Double],
+  y : Array[Double],
+  cf_y : Double,
+  cf_d : Double,
+) -> SensitivityResult raise {
+  let n = psi.length()
+  require(n == y.length())
+  require(n > 0)
+  let n_d = n.to_double()
+  let mut nu2_sum = 0.0
+  let mut y_sum = 0.0
+  for i = 0; i < n; i = i + 1 {
+    nu2_sum = nu2_sum + psi[i] * psi[i]
+    y_sum = y_sum + y[i]
+  }
+  let nu2 = nu2_sum / n_d
+  let y_bar = y_sum / n_d
+  let mut sigma2_sum = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let dy = y[i] - y_bar
+    sigma2_sum = sigma2_sum + dy * dy
+  }
+  let sigma2 = sigma2_sum / n_d
+  let psi_sigma2 : Array[Double] = Array::make(n, 0.0)
+  let psi_nu2 : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    psi_sigma2[i] = (y[i] - y_bar) * (y[i] - y_bar) - sigma2
+    psi_nu2[i] = psi[i] * psi[i] - nu2
+  }
+  let (max_bias_arr, _) = compute_sensitivity_bias(
+    sigma2, nu2, psi_sigma2, psi_nu2,
+  )
+  let mut mb_sum = 0.0
+  for v in max_bias_arr {
+    mb_sum = mb_sum + v
+  }
+  let max_bias = mb_sum / n_d
+  let rv = robustness_value(theta, max_bias_arr)
+  { rv, sigma2, nu2, cf_y, cf_d, max_bias, }
+}
+
+///|
 // v0.66.0+: result struct for `DoubleMLXXX::sensitivity_analysis`.
 pub struct SensitivityResult {
   rv : Double

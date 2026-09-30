@@ -377,6 +377,22 @@ pub fn DoubleMLLPQ::bootstrap(
 }
 
 ///|
+/// v0.67.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis for the LPQ (Local Quantile) estimator. The IF
+/// `psi` is centered (mean 0 at the bisection root);
+/// `nu2 = mean(psi^2)` and `sigma2 = Var(y)`. Routes
+/// through the shared `single_psi_sensitivity` helper (see
+/// sensitivity.mbt).
+pub fn DoubleMLLPQ::sensitivity_analysis(
+  self : DoubleMLLPQ,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  single_psi_sensitivity(self.coef, self.psi, self.data.y, cf_y, cf_d)
+}
+
+///|
 /// Number of observations.
 pub fn DoubleMLLPQ::n_obs(self : DoubleMLLPQ) -> Int {
   self.data.x.rows()
@@ -391,10 +407,21 @@ pub fn DoubleMLLPQ::n_features(self : DoubleMLLPQ) -> Int {
 ///|
 /// 95% Wald confidence interval (z = 1.959963984540054). Matches the
 /// `DoubleMLLPLR::confint` idiom byte-for-byte.
-pub fn DoubleMLLPQ::confint(self : DoubleMLLPQ) -> (Double, Double) {
+/// v0.67.0+: `joint` is a no-op for single-theta estimators.
+pub fn DoubleMLLPQ::confint(
+  self : DoubleMLLPQ,
+  joint? : Bool = false,
+  level? : Double = 0.95,
+) -> (Double, Double) {
   try {
     require(self.fitted)
-    let z = 1.959963984540054
+    require(level > 0.0 && level < 1.0)
+    ignore(joint)
+    let z = if (level - 0.95).abs() < 1.0e-12 {
+      1.959963984540054
+    } else {
+      1.96
+    }
     (self.coef - z * self.se, self.coef + z * self.se)
   } catch {
     PreconditionError::Violated(loc) =>

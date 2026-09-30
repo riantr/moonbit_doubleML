@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.66.0** |
+| `moon.mod` version | **0.67.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 132 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -316,6 +316,14 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   max-|t|-bootstrap critical value. Sensitivity on LPQ / PQ /
   QTE / SSM / RDD / BLP / PolicyTree and PQ / QTE `fit_cluster`
   deferred to v0.67.0.
+- v0.67.0 verified counts: `moon test` 522 / 522 (native, wasm, js)
+  and 528 / 528 (wasm-gc); 23 / 23 Python cross-validators PASS in
+  ~47 s. Refactors `solve_pq` to accept `folds?` and adds
+  `fit_cluster` on `DoubleMLPQ` / `DoubleMLQTE` (cluster-aware
+  folds + unit-level cluster-robust SE). Adds `confint(joint?)`
+  API parity to 9 single-theta estimators. Adds
+  `sensitivity_analysis()` on LPQ / PQ via a shared
+  `single_psi_sensitivity` helper (centered-IF form).
 
 #Attribution
 

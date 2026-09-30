@@ -159,11 +159,21 @@ pub fn DoubleMLIRM::se(self : DoubleMLIRM) -> Double {
 }
 
 ///|
-pub fn DoubleMLIRM::confint(self : DoubleMLIRM) -> (Double, Double) {
+/// v0.67.0+: `joint` is a no-op for single-theta estimators
+/// (the joint CI equals the Wald CI); accepted for API
+/// parity with the multi-theta estimators.
+pub fn DoubleMLIRM::confint(
+  self : DoubleMLIRM,
+  joint? : Bool = false,
+  level? : Double = 0.95,
+) -> (Double, Double) {
   try {
     require(self.fitted)
-    let lo = self.coef - 1.96 * self.se
-    let hi = self.coef + 1.96 * self.se
+    require(level > 0.0 && level < 1.0)
+    let z = norm_ppf(1.0 - (1.0 - level) / 2.0)
+    let lo = self.coef - z * self.se
+    let hi = self.coef + z * self.se
+    ignore(joint)
     (lo, hi)
   } catch {
     PreconditionError::Violated(loc) =>

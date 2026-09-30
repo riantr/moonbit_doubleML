@@ -10,6 +10,108 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.67.0] -- Items #1 (PQ/QTE remainder) + #2 (joint confint API parity) + #3 (LPQ/PQ sensitivity)
+
+Cycle-driven from the user's "推 0.67" review after v0.66.0
+shipped. Three items from the moonbit-ization roadmap:
+
+- Item #1 remainder: `fit_cluster` on `DoubleMLPQ` /
+  `DoubleMLQTE`. `solve_pq` was refactored to accept an
+  optional `folds? : Array[Fold]` parameter; when empty
+  (default), the internal `kfold(n, n_folds, seed)` is
+  used (preserving v0.66.0 behaviour byte-for-byte);
+  cluster-aware callers pass pre-built cluster folds.
+- Item #2 API parity: `confint(joint?, level?)` is now
+  accepted on the 9 single-theta estimators (PLR / IRM /
+  PLIV / IIVM / DID / DIDBinary / DIDCSBinary / LPQ /
+  PQ). For single-theta the joint CI equals the Wald CI
+  (mathematically equivalent), so the parameter is a
+  no-op — accepted for API parity with the multi-theta
+  estimators (APOS / QTE / DIDCS) that already have it
+  from v0.66.0.
+- Item #3 sensitivity on the centered-IF estimators
+  (LPQ / PQ): the standard IRM-style helper doesn't
+  apply because `psi` is centered (mean 0 at the
+  bisection root). v0.67.0+ adds a second shared inner
+  `single_psi_sensitivity(theta, psi, y, cf_y, cf_d)`
+  that uses `nu2 = mean(psi^2)` and `sigma2 = Var(y)`
+  with the centered psi-nu2 / psi-sigma2 decomposition
+  matching Cinelli & Hazlett (2020) for a centered IF.
+
+### Added
+
+- **`DoubleMLPQ::fit_cluster(ml_l, ml_m)`**: v0.67.0+
+  clustered-DML path. Builds cluster folds via `kfold`
+  on unique unit ids + `expand_unit_folds_to_rows`,
+  calls `solve_pq(..., folds=folds_row)` for cluster-
+  aware cross-fit, and computes a unit-level
+  cluster-robust SE from the per-observation IF `psi`
+  (sum per unit, unit-variance scaled by 1 / (n_units *
+  deriv^2)). Single-fit (no `n_rep`). The `DoubleMLPQ::fit`
+  entrypoint dispatches to this when `cluster_vars` is
+  non-empty.
+
+- **`DoubleMLQTE::fit_cluster(ml_l, ml_m)`**: same
+  pattern but with two `solve_pq` calls per quantile
+  (treated `d=1` and control `d=0`) and the delta-method
+  SE formula `se_qte^2 = mean_unit(u^2) / n_units` where
+  `u[i] = psi_d1[i] / deriv_d1 - psi_d0[i] / deriv_d0`
+  is the per-observation QTE IF. `DoubleMLQTE::fit`
+  dispatches to this when `cluster_vars` is non-empty.
+
+- **`solve_pq` refactor**: added `folds? : Array[Fold]
+  = []` parameter. When empty, the original internal
+  `kfold(n, n_folds, seed)` is used (no behaviour change);
+  when non-empty, the pre-built folds are used for both
+  propensity cross-fit and bisection-step cross-fit
+  (the bracket-widening logic is fold-independent — it
+  uses the pre-computed `m`, so it works under custom
+  folds without refactoring the bracket-sign detection).
+
+- **`DoubleMLPLR / IRM / PLIV / IIVM / DID / DIDBinary /
+  DIDCSBinary / LPQ / PQ ::confint(joint?, level?)`**:
+  v0.67.0+ accepts the optional `joint?` parameter
+  (no-op for single-theta). `DoubleMLDIDBinary` and
+  `DoubleMLDIDCSBinary` forward `level` to the inner
+  `DoubleMLDID` / direct Wald call. All 9 estimators
+  accept a non-default `level?` parameter (the previous
+  hard-coded `1.96` z-score only worked for `level =
+  0.95`; non-95% levels now use `norm_ppf`).
+
+- **`DoubleMLLPQ::sensitivity_analysis(cf_y?, cf_d?)`**:
+  centered-IF sensitivity. `nu2 = mean(psi^2)`,
+  `sigma2 = Var(y)`. Routes through
+  `single_psi_sensitivity`.
+
+- **`DoubleMLPQ::sensitivity_analysis(cf_y?, cf_d?)`**:
+  same pattern as LPQ.
+
+- **`single_psi_sensitivity(theta, psi, y, cf_y, cf_d)
+  -> SensitivityResult`** (sensitivity.mbt): v0.67.0+
+  shared inner for the centered-IF form.
+
+### Verification
+
+- `moon check --deny-warn`: clean.
+- `moon test`:
+  - native: 522 / 522
+  - wasm: 522 / 522
+  - wasm-gc: 528 / 528
+  - js: 522 / 522
+- 23 / 23 Python cross-validators PASS in 46.6 s.
+- 6 new `v067_wbtest.mbt` tests cover PQ / QTE cluster
+  fits, joint-confint Wald parity for PLR, and LPQ / PQ
+  sensitivity.
+
+### Scope notes (deferred to v0.68.0+)
+
+- Sensitivity on SSM / BLP / RDD / PolicyTree / DIDCS /
+  APOS (different IF shapes — selection-on-treatment /
+  OLS residual / kernel / tree / multi-cell).
+- BLP joint confint already exists as `confint_joint`;
+  the single-theta version doesn't need a new API.
+
+---
 ## [0.66.0] -- Items #3 + #5 (partial): sensitivity_analysis on IRM-style estimators + joint confint on multi-theta estimators
 
 Cycle-driven from the user's "继续 0.66" review after v0.65.0
