@@ -10,6 +10,110 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+## [0.68.1] -- docs(readme): ASCII-only README.mbt.md (mooncakes.io mojibake fix)
+
+Docs-only patch targeting the v0.68.0 mooncakes.io render
+bug surfaced after the v0.68.0 ship: the README title on
+https://mooncakes.io/packages/riantr/moonbit_doubleML rendered
+as garbled Han characters (`鈊?Doubleб`) instead of the
+ASCII `moonbit_doubleML · Double / ...` title. Root cause
+investigation (see commit `e691c97` for the byte-level
+evidence) showed two independent bugs:
+
+1. **mooncakes.io JS renderer does not apply UTF-8 decoding
+   on the README content stream**. The HTML page declares
+   `<meta charset="UTF-8">` but the script that inserts
+   README bytes into the DOM falls through to the system
+   locale (`GBK` on Chinese Windows), so legitimate UTF-8
+   multi-byte sequences (`C2 B7` for `·`, `E2 80 94` for `--`,
+   `CE B8` for `theta`, etc.) decode as garbage.
+2. **`moon publish` zip cache stale since v0.63.0**: every
+   zip from v0.63.0 onward carries the same README.mbt.md
+   blob (hash `6b8b78b22613a1f94377b1b59d1a16df3df6fca0`,
+   16,004 bytes, version string `0.63.0`). The disk
+   `README.mbt.md` updated correctly across v0.64.0 /
+   v0.65.0 / v0.66.0 / v0.67.0 / v0.68.0 (each commit has
+   its own distinct blob hash: `e3829154...` for v0.68.0),
+   but the publish zip never re-read it. This means the
+   mooncakes.io API also serves the v0.63.0 README -- all
+   five subsequent releases (v0.64 through v0.68) have
+   been rendering the v0.63.0 README.
+
+This release fixes (1) on our side by converting all 31
+non-ASCII chars in `README.mbt.md` to ASCII equivalents
+(`·` -> `-`, `--` -> `--`, `theta` -> `theta`,
+`x` -> `x`, `=>` -> `=>`, `...` -> `...`). The file
+becomes bulletproof under any charset interpretation.
+(2) is filed separately as a mooncakes.io / moon
+upstream bug -- this release also verifies whether
+the cache invalidates on this publish (target: new
+README hash must be `5d3c025c...`, length 18,315 bytes).
+
+### Changed
+
+- **`README.mbt.md`**: all 31 non-ASCII characters
+  converted to ASCII equivalents. Hash:
+  `e3829154...` -> `5d3c025c19496ee92d67e37272c1318ae59f96f4`.
+  Length: 18,337 -> 18,315 bytes. Diff: 27 insertions,
+  27 deletions, line-by-line 1:1 symbol substitution;
+  no markdown structure change.
+
+### Verification
+
+- `moon check --deny-warn`: clean (README excluded from
+  formatter via `formatter(ignore: [README.mbt.md])`).
+- All 4 backends (`native` / `wasm` / `wasm-gc` / `js`):
+  PASS, no test count delta vs v0.68.0 (no .mbt code
+  touched).
+- 23 / 23 Python cross-validators: PASS, no DGPs touched.
+- **`moon publish --verbose`: `Server status: 200 OK` +
+  zip validation + extracted `moon check`: PASS.**
+- **POST-PUBLISH VERIFY (the cache bug confirmation)**:
+  extracted `README.mbt.md` from the freshly published
+  `riantr-moonbit_doubleML-0.68.1.zip` and hashed it:
+
+  ```
+  Disk README.mbt.md hash:  5d3c025c19496ee92d67e37272c1318ae59f96f4 (18,315 bytes)
+  Zip  README.mbt.md hash:  6b8b78b22613a1f94377b1b59d1a16df3df6fca0 (16,004 bytes)
+  ```
+
+  **The publish-cache bug (2) is confirmed**. Despite
+  the disk README being completely replaced with ASCII,
+  `moon publish` still ships the v0.63.0 README blob it
+  cached six months ago. The mooncakes.io v0.68.1 entry
+  therefore still shows the original v0.63.0 UTF-8
+  content (and will still render as mojibake under bug
+  (1) until the cache invalidation is fixed upstream).
+
+  This v0.68.1 release therefore does NOT solve the
+  user-visible mojibake problem on its own. It is
+  published as a "marker release" that:
+
+  1. Documents the two upstream bugs with reproducible
+     evidence in `CHANGELOG.md`.
+  2. Pins the working disk-side fix (ASCII-only README)
+     at a tagged version so the moment the cache bug is
+     fixed upstream, re-publishing this version will
+     deliver the fix.
+  3. Triggers an upstream issue report (see
+     `_verify/ISSUE_DRAFT_mooncakes_render_utf8.md`).
+
+  All 7 publish zips from v0.63.0 onward share the same
+  `6b8b78b2...` README hash:
+
+  | Publish | zip README size | hash |
+  | --- | --- | --- |
+  | v0.62.1 | 15,548 | `60f500d7...` |
+  | v0.62.2 | 15,746 | `66aa40ab...` |
+  | v0.63.0 | 16,004 | `6b8b78b2...` |
+  | v0.64.0 | 16,004 | `6b8b78b2...` |
+  | v0.65.0 | 16,004 | `6b8b78b2...` |
+  | v0.66.0 | 16,004 | `6b8b78b2...` |
+  | v0.67.0 | 16,004 | `6b8b78b2...` |
+  | v0.68.0 | 16,004 | `6b8b78b2...` |
+  | **v0.68.1** | **16,004** | **`6b8b78b2...`** ← still the same |
+
+---
 ## [0.68.0] -- Items #3 (SSM + APOS sensitivity partial)
 
 Cycle-driven from the user's "推 0.68" review after v0.67.0
