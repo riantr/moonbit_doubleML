@@ -292,6 +292,74 @@ pub fn DoubleMLBLP::rss(self : DoubleMLBLP) -> Double {
 }
 
 ///|
+/// v0.69.0+: per-coefficient sensitivity analysis for `DoubleMLBLP`.
+///
+/// BLP is the closed-form OLS projection of `orth_signal` onto the
+/// augmented design `Xa = [1, basis]` (intercept + basis columns).
+/// Per-observation influence-function rows for coefficient `j` are
+///
+///   psi_a[j][i] = M[j, :] @ xa_i
+///
+/// where `M = (Xa^T Xa + ridge I)^{-1}` is the OLS precision matrix
+/// and `xa_i` is the augmented row `i`. The full IF for coef `j`
+/// decomposes as `psi[i, j] = psi_a[j][i] * residuals[i]` (matches
+/// the v0.64.0 `bootstrap` IF rows used by
+/// `generic_bootstrap_ols_per_coef`).
+///
+/// Sensitivity for each coef follows the shared
+/// `irm_style_sensitivity` decomposition with:
+///   - `theta = coef[j]`
+///   - `residuals = self.residuals` (the OLS residuals from `fit`)
+///   - `psi_a = psi_a[j]`
+///   - `cf_y / cf_d` default to `0.05` (matching the rest of the
+///     v0.66.0-onward sensitivity family).
+///
+/// Returns an `Array[SensitivityResult]` of length `coef.length()`
+/// (= `n_features + 1`, including the intercept at index 0).
+/// Calling on an un-fit model aborts via `PreconditionError`.
+pub fn DoubleMLBLP::sensitivity_analysis(
+  self : DoubleMLBLP,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let n_obs = self.orth_signal.length()
+  let n_coef = self.coef.length()
+  // Reconstruct the augmented design + precision matrix (matches
+  // the v0.64.0 `bootstrap` IF-row computation so the IRM-style
+  // decomposition here stays consistent with the bootstrap path).
+  let xa = augment_with_intercept(self.basis)
+  let p_aug = xa.ncols
+  let xa_t = xa.transpose()
+  let xtx = matmul(xa_t, xa)
+  let xtx_aug = add_ridge(xtx, 1.0e-10)
+  let xtx_inv = inv_spd(xtx_aug)
+  let results : Array[SensitivityResult] = Array::make(n_coef, {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  })
+  for j = 0; j < n_coef; j = j + 1 {
+    let psi_a_j : Array[Double] = Array::make(n_obs, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      // psi_a[j][i] = M[j, :] @ xa_i = sum_k xtx_inv[j, k] * xa[i, k]
+      let mut dot = 0.0
+      for k = 0; k < p_aug; k = k + 1 {
+        dot = dot + xtx_inv.data[j * p_aug + k] * xa.data[i * p_aug + k]
+      }
+      psi_a_j[i] = dot
+    }
+    results[j] = irm_style_sensitivity(
+      self.coef[j], self.residuals, psi_a_j, cf_y, cf_d,
+    )
+  }
+  results
+}
+
+///|
 /// v0.19.0+: variance of the orthogonal signal (the BLP's
 /// "outcome" variable). Computed as a population variance
 /// (divisor `n`, not `n - 1`).

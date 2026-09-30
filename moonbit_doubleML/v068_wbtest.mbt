@@ -82,3 +82,47 @@ test "apos_sensitivity_returns_per_level_results" {
     assert_true(results[j].nu2 > 0.0)
   }
 }
+
+// ---------------------------------------------------------------------------
+// BLP sensitivity smoke test (v0.69.0)
+// ---------------------------------------------------------------------------
+
+///|
+test "blp_sensitivity_returns_per_coef_results" {
+  // v0.69.0+: BLP sensitivity analysis returns one
+  // SensitivityResult per coefficient (including the
+  // intercept). The IRM-style decomposition is identical to
+  // the SSM/APO/SensitivityResult tests above; this test
+  // pins the per-coef shape and finite-value contract on
+  // BLP's OLS projection path.
+  //
+  // DGP: `y = 1.0 + 0.8 * x1 + 0.4 * x2 + eps`, eps ~ N(0, 0.4^2).
+  // `basis` is a 2-column design (intercept handled inside the
+  // augmented design reconstruction); `orth_signal` is `y`.
+  let n = 200
+  let p_basis = 2
+  let rng = chacha8_rng(1)
+  let basis_flat : Array[Double] = Array::make(n * p_basis, 0.0)
+  let y : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    basis_flat[i * p_basis + 0] = rng.double() * 2.0 - 1.0
+    basis_flat[i * p_basis + 1] = rng.double() * 2.0 - 1.0
+    let eps = (rng.double() - 0.5) * 0.4
+    y[i] = 1.0 + 0.8 * basis_flat[i * p_basis + 0] + 0.4 *
+      basis_flat[i * p_basis + 1] +
+      eps
+  }
+  let basis = Matrix::from_array(basis_flat, n, p_basis)
+  let fitted = DoubleMLBLP::new(basis, y).fit()
+  let results = fitted.sensitivity_analysis()
+  // 3 coefficients: intercept + 2 basis columns.
+  assert_eq(results.length(), 3)
+  for j = 0; j < 3; j = j + 1 {
+    assert_true(results[j].rv.is_nan() == false)
+    assert_true(results[j].sigma2.is_nan() == false)
+    assert_true(results[j].nu2.is_nan() == false)
+    assert_true(results[j].max_bias.is_nan() == false)
+    assert_true(results[j].sigma2 > 0.0)
+    assert_true(results[j].nu2 > 0.0)
+  }
+}
