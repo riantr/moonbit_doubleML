@@ -60,6 +60,18 @@ pub struct DoubleMLRDD {
   coef : Double
   se : Double
   n_local : Int
+  // v0.69.0+: outcome-model residuals on the bandwidth-
+  // restricted sample (left side then right side,
+  // concatenated). Length `n_local`. Persisted for the
+  // sensitivity analysis decomposition.
+  residuals : Array[Double]
+  // v0.69.0+: Riesz-representer row for the intercept,
+  // `psi_a[k] = (X^T W X + ridge I)^{-1}[0, :] @ x_k`,
+  // on the bandwidth-restricted sample (left side then
+  // right side, concatenated). Length `n_local`. Used
+  // by the `irm_style_sensitivity` decomposition in
+  // `DoubleMLRDD::sensitivity_analysis`.
+  psi_a : Array[Double]
   fitted : Bool
 } derive(Debug)
 
@@ -88,6 +100,8 @@ pub fn DoubleMLRDD::new(
       coef: 0.0,
       se: 0.0,
       n_local: 0,
+      residuals: [],
+      psi_a: [],
       fitted: false,
     }
   } catch {
@@ -131,11 +145,41 @@ fn rdd_design(
 }
 
 ///|
+/// Compute `X^T diag(W) X` for a kernel-weighted design.
+/// Internal helper used by `rdd_side` to build the
+/// weighted precision matrix when the OLS path runs
+/// (`LinearRegression::fit_weighted` already builds
+/// `xtwx_inv` internally but only exposes the diagonal
+/// `xtwx_inv_diag`, so we need a separate full inverse to
+/// compute the Riesz-representer row for sensitivity).
+fn weighted_xtx_transpose(
+  xx : Matrix,
+  w : Array[Double],
+) -> Matrix {
+  let n_obs = xx.rows()
+  let p = xx.cols()
+  let out = Matrix::zeros(p, p)
+  for i = 0; i < p; i = i + 1 {
+    for j = 0; j < p; j = j + 1 {
+      let mut s = 0.0
+      for k = 0; k < n_obs; k = k + 1 {
+        s = s + xx.data[k * p + i] * w[k] * xx.data[k * p + j]
+      }
+      out.data[i * p + j] = s
+    }
+  }
+  out
+}
+
+///|
 /// Run the local-polynomial fit on one side of the cutoff and return
 /// the intercept, the weighted residual variance, the local sample
-/// size, and the residual vector at each local point (the residual
+/// size, the residual vector at each local point (the residual
 /// vector is needed for the Bug #7 fuzzy-RDD cross-covariance
-/// between the `raw` (Y) and `jump` (D) intercept estimates).
+/// between the `raw` (Y) and `jump` (D) intercept estimates), and
+/// the Riesz-representer row `psi_a[k] = (X^T W X + ridge
+/// I)^{-1}[0, :] @ xx[k, :]` for the IRM-style sensitivity
+/// decomposition.
 ///
 /// Bug #6 fix: the OLS fit now uses the triangular-kernel weights
 /// `w[k] = 1 - |u|/h` via `LinearRegression::fit_weighted`. Previously
@@ -163,10 +207,10 @@ fn rdd_side(
   h : Double,
   which : Bool,
   cov_type : String,
-) -> (Double, Double, Int, Array[Double]) {
+) -> (Double, Double, Int, Array[Double], Array[Double]) {
   let (xx, yy, w, ids) = rdd_design(data, side, cutoff, h, which)
   if ids.length() == 0 {
-    (0.0, 0.0, 0, [])
+    (0.0, 0.0, 0, [], [])
   } else {
     // v0.62.0+: route through `LearnerDispatch` so the per-fit
     // `ml_g` override actually reaches the kernel-weighted OLS
@@ -221,6 +265,32 @@ fn rdd_side(
       resid[k] = e
       v = v + w[k] * e * e
     }
+    // v0.69.0+: build the full kernel-weighted precision
+    // matrix `(X^T W X + ridge I)^{-1}` so the
+    // Riesz-representer row
+    // `psi_a[k] = (X^T W X + ridge I)^{-1}[0, :] @ xx[k, :]`
+    // is available for the IRM-style sensitivity
+    // decomposition. Only emitted under the OLS path
+    // (`is_ols`); the dispatch-fallback case returns a
+    // zeroed psi_a (matching the kernel-weights-dropped
+    // convention for non-OLS learners).
+    let psi_a : Array[Double] = if is_ols {
+      let xtwx = weighted_xtx_transpose(xx, w)
+      let xtwx_aug = add_ridge(xtwx, 1.0e-10)
+      let xtwx_inv = inv_spd(xtwx_aug)
+      let p1 = xtwx.ncols
+      let psi_a_arr : Array[Double] = Array::make(ids.length(), 0.0)
+      for k = 0; k < ids.length(); k = k + 1 {
+        let mut dot = 0.0
+        for j = 0; j < p1; j = j + 1 {
+          dot = dot + xtwx_inv.data[j] * xx.data[k * p1 + j]
+        }
+        psi_a_arr[k] = dot
+      }
+      psi_a_arr
+    } else {
+      Array::make(ids.length(), 0.0)
+    }
     let n_side = ids.length().to_double()
     let variance = if cov_type == "HC0" && is_ols {
       // White sandwich (no `1/n^2` factor — the sandwich diagonal is
@@ -239,7 +309,7 @@ fn rdd_side(
       let inv_00 = if inv_diag.length() > 0 { inv_diag[0] } else { 1.0 }
       inv_00 * v / (n_side * n_side)
     }
-    (beta[0], variance, ids.length(), resid)
+    (beta[0], variance, ids.length(), resid, psi_a)
   }
 }
 
@@ -250,7 +320,7 @@ pub fn DoubleMLRDD::fit(
 ) -> DoubleMLRDD {
   try {
     require(self.bandwidth > 0.0)
-    let (yl, vyl, nl, res_yl) = rdd_side(
+    let (yl, vyl, nl, res_yl, psi_a_yl) = rdd_side(
       ml_g,
       self.data,
       -1.0,
@@ -259,7 +329,7 @@ pub fn DoubleMLRDD::fit(
       false,
       self.cov_type,
     )
-    let (yr, vyr, nr, res_yr) = rdd_side(
+    let (yr, vyr, nr, res_yr, psi_a_yr) = rdd_side(
       ml_g,
       self.data,
       1.0,
@@ -271,7 +341,7 @@ pub fn DoubleMLRDD::fit(
     let mut c = yr - yl
     let mut variance = vyl + vyr
     if self.fuzzy {
-      let (dl, vdl, _, res_dl) = rdd_side(
+      let (dl, vdl, _, res_dl, _) = rdd_side(
         ml_g,
         self.data,
         -1.0,
@@ -280,7 +350,7 @@ pub fn DoubleMLRDD::fit(
         true,
         self.cov_type,
       )
-      let (dr, vdr, _, res_dr) = rdd_side(
+      let (dr, vdr, _, res_dr, _) = rdd_side(
         ml_g,
         self.data,
         1.0,
@@ -337,6 +407,13 @@ pub fn DoubleMLRDD::fit(
       // estimator additionally fits a treatment local-polynomial
       // on the same rows so the *treated* count is the same.
       n_local: nl + nr,
+      // v0.69.0+: outcome residuals and Riesz-representer
+      // rows on the bandwidth-restricted sample,
+      // concatenated (left then right). Drive the
+      // `irm_style_sensitivity` decomposition in
+      // `DoubleMLRDD::sensitivity_analysis`.
+      residuals: res_yl + res_yr,
+      psi_a: psi_a_yl + psi_a_yr,
       fitted: true,
     }
   } catch {
@@ -388,6 +465,46 @@ pub fn DoubleMLRDD::confint(self : DoubleMLRDD) -> (Double, Double) {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.69.0+: sensitivity analysis for `DoubleMLRDD`.
+///
+/// RDD is the kernel-weighted local-polynomial regression
+/// discontinuity estimator. The kernel-weighted precision
+/// matrix per side is `M = (X^T W X + ridge I)^{-1}` and
+/// the Riesz-representer row is `psi_a[k] = M[0, :] @ xx[k, :]`
+/// (intercept row of `M` dotted with the k-th local
+/// design row). The local polynomial residual is
+/// `e_k = target_k - pred_k`. The IRM-style decomposition
+/// (matching the v0.66.0+ sensitivity family) treats the
+/// concatenation `residuals ++ psi_a` (left side then
+/// right side) as a single IF row and applies
+/// `irm_style_sensitivity` to it. The result is a single
+/// `SensitivityResult` for the kernel-RDD jump estimate.
+///
+/// Notes:
+///   - Fuzzy RDD uses `c = raw / jump` delta-method
+///     weighting that mixes Y-residuals and D-residuals;
+///     the simple `irm_style_sensitivity` decomposition
+///     assumes the single-theta score form (so the
+///     fuzzy-delta cross term `cov(raw, jump)` is captured
+///     by the v0.59.0- fuzzy variance fix, not by the
+///     sensitivity path). For sharp RDD the
+///     decomposition is exact.
+///   - `cf_y` / `cf_d` default to `0.05` matching the
+///     v0.66.0+ sensitivity family.
+///
+/// Calling on an un-fit model aborts via
+/// `PreconditionError`. Returns a single
+/// `SensitivityResult`.
+pub fn DoubleMLRDD::sensitivity_analysis(
+  self : DoubleMLRDD,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  irm_style_sensitivity(self.coef, self.residuals, self.psi_a, cf_y, cf_d)
 }
 
 ///|

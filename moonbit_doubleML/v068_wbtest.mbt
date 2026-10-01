@@ -226,3 +226,53 @@ test "didcs_sensitivity_returns_per_cell_results" {
     assert_eq(results[k].max_bias, 0.0)
   }
 }
+
+// ---------------------------------------------------------------------------
+// RDD sensitivity smoke test (v0.69.0)
+// ---------------------------------------------------------------------------
+
+///|
+test "rdd_sensitivity_returns_finite_result" {
+  // v0.69.0+: RDD sensitivity analysis via the
+  // kernel-weighted IRM-style decomposition.
+  // Sharp RDD, single cutoff at 0, triangular kernel
+  // bandwidth h = 1.5, single covariate, jump of 1.0 at
+  // the cutoff. n = 400 obs with score uniform on [-3, 3].
+  let n = 400
+  let p = 1
+  let rng = chacha8_rng(1)
+  let x_flat : Array[Double] = Array::make(n * p, 0.0)
+  let y : Array[Double] = Array::make(n, 0.0)
+  let d : Array[Double] = Array::make(n, 0.0)
+  let score : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    x_flat[i * p + 0] = rng.double() * 2.0 - 1.0
+    // `score[i]` = forcing variable; uniform on [-3, 3].
+    score[i] = rng.double() * 6.0 - 3.0
+    // Sharp RDD: jump = 1.0 at cutoff = 0; outcome has
+    // 0.5 * x0 covariate effect + iid N(0, 0.4^2).
+    let treated = if score[i] >= 0.0 { 1.0 } else { 0.0 }
+    d[i] = treated
+    let eps = (rng.double() - 0.5) * 0.4
+    y[i] = treated * 1.0 + 0.5 * x_flat[i * p + 0] + eps
+  }
+  let x_mat = Matrix::from_array(x_flat, n, p)
+  let data = DoubleMLRDDData::new(x_mat, y, d, score)
+  let fitted = DoubleMLRDD::new(
+    data,
+    cutoff=0.0,
+    bandwidth=1.5,
+    fuzzy=false,
+  ).fit()
+  let r = fitted.sensitivity_analysis()
+  // The IRM-style decomposition applies to the kernel-
+  // weighted IF rows on the bandwidth-restricted sample.
+  // We only check finiteness (sigma2 / nu2 can be small
+  // for non-overlapping kernel windows).
+  assert_true(r.rv.is_nan() == false)
+  assert_true(r.sigma2.is_nan() == false)
+  assert_true(r.nu2.is_nan() == false)
+  assert_true(r.max_bias.is_nan() == false)
+  assert_true(r.sigma2 >= 0.0)
+  assert_true(r.nu2 >= 0.0)
+}
