@@ -178,6 +178,18 @@ pub struct DoubleMLDIDCS {
   // the (g, t) cell is not available. Used by the multiplier
   // bootstrap in `DoubleMLDIDMulti::bootstrap`.
   psi_matrix : Array[Double]
+  // v0.69.0+: per-(g, t) Riesz-representer `psi_a` component
+  // (without the `theta * psi_b` term), same row-major layout
+  // as `psi_matrix`. Drives the per-cell
+  // `irm_style_sensitivity` decomposition in
+  // `DoubleMLDIDCS::sensitivity_analysis`.
+  psi_a_matrix : Array[Double]
+  // v0.69.0+: per-(g, t) outcome residual
+  // `y - g_d0_hat - (g_d1_hat - g_d0_hat) * d`, same
+  // row-major layout as `psi_matrix`. Drives the per-cell
+  // `irm_style_sensitivity` decomposition (the
+  // `residuals` argument to `irm_style_sensitivity`).
+  residuals_matrix : Array[Double]
   n_groups : Int
   n_periods : Int
   fitted : Bool
@@ -231,6 +243,11 @@ pub fn DoubleMLDIDCS::new(
       coef_matrix: Array::make(n_groups * n_periods, 0.0),
       se_matrix: Array::make(n_groups * n_periods, 0.0),
       psi_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
+      psi_a_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
+      residuals_matrix: Array::make(
+        n_groups * n_periods * data.y.length(),
+        0.0,
+      ),
       n_groups,
       n_periods,
       fitted: false,
@@ -355,6 +372,19 @@ pub fn DoubleMLDIDCS::fit(
     // v0.15.0+: per-cell influence function on long-format panel.
     let psi_values : Array[Array[Double]] = []
     let mut psi_values_acc = psi_values
+    // v0.69.0+: per-cell Riesz-representer component `psi_a`
+    // (no `theta * psi_b` term) on long-format panel,
+    // parallel to `psi_values`. Used by the per-cell
+    // `irm_style_sensitivity` decomposition in
+    // `DoubleMLDIDCS::sensitivity_analysis`.
+    let psi_a_values : Array[Array[Double]] = []
+    let mut psi_a_values_acc = psi_a_values
+    // v0.69.0+: per-cell outcome residuals
+    // `y - g_d0_hat - (g_d1_hat - g_d0_hat) * d` on the
+    // long-format panel, parallel to `psi_values`. Drives
+    // the per-cell IRM-style sensitivity helper.
+    let residuals_values : Array[Array[Double]] = []
+    let mut residuals_values_acc = residuals_values
     for gi = 0; gi < self.n_groups; gi = gi + 1 {
       let g_value = self.data.groups[gi]
       // Find the index of the period equal to g_value (the
@@ -460,14 +490,37 @@ pub fn DoubleMLDIDCS::fit(
         let theta = sub_fitted.coef()
         let inner_psi_a = sub_fitted.inner_psi_a()
         let inner_psi_b = sub_fitted.inner_psi_b()
+        // v0.69.0+: pull the inner nuisance predictions so the
+        // per-cell outcome residual
+        // `y - g_d0_hat - (g_d1_hat - g_d0_hat) * d` can be
+        // computed and mapped to long-format. The sub-set
+        // ordering matches `inner_psi_a` (wide-format via
+        // `sub_to_wide`).
+        let inner_g0 = sub_fitted.predictions_g0()
+        let inner_g1 = sub_fitted.predictions_g1()
         let sub_to_wide = sub_fitted.eval_idx
         let psi_long : Array[Double] = Array::make(n, 0.0)
+        // v0.69.0+: per-cell psi_a long-format accumulator.
+        let psi_a_long : Array[Double] = Array::make(n, 0.0)
+        // v0.69.0+: per-cell residuals long-format accumulator.
+        let residuals_long : Array[Double] = Array::make(n, 0.0)
         for k_wide = 0; k_wide < sub_to_wide.length(); k_wide = k_wide + 1 {
           let k_sub = sub_to_wide[k_wide]
           let full_i = full_idx_acc[k_sub]
           psi_long[full_i] = inner_psi_a[k_wide] + theta * inner_psi_b[k_wide]
+          psi_a_long[full_i] = inner_psi_a[k_wide]
+          // residuals_long[full_i] = y - g0 - (g1 - g0) * d
+          // (the ATT-form residual; matches the v0.66.0
+          // DIDCSBinary::sensitivity residual convention).
+          // `d_sub_acc[k_wide]` is the cell-recomputed d
+          // (= 1 iff unit is in G cohort AND in eval period).
+          residuals_long[full_i] = y_sub_acc[k_wide] -
+            inner_g0[k_wide] -
+            (inner_g1[k_wide] - inner_g0[k_wide]) * d_sub_acc[k_wide]
         }
         psi_values_acc = psi_values_acc + [psi_long]
+        psi_a_values_acc = psi_a_values_acc + [psi_a_long]
+        residuals_values_acc = residuals_values_acc + [residuals_long]
       }
     }
     // Reassemble the row-major matrix. For missing cells (g, t) with
@@ -488,6 +541,21 @@ pub fn DoubleMLDIDCS::fit(
     // psi_b` on the long-format panel, used by the multiplier
     // bootstrap. Empty cells (no psi) are left at 0.0.
     let final_psi : Array[Double] = Array::make(
+      self.n_groups * self.n_periods * n,
+      0.0,
+    )
+    // v0.69.0+: per-cell Riesz-representer `psi_a` (no
+    // `theta * psi_b` term) and per-cell outcome residual
+    // (ATT-form `y - g_d0 - (g_d1 - g_d0) * d`) on the
+    // long-format panel, parallel to `final_psi`. Empty
+    // cells stay at 0.0. Drives the per-cell
+    // `irm_style_sensitivity` decomposition in
+    // `DoubleMLDIDCS::sensitivity_analysis`.
+    let final_psi_a : Array[Double] = Array::make(
+      self.n_groups * self.n_periods * n,
+      0.0,
+    )
+    let final_res : Array[Double] = Array::make(
       self.n_groups * self.n_periods * n,
       0.0,
     )
@@ -517,6 +585,15 @@ pub fn DoubleMLDIDCS::fit(
         for k = 0; k < n; k = k + 1 {
           final_psi[flat * n + k] = psi_k[k]
         }
+        // v0.69.0+: copy the per-cell psi_a and per-cell
+        // residuals into the matching row-major slots
+        // (parallel to `final_psi`).
+        let psi_a_k = psi_a_values_acc[coef_idx]
+        let res_k = residuals_values_acc[coef_idx]
+        for k = 0; k < n; k = k + 1 {
+          final_psi_a[flat * n + k] = psi_a_k[k]
+          final_res[flat * n + k] = res_k[k]
+        }
         coef_idx = coef_idx + 1
       }
     }
@@ -525,6 +602,8 @@ pub fn DoubleMLDIDCS::fit(
       coef_matrix: final_coef,
       se_matrix: final_se,
       psi_matrix: final_psi,
+      psi_a_matrix: final_psi_a,
+      residuals_matrix: final_res,
       fitted: true,
       boot_t_stat: [],
       boot_method: "",
@@ -605,7 +684,67 @@ pub fn DoubleMLDIDCS::bootstrap(
 }
 
 ///|
-/// v0.66.0+: confidence interval for the per-(g, t) ATT.
+/// v0.69.0+: per-(g, t) sensitivity analysis for `DoubleMLDIDCS`.
+///
+/// Each (g, t) cell that has a fitted estimate (`se_matrix[k]
+/// > 0`) gets its own `SensitivityResult` via the shared
+/// `irm_style_sensitivity` helper, using the per-cell
+/// Riesz-representer `psi_a` and per-cell outcome residual
+/// (ATT-form `y - g_d0_hat - (g_d1_hat - g_d0_hat) * d`)
+/// persisted by `fit` in `psi_a_matrix` and
+/// `residuals_matrix` (same row-major layout as
+/// `psi_matrix`). The cell-decomposition is identical to
+/// the v0.66.0 `DoubleMLDIDCSBinary::sensitivity_analysis`
+/// decomposition; the only difference is the per-cell
+/// scope (one result per (g, t) cell instead of a single
+/// cell-wide result for DIDCSBinary).
+///
+/// Cells with `se_matrix[k] == 0` (pre-treatment / no
+/// observed evaluation period / empty panel subset) return
+/// a zeroed `SensitivityResult` (same default as
+/// `DoubleMLAPOS::sensitivity` for missing cells).
+///
+/// `cf_y` and `cf_d` default to `0.05` matching the rest
+/// of the v0.66.0-onward sensitivity family.
+///
+/// Returns an `Array[SensitivityResult]` of length
+/// `n_groups * n_periods` in row-major `(gi, pi)` order.
+// Indices for unavailable cells stay at the zero
+/// default. Calling on an un-fit model aborts via
+/// `PreconditionError`.
+pub fn DoubleMLDIDCS::sensitivity_analysis(
+  self : DoubleMLDIDCS,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let n_obs = self.data.y.length()
+  let n_cells = self.n_groups * self.n_periods
+  let zero_result : SensitivityResult = {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  }
+  let out : Array[SensitivityResult] = Array::make(n_cells, zero_result)
+  for k = 0; k < n_cells; k = k + 1 {
+    if self.se_matrix[k] <= 0.0 {
+      continue
+    }
+    let psi_a_k : Array[Double] = Array::make(n_obs, 0.0)
+    let residuals_k : Array[Double] = Array::make(n_obs, 0.0)
+    for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
+      psi_a_k[i_long] = self.psi_a_matrix[k * n_obs + i_long]
+      residuals_k[i_long] = self.residuals_matrix[k * n_obs + i_long]
+    }
+    out[k] = irm_style_sensitivity(
+      self.coef_matrix[k], residuals_k, psi_a_k, cf_y, cf_d,
+    )
+  }
+  out
+}
 /// When `joint = false` (default), uses the Wald-style
 /// `theta ± 1.96 * se` interval. When `joint = true`, uses
 /// the bootstrap: `theta ± critical_value * se` where

@@ -126,3 +126,103 @@ test "blp_sensitivity_returns_per_coef_results" {
     assert_true(results[j].nu2 > 0.0)
   }
 }
+
+// ---------------------------------------------------------------------------
+// DIDCS sensitivity smoke test (v0.69.0)
+// ---------------------------------------------------------------------------
+
+///|
+test "didcs_sensitivity_returns_per_cell_results" {
+  // v0.69.0+: DIDCS sensitivity returns one
+  // SensitivityResult per (g, t) cell. Cells without a
+  // fitted estimate (pre-treatment / no eval period) return
+  // a zeroed SensitivityResult.
+  //
+  // Minimal 2-cohort / 3-period panel: g in {0, 1, 2}, t
+  // in {1, 2, 3}. Treatment cohort `g=1` is treated in
+  // t=2,3; cohort `g=2` is treated only in t=3. 200 obs
+  // split evenly between never_treated (g=0) and the two
+  // cohorts. Cells with eval_period <= g_value stay at zero
+  // per the standard DIDCS missing-cell semantics:
+  //   (g=1, t=1): eval_period (1) <= g_value (1) -> zero
+  //   (g=1, t=2): eval_period (2) >  g_value (1) -> fitted
+  //   (g=1, t=3): eval_period (3) >  g_value (1) -> fitted
+  //   (g=2, t=1): eval_period (1) <= g_value (2) -> zero
+  //   (g=2, t=2): eval_period (2) <= g_value (2) -> zero
+  //   (g=2, t=3): eval_period (3) >  g_value (2) -> fitted
+  let n_units = 200
+  let n_periods_p = 3
+  let n = n_units * n_periods_p
+  let p = 2
+  let rng = chacha8_rng(1)
+  let x_flat : Array[Double] = Array::make(n * p, 0.0)
+  let y : Array[Double] = Array::make(n, 0.0)
+  let d : Array[Double] = Array::make(n, 0.0)
+  let t : Array[Int] = Array::make(n, 0)
+  let id : Array[Int] = Array::make(n, 0)
+  let g : Array[Int] = Array::make(n, 0)
+  // Balanced panel: each unit observed in all 3 periods;
+  // unit-level cohort g drawn once and replicated across
+  // periods. Time-invariant covariates x_v[0, 1]; time-varying
+  // id assignment.
+  for u = 0; u < n_units; u = u + 1 {
+    let x0 = rng.double() * 2.0 - 1.0
+    let x1 = rng.double() * 2.0 - 1.0
+    // Assign cohort: 1/3 never-treated (g=0), 1/3 early-treated
+    // (g=1, treated in t=2 onward), 1/3 late-treated
+    // (g=2, treated in t=3 onward).
+    let cu = rng.double()
+    let g_u = if cu < 0.34 {
+      0
+    } else if cu < 0.67 {
+      1
+    } else {
+      2
+    }
+    for pi = 0; pi < n_periods_p; pi = pi + 1 {
+      let idx = u * n_periods_p + pi
+      let t_u = pi + 1
+      let d_treat = if g_u > 0 && t_u > g_u { 1.0 } else { 0.0 }
+      x_flat[idx * p + 0] = x0
+      x_flat[idx * p + 1] = x1
+      g[idx] = g_u
+      t[idx] = t_u
+      id[idx] = u
+      d[idx] = d_treat
+      let eps = (rng.double() - 0.5) * 0.3
+      y[idx] = d_treat * 1.5 + 0.4 * x0 + 0.2 * x1 + eps
+    }
+  }
+  let x_mat = Matrix::from_array(x_flat, n, p)
+  let data = DoubleMLDIDCSData::new(x_mat, y, d, t, id, g)
+  let fitted = DoubleMLDIDCS::new(data, n_folds=4, seed=1).fit()
+  let results = fitted.sensitivity_analysis()
+  // 2 cohorts (g=1, g=2) x 3 periods = 6 cells
+  // (row-major by (gi, pi)). Note g=0 is the control
+  // sentinel and is excluded from `groups` so n_groups
+  // stays at 2 (the discovery rule strips the
+  // never_treated_value).
+  assert_eq(results.length(), 6)
+  // Fitted cells (eval_period > g_value): (g=1, t=2) ->
+  // gi=0 / pi=1 / flat=1; (g=1, t=3) -> gi=0 / pi=2 /
+  // flat=2; (g=2, t=3) -> gi=1 / pi=2 / flat=5.
+  let fitted_cells : Array[Int] = [1, 2, 5]
+  // Zero cells (eval_period <= g_value): (g=1, t=1) ->
+  // gi=0 / pi=0 / flat=0; (g=2, t=1) -> gi=1 / pi=0 /
+  // flat=3; (g=2, t=2) -> gi=1 / pi=1 / flat=4.
+  let zero_cells : Array[Int] = [0, 3, 4]
+  for k in fitted_cells {
+    assert_true(results[k].rv.is_nan() == false)
+    assert_true(results[k].sigma2.is_nan() == false)
+    assert_true(results[k].nu2.is_nan() == false)
+    assert_true(results[k].max_bias.is_nan() == false)
+    assert_true(results[k].sigma2 >= 0.0)
+    assert_true(results[k].nu2 >= 0.0)
+  }
+  for k in zero_cells {
+    assert_eq(results[k].rv, 0.0)
+    assert_eq(results[k].sigma2, 0.0)
+    assert_eq(results[k].nu2, 0.0)
+    assert_eq(results[k].max_bias, 0.0)
+  }
+}
