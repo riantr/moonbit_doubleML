@@ -669,6 +669,24 @@ pub struct DoubleMLPolicyTree {
   split_value : Double
   left_treatment : Int
   right_treatment : Int
+  // v0.69.0+: leaf index per observation (length `n_obs`),
+  // populated by `fit`. Used by `sensitivity_analysis` to
+  // bucket the residuals and the Riesz-representer rows
+  // into per-leaf sub-IRM-style decompositions. The leaf
+  // index is a flat 0-based offset into the tree's
+  // depth-first leaf enumeration (matching
+  // `policy_tree_walk_leaves`).
+  leaf_assignment : Array[Int]
+  // v0.69.0+: leaf means of `orth_signal`, indexed by leaf
+  // assignment. Length = number of leaves in the fitted
+  // tree. The per-leaf nuisance-persistence residual is
+  // `orth_signal[i] - leaf_signal_mean[3]` for unit `i` with
+  // leaf index `3`.
+  leaf_signal_mean : Array[Double]
+  // v0.69.0+: leaf sizes (counts), indexed by leaf
+  // assignment. Length = number of leaves in the fitted
+  // tree.
+  leaf_count : Array[Int]
   fitted : Bool
 } derive(Debug)
 
@@ -693,6 +711,9 @@ pub fn DoubleMLPolicyTree::new(
       split_value: 0.0,
       left_treatment: 0,
       right_treatment: 0,
+      leaf_assignment: [],
+      leaf_signal_mean: [],
+      leaf_count: [],
       fitted: false,
     }
   } catch {
@@ -718,6 +739,60 @@ fn policy_root_lr_treatments(root : PolicyTreeNode) -> (Int, Int) {
 }
 
 ///|
+/// Walk the tree and emit leaves in depth-first order. Returns the
+/// list of leaf treatments in DFS order. v0.69.0+ used by
+/// `DoubleMLPolicyTree::fit` to populate
+/// `leaf_assignment` / `leaf_signal_mean` / `leaf_count`.
+fn policy_tree_walk_leaves(
+  node : PolicyTreeNode,
+  out : Array[Int],
+) -> Unit {
+  match node {
+    Leaf(t) => out.push(t)
+    Split(_, _, left, right) => {
+      policy_tree_walk_leaves(left, out)
+      policy_tree_walk_leaves(right, out)
+    }
+  }
+}
+
+///|
+/// Walk the tree to find the leaf index for a single row. The leaf
+/// index matches the DFS order emitted by
+/// `policy_tree_walk_leaves`. v0.69.0+ used by
+/// `DoubleMLPolicyTree::fit` to populate `leaf_assignment`.
+fn policy_tree_leaf_index(
+  node : PolicyTreeNode,
+  x : Matrix,
+  row : Int,
+  acc : Int,
+) -> Int {
+  match node {
+    Leaf(_) => acc
+    Split(feature, threshold, left, right) =>
+      if x.get(row, feature) < threshold {
+        policy_tree_leaf_index(left, x, row, acc)
+      } else {
+        // Skip the entire left subtree (its DFS range is
+        // [acc, acc + n_left_leaves)); recurse into right.
+        let after_left = acc + policy_tree_count_leaves(left)
+        policy_tree_leaf_index(right, x, row, after_left)
+      }
+  }
+}
+
+///|
+/// Count the leaves in a tree subtree. Internal helper
+/// for `policy_tree_leaf_index`.
+fn policy_tree_count_leaves(node : PolicyTreeNode) -> Int {
+  match node {
+    Leaf(_) => 1
+    Split(_, _, left, right) =>
+      policy_tree_count_leaves(left) + policy_tree_count_leaves(right)
+  }
+}
+
+///|
 pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree {
   let root = policy_tree_build(self.features, self.orth_signal, self.depth)
   let (split_feature, split_value) = match root {
@@ -725,6 +800,28 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     Split(feature, threshold, _, _) => (feature, threshold)
   }
   let (lt, rt) = policy_root_lr_treatments(root)
+  // v0.69.0+: enumerate leaves in DFS order, populate
+  // per-row leaf_assignment + per-leaf means + count.
+  let leaf_treatments : Array[Int] = []
+  policy_tree_walk_leaves(root, leaf_treatments)
+  let n_leaves = leaf_treatments.length()
+  let leaf_signal_sum : Array[Double] = Array::make(n_leaves, 0.0)
+  let leaf_count_arr : Array[Int] = Array::make(n_leaves, 0)
+  let n_obs = self.orth_signal.length()
+  let leaf_assignment : Array[Int] = Array::make(n_obs, 0)
+  for i = 0; i < n_obs; i = i + 1 {
+    let lf = policy_tree_leaf_index(root, self.features, i, 0)
+    leaf_assignment[i] = lf
+    leaf_signal_sum[lf] = leaf_signal_sum[lf] + self.orth_signal[i]
+    leaf_count_arr[lf] = leaf_count_arr[lf] + 1
+  }
+  let leaf_signal_mean : Array[Double] = Array::make(n_leaves, 0.0)
+  for k = 0; k < n_leaves; k = k + 1 {
+    if leaf_count_arr[k] > 0 {
+      leaf_signal_mean[k] = leaf_signal_sum[k] /
+        leaf_count_arr[k].to_double()
+    }
+  }
   {
     features: self.features,
     orth_signal: self.orth_signal,
@@ -734,6 +831,9 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     split_value,
     left_treatment: lt,
     right_treatment: rt,
+    leaf_assignment,
+    leaf_signal_mean,
+    leaf_count: leaf_count_arr,
     fitted: true,
   }
 }
@@ -776,4 +876,69 @@ pub fn DoubleMLPolicyTree::split_value(self : DoubleMLPolicyTree) -> Double {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.69.0+: per-leaf sensitivity analysis for `DoubleMLPolicyTree`.
+///
+/// PolicyTree is a deterministic policy learner: each
+/// row is predicted with the leaf treatment emitted by
+/// `policy_tree_predict`. The IRM-style per-leaf
+/// decomposition treats the leaf mean of `orth_signal`
+/// as the nuisance-persistence anchor
+/// (`leaf_signal_mean`), the per-leaf outcome residual
+/// as `orth_signal[i] - leaf_signal_mean[leaf(i)]`,
+/// the per-leaf Riesz-representer row as `psi_a = -1`
+/// (the constant IRM-style treatment-effect IF), and
+/// the per-leaf coefficient as `leaf_signal_mean[l]`.
+///
+/// Returns an `Array[SensitivityResult]` in the same
+/// DFS order as `policy_tree_walk_leaves` /
+/// `leaf_signal_mean` / `leaf_count`. Leaves with
+/// `leaf_count == 0` (impossible in the current
+/// build since the build loop only creates leaves
+/// containing at least one row) get a zeroed
+/// `SensitivityResult`. `cf_y` / `cf_d` default to `0.05`
+/// matching the v0.66.0+ sensitivity family.
+///
+/// Calling on an un-fit model aborts via
+/// `PreconditionError`.
+pub fn DoubleMLPolicyTree::sensitivity_analysis(
+  self : DoubleMLPolicyTree,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let n_obs = self.orth_signal.length()
+  let n_leaves = self.leaf_signal_mean.length()
+  let zero_result : SensitivityResult = {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  }
+  let out : Array[SensitivityResult] = Array::make(n_leaves, zero_result)
+  // Bucket residuals and psi_a per leaf, then call
+  // `irm_style_sensitivity` once per leaf.
+  for l = 0; l < n_leaves; l = l + 1 {
+    let n_in_leaf = self.leaf_count[l]
+    if n_in_leaf == 0 {
+      continue
+    }
+    let residuals : Array[Double] = Array::make(n_in_leaf, 0.0)
+    let psi_a : Array[Double] = Array::make(n_in_leaf, -1.0)
+    let mut k = 0
+    for i = 0; i < n_obs; i = i + 1 {
+      if self.leaf_assignment[i] == l {
+        residuals[k] = self.orth_signal[i] - self.leaf_signal_mean[l]
+        k = k + 1
+      }
+    }
+    out[l] = irm_style_sensitivity(
+      self.leaf_signal_mean[l], residuals, psi_a, cf_y, cf_d,
+    )
+  }
+  out
 }

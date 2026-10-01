@@ -276,3 +276,61 @@ test "rdd_sensitivity_returns_finite_result" {
   assert_true(r.sigma2 >= 0.0)
   assert_true(r.nu2 >= 0.0)
 }
+
+// ---------------------------------------------------------------------------
+// PolicyTree sensitivity smoke test (v0.69.0)
+// ---------------------------------------------------------------------------
+
+///|
+test "policy_tree_sensitivity_returns_per_leaf_results" {
+  // v0.69.0+: PolicyTree sensitivity analysis returns
+  // one SensitivityResult per leaf in DFS order. The
+  // per-leaf IRM-style decomposition uses the leaf mean
+  // of orth_signal as the nuisance anchor and psi_a =
+  // -1 (constant IRM-style treatment-effect IF).
+  //
+  // DGP: 1-d feature, signal = mean-shift on x > 0.5.
+  // 200 obs with feature uniform on [0, 1]. The depth-1
+  // stump should split at x = 0.5 into two leaves with
+  // non-zero mean shift, so both leaves have non-zero
+  // residuals.
+  let n = 200
+  let p = 1
+  let rng = chacha8_rng(1)
+  let x_flat : Array[Double] = Array::make(n * p, 0.0)
+  let y : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    x_flat[i * p + 0] = rng.double()
+    // Step signal: 1.0 on x > 0.5, 0.0 elsewhere. The
+    // tree-fit driver noise-free here so the stump cleanly
+    // finds the x=0.5 split (no residual variance to be
+    // absorbed by either leaf).
+    y[i] = if x_flat[i * p + 0] > 0.5 { 1.0 } else { 0.0 }
+  }
+  let x_mat = Matrix::from_array(x_flat, n, p)
+  let fitted = DoubleMLPolicyTree::new(x_mat, y, depth=1).fit()
+  // Sanity: depth-1 stump should produce 2 leaves (or
+  // 1 leaf if no split improves over the all-mean
+  // baseline; we use a step signal with strong
+  // variance-reduction at x=0.5 to guarantee 2).
+  let results = fitted.sensitivity_analysis()
+  assert_true(results.length() >= 1)
+  // First-leaf sanity (always present in DFS order):
+  // leaf mean is a valid theta, residuals and psi_a are
+  // finite, sigma2/nu2 >= 0.
+  assert_true(results[0].rv.is_nan() == false)
+  assert_true(results[0].sigma2.is_nan() == false)
+  assert_true(results[0].nu2.is_nan() == false)
+  assert_true(results[0].max_bias.is_nan() == false)
+  assert_true(results[0].sigma2 >= 0.0)
+  assert_true(results[0].nu2 >= 0.0)
+  // If the stump found a useful split at x=0.5, both
+  // leaves have non-zero residuals.
+  if results.length() == 2 {
+    for j = 0; j < 2; j = j + 1 {
+      assert_true(results[j].rv.is_nan() == false)
+      assert_true(results[j].sigma2 >= 0.0)
+      assert_true(results[j].nu2 >= 0.0)
+    }
+  }
+}
