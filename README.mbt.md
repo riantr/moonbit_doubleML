@@ -18,7 +18,7 @@ processing, multiple-testing correction, and a reproducible validation
 pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 `wasm`, `wasm-gc`, and `js` backends under `moon test --deny-warn`.
 
-#Status
+##Status
 
 | Item | Value |
 |------|-------|
@@ -35,7 +35,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
-#Features
+##Features
 
 **Pure-MoonBit, all-4-backends port of `doubleml-for-py`** -- 22 `DoubleML*`
 estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,
@@ -115,7 +115,7 @@ internals -- `DoubleMLDIDCrossSection::crossfit_nuisance`,
 unweighted fallback for other learners). Defaults preserve v0.61.0
 byte-equality; non-default overrides change the IF and the coef.
 
-#Quick Start
+##Quick Start
 
 ```console
 $ moon test --deny-warn
@@ -133,7 +133,7 @@ $ python validate_irm_with_python.py
 PASS  |mb - handrolled_nrep5| (theta) = 5.24e-02 < max(MODEL_TOL=0.1, 2.0*handrolled_n5_se) = 1.91e-01
 ```
 
-#Library Use
+##Library Use
 
 ```moonbit nocheck
 let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]
@@ -147,7 +147,7 @@ Same shape for every other estimator -- e.g.
 `@moonbit_doubleML.DoubleMLIRM::new(data, ml_g?, ml_m?, n_folds?, n_rep?, seed?).
 fit()`, `@moonbit_doubleML.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
 
-#Examples
+##Examples
 
 14 `examples/<bin>/` directories in `moon.work`. 13 run end-to-end on
 synthetic DGPs: 12 are CLI-style numeric demos (print true-vs-estimated
@@ -202,7 +202,7 @@ The same `api_server.wasm` also runs under `moonrun --port 4000`
 The service is built directly on `moonbitlang/async@0.20.3` --
 no third-party HTTP framework is pulled in.
 
-#Models
+##Models
 
 22 estimators (`DoubleML*` structs) in 22 files (one struct per file,
 plus the supporting DGPs and score / nuisance kernels in 129 files
@@ -237,7 +237,7 @@ binary-outcome CS-DID:
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(extra)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)* |
 
-#Project layout
+##Project layout
 
 ```
 moonbit_doubleML/        <- the library (moon.mod v0.68.0, 132 .mbt files)
@@ -267,7 +267,7 @@ AGENTS.md                <- this file (per moonbit agent convention)
 skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 ```
 
-#Dependency rule (per `skills/moonbit_doubleML.md`)
+##Dependency rule (per `skills/moonbit_doubleML.md`)
 
 - Only official `moonbitlang/*` packages.
 - Non-official packages may only be `riantr/*` (this repo).
@@ -276,7 +276,7 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `moonbitlang/async`'s raw `Server` API. No third-party HTTP
   framework is allowed.
 
-#Determinism & validation
+##Determinism & validation
 
 - All randomness flows through `chacha8_rng(seed)` (`seed.mbt`).
   Default `seed=3141`; same seed => byte-identical DGP outputs.
@@ -332,7 +332,7 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   (each requires a structural IF / nuisance-persistence plumbing
   beyond the shared helpers already in place).
 
-#Attribution
+##Attribution
 
 `moonbit_doubleML` is a port of the upstream
 [`DoubleML/doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py)
@@ -342,7 +342,7 @@ variance estimators; the 3 MoonBit-only additions (`DoubleMLPLPR`,
 `DoubleMLLPLR`, `DoubleMLDIDCSBinary`) are extensions beyond the
 upstream scope.
 
-### Differences from upstream `doubleml-for-py`
+#### Differences from upstream `doubleml-for-py`
 
 - Native MoonBit package layout, type system, and test organization.
 - Independent implementations of `Matrix`, linear / logistic
@@ -358,8 +358,16 @@ upstream scope.
 - Strict dependency rule (see above): only `moonbitlang/*` official
   packages. Minimal supply-chain surface.
 
-#Used By
+##Used By
 
+- [`riantr/pyroduct`](https://mooncakes.io/docs/riantr/pyroduct) --
+  downstream consumer that models Ren Yongxiang's MA thesis
+  (Gadamer/Habermas, Shanghai Academy of Social Sciences 2008)
+  plus its appendix as runnable multi-agent state machines. Its
+  `dmlref` package cross-checks its own from-scratch DoubleML
+  PLR against `riantr/moonbit_doubleML` v0.64.0+: same nuisance,
+  `theta` delta 0.017, `se` delta 0.001. Source lives on
+  [`gitee.com/ren-yongxiang/pyroduct`](https://gitee.com/ren-yongxiang/pyroduct).
 - `examples/api_server/` -- this repo's HTTP service.
 - `examples/consumer_demo/` -- minimal end-to-end PLR showing the
   consumer-side import pattern (`moon add riantr/moonbit_doubleML`).
