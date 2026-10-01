@@ -244,10 +244,7 @@ pub fn DoubleMLDIDCS::new(
       se_matrix: Array::make(n_groups * n_periods, 0.0),
       psi_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
       psi_a_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
-      residuals_matrix: Array::make(
-        n_groups * n_periods * data.y.length(),
-        0.0,
-      ),
+      residuals_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
       n_groups,
       n_periods,
       fitted: false,
@@ -710,6 +707,8 @@ pub fn DoubleMLDIDCS::bootstrap(
 /// Returns an `Array[SensitivityResult]` of length
 /// `n_groups * n_periods` in row-major `(gi, pi)` order.
 // Indices for unavailable cells stay at the zero
+
+///|
 /// default. Calling on an un-fit model aborts via
 /// `PreconditionError`.
 pub fn DoubleMLDIDCS::sensitivity_analysis(
@@ -740,11 +739,17 @@ pub fn DoubleMLDIDCS::sensitivity_analysis(
       residuals_k[i_long] = self.residuals_matrix[k * n_obs + i_long]
     }
     out[k] = irm_style_sensitivity(
-      self.coef_matrix[k], residuals_k, psi_a_k, cf_y, cf_d,
+      self.coef_matrix[k],
+      residuals_k,
+      psi_a_k,
+      cf_y,
+      cf_d,
     )
   }
   out
 }
+
+///|
 /// When `joint = false` (default), uses the Wald-style
 /// `theta ± 1.96 * se` interval. When `joint = true`, uses
 /// the bootstrap: `theta ± critical_value * se` where

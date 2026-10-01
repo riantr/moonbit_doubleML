@@ -353,7 +353,11 @@ pub fn DoubleMLBLP::sensitivity_analysis(
       psi_a_j[i] = dot
     }
     results[j] = irm_style_sensitivity(
-      self.coef[j], self.residuals, psi_a_j, cf_y, cf_d,
+      self.coef[j],
+      self.residuals,
+      psi_a_j,
+      cf_y,
+      cf_d,
     )
   }
   results
@@ -743,10 +747,7 @@ fn policy_root_lr_treatments(root : PolicyTreeNode) -> (Int, Int) {
 /// list of leaf treatments in DFS order. v0.69.0+ used by
 /// `DoubleMLPolicyTree::fit` to populate
 /// `leaf_assignment` / `leaf_signal_mean` / `leaf_count`.
-fn policy_tree_walk_leaves(
-  node : PolicyTreeNode,
-  out : Array[Int],
-) -> Unit {
+fn policy_tree_walk_leaves(node : PolicyTreeNode, out : Array[Int]) -> Unit {
   match node {
     Leaf(t) => out.push(t)
     Split(_, _, left, right) => {
@@ -818,8 +819,7 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   let leaf_signal_mean : Array[Double] = Array::make(n_leaves, 0.0)
   for k = 0; k < n_leaves; k = k + 1 {
     if leaf_count_arr[k] > 0 {
-      leaf_signal_mean[k] = leaf_signal_sum[k] /
-        leaf_count_arr[k].to_double()
+      leaf_signal_mean[k] = leaf_signal_sum[k] / leaf_count_arr[k].to_double()
     }
   }
   {
@@ -937,7 +937,11 @@ pub fn DoubleMLPolicyTree::sensitivity_analysis(
       }
     }
     out[l] = irm_style_sensitivity(
-      self.leaf_signal_mean[l], residuals, psi_a, cf_y, cf_d,
+      self.leaf_signal_mean[l],
+      residuals,
+      psi_a,
+      cf_y,
+      cf_d,
     )
   }
   out

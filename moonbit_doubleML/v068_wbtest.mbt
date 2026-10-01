@@ -108,8 +108,9 @@ test "blp_sensitivity_returns_per_coef_results" {
     basis_flat[i * p_basis + 0] = rng.double() * 2.0 - 1.0
     basis_flat[i * p_basis + 1] = rng.double() * 2.0 - 1.0
     let eps = (rng.double() - 0.5) * 0.4
-    y[i] = 1.0 + 0.8 * basis_flat[i * p_basis + 0] + 0.4 *
-      basis_flat[i * p_basis + 1] +
+    y[i] = 1.0 +
+      0.8 * basis_flat[i * p_basis + 0] +
+      0.4 * basis_flat[i * p_basis + 1] +
       eps
   }
   let basis = Matrix::from_array(basis_flat, n, p_basis)
@@ -172,13 +173,7 @@ test "didcs_sensitivity_returns_per_cell_results" {
     // (g=1, treated in t=2 onward), 1/3 late-treated
     // (g=2, treated in t=3 onward).
     let cu = rng.double()
-    let g_u = if cu < 0.34 {
-      0
-    } else if cu < 0.67 {
-      1
-    } else {
-      2
-    }
+    let g_u = if cu < 0.34 { 0 } else if cu < 0.67 { 1 } else { 2 }
     for pi = 0; pi < n_periods_p; pi = pi + 1 {
       let idx = u * n_periods_p + pi
       let t_u = pi + 1
@@ -258,12 +253,7 @@ test "rdd_sensitivity_returns_finite_result" {
   }
   let x_mat = Matrix::from_array(x_flat, n, p)
   let data = DoubleMLRDDData::new(x_mat, y, d, score)
-  let fitted = DoubleMLRDD::new(
-    data,
-    cutoff=0.0,
-    bandwidth=1.5,
-    fuzzy=false,
-  ).fit()
+  let fitted = DoubleMLRDD::new(data, cutoff=0.0, bandwidth=1.5, fuzzy=false).fit()
   let r = fitted.sensitivity_analysis()
   // The IRM-style decomposition applies to the kernel-
   // weighted IF rows on the bandwidth-restricted sample.

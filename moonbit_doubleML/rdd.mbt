@@ -152,10 +152,7 @@ fn rdd_design(
 /// `xtwx_inv` internally but only exposes the diagonal
 /// `xtwx_inv_diag`, so we need a separate full inverse to
 /// compute the Riesz-representer row for sensitivity).
-fn weighted_xtx_transpose(
-  xx : Matrix,
-  w : Array[Double],
-) -> Matrix {
+fn weighted_xtx_transpose(xx : Matrix, w : Array[Double]) -> Matrix {
   let n_obs = xx.rows()
   let p = xx.cols()
   let out = Matrix::zeros(p, p)
