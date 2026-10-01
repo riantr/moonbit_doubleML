@@ -10,6 +10,97 @@ under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
 ---
+
+## [0.69.0] -- sensitivity_analysis on BLP / DIDCS / RDD / PolicyTree (5-item cycle)
+
+Completes the v0.66.0 sensitivity family by adding
+`sensitivity_analysis()` to the four estimators that
+deferred it across v0.66.0 / v0.67.0 / v0.68.0: BLP (closed-form
+OLS projection), DIDCS (per-cell long-format panel), RDD
+(kernel-weighted local polynomial), and PolicyTree
+(per-leaf DFS IRM-style decomposition). Each estimator
+matches its existing IF decomposition contract:
+
+- **BLP**: per-coef IRM-style via the OLS precision
+  matrix `(Xa^T Xa + ridge I)^{-1}` (intercept row dotted
+  with the augmented design row). `residuals` already
+  populated by the v0.64.0 bootstrap path.
+- **DIDCS**: per-cell `(g, t)` IRM-style. Adds two new
+  struct fields `psi_a_matrix` / `residuals_matrix`
+  populated by `fit` from the sub-fitted
+  `DoubleMLDIDBinary::inner_psi_a()`, `predictions_g0()`,
+  `predictions_g1()`. ATT-form residual is
+  `y - g_d0_hat - (g_d1_hat - g_d0_hat) * d`.
+- **RDD**: kernel-weighted IRM-style. Adds a
+  `weighted_xtx_transpose(xx, w)` internal helper and
+  extends `rdd_side` to a 5-tuple returning psi_a alongside
+  residuals. The concatenation `residuals ++ psi_a` (left
+  then right) drives a single IRM-style helper call. Fuzzy
+  RDD falls back to the existing v0.59.0 fuzzy-delta-method
+  variance fix in `fit`, not the sensitivity path.
+- **PolicyTree**: per-leaf IRM-style. Adds three struct
+  fields (`leaf_assignment`, `leaf_signal_mean`,
+  `leaf_count`) populated by `fit` via depth-first leaf
+  enumeration. `psi_a = -1` (constant IRM-style
+  treatment-effect IF), `residuals = orth_signal[i] -
+  leaf_signal_mean[leaf(i)]`.
+
+Also unblocks the v0.68.0 APOS wbtest placeholder
+(`ignore(0)`): a real binary-treatment DGP wbtest that
+covers the per-level re-fit plumbing (the helper path is
+covered by the SSM test above).
+
+### Added
+
+- `DoubleMLBLP::sensitivity_analysis(cf_y?, cf_d?)` ->
+  `Array[SensitivityResult]` (one per coef, length
+  `n_features + 1`).
+- `DoubleMLDIDCS::sensitivity_analysis(cf_y?, cf_d?)` ->
+  `Array[SensitivityResult]` (one per `(g, t)` cell,
+  length `n_groups * n_periods`). Cells without a fitted
+  estimate return a zeroed `SensitivityResult`.
+- `DoubleMLRDD::sensitivity_analysis(cf_y?, cf_d?)` ->
+  `SensitivityResult` (single, kernel-weighted).
+- `DoubleMLPolicyTree::sensitivity_analysis(cf_y?, cf_d?)` ->
+  `Array[SensitivityResult]` (one per leaf in DFS order).
+- New struct field `payloads on `DoubleMLDIDCS`:
+  `psi_a_matrix` (per-cell Riesz-representer row on the
+  long-format panel), `residuals_matrix` (per-cell
+  ATT-form outcome residual).
+- New struct fields on `DoubleMLRDD`: `residuals`
+  (kernel-restricted residuals, left then right),
+  `psi_a` (kernel-restricted Riesz-representer row).
+- New struct fields on `DoubleMLPolicyTree`:
+  `leaf_assignment`, `leaf_signal_mean`, `leaf_count`.
+- New internal helper `weighted_xtx_transpose(xx, w)` in
+  `rdd.mbt` to build `X^T diag(W) X` for the kernel-
+  weighted precision matrix.
+- New internal helpers `policy_tree_walk_leaves`,
+  `policy_tree_leaf_index`, `policy_tree_count_leaves`
+  in `blp_policy.mbt` for DFS leaf enumeration +
+  per-row leaf-index lookup.
+
+### Verification (this release)
+
+- `moon check --deny-warn`: clean.
+- `moon fmt --check`: clean.
+- `moon test --target native`: 528 / 528.
+- `moon test --target wasm`: 528 / 528.
+- `moon test --target wasm-gc`: 534 / 534.
+- `moon test --target js`: 528 / 528.
+- 23 / 23 Python cross-validators (`validate_*_with_python.py`)
+  in ~50 s.
+- `moon publish --verbose`: `Server status: 200 OK` + zip
+  validation + extracted `moon check` PASS.
+- Post-publish verify: extract README.mbt.md from the
+  v0.69.0 zip and hash it. Disk `README.mbt.md`
+  hash = `5d3c025c...` (the v0.68.1 ASCII-only version
+  carried over). Expected: zip README hash =
+  `6b8b78b2...` (the stale v0.63.0 cache), confirming
+  the `moon publish` cache bug still upstream.
+  The disk-side fix is ready to deploy the moment the
+  cache bug is fixed upstream (see v0.68.1 entry for
+  the full bug writeup).
 ## [0.68.1] -- docs(readme): ASCII-only README.mbt.md (mooncakes.io mojibake fix)
 
 Docs-only patch targeting the v0.68.0 mooncakes.io render
