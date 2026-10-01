@@ -71,7 +71,7 @@ pub extend DoubleMLDIDMulti with @moonbitlang/core/debug.Debug::{to_repr}
 ///
 ///   - `"standard"`: every (g, t) with `t > g` and `t_pre = g`
 ///     (the default Callaway-Sant'Anna staggered set).
-///   - `"all"`: every (g, t) in the (groups 脳 periods) grid.
+///   - `"all"`: every (g, t) in the (groups x periods) grid.
 ///   - `"universal"`: same as `"all"` for the panel case
 ///     (upstream's `universal` is only meaningful for repeated
 ///     cross sections, which this port does not implement).
@@ -200,7 +200,7 @@ pub fn DoubleMLDIDMulti::new(
 
 ///|
 /// Expand the `gt_combinations_keyword` string to a list of
-/// `(g, t_pre, t_eval)` triples over the `groups 脳 times` grid.
+/// `(g, t_pre, t_eval)` triples over the `groups x times` grid.
 fn expand_gt_keyword(
   keyword : String,
   groups : Array[Int],
@@ -213,7 +213,7 @@ fn expand_gt_keyword(
   let mut out_acc = out
   for i = 0; i < n_groups; i = i + 1 {
     let g = groups[i]
-    // Skip the never-treated group (g == 0) 鈥?these
+    // Skip the never-treated group (g == 0) -- these
     // units never receive treatment, so ATT(g, t)
     // is undefined for them. Upstream's
     // `_construct_gt_combinations` filters these
@@ -528,7 +528,7 @@ pub fn DoubleMLDIDMulti::p_values(self : DoubleMLDIDMulti) -> Array[Double] {
       let abs_t = if t < 0.0 { -t } else { t }
       // `p = 2 * (1 - norm.cdf(abs_t))` using the A&S 7.1.26
       // approximation. The formula is
-      // `norm.cdf(x) 鈮?1 - phi(x) * (b1*t + b2*t^2 + b3*t^3
+      // `norm.cdf(x) ~ 1 - phi(x) * (b1*t + b2*t^2 + b3*t^3
       //   + b4*t^4 + b5*t^5)` with `t = 1 / (1 + p*x)` and
       //   `phi(x) = exp(-x^2 / 2) / sqrt(2 pi)`.
       let p = 2.0 * norm_sf(abs_t)
@@ -683,8 +683,8 @@ pub fn DoubleMLDIDMulti::p_adjust(
 ///|
 /// v0.15.0+: confidence interval for the per-(g, t) ATT.
 /// When `joint = false` (default), uses the Wald-style
-/// `theta 卤 1.96 * se` interval. When `joint = true`, uses
-/// the bootstrap: `theta 卤 critical_value * se` where
+/// `theta +/- 1.96 * se` interval. When `joint = true`, uses
+/// the bootstrap: `theta +/- critical_value * se` where
 /// `critical_value` is the 95th percentile of
 /// `max_k |boot_t_stat[b, k]|` across bootstrap replications
 /// `b`. Joint CIs are wider (more conservative) and require
@@ -895,4 +895,79 @@ pub fn DoubleMLDIDMulti::aggregate_event(
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sensitivity (v0.70.0+)
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.70.0+: per-(g, t) Cinelli & Hazlett (2020) omitted-variable
+/// bias analysis for `DoubleMLDIDMulti`. Delegates to
+/// `DoubleMLDIDCS::sensitivity_analysis` for the full
+/// `n_groups * n_periods` per-cell `SensitivityResult` array,
+/// then filters down to the cells selected by
+/// `gt_combinations` (i.e. the same cells used by
+/// `coef_at_idx` / `se_at_idx`).
+///
+/// Each selected (g, t) cell's result carries the
+/// ATT-form residual `y - g_d0_hat - (g_d1_hat - g_d0_hat) *
+/// d` on the long-format panel (persisted by
+/// `DoubleMLDIDCS::fit` in `psi_a_matrix` /
+/// `residuals_matrix`) and the matching per-cell Riesz
+/// representer. Routes through the shared
+/// `irm_style_sensitivity` helper (see sensitivity.mbt).
+///
+/// Cells with no fitted estimate (`se_matrix[k] <= 0`) return
+/// a zeroed `SensitivityResult` from the inner pass; the
+/// filtering preserves that contract.
+///
+/// Returns an `Array[SensitivityResult]` of length
+/// `gt_combinations.length()`. Calling on an un-fit model
+/// aborts via `PreconditionError`.
+pub fn DoubleMLDIDMulti::sensitivity_analysis(
+  self : DoubleMLDIDMulti,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  // Materialise the inner per-cell array once (length
+  // `n_groups * n_periods`, row-major (gi, pi)) then walk
+  // `gt_combinations` and pick the matching entries via
+  // the same `(gi, pi)` lookup used by `coef_at_idx`.
+  let all = self.inner.sensitivity_analysis(cf_y~, cf_d~)
+  let n_groups = self.inner.n_groups()
+  let n_periods = self.inner.n_periods()
+  let n_combos = self.gt_combinations.length()
+  let out : Array[SensitivityResult] = Array::make(n_combos, {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  })
+  for k = 0; k < n_combos; k = k + 1 {
+    let (g, _t_pre, t_eval) = self.gt_combinations[k]
+    let mut gi = -1
+    let mut pi = -1
+    for i = 0; i < n_groups; i = i + 1 {
+      if self.inner.group_at(i) == g {
+        gi = i
+      }
+    }
+    for i = 0; i < n_periods; i = i + 1 {
+      if self.inner.period_at(i) == t_eval {
+        pi = i
+      }
+    }
+    if gi < 0 || pi < 0 {
+      continue
+    }
+    let flat = gi * n_periods + pi
+    if flat >= 0 && flat < all.length() {
+      out[k] = all[flat]
+    }
+  }
+  out
 }

@@ -107,7 +107,7 @@ priv struct LplrScore {
 /// nuisances; `a_pred` also serves as `m_hat` for the
 /// `d_tilde = d - a_pred` construction (LPLR uses a single
 /// propensity learner in the single-treatment, binary-D case). The
-/// per-fold preliminary `beta` is held constant during Newton — the
+/// per-fold preliminary `beta` is held constant during Newton -- the
 /// nonlinear solve is over `theta` only.
 fn lplr_score_at(
   theta : Double,
@@ -147,7 +147,7 @@ fn lplr_score_at(
 /// (i.e. `psi` and `psi_deriv` are constants with respect to
 /// `theta`). For the general nonlinear case, callers should
 /// re-evaluate `psi(theta)` / `psi_deriv(theta)` between iterations
-/// — see the LPLR `fit` body, which evaluates the score at the
+/// -- see the LPLR `fit` body, which evaluates the score at the
 /// converged `theta` after this routine returns.
 ///
 /// Mirrors `scipy.optimize.root_scalar(method="newton")` with
@@ -212,7 +212,7 @@ pub struct DoubleMLLPLR {
   // `LogisticRegression` internally for both `ml_m` and
   // `ml_a` (the latter is itself a `LogisticRegression`). The
   // `ml_g` slot maps to the closed-form `LinearRegression` (via
-  // `cross_fit_predict(LinearRegression, …)`). Defaults to
+  // `cross_fit_predict(LinearRegression, ...)`. Defaults to
   // OLS / LogisticRegression so v0.59.0 callers see
   // byte-identical results. v0.61.0+ will plumb these through;
   // for v0.60.0 they're stored on the struct and returned via
@@ -629,7 +629,7 @@ fn lplr_initial_theta(
 /// each outer test row, the model trained on the *opposite*
 /// fold's `target[that fold's training set]` is used. (For
 /// `ml_t` the test-row prediction does not depend on the test
-/// row's own W — `t_hat` is purely a function of `x`.)
+/// row's own W -- `t_hat` is purely a function of `x`.)
 ///
 /// v0.62.0+: generalized from a hardcoded `LinearRegression` to
 /// any `T : Learner`. The `ml_t` slot still defaults to OLS
@@ -694,4 +694,58 @@ impl Learner for LogisticRegression with fn predict(
   x : Matrix,
 ) -> Array[Double] {
   self.predict(x)
+}
+
+// ---------------------------------------------------------------------------
+// Sensitivity (v0.70.0+)
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.70.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis for `DoubleMLLPLR` (Liu-Zhang-Zhou 2021 partially
+/// logistic regression). Single-theta IRM-style decomposition:
+///
+///   - Outcome residual: `residuals[i] = y[i] - t_pred[i]`,
+///     where `t_pred` is the cross-fitted E[Y | D, X] nuisance
+///     persisted by `fit` (also surfaced via
+///     `predictions_t`). Same outcome-nuisance convention as
+///     the v0.66.0 `DoubleMLPLR::sensitivity_analysis`.
+///
+///   - Per-observation Riesz representer `psi_a[i]`: the
+///     LPLR ATE IF denominator
+///     `psi_a[i] = -d[i] * (d[i] - a_hat[i])` where
+///     `a_hat` is the outer cross-fitted propensity
+///     `E[D | X]` from `predictions_a`. The exact LPLR score
+///     derivative (`psi_deriv(theta)`) depends on the
+///     preliminary linear coefficient `beta_start` which the
+///     struct does not persist; the simplified
+///     `-d * (d - a_hat)` form captures the same IRM-style
+///     "treatment interacted with treatment-propensity
+///     residual" structure used by `DoubleMLIRM` for the
+///     binary-ATE score and is the convention the C&H
+///     sensitivity formula expects.
+///
+/// Routes through the shared `irm_style_sensitivity` helper
+/// (see sensitivity.mbt). `cf_y` / `cf_d` default to `0.05`
+/// matching the rest of the v0.66.0-onward sensitivity
+/// family. Calling on an un-fit model aborts via
+/// `PreconditionError`.
+pub fn DoubleMLLPLR::sensitivity_analysis(
+  self : DoubleMLLPLR,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let y = self.data.y
+  let d = self.data.d
+  let t_pred = self.predictions_t()
+  let a_hat = self.predictions_a()
+  let n = y.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  let psi_a : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = y[i] - t_pred[i]
+    psi_a[i] = -d[i] * (d[i] - a_hat[i])
+  }
+  irm_style_sensitivity(self.coef_, residuals, psi_a, cf_y, cf_d)
 }

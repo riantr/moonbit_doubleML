@@ -198,7 +198,7 @@ pub fn solve_pq(
   // detect a bad upper bracket by checking the sign at initialization
   // and, if `mean(pq_score_ipw(hi)) <= 0`, widen `hi` exponentially
   // until the bracket signs flip. After 20 widens we abort (the
-  // score is structurally non-monotonic — caller's data is bad).
+  // score is structurally non-monotonic -- caller's data is bad).
   let y_min = array_min(data.y) catch {
     EmptyArrayError => abort("array_min: empty y array (data.y.length() == 0)")
   }
@@ -353,7 +353,7 @@ pub fn DoubleMLPQ::fit(
   ml_l? : LearnerDispatch = self.ml_l,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLPQ {
-  // v0.67.0+: cluster-data dispatch — when `cluster_vars` is
+  // v0.67.0+: cluster-data dispatch -- when `cluster_vars` is
   // non-empty, route through `fit_cluster` (cluster-aware
   // folds, unit-level cluster-robust SE).
   if self.data.is_cluster_data() {
@@ -707,7 +707,7 @@ pub fn DoubleMLQTE::fit(
   ml_l? : LearnerDispatch = self.ml_l,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLQTE {
-  // v0.67.0+: cluster-data dispatch — when `cluster_vars` is
+  // v0.67.0+: cluster-data dispatch -- when `cluster_vars` is
   // non-empty, route through `fit_cluster` (cluster-aware
   // folds, unit-level cluster-robust SE).
   if self.data.is_cluster_data() {
@@ -1066,3 +1066,57 @@ pub fn DoubleMLQTE::bootstrap(
 // `psi_b = 1{d==treatment} * (g_target - g_hat) / m_hat + g_hat`
 // where `g_target = max(pq_est, (y - q*pq_est) / (1-q))`. See
 // `cvar.mbt` for the full implementation.
+
+// ---------------------------------------------------------------------------
+// Sensitivity (v0.70.0+)
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.70.0+: per-quantile Cinelli & Hazlett (2020)
+/// omitted-variable bias analysis for `DoubleMLQTE`. The
+/// per-quantile influence function
+/// `psi_j[i] = psi_flat[j * n_obs + i]` is already centered
+/// (mean 0 at the bisection root; see `solve_pq`), so each
+/// quantile routes through the shared
+/// `single_psi_sensitivity` helper (the v0.67.0+ path used by
+/// `DoubleMLPQ`): `nu2 = mean(psi_j^2)`,
+/// `sigma2 = Var(y)`, with the centered-IF convention.
+///
+/// Returns an `Array[SensitivityResult]` of length
+/// `quantiles.length()`. Calling on an un-fit model aborts via
+/// `PreconditionError` (`coefs.length() > 0` proxy, matching
+/// the convention used by `DoubleMLQTE::bootstrap`).
+pub fn DoubleMLQTE::sensitivity_analysis(
+  self : DoubleMLQTE,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  // QTE does not persist a `fitted : Bool` field (its
+  // bootstrap uses the same `coefs.length() > 0` proxy); the
+  // helper itself raises `n > 0` on an empty psi, which
+  // covers the genuinely-empty case.
+  require(self.coefs.length() > 0)
+  let n_quantiles = self.quantiles.length()
+  let n_obs = self.data.n_obs()
+  let y = self.data.y
+  let out : Array[SensitivityResult] = Array::make(n_quantiles, {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  })
+  // Slice psi_flat row-major: `psi_flat[j * n_obs + i]` is the
+  // IF for the `theta_d1 - theta_d0` combination at
+  // observation `i` for quantile index `j`.
+  let psi_flat = self.psi_flat
+  for j = 0; j < n_quantiles; j = j + 1 {
+    let psi_j : Array[Double] = Array::make(n_obs, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      psi_j[i] = psi_flat[j * n_obs + i]
+    }
+    out[j] = single_psi_sensitivity(self.coefs[j], psi_j, y, cf_y, cf_d)
+  }
+  out
+}

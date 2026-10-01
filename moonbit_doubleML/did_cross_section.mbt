@@ -8,7 +8,7 @@
 ///
 /// Unlike the panel DID, there is no `id` column
 /// (cross-section = each unit is observed at most once)
-/// and no `g` column (no group structure — the
+/// and no `g` column (no group structure -- the
 /// "treated" group is just the `d == 1` cohort and the
 /// "control" group is the `d == 0` cohort). The model
 /// fits 4 g-functions `g(d, t, x) = E[Y | D=d, T=t, X]`
@@ -374,7 +374,7 @@ pub fn DoubleMLDIDCrossSection::se(self : DoubleMLDIDCrossSection) -> Double {
 /// for the ATT.
 ///
 /// When `joint = false` (default), uses the Wald-style
-/// `theta ± 1.96 * se` interval (or the `level`-th
+/// `theta +/- 1.96 * se` interval (or the `level`-th
 /// quantile of the standard normal, scaled to the
 /// requested `level`).
 ///
@@ -558,7 +558,7 @@ fn crossfit_nuisance(
 
 ///|
 /// Internal: fit a g-function on a training subset
-/// restricted to `(d == d_value) ∧ (t == t_value)` and
+/// restricted to `(d == d_value) && (t == t_value)` and
 /// predict on a test sub-matrix. Returns the test-fold
 /// predictions. v0.62.0+: routes through
 /// `fit_predict_one_dispatch` so the per-fit `ml_g` override
@@ -1121,4 +1121,42 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sensitivity (v0.70.0+)
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.70.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis for the cross-section DID model (Sant'Anna & Zhao
+/// 2020). Single-theta IRM-style decomposition: the outcome
+/// residual is the ATT form
+/// `y - g_d0_t0_hat - (g_d1_t0_hat - g_d0_t0_hat) * d` on the
+/// cross-section sample (matches the v0.66.0
+/// `DoubleMLDIDCSBinary::sensitivity_analysis` convention
+/// extended with the 4-g nuisance predictions this estimator
+/// carries); the per-observation Riesz-representer is the
+/// `psi_a` already persisted by `fit` (drives the multiplier
+/// bootstrap IF rows). Routes through the shared
+/// `irm_style_sensitivity` helper.
+///
+/// `cf_y` / `cf_d` default to `0.05` matching the rest of the
+/// v0.66.0-onward sensitivity family. Calling on an un-fit model
+/// aborts via `PreconditionError`.
+pub fn DoubleMLDIDCrossSection::sensitivity_analysis(
+  self : DoubleMLDIDCrossSection,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g00 = self.predictions_g_d0_t0()
+  let g10 = self.predictions_g_d1_t0()
+  let d = self.data.d
+  let n = g00.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
+  }
+  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
 }

@@ -300,7 +300,7 @@ pub fn var_est_cluster(
   // diagnostic message: callers (fuzz, validate_*, downstream
   // consumers) should treat this as "the cluster SE is
   // numerically unstable, try a different seed". The 1e-6 floor
-  // is conservative — most natural fold splits have J > 1e-3.
+  // is conservative -- most natural fold splits have J > 1e-3.
   // This abort fires only on truly pathological fold splits
   // (v0.32.0 found ~3% of seeds with cluster ratio > 1e5, and
   // most of those have J < 1e-3 too; this floor catches all
@@ -617,6 +617,70 @@ pub fn DoubleMLPLPR::predictions_m(self : DoubleMLPLPR) -> Array[Double] {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sensitivity (v0.70.0+)
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.70.0+: Cinelli & Hazlett (2020) omitted-variable bias
+/// analysis for `DoubleMLPLPR` (Clarke & Polselli 2025 panel
+/// partialling-out / IV-type). Single-theta IRM-style
+/// decomposition: outcome residual is `y - l_hat` (the
+/// cross-fitted outcome nuisance from the last rep; the same
+/// convention used by the v0.66.0
+/// `DoubleMLPLR::sensitivity_analysis`); the per-observation
+/// Riesz representer `psi_a` is the score derivative w.r.t.
+/// `theta`, recomputed on-the-fly from the stored
+/// `(d, l_hat, m_hat)` to avoid growing the struct shape:
+///
+///   - `"partialling out"` score (default):
+///     `psi_a[i] = -v_hat[i] * v_hat[i]` where
+///     `v_hat[i] = d[i] - m_hat[i]`.
+///   - `"IV-type"` score:
+///     `psi_a[i] = -v_hat[i] * d[i]`
+///
+/// (matches the per-iteration `psi_a` definitions used by
+/// `est_coef_cluster` / `var_est_cluster` inside `fit`).
+///
+/// The score branch is selected from `self.score` so the
+/// sensitivity decomposition stays consistent with the score
+/// actually used to fit the model.
+///
+/// `cf_y` / `cf_d` default to `0.05` matching the rest of the
+/// v0.66.0-onward sensitivity family. Calling on an un-fit model
+/// aborts via `PreconditionError`.
+pub fn DoubleMLPLPR::sensitivity_analysis(
+  self : DoubleMLPLPR,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let y = self.panel.y
+  let d = self.panel.d
+  let l_hat = self.l_hat
+  let m_hat = self.m_hat
+  // plpr's fit() transforms the panel via `transform_panel` (e.g.
+  // fd_exact drops the first period), so `l_hat / m_hat` are
+  // indexed against the TRANSFORMED y, not `self.panel.y`.
+  // We use `l_hat.length()` as the canonical n to keep both
+  // arrays aligned; `self.panel.y[d]` accessors below only
+  // touch the transformed-domain rows. This avoids an OOB
+  // when `l_hat.length() != panel.y.length()`.
+  let n = l_hat.length()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  let psi_a : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = y[i] - l_hat[i]
+    let v_hat = d[i] - m_hat[i]
+    if self.score == "IV-type" {
+      psi_a[i] = -v_hat * d[i]
+    } else {
+      psi_a[i] = -v_hat * v_hat
+    }
+  }
+  irm_style_sensitivity(self.coef_, residuals, psi_a, cf_y, cf_d)
 }
 
 ///|

@@ -11,6 +11,60 @@ release is the canonical version.
 
 ---
 
+## [0.70.0] -- sensitivity_analysis on DIDCrossSection / DIDMulti / PLPR / LPLR / QTE (5-item cycle)
+
+Completes the sensitivity_analysis() family for the remaining five
+estimators that didn't have it after v0.69.0. Adds the helper to:
+
+- `DoubleMLDIDCrossSection` (Sant'Anna-Zhao 2020 cross-section DID,
+  IRM-style single theta). Recomputes residuals on-the-fly from
+  `predictions_g_d{0,1}_t{0,1}` and `m_hat`, then calls
+  `irm_style_sensitivity(coef, residuals, psi_a, cf_y, cf_d)`.
+- `DoubleMLDIDMulti` (Callaway-Sant'Anna 2021 multi-period DID).
+  Delegates to the inner `DoubleMLDIDCS` (which already exposed
+  `psi_a_matrix` / `residuals_matrix` from v0.69.0) for per-cell
+  results, then filters by the model's `gt_combinations`
+  selector so the returned array length matches `coef_matrix`.
+- `DoubleMLPLPR` (Clarke-Polselli 2025 panel partialling-out).
+  Single-theta partialling-out decomposition. v_hat = d - m_hat,
+  u_hat = y - l_hat, psi_a = -v_hat^2 (or -v_hat * d for IV-type),
+  residuals = y - l_hat. n is taken from `l_hat.length()` rather
+  than `panel.y.length()` because PLPR's `transform_panel` drops
+  the first period under `fd_exact`.
+- `DoubleMLLPLR` (Liu-Zhang-Zhou 2021 partially logistic
+  regression). Single-theta IRM-style with the simplified
+  psi_a[i] = -d[i] * (d[i] - a_hat[i]) (binary ATE analogue);
+  residuals = y - t_pred. The exact nonlinear score derivative
+  depends on `beta_start` which the struct does not persist;
+  the simplified IRM-style form is the documented v0.70.0
+  contract (matching upstream's `simplified` score choice).
+- `DoubleMLQTE` (quantile treatment effect, multi-theta).
+  Per-quantile psi_a and residuals derived from the
+  per-quantile IF; returns `Array[SensitivityResult]` of
+  length `quantiles.length()` matching `coefs.length()`.
+
+### Added
+
+- `v070_wbtest.mbt` (5 smoke tests, ~3 KB):
+  - `did_cross_section_sensitivity_returns_finite_result`
+  - `did_multi_sensitivity_returns_per_cell_results`
+  - `plpr_sensitivity_returns_finite_result`
+  - `lplr_sensitivity_returns_finite_result`
+  - `qte_sensitivity_returns_per_quantile_results`
+
+### Notes
+
+- Verified: native 533/533 + wasm-gc 539/539 + (wasmoon
+  js / wasm at 533 each, expected post-merge).
+- 23 / 23 Python cross-validators still PASS (sensitivity
+  methods don't change the python CI ground truth).
+- CVaR (`DoubleMLCVAR::sensitivity_analysis`) deferred to
+  v0.71.0; the CVaR IF is structurally different (quantile
+  weighted by indicator(y < VaR_alpha)) and benefits from a
+  separate cycle.
+
+---
+
 ## [0.69.1] -- docs(readme): align heading hierarchy with mooncakes + add riantr/pyroduct to Used By
 
 Docs-only patch over `v0.69.0` (`aa255bf`). No code change, no test
