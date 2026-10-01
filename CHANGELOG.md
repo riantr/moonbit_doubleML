@@ -11,6 +11,62 @@ release is the canonical version.
 
 ---
 
+## [0.69.1] -- docs(readme): align heading hierarchy with mooncakes + add riantr/pyroduct to Used By
+
+Docs-only patch over `v0.69.0` (`aa255bf`). No code change, no test
+changes, no API change. Brings `README.mbt.md` up to date with the
+mooncakes.io docs conventions used by `moonbit-community/rabbita@0.16.3`
+(single `# h1` for the title, `## h2` for sections, nested `####`
+for sub-sections), adds `riantr/pyroduct` to the `## Used By` section
+as the first entry (above the two internal `examples/*` self-references),
+and syncs the stale version + test-count + file-count references that
+had drifted to `v0.68.0` / `491-491` / `497-497` / `132 production`:
+
+- `moon.mod version` table cell: `0.68.0` -> `0.69.1`
+- `Tests (native / wasm / js)`: `491 / 491` -> `528 / 528`
+- `Tests (wasm-gc)`: `497 / 497` -> `534 / 534`
+- `.mbt` file count: `132 production files` -> `136 .mbt` files
+  (`59` production + `77` test)
+- Project layout ASCII tree: `moon.mod v0.68.0, 132 .mbt files`
+  -> `moon.mod v0.69.1, 136 .mbt files`
+- New `v0.69.0 verified counts` line in `## Determinism &
+  validation`: `528 / 528` (native, wasm, js) and `534 / 534`
+  (wasm-gc); 23 / 23 Python cross-validators PASS.
+
+### Added
+
+- `## Used By` section in `README.mbt.md` now lists
+  `riantr/pyroduct` first (external downstream consumer that
+  cross-checks its own from-scratch DoubleML PLR against
+  `riantr/moonbit_doubleML` v0.64.0+; `theta` delta 0.017,
+  `se` delta 0.001).
+
+### Changed
+
+- Heading hierarchy in `README.mbt.md` aligned to mooncakes
+  convention: every section heading past the doc title `#`
+  multiplies by one extra `#` (i.e. `#Status` -> `##Status`,
+  `### Differences ...` -> `#### Differences ...`). 12
+  headings adjusted. mooncakes.io v0.69.1 will re-render the
+  docs page from this structure (subject to the upstream
+  zip-cache + JS-renderer UTF-8 bugs documented in the
+  v0.68.1 entry).
+
+### Notes
+
+- v0.69.0 was already on mooncakes.io with the same docs as
+  v0.69.1 (modulo heading level + b2); this release exists
+  solely so `moon publish` carries the corrected `moon.mod`
+  manifest (`version = "0.69.1"`) and the freshly-ASCII-clean
+  `README.mbt.md` (still 0 non-ASCII bytes; hash diverged
+  from the previous `5d3c025c...` at v0.68.1).
+- Pre-existing `--deny-warn` warnings on 13 example
+  `moon.pkg.json` (missing `supported_targets` declarations)
+  are not touched; they were present at v0.69.0 ship (`aa255bf`)
+  too. Addressed separately.
+
+---
+
 ## [0.69.0] -- sensitivity_analysis on BLP / DIDCS / RDD / PolicyTree (5-item cycle)
 
 Completes the v0.66.0 sensitivity family by adding

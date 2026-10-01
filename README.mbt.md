@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.68.0** |
+| `moon.mod` version | **0.69.1** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 132 production files |
+| `.mbt` file count | **136** `.mbt` files (**59** production + **77** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **491 / 491** |
-| Tests (wasm-gc) | **497 / 497** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **528 / 528** |
+| Tests (wasm-gc) | **534 / 534** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -240,7 +240,7 @@ binary-outcome CS-DID:
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.68.0, 132 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.69.1, 136 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -331,6 +331,12 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   DIDCS / BLP / RDD / PolicyTree sensitivity deferred to v0.69.0+
   (each requires a structural IF / nuisance-persistence plumbing
   beyond the shared helpers already in place).
+- v0.69.0 verified counts: `moon test` 528 / 528 (native, wasm, js)
+  and 534 / 534 (wasm-gc); 23 / 23 Python cross-validators PASS.
+  Closes the v0.69.0 sensitivity cycle: BLP (closed-form OLS
+  precision matrix), DIDCS (per-cell long-format panel),
+  RDD (kernel-weighted local polynomial), and PolicyTree
+  (per-leaf DFS IRM-style decomposition).
 
 ##Attribution
 
