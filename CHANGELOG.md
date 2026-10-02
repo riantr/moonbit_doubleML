@@ -11,6 +11,32 @@ release is the canonical version.
 
 ---
 
+## [0.75.1] -- docs(pkg): add supported_targets to 13 example moon.pkg (CI hygiene)
+
+Docs-only patch over `v0.75.0` (`162da2b`). No code change, no test
+change, no API change. Adds the `supported_targets` declaration
+that `moon check` has been warning about for 13 example packages
+since the v0.65.0 supported_targets plumbing landed in the main
+lib's `moon.pkg.json`.
+
+### Fixed
+- 13 example `moon.pkg.json` files: apos / consumer_demo / cvar /
+  datasets / did_binary / did_cross_section / did_cs / did_cs_binary /
+  did_multi / fuzz / lplr / main / plpr. Each gets
+  `supported_targets = "native"` (most conservative single-backend
+  declaration; CI will only run each example on native, not all 4
+  backends, keeping `moon test` runtime bounded).
+
+### Notes
+- Verified: `moon check --target native` exits 0 with **no
+  supported_targets warnings** (was 13 in v0.75.0).
+- moon.test count unchanged: 558 native / wasm / js, 564 wasm-gc.
+- API / runtime behavior unchanged.
+- Documentation-only release; moon.mod bump 0.75.0 -> 0.75.1 just
+  to register the fix as a published artifact.
+
+---
+
 ## [0.75.0] -- bootstrap() on PLPR / LPLR / RDD / CVaR (4-item cycle)
 
 Closes the v0.64.0 bootstrap fill-in. The 4 remaining estimators now
