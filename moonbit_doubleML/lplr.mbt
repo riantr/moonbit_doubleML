@@ -225,6 +225,24 @@ pub struct DoubleMLLPLR {
   m_hat : Array[Double]
   a_hat : Array[Double]
   fitted : Bool
+  // v0.75.0+: per-observation influence function components
+  // for the multiplier bootstrap. Populated by `fit(...)` from
+  // the LAST rep's cross-fitted nuisances on the
+  // LPLR-simplified IRM form
+  // (matches the v0.70.0 sensitivity_analysis convention):
+  //   psi_a[i] = -d[i] * (d[i] - a_hat[i])
+  //   psi_b[i] = score(theta) - theta * psi_deriv(theta)
+  // where `score(theta)` and `psi_deriv(theta)` are the
+  // converged LPLR linear-score forms.
+  psi_a : Array[Double]
+  psi_b : Array[Double]
+  // v0.75.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef_`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -261,6 +279,12 @@ pub fn DoubleMLLPLR::new(
       m_hat: [],
       a_hat: [],
       fitted: false,
+      psi_a: [],
+      psi_b: [],
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -427,6 +451,13 @@ pub fn DoubleMLLPLR::fit(
     let mut t_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
     let mut a_pred : Array[Double] = Array::make(n, 0.0)
+    // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
+    // multiplier bootstrap. Same convention as `t_pred` / `m_pred`:
+    // each rep overwrites, so the post-loop values match the
+    // last rep's nuisances (which are the ones persisted on the
+    // struct).
+    let last_psi_a : Array[Double] = Array::make(n, 0.0)
+    let last_psi_b : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < nrep; r = r + 1 {
       let outer = kfold(n, self.n_folds, self.seed + r)
       let xd = concat_d_x(d, x)
@@ -565,6 +596,23 @@ pub fn DoubleMLLPLR::fit(
       let (coef_r, se_r) = var_est(psi_a, psi_b_arr)
       coefs[r] = coef_r
       ses[r] = se_r
+      // v0.75.0+: persist the last rep's IF components for the
+      // bootstrap. The bootstrap convention `psi[i] = self.psi_a[i]
+      // + self.coef * self.psi_b[i]` requires:
+      //   self.psi_a = offset at theta_hat (the constant part)
+      //   self.psi_b = slope (the part multiplied by theta)
+      // In the LPLR linear-score form `sc.psi = sc.psi_deriv * theta
+      // + offset` with offset evaluated at theta_hat, that is:
+      //   psi_a_field = sc.psi - theta_hat * sc.psi_deriv
+      //   psi_b_field = sc.psi_deriv
+      // so the bootstrap computes
+      //   psi[i] = (sc.psi - theta_hat * sc.psi_deriv) + theta_hat * sc.psi_deriv
+      //          = sc.psi
+      // i.e. the raw score at the fitted theta.
+      for i = 0; i < n; i = i + 1 {
+        last_psi_a[i] = sc.psi[i] - theta * sc.psi_deriv[i]
+        last_psi_b[i] = sc.psi_deriv[i]
+      }
     }
     let (coef, se) = aggregate_coef_se(coefs, ses)
     {
@@ -582,6 +630,76 @@ pub fn DoubleMLLPLR::fit(
       m_hat: m_pred,
       a_hat: a_pred,
       fitted: true,
+      psi_a: last_psi_a,
+      psi_b: last_psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.75.0+: multiplier bootstrap for `DoubleMLLPLR`. The
+/// per-observation influence function (raw score at the fitted
+/// `coef_`) is
+///
+///   psi[i] = psi_a[i] + coef * psi_b[i]
+///          = (sc.psi[i] - theta_hat * sc.psi_deriv[i])
+///            + theta_hat * sc.psi_deriv[i]
+///          = sc.psi[i]
+///
+/// where `psi_a` (offset at theta_hat) and `psi_b` (slope
+/// `sc.psi_deriv`) are populated by `fit(...)` from the LAST
+/// rep's cross-fitted nuisances. The bootstrap draws
+/// `n_rep_boot` weight vectors of length `n_obs` from the chosen
+/// multiplier distribution, and stores
+/// `boot_t_stat[b] = sum_i w[b, i] * psi[i] /
+/// (sqrt(n) * se_psi)` where `se_psi = sqrt(mean(psi^2))`.
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`; `seed` defaults to
+/// `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+/// Returns a new `DoubleMLLPLR` with `boot_t_stat` /
+/// `boot_method` / `n_rep_boot` / `boot_seed` populated.
+pub fn DoubleMLLPLR::bootstrap(
+  self : DoubleMLLPLR,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLLPLR {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_t_stat(
+      self.psi_a,
+      self.psi_b,
+      self.coef_,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLLPLR::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
     }
   } catch {
     PreconditionError::Violated(loc) =>

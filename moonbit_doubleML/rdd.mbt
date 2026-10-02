@@ -73,6 +73,18 @@ pub struct DoubleMLRDD {
   // `DoubleMLRDD::sensitivity_analysis`.
   psi_a : Array[Double]
   fitted : Bool
+  // v0.75.0+: multiplier bootstrap state. RDD's IF is
+  // `psi[k] = psi_a[k] * residuals[k]` (a single combined
+  // IF, not the v0.61.0 `psi_a + coef * psi_b` form), so
+  // `bootstrap(...)` calls `did_bootstrap_t_stat` directly
+  // rather than going through `generic_bootstrap_t_stat`.
+  // `boot_t_stat` is a length-`n_rep_boot` array of
+  // t-statistics for `coef`. Populated by `bootstrap(...)`;
+  // empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -103,6 +115,10 @@ pub fn DoubleMLRDD::new(
       residuals: [],
       psi_a: [],
       fitted: false,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -412,6 +428,13 @@ pub fn DoubleMLRDD::fit(
       residuals: res_yl + res_yr,
       psi_a: psi_a_yl + psi_a_yr,
       fitted: true,
+      // v0.75.0+: bootstrap state. `boot_t_stat` etc. start
+      // empty; `bootstrap(...)` populates them on a return
+      // copy (RDD is value-style, matching PLR/IRM).
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -502,6 +525,82 @@ pub fn DoubleMLRDD::sensitivity_analysis(
 ) -> SensitivityResult raise {
   require(self.fitted)
   irm_style_sensitivity(self.coef, self.residuals, self.psi_a, cf_y, cf_d)
+}
+
+///|
+/// v0.75.0+: multiplier bootstrap for `DoubleMLRDD`. The
+/// per-observation influence function is
+///
+///   psi[k] = psi_a[k] * residuals[k]
+///
+/// (kernel-weighted Riesz row dotted with the local-polynomial
+/// residual). RDD is the kernel-weighted local-polynomial
+/// regression discontinuity estimator: the IF for the jump
+/// coefficient at the cutoff does not factor into the v0.61.0
+/// `psi_a + coef * psi_b` form (it's a single combined IF),
+/// so this bootstrap calls `did_bootstrap_t_stat` directly
+/// rather than going through `generic_bootstrap_t_stat`.
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`; `seed` defaults
+/// to `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+/// Returns a new `DoubleMLRDD` with `boot_t_stat` /
+/// `boot_method` / `n_rep_boot` / `boot_seed` populated.
+pub fn DoubleMLRDD::bootstrap(
+  self : DoubleMLRDD,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLRDD {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let n = self.n_local
+    require(self.psi_a.length() == n)
+    require(self.residuals.length() == n)
+    // Draw weights. Shape: (n_rep_boot, n_local).
+    let weights = draw_bootstrap_weights(method_name, n_rep_boot, n, seed) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLRDD::bootstrap): " +
+          m,
+        )
+    }
+    // Combined IF `psi[k] = psi_a[k] * residuals[k]`.
+    let psi : Array[Double] = Array::make(n, 0.0)
+    let mut ss_psi = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let psi_i = self.psi_a[i] * self.residuals[i]
+      psi[i] = psi_i
+      ss_psi = ss_psi + psi_i * psi_i
+    }
+    let n_d = n.to_double()
+    let se_psi = (ss_psi / n_d).sqrt()
+    let boot_t_stat : Array[Double] = if se_psi <= 0.0 {
+      // Degenerate: psi sums to 0 (kernel row or residuals
+      // collapse to 0). Return zeros (matches the v0.55.0+
+      // DIDCrossSection convention).
+      Array::make(n_rep_boot, 0.0)
+    } else {
+      let se_flat : Array[Double] = [se_psi]
+      did_bootstrap_t_stat(weights, psi, se_flat, n_rep_boot, n, 1)
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

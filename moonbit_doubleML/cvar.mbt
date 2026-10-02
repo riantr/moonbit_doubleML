@@ -43,6 +43,23 @@ pub struct DoubleMLCVAR {
   coef : Double
   se : Double
   fitted : Bool
+  // v0.75.0+: per-observation influence function components
+  // for the multiplier bootstrap. Populated by `fit(...)` from
+  // the LAST rep's cross-fitted nuisances, matching the
+  // v0.71.0 sensitivity_analysis convention:
+  //   psi_a[i] = -1 (constant IRM-style IF)
+  //   psi_b[i] = 1{d==treatment} * (g_target - g_hat) / m_hat
+  //            + g_hat
+  // where g_target = max(coef, (y - q*coef) / (1 - q)).
+  psi_a : Array[Double]
+  psi_b : Array[Double]
+  // v0.75.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -112,6 +129,12 @@ pub fn DoubleMLCVAR::new(
     coef: 0.0,
     se: 0.0,
     fitted: false,
+    psi_a: [],
+    psi_b: [],
+    boot_t_stat: [],
+    boot_method: "",
+    n_rep_boot: 0,
+    boot_seed: 0,
   }
 }
 
@@ -720,6 +743,13 @@ pub fn DoubleMLCVAR::fit(
     let ses : Array[Double] = Array::make(self.n_rep, 0.0)
     let mut last_g : Array[Double] = Array::make(n, 0.0)
     let mut last_m : Array[Double] = Array::make(n, 0.0)
+    // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
+    // multiplier bootstrap. Same convention as `last_g` /
+    // `last_m`: each rep overwrites, so the post-loop values
+    // match the last rep's nuisances (which are the ones
+    // persisted on the struct).
+    let last_psi_a : Array[Double] = Array::make(n, -1.0)
+    let last_psi_b : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < self.n_rep; r = r + 1 {
       let folds = kfold(n, self.n_folds, self.seed + r)
       let g_hat = Array::make(n, 0.0)
@@ -802,6 +832,23 @@ pub fn DoubleMLCVAR::fit(
       // table, which only carries the last rep's nuisances).
       last_g = g_hat
       last_m = m_final
+      // v0.75.0+: persist the last rep's IF components for the
+      // bootstrap. psi_a is constant -1 (IRM-style IF). psi_b
+      // mirrors the v0.71.0 sensitivity_analysis formula:
+      //   psi_b[i] = 1{d==treatment} * (g_target - g_hat) / m + g_hat
+      // where g_target = max(coef, (y - q*coef) / (1 - q)) for the
+      // *post-aggregate* coef (= pq_est in the n_rep=1 case).
+      // We rebuild psi_b from the last rep's (g_hat, m_final)
+      // using `pq_est = coef_r` so the bootstrap sees the
+      // single-rep IF consistent with the converged coef.
+      let pq_est_for_b = theta_r
+      let q_comp_b = 1.0 - self.quantile
+      for i = 0; i < n; i = i + 1 {
+        let z = (self.data.y[i] - self.quantile * pq_est_for_b) / q_comp_b
+        let g_target = if z > pq_est_for_b { z } else { pq_est_for_b }
+        last_psi_b[i] = treated[i] * (g_target - g_hat[i]) / m_final[i] +
+          g_hat[i]
+      }
     }
     let (theta, se) = aggregate_coef_se(coefs, ses)
     {
@@ -820,6 +867,75 @@ pub fn DoubleMLCVAR::fit(
       coef: theta,
       se,
       fitted: true,
+      psi_a: last_psi_a,
+      psi_b: last_psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.75.0+: multiplier bootstrap for `DoubleMLCVAR`. The
+/// per-observation influence function is
+///
+///   psi[i] = psi_a[i] + theta * psi_b[i]
+///          = -1 + theta * psi_b[i]
+///
+/// where `psi_b[i] = 1{d==treatment} * (g_target - g_hat) /
+/// m_hat + g_hat` is computed at the fitted `coef` from the
+/// last rep's cross-fitted nuisances `(g_hat, m_hat)` and
+/// `g_target = max(coef, (y - q*coef) / (1 - q))`. `psi_a` is
+/// the constant `-1` vector. Same IRM-style IF shape as
+/// `DoubleMLIRM` (constant derivative + offset score); the
+/// score-form IF identical to the v0.71.0
+/// `DoubleMLCVAR::sensitivity_analysis` psi_a = -1
+/// decomposition.
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`; `seed` defaults
+/// to `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+/// Returns a new `DoubleMLCVAR` with `boot_t_stat` /
+/// `boot_method` / `n_rep_boot` / `boot_seed` populated.
+pub fn DoubleMLCVAR::bootstrap(
+  self : DoubleMLCVAR,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLCVAR {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_t_stat(
+      self.psi_a,
+      self.psi_b,
+      self.coef,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLCVAR::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
     }
   } catch {
     PreconditionError::Violated(loc) =>

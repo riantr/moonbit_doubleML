@@ -515,6 +515,23 @@ pub struct DoubleMLPLPR {
   l_hat : Array[Double]
   m_hat : Array[Double]
   fitted : Bool
+  // v0.75.0+: per-observation influence function components
+  // for the multiplier bootstrap. Populated by `fit(...)` from
+  // the LAST rep's cross-fitted nuisances on the
+  // TRANSFORMED-domain sample (i.e. `l_hat / m_hat` length,
+  // not `self.panel.y.length()`). `psi_a` is the score
+  // derivative w.r.t. theta (PO: `-v_hat^2`; IV-type:
+  // `-v_hat * d`); `psi_b` is the score offset
+  // (PO: `v_hat * u_hat`; IV-type: `v_hat * (y - g_pred)`).
+  psi_a : Array[Double]
+  psi_b : Array[Double]
+  // v0.75.0+: multiplier bootstrap state. `boot_t_stat` is a
+  // length-`n_rep_boot` array of t-statistics for `coef_`.
+  // Populated by `bootstrap(...)`; empty until then.
+  boot_t_stat : Array[Double]
+  boot_method : String
+  n_rep_boot : Int
+  boot_seed : Int
 } derive(Debug)
 
 ///|
@@ -553,6 +570,12 @@ pub fn DoubleMLPLPR::new(
       l_hat: [],
       m_hat: [],
       fitted: false,
+      psi_a: [],
+      psi_b: [],
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -734,12 +757,25 @@ pub fn DoubleMLPLPR::fit(
     let ses : Array[Double] = Array::make(nrep, 0.0)
     let mut l_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
+    // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
+    // multiplier bootstrap. Same convention as `l_pred` / `m_pred`:
+    // each rep overwrites, so the post-loop values match the
+    // last rep's nuisances (which are the ones persisted on the
+    // struct).
+    let mut last_psi_a : Array[Double] = Array::make(n, 0.0)
+    let mut last_psi_b : Array[Double] = Array::make(n, 0.0)
     for r = 0; r < nrep; r = r + 1 {
       // v0.40.0: retry loop on J-floor (see plr.mbt::fit_cluster).
       let mut theta_r = 0.0
       let mut se_r = 0.0
       let mut attempt = 0
       let mut succeeded = false
+      // v0.75.0+: psi_a / psi_b scoped to the for-loop so they
+      // remain visible after the while-loop closes (the inner
+      // while is the per-attempt loop; we persist the last
+      // SUCCESSFUL attempt's IF components).
+      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let psi_b : Array[Double] = Array::make(n, 0.0)
       while attempt < max_attempts && !succeeded {
         let rep_seed = self.seed + r + attempt * nrep
         // Unit-level folds expanded to row-level folds via the
@@ -779,7 +815,11 @@ pub fn DoubleMLPLPR::fit(
         for i = 0; i < n; i = i + 1 {
           v_hat[i] = tf.d[i] - m_pred[i]
         }
-        let (psi_a, psi_b) = if self.score == "IV-type" {
+        // v0.75.0+: psi_a / psi_b computed in both score
+        // branches; assigned directly into the outer-scope
+        // `psi_a` / `psi_b` (declared at for-loop level) so the
+        // values survive the while-loop closing.
+        if self.score == "IV-type" {
           // theta_initial from the PO score, then g on y - theta*d.
           let u_hat : Array[Double] = Array::make(n, 0.0)
           for i = 0; i < n; i = i + 1 {
@@ -804,23 +844,17 @@ pub fn DoubleMLPLPR::fit(
             y_resid,
             folds_row,
           )
-          let psi_a_iv : Array[Double] = Array::make(n, 0.0)
-          let psi_b_iv : Array[Double] = Array::make(n, 0.0)
           for i = 0; i < n; i = i + 1 {
-            psi_a_iv[i] = -v_hat[i] * tf.d[i]
-            psi_b_iv[i] = v_hat[i] * (tf.y[i] - g_pred[i])
+            psi_a[i] = -v_hat[i] * tf.d[i]
+            psi_b[i] = v_hat[i] * (tf.y[i] - g_pred[i])
           }
-          (psi_a_iv, psi_b_iv)
         } else {
           let u_hat : Array[Double] = Array::make(n, 0.0)
-          let psi_a_po : Array[Double] = Array::make(n, 0.0)
-          let psi_b_po : Array[Double] = Array::make(n, 0.0)
           for i = 0; i < n; i = i + 1 {
             u_hat[i] = tf.y[i] - l_pred[i]
-            psi_a_po[i] = -v_hat[i] * v_hat[i]
-            psi_b_po[i] = v_hat[i] * u_hat[i]
+            psi_a[i] = -v_hat[i] * v_hat[i]
+            psi_b[i] = v_hat[i] * u_hat[i]
           }
-          (psi_a_po, psi_b_po)
         }
         // Clustered-path coefficient and standard error via the
         // shared helper (fold-weighted cluster ratio + unit-level
@@ -844,6 +878,9 @@ pub fn DoubleMLPLPR::fit(
         se_r = s
         succeeded = true
       }
+      // Persist the last rep's IF components for the bootstrap.
+      last_psi_a = psi_a
+      last_psi_b = psi_b
       if !succeeded {
         abort(
           "var_est_cluster: J-floor fired " +
@@ -870,6 +907,75 @@ pub fn DoubleMLPLPR::fit(
       l_hat: l_pred,
       m_hat: m_pred,
       fitted: true,
+      psi_a: last_psi_a,
+      psi_b: last_psi_b,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.75.0+: multiplier bootstrap for `DoubleMLPLPR`. The
+/// per-observation influence function is
+///
+///   psi[i] = psi_a[i] + theta * psi_b[i]
+///
+/// where `psi_a[i]` (PO: `-v_hat[i]^2`; IV-type:
+/// `-v_hat[i] * d[i]`) and `psi_b[i]` (PO:
+/// `v_hat[i] * u_hat[i]`; IV-type:
+/// `v_hat[i] * (y[i] - g_pred[i])`) are populated by `fit(...)`
+/// from the LAST rep's cross-fitted nuisances on the
+/// TRANSFORMED-domain sample. Note that this is an IID bootstrap
+/// (multipliers drawn independently of `transform_panel`'s
+/// clustering); the cluster-aware variance comes from the
+/// `var_est_cluster` call inside `fit(...)`, not from the
+/// multiplier weights.
+///
+/// `method_name` selects the multiplier distribution:
+/// `"normal"` (default), `"Bayes"`, `"wild"`; `seed` defaults to
+/// `2024`; `n_rep_boot` defaults to `500`.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+/// Returns a new `DoubleMLPLPR` with `boot_t_stat` /
+/// `boot_method` / `n_rep_boot` / `boot_seed` populated.
+pub fn DoubleMLPLPR::bootstrap(
+  self : DoubleMLPLPR,
+  method_name? : String = "normal",
+  n_rep_boot? : Int = 500,
+  seed? : Int = 2024,
+) -> DoubleMLPLPR {
+  try {
+    require(self.fitted)
+    require(
+      method_name == "normal" || method_name == "Bayes" || method_name == "wild",
+    )
+    require(n_rep_boot >= 2)
+    let boot_t_stat = generic_bootstrap_t_stat(
+      self.psi_a,
+      self.psi_b,
+      self.coef_,
+      method_name,
+      n_rep_boot,
+      seed,
+    ) catch {
+      BootstrapMethodError::UnknownMethod(m) =>
+        abort(
+          "draw_bootstrap_weights: unknown method (set in DoubleMLPLPR::bootstrap): " +
+          m,
+        )
+    }
+    {
+      ..self,
+      boot_t_stat,
+      boot_method: method_name,
+      n_rep_boot,
+      boot_seed: seed,
     }
   } catch {
     PreconditionError::Violated(loc) =>

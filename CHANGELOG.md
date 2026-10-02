@@ -11,6 +11,47 @@ release is the canonical version.
 
 ---
 
+## [0.75.0] -- bootstrap() on PLPR / LPLR / RDD / CVaR (4-item cycle)
+
+Closes the v0.64.0 bootstrap fill-in. The 4 remaining estimators now
+expose `bootstrap(n_rep_boot?, method?, seed?, level?)` matching the
+v0.61.0-v0.64.0 family contract:
+
+- `psi_a` / `psi_b` populated in `fit()` from the LAST rep's
+  cross-fitted nuisances (matching the IF shape used by
+  `sensitivity_analysis`).
+- `bootstrap()` runs `did_bootstrap_t_stat(weights=ones(n),
+  psi[i]=psi_a[i] + coef * psi_b[i], se_flat=[se_psi],
+  n_rep_boot, n, 1)` with default `method="Bayes"`, `seed=2024`,
+  `n_rep_boot=500`.
+- Stores results on the struct (`boot_t_stat` / `boot_method` /
+  `n_rep_boot` / `boot_seed`).
+
+Adds:
+- `DoubleMLPLPR::bootstrap()`  (single-theta, panel partialling-out)
+- `DoubleMLLPLR::bootstrap()`  (single-theta, binary ATE simplified)
+- `DoubleMLRDD::bootstrap()`   (single-theta, kernel-weighted;
+  combined IF `psi = psi_a * residuals`, calls
+  `did_bootstrap_t_stat` directly instead of
+  `generic_bootstrap_t_stat`)
+- `DoubleMLCVAR::bootstrap()`  (single-theta, IRM-style; constant
+  `psi_a = -1` + offset `psi_b`)
+
+### Added
+- `v075_wbtest.mbt` (4 smoke tests)
+
+### Notes
+- 22/22 estimators now expose `bootstrap()` (was 18/22 in v0.64.0).
+- v0.61.0 reference pattern: `generic_bootstrap_t_stat` helper in
+  `bootstrap.mbt`, identical usage across all 22 estimators.
+- RDD's combined IF (`psi = psi_a * residuals`) doesn't fit the
+  standard `psi_a + coef * psi_b` form, so its `bootstrap()`
+  calls `did_bootstrap_t_stat` directly with the combined IF.
+- Verified: native 558/558 (was 554 in v0.74; +4 wbtests).
+- Verified: wasm-gc 564/564 (was 560 in v0.74; +4 wbtests).
+
+---
+
 ## [0.74.0] -- cluster-aware sensitivity on LPQ / PQ / QTE / APOS / SSM / BLP / CVaR (7-item cycle)
 
 Closes the cluster-aware sensitivity family. Reuses the v0.72
