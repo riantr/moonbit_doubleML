@@ -11,6 +11,42 @@ release is the canonical version.
 
 ---
 
+## [0.71.0] -- sensitivity_analysis on DoubleMLCVAR (CVaR fill-in, completes the 22-estimator sensitivity family)
+
+Adds `DoubleMLCVAR::sensitivity_analysis(cf_y?, cf_d?) -> SensitivityResult`
+following the IRM-style IF decomposition documented in the
+struct-level comment:
+
+  psi_a[i] = -1   (constant)
+  psi_b[i] = 1{d[i] == treatment} * (g_target - g_hat[i])
+             / m_hat[i] + g_hat[i]
+
+with `g_target = max(coef, (y - q*coef) / (1 - q))` (the DGP-style
+target transform already used inside `fit()`). Constant `psi_a = -1`
++ residual `y - g_hat` lets us reuse the shared `irm_style_sensitivity`
+helper from `sensitivity.mbt`; `cf_y` / `cf_d` are the
+confounding-strength upper bounds (defaults 0.05) and are passed
+through to the result for upstream parity.
+
+### Added
+
+- `v071_wbtest.mbt` (1 smoke test, ~2 KB):
+  - `cvar_sensitivity_returns_finite_result`
+
+### Notes
+
+- Completes the v0.66.0-v0.71.0 sensitivity fill-in cycle for
+  the 22-estimator DML family: every estimator now exposes
+  `sensitivity_analysis()` returning either a single
+  `SensitivityResult` (single-theta IRM/PO/IV-style) or an
+  `Array[SensitivityResult]` (multi-theta per-cell / per-quantile
+  / per-coef / per-leaf).
+- Verified: native 534/534 (was 533 in v0.70.0; +1 wbtest).
+- 23 / 23 Python cross-validators still PASS (sensitivity does
+  not change the python CI ground truth).
+
+---
+
 ## [0.70.0] -- sensitivity_analysis on DIDCrossSection / DIDMulti / PLPR / LPLR / QTE (5-item cycle)
 
 Completes the sensitivity_analysis() family for the remaining five

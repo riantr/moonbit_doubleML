@@ -213,10 +213,69 @@ pub fn DoubleMLCVAR::predictions_m(self : DoubleMLCVAR) -> Array[Double] {
 }
 
 ///|
+/// v0.71.0: sensitivity analysis on `DoubleMLCVAR`. CVaR's
+/// DML influence function is the IRM-style form documented in
+/// the struct-level comment:
+///
+///   psi_a[i] = -1   (constant)
+///   psi_b[i] = 1{d[i] == treatment} * (g_target - g_hat[i])
+///            / m_hat[i] + g_hat[i]
+///
+/// where `g_target = max(coef, (y - q*coef) / (1 - q))` and
+/// `q = self.quantile`. The constant `psi_a = -1` and the
+/// residual `y - g_hat` let us reuse the shared
+/// `irm_style_sensitivity` helper (see `sensitivity.mbt`):
+/// `cf_y` / `cf_d` are the confounding-strength upper bounds
+/// (defaults 0.05) and are passed through to the result for
+/// upstream parity.
+pub fn DoubleMLCVAR::sensitivity_analysis(
+  self : DoubleMLCVAR,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let n = self.n_obs()
+  let y = self.data.y
+  let d = self.data.d
+  let g_hat = self.g_hat
+  let m_hat = self.m_hat
+  let treatment = self.treatment
+  let q = self.quantile
+  let coef = self.coef
+  // psi_a is the constant -1 vector (IRM-style IF for CVaR).
+  let psi_a : Array[Double] = Array::make(n, -1.0)
+  // g_target = max(coef, (y - q*coef) / (1 - q)).
+  // Mirror of fit()'s g_target = max(pq_est, (y - q*pq_est)/(1-q))
+  // with pq_est collapsed to coef (= pq_est in the standard
+  // n_rep=1 case).
+  let g_target : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let alt = (y[i] - q * coef) / (1.0 - q)
+    g_target[i] = if coef > alt { coef } else { alt }
+  }
+  // psi_b + residuals in one loop.
+  let psi_b : Array[Double] = Array::make(n, 0.0)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let treated_i = if d[i] == treatment { 1.0 } else { 0.0 }
+    let m_i = m_hat[i]
+    // Mirror fit()'s m-clip behaviour (propensity_clip, not
+    // 1e-12; downstream irm_style_sensitivity treats
+    // zero-clipped residuals gracefully).
+    let m_clip = if m_i < self.propensity_clip { self.propensity_clip } else {
+      m_i
+    }
+    psi_b[i] = treated_i * (g_target[i] - g_hat[i]) / m_clip + g_hat[i]
+    residuals[i] = y[i] - g_hat[i]
+  }
+  irm_style_sensitivity(coef, residuals, psi_a, cf_y, cf_d)
+}
+
+///|
 /// Stratum 50/50 split of `train` on the values of `d[train]`,
 /// using a deterministic Fisher-Yates shuffle keyed by `seed`.
-/// Returns `(s1, s2)` such that `s1 ∪ s2 = train`,
-/// `s1 ∩ s2 = ∅`, and within each stratum the partition is
+/// Returns `(s1, s2)` such that `s1 ++ s2 = train`,
+/// `s1 ** s2 = []`, and within each stratum the partition is
 /// balanced (mirrors `sklearn.model_selection.train_test_split(
 /// train, test_size=0.5, random_state=seed, stratify=...)`).
 ///
@@ -356,7 +415,7 @@ fn solve_ipw_root(
   let mut hi = y_max + margin
   // Widen `hi` exponentially if the upper-bracket score is
   // non-positive (a structural failure mode of the IPW score
-  // for `q` close to 1 with sparse treatment — same condition
+  // for `q` close to 1 with sparse treatment -- same condition
   // as `solve_pq`'s REVIEW H1 fix).
   let mut widen_attempts = 0
   while cvar_ipw_score(y_slice, treated_slice, m_slice, hi, quantile) <= 0.0 &&
