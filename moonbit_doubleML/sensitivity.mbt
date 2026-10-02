@@ -74,13 +74,29 @@ pub fn irm_style_sensitivity(
 ///
 /// with their cluster-summed counterparts
 ///
-///   sigma2_cluster = (1 / n_clusters) * sum_c (sum_{i in c} residuals[i])^2
-///   nu2_cluster    = (1 / n_clusters) * sum_c (sum_{i in c} psi_a[i])^2
+///   sigma2_cluster = (1 / n_clusters) * sum_c (sum_{i in c} w[i] * residuals[i])^2
+///   nu2_cluster    = (1 / n_clusters) * sum_c (sum_{i in c} w[i] * psi_a[i])^2
+///
+/// where `w[i]` is the optional kernel weight for observation
+/// `i` (default uniform `w[i] = 1.0`).
 ///
 /// `cluster_ids[i]` is the 0-based cluster index of observation
 /// `i`. All observations in the same cluster share an id;
 /// `cluster_ids.length()` must equal `residuals.length()`. The
 /// number of clusters is `1 + max(cluster_ids)`.
+///
+/// `kernel_weights` (v0.78.0+, RDD-aware): optional per-observation
+/// weights `w[i]` of length `residuals.length()`. When empty
+/// (`kernel_weights = []`), the function falls back to uniform
+/// `w[i] = 1.0` and the cluster sums collapse to the v0.72.0
+/// unweighted form. When non-empty, `kernel_weights.length()`
+/// must equal `residuals.length()` and the cluster sums use
+/// the weighted form
+/// `sum_{i in c} w[i] * residuals[i]` / `sum_{i in c} w[i] * psi_a[i]`.
+/// This is the kernel-weighted RDD extension: observations near
+/// the cutoff (high `w[k]`) drive the cluster-aggregated variance
+/// baseline; observations near the bandwidth edge (low `w[k]`)
+/// contribute proportionally less.
 ///
 /// `max_bias` and the robustness value `RV` stay per-observation
 /// (the upstream Cinelli & Hazlett bias expression is per-obs),
@@ -89,6 +105,9 @@ pub fn irm_style_sensitivity(
 /// `sigma2_cluster` / `nu2_cluster` rather than the IID
 /// `mean(residuals^2)` / `mean(psi_a^2)`. The mean of the
 /// per-observation `max_bias` array is the scalar returned.
+/// The per-observation centering is `residuals[i]^2 - sigma2`
+/// (NOT `w[i]^2 * residuals[i]^2 - sigma2`) by convention, so
+/// the C&H bias expression remains per-observation-anchored.
 ///
 /// Output shape matches `irm_style_sensitivity` (same
 /// `SensitivityResult` struct) so callers can swap IID for
@@ -100,11 +119,16 @@ pub fn irm_style_sensitivity_cluster(
   cluster_ids : Array[Int],
   cf_y : Double,
   cf_d : Double,
+  kernel_weights? : Array[Double] = [],
 ) -> SensitivityResult raise {
   let n = residuals.length()
   require(n == psi_a.length())
   require(n == cluster_ids.length())
   require(n > 0)
+  let use_weights = kernel_weights.length() > 0
+  if use_weights {
+    require(kernel_weights.length() == n)
+  }
   // Find max cluster id (= n_clusters - 1) and cluster-sum
   // both residuals and psi_a. Two passes: first find
   // n_clusters, second accumulate sums.
@@ -119,10 +143,19 @@ pub fn irm_style_sensitivity_cluster(
   let n_clusters_d = n_clusters.to_double()
   let cluster_sum_resid : Array[Double] = Array::make(n_clusters, 0.0)
   let cluster_sum_psi_a : Array[Double] = Array::make(n_clusters, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    let cid = cluster_ids[i]
-    cluster_sum_resid[cid] = cluster_sum_resid[cid] + residuals[i]
-    cluster_sum_psi_a[cid] = cluster_sum_psi_a[cid] + psi_a[i]
+  if use_weights {
+    for i = 0; i < n; i = i + 1 {
+      let cid = cluster_ids[i]
+      let w = kernel_weights[i]
+      cluster_sum_resid[cid] = cluster_sum_resid[cid] + w * residuals[i]
+      cluster_sum_psi_a[cid] = cluster_sum_psi_a[cid] + w * psi_a[i]
+    }
+  } else {
+    for i = 0; i < n; i = i + 1 {
+      let cid = cluster_ids[i]
+      cluster_sum_resid[cid] = cluster_sum_resid[cid] + residuals[i]
+      cluster_sum_psi_a[cid] = cluster_sum_psi_a[cid] + psi_a[i]
+    }
   }
   // sigma2_cluster = (1 / n_clusters) * sum_c cluster_sum_resid[c]^2.
   let mut ss_resid = 0.0

@@ -9,6 +9,77 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
+## [0.78.0] -- DoubleMLRDD::sensitivity_analysis_cluster (kernel-weighted RDD)
+
+Closes the v0.72-v0.74 cluster-aware sensitivity family for the
+kernel-weighted local-polynomial RDD estimator. RDD was excluded
+from the v0.72-v0.74 fill-in because the bandwidth-based weighting
+does not fit the IRM-style helpers' uniform per-observation
+scaling; v0.78.0 extends the helper with an optional
+`kernel_weights` parameter so the cluster-summed variance baseline
+can be kernel-weighted.
+
+### Added
+
+- `irm_style_sensitivity_cluster` (in `sensitivity.mbt`) gains an
+  optional `kernel_weights: Array[Double] = []` parameter. When
+  empty, falls back to uniform weights (the v0.72 behavior, so all
+  v0.72-v0.74 callers see byte-identical results). When non-empty,
+  `kernel_weights.length()` must equal `residuals.length()` and the
+  cluster sums use
+  `cluster_sum_resid[c] = sum_{i in c} w[i] * residuals[i]` /
+  `cluster_sum_psi_a[c] = sum_{i in c} w[i] * psi_a[i]`. Per-obs
+  C&H centering stays at `residuals[i]^2 - sigma2_cluster` (the
+  bias expression is intrinsically per-observation).
+- `DoubleMLRDD::sensitivity_analysis_cluster(cluster_ids, cf_y?,
+  cf_d?) -> SensitivityResult raise` (in `rdd.mbt`): the kernel-
+  weighted RDD analogue of `DoubleMLRDD::sensitivity_analysis`.
+  Internally computes the triangular kernel weights
+  `w[k] = 1 - |u_k| / h` on the bandwidth-restricted sample via
+  the `rdd_kernel_weights` helper (left-then-right concatenated,
+  matching the ordering of `residuals` / `psi_a` on the fitted
+  RDD) and routes through `irm_style_sensitivity_cluster` with
+  the kernel weights supplied. Preconditions: `self.fitted`,
+  `n_local > 0`, `cluster_ids.length() == n_local`.
+- `rdd_kernel_weights(data, cutoff, h) -> Array[Double]` helper
+  (private, in `rdd.mbt`): a pure function of the data + cutoff +
+  h that reproduces `rdd_design`'s bandwidth-restricted selection
+  and emits `w[k] = 1 - |u_k| / h` per local-row observation.
+- `rdd_cluster_test.mbt` (5 white-box tests):
+  - `rdd_sensitivity_cluster_returns_finite_result` -- smoke
+    test on a 30x30-cluster clustered DGP with cluster-level
+    random Y effect; verifies `sigma2 / nu2 / max_bias` are
+    finite and non-negative.
+  - `rdd_sensitivity_cluster_sigma2_differs_from_iid` -- on a
+    stronger cluster effect, verifies `sigma2_cluster /
+    nu2_cluster` differ from the IID `mean(residuals^2)` /
+    `mean(psi_a^2)` by >0.1% relative.
+  - `panic_rdd_sensitivity_cluster_cluster_ids_length_mismatch` --
+    `cluster_ids.length() != n_local` raises via the helper's
+    length precondition.
+  - `panic_rdd_sensitivity_cluster_no_valid_cluster` -- all-`-1`
+    cluster_ids raises via the helper's `max_cid >= 0`
+    precondition.
+  - `panic_rdd_sensitivity_cluster_before_fit` -- un-fit model
+    raises via `require(self.fitted)`.
+
+### Notes
+
+- Closes the cluster-aware sensitivity family: 22 / 22 estimators
+  now expose both IID and cluster-aware sensitivity (v0.77.0 had
+  21 / 22; v0.74.0 had 20 / 22).
+- moon.mod: 0.77.0 -> 0.78.0.
+- README: `0.77.0` -> `0.78.0`, 143 -> 144 production files,
+  561 / 561 -> 566 / 566 native tests, 567 / 567 -> 572 / 572
+  wasm-gc tests.
+- moon check --target native / wasm-gc --deny-warn: 0 warnings,
+  0 errors.
+- moon fmt --check: clean.
+- Verified: native 566 / 566 (was 561 in v0.77.0; +5 wbtests).
+- Verified: wasm-gc 572 / 572 (was 567 in v0.77.0; +5 wbtests).
+
+---
+
 ## [0.77.0] -- joint_sensitivity: cross-estimator joint coverage + RV (Bonferroni)
 
 Cinelli & Hazlett (2020) §3.6 extension to the multi-estimator

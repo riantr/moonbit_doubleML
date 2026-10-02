@@ -528,6 +528,102 @@ pub fn DoubleMLRDD::sensitivity_analysis(
 }
 
 ///|
+/// v0.78.0+: cluster-robust analogue of
+/// `DoubleMLRDD::sensitivity_analysis`. RDD's kernel-weighted
+/// Riesz-representer row and outcome residuals (already on the
+/// bandwidth-restricted sample, length `n_local`) are routed
+/// through the v0.78.0 `irm_style_sensitivity_cluster`
+/// kernel-weighted extension with the per-observation triangular
+/// kernel weights `w[k] = 1 - |u_k| / h` where
+/// `u_k = score[ids[k]] - cutoff`. The cluster sums become
+/// `cluster_sum_resid[c] = sum_{k in c} w[k] * residuals[k]`
+/// (and similarly for `psi_a`), so observations near the
+/// cutoff (high weight) drive the cluster-aggregated variance
+/// baseline. The per-observation C&H centering
+/// `residuals[k]^2 - sigma2_cluster` keeps the bias expression
+/// per-observation-anchored (see the helper's v0.78.0 doc).
+///
+/// `DoubleMLRDDData` has no `cluster_vars` field, so the
+/// user must pass `cluster_ids` explicitly.
+/// `cluster_ids.length()` must equal `self.n_local()`. Cluster
+/// indices are 0-based; `1 + max(cluster_ids)` is the number of
+/// clusters. Returns the same `SensitivityResult` shape as
+/// the IID `sensitivity_analysis` so callers can swap IID for
+/// cluster-aware without changing the return contract.
+///
+/// Calling on an un-fit model aborts via `PreconditionError`.
+/// `n_local == 0` (no observations fall inside the bandwidth)
+/// raises on the inner `irm_style_sensitivity_cluster`'s
+/// `require(n > 0)`.
+pub fn DoubleMLRDD::sensitivity_analysis_cluster(
+  self : DoubleMLRDD,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let n_local = self.n_local
+  require(n_local > 0)
+  require(cluster_ids.length() == n_local)
+  // Kernel weights: triangular `w[k] = 1 - |u_k| / h` on the
+  // bandwidth-restricted sample, left side first then right
+  // side (matching the ordering of `self.residuals` /
+  // `self.psi_a`). Reproduces `rdd_design`'s selection logic
+  // so the weights line up with the per-local-row residuals
+  // and Riesz rows.
+  let kernel_weights : Array[Double] = rdd_kernel_weights(
+    self.data,
+    self.cutoff,
+    self.bandwidth,
+  )
+  require(kernel_weights.length() == n_local)
+  irm_style_sensitivity_cluster(
+    self.coef,
+    self.residuals,
+    self.psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+    kernel_weights~,
+  )
+}
+
+///|
+/// Compute the per-observation triangular kernel weights for
+/// `DoubleMLRDD` on the bandwidth-restricted sample: returns
+/// `w[k] = 1 - |u_k| / h` for each local-row observation k,
+/// where `u_k = score[ids[k]] - cutoff` and `ids` is the
+/// bandwidth-restricted selection (left side first then right
+/// side, matching the ordering used by `residuals` /
+/// `psi_a`). Observations outside the bandwidth are skipped
+/// (so the returned array length equals `n_local`). The
+/// helper is a pure function of the data + cutoff + h so the
+/// caller does not need to thread the original ids mapping
+/// through the `fit()` result.
+fn rdd_kernel_weights(
+  data : DoubleMLRDDData,
+  cutoff : Double,
+  h : Double,
+) -> Array[Double] {
+  let weights : Array[Double] = []
+  // Left side: u < 0.
+  for i = 0; i < data.n_obs(); i = i + 1 {
+    let u = data.score[i] - cutoff
+    if u < 0.0 && u.abs() <= h {
+      weights.push(1.0 - u.abs() / h)
+    }
+  }
+  // Right side: u >= 0.
+  for i = 0; i < data.n_obs(); i = i + 1 {
+    let u = data.score[i] - cutoff
+    if u >= 0.0 && u.abs() <= h {
+      weights.push(1.0 - u.abs() / h)
+    }
+  }
+  weights
+}
+
+///|
 /// v0.75.0+: multiplier bootstrap for `DoubleMLRDD`. The
 /// per-observation influence function is
 ///

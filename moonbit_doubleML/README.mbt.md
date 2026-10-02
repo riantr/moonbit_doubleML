@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.77.0** |
+| `moon.mod` version | **0.78.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 143 production files |
+| `.mbt` file count | 144 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **561 / 561** |
-| Tests (wasm-gc) | **567 / 567** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **566 / 566** |
+| Tests (wasm-gc) | **572 / 572** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -251,7 +251,7 @@ binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.77.0, 143 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.78.0, 144 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -317,6 +317,21 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   per-estimator Bonferroni-corrected CIs plus cross-estimator
   joint CI / RV / RV_q via `min(per_estimator_*)` collapse
   (Cinelli & Hazlett 2020 §3.6 family setting).
+- v0.78.0 verified counts: `moon test` 566 / 566 (native & wasm &
+  js) and 572 / 572 (wasm-gc); 23 / 23 Python cross-validators PASS.
+  Closes the v0.72-v0.74 cluster-aware sensitivity family for
+  the kernel-weighted local-polynomial `DoubleMLRDD` estimator:
+  extends `irm_style_sensitivity_cluster` (in `sensitivity.mbt`)
+  with an optional `kernel_weights` parameter (default empty =
+  uniform weights, v0.72 behavior); when non-empty, each
+  observation's residual and Riesz row are scaled by the
+  triangular kernel weight `w[k] = 1 - |u_k| / h` on the
+  bandwidth-restricted sample before the cluster sum. Adds
+  `DoubleMLRDD::sensitivity_analysis_cluster(cluster_ids, cf_y?,
+  cf_d?) -> SensitivityResult` plus 5 white-box tests in
+  `rdd_cluster_test.mbt` (smoke + sigma2-differs-from-IID +
+  3 panic tests); 22 / 22 estimators now expose both IID and
+  cluster-aware sensitivity.
 
 #Attribution
 
