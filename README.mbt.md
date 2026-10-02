@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.69.1** |
+| `moon.mod` version | **0.75.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **136** `.mbt` files (**59** production + **77** test) |
+| `.mbt` file count | **142** `.mbt` files (**59** production + **83** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **528 / 528** |
-| Tests (wasm-gc) | **534 / 534** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **558 / 558** |
+| Tests (wasm-gc) | **564 / 564** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -240,7 +240,7 @@ binary-outcome CS-DID:
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.69.1, 136 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.75.0, 142 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
