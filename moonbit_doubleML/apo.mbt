@@ -1143,3 +1143,52 @@ pub fn DoubleMLAPOS::sensitivity_analysis(
   }
   out
 }
+
+///|
+/// v0.74.0+: cluster-robust analogue of
+/// `DoubleMLAPOS::sensitivity_analysis`. Re-fits a child
+/// `DoubleMLAPO` at each treatment level and delegates to
+/// its `sensitivity_analysis_cluster(...)` so the
+/// per-cluster `sigma2_cluster` / `nu2_cluster` are
+/// computed against the cluster-summed residuals /
+/// `psi_a`. The per-level `SensitivityResult` is returned in
+/// user-supplied order; cross-level aggregation (e.g. for a
+/// joint cluster-robust sensitivity bound) is the caller's
+/// responsibility. Mirrors the IID path
+/// (`sensitivity_analysis`) and the cluster-aware
+/// `sensitivity_analysis_cluster` on `DoubleMLAPO`.
+///
+/// `cluster_ids` defaults to `DoubleMLData::cluster_vars`.
+pub fn DoubleMLAPOS::sensitivity_analysis_cluster(
+  self : DoubleMLAPOS,
+  cluster_ids? : Array[Int] = self.data.cluster_vars,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let n_levels = self.treatment_levels.length()
+  let out : Array[SensitivityResult] = Array::make(n_levels, {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  })
+  for j = 0; j < n_levels; j = j + 1 {
+    let child = DoubleMLAPO::new(
+      self.data,
+      treatment_level=self.treatment_levels[j],
+      n_folds=self.n_folds,
+      n_rep=self.n_rep,
+      seed=self.seed,
+      propensity_clip=self.propensity_clip,
+      ml_g=self.ml_g,
+      ml_m=self.ml_m,
+    )
+    out[j] = child
+      .fit()
+      .sensitivity_analysis_cluster(cluster_ids~, cf_y~, cf_d~)
+  }
+  out
+}

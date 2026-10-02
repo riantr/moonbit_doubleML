@@ -643,6 +643,48 @@ pub fn DoubleMLPQ::sensitivity_analysis(
 }
 
 ///|
+/// v0.74.0+: cluster-robust analogue of
+/// `DoubleMLPQ::sensitivity_analysis`. Mirrors the LPQ
+/// pattern: the centered-IF formulation
+/// (`sigma2 = Var(y)`, `nu2 = mean(psi^2)`) is replicated
+/// inside `irm_style_sensitivity_cluster` by passing
+/// `residuals = y - mean(y)` and `psi_a = self.psi`. Only
+/// the variance / bias computation is cluster-aware.
+///
+/// `cluster_ids` defaults to `DoubleMLData::cluster_vars`
+/// (empty array for the non-clustered constructor path, in
+/// which case the caller's explicit `cluster_ids` is required
+/// to produce a meaningful cluster-robust estimate).
+pub fn DoubleMLPQ::sensitivity_analysis_cluster(
+  self : DoubleMLPQ,
+  cluster_ids? : Array[Int] = self.data.cluster_vars,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let y = self.data.y
+  let n = y.length()
+  require(cluster_ids.length() == n)
+  let mut y_sum = 0.0
+  for i = 0; i < n; i = i + 1 {
+    y_sum = y_sum + y[i]
+  }
+  let y_bar = y_sum / n.to_double()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = y[i] - y_bar
+  }
+  irm_style_sensitivity_cluster(
+    self.coef,
+    residuals,
+    self.psi,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}
+
+///|
 pub struct DoubleMLQTE {
   data : DoubleMLData
   quantiles : Array[Double]
@@ -1119,4 +1161,71 @@ pub fn DoubleMLQTE::sensitivity_analysis(
     out[j] = single_psi_sensitivity(self.coefs[j], psi_j, y, cf_y, cf_d)
   }
   out
+}
+
+///|
+/// v0.74.0+: cluster-robust analogue of
+/// `DoubleMLQTE::sensitivity_analysis`. The centered-IF
+/// formulation per quantile (`sigma2 = Var(y)`,
+/// `nu2 = mean(psi_j^2)`) is replicated inside
+/// `irm_style_sensitivity_cluster_multi` by passing
+/// `residuals = y - mean(y)` (the same for every quantile)
+/// and `psi_a = psi_j` for each quantile. Only the variance /
+/// bias computation is cluster-aware. The cluster-summed
+/// `sigma2_cluster` / `nu2_cluster` are recomputed in each
+/// per-quantile call (they only depend on the cluster
+/// partition and the per-quantile `psi_a` row; the cluster
+/// partition is shared across quantiles, so the cluster
+/// sums only depend on the per-quantile `psi_a` row, but
+/// the multi helper recomputes the cluster sums per theta
+/// for clarity).
+///
+/// `cluster_ids` defaults to `DoubleMLData::cluster_vars`.
+/// Returns an `Array[SensitivityResult]` of length
+/// `quantiles.length()`. Calling on an un-fit model aborts
+/// via `PreconditionError`.
+pub fn DoubleMLQTE::sensitivity_analysis_cluster(
+  self : DoubleMLQTE,
+  cluster_ids? : Array[Int] = self.data.cluster_vars,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.coefs.length() > 0)
+  let n_quantiles = self.quantiles.length()
+  let n_obs = self.data.n_obs()
+  let y = self.data.y
+  require(cluster_ids.length() == n_obs)
+  // Centered-y "residual" shared across all quantiles
+  // (Var(y) doesn't depend on j).
+  let mut y_sum = 0.0
+  for i = 0; i < n_obs; i = i + 1 {
+    y_sum = y_sum + y[i]
+  }
+  let y_bar = y_sum / n_obs.to_double()
+  let residuals : Array[Double] = Array::make(n_obs, 0.0)
+  for i = 0; i < n_obs; i = i + 1 {
+    residuals[i] = y[i] - y_bar
+  }
+  // Build per-quantile psi_a matrix: row j is the centered
+  // IF for the `theta_d1 - theta_d0` combination at
+  // observation `i` for quantile index `j`.
+  let residuals_arr : Array[Array[Double]] = Array::make(n_quantiles, [])
+  let psi_a_arr : Array[Array[Double]] = Array::make(n_quantiles, [])
+  let psi_flat = self.psi_flat
+  for j = 0; j < n_quantiles; j = j + 1 {
+    let psi_a_j : Array[Double] = Array::make(n_obs, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      psi_a_j[i] = psi_flat[j * n_obs + i]
+    }
+    residuals_arr[j] = residuals.copy()
+    psi_a_arr[j] = psi_a_j
+  }
+  irm_style_sensitivity_cluster_multi(
+    self.coefs,
+    residuals_arr,
+    psi_a_arr,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
 }

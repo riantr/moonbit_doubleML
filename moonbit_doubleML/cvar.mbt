@@ -274,6 +274,38 @@ pub fn DoubleMLCVAR::sensitivity_analysis(
 }
 
 ///|
+/// v0.74.0+: cluster-robust analogue of
+/// `DoubleMLCVAR::sensitivity_analysis`. Same outcome
+/// residual formula (`y - g_hat`) and same `psi_a = -1`
+/// (constant) as the IID path; only the variance / bias
+/// computation is cluster-aware (sigma2_cluster and
+/// nu2_cluster are the `G / n_clusters` sums of squared
+/// cluster sums).
+///
+/// `cluster_ids` defaults to `DoubleMLData::cluster_vars`.
+pub fn DoubleMLCVAR::sensitivity_analysis_cluster(
+  self : DoubleMLCVAR,
+  cluster_ids? : Array[Int] = self.data.cluster_vars,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let n = self.n_obs()
+  let y = self.data.y
+  let g_hat = self.g_hat
+  let coef = self.coef
+  require(cluster_ids.length() == n)
+  // psi_a is the constant -1 vector (IRM-style IF for CVaR).
+  let psi_a : Array[Double] = Array::make(n, -1.0)
+  // Outcome residual `y - g_hat`; same as the IID path.
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = y[i] - g_hat[i]
+  }
+  irm_style_sensitivity_cluster(coef, residuals, psi_a, cluster_ids, cf_y, cf_d)
+}
+
+///|
 /// Stratum 50/50 split of `train` on the values of `d[train]`,
 /// using a deterministic Fisher-Yates shuffle keyed by `seed`.
 /// Returns `(s1, s2)` such that `s1 ++ s2 = train`,

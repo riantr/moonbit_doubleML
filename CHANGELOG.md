@@ -11,6 +11,60 @@ release is the canonical version.
 
 ---
 
+## [0.74.0] -- cluster-aware sensitivity on LPQ / PQ / QTE / APOS / SSM / BLP / CVaR (7-item cycle)
+
+Closes the cluster-aware sensitivity family. Reuses the v0.72
+single-theta and v0.73 multi-theta helpers
+(`irm_style_sensitivity_cluster` and
+`irm_style_sensitivity_cluster_multi`) without further helper work;
+the per-estimator implementations only swap the variance helper
+against their existing IID `sensitivity_analysis` (v0.66-v0.71).
+
+Adds `sensitivity_analysis_cluster(cluster_ids?, cf_y?, cf_d?)` to:
+
+- `DoubleMLLPQ`   (single-quantile; centered-IF formulation;
+                   `residuals = y - mean(y)`, `psi_a = self.psi`)
+- `DoubleMLPQ`    (single-quantile; same centered-IF replication;
+                   defaults `cluster_ids = self.data.cluster_vars`)
+- `DoubleMLQTE`   (per-quantile; per-quantile centered IF rows from
+                   `psi_flat`; defaults `cluster_ids =
+                   self.data.cluster_vars`)
+- `DoubleMLAPOS`  (per-level; re-fits child `DoubleMLAPO` per
+                   treatment level and delegates to its
+                   `sensitivity_analysis_cluster`; defaults
+                   `cluster_ids = self.data.cluster_vars`)
+- `DoubleMLSSM`   (single-theta IRM-style; `residuals = y - g_d1`,
+                   `psi_a = self.psi_a`; cluster_ids REQUIRED —
+                   `DoubleMLSSMData` has no `cluster_vars` field)
+- `DoubleMLBLP`   (per-coef IRM-style; shared `self.residuals`,
+                   per-coef `psi_a_j = M[j, :] @ xa_i` from the OLS
+                   precision matrix; cluster_ids REQUIRED — BLP has
+                   no `data` field, just `basis` + `orth_signal`)
+- `DoubleMLCVaR`  (single-theta IRM-style; `residuals = y - g_hat`,
+                   `psi_a = -1` constant; defaults `cluster_ids =
+                   self.data.cluster_vars`)
+
+### Added
+- `v074_wbtest.mbt` (7 smoke tests: `lpq`, `pq`, `qte`, `apos`, `ssm`,
+  `blp`, `cvar`)
+
+### Notes
+- 20/22 estimators now expose both `sensitivity_analysis()`
+  (IID, v0.66-v0.71) and `sensitivity_analysis_cluster()`
+  (cluster-aware, v0.72-v0.74). RDD remains bandwidth-based
+  (not cluster-based) so excluded. PolicyTree is leaf-based
+  (not cluster-based) so excluded.
+- For LPQ / PQ / QTE the IID path uses the centered-IF
+  formulation (`sigma2 = Var(y)`, `nu2 = mean(psi^2)`); the
+  cluster variant replicates that inside
+  `irm_style_sensitivity_cluster` by passing `residuals =
+  y - mean(y)` and `psi_a = psi` — mathematically
+  equivalent under the IID baseline (same per-obs C&H
+  `max_bias` array), with cluster-aware sigma2 / nu2 only.
+- Verified: native 554/554 (was 547 in v0.73; +7 wbtests).
+
+---
+
 ## [0.73.0] -- cluster-aware sensitivity on DIDCS / DIDMulti / DIDCrossSection / PLPR / LPLR (5-item cycle)
 
 Adds the per-cell / per-coef cluster-aware analogue to v0.72's

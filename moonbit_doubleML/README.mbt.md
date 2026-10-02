@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.63.0** |
+| `moon.mod` version | **0.74.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 129 production files |
+| `.mbt` file count | 141 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **491 / 491** |
-| Tests (wasm-gc) | **497 / 497** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **554 / 554** |
+| Tests (wasm-gc) | **560 / 560** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -240,7 +240,7 @@ binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.63.0, 130 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.74.0, 142 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -293,6 +293,12 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   js) and 497 / 497 (wasm-gc); 23 / 23 Python cross-validators PASS
   in ~90 s. Adds 6 new wbtests (`v063_wbtest.mbt`) covering
   APO learner plumbing + APOS bootstrap/confint + BLP plumbing.
+- v0.74.0 verified counts: `moon test` 554 / 554 (native & wasm &
+  js) and 560 / 560 (wasm-gc); 23 / 23 Python cross-validators PASS.
+  Closes the cluster-aware sensitivity family with
+  `sensitivity_analysis_cluster` on LPQ / PQ / QTE / APOS / SSM /
+  BLP / CVaR (7 wbtests in `v074_wbtest.mbt`); 20/22 estimators
+  now expose both IID and cluster-aware sensitivity.
 
 #Attribution
 

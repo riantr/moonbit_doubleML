@@ -393,6 +393,56 @@ pub fn DoubleMLLPQ::sensitivity_analysis(
 }
 
 ///|
+/// v0.74.0+: cluster-robust analogue of
+/// `DoubleMLLPQ::sensitivity_analysis`. The IID path uses
+/// the centered-IF formulation (`sigma2 = Var(y)`,
+/// `nu2 = mean(psi^2)`); we replicate that here by
+/// routing through `irm_style_sensitivity_cluster` with
+/// `residuals = y - mean(y)` (so `mean(residuals^2) =
+/// Var(y)`) and `psi_a = psi` (so `mean(psi_a^2) =
+/// mean(psi^2)`); the IRM-style helper's per-obs C&H
+/// max_bias is identical to `single_psi_sensitivity`'s in
+/// this case. Only the variance / bias computation is
+/// cluster-aware (sigma2_cluster and nu2_cluster are the
+/// `G / n_clusters` sums of squared cluster sums).
+///
+/// `DoubleMLLPQData` has no `cluster_vars` field, so the
+/// user must pass `cluster_ids` explicitly.
+/// `cluster_ids.length()` must equal `self.data.n_obs()`.
+/// Cluster indices are 0-based; `1 + max(cluster_ids)` is the
+/// number of clusters.
+pub fn DoubleMLLPQ::sensitivity_analysis_cluster(
+  self : DoubleMLLPQ,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let n = self.data.y.length()
+  require(cluster_ids.length() == n)
+  let y = self.data.y
+  // y_bar for the centered-y "residual" (so IRM-style
+  // mean(residuals^2) == Var(y)).
+  let mut y_sum = 0.0
+  for i = 0; i < n; i = i + 1 {
+    y_sum = y_sum + y[i]
+  }
+  let y_bar = y_sum / n.to_double()
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = y[i] - y_bar
+  }
+  irm_style_sensitivity_cluster(
+    self.coef,
+    residuals,
+    self.psi,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}
+
+///|
 /// Number of observations.
 pub fn DoubleMLLPQ::n_obs(self : DoubleMLLPQ) -> Int {
   self.data.x.rows()

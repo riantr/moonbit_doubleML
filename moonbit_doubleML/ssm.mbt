@@ -329,6 +329,43 @@ pub fn DoubleMLSSM::sensitivity_analysis(
 }
 
 ///|
+/// v0.74.0+: cluster-robust analogue of
+/// `DoubleMLSSM::sensitivity_analysis`. Same outcome
+/// residual formula (`y - g_d1_hat`) and same `psi_a` as the
+/// IID path; only the variance / bias computation is
+/// cluster-aware (sigma2_cluster and nu2_cluster are the
+/// `G / n_clusters` sums of squared cluster sums).
+///
+/// `DoubleMLSSMData` has no `cluster_vars` field, so the
+/// user must pass `cluster_ids` explicitly.
+/// `cluster_ids.length()` must equal `self.data.n_obs()`.
+/// Cluster indices are 0-based; `1 + max(cluster_ids)` is the
+/// number of clusters.
+pub fn DoubleMLSSM::sensitivity_analysis_cluster(
+  self : DoubleMLSSM,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g_d1 = self.predictions_g_d1()
+  let n = g_d1.length()
+  require(cluster_ids.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g_d1[i]
+  }
+  irm_style_sensitivity_cluster(
+    self.coef,
+    residuals,
+    self.psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}
+
+///|
 /// Augment a feature matrix with one extra column (used to add `pi_hat`
 /// to the design matrix for the conditional-outcome learners).
 pub fn augment_one_col(x : Matrix, extra : Array[Double]) -> Matrix {

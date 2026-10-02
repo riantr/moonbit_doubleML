@@ -364,6 +364,78 @@ pub fn DoubleMLBLP::sensitivity_analysis(
 }
 
 ///|
+/// v0.74.0+: cluster-robust analogue of
+/// `DoubleMLBLP::sensitivity_analysis`. Same residual
+/// (`self.residuals`) and same per-coef `psi_a_j` (the
+/// `M[j, :] @ xa_i` Riesz-representer rows from the OLS
+/// precision matrix) as the IID path; only the variance /
+/// bias computation is cluster-aware. The augmented
+/// design `xa` and the precision `xtx_inv` are recomputed
+/// identically so the per-coef `psi_a_j` rows match the
+/// bootstrap IF rows exactly.
+///
+/// `DoubleMLBLP` has no `data` field (just `basis` +
+/// `orth_signal`); the user must pass `cluster_ids`
+/// explicitly. `cluster_ids.length()` must equal
+/// `self.basis.rows()` (= `self.orth_signal.length()`).
+///
+/// Returns an `Array[SensitivityResult]` of length
+/// `self.coef.length()` (= `n_features + 1`, including the
+/// intercept at index 0). Calling on an un-fit model aborts
+/// via `PreconditionError`.
+pub fn DoubleMLBLP::sensitivity_analysis_cluster(
+  self : DoubleMLBLP,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let n_obs = self.orth_signal.length()
+  let n_coef = self.coef.length()
+  require(cluster_ids.length() == n_obs)
+  // Reconstruct the augmented design + precision matrix
+  // (matches the v0.64.0 `bootstrap` IF-row computation so
+  // the IRM-style decomposition here stays consistent with
+  // the bootstrap path).
+  let xa = augment_with_intercept(self.basis)
+  let p_aug = xa.ncols
+  let xa_t = xa.transpose()
+  let xtx = matmul(xa_t, xa)
+  let xtx_aug = add_ridge(xtx, 1.0e-10)
+  let xtx_inv = inv_spd(xtx_aug)
+  // Build per-coef `psi_a` rows once, then loop the cluster
+  // helper per coef.
+  let psi_a_all : Array[Array[Double]] = Array::make(n_coef, [])
+  for j = 0; j < n_coef; j = j + 1 {
+    let psi_a_j : Array[Double] = Array::make(n_obs, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      // psi_a[j][i] = M[j, :] @ xa_i = sum_k xtx_inv[j, k] * xa[i, k]
+      let mut dot = 0.0
+      for k = 0; k < p_aug; k = k + 1 {
+        dot = dot + xtx_inv.data[j * p_aug + k] * xa.data[i * p_aug + k]
+      }
+      psi_a_j[i] = dot
+    }
+    psi_a_all[j] = psi_a_j
+  }
+  // For BLP the residuals are shared across coefs (they are
+  // the OLS projection residuals of `orth_signal` on
+  // `xa`). Replicate into n_coef rows for the multi helper.
+  let residuals_arr : Array[Array[Double]] = Array::make(n_coef, [])
+  for j = 0; j < n_coef; j = j + 1 {
+    residuals_arr[j] = self.residuals.copy()
+  }
+  irm_style_sensitivity_cluster_multi(
+    self.coef,
+    residuals_arr,
+    psi_a_all,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}
+
+///|
 /// v0.19.0+: variance of the orthogonal signal (the BLP's
 /// "outcome" variable). Computed as a population variance
 /// (divisor `n`, not `n - 1`).
