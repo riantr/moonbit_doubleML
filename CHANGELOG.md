@@ -11,6 +11,54 @@ release is the canonical version.
 
 ---
 
+## [0.73.0] -- cluster-aware sensitivity on DIDCS / DIDMulti / DIDCrossSection / PLPR / LPLR (5-item cycle)
+
+Adds the per-cell / per-coef cluster-aware analogue to v0.72's
+single-theta cluster-aware family:
+
+- `irm_style_sensitivity_cluster_multi(theta_array, residuals_arr,
+  psi_a_arr, cluster_ids, cf_y, cf_d) -> Array[SensitivityResult]`
+  helper that loops over the existing single-theta
+  `irm_style_sensitivity_cluster`.
+
+- `DoubleMLDIDCS::sensitivity_analysis_cluster(cluster_ids, cf_y?, cf_d?)`
+  per-cell (length = `n_groups * n_periods`). `cluster_ids` is REQUIRED
+  (`DoubleMLDIDCSData` has no `cluster_vars` field).
+
+- `DoubleMLDIDMulti::sensitivity_analysis_cluster(cluster_ids, cf_y?, cf_d?)`
+  per-cell filtered by `gt_combinations` (delegates to inner DIDCS).
+
+- `DoubleMLDIDCrossSection::sensitivity_analysis_cluster(cluster_ids, cf_y?, cf_d?)`
+  IRM-style single theta (cluster_ids REQUIRED; `DoubleMLDIDCrossSectionData`
+  has no `cluster_vars` field).
+
+- `DoubleMLPLPR::sensitivity_analysis_cluster(cluster_ids, cf_y?, cf_d?)`
+  panel partialling-out. `cluster_ids` must be in the TRANSFORMED domain
+  (length `self.l_hat.length()`); user must pre-drop rows matching
+  `transform_panel`'s drop logic (e.g., drop rows where `t == 0` for
+  `fd_exact` on a 0-indexed time grid).
+
+- `DoubleMLLPLR::sensitivity_analysis_cluster(cluster_ids, cf_y?, cf_d?)`
+  simplified IRM-style binary treatment (cluster_ids REQUIRED;
+  `DoubleMLBinaryData` has no `cluster_vars` field).
+
+### Added
+- `irm_style_sensitivity_cluster_multi` helper in `sensitivity.mbt`
+- `v073_wbtest.mbt` (5 smoke tests)
+
+### Notes
+- Verified: native 547/547 + wasm-gc 553/553 (was 542/542 + 548/548 in
+  v0.72.0; +5 wbtests on each target).
+- `cluster_ids` is REQUIRED for all 5 estimators this cycle because
+  none of their data structs (`DoubleMLDIDCSData`,
+  `DoubleMLDIDCrossSectionData`, `DoubleMLPanelData`,
+  `DoubleMLBinaryData`) carry a `cluster_vars` field; the previous
+  v0.72 cycle could default from `DoubleMLData::cluster_vars` for
+  PLR / IRM / PLIV / APO / IIVM because those use `DoubleMLData`.
+
+---
+
+
 ## [0.72.0] -- cluster-aware sensitivity on PLR / IRM / PLIV / IIVM / APO / DID / DIDBinary / DIDCSBinary (8-item cycle)
 
 Adds the cluster-robust analogue to the v0.66.0-v0.71.0 IID

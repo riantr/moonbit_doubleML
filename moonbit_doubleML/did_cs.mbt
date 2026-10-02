@@ -803,3 +803,74 @@ pub fn DoubleMLDIDCS::confint(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.73.0+: cluster-robust analogue of
+/// `DoubleMLDIDCS::sensitivity_analysis`. Same per-cell
+/// ATT-form residual `y - g_d0_hat - (g_d1_hat - g_d0_hat) *
+/// d` and the same per-cell `psi_a` (the Riesz-representer
+/// component) as the IID path; only the variance / bias
+/// computation is cluster-aware (see
+/// `irm_style_sensitivity_cluster_multi` and
+/// `irm_style_sensitivity_cluster` in sensitivity.mbt).
+///
+/// `DoubleMLDIDCSData` has no `cluster_vars` field (the
+/// CS-DID estimator itself does not fit a cluster path), so
+/// the user must pass `cluster_ids` explicitly.
+/// `cluster_ids.length()` must equal `self.data.n_obs()`
+/// (the long-format panel length). Cluster indices are
+/// 0-based; `1 + max(cluster_ids)` is the number of
+/// clusters. All rows in the same cluster share an id.
+///
+/// Cells with `se_matrix[k] == 0` (pre-treatment / no
+/// observed evaluation period / empty panel subset) return
+/// a zeroed `SensitivityResult` from the inner
+/// `irm_style_sensitivity_cluster` pass.
+///
+/// Returns an `Array[SensitivityResult]` of length
+/// `n_groups * n_periods` in row-major `(gi, pi)` order.
+pub fn DoubleMLDIDCS::sensitivity_analysis_cluster(
+  self : DoubleMLDIDCS,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let n_obs = self.data.y.length()
+  require(cluster_ids.length() == n_obs)
+  let n_cells = self.n_groups * self.n_periods
+  let residuals_arr : Array[Array[Double]] = Array::make(n_cells, [])
+  let psi_a_arr : Array[Array[Double]] = Array::make(n_cells, [])
+  for k = 0; k < n_cells; k = k + 1 {
+    let psi_a_k : Array[Double] = Array::make(n_obs, 0.0)
+    let residuals_k : Array[Double] = Array::make(n_obs, 0.0)
+    for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
+      psi_a_k[i_long] = self.psi_a_matrix[k * n_obs + i_long]
+      residuals_k[i_long] = self.residuals_matrix[k * n_obs + i_long]
+    }
+    residuals_arr[k] = residuals_k
+    psi_a_arr[k] = psi_a_k
+  }
+  let zero_result : SensitivityResult = {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  }
+  let out_all = irm_style_sensitivity_cluster_multi(
+    self.coef_matrix,
+    residuals_arr,
+    psi_a_arr,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+  for k = 0; k < n_cells; k = k + 1 {
+    if self.se_matrix[k] <= 0.0 {
+      out_all[k] = zero_result
+    }
+  }
+  out_all
+}

@@ -876,3 +876,61 @@ pub fn DoubleMLPLPR::fit(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// v0.73.0+: cluster-robust analogue of
+/// `DoubleMLPLPR::sensitivity_analysis`. Same
+/// partialling-out / IV-type residual form `y - l_hat`
+/// and the same per-observation Riesz representer
+/// (PO: `-v_hat^2`; IV-type: `-v_hat * d`) as the IID
+/// path; only the variance / bias computation is
+/// cluster-aware (see `irm_style_sensitivity_cluster` in
+/// sensitivity.mbt).
+///
+/// **`cluster_ids` MUST be in the TRANSFORMED domain**
+/// (length `self.l_hat.length()`), not the raw panel length
+/// (`self.panel.y.length()`). `plpr`'s `fit()` applies
+/// `transform_panel` to the raw panel -- for example,
+/// `fd_exact` drops the first period -- and `l_hat` /
+/// `m_hat` are indexed against the transformed cross-
+/// section. The user must pre-drop rows from
+/// `cluster_ids` matching `transform_panel`'s drop logic
+/// (e.g., drop rows where `t == 0` for `fd_exact` on a
+/// 0-indexed time grid). The DGP is balanced enough that
+/// dropping by `(t == 0)` works in practice.
+///
+/// `DoubleMLPanelData` has no `cluster_vars` field, so the
+/// user must pass `cluster_ids` explicitly.
+pub fn DoubleMLPLPR::sensitivity_analysis_cluster(
+  self : DoubleMLPLPR,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let y = self.panel.y
+  let d = self.panel.d
+  let l_hat = self.l_hat
+  let m_hat = self.m_hat
+  let n = l_hat.length()
+  require(cluster_ids.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  let psi_a : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = y[i] - l_hat[i]
+    let v_hat = d[i] - m_hat[i]
+    if self.score == "IV-type" {
+      psi_a[i] = -v_hat * d[i]
+    } else {
+      psi_a[i] = -v_hat * v_hat
+    }
+  }
+  irm_style_sensitivity_cluster(
+    self.coef_,
+    residuals,
+    psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}

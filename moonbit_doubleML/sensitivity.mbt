@@ -184,6 +184,65 @@ pub fn empirical_quantile(arr : Array[Double], q : Double) -> Double raise {
 }
 
 ///|
+/// v0.73.0+: multi-theta analogue of
+/// `irm_style_sensitivity_cluster`. Loops over the per-theta
+/// `residuals_matrix[k]` / `psi_a_matrix[k]` (each a
+/// length-`n` row corresponding to one "theta" of a per-cell
+/// or per-coef estimator) and routes each row through the
+/// single-theta `irm_style_sensitivity_cluster` helper with
+/// the same shared `cluster_ids`. Output is an
+/// `Array[SensitivityResult]` of length `theta_array.length()`.
+///
+/// Each row's cluster_ids are identical across thetas (one
+/// observation belongs to exactly one cluster regardless of
+/// which theta's IF you're looking at). The cluster-summed
+/// `sigma2_cluster` / `nu2_cluster` are therefore shared
+/// across all thetas in principle, but the per-theta call to
+/// `irm_style_sensitivity_cluster` recomputes them on each
+/// iteration; the cost is O(n * n_thetas) extra work and the
+/// numerical result is identical (the cluster sums only
+/// depend on the rows, not on `theta_array[k]`).
+///
+/// Preconditions:
+///   - `theta_array.length() == residuals_matrix.length() ==
+///     psi_a_matrix.length()`.
+///   - Each row of `residuals_matrix` and `psi_a_matrix` has
+///     the same length as `cluster_ids` (so the inner
+///     `irm_style_sensitivity_cluster` preconditions fire as
+///     well).
+pub fn irm_style_sensitivity_cluster_multi(
+  theta_array : Array[Double],
+  residuals_matrix : Array[Array[Double]],
+  psi_a_matrix : Array[Array[Double]],
+  cluster_ids : Array[Int],
+  cf_y : Double,
+  cf_d : Double,
+) -> Array[SensitivityResult] raise {
+  let n_thetas = theta_array.length()
+  require(n_thetas == residuals_matrix.length())
+  require(n_thetas == psi_a_matrix.length())
+  let out : Array[SensitivityResult] = Array::make(n_thetas, {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  })
+  for k = 0; k < n_thetas; k = k + 1 {
+    out[k] = irm_style_sensitivity_cluster(
+      theta_array[k],
+      residuals_matrix[k],
+      psi_a_matrix[k],
+      cluster_ids,
+      cf_y,
+      cf_d,
+    )
+  }
+  out
+}
+
+///|
 /// v0.67.0+: shared inner for the centered single-IF
 /// `sensitivity_analysis` (LPQ / PQ). The IF `psi` is already
 /// centered (mean 0 at the bisection root); the

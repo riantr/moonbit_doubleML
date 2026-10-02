@@ -971,3 +971,70 @@ pub fn DoubleMLDIDMulti::sensitivity_analysis(
   }
   out
 }
+
+///|
+/// v0.73.0+: cluster-robust analogue of
+/// `DoubleMLDIDMulti::sensitivity_analysis`. Delegates to
+/// the inner `DoubleMLDIDCS::sensitivity_analysis_cluster`
+/// (which carries the per-cell ATT-form residual and
+/// per-cell `psi_a` from `psi_a_matrix` /
+/// `residuals_matrix`) and then filters down to the
+/// `gt_combinations` selected cells (same lookup as
+/// `coef_at_idx` / `se_at_idx`).
+///
+/// `DoubleMLDIDMulti`'s data struct
+/// (`DoubleMLDIDCSData`) has no `cluster_vars` field, so the
+/// user must pass `cluster_ids` explicitly.
+/// `cluster_ids.length()` must equal `self.data.n_obs()`
+/// (the long-format panel length).
+///
+/// Cells with no fitted estimate
+/// (`inner.se_matrix[k] <= 0`) return a zeroed
+/// `SensitivityResult` from the inner pass; the filtering
+/// preserves that contract.
+///
+/// Returns an `Array[SensitivityResult]` of length
+/// `gt_combinations.length()`.
+pub fn DoubleMLDIDMulti::sensitivity_analysis_cluster(
+  self : DoubleMLDIDMulti,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> Array[SensitivityResult] raise {
+  require(self.fitted)
+  let all = self.inner.sensitivity_analysis_cluster(cluster_ids, cf_y~, cf_d~)
+  let n_groups = self.inner.n_groups()
+  let n_periods = self.inner.n_periods()
+  let n_combos = self.gt_combinations.length()
+  let out : Array[SensitivityResult] = Array::make(n_combos, {
+    rv: 0.0,
+    sigma2: 0.0,
+    nu2: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+    max_bias: 0.0,
+  })
+  for k = 0; k < n_combos; k = k + 1 {
+    let (g, _t_pre, t_eval) = self.gt_combinations[k]
+    let mut gi = -1
+    let mut pi = -1
+    for i = 0; i < n_groups; i = i + 1 {
+      if self.inner.group_at(i) == g {
+        gi = i
+      }
+    }
+    for i = 0; i < n_periods; i = i + 1 {
+      if self.inner.period_at(i) == t_eval {
+        pi = i
+      }
+    }
+    if gi < 0 || pi < 0 {
+      continue
+    }
+    let flat = gi * n_periods + pi
+    if flat >= 0 && flat < all.length() {
+      out[k] = all[flat]
+    }
+  }
+  out
+}

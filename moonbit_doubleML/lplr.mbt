@@ -749,3 +749,44 @@ pub fn DoubleMLLPLR::sensitivity_analysis(
   }
   irm_style_sensitivity(self.coef_, residuals, psi_a, cf_y, cf_d)
 }
+
+///|
+/// v0.73.0+: cluster-robust analogue of
+/// `DoubleMLLPLR::sensitivity_analysis`. Same outcome
+/// residual `y - t_pred` and the same per-observation
+/// Riesz representer `psi_a[i] = -d[i] * (d[i] -
+/// a_hat[i])` as the IID path; only the variance / bias
+/// computation is cluster-aware (see
+/// `irm_style_sensitivity_cluster` in sensitivity.mbt).
+///
+/// `DoubleMLBinaryData` has no `cluster_vars` field, so the
+/// user must pass `cluster_ids` explicitly.
+/// `cluster_ids.length()` must equal `self.data.n_obs()`.
+pub fn DoubleMLLPLR::sensitivity_analysis_cluster(
+  self : DoubleMLLPLR,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let y = self.data.y
+  let d = self.data.d
+  let t_pred = self.predictions_t()
+  let a_hat = self.predictions_a()
+  let n = y.length()
+  require(cluster_ids.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  let psi_a : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = y[i] - t_pred[i]
+    psi_a[i] = -d[i] * (d[i] - a_hat[i])
+  }
+  irm_style_sensitivity_cluster(
+    self.coef_,
+    residuals,
+    psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}

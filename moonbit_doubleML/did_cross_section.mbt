@@ -1160,3 +1160,44 @@ pub fn DoubleMLDIDCrossSection::sensitivity_analysis(
   }
   irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
 }
+
+///|
+/// v0.73.0+: cluster-robust analogue of
+/// `DoubleMLDIDCrossSection::sensitivity_analysis`. Same
+/// cross-section ATT-form residual
+/// `y - g_d0_t0_hat - (g_d1_t0_hat - g_d0_t0_hat) * d` and
+/// the same `psi_a` as the IID path; only the variance /
+/// bias computation is cluster-aware (see
+/// `irm_style_sensitivity_cluster` in sensitivity.mbt).
+///
+/// `DoubleMLDIDCrossSectionData` has no `cluster_vars`
+/// field, so the user must pass `cluster_ids` explicitly.
+/// `cluster_ids.length()` must equal `self.data.n_obs()`
+/// (the cross-section sample length). Cluster indices are
+/// 0-based; `1 + max(cluster_ids)` is the number of
+/// clusters.
+pub fn DoubleMLDIDCrossSection::sensitivity_analysis_cluster(
+  self : DoubleMLDIDCrossSection,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g00 = self.predictions_g_d0_t0()
+  let g10 = self.predictions_g_d1_t0()
+  let d = self.data.d
+  let n = g00.length()
+  require(cluster_ids.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
+  }
+  irm_style_sensitivity_cluster(
+    self.coef,
+    residuals,
+    self.psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}
