@@ -11,6 +11,42 @@ release is the canonical version.
 
 ---
 
+## [0.72.0] -- cluster-aware sensitivity on PLR / IRM / PLIV / IIVM / APO / DID / DIDBinary / DIDCSBinary (8-item cycle)
+
+Adds the cluster-robust analogue to the v0.66.0-v0.71.0 IID
+`irm_style_sensitivity` helper:
+
+  - `sigma2_cluster = (1/n_clusters) * sum_c (sum_{i in c} residuals[i])^2`
+  - `nu2_cluster    = (1/n_clusters) * sum_c (sum_{i in c} psi_a[i])^2`
+  - `max_bias` stays per-observation using the cluster-aggregated
+    `sigma2` / `nu2` (the upstream Cinelli & Hazlett bias expression
+    is per-obs but the variance baseline is cluster-aggregated).
+
+Adds `sensitivity_analysis_cluster(cluster_ids?, cf_y?, cf_d?)` to
+8 single-theta IRM-family estimators that were previously IID-only:
+PLR, IRM, PLIV, IIVM, APO, DID, DIDBinary, DIDCSBinary. Each reuses
+its existing residual formula and `psi_a`; only the variance / bias
+computation is cluster-aware. `cluster_ids` defaults to
+`DoubleMLData::cluster_vars` (the optional 5th constructor arg added
+in v0.55.0) for PLR / IRM / PLIV / APO / IIVM; DID / DIDBinary /
+DIDCSBinary have no `cluster_vars` field on their data struct, so
+the user passes `cluster_ids` explicitly (length must equal the
+inner model's `n_obs` / `n_obs_subset`).
+
+### Added
+- `irm_style_sensitivity_cluster` helper in `sensitivity.mbt`
+- `v072_wbtest.mbt` (8 smoke tests)
+
+### Notes
+- Verified: native 542/542 + wasm-gc 548/548 (was 534/534 + 540/540
+  in v0.71.0; +8 wbtests on each target).
+- Cluster sensitivity is a post-hoc analysis: it doesn't require
+  the estimator to support clustering in `fit(...)` (DID/DIDBinary/
+  DIDCSBinary fit IID; the cluster_ids are applied to the residuals
+  and `psi_a` from the IID fit).
+
+---
+
 ## [0.71.0] -- sensitivity_analysis on DoubleMLCVAR (CVaR fill-in, completes the 22-estimator sensitivity family)
 
 Adds `DoubleMLCVAR::sensitivity_analysis(cf_y?, cf_d?) -> SensitivityResult`

@@ -759,3 +759,24 @@ pub fn DoubleMLDIDBinary::sensitivity_analysis(
   require(self.fitted)
   self.inner.sensitivity_analysis(cf_y~, cf_d~)
 }
+
+///|
+/// v0.72.0+: cluster-robust analogue of
+/// `DoubleMLDIDBinary::sensitivity_analysis`. Delegates to
+/// the inner `DoubleMLDID::sensitivity_analysis_cluster`
+/// on the wide-format ATT sub-model. `cluster_ids` must
+/// have the same length as the wide-format subset
+/// (`n_obs_subset`, i.e. `inner.data.n_obs()`); the
+/// long-format row mapping in `eval_idx` is preserved.
+/// Pass an empty `cluster_ids` (the default) to abort via
+/// the inner precondition (no per-row cluster mapping is
+/// implied by the long-format panel).
+pub fn DoubleMLDIDBinary::sensitivity_analysis_cluster(
+  self : DoubleMLDIDBinary,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  self.inner.sensitivity_analysis_cluster(cluster_ids, cf_y~, cf_d~)
+}

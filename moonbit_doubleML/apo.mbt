@@ -630,6 +630,37 @@ pub fn DoubleMLAPO::sensitivity_analysis(
 }
 
 ///|
+/// v0.72.0+: cluster-robust analogue of
+/// `DoubleMLAPO::sensitivity_analysis`. Same residual
+/// formula (`y - g_hat`) and the same `psi_a = -1`
+/// (constant) as the IID path; only the variance / bias
+/// computation is cluster-aware. `cluster_ids` defaults to
+/// `DoubleMLData::cluster_vars`.
+pub fn DoubleMLAPO::sensitivity_analysis_cluster(
+  self : DoubleMLAPO,
+  cluster_ids? : Array[Int] = self.data.cluster_vars,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g_hat = self.predictions_g()
+  let n = g_hat.length()
+  require(cluster_ids.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g_hat[i]
+  }
+  irm_style_sensitivity_cluster(
+    self.coef,
+    residuals,
+    self.psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}
+
+///|
 /// Average potential outcomes *symmetric* across multiple treatment
 /// levels. v0.49.0: full upstream parity — `treatment_levels`
 /// validation in `new` (rejects duplicates and levels not in

@@ -1062,3 +1062,39 @@ pub fn DoubleMLDIDCSBinary::sensitivity_analysis(
   }
   irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
 }
+
+///|
+/// v0.72.0+: cluster-robust analogue of
+/// `DoubleMLDIDCSBinary::sensitivity_analysis`. Same
+/// residual form
+/// (`y - g_d0_t0 - (g_d1_t0 - g_d0_t0) * d`) and the
+/// same `psi_a` as the IID path; only the variance / bias
+/// computation is cluster-aware. `DoubleMLDIDCSData` has
+/// no `cluster_vars` field, so `cluster_ids` must be
+/// passed explicitly with length matching `self.n_obs()`
+/// (the post-subset count).
+pub fn DoubleMLDIDCSBinary::sensitivity_analysis_cluster(
+  self : DoubleMLDIDCSBinary,
+  cluster_ids : Array[Int],
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g00 = self.predictions_g_d0_t0()
+  let g10 = self.predictions_g_d1_t0()
+  let d = self.data.d
+  let n = g00.length()
+  require(cluster_ids.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
+  }
+  irm_style_sensitivity_cluster(
+    self.coef,
+    residuals,
+    self.psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}

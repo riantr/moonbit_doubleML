@@ -888,3 +888,37 @@ pub fn DoubleMLIIVM::sensitivity_analysis(
   }
   irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
 }
+
+///|
+/// v0.72.0+: cluster-robust analogue of
+/// `DoubleMLIIVM::sensitivity_analysis`. Same DID-style
+/// residual form (`y - g0 - (g1 - g0) * d`) and the same
+/// `psi_a = -(r1 - r0) - Z * w1/m + (1 - Z) * w0/(1 - m)`
+/// (LATE score) as the IID path; only the variance / bias
+/// computation is cluster-aware. `cluster_ids` defaults to
+/// `DoubleMLIIVMData::cluster_vars`.
+pub fn DoubleMLIIVM::sensitivity_analysis_cluster(
+  self : DoubleMLIIVM,
+  cluster_ids? : Array[Int] = self.data.cluster_vars,
+  cf_y? : Double = 0.05,
+  cf_d? : Double = 0.05,
+) -> SensitivityResult raise {
+  require(self.fitted)
+  let g0 = self.predictions_g0()
+  let g1 = self.predictions_g1()
+  let d = self.data.d
+  let n = g0.length()
+  require(cluster_ids.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    residuals[i] = self.data.y[i] - g0[i] - (g1[i] - g0[i]) * d[i]
+  }
+  irm_style_sensitivity_cluster(
+    self.coef,
+    residuals,
+    self.psi_a,
+    cluster_ids,
+    cf_y,
+    cf_d,
+  )
+}

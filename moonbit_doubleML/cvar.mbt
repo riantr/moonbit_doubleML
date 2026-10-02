@@ -262,7 +262,9 @@ pub fn DoubleMLCVAR::sensitivity_analysis(
     // Mirror fit()'s m-clip behaviour (propensity_clip, not
     // 1e-12; downstream irm_style_sensitivity treats
     // zero-clipped residuals gracefully).
-    let m_clip = if m_i < self.propensity_clip { self.propensity_clip } else {
+    let m_clip = if m_i < self.propensity_clip {
+      self.propensity_clip
+    } else {
       m_i
     }
     psi_b[i] = treated_i * (g_target[i] - g_hat[i]) / m_clip + g_hat[i]

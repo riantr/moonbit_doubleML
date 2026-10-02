@@ -65,6 +65,97 @@ pub fn irm_style_sensitivity(
 }
 
 ///|
+/// v0.72.0+: cluster-robust analogue to `irm_style_sensitivity`
+/// (see the IID helper above). Replaces the per-observation
+/// variance baselines
+///
+///   sigma2 = mean(residuals^2)
+///   nu2    = mean(psi_a^2)
+///
+/// with their cluster-summed counterparts
+///
+///   sigma2_cluster = (1 / n_clusters) * sum_c (sum_{i in c} residuals[i])^2
+///   nu2_cluster    = (1 / n_clusters) * sum_c (sum_{i in c} psi_a[i])^2
+///
+/// `cluster_ids[i]` is the 0-based cluster index of observation
+/// `i`. All observations in the same cluster share an id;
+/// `cluster_ids.length()` must equal `residuals.length()`. The
+/// number of clusters is `1 + max(cluster_ids)`.
+///
+/// `max_bias` and the robustness value `RV` stay per-observation
+/// (the upstream Cinelli & Hazlett bias expression is per-obs),
+/// but the variance baseline against which `residuals[i]^2` and
+/// `psi_a[i]^2` are centered is now the cluster-aggregated
+/// `sigma2_cluster` / `nu2_cluster` rather than the IID
+/// `mean(residuals^2)` / `mean(psi_a^2)`. The mean of the
+/// per-observation `max_bias` array is the scalar returned.
+///
+/// Output shape matches `irm_style_sensitivity` (same
+/// `SensitivityResult` struct) so callers can swap IID for
+/// cluster-aware without changing the return contract.
+pub fn irm_style_sensitivity_cluster(
+  theta : Double,
+  residuals : Array[Double],
+  psi_a : Array[Double],
+  cluster_ids : Array[Int],
+  cf_y : Double,
+  cf_d : Double,
+) -> SensitivityResult raise {
+  let n = residuals.length()
+  require(n == psi_a.length())
+  require(n == cluster_ids.length())
+  require(n > 0)
+  // Find max cluster id (= n_clusters - 1) and cluster-sum
+  // both residuals and psi_a. Two passes: first find
+  // n_clusters, second accumulate sums.
+  let mut max_cid = -1
+  for i = 0; i < n; i = i + 1 {
+    if cluster_ids[i] > max_cid {
+      max_cid = cluster_ids[i]
+    }
+  }
+  require(max_cid >= 0)
+  let n_clusters = max_cid + 1
+  let n_clusters_d = n_clusters.to_double()
+  let cluster_sum_resid : Array[Double] = Array::make(n_clusters, 0.0)
+  let cluster_sum_psi_a : Array[Double] = Array::make(n_clusters, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let cid = cluster_ids[i]
+    cluster_sum_resid[cid] = cluster_sum_resid[cid] + residuals[i]
+    cluster_sum_psi_a[cid] = cluster_sum_psi_a[cid] + psi_a[i]
+  }
+  // sigma2_cluster = (1 / n_clusters) * sum_c cluster_sum_resid[c]^2.
+  let mut ss_resid = 0.0
+  let mut ss_psi_a = 0.0
+  for c = 0; c < n_clusters; c = c + 1 {
+    ss_resid = ss_resid + cluster_sum_resid[c] * cluster_sum_resid[c]
+    ss_psi_a = ss_psi_a + cluster_sum_psi_a[c] * cluster_sum_psi_a[c]
+  }
+  let sigma2 = ss_resid / n_clusters_d
+  let nu2 = ss_psi_a / n_clusters_d
+  // Per-observation centering: residuals[i]^2 - sigma2_cluster
+  // and psi_a[i]^2 - nu2_cluster. The C&H bias expression is
+  // per-obs (depends on the per-obs residual / IF), so we keep
+  // the per-obs loop and only swap in the cluster baseline.
+  let psi_sigma2 : Array[Double] = Array::make(n, 0.0)
+  let psi_nu2 : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    psi_sigma2[i] = residuals[i] * residuals[i] - sigma2
+    psi_nu2[i] = psi_a[i] * psi_a[i] - nu2
+  }
+  let (max_bias_arr, _) = compute_sensitivity_bias(
+    sigma2, nu2, psi_sigma2, psi_nu2,
+  )
+  let mut mb_sum = 0.0
+  for v in max_bias_arr {
+    mb_sum = mb_sum + v
+  }
+  let max_bias = mb_sum / n.to_double()
+  let rv = robustness_value(theta, max_bias_arr)
+  { rv, sigma2, nu2, cf_y, cf_d, max_bias, }
+}
+
+///|
 /// v0.66.0+: empirical (1 - `q`) quantile of an `Array[Double]`
 /// via insertion sort. Used by the joint confidence-interval
 /// max-|t| critical-value computation (the per-rep max |t|
