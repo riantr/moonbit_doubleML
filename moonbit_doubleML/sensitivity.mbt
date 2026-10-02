@@ -1108,3 +1108,265 @@ fn median_sorted(sorted : Array[Double]) -> Double {
     (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
   }
 }
+
+// ---------------------------------------------------------------------------
+// v0.77.0+ Joint sensitivity (cross-estimator joint coverage + RV)
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.77.0+: per-estimator summary fed into `joint_sensitivity`.
+/// Distinct from the existing `SensitivityResult` (which is the
+/// post-Cinelli-Hazlett `(rv, sigma2, nu2, cf_y, cf_d, max_bias)`
+/// return of `irm_style_sensitivity` / `irm_style_sensitivity_cluster`)
+/// — this struct carries the high-level `(name, coef, se, sigma_sq,
+/// rho, cf_y, cf_d)` summary that the joint-coverage formula
+/// operates on. Naming a second struct `SensitivityResult` would
+/// shadow the existing one and break all 22 estimator `sensitivity_analysis
+/// (_cluster)` contracts, so the joint helper takes this distinct
+/// struct.
+///
+///   - `name`: a label for the estimator (typically the struct name
+///     like `"irm"`, `"plr"`, `"did"`). Empty by default; callers
+///     should set it for downstream debugging.
+///   - `coef`: the estimator coefficient `theta_hat`.
+///   - `se`: the estimator's homoskedasticity- or cluster-robust
+///     standard error.
+///   - `sigma_sq`: the residual variance (matches
+///     `SensitivityResult.sigma2`); used in the joint RV derivation
+///     (`|theta| / sqrt(sigma_sq * |rho|)` form).
+///   - `rho`: the confounding correlation in `[-1, 1]` (matches
+///     `GainStatsResult.rho`).
+///   - `cf_y`: benchmarking upper-bound on the outcome-nuisance
+///     confounding fraction (default 0.05). Pass-through to the
+///     joint result for parity with `SensitivityResult.cf_y`.
+///   - `cf_d`: benchmarking upper-bound on the treatment-nuisance
+///     confounding fraction (default 0.05). Pass-through to the
+///     joint result for parity with `SensitivityResult.cf_d`.
+pub struct JointSensitivityInput {
+  name : String
+  coef : Double
+  se : Double
+  sigma_sq : Double
+  rho : Double
+  cf_y : Double
+  cf_d : Double
+} derive(Debug)
+
+///|
+pub extend JointSensitivityInput with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+/// v0.77.0+: builder constructor for `JointSensitivityInput`. All
+/// fields are required; use `JointSensitivityInput::empty()` for a
+/// zero-default sentinel.
+pub fn JointSensitivityInput::new(
+  name : String,
+  coef : Double,
+  se : Double,
+  sigma_sq : Double,
+  rho : Double,
+  cf_y : Double,
+  cf_d : Double,
+) -> JointSensitivityInput {
+  { name, coef, se, sigma_sq, rho, cf_y, cf_d, }
+}
+
+///|
+/// v0.77.0+: zero-valued `JointSensitivityInput`. Useful for tests
+/// and as a placeholder (all numeric fields are `0.0`, `name` is
+/// the empty string). Note that `joint_sensitivity` will report a
+/// degenerate RV (`1.0e300` sentinel) for a zero-valued input
+/// because `sigma_sq * rho == 0`.
+pub fn JointSensitivityInput::empty() -> JointSensitivityInput {
+  {
+    name: "",
+    coef: 0.0,
+    se: 0.0,
+    sigma_sq: 0.0,
+    rho: 0.0,
+    cf_y: 0.0,
+    cf_d: 0.0,
+  }
+}
+
+///|
+/// v0.77.0+: output of `joint_sensitivity`. Combines per-estimator
+/// Bonferroni-corrected CIs with the cross-estimator joint RV and
+/// joint RV_q.
+///
+///   - `joint_lower` = `min(per_estimator_lower)` — the most
+///     conservative lower CI across estimators at the Bonferroni
+///     alpha.
+///   - `joint_upper` = `max(per_estimator_upper)` — the most
+///     conservative upper CI.
+///   - `joint_rv` = `min(per_estimator_rv)` — the worst (smallest)
+///     RV across estimators. A confounder that would tip the
+///     LEAST-robust single estimator would tip the joint
+///     conclusion.
+///   - `joint_rv_q` = `min(per_estimator_rv_q)` — the worst
+///     (smallest) RV_q across estimators. RV_q is the C&H
+///     q-bias-based RV — the strength that would push `|theta|`
+///     below the `z_alpha * se` significance threshold.
+///   - `per_estimator_lower / per_estimator_upper / per_estimator_rv /
+///     per_estimator_rv_q`: per-estimator outputs, length K.
+///   - `bonferroni_alpha` = `alpha / K`.
+///   - `num_estimators` = K.
+pub struct JointSensitivityResult {
+  joint_lower : Double
+  joint_upper : Double
+  joint_rv : Double
+  joint_rv_q : Double
+  per_estimator_lower : Array[Double]
+  per_estimator_upper : Array[Double]
+  per_estimator_rv : Array[Double]
+  per_estimator_rv_q : Array[Double]
+  bonferroni_alpha : Double
+  num_estimators : Int
+} derive(Debug)
+
+///|
+pub extend JointSensitivityResult with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+/// v0.77.0+: cross-estimator joint coverage + joint RV. Cinelli &
+/// Hazlett (2020) §3.6 extension to the multi-estimator setting.
+/// Given K estimators on the same dataset, each producing
+/// `(coef_k, se_k, sigma_sq_k, rho_k)`, the function computes:
+///
+///   1. Bonferroni-corrected alpha per test = `alpha / K`. For
+///      K=2 and alpha=0.05, this is 0.025; the two-sided critical
+///      value `z_{1 - alpha/(2K)}` widens for K >= 2.
+///   2. Per-estimator joint CI at `alpha / K`: standard Wald
+///      `theta_k +/- z_{1 - alpha/(2K)} * se_k`.
+///   3. Per-estimator RV: the Cinelli-Hazlett bias-to-zero
+///      confounding-strength ratio. We use the simplified form
+///      `|theta| / sqrt(sigma_sq * |rho|)` (a v4 sentinel
+///      `1.0e300` is returned when `sigma_sq == 0` or `|rho| ==
+///      0` since the ratio is degenerate in those regimes).
+///   4. Per-estimator RV_q: the confounding strength that would
+///      push `|theta|` below the `z_{alpha/K} * se` significance
+///      threshold:
+///        rv_q = (se * z) / sqrt(theta^2 - (se * z)^2)
+///      when `|theta| > se * z`, else `1.0e300`.
+///   5. Joint CI: the union of per-estimator CIs at `alpha / K` =
+///      `[min(per_estimator_lower), max(per_estimator_upper)]`.
+///   6. Joint RV: `min(per_estimator_rv)` — a confounder that
+///      would tip the LEAST-robust single estimator would also
+///      tip the joint conclusion (Bonferroni-aligned joint-RV).
+///   7. Joint RV_q: `min(per_estimator_rv_q)`.
+///
+/// Special cases:
+///   - `inputs.length() == 0`: returns a zero-valued result with
+///     `num_estimators = 0`, `bonferroni_alpha = alpha` (no
+///     division), and empty per-estimator arrays. The joint
+///     bounds / RV stay at their zero / `1.0e300` sentinels.
+///   - `inputs.length() == 1`: Bonferroni alpha = `alpha / 1 =
+///     alpha` (no correction). The joint CI / RV collapse to the
+///     single estimator's CI / RV at alpha.
+///
+/// Pre-conditions:
+///   - `alpha > 0` and `alpha < 1`.
+///   - Each `input.se >= 0`.
+///   - Each `input.sigma_sq >= 0`.
+///   - Each `input.rho` in `[-1, 1]`.
+pub fn joint_sensitivity(
+  inputs : Array[JointSensitivityInput],
+  alpha : Double,
+) -> JointSensitivityResult raise {
+  require(alpha > 0.0 && alpha < 1.0)
+  let k = inputs.length()
+  // Validate per-input ranges. Skip the empty-input case to
+  // avoid spurious precondition errors when `K == 0`.
+  for i = 0; i < k; i = i + 1 {
+    let input = inputs[i]
+    require(input.se >= 0.0)
+    require(input.sigma_sq >= 0.0)
+    require(input.rho >= -1.0 && input.rho <= 1.0)
+    ignore(input.cf_y)
+    ignore(input.cf_d)
+    ignore(input.name)
+  }
+  let bonferroni_alpha = if k == 0 { alpha } else { alpha / k.to_double() }
+  let per_estimator_lower : Array[Double] = Array::make(k, 0.0)
+  let per_estimator_upper : Array[Double] = Array::make(k, 0.0)
+  let per_estimator_rv : Array[Double] = Array::make(k, 0.0)
+  let per_estimator_rv_q : Array[Double] = Array::make(k, 0.0)
+  // Sentinel for the K=0 case: z is never used (no per-estimator
+  // CI is computed), but we still want a sane value for the
+  // downstream struct. `1.959963984540054` = `norm.ppf(0.975)`
+  // (the standard Wald 5% critical value).
+  let mut z = 1.959963984540054
+  if k > 0 {
+    // Bonferroni-corrected two-sided CI: per-estimator alpha is
+    // alpha / K; the two-sided critical value is
+    // z_{1 - alpha/(2K)} = z_{1 - bonferroni_alpha / 2}.
+    z = norm_ppf(1.0 - bonferroni_alpha / 2.0)
+  }
+  let mut joint_lower = 0.0
+  let mut joint_upper = 0.0
+  let mut joint_rv = 1.0e300
+  let mut joint_rv_q = 1.0e300
+  for i = 0; i < k; i = i + 1 {
+    let input = inputs[i]
+    let coef = input.coef
+    let se = input.se
+    let sigma_sq = input.sigma_sq
+    let abs_rho = input.rho.abs()
+    let lo = coef - z * se
+    let hi = coef + z * se
+    per_estimator_lower[i] = lo
+    per_estimator_upper[i] = hi
+    // RV = |theta| / sqrt(sigma_sq * |rho|). Sentinel 1.0e300
+    // when either factor is 0 (degenerate: ratio undefined).
+    let rv = if sigma_sq == 0.0 || abs_rho == 0.0 {
+      1.0e300
+    } else {
+      coef.abs() / (sigma_sq * abs_rho).sqrt()
+    }
+    per_estimator_rv[i] = rv
+    // RV_q = (se * z) / sqrt(theta^2 - (se * z)^2).
+    let se_z = se * z
+    let rv_q = if se_z == 0.0 {
+      1.0e300
+    } else if coef.abs() <= se_z {
+      // Estimate is already non-significant at alpha_b;
+      // any confounder is a counterfactual (sentinel).
+      1.0e300
+    } else {
+      se_z / (coef * coef - se_z * se_z).sqrt()
+    }
+    per_estimator_rv_q[i] = rv_q
+    // Accumulate joint minima / maxima across estimators.
+    if i == 0 {
+      joint_lower = lo
+      joint_upper = hi
+      joint_rv = rv
+      joint_rv_q = rv_q
+    } else {
+      if lo < joint_lower {
+        joint_lower = lo
+      }
+      if hi > joint_upper {
+        joint_upper = hi
+      }
+      if rv < joint_rv {
+        joint_rv = rv
+      }
+      if rv_q < joint_rv_q {
+        joint_rv_q = rv_q
+      }
+    }
+  }
+  {
+    joint_lower,
+    joint_upper,
+    joint_rv,
+    joint_rv_q,
+    per_estimator_lower,
+    per_estimator_upper,
+    per_estimator_rv,
+    per_estimator_rv_q,
+    bonferroni_alpha,
+    num_estimators: k,
+  }
+}

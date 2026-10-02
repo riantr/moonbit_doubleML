@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.74.0** |
+| `moon.mod` version | **0.77.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 141 production files |
+| `.mbt` file count | 143 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **554 / 554** |
-| Tests (wasm-gc) | **560 / 560** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **561 / 561** |
+| Tests (wasm-gc) | **567 / 567** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -69,6 +69,17 @@ standard errors, cluster-robust variance, multiplier bootstrap
 confidence intervals, joint CIs, and Romano-Wolf multiple-testing
 p-value adjustment. Reused via the `bootstrap.mbt` helper extracted
 in v0.55.0.
+
+**Cross-estimator joint sensitivity (v0.77.0+)** — the
+`joint_sensitivity(inputs, alpha)` helper in `sensitivity.mbt`
+takes `K >= 2` per-estimator summaries `(name, coef, se,
+sigma_sq, rho, cf_y, cf_d)` and emits Bonferroni-corrected
+joint CIs (`[min(per_estimator_lower), max(per_estimator_upper)]`)
+plus the joint RV / RV_q (`min(per_estimator_rv)` /
+`min(per_estimator_rv_q)`). Closes Cinelli & Hazlett (2020) §3.6
+for the multi-estimator setting — when the same hypothesis is
+estimated by two or more estimators, the joint CI controls the
+family-wise error rate across the bundle.
 
 **Coverage by class**:
 
@@ -240,7 +251,7 @@ binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.74.0, 142 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.77.0, 143 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -299,6 +310,13 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `sensitivity_analysis_cluster` on LPQ / PQ / QTE / APOS / SSM /
   BLP / CVaR (7 wbtests in `v074_wbtest.mbt`); 20/22 estimators
   now expose both IID and cluster-aware sensitivity.
+- v0.77.0 verified counts: `moon test` 561 / 561 (native & wasm &
+  js) and 567 / 567 (wasm-gc); 23 / 23 Python cross-validators PASS.
+  Adds cross-estimator joint sensitivity (`joint_sensitivity` in
+  `sensitivity.mbt`, 3 white-box tests in `joint_sensitivity_test.mbt`):
+  per-estimator Bonferroni-corrected CIs plus cross-estimator
+  joint CI / RV / RV_q via `min(per_estimator_*)` collapse
+  (Cinelli & Hazlett 2020 §3.6 family setting).
 
 #Attribution
 

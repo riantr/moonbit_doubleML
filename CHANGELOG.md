@@ -9,6 +9,67 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release — the most recent verified
 release is the canonical version.
 
+## [0.77.0] -- joint_sensitivity: cross-estimator joint coverage + RV (Bonferroni)
+
+Cinelli & Hazlett (2020) §3.6 extension to the multi-estimator
+setting. Given `K` per-estimator summaries on the same dataset, the
+new `joint_sensitivity(inputs, alpha)` helper in `sensitivity.mbt`
+emits:
+
+  - a Bonferroni-corrected per-estimator CI at `alpha / K` (wider
+    than the un-corrected Wald 1.96 * se interval; e.g. K=2 widens
+    `z_{0.975} = 1.96` to `z_{0.9875} ~ 2.241`),
+  - a cross-estimator joint CI
+    `[min(per_estimator_lower), max(per_estimator_upper)]`,
+  - cross-estimator joint RV / RV_q (both `min(per_estimator_*)` —
+    a confounder that would tip the LEAST-robust single estimator
+    would also tip the joint conclusion).
+
+### Added
+
+- `JointSensitivityInput` struct (in `sensitivity.mbt`): the
+  per-estimator summary carrying `(name, coef, se, sigma_sq, rho,
+  cf_y, cf_d)`. Builder constructor `JointSensitivityInput::new(...)`
+  + zero-default `JointSensitivityInput::empty()`. Distinct from
+  the existing `SensitivityResult` (which is the post-Cinelli-Hazlett
+  `(rv, sigma2, nu2, cf_y, cf_d, max_bias)` return of
+  `irm_style_sensitivity`); renaming the new struct to
+  `SensitivityResult` would shadow the existing one and break all 22
+  estimator `sensitivity_analysis` contracts.
+- `JointSensitivityResult` struct: emits `joint_lower`,
+  `joint_upper`, `joint_rv`, `joint_rv_q`, `per_estimator_lower`,
+  `per_estimator_upper`, `per_estimator_rv`, `per_estimator_rv_q`,
+  `bonferroni_alpha`, `num_estimators`.
+- `joint_sensitivity(inputs, alpha)` function with pre-condition
+  validation (`alpha in (0, 1)`, `se / sigma_sq >= 0`,
+  `rho in [-1, 1]`).
+- `joint_sensitivity_test.mbt` (3 white-box tests):
+  - `joint_sensitivity / 2-estimators / Bonferroni widens CI` —
+    verifies the Bonferroni-corrected lower is wider than the
+    un-corrected Wald 0.5 - 1.96 * 0.1 = 0.304, joint CI brackets
+    both coefs, joint RV = `min(per_estimator_rv)`.
+  - `joint_sensitivity / single estimator / no Bonferroni
+    correction` — verifies `bonferroni_alpha == alpha` when K = 1
+    and the joint CI collapses to the single estimator's CI.
+  - `joint_sensitivity / empty results / zero-valued result` —
+    verifies K = 0 returns `num_estimators = 0`,
+    `bonferroni_alpha = alpha` (no division), empty per-estimator
+    arrays, and `1.0e300` sentinels for `joint_rv` / `joint_rv_q`.
+
+### Notes
+
+- v0.77.0 closes the v0.75.0 doc-sync lag (moon.mod was at
+  `0.75.1`, README at `0.75.0`).
+- moon.mod: 0.75.1 -> 0.77.0.
+- README: `0.74.0` -> `0.77.0`, 141 -> 143 production files,
+  554 / 554 -> 561 / 561 native tests, 560 / 560 -> 567 / 567
+  wasm-gc tests.
+- moon check --target native / wasm-gc --deny-warn: 0 warnings,
+  0 errors.
+- moon fmt --check: clean.
+- Verified: native 561 / 561 (was 558 in v0.75.1; +3 wbtests).
+- Verified: wasm-gc 567 / 567 (was 564 in v0.75.1; +3 wbtests).
+
 ---
 
 ## [0.75.1] -- docs(pkg): add supported_targets to 13 example moon.pkg (CI hygiene)
