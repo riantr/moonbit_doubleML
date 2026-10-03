@@ -25,13 +25,14 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.81.0** |
+| `moon.mod` version | **0.86.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **144** `.mbt` files (**60** production + **84** test) |
+| `.mbt` file count | **154** `.mbt` files (**62** production + **92** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **593 / 593** |
-| Tests (wasm-gc) | **599 / 599** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **623 / 623** |
+| Tests (wasm-gc) | **629 / 629** (lib + 6 doc tutorials) |
+| Sandwich-variance coverage | **6 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.86.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -81,6 +82,27 @@ standard errors, cluster-robust variance, multiplier bootstrap
 confidence intervals, joint CIs, and Romano-Wolf multiple-testing
 p-value adjustment. Reused via the `bootstrap.mbt` helper extracted
 in v0.55.0.
+
+**Huber-White sandwich API (v0.79.0+, expanded in v0.86.0)** --
+`sandwich.mbt` provides the `sandwich_variance_hc0` / `_hc1` /
+`_hc2` / `_hc3` free functions, `cluster_sandwich_variance`, and
+`bias_corrected_theta`, all driven by the `SandwichKind` enum. From
+v0.86.0 they are reachable through ONE shared
+`sandwich_variance(kind, psi_a, psi, m_inv, n_obs, n_params)`
+dispatch, and 6 of the 22 `DoubleML*` estimators expose the
+estimator-level triple `sandwich_se(kind)` /
+`cluster_sandwich_se(cluster_ids)` / `bias_corrected_coef()`:
+`DoubleMLIRM`, `DoubleMLPLR`, `DoubleMLIIVM`, `DoubleMLPLIV`,
+`DoubleMLDID`, `DoubleMLCVAR`. (`DoubleMLRDD` and `DoubleMLBLP`
+already emit HC0 intervals by calling
+`LinearRegression::sandwich_se` internally.) The remaining 16
+estimators are queued for v0.87+. Note the convention:
+`M_inv = [[1 / mean(psi_a)]]` and only `M_inv[0, 0]^2` enters the
+variance, and for these six estimators `mean(psi_a) < 0`, so the
+scalar leverage analog `h_ii = psi_a[i]^2 / mean(psi_a)` is
+negative -- HC2 / HC3 legitimately SHRINK the variance relative to
+HC0, and the SE ordering is `HC1 > HC0 > HC2 > HC3` rather than a
+monotonic widening.
 
 **Coverage by class**:
 
@@ -350,6 +372,23 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   precision matrix), DIDCS (per-cell long-format panel),
   RDD (kernel-weighted local polynomial), and PolicyTree
   (per-leaf DFS IRM-style decomposition).
+- v0.86.0 verified counts: `moon test` 623 / 623 (native, wasm, js)
+  and 629 / 629 (wasm-gc); 23 / 23 Python cross-validators PASS.
+  Adds the shared `sandwich_variance(kind, ...)` dispatch to
+  `sandwich.mbt` and the `sandwich_se(kind)` /
+  `cluster_sandwich_se(cluster_ids)` / `bias_corrected_coef()`
+  triple on `DoubleMLIIVM`, `DoubleMLPLIV`, `DoubleMLDID`, and
+  `DoubleMLCVAR` (coverage 2 -> 6 of 22). `DoubleMLLPQ` is
+  deliberately skipped: its Jacobian `deriv` is a `fit()` local and
+  is never persisted, and its `psi` is the centered check function
+  at the bisection root with no `psi_a + coef * psi_b` split, so
+  neither `psi_a` nor `M_inv` is recoverable post-fit. The 6 new
+  white-box tests assert the HC1 `sqrt(n/(n-1))` identity, the
+  independently recomputed HC0 variance, the leverage-driven
+  `HC1 > HC0 > HC2 > HC3` ordering, exact singleton-cluster
+  equality with the IID HC0, and the bias-correction identity --
+  not just finiteness. (The list above was not backfilled for
+  v0.70-v0.85; see `CHANGELOG.md` for those entries.)
 
 ##Attribution
 

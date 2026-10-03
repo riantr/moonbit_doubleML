@@ -304,6 +304,42 @@ pub fn sandwich_variance_hc3(
 }
 
 // ---------------------------------------------------------------------------
+// Shared SandwichKind dispatch
+// ---------------------------------------------------------------------------
+
+///|
+/// Shared `SandwichKind` dispatch: routes to the matching
+/// `sandwich_variance_hc*` free function above and returns
+/// the corresponding variance.
+///
+/// Added in v0.86.0 so the per-estimator `sandwich_se(kind)`
+/// methods (`DoubleMLIIVM`, `DoubleMLPLIV`, `DoubleMLDID`,
+/// `DoubleMLCVAR`, ...) share ONE dispatch rather than each
+/// inlining the same four-arm `match`. The arithmetic is
+/// identical to calling the matching `sandwich_variance_hc*`
+/// function directly, so results are byte-identical to the
+/// per-estimator inline dispatch.
+///
+/// Preconditions match the individual `sandwich_variance_hc*`
+/// functions (notably `n_obs > n_params` for HC1). Aborts via
+/// `PreconditionError` on malformed input.
+pub fn sandwich_variance(
+  kind : SandwichKind,
+  psi_a : Array[Double],
+  psi : Array[Double],
+  m_inv : Matrix,
+  n_obs : Int,
+  n_params : Int,
+) -> Double {
+  match kind {
+    HC0 => sandwich_variance_hc0(psi_a, psi, m_inv, n_obs, n_params)
+    HC1 => sandwich_variance_hc1(psi_a, psi, m_inv, n_obs, n_params)
+    HC2 => sandwich_variance_hc2(psi_a, psi, m_inv, n_obs, n_params)
+    HC3 => sandwich_variance_hc3(psi_a, psi, m_inv, n_obs, n_params)
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Cluster-robust sandwich
 // ---------------------------------------------------------------------------
 

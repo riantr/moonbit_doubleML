@@ -9,6 +9,96 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.86.0] -- sandwich variance expand (IIVM / PLIV / DID / LPQ / CVAR)
+
+Extends the v0.79.0 sandwich-variance API -- `sandwich_se(kind)`,
+`cluster_sandwich_se(cluster_ids)`, `bias_corrected_coef()` -- from
+the 2 estimators it launched on (`DoubleMLIRM` / `DoubleMLPLR`) to
+4 more. Coverage after this release: **6 of 22** `DoubleML*`
+estimators carry the full triple (`DoubleMLIRM`, `DoubleMLPLR`,
+`DoubleMLIIVM`, `DoubleMLPLIV`, `DoubleMLDID`, `DoubleMLCVAR`).
+`DoubleMLRDD` and `DoubleMLBLP` already produced HC0 intervals but
+by *calling* `LinearRegression::sandwich_se` internally rather than
+exposing the triple, so they are not counted here. The remaining 16
+are queued for v0.87+. Test count delta: native / wasm / js
+617 -> 623 (+6); wasm-gc 623 -> 629 (+6).
+
+Everything here is a NEW method. No existing numerical path
+changes, so default behavior is byte-identical to v0.85.0.
+
+### Added
+
+- Shared `sandwich_variance(kind, psi_a, psi, m_inv, n_obs,
+  n_params)` dispatch in `sandwich.mbt`, routing `SandwichKind`
+  to the matching `sandwich_variance_hc*` free function. The
+  4 new estimators all call it, so the four-arm `match` exists
+  once instead of once per estimator. Arithmetic is identical to
+  the direct calls, which the new
+  `sandwich_kind_dispatch_matches_direct_calls` test pins.
+- `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`
+  on `DoubleMLIIVM`, `DoubleMLPLIV`, `DoubleMLDID`, and
+  `DoubleMLCVAR`, mirroring the `DoubleMLIRM` /
+  `DoubleMLPLR` shape exactly (`try` / `require` precondition
+  block, `M_inv = [[1 / mean(psi_a)]]`, `sqrt(variance)` return,
+  `cluster_ids.length() == n_obs` precondition on the cluster
+  path, `psi_b - coef * psi_a` bias form).
+- `expand_v086_test.mbt` with 6 white-box tests.
+
+### Not added (deliberate)
+
+- `DoubleMLLPQ` is SKIPPED for this release. Its `fit()` computes
+  the moment Jacobian -- `deriv`, the KDE-weighted
+  `d/dtheta mean(psi_ipw)` at `lpq.mbt:369` -- as a local and
+  never persists it on the struct, and the only stored score
+  (`psi`, set at `lpq.mbt:325`) is the already-centered check
+  function at the bisection root. LPQ's theta is a ROOT of the
+  score, not a ratio of two means, so there is no
+  `psi_a + coef * psi_b` decomposition to read back: `psi_a` does
+  not exist and `M_inv` is not recoverable post-fit. Back-solving
+  `M_inv` from the already-derived `se` field would be circular
+  and would give HC2 / HC3 a dimensionless-incorrect leverage
+  `h_ii = psi_a^2 * M_inv`. Per the v0.86.0 scope rule ("a wrong
+  sandwich variance is worse than a missing one") LPQ is queued
+  for the release that persists the Jacobian on the struct.
+
+### Test properties asserted (not just finiteness)
+
+Each per-estimator test asserts five falsifiable properties, so a
+function returning a constant -- or reusing the wrong `psi` -- fails
+rather than passes:
+
+1. `se(HC0)` reproduces an independently recomputed
+   `M_inv^2 * sum_i (psi_a[i] * psi[i])^2 / n` to 1e-12 relative.
+2. `se(HC1) / se(HC0) == sqrt(n / (n - 1))` to 1e-12 (exact HC1
+   identity).
+3. The HC2 / HC3 leverage corrections are applied (`!=`) and move
+   in the direction the leverage sign predicts. All 4 estimators
+   here have `mean(psi_a) < 0`, so the scalar leverage analog
+   `h_ii = psi_a[i]^2 / mean(psi_a)` is negative, every `1 - h_ii`
+   exceeds 1, and HC2 / HC3 legitimately SHRINK: the asserted
+   ordering is `HC1 > HC0 > HC2 > HC3`, not a monotonic widening.
+   CVAR pins this exactly -- its `psi_a` is the constant `-1`, so
+   `h_ii = -1` for every row and `se(HC2) = se(HC0) / sqrt(2)`,
+   `se(HC3) = se(HC0) / 2` to 1e-12.
+4. `cluster_sandwich_se` with all-singleton clusters equals
+   `sandwich_se(HC0)` EXACTLY (singleton clusters contribute their
+   raw `(psi_a * psi)^2` with no jackknife factor, which is
+   algebraically the HC0 accumulation), while a pooled cluster
+   assignment gives a strictly different value -- proving
+   `cluster_ids` is consumed, not ignored.
+5. `bias_corrected_coef` equals
+   `coef + mean(psi_b - coef * psi_a)` to 1e-12 (and, for CVAR's
+   constant `psi_a = -1`, `2 * coef + mean(psi_b)`).
+
+### Verification
+
+`moon check --target {native, wasm-gc, wasm, js} --deny-warn` ->
+`"status":"success"`, 0 warnings on all four. `moon fmt --check`
+clean. `moon test`: native / wasm / js 623 / 623, wasm-gc 629 /
+629. `moonbit_doubleML/moon.mod` `0.85.0` -> `0.86.0`; the
+`import { "moonbit-community/sqlite3@0.2.3", "moonbitlang/async@0.20.3" }`
+block is untouched.
+
 ## [0.85.0] -- memoize + vectorize complete (DoubleMLPolicyTree, 22 of 22)
 
 Closes the v0.80 / v0.81 / v0.82 / v0.83 / v0.84 memoize +

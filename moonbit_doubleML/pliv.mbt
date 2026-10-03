@@ -862,3 +862,110 @@ pub fn DoubleMLPLIV::sensitivity_analysis_cluster(
     cf_d,
   )
 }
+
+///|
+/// v0.86.0+: Huber-White sandwich standard error for the
+/// fitted PLIV. Returns `sqrt(var)` where `var` comes from
+/// the shared `sandwich_variance(kind, ...)` dispatch in
+/// `sandwich.mbt` (HC0 / HC1 / HC2 / HC3).
+///
+/// The three inputs are the ones `fit(...)` already persists
+/// for the multiplier bootstrap (see the `psi_a` / `psi_b`
+/// field docs on `DoubleMLPLIV`):
+///   - `psi_a`  = `self.psi_a` -- the partialling-out
+///     treatment score `-w_hat * v_hat` with
+///     `w_hat = d - r_hat`, `v_hat = z - m_hat`.
+///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///     -- the per-observation influence function evaluated at
+///     the fitted `coef`, where `psi_b = v_hat * u_hat` is the
+///     partialling-out outcome score with `u_hat = y - l_hat`.
+///     Same `psi_a + coef * psi_b` shape as IRM / PLR.
+///   - `M_inv`  = `[[1 / mean(psi_a)]]` (1x1). Only
+///     `M_inv[0, 0]^2` enters the variance, so the sign of
+///     the (up-to-sign) Jacobian inverse is irrelevant.
+///
+/// Preconditions: `self.fitted`, `mean(psi_a) != 0`.
+pub fn DoubleMLPLIV::sandwich_se(
+  self : DoubleMLPLIV,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.n_obs()
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = sandwich_variance(kind, self.psi_a, psi, m_inv, n, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.86.0+: cluster-robust sandwich standard error for the
+/// fitted PLIV. Routes through `cluster_sandwich_variance`
+/// with the same `psi_a` / `psi` / `M_inv` inputs as the IID
+/// `sandwich_se` path.
+///
+/// Preconditions: `self.fitted`,
+/// `cluster_ids.length() == n_obs`.
+pub fn DoubleMLPLIV::cluster_sandwich_se(
+  self : DoubleMLPLIV,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.n_obs()
+    require(cluster_ids.length() == n)
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = cluster_sandwich_variance(
+      self.psi_a,
+      psi,
+      m_inv,
+      cluster_ids,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.86.0+: finite-sample bias-corrected PLIV coefficient.
+/// Same `psi_b - coef * psi_a` per-observation bias form as
+/// `DoubleMLIRM::bias_corrected_coef`:
+///
+///     bias_per_obs[i] = psi_b[i] - coef * psi_a[i]
+///     theta_corrected = coef + mean(bias_per_obs)
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLPLIV::bias_corrected_coef(self : DoubleMLPLIV) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.n_obs()
+    let bias : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      bias[i] = self.psi_b[i] - self.coef * self.psi_a[i]
+    }
+    bias_corrected_theta(self.coef, bias)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
