@@ -68,6 +68,15 @@ pub struct DoubleMLPLR {
   // `DoubleMLPLR::fit(...)` (a re-fit discards the prior tune
   // history because the nuisance learners may have changed).
   tune_result : TuneResult?
+  // v0.80.0+: memoization state. v0.82.0+ extends to PLR.
+  // `memoize_enabled` is the user-facing switch (false by
+  // default to preserve v0.79.0 behavior bit-for-bit). When
+  // true, `fit()` caches the last repetition's nuisance
+  // predictions in `fit_cache` and reuses them on the next
+  // call when the data fingerprint, fold split, and learner
+  // configuration are unchanged. Mirrors the IRM plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -105,6 +114,11 @@ pub fn DoubleMLPLR::new(
       n_rep_boot: 0,
       boot_seed: 0,
       tune_result: None,
+      // v0.80.0+: default memoize off so v0.79.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -199,6 +213,50 @@ pub fn DoubleMLPLR::predictions_m(self : DoubleMLPLR) -> Array[Double] {
 /// (in `param_set` order).
 pub fn DoubleMLPLR::tune_result(self : DoubleMLPLR) -> TuneResult? {
   self.tune_result
+}
+
+///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the per-observation nuisance
+/// predictions and the fold partition and skip the
+/// cross-fit nuisance fit on a repeat call whose data +
+/// learner fingerprint is unchanged. Returns a new
+/// `DoubleMLPLR` with the flag set (the struct is immutable;
+/// the cache itself is populated by the next `fit()` call).
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// cross-fit and the cache is neither read nor written, so
+/// v0.81.0 callers see byte-identical output.
+pub fn DoubleMLPLR::enable_memoize(self : DoubleMLPLR) -> DoubleMLPLR {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLPLR::disable_memoize(self : DoubleMLPLR) -> DoubleMLPLR {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions and fold
+/// assignment. Useful when the caller wants to free memory or
+/// force the next `fit()` to recompute from scratch.
+pub fn DoubleMLPLR::clear_cache(self : DoubleMLPLR) -> DoubleMLPLR {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.82.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that the cache may still be stale relative to the current
+/// data + learner configuration -- check `memoize_enabled`
+/// before assuming a cache hit.
+pub fn DoubleMLPLR::has_cache(self : DoubleMLPLR) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -340,25 +398,91 @@ pub fn DoubleMLPLR::fit(
     }
     let n = self.n_obs()
     let nrep = self.n_rep
+    // v0.82.0+: memoize check. The cache stores the LAST rep's
+    // fold assignment and nuisance predictions. We honor the
+    // cache only when:
+    //   (a) the user opted in (`self.memoize_enabled`),
+    //   (b) n_rep == 1 (multi-rep aggregations must run every
+    //       rep fresh -- we cannot cache individual rep scores).
+    //   (c) `is_valid(...)` matches every dimension of the
+    //       data + learner + cluster fingerprint.
+    // When memoize_enabled is false (the default), the entire
+    // cache code path is skipped so v0.81.0 callers see a
+    // byte-identical fit() output.
+    let memoize = self.memoize_enabled && nrep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        z=self.data.z,
+        cluster_vars=self.data.cluster_vars,
+      )
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("plr", learner_l, learner_m, 0.0)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      hash_cluster_ids(self.data.cluster_vars)
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "plr",
+      )
     let coefs : Array[Double] = Array::make(nrep, 0.0)
     let ses : Array[Double] = Array::make(nrep, 0.0)
     // hold the last rep's predictions; final values land in l_hat / m_hat
     let mut l_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
+    // Track the LAST rep's fold_ids (for cache write below).
+    let mut fold_ids : Array[Int] = []
     for r = 0; r < nrep; r = r + 1 {
-      let folds = kfold(n, self.n_folds, self.seed + r)
-      l_pred = cross_fit_predict_dispatch(
-        learner_l,
-        self.data.x,
-        self.data.y,
-        folds,
-      )
-      m_pred = cross_fit_predict_dispatch(
-        learner_m,
-        self.data.x,
-        self.data.d,
-        folds,
-      )
+      let (l_pred_r, m_pred_r) = if cache_hit && r == nrep - 1 {
+        // Reuse the cached LAST-rep predictions.
+        let preds = self.fit_cache.predictions
+        fold_ids = self.fit_cache.fold_ids
+        (preds[0], preds[1])
+      } else {
+        let folds = kfold(n, self.n_folds, self.seed + r)
+        let l_p = cross_fit_predict_dispatch(
+          learner_l,
+          self.data.x,
+          self.data.y,
+          folds,
+        )
+        let m_p = cross_fit_predict_dispatch(
+          learner_m,
+          self.data.x,
+          self.data.d,
+          folds,
+        )
+        // Build the row -> fold_id map for the cache write below.
+        let fid : Array[Int] = Array::make(n, 0)
+        for f = 0; f < folds.length(); f = f + 1 {
+          for i in folds[f].test_indices() {
+            fid[i] = f
+          }
+        }
+        if r == nrep - 1 {
+          fold_ids = fid
+        }
+        (l_p, m_p)
+      }
+      l_pred = l_pred_r
+      m_pred = m_pred_r
       // score elements for THIS rep's nuisances only.
       // v0.81.0+: residuals extracted via `vector_subtract` (the
       // partialling-out score `v_hat = d - m_pred` and the outcome
@@ -396,6 +520,24 @@ pub fn DoubleMLPLR::fit(
       self.data.z,
       score,
     )
+    // v0.82.0+: when memoize is on and the cache missed, write
+    // the freshly-computed fold_ids + nuisances to the cache.
+    let next_cache = if memoize && !cache_hit && nrep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [l_pred, m_pred],
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "plr",
+      )
+    } else {
+      self.fit_cache
+    }
     {
       data: self.data,
       learner_l,
@@ -418,6 +560,10 @@ pub fn DoubleMLPLR::fit(
       // `DoubleMLPLR::tune`); default `None` preserves v0.57.0
       // behavior for plain `fit(...)` callers.
       tune_result,
+      // v0.82.0+: persist the memoize flag and (possibly
+      // updated) cache.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -616,6 +762,13 @@ fn DoubleMLPLR::fit_cluster(
       // (set by `DoubleMLPLR::tune`); default `None` preserves
       // v0.57.0 behavior for plain `fit(...)` callers.
       tune_result,
+      // v0.82.0+: cluster path does not currently consume the
+      // memoization cache (the J-floor retry loop can rewrite
+      // the fold assignment on a per-attempt basis). Persist
+      // the flags so a subsequent non-cluster `fit()` still
+      // honors memoize.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>

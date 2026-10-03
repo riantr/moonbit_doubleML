@@ -57,6 +57,10 @@ pub struct DoubleMLDIDMulti {
   // optional `seed` argument; the default is `2024`.
   boot_seed : Int
   fitted : Bool
+  // v0.82.0+: memoization flag. The wrapper's `fit()` forwards
+  // this flag to the inner `DoubleMLDIDCS` so the aggregated
+  // cross-fits honour `.enable_memoize()` uniformly.
+  memoize_enabled : Bool
 } derive(Debug)
 
 ///|
@@ -191,6 +195,8 @@ pub fn DoubleMLDIDMulti::new(
       n_rep_boot: 0,
       boot_seed: 2024,
       fitted: false,
+      // v0.82.0+: default memoize off.
+      memoize_enabled: false,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -356,6 +362,38 @@ pub fn DoubleMLDIDMulti::se_at_idx(
 }
 
 ///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+/// The flag is forwarded to the inner `DoubleMLDIDCS`.
+pub fn DoubleMLDIDMulti::enable_memoize(
+  self : DoubleMLDIDMulti,
+) -> DoubleMLDIDMulti {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLDIDMulti::disable_memoize(
+  self : DoubleMLDIDMulti,
+) -> DoubleMLDIDMulti {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions. No-op on
+/// an un-fit wrapper.
+pub fn DoubleMLDIDMulti::clear_cache(
+  self : DoubleMLDIDMulti,
+) -> DoubleMLDIDMulti {
+  self
+}
+
+///|
+/// v0.82.0+: `true` iff the memoize flag is set.
+pub fn DoubleMLDIDMulti::has_cache(self : DoubleMLDIDMulti) -> Bool {
+  self.memoize_enabled
+}
+
+///|
 /// Run the per-(g, t) cross-fits and store the per-cell ATT
 /// matrix for downstream aggregation. The actual per-cell
 /// fitting is delegated to `DoubleMLDIDCS::fit`, which already
@@ -365,7 +403,15 @@ pub fn DoubleMLDIDMulti::fit(
   ml_g? : LearnerDispatch = self.ml_g,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDMulti {
-  let inner = self.inner.fit(ml_g~, ml_m~)
+  let inner_pre = self.inner.fit(ml_g~, ml_m~)
+  // v0.82.0+: forward the memoize flag to the inner
+  // DoubleMLDIDCS so the wrapper honours the cache uniformly.
+  let inner_memo = if self.memoize_enabled {
+    inner_pre.enable_memoize()
+  } else {
+    inner_pre
+  }
+  let inner = inner_memo.fit(ml_g~, ml_m~)
   { ..self, inner, ml_g, ml_m, fitted: true, }
 }
 

@@ -120,3 +120,72 @@ pub fn vector_scale(a : Array[Double], s : Double) -> Array[Double] {
   }
   out
 }
+
+///|
+/// Element-wise multiplication `a * b`. v0.82.0+. Inputs must
+/// share length; returns a freshly-allocated `Array[Double]` of
+/// that length. Aborts via `require` if the lengths disagree.
+/// Used by the per-fold score-element accumulation in the
+/// quantiled DID / IRM / IIVM score functions where the per-
+/// observation residual contribution is a product of a residual
+/// vector and a scalar / vector factor (e.g.
+/// `psi_b += d * u1 / m` where each factor can be extracted via
+/// `vector_multiply` + `vector_divide` instead of an inlined
+/// per-iteration scalar multiply).
+pub fn vector_multiply(a : Array[Double], b : Array[Double]) -> Array[Double] {
+  try {
+    let n = a.length()
+    require(b.length() == n)
+    let out : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      out[i] = a[i] * b[i]
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Element-wise division `a / max(b, eps)`. v0.82.0+. Inputs
+/// must share length; returns a freshly-allocated
+/// `Array[Double]` of that length. `eps` (default `1.0e-12`)
+/// guards against a near-zero denominator in the propensity /
+/// complier-prob / instrument-propensity factors that the IRM /
+/// IIVM / LPQ scores divide by. Aborts via `require` if the
+/// input lengths disagree or `eps <= 0`.
+///
+/// The denominator is clipped (NOT the numerator) so the score
+/// preserves the original numerator scale when the denominator
+/// is well-behaved, and only folds in the `eps` floor when
+/// truly necessary. This matches the upstream `doubleml-for-py`
+/// convention of clipping `m_hat` to `[eps, 1 - eps]` BEFORE
+/// division (rather than clipping the score after division).
+pub fn vector_divide(
+  a : Array[Double],
+  b : Array[Double],
+  eps? : Double = 1.0e-12,
+) -> Array[Double] {
+  try {
+    let n = a.length()
+    require(b.length() == n)
+    require(eps > 0.0)
+    let out : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      let bi = b[i]
+      let denom = if bi >= 0.0 && bi < eps {
+        eps
+      } else if bi < 0.0 && bi > -eps {
+        -eps
+      } else {
+        bi
+      }
+      out[i] = a[i] / denom
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

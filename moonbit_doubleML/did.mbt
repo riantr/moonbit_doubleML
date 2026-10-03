@@ -189,6 +189,10 @@ pub struct DoubleMLDID {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization state. Mirrors the IRM / PLR / IIVM /
+  // PLIV plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -241,6 +245,10 @@ pub fn DoubleMLDID::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off so v0.81.0 callers see
+      // byte-identical fit() output.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -305,6 +313,32 @@ pub fn DoubleMLDID::predictions_g0(self : DoubleMLDID) -> Array[Double] {
 ///|
 pub fn DoubleMLDID::predictions_g1(self : DoubleMLDID) -> Array[Double] {
   self.g1_hat
+}
+
+///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+pub fn DoubleMLDID::enable_memoize(self : DoubleMLDID) -> DoubleMLDID {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLDID::disable_memoize(self : DoubleMLDID) -> DoubleMLDID {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions and fold
+/// assignment.
+pub fn DoubleMLDID::clear_cache(self : DoubleMLDID) -> DoubleMLDID {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.82.0+: `true` iff `fit_cache` holds at least one cached
+/// observation.
+pub fn DoubleMLDID::has_cache(self : DoubleMLDID) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -375,27 +409,83 @@ pub fn DoubleMLDID::fit(
   ignore(ml_m)
   let n = self.n_obs()
   let nrep = self.n_rep
+  // v0.82.0+: memoize check. Mirrors the IRM / PLR / IIVM /
+  // PLIV plumbing. DID uses an averaged nuisance vector
+  // (g0_hat, g1_hat, m_hat averaged across reps), so the
+  // cache stores the LAST rep's cross-fitted nuisances and the
+  // subsequent per-rep accumulators are rebuilt against them.
+  let memoize = self.memoize_enabled && nrep == 1
+  let data_hash : UInt64 = if memoize {
+    // DoubleMLDIDData (v0.82.0) does not carry cluster_vars;
+    // pass an empty vector to `hash_data`. The DID cluster path
+    // is dispatched in `DoubleMLDIDBinary` / `DoubleMLDIDMulti`
+    // wrappers, not in `DoubleMLDID` itself.
+    hash_data(self.data.x, self.data.y, self.data.d, z=[], cluster_vars=[])
+  } else {
+    0UL
+  }
+  let hparams_hash : UInt64 = if memoize {
+    hash_hyperparams("did", ml_g, ml_m, self.propensity_clip)
+  } else {
+    0UL
+  }
+  let cluster_hash : UInt64 = if memoize {
+    // DoubleMLDIDData (v0.82.0) does not carry cluster_vars.
+    hash_cluster_ids([])
+  } else {
+    0UL
+  }
+  let cache_hit = memoize &&
+    self.fit_cache.is_valid(
+      self.seed,
+      self.n_folds,
+      nrep,
+      n,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "did",
+    )
   let g0_acc : Array[Double] = Array::make(n, 0.0)
   let g1_acc : Array[Double] = Array::make(n, 0.0)
   let m_acc : Array[Double] = Array::make(n, 0.0)
+  let mut fold_ids : Array[Int] = []
   for r = 0; r < nrep; r = r + 1 {
-    // Choose the partitioning strategy. With `strata` set (length
-    // = n), use `stratified_kfold` so each fold balances the
-    // (G, T) cells; otherwise plain `kfold`.
-    let folds = if self.strata.length() == n {
-      stratified_kfold(self.strata, self.n_folds, self.seed + r)
+    let (g0, g1, m) = if cache_hit && r == nrep - 1 {
+      // Reuse the cached LAST-rep predictions.
+      let preds = self.fit_cache.predictions
+      fold_ids = self.fit_cache.fold_ids
+      (preds[0], preds[1], preds[2])
     } else {
-      kfold(n, self.n_folds, self.seed + r)
+      // Choose the partitioning strategy. With `strata` set (length
+      // = n), use `stratified_kfold` so each fold balances the
+      // (G, T) cells; otherwise plain `kfold`.
+      let folds = if self.strata.length() == n {
+        stratified_kfold(self.strata, self.n_folds, self.seed + r)
+      } else {
+        kfold(n, self.n_folds, self.seed + r)
+      }
+      let cross = cross_fit_did(
+        ml_g,
+        ml_m,
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        folds,
+        self.propensity_clip,
+      )
+      if r == nrep - 1 {
+        // Build the row -> fold_id map for the cache write below.
+        let fid : Array[Int] = Array::make(n, 0)
+        for f = 0; f < folds.length(); f = f + 1 {
+          for i in folds[f].test_indices() {
+            fid[i] = f
+          }
+        }
+        fold_ids = fid
+      }
+      cross
     }
-    let (g0, g1, m) = cross_fit_did(
-      ml_g,
-      ml_m,
-      self.data.x,
-      self.data.y,
-      self.data.d,
-      folds,
-      self.propensity_clip,
-    )
     for i = 0; i < n; i = i + 1 {
       g0_acc[i] = g0_acc[i] + g0[i]
       g1_acc[i] = g1_acc[i] + g1[i]
@@ -425,7 +515,10 @@ pub fn DoubleMLDID::fit(
   // weighting (observational uses IPW with `p_hat`, experimental
   // uses A/B-test weights that collapse `m` to the constant
   // `mean(d)`) and in the inclusion of the `g1` term in the
-  // experimental psi_b_1.
+  // experimental psi_b_1. v0.82.0+: the per-observation
+  // outcome residual `resid_d0 = y - g0_hat` is extracted via
+  // `vector_subtract` (a pure element-wise subtract, the
+  // textbook case for the named building block).
   let y = self.data.y
   let d = self.data.d
   let p_hat = mean(d)
@@ -438,6 +531,10 @@ pub fn DoubleMLDID::fit(
   }
   let mean_one_minus_d = mean(one_minus_d)
   let psi_b_1 : Array[Double] = Array::make(n, 0.0)
+  // v0.82.0+: outcome residual extracted ONCE via
+  // `vector_subtract` and reused across every (score,
+  // normalization) branch.
+  let resid_d0 = vector_subtract(y, g0_hat)
   if self.score == "observational" {
     if self.in_sample_normalization {
       // Sant'Anna & Zhao (2020) eq. 4.3 (in-sample-normalised form):
@@ -450,24 +547,23 @@ pub fn DoubleMLDID::fit(
       }
       prop_weight_mean = prop_weight_mean / n.to_double()
       for i = 0; i < n; i = i + 1 {
-        let resid_d0 = y[i] - g0_hat[i]
         let m_i = m_clipped[i]
         let one_minus_m = 1.0 - m_i
         let prop_weight_i = one_minus_d[i] * m_i / one_minus_m
         psi_a[i] = -d[i] / mean_d
-        psi_b[i] = (d[i] / mean_d - prop_weight_i / prop_weight_mean) * resid_d0
+        psi_b[i] = (d[i] / mean_d - prop_weight_i / prop_weight_mean) *
+          resid_d0[i]
       }
     } else {
       // Default form (pre-0.8.0 behaviour, byte-equal to 0.7.0):
       //   w_psi_a   = d / p_hat
       //   w_resid_d0 = (d - m) / (p_hat * (1 - m))
       for i = 0; i < n; i = i + 1 {
-        let resid_d0 = y[i] - g0_hat[i]
         let m_i = m_clipped[i]
         let one_minus_m = 1.0 - m_i
         let denom = p_hat * one_minus_m
         psi_a[i] = -d[i] / p_hat
-        psi_b[i] = (d[i] - m_i) / denom * resid_d0
+        psi_b[i] = (d[i] - m_i) / denom * resid_d0[i]
       }
     }
     // score == "experimental": A/B-test setting where treatment is
@@ -477,26 +573,46 @@ pub fn DoubleMLDID::fit(
     // term captures the doubly-robust g adjustment.
   } else if self.in_sample_normalization {
     for i = 0; i < n; i = i + 1 {
-      let resid_d0 = y[i] - g0_hat[i]
       let d_i = d[i]
       let w_d = d_i / mean_d
       psi_a[i] = -1.0
       psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
-      psi_b[i] = psi_b_1[i] + (w_d - (1.0 - d_i) / mean_one_minus_d) * resid_d0
+      psi_b[i] = psi_b_1[i] +
+        (w_d - (1.0 - d_i) / mean_one_minus_d) * resid_d0[i]
     }
   } else {
     for i = 0; i < n; i = i + 1 {
-      let resid_d0 = y[i] - g0_hat[i]
       let m_i = m_clipped[i]
       let d_i = d[i]
       let w_d = d_i / m_i
       psi_a[i] = -1.0
       psi_b_1[i] = (w_d - 1.0) * g0_hat[i] + (1.0 - w_d) * g1_hat[i]
-      psi_b[i] = psi_b_1[i] + (d_i - m_i) / (m_i * (1.0 - m_i)) * resid_d0
+      psi_b[i] = psi_b_1[i] + (d_i - m_i) / (m_i * (1.0 - m_i)) * resid_d0[i]
     }
   }
   ignore(psi_b_1)
   let (coef, se) = var_est(psi_a, psi_b)
+  // v0.82.0+: write to cache when memoize is on and the
+  // cache missed. Predictions are stored as
+  // `[g0_hat, g1_hat, m_clipped]` (3 arrays) -- the LAST
+  // rep's cross-fitted nuisances, matching the cached
+  // convention used by IRM / PLR / IIVM / PLIV.
+  let next_cache = if memoize && !cache_hit && nrep == 1 {
+    FitCache::from_fit(
+      fold_ids,
+      [g0_hat, g1_hat, m_clipped],
+      self.seed,
+      self.n_folds,
+      nrep,
+      n,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "did",
+    )
+  } else {
+    self.fit_cache
+  }
   {
     data: self.data,
     n_folds: self.n_folds,
@@ -521,6 +637,10 @@ pub fn DoubleMLDID::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    // v0.82.0+: persist the memoize flag and (possibly
+    // updated) cache.
+    memoize_enabled: self.memoize_enabled,
+    fit_cache: next_cache,
   }
 }
 

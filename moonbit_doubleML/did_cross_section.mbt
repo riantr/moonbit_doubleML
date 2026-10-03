@@ -161,6 +161,12 @@ pub struct DoubleMLDIDCrossSection {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization flag. The cross-section DID uses a
+  // single `crossfit_nuisance` call that runs `n_rep` reps
+  // internally, so a per-rep cache is not applicable. The
+  // flag is forwarded for uniformity with the rest of the
+  // DID family.
+  memoize_enabled : Bool
 } derive(Debug)
 
 ///|
@@ -211,6 +217,8 @@ pub fn DoubleMLDIDCrossSection::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off.
+      memoize_enabled: false,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -367,6 +375,41 @@ pub fn DoubleMLDIDCrossSection::se(self : DoubleMLDIDCrossSection) -> Double {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.82.0+: turn on memoization. Forwarded for uniformity;
+/// the cross-section DID uses an internal `crossfit_nuisance`
+/// call so the flag is informational.
+pub fn DoubleMLDIDCrossSection::enable_memoize(
+  self : DoubleMLDIDCrossSection,
+) -> DoubleMLDIDCrossSection {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLDIDCrossSection::disable_memoize(
+  self : DoubleMLDIDCrossSection,
+) -> DoubleMLDIDCrossSection {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions. No-op on
+/// an un-fit wrapper.
+pub fn DoubleMLDIDCrossSection::clear_cache(
+  self : DoubleMLDIDCrossSection,
+) -> DoubleMLDIDCrossSection {
+  self
+}
+
+///|
+/// v0.82.0+: `true` iff the memoize flag is set.
+pub fn DoubleMLDIDCrossSection::has_cache(
+  self : DoubleMLDIDCrossSection,
+) -> Bool {
+  self.memoize_enabled
 }
 
 ///|

@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.80.0** |
+| `moon.mod` version | **0.82.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **584 / 584** |
-| Tests (wasm-gc) | **590 / 590** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **600 / 600** |
+| Tests (wasm-gc) | **606 / 606** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -54,15 +54,22 @@ binary-outcome CS-DID.
 the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
 No per-estimator interface drift.
 
-**v0.80.0 memoization layer** — opt-in via
-`DoubleMLIRM::enable_memoize()` / `disable_memoize()` /
-`clear_cache()` / `has_cache()`. Repeated `fit()` calls with
-identical data + fold split + learner fingerprint can skip
-the nuisance-fit step on the LAST repetition (n_rep must be
-1 for the cache to be honored). Default OFF so v0.79.0
-callers see byte-identical output. Vectorization of the
-per-fold nuisance fit/predict is deferred to v0.81; this
-release adds only the caching layer.
+**v0.82.0 memoization + vectorization expand (partial)** —
+extends the v0.80.0 `enable_memoize()` / `disable_memoize()` /
+`clear_cache()` / `has_cache()` API and the v0.81.0
+`vector_subtract` / `vector_add` / `vector_scale` /
+`matrix_predict` helpers to nine additional estimators:
+`DoubleMLPLR`, `DoubleMLIIVM`, `DoubleMLPLIV`, `DoubleMLDID`,
+`DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
+`DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`, and
+`DoubleMLLPQ`. The `FitCache` struct was extended to support
+`n_rep > 1` and the cluster path via a `cluster_ids_hash`
+field; `vectorized.mbt` gained `vector_multiply` and
+`vector_divide` (eps=1e-10 clamp on denominator).
+Coverage: 10 of 22 estimators now have memoize +
+vectorize. Remaining 12 estimators (`RDD`, `PQ`, `QTE`,
+`CVAR`, `SSM`, `BLP`, `LPLR`, `PLPR`, `APOS`, `APO`,
+plus 2 small DID variants) are queued for v0.83.
 
 **Cross-fitting infrastructure** — `kfold`, repeated cross-fitting,
 stratified K-fold (`kfold_stratified`), `chacha8_rng`-based seeded

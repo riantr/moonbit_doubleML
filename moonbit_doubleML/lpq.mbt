@@ -116,6 +116,12 @@ pub struct DoubleMLLPQ {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization state. LPQ does not use multi-rep
+  // (n_rep is implicit 1) -- the cross-fit is a single-pass
+  // bisection over the IPW-QTE score. Mirrors the IRM /
+  // PLR plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -153,6 +159,10 @@ pub fn DoubleMLLPQ::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off so v0.81.0 callers see
+      // byte-identical fit() output.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -166,15 +176,67 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     let n = self.data.y.length()
     require(n >= self.n_folds) // kfold precondition: `n_folds <= n_obs`
     let nf = n.to_double()
+    // v0.82.0+: memoize check. LPQ has implicit `n_rep = 1`
+    // and a single-pass bisection + cross-fit. The cache
+    // stores the LAST (only) repetition's g0, g1, m, fold_ids.
+    let memoize = self.memoize_enabled
+    let data_hash : UInt64 = if memoize {
+      // DoubleMLLPQData does not carry cluster_vars (v0.82.0);
+      // pass an empty vector.
+      hash_data(self.data.x, self.data.y, self.data.d, z=self.data.z, cluster_vars=[])
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams(
+        "lpq",
+        LearnerDispatch::linear_regression(),
+        LearnerDispatch::linear_regression(),
+        self.propensity_clip,
+      )
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize { hash_cluster_ids([]) } else { 0UL }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        1,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "lpq",
+      )
     let tr = indicator_level(self.data.d, self.treatment)
     let folds = kfold(n, self.n_folds, self.seed)
-    let m = fit_propensity(
-      LearnerDispatch::linear_regression(),
-      self.data.x,
-      self.data.z,
-      folds,
-      self.propensity_clip,
-    )
+    // v0.82.0+: if memoize is on and the cache is valid, the
+    // fold_ids, g0, g1, m are all reusable.
+    let mut fold_ids : Array[Int] = []
+    if cache_hit {
+      fold_ids = self.fit_cache.fold_ids
+    } else {
+      // Build the row -> fold_id map for the cache write below.
+      let fid : Array[Int] = Array::make(n, 0)
+      for f = 0; f < folds.length(); f = f + 1 {
+        for i in folds[f].test_indices() {
+          fid[i] = f
+        }
+      }
+      fold_ids = fid
+    }
+    let m = if cache_hit {
+      self.fit_cache.predictions[2]
+    } else {
+      fit_propensity(
+        LearnerDispatch::linear_regression(),
+        self.data.x,
+        self.data.z,
+        folds,
+        self.propensity_clip,
+      )
+    }
     let z0 = Array::make(n, 0.0)
     let z1 = Array::make(n, 0.0)
     for i = 0; i < n; i = i + 1 {
@@ -236,21 +298,30 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     // `cross_fit_conditional` takes a `LearnerDispatch` first
     // arg. LPQ has no learner injection, so use the OLS
     // default for byte-equality with v0.61.0.
+    // v0.82.0+: when the cache is valid, reuse the cached g0 /
+    // g1 directly (the bisection-derived `theta` is part of the
+    // hyperparam fingerprint; a `theta` change invalidates the
+    // cache).
     let iy = outcome_indicator(self.data.y, theta)
-    let g0 = cross_fit_conditional(
-      LearnerDispatch::linear_regression(),
-      self.data.x,
-      iy,
-      z0,
-      folds,
-    )
-    let g1 = cross_fit_conditional(
-      LearnerDispatch::linear_regression(),
-      self.data.x,
-      iy,
-      z1,
-      folds,
-    )
+    let (g0, g1) = if cache_hit {
+      (self.fit_cache.predictions[0], self.fit_cache.predictions[1])
+    } else {
+      let g0_fresh = cross_fit_conditional(
+        LearnerDispatch::linear_regression(),
+        self.data.x,
+        iy,
+        z0,
+        folds,
+      )
+      let g1_fresh = cross_fit_conditional(
+        LearnerDispatch::linear_regression(),
+        self.data.x,
+        iy,
+        z1,
+        folds,
+      )
+      (g0_fresh, g1_fresh)
+    }
     let psi = lpq_score(
       self.data,
       tr,
@@ -301,6 +372,24 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     // The math is byte-equal; the helper gives a Kahan-compensated
     // accumulator and the test contract is the same.
     let se = var_est_with_jacobian(psi, deriv)
+    // v0.82.0+: write to cache when memoize is on and the
+    // cache missed. Predictions stored as `[g0, g1, m]`.
+    let next_cache = if memoize && !cache_hit {
+      FitCache::from_fit(
+        fold_ids,
+        [g0, g1, m],
+        self.seed,
+        self.n_folds,
+        1,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "lpq",
+      )
+    } else {
+      self.fit_cache
+    }
     {
       data: self.data,
       treatment: self.treatment,
@@ -319,6 +408,10 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: persist the memoize flag and (possibly
+      // updated) cache.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -538,4 +631,29 @@ pub fn DoubleMLLPQ::predictions_m(self : DoubleMLLPQ) -> Array[Double] {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+pub fn DoubleMLLPQ::enable_memoize(self : DoubleMLLPQ) -> DoubleMLLPQ {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLLPQ::disable_memoize(self : DoubleMLLPQ) -> DoubleMLLPQ {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions.
+pub fn DoubleMLLPQ::clear_cache(self : DoubleMLLPQ) -> DoubleMLLPQ {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.82.0+: `true` iff `fit_cache` holds at least one cached
+/// observation.
+pub fn DoubleMLLPQ::has_cache(self : DoubleMLLPQ) -> Bool {
+  !self.fit_cache.is_empty()
 }

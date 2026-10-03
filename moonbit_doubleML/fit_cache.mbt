@@ -32,10 +32,19 @@
 ///
 ///   - `"irm"`: `[g0_hat, g1_hat, m_hat, m_raw]`
 ///   - `"plr"`: `[g_hat, m_hat]`
-///   - `"iivm"`: `[g0_hat, g1_hat, m_hat]`
+///   - `"iivm"`: `[g0_hat, g1_hat, m_hat, r0_hat, r1_hat]`
+///   - `"pliv"`: `[g_hat, m_hat]`
+///   - `"did"` / `"did_cs"`: `[g_pre, g_post, m_pre, m_post]`
+///   - `"lpq"` / `"cvar"` / `"ssm"`: per-estimator nuisance arrays
 ///
 /// `fold_ids[i]` is the test-fold index of observation `i` in
 /// the LAST repetition (the one whose nuisances are stored).
+///
+/// `cluster_ids_hash` (v0.82.0+) is the hash of the
+/// `cluster_vars` vector (or 0 for the IID path). The
+/// `is_valid(...)` check requires the stored hash to match the
+/// caller's hash, so a switch from IID to clustered (or a
+/// different cluster partition) invalidates the cache.
 pub struct FitCache {
   fold_ids : Array[Int]
   predictions : Array[Array[Double]]
@@ -45,6 +54,7 @@ pub struct FitCache {
   n_obs : Int
   data_hash : UInt64
   hyperparams_hash : UInt64
+  cluster_ids_hash : UInt64
   estimator_kind : String
 } derive(Debug)
 
@@ -66,6 +76,7 @@ pub fn FitCache::empty() -> FitCache {
     n_obs: 0,
     data_hash: 0UL,
     hyperparams_hash: 0UL,
+    cluster_ids_hash: 0UL,
     estimator_kind: "",
   }
 }
@@ -83,6 +94,12 @@ pub fn FitCache::is_empty(self : FitCache) -> Bool {
 /// configuration. Returns `true` only if every dimension of the
 /// fingerprint matches the current call -- otherwise the caller
 /// must fall back to the standard (non-cached) cross-fit.
+///
+/// `cluster_ids_hash` (v0.82.0+) is the hash of the
+/// `cluster_vars` vector (or 0 for the IID path). Pass the same
+/// hash you used when the cache was populated; the caller's
+/// hash is compared to the stored one to detect a switch from
+/// IID to clustered (or a different cluster partition).
 pub fn FitCache::is_valid(
   self : FitCache,
   fold_split_seed : Int,
@@ -91,6 +108,7 @@ pub fn FitCache::is_valid(
   n_obs : Int,
   data_hash : UInt64,
   hyperparams_hash : UInt64,
+  cluster_ids_hash : UInt64,
   estimator_kind : String,
 ) -> Bool {
   self.fold_ids.length() == n_obs &&
@@ -100,6 +118,7 @@ pub fn FitCache::is_valid(
   self.n_obs == n_obs &&
   self.data_hash == data_hash &&
   self.hyperparams_hash == hyperparams_hash &&
+  self.cluster_ids_hash == cluster_ids_hash &&
   self.estimator_kind == estimator_kind
 }
 
@@ -273,6 +292,7 @@ pub fn FitCache::from_fit(
   n_obs : Int,
   data_hash : UInt64,
   hyperparams_hash : UInt64,
+  cluster_ids_hash : UInt64,
   estimator_kind : String,
 ) -> FitCache {
   {
@@ -284,6 +304,30 @@ pub fn FitCache::from_fit(
     n_obs,
     data_hash,
     hyperparams_hash,
+    cluster_ids_hash,
     estimator_kind,
   }
+}
+
+///|
+/// Compute the cache-key hash of a cluster-ids vector.
+/// v0.82.0+: an empty vector hashes to 0 (the IID sentinel);
+/// a non-empty vector hashes via FNV-style fold over its
+/// entries. Two structurally-different cluster partitions
+/// produce different hashes so the cache invalidates on a
+/// cluster redefinition (e.g. a switch from individual-level
+/// clustering to individual-by-time or a different
+/// treatment-period partition).
+pub fn hash_cluster_ids(cluster_ids : Array[Int]) -> UInt64 {
+  if cluster_ids.length() == 0 {
+    return 0UL
+  }
+  let mut h : UInt64 = 0xcbf29ce484222325UL
+  // Length first so a length change invalidates the cache even
+  // before sampling any value.
+  h = fold_mix_int(h, cluster_ids.length())
+  for v in cluster_ids {
+    h = fold_mix_int(h, v)
+  }
+  h
 }

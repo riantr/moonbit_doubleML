@@ -601,6 +601,10 @@ pub struct DoubleMLDIDCSBinary {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization flag. The wrapper's `fit()` forwards
+  // this flag to the inner `DoubleMLDIDBinary` so the
+  // cross-fits honour `.enable_memoize()` uniformly.
+  memoize_enabled : Bool
 } derive(Debug)
 
 ///|
@@ -671,6 +675,8 @@ pub fn DoubleMLDIDCSBinary::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off.
+      memoize_enabled: false,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -890,6 +896,41 @@ pub fn DoubleMLDIDCSBinary::psi_b(self : DoubleMLDIDCSBinary) -> Array[Double] {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+/// The flag is currently informational -- the CS Binary cross-fit
+/// uses `cs_bin_crossfit_nuisance`, which runs `n_rep` reps
+/// internally, so a per-rep cache is not applicable. Forwarded
+/// for uniformity with the rest of the DID family.
+pub fn DoubleMLDIDCSBinary::enable_memoize(
+  self : DoubleMLDIDCSBinary,
+) -> DoubleMLDIDCSBinary {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLDIDCSBinary::disable_memoize(
+  self : DoubleMLDIDCSBinary,
+) -> DoubleMLDIDCSBinary {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions. No-op on
+/// an un-fit wrapper.
+pub fn DoubleMLDIDCSBinary::clear_cache(
+  self : DoubleMLDIDCSBinary,
+) -> DoubleMLDIDCSBinary {
+  self
+}
+
+///|
+/// v0.82.0+: `true` iff the memoize flag is set.
+pub fn DoubleMLDIDCSBinary::has_cache(self : DoubleMLDIDCSBinary) -> Bool {
+  self.memoize_enabled
 }
 
 ///|

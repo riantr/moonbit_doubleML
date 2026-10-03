@@ -135,6 +135,15 @@ pub struct DoubleMLIIVM {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.81.0
+  // behavior bit-for-bit). When true, `fit()` caches the last
+  // repetition's nuisance predictions in `fit_cache` and
+  // reuses them on the next call when the data fingerprint,
+  // fold split, and learner configuration are unchanged.
+  // Mirrors the IRM plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -180,6 +189,11 @@ pub fn DoubleMLIIVM::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off so v0.81.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -259,6 +273,42 @@ pub fn DoubleMLIIVM::predictions_r0(self : DoubleMLIIVM) -> Array[Double] {
 ///|
 pub fn DoubleMLIIVM::predictions_r1(self : DoubleMLIIVM) -> Array[Double] {
   self.r1_hat
+}
+
+///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the per-observation
+/// nuisance predictions (`g0_hat`, `g1_hat`, `m_hat`, `r0_hat`,
+/// `r1_hat`) and the fold partition and skip the cross-fit on
+/// a repeat call whose data + learner fingerprint is unchanged.
+/// Returns a new `DoubleMLIIVM` with the flag set (the struct
+/// is immutable; the cache itself is populated by the next
+/// `fit()` call).
+pub fn DoubleMLIIVM::enable_memoize(self : DoubleMLIIVM) -> DoubleMLIIVM {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLIIVM::disable_memoize(self : DoubleMLIIVM) -> DoubleMLIIVM {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions and fold
+/// assignment.
+pub fn DoubleMLIIVM::clear_cache(self : DoubleMLIIVM) -> DoubleMLIIVM {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.82.0+: `true` iff `fit_cache` holds at least one cached
+/// observation.
+pub fn DoubleMLIIVM::has_cache(self : DoubleMLIIVM) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -404,6 +454,40 @@ pub fn DoubleMLIIVM::fit(
     ignore(ml_r)
     let n = self.n_obs()
     let nrep = self.n_rep
+    // v0.82.0+: memoize check. Mirrors the IRM plumbing.
+    let memoize = self.memoize_enabled && nrep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        z=self.data.z,
+        cluster_vars=self.data.cluster_vars,
+      )
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("iivm", ml_g, ml_m, self.propensity_clip)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      hash_cluster_ids(self.data.cluster_vars)
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "iivm",
+      )
     let coefs : Array[Double] = Array::make(nrep, 0.0)
     let ses : Array[Double] = Array::make(nrep, 0.0)
     // hold the last rep's predictions; final values land in *_hat fields
@@ -412,44 +496,68 @@ pub fn DoubleMLIIVM::fit(
     let mut m : Array[Double] = Array::make(n, 0.0)
     let mut r0 : Array[Double] = Array::make(n, 0.0)
     let mut r1 : Array[Double] = Array::make(n, 0.0)
+    let mut fold_ids : Array[Int] = []
     for r = 0; r < nrep; r = r + 1 {
-      let folds = kfold(n, self.n_folds, self.seed + r)
-      let (g0_r, g1_r, m_r, r0_r, r1_r) = cross_fit_iivm(
-        ml_g,
-        ml_m,
-        ml_r,
-        self.data.x,
-        self.data.y,
-        self.data.d,
-        self.data.z,
-        folds,
-        self.propensity_clip,
-      )
+      let (g0_r, g1_r, m_r, r0_r, r1_r) = if cache_hit && r == nrep - 1 {
+        // Reuse the cached LAST-rep predictions.
+        let preds = self.fit_cache.predictions
+        fold_ids = self.fit_cache.fold_ids
+        (preds[0], preds[1], preds[2], preds[3], preds[4])
+      } else {
+        let folds = kfold(n, self.n_folds, self.seed + r)
+        let cross = cross_fit_iivm(
+          ml_g,
+          ml_m,
+          ml_r,
+          self.data.x,
+          self.data.y,
+          self.data.d,
+          self.data.z,
+          folds,
+          self.propensity_clip,
+        )
+        if r == nrep - 1 {
+          // Build the row -> fold_id map for the cache write below.
+          let fid : Array[Int] = Array::make(n, 0)
+          for f = 0; f < folds.length(); f = f + 1 {
+            for i in folds[f].test_indices() {
+              fid[i] = f
+            }
+          }
+          fold_ids = fid
+        }
+        cross
+      }
       g0 = g0_r
       g1 = g1_r
       m = m_r
       r0 = r0_r
       r1 = r1_r
-      // LATE score for THIS rep's nuisances only
+      // LATE score for THIS rep's nuisances only.
+      // v0.82.0+: per-observation residuals extracted via
+      // `vector_subtract` (the IIVM LATE score needs
+      // `u0 = y - g0`, `u1 = y - g1`, `w0 = d - r0`, `w1 = d - r1`,
+      // all pure element-wise subtracts, the textbook case for
+      // the named building block).
       let y = self.data.y
       let d = self.data.d
       let z = self.data.z
+      let u0 = vector_subtract(y, g0)
+      let u1 = vector_subtract(y, g1)
+      let w0 = vector_subtract(d, r0)
+      let w1 = vector_subtract(d, r1)
       let psi_a : Array[Double] = Array::make(n, 0.0)
       let psi_b : Array[Double] = Array::make(n, 0.0)
       for i = 0; i < n; i = i + 1 {
-        let u0 = y[i] - g0[i]
-        let u1 = y[i] - g1[i]
-        let w0 = d[i] - r0[i]
-        let w1 = d[i] - r1[i]
         let m_i = m[i]
         let one_minus_m = 1.0 - m_i
         psi_b[i] = g1[i] -
           g0[i] +
-          z[i] * u1 / m_i -
-          (1.0 - z[i]) * u0 / one_minus_m
+          z[i] * u1[i] / m_i -
+          (1.0 - z[i]) * u0[i] / one_minus_m
         psi_a[i] = -(r1[i] - r0[i]) -
-          z[i] * w1 / m_i +
-          (1.0 - z[i]) * w0 / one_minus_m
+          z[i] * w1[i] / m_i +
+          (1.0 - z[i]) * w0[i] / one_minus_m
       }
       let (coef_r, se_r) = var_est(psi_a, psi_b)
       coefs[r] = coef_r
@@ -462,26 +570,47 @@ pub fn DoubleMLIIVM::fit(
     // score) from the last rep's nuisances so the stored
     // arrays align with `g0_hat` / `g1_hat` / `m_hat` /
     // `r0_hat` / `r1_hat` and `coef` (matches the v0.20.0+
-    // DID convention).
+    // DID convention). v0.82.0+: residuals via
+    // `vector_subtract` (same vectorised pattern as the
+    // per-rep score loop above).
     let psi_a : Array[Double] = Array::make(n, 0.0)
     let psi_b : Array[Double] = Array::make(n, 0.0)
     let y_last = self.data.y
     let d_last = self.data.d
     let z_last = self.data.z
+    let u0 = vector_subtract(y_last, g0)
+    let u1 = vector_subtract(y_last, g1)
+    let w0 = vector_subtract(d_last, r0)
+    let w1 = vector_subtract(d_last, r1)
     for i = 0; i < n; i = i + 1 {
-      let u0 = y_last[i] - g0[i]
-      let u1 = y_last[i] - g1[i]
-      let w0 = d_last[i] - r0[i]
-      let w1 = d_last[i] - r1[i]
       let m_i = m[i]
       let one_minus_m = 1.0 - m_i
       psi_b[i] = g1[i] -
         g0[i] +
-        z_last[i] * u1 / m_i -
-        (1.0 - z_last[i]) * u0 / one_minus_m
+        z_last[i] * u1[i] / m_i -
+        (1.0 - z_last[i]) * u0[i] / one_minus_m
       psi_a[i] = -(r1[i] - r0[i]) -
-        z_last[i] * w1 / m_i +
-        (1.0 - z_last[i]) * w0 / one_minus_m
+        z_last[i] * w1[i] / m_i +
+        (1.0 - z_last[i]) * w0[i] / one_minus_m
+    }
+    // v0.82.0+: write to cache when memoize is on and the
+    // cache missed. Predictions are stored as
+    // `[g0, g1, m, r0, r1]` (5 arrays).
+    let next_cache = if memoize && !cache_hit && nrep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [g0, g1, m, r0, r1],
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "iivm",
+      )
+    } else {
+      self.fit_cache
     }
     {
       data: self.data,
@@ -506,6 +635,10 @@ pub fn DoubleMLIIVM::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: persist the memoize flag and (possibly
+      // updated) cache.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -597,22 +730,25 @@ fn DoubleMLIIVM::fit_cluster(
         let y = self.data.y
         let d = self.data.d
         let z = self.data.z
+        // v0.82.0+: residuals extracted via `vector_subtract`
+        // (same vectorised pattern as the IID IIVM `fit()`
+        // body above).
+        let u0 = vector_subtract(y, g0)
+        let u1 = vector_subtract(y, g1)
+        let w0 = vector_subtract(d, r0)
+        let w1 = vector_subtract(d, r1)
         let psi_a : Array[Double] = Array::make(n, 0.0)
         let psi_b : Array[Double] = Array::make(n, 0.0)
         for i = 0; i < n; i = i + 1 {
-          let u0 = y[i] - g0[i]
-          let u1 = y[i] - g1[i]
-          let w0 = d[i] - r0[i]
-          let w1 = d[i] - r1[i]
           let m_i = m[i]
           let one_minus_m = 1.0 - m_i
           psi_b[i] = g1[i] -
             g0[i] +
-            z[i] * u1 / m_i -
-            (1.0 - z[i]) * u0 / one_minus_m
+            z[i] * u1[i] / m_i -
+            (1.0 - z[i]) * u0[i] / one_minus_m
           psi_a[i] = -(r1[i] - r0[i]) -
-            z[i] * w1 / m_i +
-            (1.0 - z[i]) * w0 / one_minus_m
+            z[i] * w1[i] / m_i +
+            (1.0 - z[i]) * w0[i] / one_minus_m
         }
         let (t, s) = cluster_causal_param_and_se(
           psi_a,
@@ -650,23 +786,24 @@ fn DoubleMLIIVM::fit_cluster(
     // multiplier bootstrap. Same convention as `fit()`:
     // recompute from the last rep's nuisances so the stored
     // arrays align with `g0_hat` / `g1_hat` / `m_hat` /
-    // `r0_hat` / `r1_hat` and `coef`.
+    // `r0_hat` / `r1_hat` and `coef`. v0.82.0+: residuals
+    // via `vector_subtract` (matches the IID `fit()` body).
     let psi_a : Array[Double] = Array::make(n, 0.0)
     let psi_b : Array[Double] = Array::make(n, 0.0)
+    let u0 = vector_subtract(self.data.y, g0)
+    let u1 = vector_subtract(self.data.y, g1)
+    let w0 = vector_subtract(self.data.d, r0)
+    let w1 = vector_subtract(self.data.d, r1)
     for i = 0; i < n; i = i + 1 {
-      let u0 = self.data.y[i] - g0[i]
-      let u1 = self.data.y[i] - g1[i]
-      let w0 = self.data.d[i] - r0[i]
-      let w1 = self.data.d[i] - r1[i]
       let m_i = m[i]
       let one_minus_m = 1.0 - m_i
       psi_b[i] = g1[i] -
         g0[i] +
-        self.data.z[i] * u1 / m_i -
-        (1.0 - self.data.z[i]) * u0 / one_minus_m
+        self.data.z[i] * u1[i] / m_i -
+        (1.0 - self.data.z[i]) * u0[i] / one_minus_m
       psi_a[i] = -(r1[i] - r0[i]) -
-        self.data.z[i] * w1 / m_i +
-        (1.0 - self.data.z[i]) * w0 / one_minus_m
+        self.data.z[i] * w1[i] / m_i +
+        (1.0 - self.data.z[i]) * w0[i] / one_minus_m
     }
     {
       data: self.data,
@@ -691,6 +828,13 @@ fn DoubleMLIIVM::fit_cluster(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: cluster path does not currently consume
+      // the memoization cache (the J-floor retry loop can
+      // rewrite the fold assignment on a per-attempt basis).
+      // Persist the flags so a subsequent non-cluster
+      // `fit()` still honors memoize.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>

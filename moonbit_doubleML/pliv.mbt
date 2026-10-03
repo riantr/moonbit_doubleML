@@ -131,6 +131,11 @@ pub struct DoubleMLPLIV {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization state. Mirrors the IRM / PLR / IIVM
+  // plumbing. `memoize_enabled` is the user-facing switch
+  // (false by default to preserve v0.81.0 behavior bit-for-bit).
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -166,6 +171,11 @@ pub fn DoubleMLPLIV::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off so v0.81.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -228,6 +238,35 @@ pub fn DoubleMLPLIV::predictions_l(self : DoubleMLPLIV) -> Array[Double] {
 }
 
 ///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+/// Returns a new `DoubleMLPLIV` with the flag set (the struct
+/// is immutable; the cache itself is populated by the next
+/// `fit()` call).
+pub fn DoubleMLPLIV::enable_memoize(self : DoubleMLPLIV) -> DoubleMLPLIV {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLPLIV::disable_memoize(self : DoubleMLPLIV) -> DoubleMLPLIV {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions and fold
+/// assignment.
+pub fn DoubleMLPLIV::clear_cache(self : DoubleMLPLIV) -> DoubleMLPLIV {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.82.0+: `true` iff `fit_cache` holds at least one cached
+/// observation.
+pub fn DoubleMLPLIV::has_cache(self : DoubleMLPLIV) -> Bool {
+  !self.fit_cache.is_empty()
+}
+
+///|
 pub fn DoubleMLPLIV::predictions_r(self : DoubleMLPLIV) -> Array[Double] {
   self.r_hat
 }
@@ -266,44 +305,105 @@ pub fn DoubleMLPLIV::fit(
     }
     let n = self.n_obs()
     let nrep = self.n_rep
+    // v0.82.0+: memoize check. Mirrors the IRM / PLR / IIVM
+    // plumbing.
+    let memoize = self.memoize_enabled && nrep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        z=self.data.z,
+        cluster_vars=self.data.cluster_vars,
+      )
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("pliv", learner, learner, 0.0)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      hash_cluster_ids(self.data.cluster_vars)
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "pliv",
+      )
     let coefs : Array[Double] = Array::make(nrep, 0.0)
     let ses : Array[Double] = Array::make(nrep, 0.0)
     // hold the last rep's predictions; final values land in l_hat / r_hat / m_hat
     let mut l_pred : Array[Double] = Array::make(n, 0.0)
     let mut r_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
+    let mut fold_ids : Array[Int] = []
     for r = 0; r < nrep; r = r + 1 {
-      let folds = kfold(n, self.n_folds, self.seed + r)
-      l_pred = cross_fit_predict_dispatch(
-        learner,
-        self.data.x,
-        self.data.y,
-        folds,
-      )
-      r_pred = cross_fit_predict_dispatch(
-        learner,
-        self.data.x,
-        self.data.d,
-        folds,
-      )
-      m_pred = cross_fit_predict_dispatch(
-        learner,
-        self.data.x,
-        self.data.z,
-        folds,
-      )
-      // Score (partialling out, single instrument) for THIS rep's nuisances only
+      let (l_pred_r, r_pred_r, m_pred_r) = if cache_hit && r == nrep - 1 {
+        // Reuse the cached LAST-rep predictions.
+        let preds = self.fit_cache.predictions
+        fold_ids = self.fit_cache.fold_ids
+        (preds[0], preds[1], preds[2])
+      } else {
+        let folds = kfold(n, self.n_folds, self.seed + r)
+        let l_p = cross_fit_predict_dispatch(
+          learner,
+          self.data.x,
+          self.data.y,
+          folds,
+        )
+        let r_p = cross_fit_predict_dispatch(
+          learner,
+          self.data.x,
+          self.data.d,
+          folds,
+        )
+        let m_p = cross_fit_predict_dispatch(
+          learner,
+          self.data.x,
+          self.data.z,
+          folds,
+        )
+        if r == nrep - 1 {
+          // Build the row -> fold_id map for the cache write below.
+          let fid : Array[Int] = Array::make(n, 0)
+          for f = 0; f < folds.length(); f = f + 1 {
+            for i in folds[f].test_indices() {
+              fid[i] = f
+            }
+          }
+          fold_ids = fid
+        }
+        (l_p, r_p, m_p)
+      }
+      l_pred = l_pred_r
+      r_pred = r_pred_r
+      m_pred = m_pred_r
+      // Score (partialling out, single instrument) for THIS rep's
+      // nuisances only. v0.82.0+: per-observation residuals
+      // extracted via `vector_subtract` (u = y - l_pred, w = d -
+      // r_pred, v = z - m_pred -- all pure element-wise subtracts,
+      // the textbook case for the named building block).
       let y = self.data.y
       let d = self.data.d
       let z = self.data.z
+      let u = vector_subtract(y, l_pred)
+      let w = vector_subtract(d, r_pred)
+      let v = vector_subtract(z, m_pred)
       let psi_a : Array[Double] = Array::make(n, 0.0)
       let psi_b : Array[Double] = Array::make(n, 0.0)
       for i = 0; i < n; i = i + 1 {
-        let u = y[i] - l_pred[i]
-        let w = d[i] - r_pred[i]
-        let v = z[i] - m_pred[i]
-        psi_a[i] = -w * v
-        psi_b[i] = v * u
+        psi_a[i] = -w[i] * v[i]
+        psi_b[i] = v[i] * u[i]
       }
       let (coef_r, se_r) = var_est(psi_a, psi_b)
       coefs[r] = coef_r
@@ -315,15 +415,35 @@ pub fn DoubleMLPLIV::fit(
     // multiplier bootstrap. Recompute `psi_a / psi_b` from the
     // last rep's nuisances so the stored arrays align with
     // `l_hat` / `r_hat` / `m_hat` and `coef` (matches the
-    // v0.20.0+ DID convention).
+    // v0.20.0+ DID convention). v0.82.0+: residuals via
+    // `vector_subtract`.
     let psi_a : Array[Double] = Array::make(n, 0.0)
     let psi_b : Array[Double] = Array::make(n, 0.0)
+    let u = vector_subtract(self.data.y, l_pred)
+    let w = vector_subtract(self.data.d, r_pred)
+    let v = vector_subtract(self.data.z, m_pred)
     for i = 0; i < n; i = i + 1 {
-      let u = self.data.y[i] - l_pred[i]
-      let w = self.data.d[i] - r_pred[i]
-      let v = self.data.z[i] - m_pred[i]
-      psi_a[i] = -w * v
-      psi_b[i] = v * u
+      psi_a[i] = -w[i] * v[i]
+      psi_b[i] = v[i] * u[i]
+    }
+    // v0.82.0+: write to cache when memoize is on and the
+    // cache missed. Predictions are stored as
+    // `[l_pred, r_pred, m_pred]` (3 arrays).
+    let next_cache = if memoize && !cache_hit && nrep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [l_pred, r_pred, m_pred],
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "pliv",
+      )
+    } else {
+      self.fit_cache
     }
     {
       data: self.data,
@@ -344,6 +464,10 @@ pub fn DoubleMLPLIV::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: persist the memoize flag and (possibly
+      // updated) cache.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -432,14 +556,16 @@ fn DoubleMLPLIV::fit_cluster(
         let y = self.data.y
         let d = self.data.d
         let z = self.data.z
+        // v0.82.0+: residuals via `vector_subtract` (same
+        // vectorised pattern as the IID `fit()` body above).
+        let u = vector_subtract(y, l_pred)
+        let w = vector_subtract(d, r_pred)
+        let v = vector_subtract(z, m_pred)
         let psi_a : Array[Double] = Array::make(n, 0.0)
         let psi_b : Array[Double] = Array::make(n, 0.0)
         for i = 0; i < n; i = i + 1 {
-          let u = y[i] - l_pred[i]
-          let w = d[i] - r_pred[i]
-          let v = z[i] - m_pred[i]
-          psi_a[i] = -w * v
-          psi_b[i] = v * u
+          psi_a[i] = -w[i] * v[i]
+          psi_b[i] = v[i] * u[i]
         }
         let (t, s) = cluster_causal_param_and_se(
           psi_a,
@@ -480,12 +606,14 @@ fn DoubleMLPLIV::fit_cluster(
     // `m_hat` and `coef`.
     let psi_a : Array[Double] = Array::make(n, 0.0)
     let psi_b : Array[Double] = Array::make(n, 0.0)
+    // v0.82.0+: residuals via `vector_subtract` (matches the
+    // IID `fit()` body).
+    let u = vector_subtract(self.data.y, l_pred)
+    let w = vector_subtract(self.data.d, r_pred)
+    let v = vector_subtract(self.data.z, m_pred)
     for i = 0; i < n; i = i + 1 {
-      let u = self.data.y[i] - l_pred[i]
-      let w = self.data.d[i] - r_pred[i]
-      let v = self.data.z[i] - m_pred[i]
-      psi_a[i] = -w * v
-      psi_b[i] = v * u
+      psi_a[i] = -w[i] * v[i]
+      psi_b[i] = v[i] * u[i]
     }
     {
       data: self.data,
@@ -507,6 +635,12 @@ fn DoubleMLPLIV::fit_cluster(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: cluster path does not currently consume
+      // the memoization cache. Persist the flags so a
+      // subsequent non-cluster `fit()` still honors
+      // memoize.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>

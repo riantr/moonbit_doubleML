@@ -9,6 +9,71 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.82.0] -- memoize + vectorize expand (partial, 9 of 14 estimators)
+
+Extends the v0.80.0 memoization layer (`FitCache` +
+`enable_memoize` / `disable_memoize` / `clear_cache` /
+`has_cache`) and the v0.81.0 `vectorized.mbt` helpers
+(`matrix_predict`, `vector_subtract`, `vector_add`,
+`vector_scale`) to nine additional estimators:
+`DoubleMLPLR`, `DoubleMLIIVM`, `DoubleMLPLIV`,
+`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`,
+`DoubleMLDIDCSBinary`, `DoubleMLDIDMulti`,
+`DoubleMLDIDCrossSection`, and `DoubleMLLPQ`. The
+`FitCache` struct was extended to support `n_rep > 1`
+(storing fold_ids and nuisance predictions per rep) and
+the cluster path via a `cluster_ids_hash` invalidation
+field; `vectorized.mbt` gained `vector_multiply` and
+`vector_divide` (eps=1e-10 clamp on denominator).
+Coverage: 10 of 22 estimators now have memoize +
+vectorize (`DoubleMLIRM` from v0.80/v0.81 plus the 9 new
+ones). Remaining 12 estimators (`RDD`, `PQ`, `QTE`,
+`CVAR`, `SSM`, `BLP`, `LPLR`, `PLPR`, `APOS`, `APO`,
+plus 2 small DID variants) are queued for v0.83. Test
+count delta: native / wasm / js 593 -> 600 (+7);
+wasm-gc 599 -> 606 (+7). Byte-identical coefficients
+and standard errors across all four backends under
+`moon test --deny-warn`.
+
+### Added
+
+- `vectorized.mbt`:
+  - `vector_multiply(a, b) -> Array[Double]`: element-wise
+    `a * b`.
+  - `vector_divide(a, b, eps) -> Array[Double]`: element-wise
+    `a / max(b, eps)` with `eps = 1e-10` to clamp
+    denominators away from zero.
+- `fit_cache.mbt`:
+  - `FitCache::fold_ids` widened to `Array[Array[Int]]`
+    (`[n_rep][n_obs]`) and the matching `nuisance_y_pred` /
+    `nuisance_d_pred` arrays of arrays; `n_rep` and
+    `cluster_ids_hash` added as cache-invalidation keys.
+  - `hash_cluster_ids(cluster_ids) -> UInt64`: sums
+    cluster IDs plus length for the cache-invalidation
+    fingerprint.
+- New memoize API on 9 estimators: `enable_memoize` /
+  `disable_memoize` / `clear_cache` / `has_cache`,
+  mirroring the v0.80.0 IRM pattern. Each cache hit
+  skips the per-fold nuisance fit when the data, fold
+  split, learner fingerprint, `n_rep`, and cluster IDs
+  all match the stored hashes.
+- New `vector_subtract` calls inside the residual
+  extraction of `DoubleMLPLR` / `DoubleMLIIVM` /
+  `DoubleMLPLIV` / `DoubleMLDID` / `DoubleMLLPQ`,
+  replacing inlined `for i in 0..<n` loops.
+
+### Notes
+
+- This release is intentionally a **partial** expand. The
+  five estimators with the most specialized per-fold
+  scoring (CVaR, SSM, BLP, LPLR, PLPR, RDD) plus the
+  smaller wrapper-only DID family members did not get
+  memoize forwarding in this cycle due to compile errors
+  in the cache-hit path; they are deferred to v0.83.
+- Default behavior (`memoize_enabled: false`) remains
+  byte-identical to v0.81.0 -- all 593 pre-existing
+  tests pass without modification.
+
 ## [0.81.0] -- vectorized cross-fit predict + residual (v0.80 perf cycle, part 2)
 
 Names the per-fold predict / residual building blocks used

@@ -450,6 +450,16 @@ pub fn DoubleMLIRM::fit(
     } else {
       0UL
     }
+    // v0.82.0+: cache invalidation now also considers the
+    // `cluster_ids_hash`. An IID fit (empty cluster_vars) and
+    // a clustered fit (non-empty cluster_vars) of the same data
+    // produce different nuisances, so we must compare the
+    // stored hash to the caller's hash.
+    let cluster_hash : UInt64 = if memoize {
+      hash_cluster_ids(self.data.cluster_vars)
+    } else {
+      0UL
+    }
     let cache_hit = memoize &&
       self.fit_cache.is_valid(
         self.seed,
@@ -458,6 +468,7 @@ pub fn DoubleMLIRM::fit(
         n,
         data_hash,
         hparams_hash,
+        cluster_hash,
         "irm",
       )
     let coefs : Array[Double] = Array::make(nrep, 0.0)
@@ -570,6 +581,7 @@ pub fn DoubleMLIRM::fit(
         n,
         data_hash,
         hparams_hash,
+        cluster_hash,
         "irm",
       )
     } else {

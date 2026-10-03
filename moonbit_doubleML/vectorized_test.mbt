@@ -153,6 +153,74 @@ test "panic_vector_add_length_mismatch_aborts" {
 }
 
 ///|
+test "vector_multiply_matches_loop" {
+  // v0.82.0+: element-wise product must match a hand-written
+  // per-iteration multiply loop within 1e-10.
+  let a = [1.0, 2.0, 3.0, 4.0, 5.0]
+  let b = [0.5, 1.5, 2.5, 3.5, 4.5]
+  let got = vector_multiply(a, b)
+  // Reference: hand-checked products.
+  let expected = [0.5, 3.0, 7.5, 14.0, 22.5]
+  inspect(got.length(), content="5")
+  for i = 0; i < 5; i = i + 1 {
+    let lhs = got[i]
+    let rhs = expected[i]
+    let diff = if lhs > rhs { lhs - rhs } else { rhs - lhs }
+    inspect(diff < 1.0e-10, content="true")
+  }
+}
+
+///|
+test "vector_divide_matches_loop" {
+  // v0.82.0+: element-wise division must match a hand-written
+  // per-iteration divide loop (with no near-zero denominators
+  // in the input). `eps=1e-12` does not engage here.
+  let a = [1.0, 4.0, 9.0, 16.0, 25.0]
+  let b = [2.0, 2.0, 3.0, 4.0, 5.0]
+  let got = vector_divide(a, b)
+  let expected = [0.5, 2.0, 3.0, 4.0, 5.0]
+  inspect(got.length(), content="5")
+  for i = 0; i < 5; i = i + 1 {
+    let lhs = got[i]
+    let rhs = expected[i]
+    let diff = if lhs > rhs { lhs - rhs } else { rhs - lhs }
+    inspect(diff < 1.0e-10, content="true")
+  }
+}
+
+///|
+test "vector_divide_handles_zero" {
+  // v0.82.0+: a denominator of 0 must be replaced by the eps
+  // floor (default 1e-12) so the quotient is finite. Use a
+  // very small eps so we can see the floor engage cleanly.
+  let a = [1.0, 2.0, 3.0, 4.0]
+  let b = [0.0, 1.0, -0.0, 2.0]
+  let got = vector_divide(a, b, eps=1.0e-10)
+  // 1.0 / 1e-10 = 1e10 (finite, large)
+  inspect(got[0] > 1.0e9, content="true")
+  inspect(got[1] - 2.0 < 1.0e-10, content="true")
+  // -0.0 is treated like 0.0 by the abs() guard (the abs-based
+  // branch in `vector_divide` floors both 0 and -0 to eps);
+  // 3.0 / 1e-10 = 3e10.
+  inspect(got[2] > 1.0e9, content="true")
+  inspect(got[3] - 2.0 < 1.0e-10, content="true")
+}
+
+///|
+test "panic_vector_multiply_length_mismatch_aborts" {
+  let a = [1.0, 2.0, 3.0]
+  let b = [1.0, 2.0]
+  let _ = vector_multiply(a, b)
+}
+
+///|
+test "panic_vector_divide_length_mismatch_aborts" {
+  let a = [1.0, 2.0, 3.0]
+  let b = [1.0, 2.0]
+  let _ = vector_divide(a, b)
+}
+
+///|
 test "irm_fit_returns_same_coef_after_vectorize" {
   // Blackbox regression: after swapping the per-iteration
   // residual loop in DoubleMLIRM::fit for `vector_subtract`,

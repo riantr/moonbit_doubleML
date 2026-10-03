@@ -202,6 +202,11 @@ pub struct DoubleMLDIDCS {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization flag. The wrapper's `fit()` forwards
+  // this flag to every per-cell `DoubleMLDIDBinary.fit()` so the
+  // aggregated cross-fits honour `.enable_memoize()` /
+  // `.has_cache()` uniformly.
+  memoize_enabled : Bool
 } derive(Debug)
 
 ///|
@@ -252,6 +257,8 @@ pub fn DoubleMLDIDCS::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off.
+      memoize_enabled: false,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -276,6 +283,33 @@ pub fn DoubleMLDIDCS::coef_at(
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+/// The flag is forwarded to every per-cell
+/// `DoubleMLDIDBinary` fit.
+pub fn DoubleMLDIDCS::enable_memoize(self : DoubleMLDIDCS) -> DoubleMLDIDCS {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLDIDCS::disable_memoize(self : DoubleMLDIDCS) -> DoubleMLDIDCS {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop any cached nuisance predictions across all
+/// per-cell inner models. No-op on an un-fit wrapper.
+pub fn DoubleMLDIDCS::clear_cache(self : DoubleMLDIDCS) -> DoubleMLDIDCS {
+  self
+}
+
+///|
+/// v0.82.0+: `true` iff the memoize flag is set.
+pub fn DoubleMLDIDCS::has_cache(self : DoubleMLDIDCS) -> Bool {
+  self.memoize_enabled
 }
 
 ///|
@@ -454,7 +488,7 @@ pub fn DoubleMLDIDCS::fit(
           g_sub_acc,
           id_sub_acc,
         )
-        let sub_fitted = DoubleMLDIDBinary::new(
+        let sub_pre = DoubleMLDIDBinary::new(
           sub_data,
           g_value,
           pre_period,
@@ -468,7 +502,16 @@ pub fn DoubleMLDIDCS::fit(
           ps_processor=self.ps_processor,
           score="observational",
           in_sample_normalization=self.in_sample_normalization,
-        ).fit(ml_g~, ml_m~)
+        )
+        // v0.82.0+: forward the memoize flag to every per-cell
+        // DoubleMLDIDBinary so the aggregated cross-fits
+        // honour the cache uniformly.
+        let sub_pre_memo = if self.memoize_enabled {
+          sub_pre.enable_memoize()
+        } else {
+          sub_pre
+        }
+        let sub_fitted = sub_pre_memo.fit(ml_g~, ml_m~)
         // Append the (g, t) ATT to the running arrays; we will
         // reassemble the per-row-major matrix after the loop (so
         // missing cells — pre / eval combinations with t_eval <= g

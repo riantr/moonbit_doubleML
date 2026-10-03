@@ -319,6 +319,12 @@ pub struct DoubleMLDIDBinary {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.82.0+: memoization flag. The actual cache lives on the
+  // inner `DoubleMLDID`; this flag is forwarded to `inner` on
+  // every `fit()` call. Stored here so callers can chain
+  // `.enable_memoize()` / `.has_cache()` / `.clear_cache()`
+  // uniformly across the DID family.
+  memoize_enabled : Bool
 } derive(Debug)
 
 ///|
@@ -402,6 +408,8 @@ pub fn DoubleMLDIDBinary::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.82.0+: default memoize off.
+      memoize_enabled: false,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -506,6 +514,44 @@ pub fn DoubleMLDIDBinary::predictions_g1(
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.82.0+: turn on memoization for subsequent `fit()` calls.
+/// The flag is forwarded to the inner `DoubleMLDID` so the
+/// wide-format cross-fit honours the cache.
+pub fn DoubleMLDIDBinary::enable_memoize(
+  self : DoubleMLDIDBinary,
+) -> DoubleMLDIDBinary {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.82.0+: turn off memoization.
+pub fn DoubleMLDIDBinary::disable_memoize(
+  self : DoubleMLDIDBinary,
+) -> DoubleMLDIDBinary {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.82.0+: drop the inner cache (no-op on the wrapper
+/// itself).
+pub fn DoubleMLDIDBinary::clear_cache(
+  self : DoubleMLDIDBinary,
+) -> DoubleMLDIDBinary {
+  if self.fitted {
+    { ..self, inner: self.inner.clear_cache(), }
+  } else {
+    self
+  }
+}
+
+///|
+/// v0.82.0+: `true` iff the inner `DoubleMLDID` cache holds at
+/// least one cached observation.
+pub fn DoubleMLDIDBinary::has_cache(self : DoubleMLDIDBinary) -> Bool {
+  self.inner.has_cache()
 }
 
 ///|
@@ -679,7 +725,7 @@ pub fn DoubleMLDIDBinary::fit(
     if !use_strata {
       strata_acc = []
     }
-    let inner = DoubleMLDID::new(
+    let inner_pre = DoubleMLDID::new(
       wide_data,
       n_folds=self.n_folds,
       n_rep=self.n_rep,
@@ -691,7 +737,17 @@ pub fn DoubleMLDIDBinary::fit(
       strata=strata_acc,
       ml_g~,
       ml_m~,
-    ).fit()
+    )
+    // v0.82.0+: forward the memoize flag to the inner
+    // DoubleMLDID so the wrapper honours `.enable_memoize()` /
+    // `.disable_memoize()` / `.has_cache()` /
+    // `.clear_cache()` uniformly.
+    let inner_pre_memo = if self.memoize_enabled {
+      inner_pre.enable_memoize()
+    } else {
+      inner_pre.disable_memoize()
+    }
+    let inner = inner_pre_memo.fit()
     // v0.15.0+: record the long-format `eval_idx` from the
     // preprocessing so the bootstrap can map wide-format psi
     // back to long-format.
