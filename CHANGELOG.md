@@ -9,6 +9,118 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.87.0] -- sandwich variance expand (SSM / PLPR / DID cross-section / DID CS binary)
+
+Extends the v0.79.0 sandwich-variance API -- `sandwich_se(kind)`,
+`cluster_sandwich_se(cluster_ids)`, `bias_corrected_coef()` -- from
+the 6 estimators it covered after v0.86.0 to 10. Coverage after this
+release: **10 of 22** `DoubleML*` estimators carry the full triple
+(`DoubleMLIRM`, `DoubleMLPLR`, `DoubleMLIIVM`, `DoubleMLPLIV`,
+`DoubleMLDID`, `DoubleMLCVAR`, `DoubleMLSSM`, `DoubleMLPLPR`,
+`DoubleMLDIDCrossSection`, `DoubleMLDIDCSBinary`). Test count delta:
+native / wasm / js 623 -> 628 (+5); wasm-gc 629 -> 634 (+5).
+
+Everything here is a NEW method. No existing numerical path changes,
+so default behavior is byte-identical to v0.86.0.
+
+### Added
+
+- `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` on
+  `DoubleMLSSM`, `DoubleMLPLPR`, `DoubleMLDIDCrossSection`, and
+  `DoubleMLDIDCSBinary`, mirroring the v0.86.0 `DoubleMLDID` shape:
+  `try` / `require` precondition block, `psi[i] = psi_a[i] +
+  coef * psi_b[i]`, `M_inv = [[1 / mean(psi_a)]]`, `sqrt(variance)`
+  return, `cluster_ids.length() == n` precondition on the cluster
+  path, and the `psi_b - coef * psi_a` per-observation bias form.
+  All four route through the shared
+  `sandwich_variance(kind, psi_a, psi, m_inv, n_obs, n_params)`
+  dispatch added in `sandwich.mbt` in v0.86.0 -- no new `match` arm.
+- The variance sample `n_obs` is taken from `self.psi_a.length()`
+  rather than a fixed panel width, because two of the four
+  estimators do not live on the raw row set: `DoubleMLPLPR`
+  persists its IF components on the TRANSFORMED domain (180 rows
+  for a 60 x 4 = 240-row panel under `fd_exact`) and
+  `DoubleMLDIDCSBinary` on the POST-SUBSET panel (400 of 600 rows
+  under a 3-period DGP). Using the raw panel width would have
+  produced a silently wrong denominator.
+- `expand_v087_test.mbt` with 5 white-box tests: one per estimator
+  plus `sandwich_expand_v087_ordering` (a fixed synthetic input that
+  pins the v0.86.0 ordering without any estimator in the loop).
+  Each per-estimator test asserts independently recomputed HC0 /
+  HC2 / HC3 variances, the exact HC1 `sqrt(n / (n - 1))` identity,
+  the leverage-signed ordering, exact singleton-cluster equality
+  with the IID HC0, a strictly different pooled-cluster value, and
+  the bias-correction identity -- i.e. properties a constant-
+  returning implementation cannot satisfy.
+
+### Not added (deliberate)
+
+- `DoubleMLLPLR` is SKIPPED for this release. LPLR persists its
+  influence-function components in the OPPOSITE field order to
+  every other estimator in the package: `self.psi_a` is the score
+  OFFSET at `theta_hat` (`sc.psi - theta_hat * sc.psi_deriv`) and
+  `self.psi_b` is the slope (`sc.psi_deriv`, the actual
+  `d/dtheta` term -- documented at `lplr.mbt:806` and
+  `lplr.mbt:747`). The package-wide sandwich convention requires
+  `psi_a` to carry the Jacobian row, because both the `M_inv`
+  scaling (`[[1 / mean(psi_a)]]`) and the per-observation
+  leverage (`h_ii = psi_a[i] * M_inv * psi_a[i]`) read it. For
+  LPLR, `mean(psi_a)` is a catastrophic-cancellation residual
+  (`mean(score) - theta_hat * mean(deriv)`, two nearly equal
+  terms), NOT the Jacobian. Measured on the package's shared
+  LZZ2020 DGP at `n = 400`: `mean(psi_a) = +0.0134` while the true
+  Jacobian `mean(sc.psi_deriv)` is strictly negative (the
+  derivative is `-d * y * expit(-r) * exp(-theta d) * (d - a) <=
+  0`). Consequences of ignoring that: `M_inv = 74.7` inflates HC0
+  to `6.42` versus LPLR's own analytic `se()` of order `0.1`
+  (~60x), and the rows where `|psi_a|` is near
+  `sqrt(mean(psi_a))` push `h_ii` past 1, so HC2 / HC3 hit the
+  `1.0e-10` degenerate-leverage clip and return `6.4e10` /
+  `6.4e10^2` instead of a variance. Per the standing scope rule
+  ("a wrong number is worse than a missing method"), LPLR is
+  deferred to a follow-up that either (a) swaps the persisted
+  field order to match the package norm, or (b) gets an explicitly
+  role-swapped sandwich passing `self.psi_b` as the derivative row
+  and `[[1 / mean(self.psi_b)]]` as `M_inv`. Note that option (a)
+  changes `DoubleMLLPLR::bootstrap`'s inputs, so it is a
+  behaviour-affecting change and needs its own release note.
+
+### Known issue (pre-existing, deliberately propagated)
+
+- The `M_inv = [[1 / mean(psi_a)]]` convention from v0.79.0 makes
+  the scalar leverage `h_ii` negative whenever `mean(psi_a) < 0`,
+  so `1 - h_ii > 1` and HC2 / HC3 legitimately SHRINK relative to
+  HC0. All four estimators added here have `mean(psi_a) < 0`
+  (SSM and both DID variants: exactly `-1`; PLPR PO:
+  `-mean(v_hat^2) = -0.176`), so the asserted ordering is
+  `HC1 > HC0 > HC2 > HC3`, with HC2 / HC3 pinned at exactly
+  `HC0 / sqrt(2)` and `HC0 / 2` where `psi_a` is the constant
+  `-1`. This is v0.79.0 behaviour shared with `DoubleMLIRM` /
+  `DoubleMLCVAR` and is NOT changed here; it is documented so the
+  ordering assertions are not mistaken for a bug.
+
+### Changed
+
+- `moon.mod` 0.86.0 -> 0.87.0 (the `moonbit-community/sqlite3`
+  + `moonbitlang/async` import block is untouched).
+- `README.mbt.md` status table synced to v0.87.0 (test counts plus a
+  new `sandwich variance coverage` row) and v0.86.0 / v0.87.0
+  verified-count bullets added to the release notes.
+
+### Verification
+
+- `moon check --target native|wasm-gc|wasm|js --deny-warn`: success,
+  0 warnings on all four backends.
+- `moon fmt --check`: clean.
+- `moon test --target native`: 628 / 628.
+- `moon test --target wasm-gc`: 628 / 628 for the library package
+  (+ 6 doc tutorials in the `doc` package on the workspace run =
+  634).
+- Not run for this release: the 23 Python cross-validators
+  (`_verify/run_all_validators.py`) -- no production numerical path
+  changed, only NEW methods were added, so the cross-check surface
+  is unchanged from v0.86.0.
+
 ## [0.86.0] -- sandwich variance expand (IIVM / PLIV / DID / LPQ / CVAR)
 
 Extends the v0.79.0 sandwich-variance API -- `sandwich_se(kind)`,

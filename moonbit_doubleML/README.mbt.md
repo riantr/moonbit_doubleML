@@ -25,15 +25,16 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.85.0** |
+| `moon.mod` version | **0.87.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **617 / 617** |
-| Tests (wasm-gc) | **623 / 623** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **628 / 628** |
+| Tests (wasm-gc) | **634 / 634** (lib 628 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
+| Sandwich variance coverage | **10 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
 #Features
@@ -491,6 +492,36 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   so that a left/right swap in the flat node encoding is
   detectable (a symmetric interaction DGP yields a
   mirror-invariant tree and would hide such a bug).
+- v0.86.0 verified counts: `moon test` 623 / 623 (native & wasm &
+  js) and 629 / 629 (wasm-gc). Adds the shared
+  `sandwich_variance(kind, psi_a, psi, m_inv, n_obs, n_params)`
+  dispatch in `sandwich.mbt` and the
+  `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`
+  triple on `DoubleMLIIVM` / `DoubleMLPLIV` / `DoubleMLDID` /
+  `DoubleMLCVAR` (**6 of 22** estimators).
+- v0.87.0 verified counts: `moon test` 628 / 628 (native & wasm &
+  js) and 634 / 634 (wasm-gc: lib 628 + 6 doc tutorials). Extends
+  the sandwich-variance API to `DoubleMLSSM`, `DoubleMLPLPR`,
+  `DoubleMLDIDCrossSection`, and `DoubleMLDIDCSBinary` (**10 of 22**
+  estimators), all routing through the v0.86.0 shared
+  `sandwich_variance(kind, ...)` dispatch. `DoubleMLLPLR` is
+  deliberately skipped: it persists its influence-function
+  components in the inverted `(offset, slope)` order
+  (`psi_a = score - theta_hat * psi_deriv`, `psi_b =
+  psi_deriv`), so `mean(psi_a)` is a cancellation residual rather
+  than the Jacobian -- feeding it into `M_inv = [[1 / mean(psi_a)]]`
+  inflates HC0 by ~60x over LPLR's own `se()` and drives HC2 / HC3
+  into the degenerate-leverage clip (`6.4e10`). See
+  `expand_v087_test.mbt` for the full rationale and the two
+  candidate fixes. The 5 new white-box tests assert the
+  independently recomputed HC0 / HC2 / HC3 variances (not just
+  finiteness), the exact HC1 `sqrt(n / (n - 1))` identity, the
+  leverage-signed ordering `HC1 > HC0 > HC2 > HC3` (these four all
+  have `mean(psi_a) < 0`, so the package's
+  `M_inv = [[1 / mean(psi_a)]]` convention makes HC2 / HC3 shrink
+  -- pre-existing v0.79.0 behaviour, deliberately propagated),
+  exact singleton-cluster equality with the IID HC0, and the
+  bias-correction identity.
 
 #Attribution
 

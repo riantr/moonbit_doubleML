@@ -1253,3 +1253,138 @@ pub fn DoubleMLPLPR::sensitivity_analysis_cluster(
     cf_d,
   )
 }
+
+// ---------------------------------------------------------------------------
+// v0.87.0+: sandwich variance + bias correction
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.87.0+: Huber-White sandwich standard error for the
+/// fitted PLPR. Returns `sqrt(var)` where `var` comes from
+/// the shared `sandwich_variance(kind, ...)` dispatch in
+/// `sandwich.mbt` (HC0 / HC1 / HC2 / HC3), the same dispatch
+/// `DoubleMLDID` / `DoubleMLIIVM` / `DoubleMLCVAR` use.
+///
+/// The three inputs are the ones `fit(...)` already persists
+/// for the multiplier bootstrap (see the `psi_a` / `psi_b`
+/// field docs on `DoubleMLPLPR`):
+///   - `psi_a`  = `self.psi_a` -- the score derivative in
+///     theta (partialling-out: `-v_hat[i]^2`; IV-type:
+///     `-v_hat[i] * d[i]`). Under the default PO score every
+///     element is `<= 0`, so `mean(psi_a) <= 0`.
+///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///     -- the per-observation influence function at the
+///     fitted `coef`, matching the `psi[i] = psi_a[i] +
+///     theta * psi_b[i]` form documented on
+///     `DoubleMLPLPR::bootstrap`.
+///   - `M_inv`  = `[[1 / mean(psi_a)]]` (1x1). Only
+///     `M_inv[0, 0]^2` enters the variance, so the sign of
+///     the (up-to-sign) Jacobian inverse is irrelevant.
+///
+/// Note the sample length: `psi_a` / `psi_b` live on the
+/// TRANSFORMED-domain sample, so the variance's `n_obs` is
+/// `self.psi_a.length()` (= `self.l_hat.length()`), which
+/// equals `self.data.n_obs()` for the untransformed
+/// approaches and can differ once an `fd_exact` /
+/// `within_transform` approach changes the row set. The
+/// variance's `n_obs` therefore follows `psi_a`, never the
+/// raw panel width.
+///
+/// Preconditions: `self.fitted`, `mean(psi_a) != 0`.
+pub fn DoubleMLPLPR::sandwich_se(
+  self : DoubleMLPLPR,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef_ * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = sandwich_variance(kind, self.psi_a, psi, m_inv, n, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.87.0+: cluster-robust sandwich standard error for the
+/// fitted PLPR. Routes through `cluster_sandwich_variance`
+/// with the same `psi_a` / `psi` / `M_inv` inputs as the IID
+/// `sandwich_se` path. `DoubleMLPanelData` carries no
+/// `cluster_vars` field, so the user must pass `cluster_ids`
+/// explicitly (typically the panel unit id).
+///
+/// Note: PLPR's own `se` is already unit-clustered (it uses
+/// the fold-level cluster sums); this method exposes the
+/// generic cluster-robust sandwich on the same sample so the
+/// two can be compared on a common footing.
+///
+/// Preconditions: `self.fitted`,
+/// `cluster_ids.length() == psi_a.length()`.
+pub fn DoubleMLPLPR::cluster_sandwich_se(
+  self : DoubleMLPLPR,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    require(cluster_ids.length() == n)
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef_ * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = cluster_sandwich_variance(
+      self.psi_a,
+      psi,
+      m_inv,
+      cluster_ids,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.87.0+: finite-sample bias-corrected PLPR coefficient.
+/// Same `psi_b - coef * psi_a` per-observation bias form as
+/// `DoubleMLIRM::bias_corrected_coef`:
+///
+///     bias_per_obs[i] = psi_b[i] - coef * psi_a[i]
+///     theta_corrected = coef + mean(bias_per_obs)
+///
+/// evaluated on the transformed-domain sample that
+/// `psi_a` / `psi_b` live on.
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLPLPR::bias_corrected_coef(self : DoubleMLPLPR) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    let bias : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      bias[i] = self.psi_b[i] - self.coef_ * self.psi_a[i]
+    }
+    bias_corrected_theta(self.coef_, bias)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

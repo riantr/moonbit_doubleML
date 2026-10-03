@@ -753,3 +753,126 @@ pub fn DoubleMLSSM::fit(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+// ---------------------------------------------------------------------------
+// v0.87.0+: sandwich variance + bias correction
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.87.0+: Huber-White sandwich standard error for the
+/// fitted SSM. Returns `sqrt(var)` where `var` comes from
+/// the shared `sandwich_variance(kind, ...)` dispatch in
+/// `sandwich.mbt` (HC0 / HC1 / HC2 / HC3), the same dispatch
+/// `DoubleMLDID` / `DoubleMLIIVM` / `DoubleMLCVAR` use.
+///
+/// The three inputs are the ones `fit(...)` already persists
+/// for the multiplier bootstrap (see the `psi_a` / `psi_b`
+/// field docs on `DoubleMLSSM`):
+///   - `psi_a`  = `self.psi_a` -- the constant MAR-score
+///     treatment term `-1`, so `mean(psi_a) = -1` by
+///     construction and `M_inv = -1`.
+///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///     -- the per-observation influence function at the
+///     fitted `coef`, matching the `psi[i] = psi_a[i] +
+///     theta * psi_b[i]` form documented on
+///     `DoubleMLSSM::bootstrap`.
+///   - `M_inv`  = `[[1 / mean(psi_a)]]` (1x1). Only
+///     `M_inv[0, 0]^2` enters the variance, so the sign of
+///     the (up-to-sign) Jacobian inverse is irrelevant.
+///
+/// The variance's `n_obs` is `self.psi_a.length()` (the
+/// length `fit(...)` persists, equal to `self.n_obs()`).
+///
+/// Preconditions: `self.fitted`, `mean(psi_a) != 0`.
+pub fn DoubleMLSSM::sandwich_se(
+  self : DoubleMLSSM,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = sandwich_variance(kind, self.psi_a, psi, m_inv, n, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.87.0+: cluster-robust sandwich standard error for the
+/// fitted SSM. Routes through `cluster_sandwich_variance`
+/// with the same `psi_a` / `psi` / `M_inv` inputs as the IID
+/// `sandwich_se` path. `DoubleMLSSMData` carries no
+/// `cluster_vars`, so the caller must supply `cluster_ids`
+/// explicitly (typically the survey / site / household id).
+///
+/// Preconditions: `self.fitted`,
+/// `cluster_ids.length() == psi_a.length()`.
+pub fn DoubleMLSSM::cluster_sandwich_se(
+  self : DoubleMLSSM,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    require(cluster_ids.length() == n)
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = cluster_sandwich_variance(
+      self.psi_a,
+      psi,
+      m_inv,
+      cluster_ids,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.87.0+: finite-sample bias-corrected SSM coefficient.
+/// Same `psi_b - coef * psi_a` per-observation bias form as
+/// `DoubleMLIRM::bias_corrected_coef`:
+///
+///     bias_per_obs[i] = psi_b[i] - coef * psi_a[i]
+///     theta_corrected = coef + mean(bias_per_obs)
+///
+/// Because SSM's `psi_a = -1` is constant, this reduces to
+/// `2 * coef + mean(psi_b)`.
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLSSM::bias_corrected_coef(self : DoubleMLSSM) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    let bias : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      bias[i] = self.psi_b[i] - self.coef * self.psi_a[i]
+    }
+    bias_corrected_theta(self.coef, bias)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
