@@ -243,6 +243,16 @@ pub struct DoubleMLLPLR {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.83.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.82.0
+  // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
+  // caches the LAST rep's `(r_hat, m_hat, a_hat)` plus fold
+  // assignment in `fit_cache` and reuses them on the next
+  // call when the data fingerprint, fold split, and learner
+  // configuration are unchanged. Mirrors the IRM / PLR /
+  // CVAR / SSM / PLPR plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -285,6 +295,11 @@ pub fn DoubleMLLPLR::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.83.0+: default memoize off so v0.82.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -304,6 +319,56 @@ pub fn DoubleMLLPLR::learner_g(self : DoubleMLLPLR) -> LearnerDispatch {
 /// recent `fit(...)` call. v0.60.0+.
 pub fn DoubleMLLPLR::learner_m(self : DoubleMLLPLR) -> LearnerDispatch {
   self.ml_m
+}
+
+///|
+/// v0.83.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the LAST rep's per-fold
+/// nuisance predictions (`r_hat`, `m_hat`, `a_hat`) and the
+/// fold assignment; on a repeat call whose data + learner
+/// fingerprint + fold split is identical, the entire per-fold
+/// crossfit is skipped and the cached values feed the
+/// Newton / score / SE pipeline.
+///
+/// `enable_memoize()` is honored only when `n_rep == 1`; for
+/// `n_rep > 1` the per-rep cross-fit must run each time (the
+/// cache would otherwise need to thread `n_rep` independent
+/// per-rep nuisance arrays, which the `FitCache` layout does
+/// not accommodate).
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// cross-fit and the cache is neither read nor written, so
+/// v0.82.0 callers see byte-identical output.
+pub fn DoubleMLLPLR::enable_memoize(self : DoubleMLLPLR) -> DoubleMLLPLR {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.83.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLLPLR::disable_memoize(self : DoubleMLLPLR) -> DoubleMLLPLR {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.83.0+: drop any cached nuisance predictions and fold
+/// assignment. Forces the next `fit()` to recompute from
+/// scratch.
+pub fn DoubleMLLPLR::clear_cache(self : DoubleMLLPLR) -> DoubleMLLPLR {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.83.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that the cache may still be stale relative to the current
+/// data + learner configuration -- check `memoize_enabled`
+/// before assuming a cache hit.
+pub fn DoubleMLLPLR::has_cache(self : DoubleMLLPLR) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -451,90 +516,159 @@ pub fn DoubleMLLPLR::fit(
     let mut t_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
     let mut a_pred : Array[Double] = Array::make(n, 0.0)
+    // v0.83.0+: track the LAST rep's preliminary `beta_start`
+    // so the cache-hit path can skip the inner-OOF /
+    // `prelim_beta_per_fold` step entirely.
+    let mut last_beta_start : Double = 0.0
+    // v0.83.0+: track the LAST rep's row-to-fold mapping for
+    // the cache writeback.
+    let fold_ids : Array[Int] = Array::make(n, 0)
     // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
     // multiplier bootstrap. Same convention as `t_pred` / `m_pred`:
     // each rep overwrites, so the post-loop values match the
     // last rep's nuisances (which are the ones persisted on the
     // struct).
-    let last_psi_a : Array[Double] = Array::make(n, 0.0)
-    let last_psi_b : Array[Double] = Array::make(n, 0.0)
-    for r = 0; r < nrep; r = r + 1 {
-      let outer = kfold(n, self.n_folds, self.seed + r)
-      let xd = concat_d_x(d, x)
-      // 1) Outer cross-fit ml_M: E[Y | D, X] (LogisticRegression ->
-      // probability of Y = 1). v0.62.0+: routed through
-      // `cross_fit_predict_dispatch` so `ml_m` reaches ml_M.
-      let m_hat_outer = cross_fit_predict_dispatch(ml_m, xd, y, outer)
-      // 2) Double cross-fit ml_a: E[D | X] (logistic for binary D,
-      // predicted probability of D = 1). Inner fold seeds vary per
-      // outer fold so the inner OOFs are deterministic but
-      // independent across outer folds. v0.62.0+: routed through
-      // `double_cross_fit_predict_dispatch` (new generic wrapper
-      // around `double_cross_fit_predict`).
-      let a_inner_per_fold : Array[Array[Double]] = double_cross_fit_predict_dispatch(
-        ml_m,
-        x,
-        d,
-        outer,
-        self.n_folds_inner,
-        self.seed + r * 1000 + 7,
+    let mut last_psi_a : Array[Double] = Array::make(n, 0.0)
+    let mut last_psi_b : Array[Double] = Array::make(n, 0.0)
+    // v0.83.0+: memoize check (mirrors the PLR / IRM / CVAR
+    // / SSM / PLPR pattern). The cache stores the LAST rep's
+    // `(t_pred, m_pred, a_pred)` plus row-to-fold mapping; the
+    // `beta_start` scalar is packed as a length-1 array.
+    // Honored only when `n_rep == 1`.
+    let memoize = self.memoize_enabled && nrep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(self.data.x, self.data.y, self.data.d)
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("lplr", ml_g, ml_m, 0.0)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      // LPLR is not a clustered estimator; pass an empty
+      // vector so the hash stays 0 across calls (matches the
+      // IID sentinel).
+      hash_cluster_ids([])
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "lplr",
       )
-      // Combine per-fold inner predictions into a single n-vector
-      // of inner OOF for `a` (the prediction made on each row
-      // when it is in the test set of the inner split).
-      // ml_a outer cross-fit (a_hat), same outer folds.
-      a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
-      // m_hat is the same estimator in LPLR (ml_m = ml_a). For
-      // continuous D, upstream would also use the same propensity
-      // for `m`; the binary-D case is the focus here.
-      m_pred = a_pred
-      // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
-      // row positions recorded by the outer fold's training set
-      // (upstream's behaviour: `M_iteration = M_hat_inner[i][train]`
-      // where `M_hat_inner[i]` is the *inner* OOF for the
-      // `ml_M` learner). We use the outer OOF for simplicity
-      // because the outer fold structure already keeps the OOF
-      // honest on the test rows, and inner OOF for ml_M would
-      // require the same double-cross-fit scaffolding as ml_a.
-      let w_inner : Array[Array[Double]] = []
-      for fold in outer {
-        let ti = fold.train_idx
-        let w : Array[Double] = Array::make(ti.length(), 0.0)
-        for k = 0; k < ti.length(); k = k + 1 {
-          let mc = if m_hat_outer[ti[k]] < 1.0e-8 {
-            1.0e-8
-          } else if m_hat_outer[ti[k]] > 1.0 - 1.0e-8 {
-            1.0 - 1.0e-8
-          } else {
-            m_hat_outer[ti[k]]
-          }
-          w[k] = @math.ln(mc / (1.0 - mc))
+    for r = 0; r < nrep; r = r + 1 {
+      let beta_start : Double = if cache_hit && r == nrep - 1 {
+        // Reuse the cached LAST-rep nuisances + beta_start;
+        // skip all per-fold crossfits. The Newton / score / SE
+        // path below is the only computation we re-run.
+        let preds = self.fit_cache.predictions
+        for i = 0; i < n; i = i + 1 {
+          t_pred[i] = preds[0][i]
+          m_pred[i] = preds[1][i]
+          a_pred[i] = preds[2][i]
+          fold_ids[i] = self.fit_cache.fold_ids[i]
         }
-        w_inner.push(w)
-      }
-      t_pred = cross_fit_predict_inner_dispatch(ml_g, x, w_inner, outer)
-      // 4) Per-fold preliminary beta.
-      let mut beta_acc = 0.0
-      let mut beta_count = 0
-      for fi = 0; fi < outer.length(); fi = fi + 1 {
-        let ti = outer[fi].train_idx
-        let a_inner_for_fold : Array[Double] = Array::make(ti.length(), 0.0)
-        // The inner OOF for row `i` in this fold's training slice
-        // is the inner-fold prediction for that row. `a_inner_per_fold[fi]`
-        // is the *concatenated inner OOF* for the entire outer
-        // training set of fold `fi`, indexed by inner position.
-        let a_full_inner = a_inner_per_fold[fi]
-        for k = 0; k < ti.length(); k = k + 1 {
-          a_inner_for_fold[k] = a_full_inner[k]
-        }
-        let b_f = prelim_beta_per_fold(
-          a_inner_for_fold, a_inner_for_fold, d, ti,
+        preds[3][0]
+      } else {
+        let outer = kfold(n, self.n_folds, self.seed + r)
+        let xd = concat_d_x(d, x)
+        // 1) Outer cross-fit ml_M: E[Y | D, X] (LogisticRegression ->
+        // probability of Y = 1). v0.62.0+: routed through
+        // `cross_fit_predict_dispatch` so `ml_m` reaches ml_M.
+        let m_hat_outer = cross_fit_predict_dispatch(ml_m, xd, y, outer)
+        // 2) Double cross-fit ml_a: E[D | X] (logistic for binary D,
+        // predicted probability of D = 1). Inner fold seeds vary per
+        // outer fold so the inner OOFs are deterministic but
+        // independent across outer folds. v0.62.0+: routed through
+        // `double_cross_fit_predict_dispatch` (new generic wrapper
+        // around `double_cross_fit_predict`).
+        let a_inner_per_fold : Array[Array[Double]] = double_cross_fit_predict_dispatch(
+          ml_m,
+          x,
+          d,
+          outer,
+          self.n_folds_inner,
+          self.seed + r * 1000 + 7,
         )
-        beta_acc = beta_acc + b_f
-        beta_count = beta_count + 1
+        // Combine per-fold inner predictions into a single n-vector
+        // of inner OOF for `a` (the prediction made on each row
+        // when it is in the test set of the inner split).
+        // ml_a outer cross-fit (a_hat), same outer folds.
+        a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
+        // m_hat is the same estimator in LPLR (ml_m = ml_a). For
+        // continuous D, upstream would also use the same propensity
+        // for `m`; the binary-D case is the focus here.
+        m_pred = a_pred
+        // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
+        // row positions recorded by the outer fold's training set
+        // (upstream's behaviour: `M_iteration = M_hat_inner[i][train]`
+        // where `M_hat_inner[i]` is the *inner* OOF for the
+        // `ml_M` learner). We use the outer OOF for simplicity
+        // because the outer fold structure already keeps the OOF
+        // honest on the test rows, and inner OOF for ml_M would
+        // require the same double-cross-fit scaffolding as ml_a.
+        let w_inner : Array[Array[Double]] = []
+        for fold in outer {
+          let ti = fold.train_idx
+          let w : Array[Double] = Array::make(ti.length(), 0.0)
+          for k = 0; k < ti.length(); k = k + 1 {
+            let mc = if m_hat_outer[ti[k]] < 1.0e-8 {
+              1.0e-8
+            } else if m_hat_outer[ti[k]] > 1.0 - 1.0e-8 {
+              1.0 - 1.0e-8
+            } else {
+              m_hat_outer[ti[k]]
+            }
+            w[k] = @math.ln(mc / (1.0 - mc))
+          }
+          w_inner.push(w)
+        }
+        t_pred = cross_fit_predict_inner_dispatch(ml_g, x, w_inner, outer)
+        // 4) Per-fold preliminary beta.
+        let mut beta_acc = 0.0
+        let mut beta_count = 0
+        for fi = 0; fi < outer.length(); fi = fi + 1 {
+          let ti = outer[fi].train_idx
+          let a_inner_for_fold : Array[Double] = Array::make(ti.length(), 0.0)
+          // The inner OOF for row `i` in this fold's training slice
+          // is the inner-fold prediction for that row. `a_inner_per_fold[fi]`
+          // is the *concatenated inner OOF* for the entire outer
+          // training set of fold `fi`, indexed by inner position.
+          let a_full_inner = a_inner_per_fold[fi]
+          for k = 0; k < ti.length(); k = k + 1 {
+            a_inner_for_fold[k] = a_full_inner[k]
+          }
+          let b_f = prelim_beta_per_fold(
+            a_inner_for_fold, a_inner_for_fold, d, ti,
+          )
+          beta_acc = beta_acc + b_f
+          beta_count = beta_count + 1
+        }
+        require(beta_count > 0)
+        // Build row->fold_id map for the LAST rep (used by the
+        // cache writeback below).
+        if memoize && r == nrep - 1 {
+          for f = 0; f < outer.length(); f = f + 1 {
+            for i in outer[f].test_indices() {
+              fold_ids[i] = f
+            }
+          }
+        }
+        beta_acc / beta_count.to_double()
       }
-      require(beta_count > 0)
-      let beta_start = beta_acc / beta_count.to_double()
+      // Track last-rep beta_start for the cache writeback.
+      if memoize && r == nrep - 1 {
+        last_beta_start = beta_start
+      }
       // 5+6) Newton solve for the nonlinear score. We re-evaluate
       // \lplr_score_at\ at every step (the psi/psi_deriv of LPLR
       // are NOT linear in \	heta\: they contain \exp(r)\ and
@@ -589,10 +723,9 @@ pub fn DoubleMLLPLR::fit(
       // residual at convergence.
       let sc = lplr_score_at(theta, d, y, t_pred, a_pred, beta_start)
       let psi_a : Array[Double] = sc.psi_deriv
-      let psi_b_arr : Array[Double] = Array::make(d.length(), 0.0)
-      for i = 0; i < d.length(); i = i + 1 {
-        psi_b_arr[i] = sc.psi[i] - theta * sc.psi_deriv[i]
-      }
+      // v0.83.0+: vectorise the psi_b residual computation
+      // (element-wise `sc.psi[i] - theta * sc.psi_deriv[i]`).
+      let psi_b_arr = vector_subtract(sc.psi, vector_scale(sc.psi_deriv, theta))
       let (coef_r, se_r) = var_est(psi_a, psi_b_arr)
       coefs[r] = coef_r
       ses[r] = se_r
@@ -609,12 +742,32 @@ pub fn DoubleMLLPLR::fit(
       //   psi[i] = (sc.psi - theta_hat * sc.psi_deriv) + theta_hat * sc.psi_deriv
       //          = sc.psi
       // i.e. the raw score at the fitted theta.
-      for i = 0; i < n; i = i + 1 {
-        last_psi_a[i] = sc.psi[i] - theta * sc.psi_deriv[i]
-        last_psi_b[i] = sc.psi_deriv[i]
-      }
+      // v0.83.0+: vectorise the psi_a residual computation
+      // (same form as psi_b above).
+      last_psi_a = vector_subtract(sc.psi, vector_scale(sc.psi_deriv, theta))
+      last_psi_b = sc.psi_deriv
     }
     let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.83.0+: when memoize is on and the cache missed, write
+    // the freshly-computed fold_ids + nuisances + beta_start
+    // to the cache. `beta_start` is packed as a length-1 array
+    // so it fits the `Array[Array[Double]]` shape of `FitCache`.
+    let next_cache = if memoize && !cache_hit && nrep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [t_pred, m_pred, a_pred, Array::make(1, last_beta_start)],
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "lplr",
+      )
+    } else {
+      self.fit_cache
+    }
     {
       data: self.data,
       score: self.score,
@@ -636,6 +789,8 @@ pub fn DoubleMLLPLR::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>

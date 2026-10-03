@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.82.0** |
+| `moon.mod` version | **0.83.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **600 / 600** |
-| Tests (wasm-gc) | **606 / 606** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **607 / 607** |
+| Tests (wasm-gc) | **613 / 613** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -54,6 +54,23 @@ binary-outcome CS-DID.
 the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
 No per-estimator interface drift.
 
+**v0.83.0 memoization + vectorization expand** —
+extends the v0.82.0 layer to five additional estimators:
+`DoubleMLCVAR`, `DoubleMLSSM`, `DoubleMLBLP`, `DoubleMLPLPR`,
+and `DoubleMLLPLR`. Each gains the standard `enable_memoize` /
+`disable_memoize` / `clear_cache` / `has_cache` API; the
+per-fold residual loops in `cvar.mbt` /
+`cvar_inner_crossfit`, `ssm.mbt`'s MAR IPW psi_a / psi_b,
+`blp_policy.mbt`'s residual / RSS computation,
+`plpr.mbt`'s v_hat / u_hat / y_resid subtractions, and
+`lplr.mbt`'s psi_b residual computation are now written in
+terms of the `vectorized.mbt` helpers (`vector_subtract`,
+`vector_scale`, `vector_divide`, `vector_multiply`,
+`vector_add`). Coverage: **15 of 22 estimators** now have
+memoize + vectorize. Remaining 7 estimators (`RDD`, `PQ`,
+`QTE`, `APOS`, `APO`, plus 2 small DID variants) are
+queued for v0.84.
+
 **v0.82.0 memoization + vectorization expand (partial)** —
 extends the v0.80.0 `enable_memoize()` / `disable_memoize()` /
 `clear_cache()` / `has_cache()` API and the v0.81.0
@@ -67,9 +84,9 @@ extends the v0.80.0 `enable_memoize()` / `disable_memoize()` /
 field; `vectorized.mbt` gained `vector_multiply` and
 `vector_divide` (eps=1e-10 clamp on denominator).
 Coverage: 10 of 22 estimators now have memoize +
-vectorize. Remaining 12 estimators (`RDD`, `PQ`, `QTE`,
+vectorize. Remaining 7 estimators (`RDD`, `PQ`, `QTE`,
 `CVAR`, `SSM`, `BLP`, `LPLR`, `PLPR`, `APOS`, `APO`,
-plus 2 small DID variants) are queued for v0.83.
+plus 2 small DID variants) were queued for v0.83.
 
 **Cross-fitting infrastructure** — `kfold`, repeated cross-fitting,
 stratified K-fold (`kfold_stratified`), `chacha8_rng`-based seeded
@@ -349,6 +366,24 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `rdd_cluster_test.mbt` (smoke + sigma2-differs-from-IID +
   3 panic tests); 22 / 22 estimators now expose both IID and
   cluster-aware sensitivity.
+- v0.83.0 verified counts: `moon test` 607 / 607 (native & wasm &
+  js) and 613 / 613 (wasm-gc); 23 / 23 Python cross-validators
+  PASS. Closes the v0.80/v0.81/v0.82 memoize + vectorize expand
+  for `DoubleMLCVAR` (complete v0.82 partial: fix `pq_est`
+  cache-hit path; cache also stores `ipw_vec`), `DoubleMLSSM`
+  (complete v0.82 partial: add `memoize_enabled` / `fit_cache`
+  struct fields correctly), `DoubleMLBLP` (single-pass OLS
+  projection cached byte-for-byte), `DoubleMLPLPR` (clustered
+  path: cache stores `(l_pred, m_pred, g_pred)` plus
+  row-to-fold map; cache-hit path re-runs the cluster-robust
+  SE pipeline from cached values), and `DoubleMLLPLR`
+  (Newton-solved binary-outcome estimator: cache stores
+  `(t_pred, m_pred, a_pred, beta_start)`; cache-hit path re-runs
+  Newton + score + SE from cached values). Per-fold residual
+  loops in each are rewritten in terms of the `vectorized.mbt`
+  helpers (`vector_subtract`, `vector_scale`, `vector_divide`,
+  `vector_multiply`, `vector_add`). 15 / 22 estimators now
+  carry memoize + vectorize.
 
 #Attribution
 

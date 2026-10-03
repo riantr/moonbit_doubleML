@@ -532,6 +532,16 @@ pub struct DoubleMLPLPR {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.83.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.82.0
+  // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
+  // caches the LAST rep's `(l_hat, m_hat, fold_ids)` /
+  // row-level fold mapping in `fit_cache` and reuses them on
+  // the next call when the panel fingerprint, fold split,
+  // and learner configuration are unchanged. Mirrors the IRM
+  // / PLR / CVAR / SSM plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -576,11 +586,66 @@ pub fn DoubleMLPLPR::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.83.0+: default memoize off so v0.82.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.83.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the LAST rep's cross-
+/// fitted `(l_hat, m_hat)` and the row-to-fold mapping; on a
+/// repeat call whose panel fingerprint + fold split +
+/// learner + approach + score is identical, the entire
+/// per-fold crossfit is skipped and the cached values feed
+/// the cluster-robust score / SE pipeline.
+///
+/// `enable_memoize()` is honored only when `n_rep == 1`; for
+/// `n_rep > 1` the per-rep cross-fit must run each time (the
+/// cache would otherwise need to thread `n_rep` independent
+/// per-rep nuisance arrays, which the `FitCache` layout does
+/// not accommodate).
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// cross-fit and the cache is neither read nor written, so
+/// v0.82.0 callers see byte-identical output.
+pub fn DoubleMLPLPR::enable_memoize(self : DoubleMLPLPR) -> DoubleMLPLPR {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.83.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLPLPR::disable_memoize(self : DoubleMLPLPR) -> DoubleMLPLPR {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.83.0+: drop any cached nuisance predictions and fold
+/// assignment. Forces the next `fit()` to recompute from
+/// scratch.
+pub fn DoubleMLPLPR::clear_cache(self : DoubleMLPLPR) -> DoubleMLPLPR {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.83.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that the cache may still be stale relative to the current
+/// panel + learner configuration -- check `memoize_enabled`
+/// before assuming a cache hit.
+pub fn DoubleMLPLPR::has_cache(self : DoubleMLPLPR) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -757,6 +822,16 @@ pub fn DoubleMLPLPR::fit(
     let ses : Array[Double] = Array::make(nrep, 0.0)
     let mut l_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
+    // v0.83.0+: track the LAST rep's row-to-fold mapping for
+    // the cache writeback. PLPR's fold structure is unit-level
+    // (clusters) but the cache uses row-level `fold_ids` to
+    // match the rest of the package's `FitCache` layout.
+    let fold_ids : Array[Int] = Array::make(n, 0)
+    // v0.83.0+: cached g_pred (only meaningful for IV-type
+    // score; PO leaves it as an empty array). Stored so the
+    // cache-hit path can reuse the IV-type auxiliary crossfit
+    // without paying its `cross_fit_predict_dispatch` cost.
+    let mut last_g_pred : Array[Double] = []
     // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
     // multiplier bootstrap. Same convention as `l_pred` / `m_pred`:
     // each rep overwrites, so the post-loop values match the
@@ -764,6 +839,51 @@ pub fn DoubleMLPLPR::fit(
     // struct).
     let mut last_psi_a : Array[Double] = Array::make(n, 0.0)
     let mut last_psi_b : Array[Double] = Array::make(n, 0.0)
+    // v0.83.0+: memoize check (mirrors the PLR / IRM / CVAR
+    // / SSM pattern). The cache stores the LAST rep's
+    // `(l_pred, m_pred, g_pred)` plus row-to-fold mapping.
+    // Honored only when `n_rep == 1` -- multi-rep
+    // aggregations must run every rep fresh.
+    let memoize = self.memoize_enabled && nrep == 1
+    let data_hash : UInt64 = if memoize {
+      // PLPR uses the panel's transformed-domain data; the
+      // raw panel fields (x, y, d, t, id) are the user-visible
+      // fingerprint and `transform_panel` is deterministic in
+      // them + `approach`.
+      hash_data(self.panel.x, self.panel.y, self.panel.d)
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      // Approach + score enter the cache key via the
+      // `estimator_kind` string ("plpr") + the propensity-clip
+      // proxy. Approach/score are otherwise reflected through
+      // the data_hash because `transform_panel` is fully
+      // determined by the panel + approach.
+      hash_hyperparams("plpr", learner, learner, 0.0)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      // PLPR's clustered DML path keys off the unit id column;
+      // hash it so a different panel with the same numeric
+      // content but different unit partition invalidates the
+      // cache.
+      hash_cluster_ids(self.panel.id)
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "plpr",
+      )
     for r = 0; r < nrep; r = r + 1 {
       // v0.40.0: retry loop on J-floor (see plr.mbt::fit_cluster).
       let mut theta_r = 0.0
@@ -776,89 +896,47 @@ pub fn DoubleMLPLPR::fit(
       // SUCCESSFUL attempt's IF components).
       let psi_a : Array[Double] = Array::make(n, 0.0)
       let psi_b : Array[Double] = Array::make(n, 0.0)
-      while attempt < max_attempts && !succeeded {
-        let rep_seed = self.seed + r + attempt * nrep
-        // Unit-level folds expanded to row-level folds via the
-        // shared helper (rows of one unit stay on the same side
-        // of every split).
+      if cache_hit && r == nrep - 1 {
+        // Reuse the cached LAST-rep nuisances + fold_ids;
+        // recompute the score + cluster SE from cached values
+        // (the cluster fold structure is deterministic from
+        // `seed + r` so we can rebuild it here).
+        let preds = self.fit_cache.predictions
+        for i = 0; i < n; i = i + 1 {
+          l_pred[i] = preds[0][i]
+          m_pred[i] = preds[1][i]
+          fold_ids[i] = self.fit_cache.fold_ids[i]
+        }
+        let cached_g_pred : Array[Double] = preds[2]
+        // Recompute folds from the seed (no retry on the
+        // cache-hit path -- if the cluster SE path raises on
+        // a previously-validated input, we let the error
+        // propagate rather than silently re-fitting).
+        let rep_seed = self.seed + r
         let folds_u = kfold(n_units, self.n_folds, rep_seed)
         let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
           tf.id,
           folds_u,
           row_unit,
         )
-        l_pred = cross_fit_predict_dispatch(learner, tf.x, tf.y, folds_row)
-        if self.approach == "cre_normal" {
-          // ml_m gets [X, d_mean] as inputs.
-          let p = tf.x.cols()
-          let xm_flat : Array[Double] = Array::make(n * (p + 1), 0.0)
-          for i = 0; i < n; i = i + 1 {
-            for j = 0; j < p; j = j + 1 {
-              xm_flat[i * (p + 1) + j] = tf.x.get(i, j)
-            }
-            xm_flat[i * (p + 1) + p] = tf.d_mean_row[i]
-          }
-          let xm = Matrix::from_array(xm_flat, n, p + 1)
-          m_pred = cross_fit_predict_dispatch(learner, xm, tf.d, folds_row)
-        } else {
-          m_pred = cross_fit_predict_dispatch(learner, tf.x, tf.d, folds_row)
-        }
-        // cre_general: post-hoc adjustment
-        //   m_hat* = m_hat + d_mean - mean_by_id(m_hat).
-        if self.approach == "cre_general" {
-          let mh_mean = unit_means(m_pred, tf.id)
-          for i = 0; i < n; i = i + 1 {
-            m_pred[i] = m_pred[i] + tf.d_mean_row[i] - mh_mean[i]
-          }
-        }
-        let v_hat : Array[Double] = Array::make(n, 0.0)
-        for i = 0; i < n; i = i + 1 {
-          v_hat[i] = tf.d[i] - m_pred[i]
-        }
-        // v0.75.0+: psi_a / psi_b computed in both score
-        // branches; assigned directly into the outer-scope
-        // `psi_a` / `psi_b` (declared at for-loop level) so the
-        // values survive the while-loop closing.
+        let v_hat = vector_subtract(tf.d, m_pred)
         if self.score == "IV-type" {
-          // theta_initial from the PO score, then g on y - theta*d.
-          let u_hat : Array[Double] = Array::make(n, 0.0)
-          for i = 0; i < n; i = i + 1 {
-            u_hat[i] = tf.y[i] - l_pred[i]
-          }
-          let psi_a0 : Array[Double] = Array::make(n, 0.0)
-          let psi_b0 : Array[Double] = Array::make(n, 0.0)
-          for i = 0; i < n; i = i + 1 {
-            psi_a0[i] = -v_hat[i] * v_hat[i]
-            psi_b0[i] = v_hat[i] * u_hat[i]
-          }
-          // Upstream seeds the IV-type g fit with a plain ratio of
-          // means (np.nanmean), independent of clustering.
+          let u_hat = vector_subtract(tf.y, l_pred)
+          let psi_a0 = vector_multiply(vector_scale(v_hat, -1.0), v_hat)
+          let psi_b0 = vector_multiply(v_hat, u_hat)
           let (theta_init, _) = var_est(psi_a0, psi_b0)
-          let y_resid : Array[Double] = Array::make(n, 0.0)
-          for i = 0; i < n; i = i + 1 {
-            y_resid[i] = tf.y[i] - theta_init * tf.d[i]
-          }
-          let g_pred = cross_fit_predict_dispatch(
-            learner,
-            tf.x,
-            y_resid,
-            folds_row,
-          )
+          ignore(theta_init) // we use cached g_pred, not a re-fit
           for i = 0; i < n; i = i + 1 {
             psi_a[i] = -v_hat[i] * tf.d[i]
-            psi_b[i] = v_hat[i] * (tf.y[i] - g_pred[i])
+            psi_b[i] = v_hat[i] * (tf.y[i] - cached_g_pred[i])
           }
         } else {
-          let u_hat : Array[Double] = Array::make(n, 0.0)
+          let u_hat = vector_subtract(tf.y, l_pred)
           for i = 0; i < n; i = i + 1 {
-            u_hat[i] = tf.y[i] - l_pred[i]
             psi_a[i] = -v_hat[i] * v_hat[i]
             psi_b[i] = v_hat[i] * u_hat[i]
           }
         }
-        // Clustered-path coefficient and standard error via the
-        // shared helper (fold-weighted cluster ratio + unit-level
-        // cluster-robust SE).
         let (t, s) = cluster_causal_param_and_se(
           psi_a,
           psi_b,
@@ -869,14 +947,128 @@ pub fn DoubleMLPLPR::fit(
           folds_u.length(),
           self.n_folds,
         ) catch {
-          _ => {
-            attempt = attempt + 1
-            (0.0, 0.0)
-          }
+          // v0.83.0+: on the cache-hit path we don't retry --
+          // the cache was already validated as
+          // cluster-numerically-stable when it was populated. If
+          // the cluster SE path still raises here (e.g. a
+          // numerical edge case the original write didn't
+          // catch), abort with the same message the retry
+          // loop uses after `max_attempts` fires.
+          _ =>
+            abort(
+              "var_est_cluster: J-floor fired on cache-hit path for rep=" +
+              r.to_string() +
+              " (cluster SE numerically unstable; clear_cache() and re-fit with a different seed)",
+            )
         }
         theta_r = t
         se_r = s
         succeeded = true
+      } else {
+        while attempt < max_attempts && !succeeded {
+          let rep_seed = self.seed + r + attempt * nrep
+          // Unit-level folds expanded to row-level folds via the
+          // shared helper (rows of one unit stay on the same side
+          // of every split).
+          let folds_u = kfold(n_units, self.n_folds, rep_seed)
+          let (folds_row, unit_fold, fold_n_units) = expand_unit_folds_to_rows(
+            tf.id,
+            folds_u,
+            row_unit,
+          )
+          l_pred = cross_fit_predict_dispatch(learner, tf.x, tf.y, folds_row)
+          if self.approach == "cre_normal" {
+            // ml_m gets [X, d_mean] as inputs.
+            let p = tf.x.cols()
+            let xm_flat : Array[Double] = Array::make(n * (p + 1), 0.0)
+            for i = 0; i < n; i = i + 1 {
+              for j = 0; j < p; j = j + 1 {
+                xm_flat[i * (p + 1) + j] = tf.x.get(i, j)
+              }
+              xm_flat[i * (p + 1) + p] = tf.d_mean_row[i]
+            }
+            let xm = Matrix::from_array(xm_flat, n, p + 1)
+            m_pred = cross_fit_predict_dispatch(learner, xm, tf.d, folds_row)
+          } else {
+            m_pred = cross_fit_predict_dispatch(learner, tf.x, tf.d, folds_row)
+          }
+          // cre_general: post-hoc adjustment
+          //   m_hat* = m_hat + d_mean - mean_by_id(m_hat).
+          if self.approach == "cre_general" {
+            let mh_mean = unit_means(m_pred, tf.id)
+            for i = 0; i < n; i = i + 1 {
+              m_pred[i] = m_pred[i] + tf.d_mean_row[i] - mh_mean[i]
+            }
+          }
+          // Build row->fold_id map for the LAST rep / LAST
+          // attempt (used by the cache writeback below).
+          if memoize && r == nrep - 1 {
+            for f = 0; f < folds_row.length(); f = f + 1 {
+              for i in folds_row[f].test_indices() {
+                fold_ids[i] = f
+              }
+            }
+          }
+          // v0.83.0+: residual vector via `vector_subtract`.
+          let v_hat = vector_subtract(tf.d, m_pred)
+          let mut g_pred : Array[Double] = []
+          // v0.75.0+: psi_a / psi_b computed in both score
+          // branches; assigned directly into the outer-scope
+          // `psi_a` / `psi_b` (declared at for-loop level) so the
+          // values survive the while-loop closing.
+          if self.score == "IV-type" {
+            // theta_initial from the PO score, then g on y - theta*d.
+            let u_hat = vector_subtract(tf.y, l_pred)
+            let psi_a0 = vector_multiply(vector_scale(v_hat, -1.0), v_hat)
+            let psi_b0 = vector_multiply(v_hat, u_hat)
+            // Upstream seeds the IV-type g fit with a plain ratio of
+            // means (np.nanmean), independent of clustering.
+            let (theta_init, _) = var_est(psi_a0, psi_b0)
+            let y_resid = vector_subtract(tf.y, vector_scale(tf.d, theta_init))
+            g_pred = cross_fit_predict_dispatch(
+              learner,
+              tf.x,
+              y_resid,
+              folds_row,
+            )
+            for i = 0; i < n; i = i + 1 {
+              psi_a[i] = -v_hat[i] * tf.d[i]
+              psi_b[i] = v_hat[i] * (tf.y[i] - g_pred[i])
+            }
+          } else {
+            let u_hat = vector_subtract(tf.y, l_pred)
+            for i = 0; i < n; i = i + 1 {
+              psi_a[i] = -v_hat[i] * v_hat[i]
+              psi_b[i] = v_hat[i] * u_hat[i]
+            }
+          }
+          // Track g_pred for the LAST rep (used by the cache
+          // writeback below).
+          if memoize && r == nrep - 1 {
+            last_g_pred = g_pred
+          }
+          // Clustered-path coefficient and standard error via the
+          // shared helper (fold-weighted cluster ratio + unit-level
+          // cluster-robust SE).
+          let (t, s) = cluster_causal_param_and_se(
+            psi_a,
+            psi_b,
+            folds_row,
+            fold_n_units,
+            unit_rows,
+            unit_fold,
+            folds_u.length(),
+            self.n_folds,
+          ) catch {
+            _ => {
+              attempt = attempt + 1
+              (0.0, 0.0)
+            }
+          }
+          theta_r = t
+          se_r = s
+          succeeded = true
+        }
       }
       // Persist the last rep's IF components for the bootstrap.
       last_psi_a = psi_a
@@ -894,6 +1086,25 @@ pub fn DoubleMLPLPR::fit(
       ses[r] = se_r
     }
     let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.83.0+: write freshly-computed fold_ids + nuisances
+    // (incl. g_pred for IV-type reuse) to the cache if memoize
+    // is on and the cache missed.
+    let next_cache = if memoize && !cache_hit && nrep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [l_pred, m_pred, last_g_pred],
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "plpr",
+      )
+    } else {
+      self.fit_cache
+    }
     {
       panel: self.panel,
       approach: self.approach,
@@ -913,6 +1124,8 @@ pub fn DoubleMLPLPR::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>

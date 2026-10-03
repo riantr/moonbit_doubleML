@@ -9,6 +9,88 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.83.0] -- memoize + vectorize expand (5 more estimators, 15 of 22)
+
+Closes the v0.80 / v0.81 / v0.82 memoize + vectorize
+infrastructure to five more estimators: `DoubleMLCVAR`,
+`DoubleMLSSM`, `DoubleMLBLP`, `DoubleMLPLPR`, and
+`DoubleMLLPLR`. Each gains the standard
+`enable_memoize` / `disable_memoize` / `clear_cache` /
+`has_cache` API mirroring the v0.82.0 PLR / IRM plumbing;
+per-fold residual loops in each estimator are rewritten in
+terms of the `vectorized.mbt` helpers
+(`vector_subtract`, `vector_scale`, `vector_divide`,
+`vector_multiply`, `vector_add`). Coverage: **15 of 22
+estimators** now carry memoize + vectorize. Remaining 7
+(`RDD`, `PQ`, `QTE`, `APOS`, `APO`, plus 2 small DID
+variants) are queued for v0.84. Test count delta: native /
+wasm / js 600 -> 607 (+7); wasm-gc 606 -> 613 (+7).
+Byte-identical coefficients and standard errors across all
+four backends under `moon test --deny-warn`.
+
+### Added
+
+- New memoize API on 5 estimators:
+  `DoubleMLCVAR::enable_memoize` / `disable_memoize` /
+  `clear_cache` / `has_cache`,
+  `DoubleMLSSM::enable_memoize` / `disable_memoize` /
+  `clear_cache` / `has_cache`,
+  `DoubleMLBLP::enable_memoize` / `disable_memoize` /
+  `clear_cache` / `has_cache`,
+  `DoubleMLPLPR::enable_memoize` / `disable_memoize` /
+  `clear_cache` / `has_cache`,
+  `DoubleMLLPLR::enable_memoize` / `disable_memoize` /
+  `clear_cache` / `has_cache`. Each cache hit skips the
+  per-fold nuisance fit when the data fingerprint, fold
+  split, learner fingerprint, `n_rep`, and cluster IDs all
+  match the stored hashes (per-estimator specifics below).
+- New white-box tests in `expand_v083_test.mbt`:
+  - `cvar_enable_memoize_smoke`: two CVAR fits with
+    `enable_memoize()` produce coef / se within 1e-10
+    (cache hit is byte-equivalent to fresh cross-fit).
+  - `ssm_enable_memoize_smoke`: SSM byte-equivalence under
+    memoize.
+  - `blp_enable_memoize_smoke`: BLP single-pass OLS
+    projection cached byte-for-byte.
+  - `plpr_enable_memoize_smoke`: PLPR (clustered panel)
+    byte-equivalence end-to-end.
+  - `lplr_enable_memoize_smoke`: LPLR (binary-outcome
+    Newton-solved) byte-equivalence.
+  - `cvar_vectorize_residual_smoke`: CVaR coef within
+    3 SEs + 0.5 absolute of true theta on a CVaR-friendly
+    DGP (verifies the v0.83.0 vectorised residual loops
+    preserve the upstream post-fold psi_b formula
+    byte-for-byte).
+  - `ssm_vectorize_residual_smoke`: SSM coef within
+    3 SEs + 0.5 absolute of true theta (verifies the
+    v0.83.0 vectorised MAR IPW psi_a / psi_b computation).
+
+### Fixed
+
+- `DoubleMLCVAR`: complete the v0.82 partial. The
+  v0.82 worker's "cache hit doesn't have a valid `pq_est`"
+  error is fixed by storing `ipw_vec` in the cache (as a
+  third `predictions` element alongside `g_hat` /
+  `m_final`); the cache-hit path computes
+  `pq_est = mean(ipw_vec)` from the cached array. Adds the
+  `memoize_enabled` / `fit_cache` struct fields correctly
+  (the v0.82 attempt missed the struct-field addition).
+- `DoubleMLSSM`: complete the v0.82 partial. Adds the
+  `memoize_enabled` / `fit_cache` struct fields correctly
+  (the v0.82 attempt missed the struct-field addition).
+  Cache stores `(pi_hat, m_hat, g_d1, g_d0)` plus the
+  row-to-fold map; honored only when `n_rep == 1` because
+  SSM is an averaged-across-reps estimator and cannot host
+  per-rep aggregates.
+- `DoubleMLBLP`: add the memoize API cleanly. BLP is a
+  single-pass OLS projection (no `n_folds` / `n_rep`), so
+  the cache stores `(coef, se, residuals, n_obs, rss,
+  var_y)` plus a length-`n_obs` placeholder `fold_ids`.
+  The `cov_type` is folded into the cache key via a
+  `propensity_clip` proxy (0.0 for "HC0", 1.0 for
+  "nonrobust") so a covariance-type switch invalidates the
+  cache.
+
 ## [0.82.0] -- memoize + vectorize expand (partial, 9 of 14 estimators)
 
 Extends the v0.80.0 memoization layer (`FitCache` +

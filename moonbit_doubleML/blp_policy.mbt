@@ -48,6 +48,16 @@ pub struct DoubleMLBLP {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.83.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.82.0
+  // behavior bit-for-bit). When true, `fit()` caches the
+  // single-pass `(coef, se, n_obs, rss, var_y, residuals)`
+  // plus a placeholder fold_ids vector in `fit_cache` and
+  // reuses them on the next call when the basis, orthogonal
+  // signal, learner fingerprint, and covariance type are
+  // unchanged. Mirrors the IRM / PLR / CVAR / SSM plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -79,6 +89,11 @@ pub fn DoubleMLBLP::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.83.0+: default memoize off so v0.82.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -91,6 +106,90 @@ pub fn DoubleMLBLP::fit(
   self : DoubleMLBLP,
   ml_g? : LearnerDispatch = self.ml_g,
 ) -> DoubleMLBLP {
+  // v0.83.0+: memoize check. BLP is a single-pass OLS
+  // projection (no `n_folds` / `n_rep`), so the cache stores
+  // the post-fit `(coef, se, residuals, n_obs, rss, var_y)`
+  // plus a length-`n_obs` placeholder `fold_ids` (BLP does
+  // not partition rows into folds; the cache layout still
+  // expects a `Array[Int]` of length `n_obs` so the
+  // `FitCache::is_valid` check has a consistent shape).
+  let n_obs = self.orth_signal.length()
+  let memoize = self.memoize_enabled
+  let data_hash : UInt64 = if memoize {
+    // BLP has no `d` / `z` / `cluster_vars`; pass empty
+    // arrays so the hash reflects only the basis +
+    // orth_signal content.
+    hash_data(self.basis, self.orth_signal, [])
+  } else {
+    0UL
+  }
+  let hparams_hash : UInt64 = if memoize {
+    // BLP's only nuisance learner is `ml_g`. We pass `ml_g`
+    // twice (once for the `ml_g` slot, once as a placeholder
+    // for the `ml_m` slot BLP doesn't carry) and use a
+    // `propensity_clip` proxy derived from `cov_type` --
+    // 0.0 for "HC0", 1.0 for "nonrobust" -- so the
+    // hyperparams hash also invalidates on a covariance-type
+    // switch.
+    let cov_clip = if self.cov_type == "HC0" { 0.0 } else { 1.0 }
+    hash_hyperparams("blp", ml_g, ml_g, cov_clip)
+  } else {
+    0UL
+  }
+  let cluster_hash : UInt64 = if memoize {
+    // BLP data has no `cluster_vars`; pass an empty vector
+    // so the hash stays 0 across calls (matches the IID
+    // sentinel).
+    hash_cluster_ids([])
+  } else {
+    0UL
+  }
+  let cache_hit = memoize &&
+    self.fit_cache.is_valid(
+      self.cov_type.length(),
+      // BLP has no `seed` / `n_folds`; use `cov_type.length()`
+      // (3 for "HC0", 9 for "nonrobust") as a fingerprint so a
+      // covariance-type change invalidates the cache. The
+      // `n_folds` slot is fed the basis row count as a
+      // placeholder so the cache key is still dimensional.
+      self.basis.rows(),
+      1,
+      n_obs,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "blp",
+    )
+  if cache_hit {
+    // Reuse the cached OLS projection. The returned struct
+    // mirrors the constructor's "fitted" state but with
+    // `fitted = true` and the cached arrays.
+    let preds = self.fit_cache.predictions
+    let c : Array[Double] = preds[0]
+    let s_arr : Array[Double] = preds[1]
+    let cached_rss : Double = preds[2][0]
+    let cached_var_y : Double = preds[3][0]
+    let cached_residuals : Array[Double] = preds[4]
+    return {
+      basis: self.basis,
+      orth_signal: self.orth_signal,
+      cov_type: self.cov_type,
+      ml_g,
+      coef: c,
+      se: s_arr,
+      fitted: true,
+      n_obs,
+      rss: cached_rss,
+      var_y: cached_var_y,
+      residuals: cached_residuals,
+      boot_t_stat: [],
+      boot_method: "",
+      n_rep_boot: 0,
+      boot_seed: 0,
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
+    }
+  }
   // v0.63.0+: route through `LearnerDispatch` so the per-fit
   // `ml_g` override reaches the BLP fit. Defaults preserve
   // v0.62.2 byte-equality (default `LearnerDispatch::linear_regression()`
@@ -111,7 +210,6 @@ pub fn DoubleMLBLP::fit(
   //     `sigma^2 = RSS / (n - p)` (homogeneous-error assumption).
   // Per-coefficient SE (Bug #5 fix); HC0 default matches
   // upstream `statsmodels.OLS(cov_type='HC0')`.
-  let n_obs = self.orth_signal.length()
   // v0.63.0+: route through `fit_predict_one_dispatch` so the
   // per-fit `ml_g` override drives the residual computation.
   // For the default `LearnerDispatch::linear_regression()` this
@@ -124,13 +222,14 @@ pub fn DoubleMLBLP::fit(
     self.orth_signal,
     self.basis,
   )
-  let mut rss = 0.0
-  let residuals : Array[Double] = Array::make(n_obs, 0.0)
-  for i = 0; i < n_obs; i = i + 1 {
-    let e = self.orth_signal[i] - pred[i]
-    residuals[i] = e
-    rss = rss + e * e
-  }
+  // v0.83.0+: vectorise the residual / RSS computation. Use
+  // `vector_subtract` for the per-observation residual and
+  // `vector_multiply` for the squared-residual, then
+  // `mean * n` for the sum (no public `sum` helper; this
+  // matches the upstream convention of a two-pass mean).
+  let residuals : Array[Double] = vector_subtract(self.orth_signal, pred)
+  let sq_resid : Array[Double] = vector_multiply(residuals, residuals)
+  let rss = mean(sq_resid) * n_obs.to_double()
   // `var_y` = variance of the orthogonal signal (the BLP's
   // "outcome" variable). Computed as a one-pass Welford
   // would be slightly more accurate, but a two-pass mean
@@ -155,6 +254,30 @@ pub fn DoubleMLBLP::fit(
   for j = 0; j < p; j = j + 1 {
     s[j] = cov_diag[j].sqrt()
   }
+  // v0.83.0+: when memoize is on and the cache missed, write
+  // the freshly-computed OLS projection to the cache. The
+  // cache layout stores `coef` and `se` as length-`p`
+  // arrays, `rss` and `var_y` as length-1 arrays (so they
+  // fit the `Array[Array[Double]]` shape of `FitCache`),
+  // `residuals` as a length-`n_obs` array, and a length-
+  // `n_obs` placeholder `fold_ids` (BLP does not partition
+  // rows into folds).
+  let next_cache = if memoize {
+    FitCache::from_fit(
+      Array::make(n_obs, 0),
+      [c, s, Array::make(1, rss), Array::make(1, var_y), residuals],
+      self.cov_type.length(),
+      self.basis.rows(),
+      1,
+      n_obs,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "blp",
+    )
+  } else {
+    FitCache::empty()
+  }
   {
     basis: self.basis,
     orth_signal: self.orth_signal,
@@ -171,7 +294,52 @@ pub fn DoubleMLBLP::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    memoize_enabled: self.memoize_enabled,
+    fit_cache: next_cache,
   }
+}
+
+///|
+/// v0.83.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the OLS projection
+/// `(coef, se, residuals, n_obs, rss, var_y)` and skip the
+/// `LinearRegression::fit` + `sandwich_se` path on a repeat
+/// call whose basis + orthogonal signal + learner + covariance
+/// type are all unchanged. Mirrors the IRM / PLR / CVAR / SSM
+/// plumbing.
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// OLS projection and the cache is neither read nor written,
+/// so v0.82.0 callers see byte-identical output.
+pub fn DoubleMLBLP::enable_memoize(self : DoubleMLBLP) -> DoubleMLBLP {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.83.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLBLP::disable_memoize(self : DoubleMLBLP) -> DoubleMLBLP {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.83.0+: drop any cached OLS projection. Forces the next
+/// `fit()` to recompute from scratch.
+pub fn DoubleMLBLP::clear_cache(self : DoubleMLBLP) -> DoubleMLBLP {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.83.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that the cache may still be stale relative to the current
+/// basis / learner configuration -- check `memoize_enabled`
+/// before assuming a cache hit.
+pub fn DoubleMLBLP::has_cache(self : DoubleMLBLP) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|

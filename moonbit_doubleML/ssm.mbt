@@ -118,6 +118,16 @@ pub struct DoubleMLSSM {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.83.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.82.0
+  // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
+  // caches the LAST rep's `(pi_hat, m_hat, g_d1, g_d0)` plus
+  // fold assignment in `fit_cache` and reuses them on the
+  // next call when the data fingerprint, fold split, and
+  // learner configuration are unchanged. Mirrors the IRM /
+  // PLR / CVAR plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -160,11 +170,66 @@ pub fn DoubleMLSSM::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.83.0+: default memoize off so v0.82.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.83.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the LAST rep's per-fold
+/// nuisance predictions (`pi_hat`, `m_hat`, `g_d1`, `g_d0`) and
+/// the fold assignment; on a repeat call whose data + learner
+/// fingerprint + fold split is identical, the entire per-fold
+/// crossfit is skipped and the cached values feed the
+/// psi_a / psi_b / coef / se pipeline.
+///
+/// `enable_memoize()` is honored only when `n_rep == 1`; for
+/// `n_rep > 1` the per-rep cross-fit must run each time (the
+/// cache would otherwise need to thread `n_rep` independent
+/// per-rep nuisance arrays, which the `FitCache` layout does
+/// not accommodate).
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// cross-fit and the cache is neither read nor written, so
+/// v0.82.0 callers see byte-identical output.
+pub fn DoubleMLSSM::enable_memoize(self : DoubleMLSSM) -> DoubleMLSSM {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.83.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLSSM::disable_memoize(self : DoubleMLSSM) -> DoubleMLSSM {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.83.0+: drop any cached nuisance predictions and fold
+/// assignment. Forces the next `fit()` to recompute from
+/// scratch.
+pub fn DoubleMLSSM::clear_cache(self : DoubleMLSSM) -> DoubleMLSSM {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.83.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that the cache may still be stale relative to the current
+/// data + learner configuration -- check `memoize_enabled`
+/// before assuming a cache hit.
+pub fn DoubleMLSSM::has_cache(self : DoubleMLSSM) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -504,60 +569,157 @@ pub fn DoubleMLSSM::fit(
     require(self.n_obs() >= self.n_folds) // kfold precondition
     let n = self.n_obs()
     let nrep = self.n_rep
-    let pi_acc : Array[Double] = Array::make(n, 0.0)
-    let m_acc : Array[Double] = Array::make(n, 0.0)
-    let g_d1_acc : Array[Double] = Array::make(n, 0.0)
-    let g_d0_acc : Array[Double] = Array::make(n, 0.0)
-    for r = 0; r < nrep; r = r + 1 {
-      let folds = kfold(n, self.n_folds, self.seed + r)
-      let (pi, m, gd1, gd0) = cross_fit_ssm(
-        ml_g,
-        ml_m,
-        ml_pi,
-        self.data.x,
-        self.data.y,
-        self.data.d,
-        self.data.s,
-        folds,
-        self.propensity_clip,
-      )
-      for i = 0; i < n; i = i + 1 {
-        pi_acc[i] = pi_acc[i] + pi[i]
-        m_acc[i] = m_acc[i] + m[i]
-        g_d1_acc[i] = g_d1_acc[i] + gd1[i]
-        g_d0_acc[i] = g_d0_acc[i] + gd0[i]
-      }
+    // v0.83.0+: memoize check (mirrors the PLR / IRM / CVAR
+    // pattern). The cache stores the LAST rep's `(pi_hat,
+    // m_hat, g_d1, g_d0)` plus the row-to-fold mapping. SSM
+    // is an averaged-across-reps estimator, so for `n_rep >
+    // 1` the cache cannot host a per-rep aggregate; we honor
+    // the cache only when `n_rep == 1`, in which case the
+    // stored values ARE the public averaged nuisances (averaging
+    // a single rep is the identity).
+    let memoize = self.memoize_enabled && nrep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(self.data.x, self.data.y, self.data.d)
+    } else {
+      0UL
     }
-    let inv = 1.0 / nrep.to_double()
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("ssm", ml_g, ml_m, self.propensity_clip)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      // SSM data has no `cluster_vars`; pass an empty vector
+      // so the hash stays 0 across calls (matches the IID
+      // sentinel). This keeps the cache-invalidation key
+      // stable across calls even though the SSM data type
+      // does not carry a `cluster_vars` field.
+      hash_cluster_ids([])
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "ssm",
+      )
     let pi_hat : Array[Double] = Array::make(n, 0.0)
     let m_hat : Array[Double] = Array::make(n, 0.0)
     let g_d1 : Array[Double] = Array::make(n, 0.0)
     let g_d0 : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      pi_hat[i] = pi_acc[i] * inv
-      m_hat[i] = m_acc[i] * inv
-      g_d1[i] = g_d1_acc[i] * inv
-      g_d0[i] = g_d0_acc[i] * inv
+    let fold_ids : Array[Int] = Array::make(n, 0)
+    if cache_hit {
+      // Reuse the cached LAST-rep (= only rep for nrep == 1)
+      // nuisances. The per-rep averaging loop is skipped.
+      let preds = self.fit_cache.predictions
+      for i = 0; i < n; i = i + 1 {
+        pi_hat[i] = preds[0][i]
+        m_hat[i] = preds[1][i]
+        g_d1[i] = preds[2][i]
+        g_d0[i] = preds[3][i]
+        fold_ids[i] = self.fit_cache.fold_ids[i]
+      }
+    } else {
+      let pi_acc : Array[Double] = Array::make(n, 0.0)
+      let m_acc : Array[Double] = Array::make(n, 0.0)
+      let g_d1_acc : Array[Double] = Array::make(n, 0.0)
+      let g_d0_acc : Array[Double] = Array::make(n, 0.0)
+      for r = 0; r < nrep; r = r + 1 {
+        let folds = kfold(n, self.n_folds, self.seed + r)
+        let (pi, m, gd1, gd0) = cross_fit_ssm(
+          ml_g,
+          ml_m,
+          ml_pi,
+          self.data.x,
+          self.data.y,
+          self.data.d,
+          self.data.s,
+          folds,
+          self.propensity_clip,
+        )
+        for i = 0; i < n; i = i + 1 {
+          pi_acc[i] = pi_acc[i] + pi[i]
+          m_acc[i] = m_acc[i] + m[i]
+          g_d1_acc[i] = g_d1_acc[i] + gd1[i]
+          g_d0_acc[i] = g_d0_acc[i] + gd0[i]
+        }
+        // Build row->fold_id map for the LAST rep (used by the
+        // cache writeback below). For nrep == 1 this is the only
+        // rep; for nrep > 1 memoize is effectively disabled
+        // (cache cannot host per-rep aggregates) so fold_ids
+        // here is unused downstream.
+        if memoize && r == nrep - 1 {
+          for f = 0; f < folds.length(); f = f + 1 {
+            for i in folds[f].test_indices() {
+              fold_ids[i] = f
+            }
+          }
+        }
+      }
+      let inv = 1.0 / nrep.to_double()
+      for i = 0; i < n; i = i + 1 {
+        pi_hat[i] = pi_acc[i] * inv
+        m_hat[i] = m_acc[i] * inv
+        g_d1[i] = g_d1_acc[i] * inv
+        g_d0[i] = g_d0_acc[i] * inv
+      }
     }
-    // MAR score (un-normalized IPW)
+    // MAR score (un-normalized IPW). v0.83.0+: psi_a is a
+    // constant `-1` (no per-row computation needed) and the
+    // psi_b inner loop is rewritten in terms of the
+    // `vectorized.mbt` building blocks (`vector_subtract`,
+    // `vector_multiply`, `vector_divide`, `vector_add`). The
+    // only remaining scalar loops are the `1 - m_i` /
+    // `1 - d[i]` sign-flip passes (no
+    // `vector_subtract_scalar` helper exists).
     let y = self.data.y
     let d = self.data.d
     let s = self.data.s
-    let psi_a : Array[Double] = Array::make(n, 0.0)
-    let psi_b : Array[Double] = Array::make(n, 0.0)
+    let psi_a : Array[Double] = Array::make(n, -1.0)
+    let y_minus_gd1 = vector_subtract(y, g_d1)
+    let y_minus_gd0 = vector_subtract(y, g_d0)
+    let ds = vector_multiply(d, s)
+    let m_pi = vector_multiply(m_hat, pi_hat)
+    let one_minus_m : Array[Double] = Array::make(n, 0.0)
+    let one_minus_d : Array[Double] = Array::make(n, 0.0)
     for i = 0; i < n; i = i + 1 {
-      let m_i = m_hat[i]
-      let pi_i = pi_hat[i]
-      let one_minus_m = 1.0 - m_i
-      psi_a[i] = -1.0
-      psi_b[i] = d[i] * s[i] * (y[i] - g_d1[i]) / (m_i * pi_i) +
-        g_d1[i] -
-        (
-          (1.0 - d[i]) * s[i] * (y[i] - g_d0[i]) / (one_minus_m * pi_i) +
-          g_d0[i]
-        )
+      one_minus_m[i] = 1.0 - m_hat[i]
+      one_minus_d[i] = 1.0 - d[i]
     }
+    let term1_num = vector_multiply(ds, y_minus_gd1)
+    let term1 = vector_divide(term1_num, m_pi, eps=1.0e-12)
+    let term1_offset = vector_add(term1, g_d1)
+    let one_minus_ds = vector_multiply(one_minus_d, s)
+    let term2_num = vector_multiply(one_minus_ds, y_minus_gd0)
+    let one_minus_m_pi = vector_multiply(one_minus_m, pi_hat)
+    let term2 = vector_divide(term2_num, one_minus_m_pi, eps=1.0e-12)
+    let term2_offset = vector_add(term2, g_d0)
+    let psi_b = vector_subtract(term1_offset, term2_offset)
     let (coef, se) = var_est(psi_a, psi_b)
+    // v0.83.0+: when memoize is on and the cache missed, write
+    // the freshly-computed fold_ids + nuisances to the cache.
+    let next_cache = if memoize && !cache_hit && nrep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [pi_hat, m_hat, g_d1, g_d0],
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "ssm",
+      )
+    } else {
+      self.fit_cache
+    }
     // v0.64.0+: persist the last repetition's `psi_a` / `psi_b`
     // for the multiplier bootstrap. SSM's `psi_a = -1` is a
     // constant; the helper `generic_bootstrap_t_stat` accepts
@@ -583,6 +745,8 @@ pub fn DoubleMLSSM::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>

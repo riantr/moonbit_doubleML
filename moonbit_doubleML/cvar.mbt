@@ -60,6 +60,16 @@ pub struct DoubleMLCVAR {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.83.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.82.0
+  // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
+  // caches the LAST rep's `(g_hat, m_final, ipw_vec)` plus
+  // fold assignment in `fit_cache` and reuses them on the
+  // next call when the data fingerprint, fold split, learner
+  // configuration, and propensity clip are unchanged. Mirrors
+  // the IRM / PLR plumbing.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -135,7 +145,63 @@ pub fn DoubleMLCVAR::new(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    // v0.83.0+: default memoize off so v0.82.0 callers see
+    // byte-identical fit() output. Enable explicitly via
+    // `.enable_memoize()` for caching.
+    memoize_enabled: false,
+    fit_cache: FitCache::empty(),
   }
+}
+
+///|
+/// v0.83.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the LAST rep's per-fold
+/// nuisance predictions (`g_hat`, `m_final`), the per-fold
+/// `ipw_vec` (needed to recompute `pq_est` on a cache hit),
+/// and the fold assignment; on a repeat call whose data +
+/// learner fingerprint + fold split is identical, the entire
+/// per-fold inner crossfit is skipped and the cached values
+/// feed the post-fold `psi_a / psi_b / coef / se` pipeline.
+///
+/// `enable_memoize()` is honored only when `n_rep == 1`; for
+/// `n_rep > 1` the per-rep cross-fit must run each time (the
+/// cache would otherwise need to thread `n_rep` independent
+/// per-rep nuisance arrays, which the `FitCache` layout does
+/// not accommodate).
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// per-fold inner crossfit and the cache is neither read nor
+/// written, so v0.82.0 callers see byte-identical output.
+pub fn DoubleMLCVAR::enable_memoize(self : DoubleMLCVAR) -> DoubleMLCVAR {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.83.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLCVAR::disable_memoize(self : DoubleMLCVAR) -> DoubleMLCVAR {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.83.0+: drop any cached nuisance predictions, fold
+/// assignment, and `ipw_vec`. Forces the next `fit()` to
+/// recompute from scratch.
+pub fn DoubleMLCVAR::clear_cache(self : DoubleMLCVAR) -> DoubleMLCVAR {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.83.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that the cache may still be stale relative to the current
+/// data + learner configuration -- check `memoize_enabled`
+/// before assuming a cache hit.
+pub fn DoubleMLCVAR::has_cache(self : DoubleMLCVAR) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -743,86 +809,174 @@ pub fn DoubleMLCVAR::fit(
     let ses : Array[Double] = Array::make(self.n_rep, 0.0)
     let mut last_g : Array[Double] = Array::make(n, 0.0)
     let mut last_m : Array[Double] = Array::make(n, 0.0)
+    // v0.83.0+: track the LAST rep's `ipw_vec` so a memoize
+    // writeback can persist it for cache-hit reuse. Without
+    // this, the cache-hit path can't recompute `pq_est =
+    // mean(ipw_vec)` from cached nuisances alone.
+    let mut last_ipw_vec : Array[Double] = []
+    // v0.83.0+: track the LAST rep's row-to-fold mapping for
+    // the cache writeback.
+    let fold_ids : Array[Int] = Array::make(n, 0)
     // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
     // multiplier bootstrap. Same convention as `last_g` /
     // `last_m`: each rep overwrites, so the post-loop values
     // match the last rep's nuisances (which are the ones
     // persisted on the struct).
     let last_psi_a : Array[Double] = Array::make(n, -1.0)
-    let last_psi_b : Array[Double] = Array::make(n, 0.0)
-    for r = 0; r < self.n_rep; r = r + 1 {
-      let folds = kfold(n, self.n_folds, self.seed + r)
-      let g_hat = Array::make(n, 0.0)
-      let m_hat = Array::make(n, 0.0)
-      let ipw_vec : Array[Double] = Array::make(folds.length(), 0.0)
-      for i_fold = 0; i_fold < folds.length(); i_fold = i_fold + 1 {
-        let train = folds[i_fold].train_indices()
-        let eval_set = folds[i_fold].test_indices()
-        // Per-fold sub-seed for the inner 50/50 split. The
-        // upstream `train_test_split` uses `random_state=42`
-        // (constant); we mirror that choice with a fixed
-        // constant seed so the deterministic test replay
-        // matches.
-        let inner_seed = 42 + r * 1000 + i_fold * 17
-        let (g_test, m_test, ipw_est) = cvar_inner_crossfit(
-          ml_g,
-          ml_m,
-          self.data.x,
-          self.data.y,
-          self.data.d,
-          treated,
-          train,
-          eval_set,
-          self.n_folds,
-          inner_seed,
-          self.quantile,
-          self.treatment,
-          self.propensity_clip,
-          self.normalize_ipw,
-        )
-        for k = 0; k < eval_set.length(); k = k + 1 {
-          g_hat[eval_set[k]] = g_test[k]
-          m_hat[eval_set[k]] = m_test[k]
-        }
-        ipw_vec[i_fold] = ipw_est
-      }
-      // Post-fold adjustments: clip, normalize, treat=0 flip.
-      // These match the upstream
-      // `m_hat["preds"] = ps_processor.adjust_ps(m_hat["preds"],
-      // d, cv=smpls); if normalize: m_hat_adj = _normalize_ipw(
-      // ...); if treatment==0: m_hat_adj = 1 - m_hat_adj`.
-      let m_clipped = clip_vec(
-        m_hat,
-        self.propensity_clip,
-        1.0 - self.propensity_clip,
+    let mut last_psi_b : Array[Double] = Array::make(n, 0.0)
+    // v0.83.0+: memoize check (mirrors the PLR / IRM pattern).
+    // The cache stores the LAST rep's `(g_hat, m_final, ipw_vec)`
+    // plus the row-to-fold mapping. We honor the cache only when:
+    //   (a) the user opted in (`self.memoize_enabled`),
+    //   (b) n_rep == 1 (multi-rep aggregations must run every
+    //       rep fresh -- we cannot cache individual rep scores).
+    //   (c) `is_valid(...)` matches every dimension of the
+    //       data + learner + cluster fingerprint.
+    // When memoize_enabled is false (the default), the entire
+    // cache code path is skipped so v0.82.0 callers see a
+    // byte-identical fit() output.
+    let memoize = self.memoize_enabled && self.n_rep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        z=self.data.z,
+        cluster_vars=self.data.cluster_vars,
       )
-      let m_adj = if self.normalize_ipw {
-        normalize_ipw_weights(m_clipped, self.data.d)
-      } else {
-        m_clipped
-      }
-      let m_final = if self.treatment == 0.0 {
-        let flipped = Array::make(m_adj.length(), 0.0)
-        for i = 0; i < m_adj.length(); i = i + 1 {
-          flipped[i] = 1.0 - m_adj[i]
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("cvar", ml_g, ml_m, self.propensity_clip)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      hash_cluster_ids(self.data.cluster_vars)
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        self.n_rep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "cvar",
+      )
+    for r = 0; r < self.n_rep; r = r + 1 {
+      let (g_hat, m_final, ipw_vec) = if cache_hit && r == self.n_rep - 1 {
+        // Reuse the cached LAST-rep nuisances + ipw_vec. v0.83.0+
+        // fix: without caching `ipw_vec` (just `g_hat` / `m_final`),
+        // the cache-hit path can't recompute `pq_est = mean(ipw_vec)`
+        // for the psi_a / psi_b / var_est pipeline.
+        let preds = self.fit_cache.predictions
+        let cached_fold_ids = self.fit_cache.fold_ids
+        for i = 0; i < n; i = i + 1 {
+          fold_ids[i] = cached_fold_ids[i]
         }
-        flipped
+        (preds[0], preds[1], preds[2])
       } else {
-        m_adj
+        let folds = kfold(n, self.n_folds, self.seed + r)
+        let g_hat = Array::make(n, 0.0)
+        let m_hat = Array::make(n, 0.0)
+        let ipw_vec : Array[Double] = Array::make(folds.length(), 0.0)
+        for i_fold = 0; i_fold < folds.length(); i_fold = i_fold + 1 {
+          let train = folds[i_fold].train_indices()
+          let eval_set = folds[i_fold].test_indices()
+          // Per-fold sub-seed for the inner 50/50 split. The
+          // upstream `train_test_split` uses `random_state=42`
+          // (constant); we mirror that choice with a fixed
+          // constant seed so the deterministic test replay
+          // matches.
+          let inner_seed = 42 + r * 1000 + i_fold * 17
+          let (g_test, m_test, ipw_est) = cvar_inner_crossfit(
+            ml_g,
+            ml_m,
+            self.data.x,
+            self.data.y,
+            self.data.d,
+            treated,
+            train,
+            eval_set,
+            self.n_folds,
+            inner_seed,
+            self.quantile,
+            self.treatment,
+            self.propensity_clip,
+            self.normalize_ipw,
+          )
+          for k = 0; k < eval_set.length(); k = k + 1 {
+            g_hat[eval_set[k]] = g_test[k]
+            m_hat[eval_set[k]] = m_test[k]
+          }
+          ipw_vec[i_fold] = ipw_est
+        }
+        // Post-fold adjustments: clip, normalize, treat=0 flip.
+        // These match the upstream
+        // `m_hat["preds"] = ps_processor.adjust_ps(m_hat["preds"],
+        // d, cv=smpls); if normalize: m_hat_adj = _normalize_ipw(
+        // ...); if treatment==0: m_hat_adj = 1 - m_hat_adj`.
+        let m_clipped = clip_vec(
+          m_hat,
+          self.propensity_clip,
+          1.0 - self.propensity_clip,
+        )
+        let m_adj = if self.normalize_ipw {
+          normalize_ipw_weights(m_clipped, self.data.d)
+        } else {
+          m_clipped
+        }
+        let m_final = if self.treatment == 0.0 {
+          let flipped = Array::make(m_adj.length(), 0.0)
+          for i = 0; i < m_adj.length(); i = i + 1 {
+            flipped[i] = 1.0 - m_adj[i]
+          }
+          flipped
+        } else {
+          m_adj
+        }
+        // Build row->fold_id map for the LAST rep (used by the
+        // cache writeback below).
+        if r == self.n_rep - 1 {
+          for f = 0; f < folds.length(); f = f + 1 {
+            for i in folds[f].test_indices() {
+              fold_ids[i] = f
+            }
+          }
+        }
+        (g_hat, m_final, ipw_vec)
       }
       // `pq_est = mean(ipw_vec)`. Matches the upstream
       // `pq_est = np.mean(ipw_vec)` (Kallus et al., p.4).
       let pq_est = mean(ipw_vec)
       // psi_a, psi_b with `g_target = max(pq_est, (y - q*pq_est)
-      // / (1-q))`.
+      // / (1-q))`. v0.83.0+: the residual loops are written in
+      // terms of the `vectorized.mbt` building blocks
+      // (`vector_subtract`, `vector_scale`, `vector_divide`,
+      // `vector_multiply`, `vector_add`); the only remaining
+      // per-element loop is the `max(z, pq_est)` step, which
+      // is a scalar compare (no vector_max helper available).
       let psi_a = Array::make(n, -1.0)
-      let psi_b = Array::make(n, 0.0)
       let q_comp = 1.0 - self.quantile
+      let pq_target_arr : Array[Double] = Array::make(n, pq_est)
+      let shifted_y = vector_subtract(
+        self.data.y,
+        vector_scale(pq_target_arr, self.quantile),
+      )
+      let z_arr = vector_scale(shifted_y, 1.0 / q_comp)
+      let g_target_arr : Array[Double] = Array::make(n, 0.0)
       for i = 0; i < n; i = i + 1 {
-        let z = (self.data.y[i] - self.quantile * pq_est) / q_comp
-        let g_target = if z > pq_est { z } else { pq_est }
-        psi_b[i] = treated[i] * (g_target - g_hat[i]) / m_final[i] + g_hat[i]
+        g_target_arr[i] = if z_arr[i] > pq_est { z_arr[i] } else { pq_est }
       }
+      let residual_g = vector_subtract(g_target_arr, g_hat)
+      let ratio = vector_divide(residual_g, m_final, eps=1.0e-10)
+      let weighted = vector_multiply(treated, ratio)
+      let psi_b = vector_add(weighted, g_hat)
       let (theta_r, se_r) = var_est(psi_a, psi_b)
       coefs[r] = theta_r
       ses[r] = se_r
@@ -832,6 +986,7 @@ pub fn DoubleMLCVAR::fit(
       // table, which only carries the last rep's nuisances).
       last_g = g_hat
       last_m = m_final
+      last_ipw_vec = ipw_vec
       // v0.75.0+: persist the last rep's IF components for the
       // bootstrap. psi_a is constant -1 (IRM-style IF). psi_b
       // mirrors the v0.71.0 sensitivity_analysis formula:
@@ -841,16 +996,50 @@ pub fn DoubleMLCVAR::fit(
       // We rebuild psi_b from the last rep's (g_hat, m_final)
       // using `pq_est = coef_r` so the bootstrap sees the
       // single-rep IF consistent with the converged coef.
+      // v0.83.0+: same vectorised residual pattern as above
+      // (subtract, scale, max, multiply-add) for the second
+      // psi_b recomputation.
       let pq_est_for_b = theta_r
-      let q_comp_b = 1.0 - self.quantile
+      let pq_target_arr_b : Array[Double] = Array::make(n, pq_est_for_b)
+      let shifted_y_b = vector_subtract(
+        self.data.y,
+        vector_scale(pq_target_arr_b, self.quantile),
+      )
+      let z_arr_b = vector_scale(shifted_y_b, 1.0 / q_comp)
+      let g_target_arr_b : Array[Double] = Array::make(n, 0.0)
       for i = 0; i < n; i = i + 1 {
-        let z = (self.data.y[i] - self.quantile * pq_est_for_b) / q_comp_b
-        let g_target = if z > pq_est_for_b { z } else { pq_est_for_b }
-        last_psi_b[i] = treated[i] * (g_target - g_hat[i]) / m_final[i] +
-          g_hat[i]
+        g_target_arr_b[i] = if z_arr_b[i] > pq_est_for_b {
+          z_arr_b[i]
+        } else {
+          pq_est_for_b
+        }
       }
+      let residual_g_b = vector_subtract(g_target_arr_b, g_hat)
+      let ratio_b = vector_divide(residual_g_b, m_final, eps=1.0e-10)
+      let weighted_b = vector_multiply(treated, ratio_b)
+      last_psi_b = vector_add(weighted_b, g_hat)
     }
     let (theta, se) = aggregate_coef_se(coefs, ses)
+    // v0.83.0+: when memoize is on and the cache missed, write
+    // the freshly-computed fold_ids + nuisances (incl. ipw_vec,
+    // needed for the cache-hit path's `pq_est` recomputation)
+    // to the cache.
+    let next_cache = if memoize && !cache_hit && self.n_rep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [last_g, last_m, last_ipw_vec],
+        self.seed,
+        self.n_folds,
+        self.n_rep,
+        n,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "cvar",
+      )
+    } else {
+      self.fit_cache
+    }
     {
       data: self.data,
       treatment: self.treatment,
@@ -873,6 +1062,8 @@ pub fn DoubleMLCVAR::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
