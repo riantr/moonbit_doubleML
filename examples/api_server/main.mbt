@@ -235,7 +235,7 @@ async fn write_json(
   body : Json,
 ) -> Unit {
   let bytes = @utf8.encode(body.stringify())
-  let headers : Map[String, String] = Map::from_array([])
+  let headers : Map[@http.CaseInsensitiveString, String] = Map::from_array([])
   headers.set("Content-Type", "application/json; charset=utf-8")
   headers.set("Content-Length", bytes.length().to_string())
   conn.send_response(code, reason, extra_headers=headers)
@@ -252,7 +252,7 @@ async fn write_text(
   body : String,
 ) -> Unit {
   let bytes = @utf8.encode(body)
-  let headers : Map[String, String] = Map::from_array([])
+  let headers : Map[@http.CaseInsensitiveString, String] = Map::from_array([])
   headers.set("Content-Type", content_type)
   headers.set("Content-Length", bytes.length().to_string())
   conn.send_response(code, reason, extra_headers=headers)

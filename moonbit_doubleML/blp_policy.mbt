@@ -932,6 +932,31 @@ pub struct DoubleMLPolicyTree {
   // tree.
   leaf_count : Array[Int]
   fitted : Bool
+  // v0.85.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.84.0
+  // behavior bit-for-bit). When true, `fit()` caches the
+  // fitted tree structure (flat-encoded node array) plus the
+  // leaf statistics (`leaf_signal_mean` / `leaf_count` /
+  // `leaf_assignment`) in `fit_cache` and reuses them on the
+  // next call when the features, orthogonal signal, and
+  // `depth` are unchanged. This completes the memoize +
+  // vectorize surface on all 22 estimators.
+  //
+  // PolicyTree is not a cross-fitted nuisance-regression
+  // estimator: it has no `n_folds` / `n_rep` / `cluster_vars`.
+  // The cache therefore reuses the `FitCache` slots as a
+  // shape-compatible container (see the layout docstring on
+  // `policy_tree_cache_encode`):
+  //   - `fold_ids`          -> `leaf_assignment` (len n_obs)
+  //   - `predictions[0]`    -> `leaf_signal_mean` (len n_leaves)
+  //   - `predictions[1]`    -> `leaf_assignment` as Double
+  //   - `predictions[2]`    -> flat node encoding (len 5*n_nodes)
+  //   - `predictions[3]`    -> `leaf_count` as Double
+  //   - `predictions[4]`    -> [split_feature, split_value, lt, rt]
+  //   - `n_folds`           -> n_leaves (partition-count analogue)
+  //   - `fold_split_seed`   -> `depth` (PolicyTree has no seed)
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -959,6 +984,11 @@ pub fn DoubleMLPolicyTree::new(
       leaf_signal_mean: [],
       leaf_count: [],
       fitted: false,
+      // v0.85.0+: default memoize off so v0.84.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -1034,7 +1064,186 @@ fn policy_tree_count_leaves(node : PolicyTreeNode) -> Int {
 }
 
 ///|
+/// Widen an `Array[Int]` to `Array[Double]`. Used by the v0.85.0+
+/// memoization layer so the `Int`-typed policy-tree statistics
+/// (`leaf_assignment`, `leaf_count`) fit into the
+/// `Array[Array[Double]]` payload shape of `FitCache`.
+fn policy_tree_ints_to_doubles(xs : Array[Int]) -> Array[Double] {
+  let n = xs.length()
+  let out : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = xs[i].to_double()
+  }
+  out
+}
+
+///|
+/// Inverse of `policy_tree_ints_to_doubles`. The stored values are
+/// exact small integers widened to `Double`, so `to_int()` recovers
+/// them without loss. Used on the v0.85.0+ cache-hit path to
+/// restore `leaf_assignment` / `leaf_count`.
+fn policy_tree_ints_from_doubles(xs : Array[Double]) -> Array[Int] {
+  let n = xs.length()
+  let out : Array[Int] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = xs[i].to_int()
+  }
+  out
+}
+
+///|
+/// v0.85.0+: flat-encode a `PolicyTreeNode` into a fixed-width
+/// `Array[Double]` so the fitted tree can be stored in the
+/// `Array[Array[Double]]` payload of `FitCache` and rebuilt on a
+/// cache hit. `PolicyTreeNode` is a recursive sum type with no
+/// `Clone` derive, so it cannot be stored directly.
+///
+/// Layout: 5 slots per node, emitted in pre-order. Each node
+/// occupies `[kind, a, b, left_slot, right_slot]`:
+///
+///   - `kind == 0.0` -> `Leaf(a.to_int())`; `b` and both slot
+///     fields are unused (written as `0.0` / `-1.0`).
+///   - `kind == 1.0` -> `Split(a.to_int(), b, left, right)` where
+///     `left` / `right` are recursive indexes into `out`.
+///
+/// The 5 slots of the parent are reserved BEFORE recursing into
+/// the children, so a child's slot index is always greater than
+/// its parent's and `policy_tree_cache_decode` can walk the
+/// pre-order array without any extra bookkeeping. The root always
+/// lands at slot 0.
+fn policy_tree_cache_encode(node : PolicyTreeNode, out : Array[Double]) -> Int {
+  let slot = out.length() / 5
+  out.push(0.0)
+  out.push(0.0)
+  out.push(0.0)
+  out.push(-1.0)
+  out.push(-1.0)
+  match node {
+    Leaf(t) => {
+      out[slot * 5 + 0] = 0.0
+      out[slot * 5 + 1] = t.to_double()
+    }
+    Split(feature, threshold, left, right) => {
+      let left_slot = policy_tree_cache_encode(left, out)
+      let right_slot = policy_tree_cache_encode(right, out)
+      out[slot * 5 + 0] = 1.0
+      out[slot * 5 + 1] = feature.to_double()
+      out[slot * 5 + 2] = threshold
+      out[slot * 5 + 3] = left_slot.to_double()
+      out[slot * 5 + 4] = right_slot.to_double()
+    }
+  }
+  slot
+}
+
+///|
+/// v0.85.0+: inverse of `policy_tree_cache_encode`. Rebuilds the
+/// `PolicyTreeNode` rooted at `slot` from the flat pre-order
+/// encoding produced by `policy_tree_cache_encode`.
+fn policy_tree_cache_decode(flat : Array[Double], slot : Int) -> PolicyTreeNode {
+  let b = slot * 5
+  if flat[b] == 0.0 {
+    Leaf(flat[b + 1].to_int())
+  } else {
+    let left = policy_tree_cache_decode(flat, flat[b + 3].to_int())
+    let right = policy_tree_cache_decode(flat, flat[b + 4].to_int())
+    Split(flat[b + 1].to_int(), flat[b + 2], left, right)
+  }
+}
+
+///|
 pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree {
+  // v0.85.0+: memoize check. PolicyTree is a deterministic policy
+  // learner (no `n_folds` / `n_rep` / `cluster_vars`), so the cache
+  // holds the fitted tree structure plus the per-leaf statistics
+  // rather than per-fold nuisance predictions. The cache key is
+  // `(data_hash, depth, hyperparams_hash)`; on a hit `fit()` skips
+  // both `policy_tree_build` (the dominant `O(n * p * nodes)` cost,
+  // with a recursive `Matrix` allocation per node) and the
+  // `O(n * depth)` leaf-walk / accumulation loop.
+  let n_obs = self.orth_signal.length()
+  let memoize = self.memoize_enabled
+  let data_hash : UInt64 = if memoize {
+    // PolicyTree has no `d` vector; pass an empty array so the
+    // hash reflects only the features + orth_signal content.
+    hash_data(self.features, self.orth_signal, [])
+  } else {
+    0UL
+  }
+  let hparams_hash : UInt64 = if memoize {
+    // PolicyTree carries no nuisance learner, so both learner
+    // slots get a `Noop` dispatch and the `depth` is folded in
+    // through the `propensity_clip` slot (its Double analogue
+    // here). Mirrors the BLP `cov_type` proxy convention.
+    hash_hyperparams(
+      "policy_tree",
+      LearnerDispatch::noop(),
+      LearnerDispatch::noop(),
+      self.depth.to_double(),
+    )
+  } else {
+    0UL
+  }
+  let cluster_hash : UInt64 = if memoize {
+    // No `cluster_vars`; the empty vector hashes to the IID
+    // sentinel 0.
+    hash_cluster_ids([])
+  } else {
+    0UL
+  }
+  // `n_leaves` is a property of the fitted tree, so it is not
+  // known before the cache is consulted. The `n_folds` slot is
+  // therefore fed from the cache's own `leaf_signal_mean` length
+  // (0 on an empty cache), which keeps the stored `n_folds`
+  // consistent with the briefing's "n_folds = n_leaves"
+  // partition-count analogue. An empty cache fails the
+  // `fold_ids.length() == n_obs` check first, so a
+  // wrong-shape payload can never reach the restore path.
+  let n_leaves_hint : Int = if self.fit_cache.is_empty() {
+    0
+  } else {
+    self.fit_cache.predictions[0].length()
+  }
+  let cache_hit = memoize &&
+    self.fit_cache.is_valid(
+      // PolicyTree has no seed; `depth` is the structural
+      // fingerprint of the fitted tree.
+      self.depth,
+      n_leaves_hint,
+      1,
+      n_obs,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "policy_tree",
+    )
+  if cache_hit {
+    // Rebuild the tree + leaf statistics from the cache. The
+    // decode is the exact inverse of `policy_tree_cache_encode`,
+    // so `root` (and therefore `predict`) is restored bit-for-bit.
+    let preds = self.fit_cache.predictions
+    let cached_root = policy_tree_cache_decode(preds[2], 0)
+    let meta = preds[4]
+    let cached_leaf_mean = preds[0]
+    let cached_leaf_count = policy_tree_ints_from_doubles(preds[3])
+    let cached_leaf_assignment = policy_tree_ints_from_doubles(preds[1])
+    return {
+      features: self.features,
+      orth_signal: self.orth_signal,
+      depth: self.depth,
+      root: cached_root,
+      split_feature: meta[0].to_int(),
+      split_value: meta[1],
+      left_treatment: meta[2].to_int(),
+      right_treatment: meta[3].to_int(),
+      leaf_assignment: cached_leaf_assignment,
+      leaf_signal_mean: cached_leaf_mean,
+      leaf_count: cached_leaf_count,
+      fitted: true,
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
+    }
+  }
   let root = policy_tree_build(self.features, self.orth_signal, self.depth)
   let (split_feature, split_value) = match root {
     Leaf(_) => (-1, 0.0)
@@ -1048,19 +1257,60 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   let n_leaves = leaf_treatments.length()
   let leaf_signal_sum : Array[Double] = Array::make(n_leaves, 0.0)
   let leaf_count_arr : Array[Int] = Array::make(n_leaves, 0)
-  let n_obs = self.orth_signal.length()
   let leaf_assignment : Array[Int] = Array::make(n_obs, 0)
+  // The per-row tree walk (`policy_tree_leaf_index`) is a
+  // branchy depth-limited descent, so it stays a scalar loop. Only
+  // the per-leaf mean is vectorised below.
   for i = 0; i < n_obs; i = i + 1 {
     let lf = policy_tree_leaf_index(root, self.features, i, 0)
     leaf_assignment[i] = lf
     leaf_signal_sum[lf] = leaf_signal_sum[lf] + self.orth_signal[i]
     leaf_count_arr[lf] = leaf_count_arr[lf] + 1
   }
-  let leaf_signal_mean : Array[Double] = Array::make(n_leaves, 0.0)
-  for k = 0; k < n_leaves; k = k + 1 {
-    if leaf_count_arr[k] > 0 {
-      leaf_signal_mean[k] = leaf_signal_sum[k] / leaf_count_arr[k].to_double()
-    }
+  // v0.85.0+: vectorise the per-leaf mean. `vector_divide` gives
+  // `sum / count` for every populated leaf (count >= 1 > eps, so
+  // the denominator is used verbatim) and `0.0 / eps = 0.0` for an
+  // empty leaf, which reproduces the old `if count > 0` guard
+  // exactly -- an empty leaf always has `sum == 0.0` because both
+  // accumulators are written in the same loop iteration. So the
+  // default (memoize off) path stays byte-identical to v0.84.0.
+  let leaf_signal_mean : Array[Double] = vector_divide(
+    leaf_signal_sum,
+    policy_tree_ints_to_doubles(leaf_count_arr),
+    eps=1.0e-12,
+  )
+  // v0.85.0+: when memoize is on and the cache missed, write the
+  // freshly-built tree + leaf statistics to the cache. See the
+  // struct field docstring for the slot layout.
+  let next_cache = if memoize {
+    let flat : Array[Double] = []
+    let _ = policy_tree_cache_encode(root, flat)
+    let meta : Array[Double] = [
+      split_feature.to_double(),
+      split_value,
+      lt.to_double(),
+      rt.to_double(),
+    ]
+    FitCache::from_fit(
+      leaf_assignment,
+      [
+        leaf_signal_mean,
+        policy_tree_ints_to_doubles(leaf_assignment),
+        flat,
+        policy_tree_ints_to_doubles(leaf_count_arr),
+        meta,
+      ],
+      self.depth,
+      n_leaves,
+      1,
+      n_obs,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "policy_tree",
+    )
+  } else {
+    FitCache::empty()
   }
   {
     features: self.features,
@@ -1075,7 +1325,57 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     leaf_signal_mean,
     leaf_count: leaf_count_arr,
     fitted: true,
+    memoize_enabled: self.memoize_enabled,
+    fit_cache: next_cache,
   }
+}
+
+///|
+/// v0.85.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` caches the fitted policy tree plus the
+/// per-leaf statistics and skips `policy_tree_build` + the
+/// leaf-walk loop on a repeat call whose features, orthogonal
+/// signal, and `depth` are all unchanged. Mirrors the BLP / IRM /
+/// PLR / CVAR / SSM plumbing.
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// tree build and the cache is neither read nor written, so
+/// v0.84.0 callers see byte-identical output.
+pub fn DoubleMLPolicyTree::enable_memoize(
+  self : DoubleMLPolicyTree,
+) -> DoubleMLPolicyTree {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.85.0+: turn off memoization. Same immutability contract as
+/// `enable_memoize()`. After this, `fit()` will not read or write
+/// the cache; the existing `fit_cache` is preserved on the
+/// returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLPolicyTree::disable_memoize(
+  self : DoubleMLPolicyTree,
+) -> DoubleMLPolicyTree {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.85.0+: drop any cached policy tree + leaf statistics. Forces
+/// the next `fit()` to recompute from scratch.
+pub fn DoubleMLPolicyTree::clear_cache(
+  self : DoubleMLPolicyTree,
+) -> DoubleMLPolicyTree {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.85.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note that
+/// the cache may still be stale relative to the current features /
+/// orthogonal signal / `depth` -- check `memoize_enabled` before
+/// assuming a cache hit.
+pub fn DoubleMLPolicyTree::has_cache(self : DoubleMLPolicyTree) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -1160,6 +1460,23 @@ pub fn DoubleMLPolicyTree::sensitivity_analysis(
     max_bias: 0.0,
   }
   let out : Array[SensitivityResult] = Array::make(n_leaves, zero_result)
+  // v0.85.0+: vectorise the per-observation residual. The residual
+  // is `orth_signal[i] - leaf_signal_mean[leaf(i)]`, so gathering
+  // the per-row leaf mean once and calling `vector_subtract` a
+  // single time replaces the per-leaf scalar subtract. Values are
+  // bit-identical to the old inline expression. Rows are still
+  // bucketed per leaf in increasing `i` order, so the residual
+  // array handed to `irm_style_sensitivity` has the same layout
+  // as before.
+  let leaf_mean_per_row : Array[Double] = Array::make(n_obs, 0.0)
+  for i = 0; i < n_obs; i = i + 1 {
+    leaf_mean_per_row[i] = self.leaf_signal_mean[self.leaf_assignment[i]]
+  }
+  let residuals_all : Array[Double] = vector_subtract(
+    self.orth_signal,
+    leaf_mean_per_row,
+  )
+  let residual_fill : Array[Int] = Array::make(n_leaves, 0)
   // Bucket residuals and psi_a per leaf, then call
   // `irm_style_sensitivity` once per leaf.
   for l = 0; l < n_leaves; l = l + 1 {
@@ -1169,11 +1486,10 @@ pub fn DoubleMLPolicyTree::sensitivity_analysis(
     }
     let residuals : Array[Double] = Array::make(n_in_leaf, 0.0)
     let psi_a : Array[Double] = Array::make(n_in_leaf, -1.0)
-    let mut k = 0
     for i = 0; i < n_obs; i = i + 1 {
       if self.leaf_assignment[i] == l {
-        residuals[k] = self.orth_signal[i] - self.leaf_signal_mean[l]
-        k = k + 1
+        residuals[residual_fill[l]] = residuals_all[i]
+        residual_fill[l] = residual_fill[l] + 1
       }
     }
     out[l] = irm_style_sensitivity(

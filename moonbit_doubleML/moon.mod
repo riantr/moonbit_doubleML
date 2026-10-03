@@ -8,9 +8,14 @@
 // import {
 //   "moonbitlang/x@0.4.6",
 // }
+import {
+  "moonbit-community/sqlite3@0.2.3",
+  "moonbitlang/async@0.20.3",
+}
+
 name = "riantr/moonbit_doubleML"
 
-version = "0.84.0"
+version = "0.85.0"
 
 readme = "README.mbt.md"
 

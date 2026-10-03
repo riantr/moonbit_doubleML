@@ -9,6 +9,100 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.85.0] -- memoize + vectorize complete (DoubleMLPolicyTree, 22 of 22)
+
+Closes the v0.80 / v0.81 / v0.82 / v0.83 / v0.84 memoize +
+vectorize infrastructure on `DoubleMLPolicyTree`, the last
+estimator without it. `DoubleMLPolicyTree` is a deterministic
+policy learner, not a cross-fitted nuisance-regression
+estimator: it has no `n_folds`, no `n_rep`, and no
+`fit_cluster`, so its cache holds the fitted tree structure
+plus the per-leaf statistics rather than per-fold nuisance
+predictions. A cache hit skips `policy_tree_build` (the
+dominant `O(n * p * nodes)` cost, which allocates a fresh
+`Matrix` per node) and the `O(n * depth)` leaf-walk loop.
+Coverage: **22 of 22 estimators** now carry memoize +
+vectorize. Test count delta: native / wasm / js 614 -> 617
+(+3); wasm-gc 620 -> 623 (+3).
+
+The v0.84.0 notes still listed "2 small DID variants" as
+pending; those DID variants already carried the API as of
+v0.82.0, so `DoubleMLPolicyTree` was in fact the only
+remaining gap.
+
+### Added
+
+- New memoize API on `DoubleMLPolicyTree`:
+  `enable_memoize` / `disable_memoize` / `clear_cache` /
+  `has_cache`, mirroring the `DoubleMLBLP` (v0.83.0) method
+  style exactly.
+- `DoubleMLPolicyTree` struct gains `memoize_enabled : Bool`
+  and `fit_cache : FitCache` (defaulting to `false` /
+  `FitCache::empty()`), so the default path stays
+  byte-identical to v0.84.0.
+- `fit()` caches the flat-encoded `PolicyTreeNode` tree plus
+  the per-leaf statistics. `PolicyTreeNode` is a recursive sum
+  type with no `Clone` derive and cannot be stored directly in
+  the `Array[Array[Double]]` payload, so it is flat-encoded
+  into a fixed-width 5-slots-per-node pre-order
+  `Array[Double]` (`kind`, payload `a`, payload `b`, `left_slot`,
+  `right_slot`) and rebuilt by an exact inverse decoder on a
+  cache hit. Cache-slot layout: `fold_ids` = `leaf_assignment`,
+  `predictions[0]` = `leaf_signal_mean`,
+  `predictions[1]` = `leaf_assignment` widened to `Double`,
+  `predictions[2]` = the flat node encoding,
+  `predictions[3]` = `leaf_count` widened to `Double`,
+  `predictions[4]` = `[split_feature, split_value, lt, rt]`,
+  `n_folds` = `n_leaves`, `n_rep` = 1, and
+  `fold_split_seed` = `depth` (PolicyTree has no seed, so
+  `depth` is the structural fingerprint). The cache key is
+  `(data_hash, hyperparams_hash, cluster_ids_hash)` with
+  `data_hash = hash_data(features, orth_signal, [])` and
+  `hyperparams_hash = hash_hyperparams("policy_tree", noop,
+  noop, depth.to_double())`.
+- `moon.mod` gains the `moonbit-community/sqlite3@0.2.3`
+  dependency with a `moonbitlang/async@0.20.3` pin.
+- New white-box tests in `expand_v085_test.mbt`:
+  - `policy_tree_enable_memoize_smoke`: at `depth=3`,
+    `split_feature` / `split_value` / `leaf_assignment` /
+    `leaf_signal_mean` / `leaf_count` and `predict` output are
+    identical between the fresh fit and the cache hit, and the
+    cache-hit result is additionally cross-checked against an
+    independent memoize-OFF fit (ground truth for the whole
+    node encode/decode round-trip).
+  - `policy_tree_disable_memoize_smoke`: `disable_memoize`
+    preserves the cache, `clear_cache` drops it
+    (`has_cache()` false), and a memoize-OFF fit does not
+    repopulate it.
+  - `policy_tree_memoize_invalidation`: a tree cached at
+    `depth=1` is not reused for a `depth=3` fit (and vice
+    versa), since `depth` is folded into the hyperparams hash
+    and the fold-split fingerprint.
+
+### Changed
+
+- `DoubleMLPolicyTree::fit` computes the per-leaf mean with
+  `vector_divide` (eps-guarded denominator) instead of a
+  per-leaf `if count > 0` divide loop. Byte-identical: an
+  empty leaf always has `sum == 0.0` (both accumulators are
+  written in the same loop iteration), so the old guard and the
+  eps-clipped division agree exactly.
+- `DoubleMLPolicyTree::sensitivity_analysis` computes the
+  per-observation residual with a single `vector_subtract` over
+  a gathered per-row leaf mean, instead of one scalar subtract
+  per row per leaf. Rows are still bucketed per leaf in
+  increasing-index order, so the residual array handed to
+  `irm_style_sensitivity` has the same layout as before.
+- `moon.mod` version 0.84.0 -> 0.85.0; README synced to the
+  v0.85.0 test counts and the 22 / 22 coverage figure.
+
+### Fixed
+
+- `examples/api_server/main.mbt`: the `write_json` / `write_text`
+  header maps are typed `Map[@http.CaseInsensitiveString, String]`
+  rather than `Map[String, String]`, matching the `async` 0.22.4
+  response API (2 lines).
+
 ## [0.84.0] -- memoize + vectorize expand (5 more estimators, 20 of 22)
 
 Closes the v0.80 / v0.81 / v0.82 / v0.83 memoize +

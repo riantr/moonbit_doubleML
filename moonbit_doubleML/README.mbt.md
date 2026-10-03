@@ -25,14 +25,15 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.84.0** |
+| `moon.mod` version | **0.85.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **614 / 614** |
-| Tests (wasm-gc) | **620 / 620** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **617 / 617** |
+| Tests (wasm-gc) | **623 / 623** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
+| Memoize + vectorize coverage | **22 / 22 estimators** |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
 #Features
@@ -53,6 +54,41 @@ binary-outcome CS-DID.
 `DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` shape and returns
 the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
 No per-estimator interface drift.
+
+**v0.85.0 memoization + vectorization complete (22 / 22)** —
+closes the memoize + vectorize expand on
+`DoubleMLPolicyTree`, the last estimator without the API. With
+this, **all 22 estimators** expose
+`enable_memoize` / `disable_memoize` / `clear_cache` /
+`has_cache`. (The v0.84.0 note below still listed "2 small DID
+variants" as pending; those DID variants already carried the API
+as of v0.82.0, so `DoubleMLPolicyTree` was in fact the only
+remaining gap.)
+
+`DoubleMLPolicyTree` is a deterministic policy learner, not a
+cross-fitted nuisance-regression estimator: it has no `n_folds`,
+no `n_rep`, and no `fit_cluster`. Its cache therefore holds the
+**fitted tree structure plus the per-leaf statistics** rather
+than per-fold nuisance predictions, reusing the `FitCache` slots
+as a shape-compatible container (`fold_ids` = `leaf_assignment`,
+`predictions[0]` = `leaf_signal_mean`, `predictions[3]` =
+`leaf_count`, `n_folds` = `n_leaves` as a partition-count
+analogue, `fold_split_seed` = `depth` as the structural
+fingerprint). `PolicyTreeNode` is a recursive sum type with no
+`Clone` derive, so the tree is flat-encoded into a fixed-width
+5-slots-per-node pre-order `Array[Double]` and rebuilt on a cache
+hit. A hit skips both `policy_tree_build` (the dominant
+`O(n * p * nodes)` cost, which allocates a fresh `Matrix` per
+node) and the `O(n * depth)` leaf-walk loop. The per-leaf mean
+is computed with `vector_divide` (eps-guarded denominator), and
+`sensitivity_analysis`'s per-observation residual is computed
+with a single `vector_subtract` over a gathered per-row leaf
+mean instead of one scalar subtract per row per leaf.
+
+Also in v0.85.0: adds the `moonbit-community/sqlite3@0.2.3`
+dependency (with a `moonbitlang/async@0.20.3` pin) and the
+matching `async` 0.22.4 header-map type fix in
+`examples/api_server`.
 
 **v0.84.0 memoization + vectorization expand** —
 extends the v0.83.0 layer to five more estimators:
@@ -435,6 +471,26 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `vector_scale`, `vector_divide`, `vector_multiply`,
   `vector_add`). 20 / 22 estimators now carry memoize +
   vectorize.
+- v0.85.0 verified counts: `moon test` 617 / 617 (native & wasm &
+  js) and 623 / 623 (wasm-gc). Closes the memoize + vectorize
+  expand for `DoubleMLPolicyTree` (a deterministic policy learner
+  with no `n_folds` / `n_rep` / `fit_cluster`: the cache holds the
+  flat-encoded `PolicyTreeNode` tree plus the per-leaf
+  `leaf_assignment` / `leaf_signal_mean` / `leaf_count` statistics,
+  keyed on `(data_hash, depth, hyperparams_hash)`; a cache hit
+  skips `policy_tree_build` and the leaf-walk loop entirely). The
+  per-leaf mean uses `vector_divide` and
+  `sensitivity_analysis` uses a single `vector_subtract` over a
+  gathered per-row leaf mean. **22 / 22 estimators** now carry
+  memoize + vectorize. Also adds the
+  `moonbit-community/sqlite3@0.2.3` dependency plus the `async`
+  0.22.4 header-map type fix in `examples/api_server`. The three
+  new white-box tests in `expand_v085_test.mbt` include a
+  ground-truth cross-check of the cache-hit tree against an
+  independent memoize-OFF fit, and a deliberately asymmetric DGP
+  so that a left/right swap in the flat node encoding is
+  detectable (a symmetric interaction DGP yields a
+  mirror-invariant tree and would hide such a bug).
 
 #Attribution
 
