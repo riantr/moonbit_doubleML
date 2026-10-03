@@ -359,13 +359,13 @@ pub fn DoubleMLPLR::fit(
         self.data.d,
         folds,
       )
-      // score elements for THIS rep's nuisances only
-      let v_hat : Array[Double] = Array::make(n, 0.0)
-      let u_hat : Array[Double] = Array::make(n, 0.0)
-      for i = 0; i < n; i = i + 1 {
-        v_hat[i] = self.data.d[i] - m_pred[i]
-        u_hat[i] = self.data.y[i] - l_pred[i]
-      }
+      // score elements for THIS rep's nuisances only.
+      // v0.81.0+: residuals extracted via `vector_subtract` (the
+      // partialling-out score `v_hat = d - m_pred` and the outcome
+      // residual `u_hat = y - l_pred` are both pure element-wise
+      // subtracts, the textbook case for the named building block).
+      let v_hat = vector_subtract(self.data.d, m_pred)
+      let u_hat = vector_subtract(self.data.y, l_pred)
       let (psi_a, psi_b) = plr_score_elements(
         n,
         v_hat,
@@ -385,12 +385,10 @@ pub fn DoubleMLPLR::fit(
     // last rep's cross-fitted nuisances so the stored arrays
     // align with `l_hat` / `m_hat` and `coef` (matches the
     // v0.20.0+ `DoubleMLDIDCrossSection::fit` convention).
-    let v_hat_last : Array[Double] = Array::make(n, 0.0)
-    let u_hat_last : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      v_hat_last[i] = self.data.d[i] - m_pred[i]
-      u_hat_last[i] = self.data.y[i] - l_pred[i]
-    }
+    // v0.81.0+: residuals via `vector_subtract` (same vectorised
+    // pattern as the per-rep score loop above).
+    let v_hat_last = vector_subtract(self.data.d, m_pred)
+    let u_hat_last = vector_subtract(self.data.y, l_pred)
     let (psi_a, psi_b) = plr_score_elements(
       n,
       v_hat_last,
@@ -515,12 +513,13 @@ fn DoubleMLPLR::fit_cluster(
           self.data.d,
           folds_row,
         )
-        let v_hat : Array[Double] = Array::make(n, 0.0)
-        let u_hat : Array[Double] = Array::make(n, 0.0)
-        for i = 0; i < n; i = i + 1 {
-          v_hat[i] = self.data.d[i] - m_pred[i]
-          u_hat[i] = self.data.y[i] - l_pred[i]
-        }
+        // v0.81.0+: residuals extracted via `vector_subtract` (matches
+        // the IID `fit()` vectorisation above; the cluster retry
+        // loop can re-enter this body so keeping the body
+        // branchless -- i.e. no per-iteration scalar arithmetic --
+        // avoids cross-attempt numerical drift).
+        let v_hat = vector_subtract(self.data.d, m_pred)
+        let u_hat = vector_subtract(self.data.y, l_pred)
         // v0.55.0: route through the shared score helper so the
         // IV-type branch (cluster-aware variant) uses the same
         // psi_a / psi_b formula as `DoubleMLPLR::fit`.
@@ -584,12 +583,10 @@ fn DoubleMLPLR::fit_cluster(
     // multiplier bootstrap. Same convention as `fit()`:
     // recompute from the last rep's nuisances so the stored
     // arrays align with `l_hat` / `m_hat` and `coef`.
-    let v_hat_last : Array[Double] = Array::make(n, 0.0)
-    let u_hat_last : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      v_hat_last[i] = self.data.d[i] - m_pred[i]
-      u_hat_last[i] = self.data.y[i] - l_pred[i]
-    }
+    // v0.81.0+: residuals via `vector_subtract` (matches the IID
+    // `fit()` vectorisation).
+    let v_hat_last = vector_subtract(self.data.d, m_pred)
+    let u_hat_last = vector_subtract(self.data.y, l_pred)
     let (psi_a, psi_b) = plr_score_elements(
       n,
       v_hat_last,
@@ -739,11 +736,10 @@ pub fn DoubleMLPLR::sensitivity_analysis(
 ) -> SensitivityResult raise {
   require(self.fitted)
   let l_hat = self.predictions_l()
-  let n = l_hat.length()
-  let residuals : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    residuals[i] = self.data.y[i] - l_hat[i]
-  }
+  // v0.81.0+: residual extraction via `vector_subtract` (the
+  // PLR sensitivity residual `y - l_hat` is a single pure
+  // subtract, the textbook case for the named building block).
+  let residuals = vector_subtract(self.data.y, l_hat)
   irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
 }
 
@@ -766,10 +762,9 @@ pub fn DoubleMLPLR::sensitivity_analysis_cluster(
   let l_hat = self.predictions_l()
   let n = l_hat.length()
   require(cluster_ids.length() == n)
-  let residuals : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    residuals[i] = self.data.y[i] - l_hat[i]
-  }
+  // v0.81.0+: residual extraction via `vector_subtract` (same
+  // pattern as the IID `sensitivity_analysis` path above).
+  let residuals = vector_subtract(self.data.y, l_hat)
   irm_style_sensitivity_cluster(
     self.coef,
     residuals,

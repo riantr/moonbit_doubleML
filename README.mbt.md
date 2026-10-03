@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.75.0** |
+| `moon.mod` version | **0.81.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **142** `.mbt` files (**59** production + **83** test) |
+| `.mbt` file count | **144** `.mbt` files (**60** production + **84** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **558 / 558** |
-| Tests (wasm-gc) | **564 / 564** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **593 / 593** |
+| Tests (wasm-gc) | **599 / 599** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -58,6 +58,18 @@ No per-estimator interface drift.
 stratified K-fold (`kfold_stratified`), `chacha8_rng`-based seeded
 PRNG (`chacha8_rng(seed)`), and Kahan summation. Default `seed=3141`;
 same seed yields byte-identical DGP outputs across runs.
+
+**Vectorised cross-fit helpers (v0.81.0+)** -- `vectorized.mbt`
+exposes `matrix_predict` (Kahan-compensated `X @ weights + bias`),
+`vector_subtract`, `vector_add`, and `vector_scale` as public
+free functions. `DoubleMLIRM::fit` / `fit_cluster` /
+`sensitivity_analysis` and the matching `DoubleMLPLR` paths now
+route the per-observation residual extraction through
+`vector_subtract` instead of an inlined per-iteration load /
+subtract. The helpers are pure element-wise loop wrappers
+today -- the public API is fixed so a v0.82+ release can swap
+the bodies to a SIMD-vectorised backend (or external call to
+a BLAS-style library) without breaking callers.
 
 **Propensity-score processor (`PSProcessor`)** -- `clipping_threshold`
 clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)
@@ -119,7 +131,7 @@ byte-equality; non-default overrides change the IF and the coef.
 
 ```console
 $ moon test --deny-warn
-Total tests: 485, passed: 485, failed: 0.
+Total tests: 593, passed: 593, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
@@ -240,9 +252,10 @@ binary-outcome CS-DID:
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.75.0, 142 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.81.0, 144 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
+  vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
 
 doc/                     <- wasm-gc-targeted numbered tutorials
   001_introduction/

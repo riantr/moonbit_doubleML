@@ -9,6 +9,119 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.81.0] -- vectorized cross-fit predict + residual (v0.80 perf cycle, part 2)
+
+Names the per-fold predict / residual building blocks used
+inside the DML score-element accumulation. The new helpers in
+`vectorized.mbt` are public, pure, and currently element-wise
+loop wrappers -- the API is fixed so v0.82+ can swap the
+bodies to a SIMD-vectorised backend (or external call to a
+BLAS-style library) without breaking callers. The IRM and
+PLR `fit()` / `fit_cluster()` / `sensitivity_analysis()`
+bodies now route the per-observation residual extraction
+through `vector_subtract` instead of an inlined `for i in
+0..<n` load/subtract, and the IRM `sensitivity_analysis`
+residual form (`y - g0 - (g1 - g0) * d`) is decomposed into
+two named subtracts plus a per-iteration scalar correction.
+Byte-identical coefficients and standard errors across
+all four backends (native / wasm / wasm-gc / js) under
+`moon test --deny-warn`. Test count delta:
+native / wasm / js 584 -> 593 (+9); wasm-gc 590 -> 599 (+9).
+
+### Added
+
+- `vectorized.mbt` (new file, v0.81.0+):
+  - `matrix_predict(Matrix, weights : Array[Double], bias : Double) -> Array[Double]`:
+    element-wise `y = X @ weights + bias`. The accumulator is
+    Kahan-compensated to match the existing `matvec` helper
+    that `LinearRegression::predict` already calls for the
+    augmented `(X | 1) @ coef` path. The function is
+    intended as the per-fold predict-step primitive when a
+    caller already has explicit weights / bias and does not
+    need to materialise an `augment_with_intercept(X)`
+    matrix.
+  - `vector_subtract(a, b) -> Array[Double]`:
+    element-wise `a - b`. Aborts via `require` if `a` and
+    `b` differ in length. Used to extract the per-observation
+    residuals in IRM and PLR.
+  - `vector_add(a, b) -> Array[Double]`:
+    element-wise `a + b`. Same length-mismatch abort.
+  - `vector_scale(a, s) -> Array[Double]`:
+    element-wise `a * s`. Scalar `s` applied to every entry.
+
+### Changed
+
+- `DoubleMLIRM::fit()` (in `irm.mbt`): the per-repetition
+  score loop body (`u0 = y[i] - g0[i]`, `u1 = y[i] - g1[i]`,
+  then the ATE-score combine) now extracts the two residuals
+  via `vector_subtract(y, g0)` / `vector_subtract(y, g1)` and
+  fills `psi_a` with the constant `-1.0` at allocation time.
+  The remaining `psi_b` expression still uses a per-observation
+  loop because it combines the residual vector with scalar
+  arithmetic (`d * u1 / m`, `(1 - d) * u0 / (1 - m)`) that
+  we have not yet generalised to a vector helper. Same
+  change applied to the post-aggregator bootstrap
+  `psi_a / psi_b` recompute step.
+- `DoubleMLIRM::fit_cluster()` (in `irm.mbt`): same
+  vectorisation as the IID `fit()` body. Both the
+  per-attempt score loop and the post-aggregator
+  `psi_a / psi_b` recompute now route through `vector_subtract`.
+- `DoubleMLIRM::sensitivity_analysis()` /
+  `DoubleMLIRM::sensitivity_analysis_cluster()` (in
+  `irm.mbt`): the residual form
+  `residuals[i] = y[i] - g0[i] - (g1[i] - g0[i]) * d[i]`
+  is decomposed into two named subtracts
+  (`y_minus_g0 = vector_subtract(y, g0)` and
+  `g1_minus_g0 = vector_subtract(g1, g0)`) followed by a
+  per-iteration scalar correction
+  (`residuals[i] = y_minus_g0[i] - g1_minus_g0[i] * d[i]`).
+  Same numerical values, same `irm_style_sensitivity(...)`
+  result struct.
+- `DoubleMLPLR::fit()` (in `plr.mbt`): the per-repetition
+  score loop now computes
+  `v_hat = vector_subtract(d, m_pred)` and
+  `u_hat = vector_subtract(y, l_pred)` instead of an
+  inlined `for i in 0..<n` load/subtract. Same numerical
+  values, same `plr_score_elements(...)` call site. Same
+  change applied to the post-aggregator bootstrap
+  `psi_a / psi_b` recompute step.
+- `DoubleMLPLR::fit_cluster()` (in `plr.mbt`): same
+  vectorisation as the IID `fit()` body. Both the
+  per-attempt score loop and the post-aggregator
+  `psi_a / psi_b` recompute now route through `vector_subtract`.
+- `DoubleMLPLR::sensitivity_analysis()` /
+  `DoubleMLPLR::sensitivity_analysis_cluster()` (in
+  `plr.mbt`): the single-line residual
+  `residuals[i] = y[i] - l_hat[i]` is now
+  `residuals = vector_subtract(y, l_hat)`. Same numerical
+  values, same `irm_style_sensitivity(...)` result struct.
+- `moon.mod` version bumped from `0.80.0` to `0.81.0`.
+
+### Notes
+
+- Other estimators (RDD, LPQ, PQ, QTE, CVaR, SSM, BLP, LPLR,
+  PLPR, IIVM, PLIV, DID, DIDMulti, DIDCrossSection,
+  DIDCS, DIDBinary, DIDCSBinary, APOS) keep their current
+  per-iteration implementations. The `vectorized.mbt`
+  helpers are exposed so v0.82+ can extend the
+  vectorisation to those estimators without breaking the
+  public surface.
+- `LinearRegression::predict` continues to call `matvec`
+  directly (the existing `augment_with_intercept(x) +
+  matvec(xa, self.coef_)` path); the new `matrix_predict`
+  helper is a public API surface for callers that already
+  have explicit weights / bias and want to skip the
+  augmented-matrix allocation.
+- Byte-identical coefficients and standard errors across
+  native / wasm / wasm-gc / js (verified via the existing
+  `irm_recovers_true_theta_on_simple_dgp` /
+  `plr_recovers_true_theta_on_simple_dgp` /
+  `irm_sandwich_se_smoke` / `plr_sandwich_se_smoke` /
+  `irm_cluster_sandwich_se_smoke` / `plr_sandwich_se_smoke`
+  tests plus the new vectorized regression test
+  `irm_fit_returns_same_coef_after_vectorize` in
+  `vectorized_test.mbt`).
+
 ## [0.80.0] -- memoization layer + fit cache (v0.80 perf cycle, part 1)
 
 Adds an opt-in memoization layer to `DoubleMLIRM::fit()`.

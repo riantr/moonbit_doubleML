@@ -504,20 +504,27 @@ pub fn DoubleMLIRM::fit(
       g1 = g1_r
       m = m_r
       m_raw = m_raw_r
-      // Score (ATE, weights=1, weights_bar=1) — uses THIS rep's nuisances only
+      // Score (ATE, weights=1, weights_bar=1) -- uses THIS rep's nuisances only.
+      // v0.81.0+: the per-observation residuals `u0 = y - g0` and
+      // `u1 = y - g1` are extracted via `vector_subtract` so the
+      // element-wise subtract is a single named building block rather
+      // than an inlined per-iteration load/subtract. The remaining
+      // `psi_b` expression still uses a per-observation loop because
+      // it combines `vector_subtract` results with scalar arithmetic
+      // (`d * u1 / m`, `(1 - d) * u0 / (1 - m)`) that we have not
+      // yet generalised to a vector helper.
       let y = self.data.y
       let d = self.data.d
-      let psi_a : Array[Double] = Array::make(n, 0.0)
+      let u0 = vector_subtract(y, g0)
+      let u1 = vector_subtract(y, g1)
+      let psi_a : Array[Double] = Array::make(n, -1.0)
       let psi_b : Array[Double] = Array::make(n, 0.0)
       for i = 0; i < n; i = i + 1 {
-        let u0 = y[i] - g0[i]
-        let u1 = y[i] - g1[i]
         let m_i = m[i]
         let one_minus_m = 1.0 - m_i
-        let d_over_m = d[i] * u1 / m_i
-        let one_minus_d_over_one_minus_m = (1.0 - d[i]) * u0 / one_minus_m
+        let d_over_m = d[i] * u1[i] / m_i
+        let one_minus_d_over_one_minus_m = (1.0 - d[i]) * u0[i] / one_minus_m
         psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
-        psi_a[i] = -1.0
       }
       let (coef_r, se_r) = var_est(psi_a, psi_b)
       coefs[r] = coef_r
@@ -530,19 +537,23 @@ pub fn DoubleMLIRM::fit(
     // the last rep's cross-fitted nuisances so the stored
     // arrays align with `g0_hat` / `g1_hat` / `m_hat` and
     // `coef` (matches the v0.20.0+ DID convention).
-    let psi_a : Array[Double] = Array::make(n, 0.0)
+    // v0.81.0+: the `u0 = y - g0` and `u1 = y - g1` extractions
+    // route through `vector_subtract` (same vectorisation as
+    // the per-rep score loop above).
+    let psi_a : Array[Double] = Array::make(n, -1.0)
     let psi_b : Array[Double] = Array::make(n, 0.0)
     let y_last = self.data.y
     let d_last = self.data.d
+    let u0_last = vector_subtract(y_last, g0)
+    let u1_last = vector_subtract(y_last, g1)
     for i = 0; i < n; i = i + 1 {
-      let u0 = y_last[i] - g0[i]
-      let u1 = y_last[i] - g1[i]
       let m_i = m[i]
       let one_minus_m = 1.0 - m_i
-      let d_over_m = d_last[i] * u1 / m_i
-      let one_minus_d_over_one_minus_m = (1.0 - d_last[i]) * u0 / one_minus_m
+      let d_over_m = d_last[i] * u1_last[i] / m_i
+      let one_minus_d_over_one_minus_m = (1.0 - d_last[i]) *
+        u0_last[i] /
+        one_minus_m
       psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
-      psi_a[i] = -1.0
     }
     // v0.80.0+: when memoize is on and the cache missed, write
     // the freshly-computed fold_ids + nuisances to the cache so
@@ -676,19 +687,22 @@ fn DoubleMLIRM::fit_cluster(
         g1 = g1_r
         m = m_r
         m_raw = m_raw_r
-        let psi_a : Array[Double] = Array::make(n, 0.0)
+        // v0.81.0+: per-observation residuals extracted via `vector_subtract`
+        // (matches the IID fit() vectorisation above). `psi_a` is
+        // constant `-1` for the IRM ATE score, so it is allocated
+        // directly to that value rather than filled in a loop.
+        let u0 = vector_subtract(self.data.y, g0)
+        let u1 = vector_subtract(self.data.y, g1)
+        let psi_a : Array[Double] = Array::make(n, -1.0)
         let psi_b : Array[Double] = Array::make(n, 0.0)
         for i = 0; i < n; i = i + 1 {
-          let u0 = self.data.y[i] - g0[i]
-          let u1 = self.data.y[i] - g1[i]
           let m_i = m[i]
           let one_minus_m = 1.0 - m_i
-          let d_over_m = self.data.d[i] * u1 / m_i
+          let d_over_m = self.data.d[i] * u1[i] / m_i
           let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
-            u0 /
+            u0[i] /
             one_minus_m
           psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
-          psi_a[i] = -1.0
         }
         let (t, s) = cluster_causal_param_and_se(
           psi_a,
@@ -726,20 +740,20 @@ fn DoubleMLIRM::fit_cluster(
     // multiplier bootstrap. Same convention as `fit()`:
     // recompute from the last rep's cross-fitted nuisances so
     // the stored arrays align with `g0_hat` / `g1_hat` /
-    // `m_hat` and `coef`.
-    let psi_a : Array[Double] = Array::make(n, 0.0)
+    // `m_hat` and `coef`. v0.81.0+: residuals via
+    // `vector_subtract` (matches the IID fit() vectorisation).
+    let psi_a : Array[Double] = Array::make(n, -1.0)
     let psi_b : Array[Double] = Array::make(n, 0.0)
+    let u0 = vector_subtract(self.data.y, g0)
+    let u1 = vector_subtract(self.data.y, g1)
     for i = 0; i < n; i = i + 1 {
-      let u0 = self.data.y[i] - g0[i]
-      let u1 = self.data.y[i] - g1[i]
       let m_i = m[i]
       let one_minus_m = 1.0 - m_i
-      let d_over_m = self.data.d[i] * u1 / m_i
+      let d_over_m = self.data.d[i] * u1[i] / m_i
       let one_minus_d_over_one_minus_m = (1.0 - self.data.d[i]) *
-        u0 /
+        u0[i] /
         one_minus_m
       psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
-      psi_a[i] = -1.0
     }
     {
       data: self.data,
@@ -965,9 +979,15 @@ pub fn DoubleMLIRM::sensitivity_analysis(
   let g1 = self.predictions_g1()
   let d = self.data.d
   let n = g0.length()
+  // v0.81.0+: residual extraction via `vector_subtract` for the
+  // outcome `y - g0` component. The `(g1[i] - g0[i]) * d[i]`
+  // correction is per-observation scalar arithmetic and stays
+  // in a loop (no vector helper for that combination yet).
+  let y_minus_g0 = vector_subtract(self.data.y, g0)
+  let g1_minus_g0 = vector_subtract(g1, g0)
   let residuals : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
-    residuals[i] = self.data.y[i] - g0[i] - (g1[i] - g0[i]) * d[i]
+    residuals[i] = y_minus_g0[i] - g1_minus_g0[i] * d[i]
   }
   irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
 }
@@ -991,9 +1011,13 @@ pub fn DoubleMLIRM::sensitivity_analysis_cluster(
   let d = self.data.d
   let n = g0.length()
   require(cluster_ids.length() == n)
+  // v0.81.0+: residual extraction via `vector_subtract` (same
+  // pattern as the IID `sensitivity_analysis` path above).
+  let y_minus_g0 = vector_subtract(self.data.y, g0)
+  let g1_minus_g0 = vector_subtract(g1, g0)
   let residuals : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
-    residuals[i] = self.data.y[i] - g0[i] - (g1[i] - g0[i]) * d[i]
+    residuals[i] = y_minus_g0[i] - g1_minus_g0[i] * d[i]
   }
   irm_style_sensitivity_cluster(
     self.coef,
