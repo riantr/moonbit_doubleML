@@ -304,6 +304,17 @@ pub struct DoubleMLPQ {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.84.0+: memoization state. `memoize_enabled` is the
+  // user-facing opt-in (set via `DoubleMLPQ::enable_memoize()`);
+  // when true, `fit()` caches the LAST solve_pq's `(theta,
+  // psi, deriv)` plus row-to-fold mapping in `fit_cache` and
+  // reuses them on the next `fit()` call (skipping the entire
+  // propensity cross-fit + bisection + 3x outcome cross-fits).
+  // The `(coef, se)` aggregation from cached values still runs
+  // on every `fit()`, so changing the propensity-clip / quantile
+  // configuration always takes effect through the data hash.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -340,6 +351,10 @@ pub fn DoubleMLPQ::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.84.0+: memoize starts disabled; opt in via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -359,30 +374,123 @@ pub fn DoubleMLPQ::fit(
   if self.data.is_cluster_data() {
     return self.fit_cluster(ml_l~, ml_m~)
   }
-  let (theta, psi, deriv) = solve_pq(
-    ml_l,
-    ml_m,
-    self.data,
-    self.treatment,
-    self.quantile,
-    self.n_folds,
-    self.seed,
-    self.propensity_clip,
-  ) catch {
-    BracketSignError::UpperSignFailed =>
-      abort(
-        "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
-      )
+  let n = self.data.n_obs()
+  // v0.84.0+: memoize check (mirrors the per-estimator
+  // pattern). PQ is a single-fit estimator (no `n_rep`),
+  // so memoize is honored unconditionally when enabled --
+  // the cache stores the LAST (and only) `solve_pq` call's
+  // `(theta, psi, deriv)` plus row-to-fold mapping. On a
+  // cache hit we skip the entire `solve_pq` (propensity
+  // cross-fit + bisection + 3x outcome cross-fits) and just
+  // recompute the `(coef, se)` aggregation from cached
+  // values.
+  let memoize = self.memoize_enabled
+  let data_hash : UInt64 = if memoize {
+    hash_data(
+      self.data.x,
+      self.data.y,
+      self.data.d,
+      z=self.data.z,
+      cluster_vars=self.data.cluster_vars,
+    )
+  } else {
+    0UL
   }
-  let n = self.data.n_obs().to_double()
+  let hparams_hash : UInt64 = if memoize {
+    hash_hyperparams("pq", ml_l, ml_m, self.propensity_clip)
+  } else {
+    0UL
+  }
+  let cluster_hash : UInt64 = if memoize {
+    hash_cluster_ids(self.data.cluster_vars)
+  } else {
+    0UL
+  }
+  // PQ's `solve_pq` uses `n_folds` outer folds with no
+  // rep loop, so the cache key matches the IID path's
+  // `(n_folds=2..k, n_rep=1, n_obs=n)` shape.
+  let cache_hit = memoize &&
+    self.fit_cache.is_valid(
+      self.seed,
+      self.n_folds,
+      1,
+      n,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "pq",
+    )
+  let (theta, psi, deriv, fold_ids) = if cache_hit {
+    // Reuse the cached `(theta, deriv)` pair and `psi`
+    // vector. The row-to-fold map is also pulled (we
+    // don't actually need it for PQ's score, but it
+    // anchors the FitCache contract that
+    // `fold_ids.length() == n_obs`).
+    let preds = self.fit_cache.predictions
+    let cached_fold_ids = self.fit_cache.fold_ids
+    let local_fold_ids : Array[Int] = Array::make(n, 0)
+    for i = 0; i < n; i = i + 1 {
+      local_fold_ids[i] = cached_fold_ids[i]
+    }
+    (preds[0][0], preds[1], preds[0][1], local_fold_ids)
+  } else {
+    let folds = kfold(n, self.n_folds, self.seed)
+    let (t, p, d) = solve_pq(
+      ml_l,
+      ml_m,
+      self.data,
+      self.treatment,
+      self.quantile,
+      self.n_folds,
+      self.seed,
+      self.propensity_clip,
+      folds~,
+    ) catch {
+      BracketSignError::UpperSignFailed =>
+        abort(
+          "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+        )
+    }
+    let local_fold_ids : Array[Int] = Array::make(n, 0)
+    for f = 0; f < folds.length(); f = f + 1 {
+      for i in folds[f].test_indices() {
+        local_fold_ids[i] = f
+      }
+    }
+    (t, p, d, local_fold_ids)
+  }
+  let n_d = n.to_double()
   // SE = sqrt(E[psi^2] / n) / |deriv|, the standard
   // one-step influence-function variance for a Z-estimator.
-  let mut gamma = 0.0
-  for z in psi {
-    gamma = gamma + z * z
+  // v0.84.0+: vectorise the `gamma = sum(psi^2)` accumulator
+  // by multiplying psi by itself and summing via `vector_*`
+  // helpers. Because `psi * psi` is element-wise square,
+  // `vector_multiply(psi, psi)` and `mean()` give the same
+  // sum-of-squares as the inline loop.
+  let psi_sq = vector_multiply(psi, psi)
+  let gamma = mean(psi_sq)
+  let se = (gamma / (deriv * deriv * n_d)).sqrt()
+  // v0.84.0+: when memoize is on and the cache missed, write
+  // the freshly-computed `(theta, deriv, psi, fold_ids)` to
+  // the cache. Pack `theta` and `deriv` as a length-2
+  // array (`predictions[0]`) so the cache-hit path can pull
+  // both scalars back without reshaping.
+  let next_cache = if memoize && !cache_hit {
+    FitCache::from_fit(
+      fold_ids,
+      [[theta, deriv], psi],
+      self.seed,
+      self.n_folds,
+      1,
+      n,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "pq",
+    )
+  } else {
+    self.fit_cache
   }
-  gamma = gamma / n
-  let se = (gamma / (deriv * deriv * n)).sqrt()
   {
     data: self.data,
     treatment: self.treatment,
@@ -400,6 +508,8 @@ pub fn DoubleMLPQ::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    memoize_enabled: self.memoize_enabled,
+    fit_cache: next_cache,
   }
 }
 
@@ -501,6 +611,13 @@ fn DoubleMLPQ::fit_cluster(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.84.0+: memoize state carried through the cluster
+      // path; the cluster folds are deterministic for fixed
+      // (seed, n_folds, cluster_vars), so the same hash
+      // pipeline as the IID path applies (the cluster_hash
+      // captures the `cluster_vars` fingerprint).
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -554,6 +671,45 @@ pub fn DoubleMLPQ::se(self : DoubleMLPQ) -> Double {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.84.0+: turn on memoization. When enabled, the next
+/// `fit()` caches the `solve_pq(...)` outputs (`theta`,
+/// `psi`, `deriv`) plus row-to-fold mapping; subsequent
+/// `fit()` calls with the same data fingerprint, fold split,
+/// learner configuration, propensity clip, and cluster
+/// partition reuse the cached outputs. The `(coef, se)`
+/// aggregation from cached values still runs on every `fit()`.
+pub fn DoubleMLPQ::enable_memoize(self : DoubleMLPQ) -> DoubleMLPQ {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.84.0+: turn off memoization. After this, `fit()` will not
+/// read or write the cache; the existing `fit_cache` is preserved
+/// on the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLPQ::disable_memoize(self : DoubleMLPQ) -> DoubleMLPQ {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.84.0+: drop the cached `solve_pq(...)` outputs. After
+/// this, the next `fit()` will run the full `solve_pq` (and
+/// repopulate the cache if memoize is still enabled).
+pub fn DoubleMLPQ::clear_cache(self : DoubleMLPQ) -> DoubleMLPQ {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.84.0+: `true` iff `fit_cache` holds at least one cached
+/// `solve_pq(...)` result (i.e. a previous `fit()` with
+/// `memoize_enabled = true` has populated the cache). Note that
+/// `has_cache()` does NOT verify the cache key matches the
+/// current data + learner configuration -- check `memoize_enabled`
+/// if you also need to know whether the next `fit()` will hit.
+pub fn DoubleMLPQ::has_cache(self : DoubleMLPQ) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -710,6 +866,17 @@ pub struct DoubleMLQTE {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.84.0+: memoization state. `memoize_enabled` is the
+  // user-facing opt-in (set via `DoubleMLQTE::enable_memoize()`);
+  // when true, `fit()` caches per-quantile `(theta1, psi1, deriv1,
+  // theta0, psi0, deriv0)` plus row-to-fold mapping in `fit_cache`
+  // and reuses them on the next `fit()` call (skipping the
+  // `2 * n_quantiles` `solve_pq` calls -- propensity cross-fit +
+  // bisection + 3x outcome cross-fits per quantile-treatment).
+  // The `(coefs, ses, psi_flat)` aggregation from cached values
+  // still runs on every `fit()` call.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -740,6 +907,10 @@ pub fn DoubleMLQTE::new(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    // v0.84.0+: memoize starts disabled; opt in via
+    // `.enable_memoize()` for caching.
+    memoize_enabled: false,
+    fit_cache: FitCache::empty(),
   }
 }
 
@@ -755,54 +926,190 @@ pub fn DoubleMLQTE::fit(
   if self.data.is_cluster_data() {
     return self.fit_cluster(ml_l~, ml_m~)
   }
-  let c = Array::make(self.quantiles.length(), 0.0)
-  let s = Array::make(self.quantiles.length(), 0.0)
   let n_obs = self.data.n_obs()
-  let psi_flat : Array[Double] = Array::make(
-    self.quantiles.length() * n_obs,
-    0.0,
-  )
-  for j = 0; j < self.quantiles.length(); j = j + 1 {
-    let (theta1, psi1, deriv1) = solve_pq(
-      ml_l,
-      ml_m,
-      self.data,
-      1.0,
-      self.quantiles[j],
-      self.n_folds,
+  let n_q = self.quantiles.length()
+  let c = Array::make(n_q, 0.0)
+  let s = Array::make(n_q, 0.0)
+  let psi_flat : Array[Double] = Array::make(n_q * n_obs, 0.0)
+  // v0.84.0+: memoize check (mirrors the per-estimator
+  // pattern). QTE is a single-fit estimator (no `n_rep`),
+  // so memoize is honored unconditionally when enabled --
+  // the cache stores per-quantile per-treatment
+  // `(theta1, deriv1, theta0, deriv0)` plus the flat
+  // `(psi1, psi0)` matrices. On a cache hit we skip all
+  // `2 * n_quantiles` `solve_pq` calls and just recompute
+  // the `(coefs, ses, psi_flat)` aggregation from cached
+  // values.
+  let memoize = self.memoize_enabled
+  let data_hash : UInt64 = if memoize {
+    hash_data(
+      self.data.x,
+      self.data.y,
+      self.data.d,
+      z=self.data.z,
+      cluster_vars=self.data.cluster_vars,
+    )
+  } else {
+    0UL
+  }
+  let hparams_hash : UInt64 = if memoize {
+    hash_hyperparams("qte", ml_l, ml_m, self.propensity_clip)
+  } else {
+    0UL
+  }
+  let cluster_hash : UInt64 = if memoize {
+    hash_cluster_ids(self.data.cluster_vars)
+  } else {
+    0UL
+  }
+  let cache_hit = memoize &&
+    self.fit_cache.is_valid(
       self.seed,
-      self.propensity_clip,
-    ) catch {
-      BracketSignError::UpperSignFailed =>
-        abort(
-          "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
-        )
+      self.n_folds,
+      1,
+      n_obs,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "qte",
+    )
+  // v0.84.0+: per-quantile scalars `(theta1, deriv1,
+  // theta0, deriv0)` cached as a length-`4 * n_q` flat
+  // array. Per-quantile per-treatment IF vectors cached
+  // as flat `[n_q * n_obs]` arrays.
+  let thetas_derivs : Array[Double] = if cache_hit {
+    self.fit_cache.predictions[0]
+  } else {
+    Array::make(n_q * 4, 0.0)
+  }
+  let psi1_cache : Array[Double] = if cache_hit {
+    self.fit_cache.predictions[1]
+  } else {
+    Array::make(n_q * n_obs, 0.0)
+  }
+  let psi0_cache : Array[Double] = if cache_hit {
+    self.fit_cache.predictions[2]
+  } else {
+    Array::make(n_q * n_obs, 0.0)
+  }
+  // Row-to-fold mapping: drawn once per `n_folds` for the
+  // IID path (used for the cache-key contract that
+  // `fold_ids.length() == n_obs`).
+  let fold_ids : Array[Int] = if cache_hit {
+    self.fit_cache.fold_ids
+  } else {
+    let folds = kfold(n_obs, self.n_folds, self.seed)
+    let local_fold_ids : Array[Int] = Array::make(n_obs, 0)
+    for f = 0; f < folds.length(); f = f + 1 {
+      for i in folds[f].test_indices() {
+        local_fold_ids[i] = f
+      }
     }
-    let (theta0, psi0, deriv0) = solve_pq(
-      ml_l,
-      ml_m,
-      self.data,
-      0.0,
-      self.quantiles[j],
-      self.n_folds,
-      self.seed,
-      self.propensity_clip,
-    ) catch {
-      BracketSignError::UpperSignFailed =>
-        abort(
-          "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
-        )
+    local_fold_ids
+  }
+  let n = self.data.n_obs().to_double()
+  for j = 0; j < n_q; j = j + 1 {
+    let offset = j * n_obs
+    // Compute or pull `theta1`, `psi1`, `deriv1` for quantile `j`.
+    // On cache-hit we copy from the flat cache; otherwise we run
+    // `solve_pq` once and write back into the cache.
+    let (theta1, psi1, deriv1) = if cache_hit {
+      let arr : Array[Double] = Array::make(n_obs, 0.0)
+      for i = 0; i < n_obs; i = i + 1 {
+        arr[i] = psi1_cache[offset + i]
+      }
+      (thetas_derivs[j * 4 + 0], arr, thetas_derivs[j * 4 + 1])
+    } else {
+      let (t1, p1, d1) = solve_pq(
+        ml_l,
+        ml_m,
+        self.data,
+        1.0,
+        self.quantiles[j],
+        self.n_folds,
+        self.seed,
+        self.propensity_clip,
+      ) catch {
+        BracketSignError::UpperSignFailed =>
+          abort(
+            "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+          )
+      }
+      thetas_derivs[j * 4 + 0] = t1
+      thetas_derivs[j * 4 + 1] = d1
+      for i = 0; i < n_obs; i = i + 1 {
+        psi1_cache[offset + i] = p1[i]
+      }
+      (t1, p1, d1)
+    }
+    let (theta0, psi0, deriv0) = if cache_hit {
+      let arr : Array[Double] = Array::make(n_obs, 0.0)
+      for i = 0; i < n_obs; i = i + 1 {
+        arr[i] = psi0_cache[offset + i]
+      }
+      (thetas_derivs[j * 4 + 2], arr, thetas_derivs[j * 4 + 3])
+    } else {
+      let (t0, p0, d0) = solve_pq(
+        ml_l,
+        ml_m,
+        self.data,
+        0.0,
+        self.quantiles[j],
+        self.n_folds,
+        self.seed,
+        self.propensity_clip,
+      ) catch {
+        BracketSignError::UpperSignFailed =>
+          abort(
+            "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
+          )
+      }
+      thetas_derivs[j * 4 + 2] = t0
+      thetas_derivs[j * 4 + 3] = d0
+      for i = 0; i < n_obs; i = i + 1 {
+        psi0_cache[offset + i] = p0[i]
+      }
+      (t0, p0, d0)
     }
     c[j] = theta1 - theta0
-    let n = self.data.n_obs().to_double()
-    let mut gamma = 0.0
-    for i = 0; i < psi1.length(); i = i + 1 {
-      let u = psi1[i] / deriv1 - psi0[i] / deriv0
-      psi_flat[j * n_obs + i] = u
-      gamma = gamma + u * u
+    // v0.84.0+: vectorise the per-observation `u` IF
+    // computation as `psi1/deriv1 - psi0/deriv0`. The
+    // original scalar loop is rewritten as
+    // `vector_scale(psi1, 1/deriv1) - vector_scale(psi0,
+    // 1/deriv0)`; both are O(n) flat operations and
+    // byte-identical to the original because `deriv1` /
+    // `deriv0` are scalar (not array) factors.
+    let psi1_scaled = vector_scale(psi1, 1.0 / deriv1)
+    let psi0_scaled = vector_scale(psi0, 1.0 / deriv0)
+    let u = vector_subtract(psi1_scaled, psi0_scaled)
+    for i = 0; i < n_obs; i = i + 1 {
+      psi_flat[j * n_obs + i] = u[i]
     }
-    gamma = gamma / n
+    // `gamma = sum(u^2) / n`. v0.84.0+: same vectorised
+    // pattern as PQ: `vector_multiply(u, u)` element-wise
+    // square + `mean()` for `sum / n`.
+    let u_sq = vector_multiply(u, u)
+    let gamma = mean(u_sq)
     s[j] = (gamma / n).sqrt()
+  }
+  // v0.84.0+: when memoize is on and the cache missed,
+  // write the freshly-computed per-quantile scalars + IF
+  // vectors + row-to-fold mapping to the cache.
+  let next_cache = if memoize && !cache_hit {
+    FitCache::from_fit(
+      fold_ids,
+      [thetas_derivs, psi1_cache, psi0_cache],
+      self.seed,
+      self.n_folds,
+      1,
+      n_obs,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "qte",
+    )
+  } else {
+    self.fit_cache
   }
   {
     data: self.data,
@@ -819,6 +1126,8 @@ pub fn DoubleMLQTE::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    memoize_enabled: self.memoize_enabled,
+    fit_cache: next_cache,
   }
 }
 
@@ -936,6 +1245,13 @@ fn DoubleMLQTE::fit_cluster(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.84.0+: memoize state carried through the cluster
+      // path; the cluster folds are deterministic for fixed
+      // (seed, n_folds, cluster_vars), so the same hash
+      // pipeline as the IID path applies (the cluster_hash
+      // captures the `cluster_vars` fingerprint).
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -979,6 +1295,48 @@ pub fn DoubleMLQTE::coefs(self : DoubleMLQTE) -> Array[Double] {
 ///|
 pub fn DoubleMLQTE::ses(self : DoubleMLQTE) -> Array[Double] {
   self.ses
+}
+
+///|
+/// v0.84.0+: turn on memoization. When enabled, the next
+/// `fit()` caches per-quantile per-treatment
+/// `(theta1, psi1, deriv1, theta0, psi0, deriv0)` plus
+/// row-to-fold mapping; subsequent `fit()` calls with the
+/// same data fingerprint, fold split, learner configuration,
+/// propensity clip, and cluster partition reuse the cached
+/// outputs (skipping the entire `2 * n_quantiles` `solve_pq`
+/// loop). The `(coefs, ses, psi_flat)` aggregation from
+/// cached values still runs on every `fit()` call.
+pub fn DoubleMLQTE::enable_memoize(self : DoubleMLQTE) -> DoubleMLQTE {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.84.0+: turn off memoization. After this, `fit()` will not
+/// read or write the cache; the existing `fit_cache` is preserved
+/// on the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLQTE::disable_memoize(self : DoubleMLQTE) -> DoubleMLQTE {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.84.0+: drop the cached per-quantile outputs. After this,
+/// the next `fit()` will run the full `2 * n_quantiles`
+/// `solve_pq` loop (and repopulate the cache if memoize is
+/// still enabled).
+pub fn DoubleMLQTE::clear_cache(self : DoubleMLQTE) -> DoubleMLQTE {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.84.0+: `true` iff `fit_cache` holds at least one cached
+/// per-quantile-solver result (i.e. a previous `fit()` with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that `has_cache()` does NOT verify the cache key matches the
+/// current data + learner configuration -- check `memoize_enabled`
+/// if you also need to know whether the next `fit()` will hit.
+pub fn DoubleMLQTE::has_cache(self : DoubleMLQTE) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|

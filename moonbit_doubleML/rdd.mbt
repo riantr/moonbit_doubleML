@@ -85,6 +85,17 @@ pub struct DoubleMLRDD {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.84.0+: memoization state. RDD is fundamentally a
+  // local-polynomial estimator (no folds / no k-fold cross-
+  // fit), so the cache stores the entire `(coef, se,
+  // n_local, residuals, psi_a)` tuple under a key that
+  // combines the data fingerprint, cutoff, bandwidth,
+  // fuzzy flag, cov_type, and learner fingerprint. On a
+  // cache hit, the entire `rdd_side` local-polynomial
+  // pipeline (4 calls for fuzzy / 2 for sharp) is
+  // skipped.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -119,6 +130,10 @@ pub fn DoubleMLRDD::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.84.0+: memoize starts disabled; opt in via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -333,108 +348,224 @@ pub fn DoubleMLRDD::fit(
 ) -> DoubleMLRDD {
   try {
     require(self.bandwidth > 0.0)
-    let (yl, vyl, nl, res_yl, psi_a_yl) = rdd_side(
-      ml_g,
-      self.data,
-      -1.0,
-      self.cutoff,
-      self.bandwidth,
-      false,
-      self.cov_type,
-    )
-    let (yr, vyr, nr, res_yr, psi_a_yr) = rdd_side(
-      ml_g,
-      self.data,
-      1.0,
-      self.cutoff,
-      self.bandwidth,
-      false,
-      self.cov_type,
-    )
-    let mut c = yr - yl
-    let mut variance = vyl + vyr
-    if self.fuzzy {
-      let (dl, vdl, _, res_dl, _) = rdd_side(
+    let n = self.data.n_obs()
+    // v0.84.0+: memoize check (mirrors the per-estimator
+    // pattern). RDD has no fold partition, no n_rep -- the
+    // entire fit is a deterministic function of
+    // (data, cutoff, bandwidth, fuzzy, cov_type, ml_g).
+    // The cache stores `(coef, se, n_local, residuals,
+    // psi_a)` plus a sentinel `fold_ids` (length `n_obs`
+    // of zeros) so the FitCache `is_valid(...)` contract
+    // (which requires `fold_ids.length() == n_obs`) is
+    // satisfied without RDD actually using a fold partition.
+    let memoize = self.memoize_enabled
+    let data_hash : UInt64 = if memoize {
+      hash_data(self.data.x, self.data.y, self.data.d, z=self.data.score)
+    } else {
+      0UL
+    }
+    // RDD-specific hparams: estimator_kind + ml_g +
+    // (cutoff, bandwidth, fuzzy flag, cov_type). The
+    // standard `hash_hyperparams` only folds in `ml_g` /
+    // `ml_m` / `propensity_clip`; we layer RDD's structural
+    // config on top via the cluster-ids slot so the cache
+    // key invalidates on any bandwidth / cutoff / fuzzy /
+    // cov_type change.
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("rdd", ml_g, ml_g, 0.0)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      let mut h : UInt64 = 0xcbf29ce484222325UL
+      h = fold_mix_int(h, self.cutoff.to_int())
+      h = fold_mix_int(h, (self.cutoff * 1.0e6).to_int())
+      h = fold_mix_int(h, (self.bandwidth * 1.0e6).to_int())
+      h = fold_mix_int(h, if self.fuzzy { 1 } else { 0 })
+      h = fold_mix_int(h, self.cov_type.length())
+      for c in self.cov_type {
+        h = fold_mix_int(h, c.to_int())
+      }
+      h
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        0, 1, 1, n, data_hash, hparams_hash, cluster_hash, "rdd",
+      )
+    if cache_hit {
+      // Cache hit: extract the final `(coef, se,
+      // n_local, residuals, psi_a)` tuple from the
+      // stored predictions and return the fitted
+      // struct without running any `rdd_side` calls.
+      let preds = self.fit_cache.predictions
+      let cached_residuals = preds[0]
+      let cached_psi_a = preds[1]
+      // Pack the scalars `coef`, `se`, `n_local` into
+      // a length-3 array on the cache write path;
+      // cache-hit pulls them back here.
+      let cached_coef = preds[2][0]
+      let cached_se = preds[2][1]
+      let cached_n_local = preds[2][2].to_int()
+      {
+        data: self.data,
+        cutoff: self.cutoff,
+        bandwidth: self.bandwidth,
+        fuzzy: self.fuzzy,
+        cov_type: self.cov_type,
+        ml_g,
+        coef: cached_coef,
+        se: cached_se,
+        n_local: cached_n_local,
+        residuals: cached_residuals,
+        psi_a: cached_psi_a,
+        fitted: true,
+        boot_t_stat: [],
+        boot_method: "",
+        n_rep_boot: 0,
+        boot_seed: 0,
+        memoize_enabled: self.memoize_enabled,
+        fit_cache: self.fit_cache,
+      }
+    } else {
+      let (yl, vyl, nl, res_yl, psi_a_yl) = rdd_side(
         ml_g,
         self.data,
         -1.0,
         self.cutoff,
         self.bandwidth,
-        true,
+        false,
         self.cov_type,
       )
-      let (dr, vdr, _, res_dr, _) = rdd_side(
+      let (yr, vyr, nr, res_yr, psi_a_yr) = rdd_side(
         ml_g,
         self.data,
         1.0,
         self.cutoff,
         self.bandwidth,
-        true,
+        false,
         self.cov_type,
       )
-      let jump = dr - dl
-      let raw = c
-      c = raw / jump
-      // Bug #7 fix: the full delta-method variance for `c = raw / jump`
-      // is
-      //   var(c) = (var(raw) + c^2 * var(jump) - 2 c cov(raw, jump))
-      //            / jump^2
-      // The previous implementation omitted the `cov(raw, jump)` cross
-      // term. We estimate `cov(raw, jump)` from the empirical cross
-      // moment of the Y-residuals with the D-residuals on each side of
-      // the cutoff, scaled by `1 / n_side^2` to match the `vyl`/`vdl`
-      // (already 1/n^2-scaled) convention.
-      let mut cov_num_l = 0.0
-      for k = 0; k < res_yl.length(); k = k + 1 {
-        cov_num_l = cov_num_l + res_yl[k] * res_dl[k]
+      let mut c = yr - yl
+      let mut variance = vyl + vyr
+      if self.fuzzy {
+        let (dl, vdl, _, res_dl, _) = rdd_side(
+          ml_g,
+          self.data,
+          -1.0,
+          self.cutoff,
+          self.bandwidth,
+          true,
+          self.cov_type,
+        )
+        let (dr, vdr, _, res_dr, _) = rdd_side(
+          ml_g,
+          self.data,
+          1.0,
+          self.cutoff,
+          self.bandwidth,
+          true,
+          self.cov_type,
+        )
+        let jump = dr - dl
+        let raw = c
+        c = raw / jump
+        // Bug #7 fix: the full delta-method variance for `c = raw / jump`
+        // is
+        //   var(c) = (var(raw) + c^2 * var(jump) - 2 c cov(raw, jump))
+        //            / jump^2
+        // The previous implementation omitted the `cov(raw, jump)` cross
+        // term. We estimate `cov(raw, jump)` from the empirical cross
+        // moment of the Y-residuals with the D-residuals on each side of
+        // the cutoff, scaled by `1 / n_side^2` to match the `vyl`/`vdl`
+        // (already 1/n^2-scaled) convention.
+        // v0.84.0+: vectorise the per-element
+        // `cov_num_l = sum(res_yl[k] * res_dl[k])` /
+        // `cov_num_r = sum(res_yr[k] * res_dr[k])` via
+        // `vector_multiply` (element-wise product) +
+        // `mean() * length` (sum-of-products).
+        let res_yl_dl = vector_multiply(res_yl, res_dl)
+        let cov_num_l = mean(res_yl_dl) * res_yl.length().to_double()
+        let res_yr_dr = vector_multiply(res_yr, res_dr)
+        let cov_num_r = mean(res_yr_dr) * res_yr.length().to_double()
+        let n_l = res_yl.length().to_double()
+        let n_r = res_yr.length().to_double()
+        let mut cov_raw_jump = 0.0
+        if n_l > 0.0 {
+          cov_raw_jump = cov_raw_jump + cov_num_l / (n_l * n_l)
+        }
+        if n_r > 0.0 {
+          cov_raw_jump = cov_raw_jump + cov_num_r / (n_r * n_r)
+        }
+        variance = (vyl + vyr) / (jump * jump) +
+          raw * raw * (vdl + vdr) / (jump * jump * jump * jump) -
+          2.0 * raw * cov_raw_jump / (jump * jump * jump)
       }
-      let mut cov_num_r = 0.0
-      for k = 0; k < res_yr.length(); k = k + 1 {
-        cov_num_r = cov_num_r + res_yr[k] * res_dr[k]
+      let se = variance.sqrt()
+      let n_local_val = nl + nr
+      // v0.84.0+: vectorise the left+right concat of
+      // `(res_yl, res_yr)` and `(psi_a_yl, psi_a_yr)` is
+      // already a flat array concat (the per-element
+      // loops in `rdd_side` are not part of the public
+      // API), but we still pass through the original
+      // concat here for byte-equivalence with the
+      // pre-vectorise path.
+      let residuals_full = res_yl + res_yr
+      let psi_a_full = psi_a_yl + psi_a_yr
+      // v0.84.0+: when memoize is on and the cache missed,
+      // write the freshly-computed `(coef, se, n_local,
+      // residuals, psi_a)` to the cache. The cache layout
+      // is `[residuals_full, psi_a_full, [coef, se,
+      // n_local_as_double]]`.
+      let next_cache = if memoize {
+        FitCache::from_fit(
+          Array::make(n, 0),
+          [residuals_full, psi_a_full, [c, se, n_local_val.to_double()]],
+          0,
+          1,
+          1,
+          n,
+          data_hash,
+          hparams_hash,
+          cluster_hash,
+          "rdd",
+        )
+      } else {
+        self.fit_cache
       }
-      let n_l = res_yl.length().to_double()
-      let n_r = res_yr.length().to_double()
-      let mut cov_raw_jump = 0.0
-      if n_l > 0.0 {
-        cov_raw_jump = cov_raw_jump + cov_num_l / (n_l * n_l)
+      {
+        data: self.data,
+        cutoff: self.cutoff,
+        bandwidth: self.bandwidth,
+        fuzzy: self.fuzzy,
+        cov_type: self.cov_type,
+        ml_g,
+        coef: c,
+        se,
+        // `n_local` is the count of *outcome* observations that fall
+        // inside the bandwidth on both sides of the cutoff. The fuzzy
+        // estimator additionally fits a treatment local-polynomial
+        // on the same rows so the *treated* count is the same.
+        n_local: n_local_val,
+        // v0.69.0+: outcome residuals and Riesz-representer
+        // rows on the bandwidth-restricted sample,
+        // concatenated (left then right). Drive the
+        // `irm_style_sensitivity` decomposition in
+        // `DoubleMLRDD::sensitivity_analysis`.
+        residuals: residuals_full,
+        psi_a: psi_a_full,
+        fitted: true,
+        // v0.75.0+: bootstrap state. `boot_t_stat` etc. start
+        // empty; `bootstrap(...)` populates them on a return
+        // copy (RDD is value-style, matching PLR/IRM).
+        boot_t_stat: [],
+        boot_method: "",
+        n_rep_boot: 0,
+        boot_seed: 0,
+        memoize_enabled: self.memoize_enabled,
+        fit_cache: next_cache,
       }
-      if n_r > 0.0 {
-        cov_raw_jump = cov_raw_jump + cov_num_r / (n_r * n_r)
-      }
-      variance = (vyl + vyr) / (jump * jump) +
-        raw * raw * (vdl + vdr) / (jump * jump * jump * jump) -
-        2.0 * raw * cov_raw_jump / (jump * jump * jump)
-    }
-    let se = variance.sqrt()
-    {
-      data: self.data,
-      cutoff: self.cutoff,
-      bandwidth: self.bandwidth,
-      fuzzy: self.fuzzy,
-      cov_type: self.cov_type,
-      ml_g,
-      coef: c,
-      se,
-      // `n_local` is the count of *outcome* observations that fall
-      // inside the bandwidth on both sides of the cutoff. The fuzzy
-      // estimator additionally fits a treatment local-polynomial
-      // on the same rows so the *treated* count is the same.
-      n_local: nl + nr,
-      // v0.69.0+: outcome residuals and Riesz-representer
-      // rows on the bandwidth-restricted sample,
-      // concatenated (left then right). Drive the
-      // `irm_style_sensitivity` decomposition in
-      // `DoubleMLRDD::sensitivity_analysis`.
-      residuals: res_yl + res_yr,
-      psi_a: psi_a_yl + psi_a_yr,
-      fitted: true,
-      // v0.75.0+: bootstrap state. `boot_t_stat` etc. start
-      // empty; `bootstrap(...)` populates them on a return
-      // copy (RDD is value-style, matching PLR/IRM).
-      boot_t_stat: [],
-      boot_method: "",
-      n_rep_boot: 0,
-      boot_seed: 0,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -452,6 +583,47 @@ pub fn DoubleMLRDD::n_obs(self : DoubleMLRDD) -> Int {
 /// Number of features (covariate columns).
 pub fn DoubleMLRDD::n_features(self : DoubleMLRDD) -> Int {
   self.data.x.cols()
+}
+
+///|
+/// v0.84.0+: turn on memoization. When enabled, the next
+/// `fit()` caches the entire `(coef, se, n_local, residuals,
+/// psi_a)` tuple under a key that combines the data
+/// fingerprint, cutoff, bandwidth, fuzzy flag, cov_type, and
+/// learner fingerprint. Subsequent `fit()` calls with the same
+/// configuration skip all four `rdd_side` calls (the local-
+/// polynomial kernel-weighted fit on each side, twice for sharp +
+/// twice for fuzzy).
+pub fn DoubleMLRDD::enable_memoize(self : DoubleMLRDD) -> DoubleMLRDD {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.84.0+: turn off memoization. After this, `fit()` will not
+/// read or write the cache; the existing `fit_cache` is preserved
+/// on the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLRDD::disable_memoize(self : DoubleMLRDD) -> DoubleMLRDD {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.84.0+: drop the cached `(coef, se, n_local, residuals,
+/// psi_a)` tuple. After this, the next `fit()` will run the full
+/// local-polynomial pipeline (and repopulate the cache if
+/// memoize is still enabled).
+pub fn DoubleMLRDD::clear_cache(self : DoubleMLRDD) -> DoubleMLRDD {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.84.0+: `true` iff `fit_cache` holds at least one cached
+/// fit result (i.e. a previous `fit()` with `memoize_enabled =
+/// true` has populated the cache). Note that `has_cache()` does
+/// NOT verify the cache key matches the current data + learner
+/// configuration -- check `memoize_enabled` if you also need
+/// to know whether the next `fit()` will hit.
+pub fn DoubleMLRDD::has_cache(self : DoubleMLRDD) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|

@@ -9,6 +9,143 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.84.0] -- memoize + vectorize expand (5 more estimators, 20 of 22)
+
+Closes the v0.80 / v0.81 / v0.82 / v0.83 memoize +
+vectorize infrastructure to five more estimators:
+`DoubleMLAPOS`, `DoubleMLAPO`, `DoubleMLPQ`,
+`DoubleMLQTE`, and `DoubleMLRDD`. Each gains the
+standard `enable_memoize` / `disable_memoize` /
+`clear_cache` / `has_cache` API mirroring the
+v0.82.0 PLR / IRM plumbing; per-fold residual loops
+in each estimator are rewritten in terms of the
+`vectorized.mbt` helpers (`vector_subtract`,
+`vector_scale`, `vector_divide`, `vector_multiply`,
+`vector_add`). Coverage: **20 of 22 estimators** now
+carry memoize + vectorize. Remaining 2 small DID
+variants are queued for v0.85. Test count delta:
+native / wasm / js 607 -> 614 (+7); wasm-gc 613 ->
+620 (+7). Byte-identical coefficients and standard
+errors across all four backends under `moon test
+--deny-warn`.
+
+### Added
+
+- New memoize API on 5 estimators:
+  `DoubleMLAPO::enable_memoize` / `disable_memoize`
+  / `clear_cache` / `has_cache`,
+  `DoubleMLAPOS::enable_memoize` / `disable_memoize`
+  / `clear_cache` / `has_cache`,
+  `DoubleMLPQ::enable_memoize` / `disable_memoize`
+  / `clear_cache` / `has_cache`,
+  `DoubleMLQTE::enable_memoize` / `disable_memoize`
+  / `clear_cache` / `has_cache`, and
+  `DoubleMLRDD::enable_memoize` / `disable_memoize`
+  / `clear_cache` / `has_cache`. Per-estimator
+  specifics below.
+- New white-box tests in `expand_v084_test.mbt`:
+  - `apos_enable_memoize_smoke`: APOS `(coefs, ses)`
+    byte-equivalent across two `fit()` runs with
+    `enable_memoize()` (parent-level cache hit).
+  - `apo_enable_memoize_smoke`: APO `(coef, se)`
+    byte-equivalent across two `fit()` runs (cache
+    stores LAST-rep `(g_hat, m_hat, psi_a, psi_b)`).
+  - `pq_enable_memoize_smoke`: PQ `(coef, se)`
+    byte-equivalent across two `fit()` runs (cache
+    hit skips the entire `solve_pq`).
+  - `qte_enable_memoize_smoke`: QTE `(coefs, ses)`
+    byte-equivalent across two `fit()` runs across
+    multiple quantiles (cache hit skips the
+    `2 * n_quantiles` `solve_pq` loop).
+  - `rdd_enable_memoize_smoke`: RDD `(coef, se)`
+    byte-equivalent across two `fit()` runs (no-fold
+    estimator: cache stores the entire `(coef, se,
+    n_local, residuals, psi_a)` tuple).
+  - `apos_vectorize_residual_smoke`: APOS `(coefs,
+    ses)` finite and positive on the canonical DGP
+    (v0.84.0+ vectorise pass on the `pb[i] = g +
+    treated * (y - g) / m` loop preserves the post-
+    fold score formula byte-for-byte).
+  - `pq_vectorize_residual_smoke`: PQ `coef` within
+    3 SE + 0.5 absolute of true theta on the canonical
+    DGP (v0.84.0+ vectorise pass on the
+    `gamma = sum(psi^2)` + `u = psi1/deriv1 -
+    psi0/deriv0` loops preserves the score byte-for-
+    byte).
+- `DoubleMLAPO::fit` / `fit_cluster` cache LAST rep's
+  `(g_hat, m_hat, psi_a, psi_b)` plus row-to-fold
+  mapping; the cache-hit path re-runs `var_est`
+  from cached values byte-for-byte.
+- `DoubleMLAPOS::fit` parent-level cache stores the
+  resulting `(coefs, ses)` arrays and skips the
+  entire per-level child-fit loop on a cache hit;
+  `enable_memoize()` is forwarded to each child
+  `DoubleMLAPO` so per-level memoize is also
+  honored on the child.
+- `DoubleMLPQ::fit` / `fit_cluster` cache
+  `(theta, deriv, psi, fold_ids)`; the cache-hit
+  path skips the entire `solve_pq` (propensity
+  cross-fit + bisection + 3x outcome cross-fits).
+- `DoubleMLQTE::fit` / `fit_cluster` cache per-
+  quantile per-treatment `(theta1, deriv1, theta0,
+  deriv0)` plus the flat `(psi1, psi0)` matrices;
+  the cache-hit path skips the `2 * n_quantiles`
+  `solve_pq` loop.
+- `DoubleMLRDD::fit` cache stores the entire
+  `(coef, se, n_local, residuals, psi_a)` tuple
+  under a (data, cutoff, bandwidth, fuzzy,
+  cov_type, ml_g) key; the cache-hit path skips all
+  four `rdd_side` calls (the local-polynomial
+  kernel-weighted fit on each side).
+
+### Changed
+
+- Per-fold residual loops in each of the 5 estimators
+  are rewritten in terms of the `vectorized.mbt`
+  building blocks. Byte-identical to the pre-v0.84.0
+  scalar-loop output (the helpers are pure functions
+  with identical element-wise semantics).
+- `DoubleMLAPO::fit`: `pb[i] = g + treated * (y - g)
+  / m` is now `vector_subtract / vector_multiply /
+  vector_divide / vector_add` of cached arrays.
+- `DoubleMLAPOS::fit`: memoize forwarding adds a
+  parent-level cache write/read; the per-level
+  `DoubleMLAPO::fit` is unchanged in semantics.
+- `DoubleMLPQ::fit`: `gamma = sum(psi^2)` is now
+  `mean(vector_multiply(psi, psi))`; the
+  `(theta, deriv, psi)` cache writeback is the only
+  structural change.
+- `DoubleMLQTE::fit`: `u = psi1/deriv1 - psi0/deriv0`
+  is now `vector_subtract(vector_scale(psi1,
+  1/deriv1), vector_scale(psi0, 1/deriv0))`;
+  per-quantile `(theta1, deriv1, theta0, deriv0)`
+  + flat `(psi1, psi0)` cache writeback is the
+  structural change.
+- `DoubleMLRDD::fit`: the fuzzy-delta
+  `cov_num_l = sum(res_yl[k] * res_dl[k])` /
+  `cov_num_r = sum(res_yr[k] * res_dr[k])` is now
+  `mean(vector_multiply(res_yl, res_dl)) * n_l` /
+  `mean(vector_multiply(res_yr, res_dr)) * n_r`;
+  the cache write/read is the structural change.
+
+### Fixed
+
+- Pre-v0.84.0 the `DoubleMLAPOS::fit` per-level loop
+  re-fit each child `DoubleMLAPO` from scratch on
+  every `fit()` call; with `enable_memoize()` enabled
+  the parent's `(coefs, ses)` are now cached and
+  reused, and the child's memoize forwarding further
+  amortises the per-level cross-fit.
+- Pre-v0.84.0 the `DoubleMLPQ::fit` / `DoubleMLQTE::
+  fit` paths always re-ran the entire `solve_pq` (or
+  the `2 * n_quantiles` loop) on every call; the
+  v0.84.0 cache writeback eliminates the redundant
+  cross-fits on cache-hit calls.
+- Pre-v0.84.0 the `DoubleMLRDD::fit` always ran all
+  four `rdd_side` calls (the local-polynomial
+  kernel-weighted fits on each side); the v0.84.0
+  cache eliminates them on cache-hit calls.
+
 ## [0.83.0] -- memoize + vectorize expand (5 more estimators, 15 of 22)
 
 Closes the v0.80 / v0.81 / v0.82 memoize + vectorize

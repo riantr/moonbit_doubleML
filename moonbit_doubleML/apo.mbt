@@ -36,6 +36,16 @@ pub struct DoubleMLAPO {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.84.0+: memoization state. `memoize_enabled` is the
+  // user-facing opt-in (set via `DoubleMLAPO::enable_memoize()`);
+  // when true and `n_rep == 1`, `fit()` caches the LAST rep's
+  // `(g_hat, m_hat, psi_a, psi_b)` plus row-to-fold mapping in
+  // `fit_cache` and reuses them on the next `fit()` call (the
+  // `var_est(psi_a, psi_b)` -> `(coef, se)` pipeline still runs
+  // fresh from the cached values, so changing the score path or
+  // any post-aggregation configuration always takes effect).
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -78,6 +88,10 @@ pub fn DoubleMLAPO::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.84.0+: memoize starts disabled; opt in via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -244,41 +258,134 @@ pub fn DoubleMLAPO::fit(
   }
   let n = self.n_obs()
   let treated = indicator_level(self.data.d, self.treatment_level)
+  // v0.84.0+: memoize check (mirrors the PLR / IRM / CVAR /
+  // SSM / PLPR / LPLR pattern). The cache stores the LAST
+  // rep's `(g_hat, m_hat, psi_a, psi_b)` plus row-to-fold
+  // mapping. Honored only when `n_rep == 1` (multi-rep
+  // aggregations must run every rep fresh -- we cannot
+  // cache individual rep nuisances).
+  // When memoize_enabled is false (the default), the entire
+  // cache code path is skipped so v0.83.0 callers see
+  // byte-identical fit() output.
+  let memoize = self.memoize_enabled && self.n_rep == 1
+  let data_hash : UInt64 = if memoize {
+    hash_data(
+      self.data.x,
+      self.data.y,
+      self.data.d,
+      z=self.data.z,
+      cluster_vars=self.data.cluster_vars,
+    )
+  } else {
+    0UL
+  }
+  let hparams_hash : UInt64 = if memoize {
+    hash_hyperparams("apo", ml_g, ml_m, self.propensity_clip)
+  } else {
+    0UL
+  }
+  let cluster_hash : UInt64 = if memoize {
+    hash_cluster_ids(self.data.cluster_vars)
+  } else {
+    0UL
+  }
+  let cache_hit = memoize &&
+    self.fit_cache.is_valid(
+      self.seed,
+      self.n_folds,
+      self.n_rep,
+      n,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "apo",
+    )
   // Accumulate `g` and `m` directly in the storage arrays; divide
   // by `n_rep` after the loop.
   let g = Array::make(n, 0.0)
   let m = Array::make(n, 0.0)
+  // v0.84.0+: track the LAST rep's row-to-fold mapping for the
+  // cache writeback.
+  let fold_ids : Array[Int] = Array::make(n, 0)
   for r = 0; r < self.n_rep; r = r + 1 {
-    let (gr, mr) = cross_fit_apo(
-      ml_g,
-      ml_m,
-      self.data.x,
-      self.data.y,
-      treated,
-      kfold(n, self.n_folds, self.seed + r),
-      self.propensity_clip,
-    )
+    let (gr, mr) = if cache_hit && r == self.n_rep - 1 {
+      // Reuse the cached LAST-rep nuisances. The
+      // `pa` / `pb` / `var_est` -> (coef, se) pipeline
+      // below runs fresh from the cached values.
+      let preds = self.fit_cache.predictions
+      let cached_fold_ids = self.fit_cache.fold_ids
+      for i = 0; i < n; i = i + 1 {
+        fold_ids[i] = cached_fold_ids[i]
+      }
+      (preds[0], preds[1])
+    } else {
+      let folds = kfold(n, self.n_folds, self.seed + r)
+      // Build row->fold_id map for the LAST rep (used by the
+      // cache writeback below).
+      if r == self.n_rep - 1 {
+        for f = 0; f < folds.length(); f = f + 1 {
+          for i in folds[f].test_indices() {
+            fold_ids[i] = f
+          }
+        }
+      }
+      let (gr, mr) = cross_fit_apo(
+        ml_g,
+        ml_m,
+        self.data.x,
+        self.data.y,
+        treated,
+        folds,
+        self.propensity_clip,
+      )
+      (gr, mr)
+    }
     for i = 0; i < n; i = i + 1 {
       g[i] = g[i] + gr[i]
       m[i] = m[i] + mr[i]
     }
   }
   let inv = 1.0 / self.n_rep.to_double()
-  for i = 0; i < n; i = i + 1 {
-    g[i] = g[i] * inv
-    m[i] = m[i] * inv
-  }
+  // v0.84.0+: vectorise the per-element `g *= inv` /
+  // `m *= inv` post-aggregation pass via
+  // `vector_scale`. Byte-identical to the scalar loop
+  // because `vector_scale` is a flat element-wise multiply.
+  let g_scaled = vector_scale(g, inv)
+  let m_scaled = vector_scale(m, inv)
   // `pa` is the APO score's `psi_a` component, which is structurally
   // `-1` for every observation (the potential-outcome score has no
   // treatment-side variation). `pb` is the `psi_b` component with
-  // the IPW-style centring `g + treated * (y - g) / m`.
+  // the IPW-style centring `g + treated * (y - g) / m`. v0.84.0+:
+  // the `pb` residual loop is rewritten in terms of
+  // `vector_subtract`, `vector_multiply`, `vector_divide`,
+  // `vector_add` (matches the v0.81.0 helpers used by the
+  // other DML estimators).
   let pa = Array::make(n, -1.0)
-  let pb = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    pb[i] = g[i] + treated[i] * (self.data.y[i] - g[i]) / m[i]
-  }
+  let y_minus_g = vector_subtract(self.data.y, g_scaled)
+  let treat_y_diff = vector_multiply(treated, y_minus_g)
+  let ratio = vector_divide(treat_y_diff, m_scaled, eps=1.0e-12)
+  let pb = vector_add(g_scaled, ratio)
   // Score + variance via the shared `var_est` helper.
   let (theta, se) = var_est(pa, pb)
+  // v0.84.0+: when memoize is on and the cache missed, write
+  // the freshly-computed nuisances + IF components + row-to-fold
+  // mapping to the cache.
+  let next_cache = if memoize && !cache_hit && self.n_rep == 1 {
+    FitCache::from_fit(
+      fold_ids,
+      [g_scaled, m_scaled, pa, pb],
+      self.seed,
+      self.n_folds,
+      self.n_rep,
+      n,
+      data_hash,
+      hparams_hash,
+      cluster_hash,
+      "apo",
+    )
+  } else {
+    self.fit_cache
+  }
   {
     data: self.data,
     treatment_level: self.treatment_level,
@@ -288,8 +395,8 @@ pub fn DoubleMLAPO::fit(
     propensity_clip: self.propensity_clip,
     ml_g,
     ml_m,
-    g_hat: g,
-    m_hat: m,
+    g_hat: g_scaled,
+    m_hat: m_scaled,
     coef: theta,
     se,
     fitted: true,
@@ -302,6 +409,8 @@ pub fn DoubleMLAPO::fit(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    memoize_enabled: self.memoize_enabled,
+    fit_cache: next_cache,
   }
 }
 
@@ -442,11 +551,57 @@ fn DoubleMLAPO::fit_cluster(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.84.0+: memoize state carried through the cluster
+      // path; the cluster folds are deterministic for fixed
+      // (seed, n_folds, n_rep, cluster_vars) so the same
+      // hash pipeline as the IID path applies.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.84.0+: turn on memoization. When enabled (and `n_rep == 1`),
+/// the next `fit()` caches the LAST rep's `(g_hat, m_hat,
+/// psi_a, psi_b)` plus row-to-fold mapping; subsequent `fit()`
+/// calls with the same data fingerprint, fold split, learner
+/// configuration, propensity clip, and cluster partition reuse
+/// the cached nuisances. The `var_est(psi_a, psi_b) -> (coef,
+/// se)` pipeline still runs fresh on every `fit()`, so any
+/// post-aggregation configuration change always takes effect.
+pub fn DoubleMLAPO::enable_memoize(self : DoubleMLAPO) -> DoubleMLAPO {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.84.0+: turn off memoization. After this, `fit()` will not
+/// read or write the cache; the existing `fit_cache` is preserved
+/// on the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLAPO::disable_memoize(self : DoubleMLAPO) -> DoubleMLAPO {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.84.0+: drop the cached nuisances. After this, the next
+/// `fit()` will run the full cross-fit (and repopulate the cache
+/// if memoize is still enabled).
+pub fn DoubleMLAPO::clear_cache(self : DoubleMLAPO) -> DoubleMLAPO {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.84.0+: `true` iff `fit_cache` holds at least one cached
+/// nuisance prediction (i.e. a previous `fit()` with
+/// `memoize_enabled = true` has populated the cache). Note that
+/// `has_cache()` does NOT verify the cache key matches the
+/// current data + learner configuration -- check `memoize_enabled`
+/// if you also need to know whether the next `fit()` will hit.
+pub fn DoubleMLAPO::has_cache(self : DoubleMLAPO) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -703,6 +858,16 @@ pub struct DoubleMLAPOS {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.84.0+: memoization state. `memoize_enabled` is the
+  // user-facing opt-in (set via
+  // `DoubleMLAPOS::enable_memoize()`); when true, each
+  // child `DoubleMLAPO` gets `enable_memoize()` forwarded
+  // on `fit()` so the per-level cache is honored.
+  // `fit_cache` here additionally caches the parent-level
+  // `(coefs, ses)` arrays so a second `fit()` call with
+  // identical inputs skips the entire per-level loop.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -779,6 +944,10 @@ pub fn DoubleMLAPOS::new(
     boot_method: "",
     n_rep_boot: 0,
     boot_seed: 0,
+    // v0.84.0+: memoize starts disabled; opt in via
+    // `.enable_memoize()` for caching.
+    memoize_enabled: false,
+    fit_cache: FitCache::empty(),
   }
 }
 
@@ -792,26 +961,139 @@ pub fn DoubleMLAPOS::fit(
     ignore(ml_g)
     ignore(ml_m)
     require(self.treatment_levels.length() >= 1)
-    let c = Array::make(self.treatment_levels.length(), 0.0)
-    let s = Array::make(self.treatment_levels.length(), 0.0)
-    for j = 0; j < self.treatment_levels.length(); j = j + 1 {
-      // v0.49.0: the parent APOS fits each child `DoubleMLAPO` with
-      // `n_rep = self.n_rep` so the child draws its own fold
-      // partition (`n_rep` total fold draws per treatment level).
-      // The parent does not currently route a shared stratified
-      // partition to the child — that's a v0.50.0+ target. The
-      // resulting fold-draw count is `n_rep * n_treatment_levels`,
-      // matching the upstream `DoubleMLAPOS.fit` total.
-      let z = DoubleMLAPO::new(
-        self.data,
-        treatment_level=self.treatment_levels[j],
-        n_folds=self.n_folds,
-        n_rep=self.n_rep,
-        seed=self.seed,
-        propensity_clip=self.propensity_clip,
-      ).fit()
-      c[j] = z.coef()
-      s[j] = z.se()
+    let n_obs = self.data.n_obs()
+    let n_levels = self.treatment_levels.length()
+    // v0.84.0+: memoize check (mirrors the per-estimator
+    // pattern). The parent cache stores the LAST rep's
+    // `(coefs, ses)` arrays (the only values the parent owns)
+    // plus a sentinel `fold_ids` row (the parent's cache hit
+    // path doesn't need row-to-fold routing -- the children
+    // own their own cross-fit partitions). When memoize is on
+    // and the cache is valid, we skip the entire per-level
+    // child-fit loop and just hand back the cached `coefs` /
+    // `ses`. When memoize is on and the cache missed, we run
+    // the standard per-level loop and write back the resulting
+    // `coefs` / `ses` for the next call.
+    //
+    // Hyperparameter hashing folds the `treatment_levels`
+    // vector into the hparams key by reusing the cluster-ids
+    // hash slot (the APOS parent has no `cluster_vars` of its
+    // own; the child DoubleMLAPO's cluster partition is the
+    // parent's `cluster_vars` already, hashed by the child's
+    // own cache write). For the parent key we mix in a hash
+    // of the treatment-levels vector so a reconfigure
+    // invalidates correctly.
+    let memoize = self.memoize_enabled && self.n_rep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        z=self.data.z,
+        cluster_vars=self.data.cluster_vars,
+      )
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("apos", ml_g, ml_m, self.propensity_clip)
+    } else {
+      0UL
+    }
+    let cluster_hash : UInt64 = if memoize {
+      // Fold the treatment-levels vector + seed + n_folds
+      // into a per-call fingerprint. The standard
+      // `hash_cluster_ids` over an empty vector is 0; for
+      // APOS we want a non-trivial fingerprint, so we
+      // override here: mix the level vector length, then
+      // each level, then `n_folds`.
+      let mut h : UInt64 = 0xcbf29ce484222325UL
+      h = (h ^ n_levels.to_uint64()) * 0x00000100000001B3UL
+      for lvl in self.treatment_levels {
+        // level as integer (we store Double; bit-cast via
+        // to_uint64) is not stable across refactors -- use
+        // string instead, matching `fold_mix_double`.
+        h = fold_mix_double(h, lvl)
+      }
+      h = fold_mix_int(h, self.n_folds)
+      h
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        self.n_rep,
+        n_obs,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "apos",
+      )
+    let (c, s) = if cache_hit {
+      // Cache hit: pull `(coefs, ses)` straight from the
+      // stored predictions. The sentinel `fold_ids` length
+      // (1 in the empty-cache / 1 + n_obs in the cached
+      // variant) does not gate the parent's hit path -- the
+      // parent's prediction layout is `[coefs, ses]`.
+      let preds = self.fit_cache.predictions
+      (preds[0], preds[1])
+    } else {
+      let c = Array::make(n_levels, 0.0)
+      let s = Array::make(n_levels, 0.0)
+      for j = 0; j < n_levels; j = j + 1 {
+        // v0.49.0: the parent APOS fits each child `DoubleMLAPO` with
+        // `n_rep = self.n_rep` so the child draws its own fold
+        // partition (`n_rep` total fold draws per treatment level).
+        // The parent does not currently route a shared stratified
+        // partition to the child — that's a v0.50.0+ target. The
+        // resulting fold-draw count is `n_rep * n_treatment_levels`,
+        // matching the upstream `DoubleMLAPOS.fit` total.
+        //
+        // v0.84.0+: when `memoize_enabled` is on, route
+        // `.enable_memoize()` through to the child so the
+        // child's own cache is honored on subsequent fits.
+        let child = DoubleMLAPO::new(
+          self.data,
+          treatment_level=self.treatment_levels[j],
+          n_folds=self.n_folds,
+          n_rep=self.n_rep,
+          seed=self.seed,
+          propensity_clip=self.propensity_clip,
+        )
+        let child_memo = if self.memoize_enabled {
+          child.enable_memoize()
+        } else {
+          child
+        }
+        let z = child_memo.fit()
+        c[j] = z.coef()
+        s[j] = z.se()
+      }
+      (c, s)
+    }
+    // v0.84.0+: writeback when memoize is on and the cache
+    // missed. The parent-side sentinel is a length-`n_obs`
+    // array of zeros (the parent doesn't need a per-row
+    // fold-id routing -- children own their own folds; the
+    // FitCache contract just requires `fold_ids.length()
+    // == n_obs` for `is_valid` to fire).
+    let next_cache = if memoize && !cache_hit {
+      FitCache::from_fit(
+        Array::make(n_obs, 0),
+        [c, s],
+        self.seed,
+        self.n_folds,
+        self.n_rep,
+        n_obs,
+        data_hash,
+        hparams_hash,
+        cluster_hash,
+        "apos",
+      )
+    } else {
+      self.fit_cache
     }
     {
       data: self.data,
@@ -829,11 +1111,50 @@ pub fn DoubleMLAPOS::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.84.0+: turn on memoization. Forwards `.enable_memoize()`
+/// to each child `DoubleMLAPO` on the next call, and caches
+/// the resulting `(coefs, ses)` arrays at the parent level so
+/// a repeated `fit()` call with identical inputs skips the
+/// per-level loop entirely.
+pub fn DoubleMLAPOS::enable_memoize(self : DoubleMLAPOS) -> DoubleMLAPOS {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.84.0+: turn off memoization. After this, `fit()` will not
+/// read or write the cache; the existing `fit_cache` is preserved
+/// on the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLAPOS::disable_memoize(self : DoubleMLAPOS) -> DoubleMLAPOS {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.84.0+: drop the cached `(coefs, ses)` arrays. After this,
+/// the next `fit()` will run the per-level loop fresh (and
+/// repopulate the cache if memoize is still enabled).
+pub fn DoubleMLAPOS::clear_cache(self : DoubleMLAPOS) -> DoubleMLAPOS {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.84.0+: `true` iff `fit_cache` holds at least one cached
+/// `(coefs, ses)` pair (i.e. a previous `fit()` with
+/// `memoize_enabled = true` has populated the cache). Note that
+/// `has_cache()` does NOT verify the cache key matches the
+/// current data + learner configuration -- check `memoize_enabled`
+/// if you also need to know whether the next `fit()` will hit.
+pub fn DoubleMLAPOS::has_cache(self : DoubleMLAPOS) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|

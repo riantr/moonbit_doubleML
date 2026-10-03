@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.83.0** |
+| `moon.mod` version | **0.84.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **607 / 607** |
-| Tests (wasm-gc) | **613 / 613** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **614 / 614** |
+| Tests (wasm-gc) | **620 / 620** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -54,6 +54,36 @@ binary-outcome CS-DID.
 the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
 No per-estimator interface drift.
 
+**v0.84.0 memoization + vectorization expand** —
+extends the v0.83.0 layer to five more estimators:
+`DoubleMLAPOS`, `DoubleMLAPO`, `DoubleMLPQ`,
+`DoubleMLQTE`, and `DoubleMLRDD`. Each gains the
+standard `enable_memoize` / `disable_memoize` /
+`clear_cache` / `has_cache` API. `DoubleMLAPO`
+(cache stores LAST-rep `g_hat` / `m_hat` /
+`psi_a` / `psi_b`; cache-hit path re-runs `var_est`
+from cached values), `DoubleMLAPOS` (parent-level
+`(coefs, ses)` cache plus `enable_memoize()`
+forwarding to each child `DoubleMLAPO`),
+`DoubleMLPQ` (cache stores `(theta, deriv, psi)`;
+cache-hit skips the entire `solve_pq` -- propensity
+cross-fit + bisection + 3x outcome cross-fits),
+`DoubleMLQTE` (cache stores per-quantile per-
+treatment `(theta1, psi1, deriv1, theta0, psi0,
+deriv0)`; cache-hit skips the `2 * n_quantiles`
+`solve_pq` loop), and `DoubleMLRDD` (no-fold
+estimator: cache stores the entire `(coef, se,
+n_local, residuals, psi_a)` tuple under a
+(data, cutoff, bandwidth, fuzzy, cov_type, ml_g)
+key; cache-hit skips all four `rdd_side` calls).
+Per-fold residual loops in each are rewritten in
+terms of the `vectorized.mbt` helpers
+(`vector_subtract`, `vector_scale`, `vector_divide`,
+`vector_multiply`, `vector_add`). Coverage: **20
+of 22 estimators** now carry memoize + vectorize.
+Remaining 2 small DID variants are queued for
+v0.85.
+
 **v0.83.0 memoization + vectorization expand** —
 extends the v0.82.0 layer to five additional estimators:
 `DoubleMLCVAR`, `DoubleMLSSM`, `DoubleMLBLP`, `DoubleMLPLPR`,
@@ -68,7 +98,7 @@ terms of the `vectorized.mbt` helpers (`vector_subtract`,
 `vector_scale`, `vector_divide`, `vector_multiply`,
 `vector_add`). Coverage: **15 of 22 estimators** now have
 memoize + vectorize. Remaining 7 estimators (`RDD`, `PQ`,
-`QTE`, `APOS`, `APO`, plus 2 small DID variants) are
+`QTE`, `APOS`, `APO`, plus 2 small DID variants) were
 queued for v0.84.
 
 **v0.82.0 memoization + vectorization expand (partial)** —
@@ -384,6 +414,27 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   helpers (`vector_subtract`, `vector_scale`, `vector_divide`,
   `vector_multiply`, `vector_add`). 15 / 22 estimators now
   carry memoize + vectorize.
+- v0.84.0 verified counts: `moon test` 614 / 614 (native & wasm &
+  js) and 620 / 620 (wasm-gc); 23 / 23 Python cross-validators
+  PASS. Closes the v0.80/v0.81/v0.82/v0.83 memoize + vectorize
+  expand for `DoubleMLAPO` (clean add: cache stores LAST-rep
+  `(g_hat, m_hat, psi_a, psi_b)`; cache-hit path re-runs
+  `var_est` from cached values), `DoubleMLAPOS` (memoize
+  forwarding: parent-level `(coefs, ses)` cache + `.enable_memoize()`
+  forwarded to each child `DoubleMLAPO`), `DoubleMLPQ`
+  (cache stores `(theta, deriv, psi, fold_ids)`; cache-hit
+  skips the entire `solve_pq`), `DoubleMLQTE` (cache stores
+  per-quantile per-treatment `(theta1, psi1, deriv1, theta0,
+  psi0, deriv0)`; cache-hit skips the `2 * n_quantiles`
+  `solve_pq` loop), and `DoubleMLRDD` (no-fold estimator:
+  cache stores the entire `(coef, se, n_local, residuals,
+  psi_a)` tuple under a (data, cutoff, bandwidth, fuzzy,
+  cov_type, ml_g) key; cache-hit skips all four `rdd_side`
+  calls). Per-fold residual loops in each are rewritten in
+  terms of the `vectorized.mbt` helpers (`vector_subtract`,
+  `vector_scale`, `vector_divide`, `vector_multiply`,
+  `vector_add`). 20 / 22 estimators now carry memoize +
+  vectorize.
 
 #Attribution
 
