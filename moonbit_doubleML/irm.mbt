@@ -851,3 +851,119 @@ pub fn DoubleMLIRM::sensitivity_analysis_cluster(
     cf_d,
   )
 }
+
+///|
+/// v0.79.0+: Huber-White sandwich standard error for the
+/// fitted IRM. Returns `sqrt(var_xx)` where `var_xx` is
+/// computed by the `sandwich_variance_xx` free function
+/// in `sandwich.mbt` (HC0 / HC1 / HC2 / HC3). The Jacobian
+/// inverse `M_inv = [[1 / mean(psi_a)]]` is built from the
+/// stored `psi_a` (which is `[-1, -1, ..., -1]` for the
+/// IRM ATE score, so `M_inv = [[-1.0]]` always — the
+/// `mean(psi_a)` is `-1` by construction).
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLIRM::sandwich_se(
+  self : DoubleMLIRM,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.n_obs()
+    // psi = psi_a + coef * psi_b (the per-observation IF
+    // evaluated at the fitted coef).
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    // M_inv = [[1 / mean(psi_a)]]. For the IRM ATE score
+    // `psi_a = -1` so `mean(psi_a) = -1` and `M_inv = -1`;
+    // we use the explicit mean (rather than hard-coding -1)
+    // so the formula generalises to the PLR / future
+    // multi-theta estimators.
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = match kind {
+      HC0 => sandwich_variance_hc0(self.psi_a, psi, m_inv, n, 1)
+      HC1 => sandwich_variance_hc1(self.psi_a, psi, m_inv, n, 1)
+      HC2 => sandwich_variance_hc2(self.psi_a, psi, m_inv, n, 1)
+      HC3 => sandwich_variance_hc3(self.psi_a, psi, m_inv, n, 1)
+    }
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.79.0+: cluster-robust sandwich standard error for
+/// the fitted IRM. Routes through
+/// `cluster_sandwich_variance` in `sandwich.mbt` with
+/// `M_inv = [[1 / mean(psi_a)]]` (matching the IID path's
+/// Jacobian inverse).
+///
+/// Preconditions: `self.fitted`,
+/// `cluster_ids.length() == n_obs`.
+pub fn DoubleMLIRM::cluster_sandwich_se(
+  self : DoubleMLIRM,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.n_obs()
+    require(cluster_ids.length() == n)
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = cluster_sandwich_variance(
+      self.psi_a,
+      psi,
+      m_inv,
+      cluster_ids,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.79.0+: finite-sample bias-corrected coefficient.
+/// Uses the simple `psi_b - coef * psi_a` per-observation
+/// bias form (the score evaluated at the fitted theta):
+///
+///     bias_per_obs[i] = psi_b[i] - coef * psi_a[i]
+///     theta_corrected = coef + mean(bias_per_obs)
+///
+/// `psi_a = -1` for IRM ATE, so
+/// `bias_per_obs[i] = psi_b[i] + coef` and the corrected
+/// theta reduces to `2 * coef + mean(psi_b)` for the IRM
+/// case. Callers wanting a different bias form should call
+/// `bias_corrected_theta(...)` directly with their own
+/// `bias_per_obs` vector.
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLIRM::bias_corrected_coef(self : DoubleMLIRM) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.n_obs()
+    let bias : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      bias[i] = self.psi_b[i] - self.coef * self.psi_a[i]
+    }
+    bias_corrected_theta(self.coef, bias)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

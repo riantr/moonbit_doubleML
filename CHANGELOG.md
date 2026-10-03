@@ -6,8 +6,102 @@ verification verdict.
 
 Format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
-under each TODO is reset on every release — the most recent verified
+under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
+
+## [0.79.0] -- sandwich variance (HC0-HC3 + cluster) + bias correction
+
+Adds the Huber-White heteroskedasticity-consistent sandwich
+variance family (HC0 / HC1 / HC2 / HC3) and the
+Cameron-Gelbach-Miller cluster-robust sandwich variant to
+the `DoubleMLIRM` and `DoubleMLPLR` estimators, plus a
+generic `bias_corrected_theta` helper for finite-sample
+bias correction. All four backends (native, wasm, wasm-gc,
+js) pass `moon test --deny-warn`.
+
+### Added
+
+- `SandwichKind` enum (in `sandwich.mbt`): the four
+  Huber-White variants `HC0` / `HC1` / `HC2` / `HC3` plus
+  factory wrappers `SandwichKind::hc0()` / `hc1()` / `hc2()`
+  / `hc3()`. `derive(Debug)`.
+- `sandwich_variance_hc0(psi_a, psi, m_inv, n_obs, n_params)
+  -> Double`: classical Huber-White sandwich
+  `M_inv[0,0]^2 * sum_i (psi_a[i]^2 * psi[i]^2) / n`.
+- `sandwich_variance_hc1(...)`: HC0 * `n / (n - k)`. The
+  standard Stata `, robust` finite-sample correction.
+- `sandwich_variance_hc2(...)`: per-observation leverage
+  correction `(1 - h_ii)` where
+  `h_ii = psi_a[i] * M_inv[0, 0] * psi_a[i]`. Degenerate
+  leverage (h_ii >= 1 or `(1 - h_ii)` < 1e-10) is clipped to
+  1e-10 so the variance stays finite.
+- `sandwich_variance_hc3(...)`: jackknife variant
+  (divide by `(1 - h_ii)^2` per observation).
+- `cluster_sandwich_variance(psi_a, psi, m_inv,
+  cluster_ids, n_params) -> Double`: Arellano 1987 /
+  Cameron-Gelbach-Miller 2011 cluster-robust sandwich.
+  Per-cluster sums of `(psi_a[i] * psi[i])` followed by
+  the `n_c / (n_c - 1)` jackknife correction (clipped to
+  1 for single-observation clusters so the per-cluster
+  term stays finite).
+- `bias_corrected_theta(theta_hat, bias_per_obs) ->
+  Double`: `theta_hat + mean(bias_per_obs)` finite-sample
+  bias correction helper.
+- `DoubleMLIRM::sandwich_se(kind) -> Double`,
+  `DoubleMLIRM::cluster_sandwich_se(cluster_ids) ->
+  Double`, `DoubleMLIRM::bias_corrected_coef() -> Double`
+  in `irm.mbt`. The `M_inv` Jacobian inverse is built from
+  the persisted `psi_a` (`M_inv = [[1 / mean(psi_a)]]`;
+  for the IRM ATE score `psi_a = -1` so `M_inv = [[-1]]`).
+- Same three methods on `DoubleMLPLR` in `plr.mbt`
+  (partialling-out score `psi_a[i] = -v_i^2`,
+  `psi_b[i] = v_i * u_i`).
+- `sandwich_test.mbt` (9 white-box tests):
+  - `sandwich_variance_hc0_matches_formula` -- closed-form
+    `psi_a = [1, 1, 1, 1]`, `psi = [0.5, -0.5, 0.3, -0.3]`,
+    `M_inv = [[4]]` -> HC0 = 2.72 exactly.
+  - `sandwich_variance_hc1_corrects_hc0` -- HC1 / HC0
+    matches `n / (n - k) = 10 / 9`.
+  - `sandwich_variance_hc2_widens_hc0` -- on
+    `psi_a = [2, 0.5, 0.5, 0.5]` with one high-leverage
+    row, HC2 > HC0 (the degenerate h_00 hits the 1e-10
+    clipping, blowing up the high-leverage term).
+  - `sandwich_variance_hc3_widens_hc2` -- HC3 > HC2 on
+    the same input.
+  - `cluster_sandwich_variance_independent_clusters` --
+    2 clusters of 5 obs each, constant psi_a, identical
+    psi within cluster -> closed-form match
+    `(25/8) * (a^2 + b^2)`.
+  - `bias_corrected_theta_sum` -- theta=0.5, biases=[0.1,
+    0.2] -> 0.65.
+  - `irm_sandwich_se_smoke` -- fit IRM on a synthetic DGP,
+    HC0 SE finite and > 0, HC1 widens HC0.
+  - `irm_cluster_sandwich_se_smoke` -- fit IRM with one-
+    obs-per-cluster, cluster SE finite.
+  - `irm_bias_corrected_coef_smoke` -- fit IRM, bias-
+    corrected coef finite.
+
+### Notes
+
+- moon.mod: 0.78.0 -> 0.79.0.
+- README: `0.78.0` -> `0.79.0`, 144 -> 146 production
+  files, 566 / 566 -> 575 / 575 native tests,
+  572 / 572 -> 581 / 581 wasm-gc tests.
+- moon check --target native / wasm / wasm-gc / js
+  --deny-warn: 0 warnings, 0 errors.
+- moon fmt --check: clean.
+- Verified: native 575 / 575 (was 566 in v0.78.0;
+  +9 wbtests).
+- Verified: wasm-gc 581 / 581 (was 572 in v0.78.0;
+  +9 wbtests).
+- Verified: wasm + js 575 / 575 each (same +9 wbtests;
+  baseline 566).
+- Sandwich only added to IRM / PLR; the multi-theta
+  estimators (APO / APOS / DID family / LPQ / QTE / CVAR
+  / RDD / BLP / PLPR / LPLR) keep the standard DML SE
+  formula for this cycle.
+
+---
 
 ## [0.78.0] -- DoubleMLRDD::sensitivity_analysis_cluster (kernel-weighted RDD)
 
