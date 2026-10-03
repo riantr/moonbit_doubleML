@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.79.0** |
+| `moon.mod` version | **0.80.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 146 production files |
+| `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **575 / 575** |
-| Tests (wasm-gc) | **581 / 581** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **584 / 584** |
+| Tests (wasm-gc) | **590 / 590** (lib + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -53,6 +53,16 @@ binary-outcome CS-DID.
 `DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` shape and returns
 the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
 No per-estimator interface drift.
+
+**v0.80.0 memoization layer** — opt-in via
+`DoubleMLIRM::enable_memoize()` / `disable_memoize()` /
+`clear_cache()` / `has_cache()`. Repeated `fit()` calls with
+identical data + fold split + learner fingerprint can skip
+the nuisance-fit step on the LAST repetition (n_rep must be
+1 for the cache to be honored). Default OFF so v0.79.0
+callers see byte-identical output. Vectorization of the
+per-fold nuisance fit/predict is deferred to v0.81; this
+release adds only the caching layer.
 
 **Cross-fitting infrastructure** — `kfold`, repeated cross-fitting,
 stratified K-fold (`kfold_stratified`), `chacha8_rng`-based seeded
@@ -251,7 +261,7 @@ binary-outcome CS-DID:
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.79.0, 146 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.80.0, 148 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 

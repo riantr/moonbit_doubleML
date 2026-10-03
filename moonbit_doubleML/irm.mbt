@@ -76,6 +76,14 @@ pub struct DoubleMLIRM {
   boot_method : String
   n_rep_boot : Int
   boot_seed : Int
+  // v0.80.0+: memoization state. `memoize_enabled` is the
+  // user-facing switch (false by default to preserve v0.79.0
+  // behavior bit-for-bit). When true, `fit()` caches the last
+  // repetition's nuisance predictions in `fit_cache` and
+  // reuses them on the next call when the data fingerprint,
+  // fold split, and learner configuration are unchanged.
+  memoize_enabled : Bool
+  fit_cache : FitCache
 } derive(Debug)
 
 ///|
@@ -118,6 +126,11 @@ pub fn DoubleMLIRM::new(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.80.0+: default memoize off so v0.79.0 callers see
+      // byte-identical fit() output. Enable explicitly via
+      // `.enable_memoize()` for caching.
+      memoize_enabled: false,
+      fit_cache: FitCache::empty(),
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -217,6 +230,52 @@ pub fn DoubleMLIRM::learner_g(self : DoubleMLIRM) -> LearnerDispatch {
 /// recent `fit(...)` / `fit_cluster(...)` call. v0.59.0+.
 pub fn DoubleMLIRM::learner_m(self : DoubleMLIRM) -> LearnerDispatch {
   self.ml_m
+}
+
+///|
+/// v0.80.0+: turn on memoization for subsequent `fit()` calls.
+/// When enabled, `fit()` will cache the per-observation nuisance
+/// predictions and the fold partition and skip the
+/// `cross_fit_irm(...)` step on a repeat call whose data +
+/// learner fingerprint is unchanged. Returns a new
+/// `DoubleMLIRM` with the flag set (the struct is immutable;
+/// the cache itself is populated by the next `fit()` call).
+///
+/// Default is OFF. When OFF, every `fit()` call runs the full
+/// cross-fit and the cache is neither read nor written, so
+/// v0.79.0 callers see byte-identical output.
+pub fn DoubleMLIRM::enable_memoize(self : DoubleMLIRM) -> DoubleMLIRM {
+  { ..self, memoize_enabled: true, }
+}
+
+///|
+/// v0.80.0+: turn off memoization. Same immutability contract
+/// as `enable_memoize()`. After this, `fit()` will not read or
+/// write the cache; the existing `fit_cache` is preserved on
+/// the returned struct (call `clear_cache()` to drop it).
+pub fn DoubleMLIRM::disable_memoize(self : DoubleMLIRM) -> DoubleMLIRM {
+  { ..self, memoize_enabled: false, }
+}
+
+///|
+/// v0.80.0+: drop any cached nuisance predictions and fold
+/// assignment. Useful when the caller wants to free memory or
+/// force the next `fit()` to recompute from scratch (e.g.
+/// after mutating a learner in place that the cache key does
+/// not detect).
+pub fn DoubleMLIRM::clear_cache(self : DoubleMLIRM) -> DoubleMLIRM {
+  { ..self, fit_cache: FitCache::empty(), }
+}
+
+///|
+/// v0.80.0+: `true` iff `fit_cache` holds at least one cached
+/// observation (i.e. at least one prior `fit()` call with
+/// `memoize_enabled = true` has populated the cache). Note
+/// that the cache may still be stale relative to the current
+/// data + learner configuration -- check `memoize_enabled`
+/// before assuming a cache hit.
+pub fn DoubleMLIRM::has_cache(self : DoubleMLIRM) -> Bool {
+  !self.fit_cache.is_empty()
 }
 
 ///|
@@ -363,6 +422,44 @@ pub fn DoubleMLIRM::fit(
     }
     let n = self.n_obs()
     let nrep = self.n_rep
+    // v0.80.0+: memoize check. The cache stores the LAST rep's
+    // fold assignment and nuisance predictions. We honor the
+    // cache only when:
+    //   (a) the user opted in (`self.memoize_enabled`),
+    //   (b) n_rep == 1 (multi-rep aggregations must run every
+    //       rep fresh -- we cannot cache individual rep scores),
+    //   (c) `is_valid(...)` matches every dimension of the
+    //       data + learner fingerprint.
+    // When memoize_enabled is false (the default), the entire
+    // cache code path is skipped so v0.79.0 callers see a
+    // byte-identical fit() output.
+    let memoize = self.memoize_enabled && nrep == 1
+    let data_hash : UInt64 = if memoize {
+      hash_data(
+        self.data.x,
+        self.data.y,
+        self.data.d,
+        z=[],
+        cluster_vars=self.data.cluster_vars,
+      )
+    } else {
+      0UL
+    }
+    let hparams_hash : UInt64 = if memoize {
+      hash_hyperparams("irm", ml_g, ml_m, self.propensity_clip)
+    } else {
+      0UL
+    }
+    let cache_hit = memoize &&
+      self.fit_cache.is_valid(
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        "irm",
+      )
     let coefs : Array[Double] = Array::make(nrep, 0.0)
     let ses : Array[Double] = Array::make(nrep, 0.0)
     // hold the last rep's predictions; final values land in g0_hat / g1_hat / m_hat
@@ -370,17 +467,39 @@ pub fn DoubleMLIRM::fit(
     let mut g1 : Array[Double] = Array::make(n, 0.0)
     let mut m : Array[Double] = Array::make(n, 0.0)
     let mut m_raw : Array[Double] = Array::make(n, 0.0)
+    // Track the LAST rep's fold_ids (for cache write below).
+    let mut fold_ids : Array[Int] = []
     for r = 0; r < nrep; r = r + 1 {
-      let folds = kfold(n, self.n_folds, self.seed + r)
-      let (g0_r, g1_r, m_r, m_raw_r) = cross_fit_irm(
-        ml_g,
-        ml_m,
-        self.data.x,
-        self.data.y,
-        self.data.d,
-        folds,
-        self.propensity_clip,
-      )
+      let rep_seed = self.seed + r
+      let (g0_r, g1_r, m_r, m_raw_r) = if cache_hit && r == nrep - 1 {
+        // Reuse the cached LAST-rep predictions. The cache
+        // stores exactly one fold partition + one set of
+        // nuisance arrays; when `cache_hit` is true the cache
+        // is guaranteed to be in sync with the current call's
+        // (seed, n_folds, n_rep) so this is correct.
+        let preds = self.fit_cache.predictions
+        fold_ids = self.fit_cache.fold_ids
+        (preds[0], preds[1], preds[2], preds[3])
+      } else {
+        let folds = kfold(n, self.n_folds, rep_seed)
+        // Build the row -> fold_id map for the cache write below.
+        let fid : Array[Int] = Array::make(n, 0)
+        for f = 0; f < folds.length(); f = f + 1 {
+          for i in folds[f].test_indices() {
+            fid[i] = f
+          }
+        }
+        fold_ids = fid
+        cross_fit_irm(
+          ml_g,
+          ml_m,
+          self.data.x,
+          self.data.y,
+          self.data.d,
+          folds,
+          self.propensity_clip,
+        )
+      }
       g0 = g0_r
       g1 = g1_r
       m = m_r
@@ -425,6 +544,26 @@ pub fn DoubleMLIRM::fit(
       psi_b[i] = g1[i] - g0[i] + (d_over_m - one_minus_d_over_one_minus_m)
       psi_a[i] = -1.0
     }
+    // v0.80.0+: when memoize is on and the cache missed, write
+    // the freshly-computed fold_ids + nuisances to the cache so
+    // the next `fit()` call can short-circuit. Skip the write
+    // when the cache was already hit (no new info) and when
+    // nrep > 1 (cache only stores the LAST rep).
+    let next_cache = if memoize && !cache_hit && nrep == 1 {
+      FitCache::from_fit(
+        fold_ids,
+        [g0, g1, m, m_raw],
+        self.seed,
+        self.n_folds,
+        nrep,
+        n,
+        data_hash,
+        hparams_hash,
+        "irm",
+      )
+    } else {
+      self.fit_cache
+    }
     {
       data: self.data,
       n_folds: self.n_folds,
@@ -449,6 +588,13 @@ pub fn DoubleMLIRM::fit(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.80.0+: persist the per-fit memoize flag and the
+      // (possibly updated) cache. When `memoize_enabled` is
+      // false, `fit_cache` is unchanged; when true and the
+      // data fingerprint matches, `fit_cache` already holds
+      // the LAST rep's nuisances (no rewrite needed).
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: next_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -619,6 +765,13 @@ fn DoubleMLIRM::fit_cluster(
       boot_method: "",
       n_rep_boot: 0,
       boot_seed: 0,
+      // v0.80.0+: cluster path does not currently consume the
+      // memoization cache (the J-floor retry loop can rewrite
+      // the fold assignment on a per-attempt basis, which
+      // complicates the cache key). Persist the flags so the
+      // next non-cluster `fit()` call still honors memoize.
+      memoize_enabled: self.memoize_enabled,
+      fit_cache: self.fit_cache,
     }
   } catch {
     PreconditionError::Violated(loc) =>

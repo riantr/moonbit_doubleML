@@ -9,6 +9,134 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.80.0] -- memoization layer + fit cache (v0.80 perf cycle, part 1)
+
+Adds an opt-in memoization layer to `DoubleMLIRM::fit()`.
+When `DoubleMLIRM::enable_memoize()` is called, a subsequent
+`fit()` with the same data fingerprint, fold split, and
+nuisance-learner configuration can skip the
+`cross_fit_irm(...)` step on the LAST repetition and reuse
+the cached per-observation nuisance predictions instead.
+Vectorization of the per-fold nuisance fit/predict is
+deferred to v0.81; this release adds only the caching
+layer. Default OFF so v0.79.0 callers see byte-identical
+output across all four backends (native / wasm / wasm-gc /
+js) under `moon test --deny-warn`.
+
+### Added
+
+- `FitCache` struct (in `fit_cache.mbt`):
+  `fold_ids : Array[Int]` (length `n_obs`, the row -> test-
+  fold index for the LAST repetition), `predictions :
+  Array[Array[Double]]` (the cached nuisance arrays),
+  `fold_split_seed / n_folds / n_rep / n_obs` (the cache
+  key dimensions), `data_hash : UInt64`, `hyperparams_hash
+  : UInt64`, `estimator_kind : String`. `derive(Debug)`.
+- `FitCache::empty()`: empty sentinel (`fold_ids.length() ==
+  0`) used by `is_empty()` and the constructor.
+- `FitCache::is_valid(fold_split_seed, n_folds, n_rep,
+  n_obs, data_hash, hyperparams_hash, estimator_kind) ->
+  Bool`: full-fingerprint match check. Returns `false` for
+  the empty sentinel because the dimension fields don't
+  match any plausible non-zero call.
+- `FitCache::is_empty() -> Bool`: cheap `fold_ids.length()
+  == 0` shortcut.
+- `FitCache::from_fit(fold_ids, predictions, ...) ->
+  FitCache`: populates a cache from a completed `fit()`.
+- `hash_data(x, y, d, z?, cluster_vars?) -> UInt64`: FNV-1a
+  64-bit content hash. Combines the data dimensions, a
+  sampled slice of `X` (first 10 + last 10 rows, column 0),
+  and the full content of `y / d / z / cluster_vars`. Uses
+  `Double::to_string()` for IEEE-754-stable Double
+  fingerprinting (MoonBit's `Double::to_uint64` truncates
+  rather than bit-casts, so a direct cast would collide
+  `0.999` with `0.0`). NOT cryptographic -- designed for
+  O(n) invalidation key, not collision resistance.
+- `hash_hyperparams(estimator_kind, ml_g, ml_m,
+  propensity_clip) -> UInt64`: per-learner fingerprint.
+  Folds in the learner-kind tag (LinearRegression /
+  LogisticRegression / Constant / Noop / RandomForest /
+  GradientBoosting); learner tunables (RF `n_trees`,
+  etc.) are NOT folded in -- users who change tunables
+  across calls must call `DoubleMLIRM::clear_cache()` to
+  force a fresh fit.
+- `DoubleMLIRM::enable_memoize() -> DoubleMLIRM`:
+  immutable toggle ON.
+- `DoubleMLIRM::disable_memoize() -> DoubleMLIRM`:
+  immutable toggle OFF.
+- `DoubleMLIRM::clear_cache() -> DoubleMLIRM`: drop the
+  cached nuisance predictions.
+- `DoubleMLIRM::has_cache() -> Bool`: `true` iff the cache
+  holds at least one cached observation.
+- `DoubleMLIRM` now carries a `fit_cache : FitCache` field
+  (default `FitCache::empty()`) and a `memoize_enabled :
+  Bool` field (default `false`).
+- `DoubleMLIRM::fit()` integrates the cache check: when
+  `memoize_enabled = true` AND `n_rep == 1` AND
+  `is_valid(...)` returns `true`, the cross-fit step is
+  skipped and the cached `g0_hat / g1_hat / m_hat / m_raw`
+  flow straight into the score aggregation. When
+  `memoize_enabled = false` (the default), the entire
+  cache code path is skipped -- v0.79.0 callers see
+  byte-identical fit() output.
+- `fit_cache_test.mbt` (9 white-box tests):
+  - `enable_memoize_set_flag` / `disable_memoize_set_flag`
+    -- flag round-trip + immutability (the original struct
+    is unchanged by the toggle).
+  - `clear_cache_works` -- populate cache via `fit()`,
+    `clear_cache()` returns a struct with `has_cache() =
+    false` while preserving `memoize_enabled`.
+  - `memoize_returns_same_coef` -- two fits with the same
+    data + seed produce coef / se within `1.0e-10` (cache
+    hit is byte-equivalent to fresh fit).
+  - `memoize_invalidates_on_data_change` -- scaling `y` by
+    2 between two data containers gives coefs in ~2:1
+    ratio; the cache fingerprint must mismatch.
+  - `memoize_invalidates_on_n_folds_change` -- changing
+    `n_folds` between two fits yields different coefs.
+  - `hash_data_distinct_for_different_data` -- two data
+    containers that differ in one `X` entry produce
+    different hashes.
+  - `hash_data_stable_for_same_data` -- the same data
+    called twice produces the same hash.
+  - `fit_cache_empty_is_invalid` -- the empty cache fails
+    `is_valid(...)` against any plausible configuration.
+
+### Notes
+
+- moon.mod: 0.79.0 -> 0.80.0.
+- README: `0.79.0` -> `0.80.0`, 146 -> 148 production
+  files, 575 / 575 -> 584 / 584 native tests,
+  581 / 581 -> 590 / 590 wasm-gc tests.
+- moon check --target native / wasm / wasm-gc / js
+  --deny-warn: 0 warnings, 0 errors.
+- moon fmt --check: clean.
+- Verified: native 584 / 584 (was 575 in v0.79.0;
+  +9 wbtests in `fit_cache_test.mbt`).
+- Verified: wasm-gc 590 / 590 (was 581 in v0.79.0;
+  +9 wbtests; baseline 581).
+- Verified: wasm + js 584 / 584 each (same +9 wbtests;
+  baseline 575).
+- Memoization only added to `DoubleMLIRM` -- the most-used
+  estimator. PLR / IIVM / DID family / SSM / APO(S) / PQ /
+  QTE / LPQ / LPLR / CVaR / RDD / BLP / PLPR /
+  PolicyTree keep the standard (no-cache) `fit()` path
+  for this release; the cache helpers in
+  `DoubleMLIRM` are the seed for the v0.81 rollout.
+- Caching is honored only when `n_rep == 1` because the
+  cache stores the LAST rep's predictions only; multi-rep
+  aggregations still re-fit every rep fresh (byte-identical
+  to v0.79.0 for `n_rep > 1`).
+- Caching is honored only on the non-cluster path. The
+  cluster path's J-floor retry loop rewrites the fold
+  assignment on a per-attempt basis, which complicates the
+  cache key -- cluster-path caching is deferred to a
+  later release. The cluster path still persists the
+  memoize flag / cache handle so the next non-cluster
+  `fit()` call can still honor memoize.
+
+---
+
 ## [0.79.0] -- sandwich variance (HC0-HC3 + cluster) + bias correction
 
 Adds the Huber-White heteroskedasticity-consistent sandwich
