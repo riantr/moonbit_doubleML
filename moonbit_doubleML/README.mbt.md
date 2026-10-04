@@ -25,16 +25,16 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.89.0** |
+| `moon.mod` version | **0.91.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **640 / 640** |
-| Tests (wasm-gc) | **646 / 646** (lib 640 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **656 / 656** |
+| Tests (wasm-gc) | **662 / 662** (lib 656 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
-| Sandwich variance coverage | **12 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`) |
+| Sandwich variance coverage | **12 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
 #Features
@@ -590,14 +590,73 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
     (proving `cluster_ids` is consumed), the
     `coef + mean(psi_b - coef * psi_a)` bias-correction identity
     (plus APO's closed form `3 * coef`, since
-    `theta_hat = mean(psi_b)` and `psi_a = -1`), and the
-    post-subset `n` pin for the DID binary wrapper.
+    `theta_hat = mean(psi_b)` and `psi_a = -1`) -- that
+    identity is **superseded by v0.91.0**, which removed the
+    method's score-based correction and made it return `coef`
+    unchanged, and the post-subset `n` pin for the DID binary
+    wrapper.
   - Observed `n`: `DoubleMLAPO` persists its IF components on the
     FULL sample domain (`psi_a.length() == n_obs()`, both the IID
     and the `fit_cluster` path), so it has no `n` hazard;
     `DoubleMLDIDBinary` is on the post-subset wide-format panel
     (300 of 600), like `DoubleMLDIDCSBinary` (400 of 600) and
     unlike `DoubleMLPLPR` (180 of 240).
+
+- v0.91.0 verified counts: `moon test` 656 / 656 (native & wasm &
+  js) and 662 / 662 (wasm-gc: lib 656 + 6 doc tutorials).
+  **BREAKING NUMERICAL CHANGE, all 12 sandwich estimators.**
+  Corrects two independent errors in the `sandwich.mbt`
+  accumulator, both of which were open items in the v0.90.0
+  entry:
+  - It summed `(psi_a[i] * psi[i])^2`. The DML moment being
+    inverted is the **mean** moment `E[theta * psi_a + psi_b]`,
+    whose implicit regressor is the constant `1`, so the
+    per-observation quadratic form is `psi[i]^2` with no
+    `psi_a` weight. For constant `psi_a` the spurious `c^2`
+    cancelled against `M_inv^2 = 1 / c^2` (a no-op); for
+    non-constant `psi_a` it re-weighted the meat by a
+    data-dependent factor (`0.229` on the PLR DGP).
+  - It returned the variance of `sqrt(n) * (theta_hat -
+    theta)` rather than of `(theta_hat - theta)`: `var_est`
+    divides by `n` a **second** time, and the sandwich did not.
+    This is the `sqrt(n)` the v0.90.0 release had to
+    accommodate.
+  - `sandwich_variance_hc0 / _hc1 / _hc2 / _hc3` and
+    `cluster_sandwich_variance` now accumulate `sum_i psi[i]^2`
+    and return `M_inv[0,0]^2 * acc / n / n`, so
+    **`se() == sandwich_se(HC0)` for every estimator** --
+    including the non-constant-`psi_a` ones, which no scaling
+    of the old accumulator could produce. Measured on the
+    v0.90.0 DGP (`n = 400`): IRM `0.21652894217092453` ->
+    `0.010826447108546225` = its `se()`; PLR
+    `0.19759510529621752` -> `0.020629646119313564` = its
+    `se()`. Every HC kind moves by the same `sqrt(n)`, and
+    because the HC identities are ratios, `HC1 == HC0 *
+    sqrt(n / (n - 1))`, `HC2 == HC1`, `HC3 == HC1^2 / HC0` and
+    the ordering `HC3 > HC1 == HC2 > HC0` all survive
+    untouched. `HC2 == HC1` is now 1e-12 rather than
+    bit-exact, so a test asserting `HC2 > HC1` was asserting
+    a falsehood and is now `HC2 == HC1`.
+    All-singleton clusters still equal IID HC0, and both now
+    equal `se()`.
+  - `bias_corrected_coef` (12 methods) is now a **documented
+    no-op** returning `coef` unchanged. Under `var_est`'s
+    convention `coef` is the root of the moment, so
+    `mean(coef * psi_a + psi_b) == 0` identically: the
+    estimating function is orthogonal by construction and
+    there is no score-based bias to correct. The old form
+    passed the score at `-coef` rather than at `coef` and
+    returned `coef * (1 - 2 * mean(psi_a))`, i.e. exactly
+    `3 * coef` on every constant-`psi_a` estimator -- a
+    number that looks like a bias correction and is not one.
+    Removing the methods outright is the obvious follow-up.
+  - Not changed: `M_inv = [[1 / mean(psi_a)]]`, the v0.88.0
+    leverage `h_ii = 1 / n_obs`, the v0.90.0 `psi_at`
+    helper, and `var_est.mbt` (the reference, not the bug).
+    `DoubleMLLPLR` still gets no `sandwich_se` -- its
+    accumulator blocker is now resolved (its HC0 equals its
+    `se()` to the last ulp, was `0.879 * se()`), but
+    exposing the accessor is a separate API decision.
 
 #Attribution
 

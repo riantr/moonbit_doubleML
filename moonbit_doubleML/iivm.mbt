@@ -1145,23 +1145,39 @@ pub fn DoubleMLIIVM::cluster_sandwich_se(
 }
 
 ///|
-/// v0.86.0+: finite-sample bias-corrected IIVM coefficient.
-/// Same `psi_b - coef * psi_a` per-observation bias form as
-/// `DoubleMLIRM::bias_corrected_coef`:
+/// v0.91.0+: returns `coef` UNCHANGED -- a documented
+/// no-op, not a bias correction.
 ///
-///     bias_per_obs[i] = psi_b[i] - coef * psi_a[i]
-///     theta_corrected = coef + mean(bias_per_obs)
+/// `coef` is the root of the DML moment
+/// `f(theta) = E[theta * psi_a + psi_b]` (see
+/// `var_est.mbt`), so `mean(f(coef))` is identically
+/// zero: the estimating function is orthogonal by
+/// construction, and that orthogonality IS what makes
+/// the estimator consistent. Nothing computable from
+/// the fitted scores is a bias estimate for this class
+/// of estimator, so this accessor reports the
+/// uncorrected point estimate rather than a number
+/// that merely looks like a correction.
+///
+///
+/// v0.79.0 - v0.90.0 returned
+/// `coef + mean(psi_b - coef * psi_a)`. That
+/// vector is the score at `-coef`, NOT at `coef`;
+/// since `coef = -mean_b / mean_a` its mean is
+/// `mean_b - coef * mean_a = -2 * coef * mean_a`,
+/// so the accessor returned
+/// `coef * (1 - 2 * mean(psi_a))` (exactly `3 * coef`
+/// when `mean(psi_a) = -1`). That is not a bias
+/// estimate. See `bias_corrected_theta` in
+/// `sandwich.mbt` for the algebra. The method is kept
+/// so the API surface stays stable; removing it
+/// outright is the obvious follow-up.
 ///
 /// Preconditions: `self.fitted`.
 pub fn DoubleMLIIVM::bias_corrected_coef(self : DoubleMLIIVM) -> Double {
   try {
     require(self.fitted)
-    let n = self.n_obs()
-    let bias : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      bias[i] = self.psi_b[i] - self.coef * self.psi_a[i]
-    }
-    bias_corrected_theta(self.coef, bias)
+    self.coef
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

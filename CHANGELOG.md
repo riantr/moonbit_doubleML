@@ -9,6 +9,193 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.91.0] -- correct the sandwich accumulator; `bias_corrected_coef` is a documented no-op
+
+**BREAKING NUMERICAL CHANGE.** `sandwich_se` and
+`cluster_sandwich_se` change for **all 12** estimators that expose
+them. Every HC kind (`HC0` / `HC1` / `HC2` / `HC3`) and the
+cluster path are affected, and so is `bias_corrected_coef`, which
+now returns `coef` instead of a number that was not a bias
+estimate. `se()` is **unchanged** and is the reference throughout.
+Test count delta: native 648 -> 656 (+8), wasm-gc 654 -> 662 (+8).
+
+### The size of the break
+
+- `sandwich_se(HC0)` is `1 / sqrt(n)` of its v0.90.0 value for
+  every estimator, i.e. `sqrt(n)` smaller in the standard error
+  (`n` smaller in the variance). On the v0.90.0 DGP below
+  (`n = 400`) that is a factor of exactly **20**.
+- `HC1 == HC0 * n / (n - 1)`, `HC2 == HC1` and `HC3 == HC1^2 / HC0`
+  are pure **ratios** of the accumulator, so the corrections
+  themselves are unchanged: every HC SE is `1 / sqrt(n)` of its
+  v0.90.0 value, and the ordering
+  `HC1 == HC2 > HC0`, `HC3 > HC2` is preserved. `HC2 == HC1` is now
+  equal to 1e-12 rather than bit-exact (the two accumulation
+  orders differ in the last ulp), so any test written as
+  `HC2 > HC1` was asserting a falsehood and is now `HC2 == HC1`.
+- `cluster_sandwich_se` is `1 / sqrt(n)` of its v0.90.0 value too
+  (the cluster meat carries the same missing `1 / n`), so
+  **all-singleton clusters still equal IID HC0**, and both now equal
+  `se()`.
+- `bootstrap()` is untouched: the multiplier t-stat is
+  scale-invariant, and no bootstrap path calls these functions.
+
+### Fixed
+
+- **The accumulator summed `(psi_a[i] * psi[i])^2`.** The DML
+  moment being inverted is `f(theta) = E[theta * psi_a + psi_b]`
+  (`var_est.mbt`) -- a **mean** moment, whose implicit regressor is
+  the constant `1`, so the per-observation quadratic form is
+  `psi[i]^2` with no `psi_a` weight. For a constant `psi_a = c` the
+  spurious `c^2` cancelled against `M_inv^2 = 1 / c^2`, so the
+  factor was a no-op for `DoubleMLIRM` / `DoubleMLAPO` /
+  `DoubleMLSSM` / `DoubleMLCVAR` / `DoubleMLDID`; for the
+  non-constant-`psi_a` estimators (`DoubleMLPLR` /
+  `DoubleMLPLPR` / `DoubleMLIIVM` / `DoubleMLPLIV`) it re-weighted
+  the meat by the data-dependent ratio
+  `sum (psi_a psi)^2 / sum psi^2` (`0.229` on the PLR DGP below --
+  a shrink there; the sign of that factor is data, not formula,
+  which is the whole problem with having it in a variance at all).
+- **The accumulator returned the variance of
+  `sqrt(n) * (theta_hat - theta)`, not of `(theta_hat - theta)`.**
+  `var_est` returns `sigma2 = mean(psi^2) / (J^2 * n) =
+  M_inv^2 * sum psi^2 / n^2`; the sandwich returned
+  `M_inv^2 * sum / n`. One `1 / n` was missing, for **every**
+  estimator. This is the factor of `sqrt(n)` the v0.90.0 release
+  had to accommodate.
+- `sandwich_variance_hc0` / `_hc1` / `_hc2` / `_hc3` and
+  `cluster_sandwich_variance` in `moonbit_doubleML/sandwich.mbt`
+  now accumulate `sum_i psi[i]^2` and return
+  `M_inv[0,0]^2 * acc / n / n`.
+- The doc comments in `sandwich.mbt`, in the 12 estimator files and
+  in the five test files that carried the old formula (or an
+  independently recomputed copy of it) are corrected.
+
+### The payoff invariant (pinned)
+
+`se() == sandwich_se(HC0)` to floating-point tolerance, for
+**every** estimator, including the non-constant-`psi_a` ones --
+a far stronger claim than the `se() == sandwich_se(HC0) / sqrt(n)`
+that v0.90.0 settled for, and one that the v0.90.0 accumulator
+could not satisfy on PLR by any scaling.
+
+Measured on the v0.90.0 DGP (`n = 400`, `n_folds = 2`, `n_rep = 1`,
+`seed = 3141`; `DoubleMLData`). `se()` is identical in the two
+columns; the v0.91.0 column is the corrected accumulator:
+
+| estimator | `psi_a` | `se()` | `sandwich_se(HC0)` v0.90.0 | v0.91.0 | ratio |
+|---|---|---|---|---|---|
+| `DoubleMLIRM` | constant `-1` | `0.010826447108546225` | `0.21652894217092453` | `0.010826447108546225` | `20.000` |
+| `DoubleMLPLR` | varies (`-v^2`) | `0.020629646119313564` | `0.19759510529621752` | `0.020629646119313564` | `9.579` |
+
+Full HC ladder, `se()` column included, v0.90.0 -> v0.91.0:
+
+| estimator | `se()` | `HC0` | `HC1` | `HC2` | `HC3` | cluster (singleton) | cluster (pooled / 4) |
+|---|---|---|---|---|---|---|---|
+| `DoubleMLIRM` | `0.010826447108546225` | `0.21652894217092453` -> `0.010826447108546225` | `0.2168001118979346` -> `0.01084000559489673` | same as HC1 | `0.2170716212239845` -> `0.010853581061199224` | `0.21652894217092453` -> `0.010826447108546225` | `0.2651748183833668` -> `0.013258740919168342` |
+| `DoubleMLPLR` | `0.020629646119313564` | `0.19759510529621752` -> `0.020629646119313564` | `0.19784256325830096` -> `0.02065548162864734` | same as HC1 | `0.19809033112402755` -> `0.02068134949304618` | `0.19759510529621752` -> `0.020629646119313564` | `0.2274150576230624` -> `0.023779243942090376` |
+
+The v0.91.0 `HC0` values are **bit-identical** to `se()` in both
+rows, and the singleton-cluster value equals `se()` in both rows.
+Pinned by `expand_v091_test.mbt`:
+`se_equals_sandwich_hc0_nonconstant` (PLR + IIVM, the case that
+v0.90.0 could not get right by any scaling),
+`se_equals_sandwich_hc0_constant` (IRM + APO),
+`hc1_hc0_ratio`, `hc2_equals_hc1_v091`,
+`hc3_equals_hc1_squared_over_hc0_v091`, `ordering_hc3_ge_hc1_ge_hc0`,
+`singleton_cluster_equals_se`, `bias_corrected_coef_returns_coef`.
+
+### A note on the v0.90.0 arithmetic
+
+The v0.90.0 entry recorded the PLR target identity as
+`M_inv^2 * sum(psi(theta_hat)^2) / n == se()` with the value
+`0.020629646119313567`. **That formula as written is off by a
+factor of `n` in the variance**: the value was measured with the
+`n^2` divisor (which is what `var_est` does) and the formula in
+the report dropped one `n`. Re-measured here, on the same fit:
+`M_inv^2 * sum / n` gives `0.4125929223862713` and
+`M_inv^2 * sum / n^2` gives `0.020629646119313567` against a
+`se()` of `0.020629646119313564`. This is why the v0.90.0 test
+pinned `se() == sandwich_se(HC0) / sqrt(n)` and stopped there:
+the missing `1 / n` is a real defect, not a notational slip in
+the fix.
+
+### Changed -- `bias_corrected_coef` is now a documented no-op
+
+- **Design chosen: (B), keep the API and return `theta_hat`
+  unchanged.** It preserves the method surface while removing the
+  lie, and the docs point at removing it outright as the next
+  step. Design (C) -- a real group-time ATT correction for
+  `DoubleMLDID` -- was **not** taken: it would mean importing
+  statistics this package has not validated, and the task's own
+  guidance is that a derivation from the literature is required
+  before shipping it.
+- All 12 `bias_corrected_coef` methods (`DoubleMLIRM`, `APO`,
+  `SSM`, `CVAR`, `DID`, `DIDBinary`, `DIDCSBinary`,
+  `DIDCrossSection`, `PLR`, `PLPR`, `PLIV`, `IIVM`) now return
+  `coef` and say why, in the method's own doc comment.
+- The reason, stated once in `bias_corrected_theta` and in each
+  method: under `var_est`'s convention `coef` is the root of the
+  moment, so `mean(coef * psi_a + psi_b) == 0` **identically**. The
+  estimating function is orthogonal by construction and that
+  orthogonality is what makes the estimator consistent, so any
+  correction built from the score at the estimate is a guaranteed
+  no-op -- there is no first-order bias to remove.
+- The removed form was `bias_per_obs[i] = psi_b[i] - coef *
+  psi_a[i]`, which is the score at `-coef`, **not** at `coef`, so
+  it never was the score at the estimate. Its accessor returned
+  `coef * (1 - 2 * mean(psi_a))`, i.e. exactly `3 * coef` on every
+  constant-`psi_a` estimator. Measured on the DGP above:
+  `DoubleMLIRM` `5.5294214541337245` -> `1.8431404847112416`;
+  `DoubleMLPLR` `2.274044139373662` -> `2.002499194473045`. A
+  number that looks like a bias correction and is not one is
+  worse than an honest identity function, which is why this is in
+  the same breaking release as the accumulator fix.
+- The free helper `bias_corrected_theta(theta_hat, bias_per_obs)`
+  keeps its `theta_hat + mean(bias_per_obs)` behaviour -- it is
+  correct for a genuinely external bias vector -- but its doc no
+  longer claims the DML score is such a vector, and records why
+  passing the score can only ever be a no-op.
+
+### Added
+
+- 8 white-box tests in `moonbit_doubleML/expand_v091_test.mbt`:
+  the two `se() == sandwich_se(HC0)` invariants (constant and
+  non-constant `psi_a`, three estimators: IRM, APO, PLR, IIVM),
+  the HC1 ratio, `HC2 == HC1`, `HC3 == HC1^2 / HC0`, the ordering,
+  the singleton-cluster identity plus the pooled-cluster
+  difference, and the `bias_corrected_coef` no-op. Each states the
+  v0.90.0 value it replaces, so a regression cannot hide behind a
+  re-tuned expectation.
+
+### Not changed (deliberate, with numbers)
+
+- `M_inv = [[1 / mean(psi_a)]]` is correct (`1 / (d f / d theta)`)
+  and stays.
+- The v0.88.0 leverage `h_ii = 1 / n_obs` is correct and stays, so
+  the `HC2 == HC1` / `HC3 == HC1^2 / HC0` identities are
+  untouched.
+- The v0.90.0 `psi_at(coef, psi_a, psi_b)` helper is correct and
+  stays; no call site changed.
+- `var_est.mbt` is untouched: it was the reference, not the bug.
+- `DoubleMLLPLR` still gets no `sandwich_se`. Its v0.87.0 blocker
+  is resolved and the v0.90.0 accumulator blocker is now resolved
+  too -- with the corrected order, the true Jacobian
+  (`mean(slope) = -0.036387245464012986`) and the corrected
+  accumulator its HC0 now equals its `se()` to the last ulp (was
+  `0.879 * se()`). Exposing the accessor is an API decision and is
+  deliberately left to its own change; `lplr_inverted_roles_are_handled`
+  records the resolved blocker.
+- `DoubleMLDIDCrossSection` is still not routed through
+  `psi_at`: it is a projection (`argmin_theta`) estimator whose
+  `psi_a` is the offset and `psi_b` the slope, so its sandwich is
+  checked against its own score order in `expand_v087_test.mbt`
+  and its `bias_corrected_coef` is documented as a no-op on
+  different grounds (there is no bias expression at all for a
+  least-squares root).
+- `moon.mod`'s import block and the shelved GPU integration are
+  untouched.
+
 ## [0.90.0] -- evaluate psi at the estimate in the sandwich + bootstrap paths
 
 **BREAKING NUMERICAL CHANGE.** `sandwich_se` / `cluster_sandwich_se`

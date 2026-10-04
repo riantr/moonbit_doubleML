@@ -42,9 +42,13 @@
 // flagged):
 //   1. The returned HC0 SE reproduces, to 1e-12 relative, an
 //      INDEPENDENTLY recomputed
-//      `M_inv^2 * sum_i (psi_a[i] * psi[i])^2 / n` -- a
+//      `M_inv^2 * sum_i psi[i]^2 / n^2` -- a
 //      function returning a constant, or reusing the wrong
-//      `psi` / the wrong `M_inv`, fails this.
+//      `psi` / the wrong `M_inv`, fails this. (v0.91.0
+//      corrected the reference: the DML moment is a MEAN
+//      moment, so there is no `psi_a[i]` weight, and the
+//      returned variance of `theta_hat` carries a second
+//      `1 / n`. Both were wrong through v0.90.0.)
 //   2. `se(HC1) / se(HC0) == sqrt(n / (n - 1))` to 1e-12 --
 //      the exact HC1 finite-sample identity, so a swapped
 //      HC1 / HC2 arm fails.
@@ -67,16 +71,18 @@
 //      and `(n / (n - 1))^2`.)
 //   4. `cluster_sandwich_se` with all-singleton clusters
 //      equals `sandwich_se(HC0)` EXACTLY (singleton clusters
-//      contribute their raw `(psi_a * psi)^2` with no
+//      contribute their raw `psi[i]^2` with no
 //      jackknife factor, algebraically the HC0 accumulation),
 //      while a pooled cluster assignment gives a strictly
 //      different finite value -- proving `cluster_ids` is
 //      actually consumed and not ignored.
-//   5. `bias_corrected_coef` equals
-//      `coef + mean(psi_b - coef * psi_a)` to 1e-12, and for
-//      SSM the closed-form reduction `2 * coef + mean(psi_b)`
-//      (equivalently `3 * coef`, since SSM's
-//      `theta_hat = mean(psi_b)`).
+//   5. `bias_corrected_coef` returns `coef` unchanged
+//      (v0.91.0). The DML score is orthogonal at the
+//      estimate, so a correction built from it is a
+//      guaranteed no-op; through v0.90.0 the accessor
+//      returned `coef + mean(psi_b - coef * psi_a)`, which
+//      is `3 * coef` for SSM's constant-`psi_a` score and is
+//      not a bias estimate.
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -130,39 +136,50 @@ fn expand_v087_psi_projection(
 
 ///|
 /// Independent recomputation of the HC0 variance
-/// `m_val^2 * sum_i (psi_a[i] * psi[i])^2 / n_obs`, used as
+/// `m_val^2 * sum_i psi[i]^2 / n_obs^2`, used as
 /// the reference the estimator methods must match. Deliberately
 /// NOT routed through `sandwich_variance_hc0` so a regression in
 /// the shared helper cannot make both sides move together.
+///
+/// v0.91.0: the DML moment is a MEAN moment, so the
+/// per-observation quadratic form is `psi[i]^2` with no
+/// `psi_a[i]` factor, and the returned quantity is the
+/// variance of `theta_hat` (two factors of `n_obs`, not
+/// one). `psi_a` is kept in the signature -- and ignored
+/// -- so the call sites stay comparable with v0.87.0.
 fn expand_v087_ref_hc0(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
   n_obs : Int,
 ) -> Double {
+  let _ = psi_a
   let mut acc = 0.0
   for i = 0; i < n_obs; i = i + 1 {
-    let prod = psi_a[i] * psi[i]
-    acc = acc + prod * prod
+    let v = psi[i]
+    acc = acc + v * v
   }
   let m2 = m_val * m_val
-  m2 * acc / n_obs.to_double()
+  let n_d = n_obs.to_double()
+  m2 * acc / n_d / n_d
 }
 
 ///|
 /// Independent recomputation of the leverage-corrected HC2
 /// (`power = 1`) and HC3 (`power = 2`) variances,
-/// `m_val^2 * sum_i (psi_a[i] * psi[i])^2 / (1 - h_ii)^power / n`
+/// `m_val^2 * sum_i (psi[i]^2 / (1 - h_ii)^power) / n^2`
 /// with the mean-regression leverage `h_ii = 1 / n_obs` (the
 /// projection-matrix diagonal of the intercept-only,
-/// equally-weighted mean regression implicit in the moment
-/// `E[psi_a * psi(theta)] = 0`) and the same `1.0e-10`
+/// equally-weighted mean regression implicit in the DML moment
+/// `E[theta * psi_a + psi_b] = 0`) and the same `1.0e-10`
 /// degenerate-input clip the package applies.
 ///
 /// v0.87.0 used the signed `h_ii = psi_a[i] * M_inv *
 /// psi_a[i]` here, which is negative under
 /// `M_inv = [[1 / mean(psi_a)]]` and made HC2 / HC3 shrink;
-/// see `sandwich.mbt` and `expand_v088_test.mbt`.
+/// see `sandwich.mbt` and `expand_v088_test.mbt`. v0.91.0
+/// additionally dropped the `psi_a[i]` factor from the
+/// accumulated term and the second `1 / n_obs`.
 fn expand_v087_ref_leverage(
   psi_a : Array[Double],
   psi : Array[Double],
@@ -170,21 +187,22 @@ fn expand_v087_ref_leverage(
   n_obs : Int,
   power : Int,
 ) -> Double {
+  let _ = psi_a
   let eps : Double = 1.0e-10
   let mut acc = 0.0
-  let h_ii = 1.0 / n_obs.to_double()
+  let n_d = n_obs.to_double()
+  let h_ii = 1.0 / n_d
   for i = 0; i < n_obs; i = i + 1 {
-    let pa = psi_a[i]
     let one_minus_h = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
     let mut denom = one_minus_h
     if power == 2 {
       denom = one_minus_h * one_minus_h
     }
-    let prod = pa * psi[i]
-    acc = acc + prod * prod / denom
+    let v = psi[i]
+    acc = acc + v * v / denom
   }
   let m2 = m_val * m_val
-  m2 * acc / n_obs.to_double()
+  m2 * acc / n_d / n_d
 }
 
 ///|
@@ -336,7 +354,13 @@ test "sandwich_expand_v087_ordering" {
   inspect(v1 > v0, content="true")
   inspect(v2 > v0, content="true")
   inspect(v3 > v2, content="true")
-  inspect(v2 == v1, content="true")
+  // HC2 == HC1 algebraically; the two accumulation orders
+  // (scale-the-sum vs sum-the-scaled-terms) differ in the last
+  // ulp, so the package's 1e-12 relative tolerance applies --
+  // exactly as the v0.90.0 identity block already documents
+  // for IIVM. Exact `==` held through v0.90.0 only by
+  // accident of rounding.
+  inspect(expand_v087_close(v2, v1), content="true")
   inspect(expand_v087_close(v3, v1 * v1 / v0), content="true")
   // Independent recomputation must agree with the dispatch.
   inspect(
@@ -443,20 +467,13 @@ test "ssm_sandwich_se_smoke" {
   inspect(se_pooled.is_nan() == false, content="true")
   inspect(se_pooled > 0.0, content="true")
   inspect(expand_v087_close(se_pooled, se_hc0) == false, content="true")
-  // psi_a = -1 constant collapses the bias correction to
-  // 2 * coef + mean(psi_b); and since SSM's theta_hat =
-  // mean(psi_b), that is exactly 3 * coef.
+  // v0.91.0: `bias_corrected_coef` is a documented no-op and
+  // returns `coef` unchanged. Through v0.90.0 SSM returned
+  // `2 * coef + mean(psi_b)` = exactly `3 * coef` (since
+  // `coef == mean(psi_b)` for the constant `psi_a = -1`
+  // score), which is not a bias estimate.
   let bc = fitted.bias_corrected_coef()
-  inspect(
-    expand_v087_close(bc, 2.0 * fitted.coef() + mean(fitted.psi_b)),
-    content="true",
-  )
-  inspect(expand_v087_close(bc, 3.0 * fitted.coef()), content="true")
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = fitted.psi_b[i] - fitted.coef() * fitted.psi_a[i]
-  }
-  inspect(expand_v087_close(bc, fitted.coef() + mean(bias)), content="true")
+  inspect(bc == fitted.coef(), content="true")
 }
 
 // ---------------------------------------------------------------------------
@@ -540,12 +557,9 @@ test "plpr_sandwich_se_smoke" {
   inspect(se_pooled.is_nan() == false, content="true")
   inspect(se_pooled > 0.0, content="true")
   inspect(expand_v087_close(se_pooled, se_hc0) == false, content="true")
+  // v0.91.0: documented no-op, returns `coef` unchanged.
   let bc = fitted.bias_corrected_coef()
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = fitted.psi_b[i] - fitted.coef() * fitted.psi_a[i]
-  }
-  inspect(expand_v087_close(bc, fitted.coef() + mean(bias)), content="true")
+  inspect(bc == fitted.coef(), content="true")
   inspect(bc.is_nan() == false, content="true")
 }
 
@@ -618,12 +632,9 @@ test "did_cross_section_sandwich_se_smoke" {
   inspect(se_pooled.is_nan() == false, content="true")
   inspect(se_pooled > 0.0, content="true")
   inspect(expand_v087_close(se_pooled, se_hc0) == false, content="true")
+  // v0.91.0: documented no-op, returns `coef` unchanged.
   let bc = fitted.bias_corrected_coef()
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = psi_b[i] - fitted.coef() * psi_a[i]
-  }
-  inspect(expand_v087_close(bc, fitted.coef() + mean(bias)), content="true")
+  inspect(bc == fitted.coef(), content="true")
   inspect(bc.is_nan() == false, content="true")
 }
 
@@ -702,11 +713,8 @@ test "did_cs_binary_sandwich_se_smoke" {
   inspect(se_pooled.is_nan() == false, content="true")
   inspect(se_pooled > 0.0, content="true")
   inspect(expand_v087_close(se_pooled, se_hc0) == false, content="true")
+  // v0.91.0: documented no-op, returns `coef` unchanged.
   let bc = fitted.bias_corrected_coef()
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = psi_b[i] - fitted.coef() * psi_a[i]
-  }
-  inspect(expand_v087_close(bc, fitted.coef() + mean(bias)), content="true")
+  inspect(bc == fitted.coef(), content="true")
   inspect(bc.is_nan() == false, content="true")
 }

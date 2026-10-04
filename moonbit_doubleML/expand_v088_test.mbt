@@ -254,20 +254,26 @@ test "hc_ordering_now_widens" {
 test "hc0_and_hc1_unchanged" {
   let n = 64
   let (psi_a, psi, m_inv) = expand_v088_input_a(n)
-  // Captured from the v0.87.0 implementation BEFORE the
-  // leverage fix (native target). `mean(psi_a) == -1` exactly,
-  // so `M_inv == [[-1.0]]`.
+  // RE-PINNED in v0.91.0. The v0.87.0 values this test used to
+  // pin (HC0 = 0.2175835503472222, HC1 = 0.2210372574955908
+  // on input A) were the accumulator's, and the accumulator is
+  // what v0.91.0 changed: `sandwich_variance_hc0` now sums
+  // `psi[i]^2` (no `psi_a[i]` weight) and divides by `n^2`. On
+  // this input `sum_i psi[i]^2 == 21.25` exactly, so the new
+  // values are `21.25 / 4096` and `21.25 / 4032`. The v0.88.0
+  // LEVERAGE conclusion is untouched: the ratios below are the
+  // same `n / (n - 1)` factors as before.
   inspect(
     expand_v088_pinned_close(
       sandwich_variance_hc0(psi_a, psi, m_inv, n, 1),
-      0.2175835503472222,
+      0.00518798828125,
     ),
     content="true",
   )
   inspect(
     expand_v088_pinned_close(
       sandwich_variance_hc1(psi_a, psi, m_inv, n, 1),
-      0.2210372574955908,
+      0.005270337301587301,
     ),
     content="true",
   )
@@ -277,14 +283,14 @@ test "hc0_and_hc1_unchanged" {
   inspect(
     expand_v088_pinned_close(
       sandwich_variance_hc0(flat_a, psi, flat_inv, n, 1),
-      0.33203125,
+      0.00518798828125,
     ),
     content="true",
   )
   inspect(
     expand_v088_pinned_close(
       sandwich_variance_hc1(flat_a, psi, flat_inv, n, 1),
-      0.33730158730158727,
+      0.005270337301587301,
     ),
     content="true",
   )
@@ -313,14 +319,17 @@ test "constant_psi_a_case" {
   // (divisors 2 and 4 from the negative leverage -1).
   inspect(expand_v088_close(v2, v0 * scale), content="true")
   inspect(expand_v088_close(v3, v0 * scale * scale), content="true")
-  // Pinned new values (native, v0.88.0).
-  inspect(expand_v088_pinned_close(v2, 0.33730158730158727), content="true")
-  inspect(expand_v088_pinned_close(v3, 0.34265558075081887), content="true")
+  // Pinned values, RE-PINNED in v0.91.0 for the corrected
+  // accumulator (`sum psi^2 / n^2`); through v0.90.0 these were
+  // 0.33730158730158727 and 0.34265558075081887.
+  inspect(expand_v088_pinned_close(v2, 0.0052703373015872985), content="true")
+  inspect(expand_v088_pinned_close(v3, 0.005353993449231543), content="true")
   // The corrections WIDEN now.
   inspect(v2 > v0, content="true")
   inspect(v3 > v2, content="true")
   inspect(v2.sqrt() > v0.sqrt(), content="true")
-  // HC2 is exactly HC1, and HC0 is still the old value.
-  inspect(v2 == v1, content="true")
-  inspect(expand_v088_pinned_close(v0, 0.33203125), content="true")
+  // HC2 is exactly HC1 algebraically (last-ulp difference in
+  // the two accumulation orders, so tolerance not `==`).
+  inspect(expand_v088_close(v2, v1), content="true")
+  inspect(expand_v088_pinned_close(v0, 0.00518798828125), content="true")
 }

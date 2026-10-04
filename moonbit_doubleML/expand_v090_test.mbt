@@ -34,51 +34,23 @@
 //
 // THE DECISIVE FALSIFIABLE INVARIANT
 // ==================================
-// For an estimator whose per-observation `psi_a` is the CONSTANT
-// `c` (IRM / APO / SSM / CVAR all use `c = -1`):
+// v0.91.0 INVERTED THE IDENTITY BELOW. Through v0.90.0 this
+// test pinned
 //
-//   - `M_inv^2 = 1 / c^2`
-//   - `(psi_a[i] * psi[i])^2 = c^2 * psi[i]^2`
+//   se() == sandwich_se(HC0) / sqrt(n)
 //
-// so `sandwich_variance_hc0` collapses to
+// which was the best that could be true while the accumulator
+// still had two errors (see `sandwich.mbt`): the spurious
+// `psi_a[i]` weight and a missing outer `1 / n`. With both
+// corrected the invariant is stronger and needs no factor at
+// all -- `se() == sandwich_se(HC0)` for EVERY estimator -- and
+// `expand_v091_test.mbt` is where that is pinned now. This file
+// keeps the bootstrap, `psi_at` and HC-relationship coverage;
+// the se-vs-sandwich comparison survives below in its corrected
+// form so a regression cannot hide here either.
 //
-//     M_inv^2 * sum_i (psi_a[i] * psi[i])^2 / n
-//       = (1 / c^2) * c^2 * sum_i psi[i]^2 / n
-//       = sum_i psi[i]^2 / n
-//
-// whereas `var_est`'s `sigma2` is `sum_i psi[i]^2 / (c^2 * n)`. The
-// two therefore differ by exactly `c^2 * n`, so with the CORRECTED
-// score order
-//
-//     se() == sandwich_se(HC0) / (|c| * sqrt(n))
-//
-// and for `c = -1` that is `sandwich_se(HC0) / sqrt(n)`.
-//
-// (Note the `c^2 * n`, not `n`: the spec for this release proposed
-// the bare identity `se() == sandwich_se(HC0)`, which is off by
-// `sqrt(n)` and was falsified on the first measurement. The
-// `psi_a[i]` factor in the HC accumulator -- see the OPEN DEFECT
-// note in `sandwich_variance_hc0` -- is a separate pre-existing
-// issue that this release does not touch, and it is what the extra
-// `sqrt(n)` comes from.)
-//
-// The test below asserts that identity. Against v0.89.0 it fails by
-// a factor of ~225 (IRM) / ~1096 (APO); against v0.90.0 it holds to
-// 1e-15 relative.
-//
-// WHAT THIS RELEASE DELIBERATELY DOES NOT CLAIM
-// =============================================
-// The order fix alone does NOT make `se()` and `sandwich_se(HC0)`
-// interchangeable. They still differ by `sqrt(n)` for constant
-// `psi_a` and by a data-dependent factor for non-constant `psi_a`
-// (PLR: 9.58x on the DGP below). That residual is the `psi_a[i]`
-// factor inside the HC accumulator -- the DML moment inverted is a
-// MEAN moment whose implicit regressor is the constant 1, so the
-// correct accumulation is `sum_i psi[i]^2`, not
-// `sum_i (psi_a[i] * psi[i])^2`. See the OPEN DEFECT note in
-// `sandwich.mbt`. The bootstrap t-stat is scale-invariant and so
-// cannot detect either defect from its distribution alone; the
-// seeded exact-equality test below is what pins the order.
+// The `3 * coef` bias pin is also gone: `bias_corrected_coef`
+// is a documented no-op as of v0.91.0 and returns `coef`.
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -136,15 +108,16 @@ fn expand_v090_data(n : Int, p : Int) -> DoubleMLData {
 // ---------------------------------------------------------------------------
 
 ///|
-/// `se()` and `sandwich_se(HC0)` must be the same estimator of the
-/// same variance on an estimator with a constant `psi_a`.
-/// Concretely (see the file header for the derivation):
-/// `se() == sandwich_se(HC0) / sqrt(n)`.
+/// `se()` and `sandwich_se(HC0)` must be the SAME estimator of
+/// the same variance, with no residual factor.
 ///
-/// Fails against v0.89.0 by ~225x (IRM) and ~1096x (APO): there
-/// `sandwich_se(HC0)` was `2.4301613771745836` against a `se()` of
-/// `0.010826447108546225`, i.e. the sandwich was integrating
-/// `E[-1 + coef * psi_b]` instead of `E[-coef + psi_b]`.
+/// v0.91.0: this used to read
+/// `se() == sandwich_se(HC0) / sqrt(n)`. The `sqrt(n)` was
+/// real -- the shipped accumulator was missing the outer
+/// `1 / n` of mean-root asymptotics -- so the corrected
+/// comparison needs no factor at all. Against v0.90.0 this
+/// test fails by exactly `sqrt(n) = 20` on the DGP below;
+/// against v0.89.0 it fails by ~225x (IRM) / ~1096x (APO).
 test "se_matches_sandwich_hc0_for_constant_psi_a" {
   let n = 400
   let data = expand_v090_data(n, 3)
@@ -155,7 +128,13 @@ test "se_matches_sandwich_hc0_for_constant_psi_a" {
   inspect(expand_v090_close(mean(irm.psi_a), -1.0), content="true")
   let n_d = n.to_double()
   let se_hc0 = irm.sandwich_se(SandwichKind::hc0())
-  inspect(expand_v090_close(se_hc0 / n_d.sqrt(), irm.se()), content="true")
+  inspect(expand_v090_close(se_hc0, irm.se()), content="true")
+  // And explicitly NOT the v0.90.0 relation, so the test cannot
+  // be satisfied by leaving the old `sqrt(n)` in place.
+  inspect(
+    expand_v090_close(se_hc0 / n_d.sqrt(), irm.se()) == false,
+    content="true",
+  )
   // APO: same `psi_a = -1` score, different `psi_b`.
   let apo = DoubleMLAPO::new(
     data,
@@ -166,15 +145,12 @@ test "se_matches_sandwich_hc0_for_constant_psi_a" {
   ).fit()
   inspect(expand_v090_close(mean(apo.psi_a), -1.0), content="true")
   inspect(
-    expand_v090_close(
-      apo.sandwich_se(SandwichKind::hc0()) / n_d.sqrt(),
-      apo.se(),
-    ),
+    expand_v090_close(apo.sandwich_se(SandwichKind::hc0()), apo.se()),
     content="true",
   )
   // A same-estimator sanity check that the two accessors are not
-  // trivially equal to everything: the pre-fix order still gives a
-  // wildly different number, so this test is genuinely
+  // trivially equal to everything: the pre-v0.90 order still
+  // gives a wildly different number, so this test is genuinely
   // discriminating rather than satisfied by any positive value.
   let mut ss_old = 0.0
   for i = 0; i < n; i = i + 1 {
@@ -334,8 +310,8 @@ test "psi_at_helper_matches_var_est" {
 // ---------------------------------------------------------------------------
 
 ///|
-/// `bias_corrected_coef` builds
-/// `bias_per_obs[i] = psi_b[i] - coef * psi_a[i]` and returns
+/// `bias_corrected_coef` used to build
+/// `bias_per_obs[i] = psi_b[i] - coef * psi_a[i]` and return
 /// `coef + mean(bias_per_obs)`. That expression is NOT
 /// `var_est`'s score at the estimate (which is
 /// `psi_b[i] + coef * psi_a[i]`); it is the score at `-coef`, i.e.
@@ -343,18 +319,16 @@ test "psi_at_helper_matches_var_est" {
 /// whose root is `+mean_b / mean_a`, not `var_est`'s
 /// `-mean_b / mean_a`. The two conventions are not interchangable
 /// and mixing them is why `bias_corrected_coef` on IRM / APO
-/// returns `3 * coef` (the algebra collapses: with `psi_a = -1`,
+/// returned `3 * coef` (the algebra collapses: with `psi_a = -1`,
 /// `mean(psi_b - coef*psi_a) = coef + coef = 2*coef`).
 ///
-/// v0.90.0 does NOT change this: under `var_est`'s convention the
-/// score at the estimate is identically mean-zero, so
-/// `mean(bias_per_obs) = 0` and any "correction" built from it is
-/// vacuous. Making `bias_corrected_coef` a guaranteed no-op is a
-/// design decision, not a mechanical fix, and is left for a
-/// follow-up. This test PINS THE CURRENT FORM as a deliberate
-/// regression pin, so the v0.90.0 psi-order change is provably not
-/// what moved it, and records the correct sign next to it.
-test "bias_corrected_coef_sign" {
+/// v0.91.0: `bias_corrected_coef` is a documented NO-OP and
+/// returns `coef` unchanged, because under `var_est`'s
+/// convention the score at the estimate is identically
+/// mean-zero -- any "correction" built from it is vacuous, and
+/// the old accessor returned a number that was not a bias
+/// estimate at all.
+test "bias_corrected_coef_is_a_documented_noop" {
   let n = 400
   let irm = DoubleMLIRM::new(
     expand_v090_data(n, 3),
@@ -363,20 +337,24 @@ test "bias_corrected_coef_sign" {
     seed=3141,
   ).fit()
   let bc = irm.bias_corrected_coef()
-  // Current (pinned) form: `coef + mean(psi_b - coef * psi_a)`.
+  // v0.91.0 form: `coef`, exactly.
+  inspect(bc == irm.coef(), content="true")
+  // The v0.90.0 form, recomputed here, is `3 * coef` on this
+  // DGP: `coef + mean(psi_b - coef * psi_a)`. Pin the arithmetic
+  // so the removal is documented rather than merely asserted.
+  // (Deliberate REGRESSION PIN of the removed expression.)
   let bias : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     bias[i] = irm.psi_b[i] - irm.coef() * irm.psi_a[i]
   }
-  inspect(expand_v090_close(bc, irm.coef() + mean(bias)), content="true")
-  // With `psi_a = -1` and `var_est`'s `coef == mean(psi_b)`, the
-  // pinned form is algebraically `3 * coef`.
+  let old = irm.coef() + mean(bias)
   inspect(expand_v090_close(irm.coef(), mean(irm.psi_b)), content="true")
-  inspect(expand_v090_close(bc, 3.0 * irm.coef()), content="true")
+  inspect(expand_v090_close(old, 3.0 * irm.coef()), content="true")
+  inspect(old != irm.coef(), content="true")
   // The convention-A score at the estimate, for the record: its
   // mean is zero, so a `coef + mean(that)` "correction" is
   // identically `coef`. This is the derivation that says the
-  // feature needs a redesign rather than a sign flip.
+  // feature needs a no-op rather than a sign flip.
   let score_at_hat : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     score_at_hat[i] = irm.psi_b[i] + irm.coef() * irm.psi_a[i]
@@ -640,12 +618,12 @@ test "hc_identities_nonconstant_psi_a_iivm" {
 ///      inflated HC0 by ~60x. `mean(offset) = 0.01899446...` on
 ///      this DGP against a true Jacobian of `-0.03638724...`.
 ///
-/// LPLR still has no `sandwich_se`, and v0.90.0 does not add one:
-/// with the corrected order and the true Jacobian its HC0 lands at
-/// `0.879 * se()` here, but that is a DATA-DEPENDENT factor caused
-/// by the open `psi_a[i]`-in-the-accumulator defect, not a
-/// principled near-agreement. Wiring it up would ship a number
-/// that is wrong by an unexplained factor.
+/// LPLR still has no `sandwich_se`, and v0.91.0 does not add
+/// one -- but the reason has changed. With the corrected score
+/// order, the true Jacobian and the v0.91.0 accumulator, its
+/// HC0 now equals its `se()` to the last ulp (see (4) below).
+/// Exposing the accessor is a separate API decision and is
+/// tracked as its own report item.
 test "lplr_inverted_roles_are_handled" {
   let n = 500
   let p = 6
@@ -740,13 +718,17 @@ test "lplr_inverted_roles_are_handled" {
   inspect(j < 0.0, content="true")
   inspect(mean(offset) > 0.0, content="true")
   inspect(mean(offset) / j < 0.0, content="true")
-  // (4) The reason LPLR still has no `sandwich_se`: the corrected
-  // order and the true Jacobian put HC0 at 0.879 * se(), a
-  // data-dependent factor from the open accumulator defect, not a
-  // principled match.
+  // (4) THE REASON LPLR HAD NO `sandwich_se` IS GONE. Through
+  // v0.90.0 the corrected order with the true Jacobian put HC0
+  // at 0.879 * se() here -- a data-dependent factor from the
+  // open accumulator defect, which is why wiring LPLR up was
+  // refused. With the accumulator corrected (v0.91.0) HC0 ==
+  // se() to the last ulp. The decision to expose
+  // `DoubleMLLPLR::sandwich_se` is deliberately NOT taken here;
+  // this test only records that the blocker is resolved.
   let m_inv = Matrix::from_array([1.0 / j], 1, 1)
   let h0 = sandwich_variance_hc0(slope, psi, m_inv, n, 1).sqrt()
   let ratio = h0 / se_recomputed
   inspect(ratio > 0.5 && ratio < 2.0, content="true")
-  inspect(ratio == 1.0, content="false")
+  inspect(expand_v090_close(h0, se_recomputed), content="true")
 }

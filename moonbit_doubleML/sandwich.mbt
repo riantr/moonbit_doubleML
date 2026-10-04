@@ -11,18 +11,20 @@
 //     correction helper.
 //
 // The four HC estimators share the same skeleton: a squared
-// score contribution `(psi_a[i] * psi[i])^2` per observation,
-// optionally rescaled by the leverage `(1 - h_ii)` (HC2 / HC3)
-// or by the n/(n-k) finite-sample factor (HC1). The formulas
-// are scalar (single-theta estimator; for multi-theta
-// estimators the helper can be called per parameter with the
-// per-parameter `psi_a` slice).
+// score contribution `psi[i]^2` per observation, optionally
+// rescaled by the leverage `(1 - h_ii)` (HC2 / HC3) or by the
+// n/(n-k) finite-sample factor (HC1), and finally divided
+// by the sample size TWICE (once to turn the sum into the
+// `E[psi psi']` estimate, once for the 1/n of a mean-root
+// asymptotics). The formulas are scalar (single-theta
+// estimator; for multi-theta estimators the helper can be
+// called per parameter with the per-parameter `psi_a` slice).
 //
 // `M_inv` is the inverse Jacobian of the moment condition at
 // the population theta, supplied by the caller. For the
 // DML scalar case `M_inv = 1 / mean(psi_a)` (a 1x1 matrix),
 // which reduces the variance formula to
-// `(1 / mean(psi_a)^2) * mean(score^2) / n` for HC0 (the
+// `(1 / mean(psi_a)^2) * mean(psi^2) / n` for HC0 (the
 // standard DML sandwich). Callers that want a custom
 // scaling (for finite-sample corrections, design-matrix
 // conditioning, etc.) can pass any positive-definite 1x1
@@ -53,6 +55,52 @@
 //   and HC2 / HC3 SHRANK rather than widened -- the
 //   opposite of MacKinnon (2012). v0.88.0 replaces it with
 //   `1 / n_obs`; HC0 and HC1 are unaffected.
+//
+// The `psi_a[i]` in the accumulator, and the second 1/n
+// (v0.91.0):
+//   Through v0.90.0 every function in this file accumulated
+//   `sum_i (psi_a[i] * psi[i])^2` and returned
+//   `M_inv^2 * acc / n`. Two independent errors:
+//
+//   1. The `psi_a[i]` factor is not part of the moment.
+//      `var_est.mbt` defines the package's estimating function
+//      as `f(theta) = E[theta * psi_a + psi_b]`, a MEAN
+//      moment -- its implicit regressor is the constant 1, so
+//      the per-observation quadratic form is `psi[i]^2`, with
+//      no `psi_a` weight. For an estimator with a constant
+//      `psi_a = c` the shipped form gave
+//      `(1/c^2) * c^2 * sum psi^2 / n = sum psi^2 / n`, i.e.
+//      the `c^2` cancelled and the `psi_a` factor was a
+//      no-op for every constant-`psi_a` estimator (IRM / APO
+//      / SSM / CVAR / DID ATT) while re-weighting the
+//      non-constant ones (PLR / PLPR / IIVM / PLIV) by the
+//      data-dependent ratio
+//      `sum (psi_a psi)^2 / sum psi^2` (0.229 on the
+//      v0.90.0 PLR DGP -- a SHRINK there; the sign of this
+//      factor is data, not formula, which is the whole
+//      problem with having it in a variance at all).
+//
+//   2. `M_inv^2 * acc / n` is the variance of
+//      `sqrt(n) * (theta_hat - theta)`, not of
+//      `(theta_hat - theta)`. `var_est` returns the latter:
+//      `sigma2 = mean(psi^2) / (J^2 * n) = M_inv^2 *
+//      sum psi^2 / n^2`. The shipped form was missing the
+//      outer `1 / n`, so it was `n` times too large in the
+//      variance (`sqrt(n)` times too large in the SE) for
+//      EVERY estimator, constant-`psi_a` or not.
+//
+//   v0.91.0 fixes both: the accumulator is `sum_i psi[i]^2`
+//   and the return is `M_inv^2 * acc / n / n`. The payoff is
+//   the invariant `se() == sandwich_se(HC0)` to floating-point
+//   tolerance for EVERY estimator -- `se()` (i.e. `var_est`)
+//   was always the reference and is unchanged by this change.
+//   Because the cluster estimator carries the same missing
+//   `1 / n` in its meat, it moves by the same factor, so
+//   "all-singleton clusters == IID HC0 == se()" still holds
+//   exactly. All the v0.88.0 leverage identities
+//   (`HC1 == HC0 * n/(n-1)`, `HC2 == HC1`,
+//   `HC3 == HC1^2 / HC0`) are scale-invariant and are
+//   unaffected.
 //
 // All helpers in this file raise on malformed inputs via the
 // shared `check(...)` precondition (the same convention as
@@ -191,15 +239,25 @@ pub fn psi_at(
 /// HC0 (classical Huber-White) sandwich variance for a
 /// scalar DML estimator:
 ///
-///     var = M_inv[0,0]^2 * sum_i (psi_a[i]^2 * psi[i]^2) / n
+///     var = M_inv[0,0]^2 * sum_i psi[i]^2 / n^2
+///         = M_inv[0,0]^2 * mean_i psi[i]^2 / n
 ///
-/// `psi_a[i]` is the per-observation Riesz-representer row
-/// (for IRM `psi_a[i] = -1`, for PLR `psi_a[i] = -v_i^2`),
 /// `psi[i]` is the per-observation influence-function
-/// residual at the fitted `theta`, `M_inv` is the inverse
-/// Jacobian (a 1x1 matrix for the scalar case; the function
-/// only inspects `M_inv[0, 0]`), and `n_obs` is the sample
-/// size.
+/// residual at the fitted `theta` (`psi_at(coef, psi_a,
+/// psi_b)`), `M_inv` is the inverse Jacobian (a 1x1 matrix
+/// for the scalar case; the function only inspects
+/// `M_inv[0, 0]`), and `n_obs` is the sample size.
+///
+/// The formula is `var_est`'s `sigma2` (see `var_est.mbt`):
+/// the DML moment is a MEAN moment, so its meat is
+/// `E[psi psi']`, and the root has `var = E[psi psi'] / (J^2
+/// * n)`. There is deliberately NO `psi_a[i]` factor: the
+/// moment `E[theta * psi_a + psi_b]` is inverted as a
+/// regression on the constant 1, not on `psi_a`. v0.90.0 and
+/// earlier accumulated `sum_i (psi_a[i] * psi[i])^2 / n`,
+/// which is the variance of `sqrt(n) * (theta_hat - theta)`
+/// with a spurious regressor weight; `se()` is unchanged and
+/// is the reference for every number here.
 ///
 /// Preconditions:
 ///   - `psi_a.length() == psi.length() == n_obs`.
@@ -229,16 +287,16 @@ pub fn sandwich_variance_hc0(
     let mut acc_c = 0.0
     let n_d = n_obs.to_double()
     for i = 0; i < n_obs; i = i + 1 {
-      let pa = psi_a[i]
-      let prod = pa * psi[i]
-      // Kahan-compensated sum of (psi_a * psi)^2.
-      let y = prod * prod - acc_c
+      let v = psi[i]
+      // Kahan-compensated sum of psi^2 (the meat of the
+      // mean moment; v0.91.0 dropped the `psi_a[i]` factor).
+      let y = v * v - acc_c
       let t = acc + y
       acc_c = t - acc - y
       acc = t
     }
     let m2 = m * m
-    m2 * acc / n_d
+    m2 * acc / n_d / n_d
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -285,16 +343,15 @@ pub fn sandwich_variance_hc1(
 /// correction `(1 - h_ii)` on the squared score
 /// (MacKinnon 2012 sec 5.4):
 ///
-///     var = M_inv[0,0]^2 * sum_i (psi_a[i]^2 * psi[i]^2
-///                               / (1 - h_ii)) / n
+///     var = M_inv[0,0]^2 * sum_i (psi[i]^2 / (1 - h_ii)) / n^2
 ///
 /// where `h_ii` is the diagonal of the projection matrix of
 /// the mean regression implicit in the moment
-/// `E[psi_a * psi(theta)] = 0`. That design is intercept-only
-/// with equal weights, so its projection is `(1 / n) * J` and
-/// `h_ii = 1 / n_obs` on every row. Consequently
-/// `var(HC2) == var(HC0) * n / (n - 1)`, i.e. HC2 is exactly
-/// HC1 for this family.
+/// `E[theta * psi_a + psi_b] = 0`. That design is
+/// intercept-only with equal weights, so its projection is
+/// `(1 / n) * J` and `h_ii = 1 / n_obs` on every row.
+/// Consequently `var(HC2) == var(HC0) * n / (n - 1)`, i.e. HC2
+/// is exactly HC1 for this family.
 ///
 /// v0.79.0 - v0.87.0 used `h_ii = psi_a[i] * M_inv[0,0] *
 /// psi_a[i]`, which is not a projection-matrix diagonal and
@@ -329,15 +386,15 @@ pub fn sandwich_variance_hc2(
     let mut acc = 0.0
     let mut acc_c = 0.0
     for i = 0; i < n_obs; i = i + 1 {
-      let prod = psi_a[i] * psi[i]
-      let term = prod * prod / denom
+      let v = psi[i]
+      let term = v * v / denom
       let y = term - acc_c
       let t = acc + y
       acc_c = t - acc - y
       acc = t
     }
     let m2 = m * m
-    m2 * acc / n_d
+    m2 * acc / n_d / n_d
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -377,15 +434,15 @@ pub fn sandwich_variance_hc3(
     let mut acc = 0.0
     let mut acc_c = 0.0
     for i = 0; i < n_obs; i = i + 1 {
-      let prod = psi_a[i] * psi[i]
-      let term = prod * prod / denom
+      let v = psi[i]
+      let term = v * v / denom
       let y = term - acc_c
       let t = acc + y
       acc_c = t - acc - y
       acc = t
     }
     let m2 = m * m
-    m2 * acc / n_d
+    m2 * acc / n_d / n_d
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -436,9 +493,9 @@ pub fn sandwich_variance(
 /// Cluster-robust sandwich variance for a scalar DML
 /// estimator (Arellano 1987, Cameron-Gelbach-Miller 2011):
 ///
-///     S_c        = (sum_{i in c} psi_a[i] * psi[i])^2
+///     S_c        = (sum_{i in c} psi[i])^2
 ///     var        = M_inv[0,0]^2 *
-///                  (sum_c S_c * n_c / (n_c - 1)) / n
+///                  (sum_c S_c * n_c / (n_c - 1)) / n^2
 ///
 /// `cluster_ids[i]` is the 0-based cluster id of
 /// observation `i`. All observations in the same cluster
@@ -454,6 +511,17 @@ pub fn sandwich_variance(
 /// in that case so single-observation clusters contribute
 /// their raw `S_c` without finite-sample correction (the
 /// `statsmodels.cov_type='cluster'` convention).
+///
+/// The meat is `E[sum_c (sum_{i in c} psi[i])^2]`, estimated
+/// as `sum_c S_c / n`, and the estimator is `sqrt(n) *
+/// (theta_hat - theta) -> N(0, M_inv B M_inv')`, so the
+/// returned VARIANCE of `theta_hat` carries the outer `1 / n`
+/// as well -- hence the `n^2` divisor. With all-singleton
+/// clusters `sum_c S_c == sum_i psi[i]^2` and the formula
+/// collapses to `sandwich_variance_hc0` exactly, i.e. to
+/// `se()`. (v0.90.0 and earlier divided by `n` once and
+/// summed `psi_a[i] * psi[i]` within the cluster; both are
+/// corrected here -- see the file header.)
 ///
 /// Preconditions:
 ///   - `psi_a.length() == psi.length() == cluster_ids.length()`.
@@ -486,12 +554,12 @@ pub fn cluster_sandwich_variance(
     }
     require(max_cid >= 0)
     let n_clusters = max_cid + 1
-    // Per-cluster sums of (psi_a[i] * psi[i]) and per-cluster sizes.
+    // Per-cluster sums of psi[i] and per-cluster sizes.
     let cluster_sum : Array[Double] = Array::make(n_clusters, 0.0)
     let cluster_size : Array[Int] = Array::make(n_clusters, 0)
     for i = 0; i < n; i = i + 1 {
       let c = cluster_ids[i]
-      cluster_sum[c] = cluster_sum[c] + psi_a[i] * psi[i]
+      cluster_sum[c] = cluster_sum[c] + psi[i]
       cluster_size[c] = cluster_size[c] + 1
     }
     let mut acc = 0.0
@@ -520,7 +588,7 @@ pub fn cluster_sandwich_variance(
     let m = m_inv.get(0, 0)
     let m2 = m * m
     let n_d = n.to_double()
-    m2 * acc / n_d
+    m2 * acc / n_d / n_d
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -532,20 +600,42 @@ pub fn cluster_sandwich_variance(
 // ---------------------------------------------------------------------------
 
 ///|
-/// Generic scalar bias correction for DML estimators:
+/// Generic scalar add-a-bias helper:
 ///
 ///     theta_corrected = theta_hat + mean(bias_per_obs)
 ///
-/// where `bias_per_obs[i]` is the per-observation finite-
-/// sample bias term supplied by the caller. The simplest
-/// (and most common) choice is
-/// `bias_per_obs[i] = psi_b[i] - theta_hat * psi_a[i]`,
-/// which is the score evaluated at the fitted theta (and
-/// therefore has mean zero in expectation under the null
-/// bias). The function does not commit to any specific
-/// `bias_per_obs` form: pass the per-observation vector that
-/// matches the estimator's bias expression and the helper
-/// returns the corrected point estimate.
+/// where `bias_per_obs[i]` is a per-observation bias term
+/// supplied by the caller.
+///
+/// THIS IS NOT A BIAS CORRECTION FOR A DML ESTIMATE, and
+/// nothing in this package calls it that way any more
+/// (v0.91.0). Two facts make score-based bias correction
+/// vacuous for these estimators:
+///
+///   1. Under `var_est.mbt`'s convention the estimating
+///      function is `f(theta) = E[theta * psi_a + psi_b]`
+///      and `theta_hat` is its root, so
+///      `mean(f(theta_hat)) = mean(coef * psi_a + psi_b) = 0`
+///      IDENTICALLY -- the estimating function is orthogonal
+///      by construction, and any "correction" built from the
+///      score at the estimate has mean exactly zero.
+///   2. Through v0.90.0 every `bias_corrected_coef` passed
+///      `bias_per_obs[i] = psi_b[i] - coef * psi_a[i]`,
+///      which is the score at `-coef`, not at `coef`. Its
+///      mean is `mean_b + coef * mean_a = -2 * coef * mean_a`,
+///      i.e. twice the estimate, so the accessor returned
+///      `3 * coef` (algebraically, for every estimator). That
+///      is not a bias estimate; it is a guaranteed-wrong
+///      number. All twelve `bias_corrected_coef` methods are
+///      now documented no-ops that return `coef` unchanged
+///      (see e.g. `DoubleMLIRM::bias_corrected_coef`).
+///
+/// The helper is retained ONLY for a caller who has a
+/// genuinely exogenous bias vector from outside the DML
+/// machinery (an analytic finite-sample correction, say).
+/// Passing the DML score here cannot correct anything, and
+/// v0.90.0 - v0.91.0 shipped documentation that claimed the
+/// opposite; do not repeat it.
 ///
 /// Preconditions:
 ///   - `bias_per_obs.length() >= 1`.

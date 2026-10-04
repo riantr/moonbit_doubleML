@@ -20,9 +20,11 @@
 // "the number is finite" trap):
 //   1. The returned HC0 SE reproduces, to 1e-12 relative,
 //      an INDEPENDENTLY recomputed
-//      `M_inv^2 * sum_i (psi_a[i] * psi[i])^2 / n` -- a
-//      function returning a constant, or reusing the wrong
-//      `psi`, fails this.
+//      `M_inv^2 * sum_i psi[i]^2 / n^2` -- a function
+//      returning a constant, or reusing the wrong `psi`,
+//      fails this. (v0.91.0: the reference dropped the
+//      `psi_a[i]` factor and the second `1 / n`; through
+//      v0.90.0 both were wrong.)
 //   2. `se(HC1) / se(HC0) == sqrt(n / (n - 1))` to 1e-12 --
 //      the exact HC1 finite-sample identity, so a swapped
 //      HC1 / HC2 arm fails.
@@ -30,7 +32,7 @@
 //      applied (`!=`) AND WIDEN the variance, as
 //      MacKinnon (2012) sec 5.4 requires. Since v0.88.0 the
 //      leverage is the projection-matrix diagonal of the
-//      mean regression implicit in `E[psi_a * psi] = 0`,
+//      mean regression implicit in the DML moment,
 //      i.e. the constant `h_ii = 1 / n_obs`, so HC2 is
 //      exactly HC1 and HC3 is exactly `HC1^2 / HC0`; the
 //      asserted ordering is `HC1 == HC2 > HC0` and
@@ -40,13 +42,18 @@
 //      note in `sandwich.mbt` and `expand_v088_test.mbt`.)
 //   4. `cluster_sandwich_se` with all-singleton clusters
 //      equals `sandwich_se(HC0)` EXACTLY (singleton clusters
-//      contribute their raw `(psi_a * psi)^2` with no
-//      jackknife factor, which is algebraically the HC0
+//      contribute their raw `psi[i]^2` with no jackknife
+//      factor, which is algebraically the HC0
 //      accumulation), while a pooled cluster assignment
 //      gives a strictly different value -- proving
 //      `cluster_ids` is actually consumed and not ignored.
-//   5. `bias_corrected_coef` equals
-//      `coef + mean(psi_b - coef * psi_a)` to 1e-12.
+//   5. `bias_corrected_coef` returns `coef` unchanged
+//      (v0.91.0: a documented no-op -- the DML score is
+//      orthogonal at the estimate, so there is no
+//      score-based bias to correct; through v0.90.0 it
+//      returned `coef + mean(psi_b - coef * psi_a)`, which
+//      is `3 * coef` for a constant `psi_a = -1` and is
+//      not a bias estimate).
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -77,21 +84,30 @@ fn expand_v086_psi(
 
 ///|
 /// Independent recomputation of the HC0 variance
-/// `m_val^2 * sum_i (psi_a[i] * psi[i])^2 / n_obs`, used as
+/// `m_val^2 * sum_i psi[i]^2 / n_obs^2`, used as
 /// the reference the estimator methods must match.
+///
+/// v0.91.0: the moment is a MEAN moment, so the
+/// per-observation quadratic form is `psi[i]^2` with no
+/// `psi_a[i]` factor, and the returned quantity is the
+/// variance of `theta_hat` (two factors of `n_obs`, not
+/// one). `psi_a` is kept in the signature -- and ignored
+/// -- so the call sites stay comparable with v0.86.0.
 fn expand_v086_ref_hc0(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
   n_obs : Int,
 ) -> Double {
+  let _ = psi_a
   let mut acc = 0.0
   for i = 0; i < n_obs; i = i + 1 {
-    let prod = psi_a[i] * psi[i]
-    acc = acc + prod * prod
+    let v = psi[i]
+    acc = acc + v * v
   }
   let m2 = m_val * m_val
-  m2 * acc / n_obs.to_double()
+  let n_d = n_obs.to_double()
+  m2 * acc / n_d / n_d
 }
 
 ///|
@@ -251,7 +267,7 @@ test "iivm_sandwich_se_smoke" {
   inspect(m_val.abs() > 0.0, content="true")
   let psi = expand_v086_psi(fitted.psi_a, fitted.psi_b, fitted.coef(), n)
   // (1) HC0 SE reproduces the independently recomputed
-  // `M_inv^2 * sum (psi_a * psi)^2 / n`.
+  // `M_inv^2 * sum psi[i]^2 / n^2`.
   let se_hc0 = fitted.sandwich_se(SandwichKind::hc0())
   let ref_hc0 = expand_v086_ref_hc0(fitted.psi_a, psi, m_val, n).sqrt()
   inspect(expand_v086_close(se_hc0, ref_hc0), content="true")
@@ -293,12 +309,15 @@ test "iivm_sandwich_se_smoke" {
   inspect(expand_v086_close(se_pooled, se_hc0) == false, content="true")
   // (5) bias correction reproduces
   // `coef + mean(psi_b - coef * psi_a)`.
+  // v0.91.0: `bias_corrected_coef` is a documented no-op and
+  // returns `coef` unchanged -- the DML score is
+  // orthogonal at the estimate, so there is nothing to
+  // correct. Through v0.90.0 it returned
+  // `coef + mean(psi_b - coef * psi_a)` (the score at
+  // `-coef`), i.e. `coef * (1 - 2 * mean(psi_a))`, which
+  // is not a bias estimate.
   let bc = fitted.bias_corrected_coef()
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = fitted.psi_b[i] - fitted.coef() * fitted.psi_a[i]
-  }
-  inspect(expand_v086_close(bc, fitted.coef() + mean(bias)), content="true")
+  inspect(bc == fitted.coef(), content="true")
 }
 
 // ---------------------------------------------------------------------------
@@ -398,12 +417,15 @@ test "pliv_sandwich_se_smoke" {
   let se_pooled = fitted.cluster_sandwich_se(pooled)
   inspect(se_pooled.is_nan() == false, content="true")
   inspect(expand_v086_close(se_pooled, se_hc0) == false, content="true")
+  // v0.91.0: `bias_corrected_coef` is a documented no-op and
+  // returns `coef` unchanged -- the DML score is
+  // orthogonal at the estimate, so there is nothing to
+  // correct. Through v0.90.0 it returned
+  // `coef + mean(psi_b - coef * psi_a)` (the score at
+  // `-coef`), i.e. `coef * (1 - 2 * mean(psi_a))`, which
+  // is not a bias estimate.
   let bc = fitted.bias_corrected_coef()
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = fitted.psi_b[i] - fitted.coef() * fitted.psi_a[i]
-  }
-  inspect(expand_v086_close(bc, fitted.coef() + mean(bias)), content="true")
+  inspect(bc == fitted.coef(), content="true")
 }
 
 // ---------------------------------------------------------------------------
@@ -490,12 +512,15 @@ test "did_sandwich_se_smoke" {
   let se_pooled = fitted.cluster_sandwich_se(pooled)
   inspect(se_pooled.is_nan() == false, content="true")
   inspect(expand_v086_close(se_pooled, se_hc0) == false, content="true")
+  // v0.91.0: `bias_corrected_coef` is a documented no-op and
+  // returns `coef` unchanged -- the DML score is
+  // orthogonal at the estimate, so there is nothing to
+  // correct. Through v0.90.0 it returned
+  // `coef + mean(psi_b - coef * psi_a)` (the score at
+  // `-coef`), i.e. `coef * (1 - 2 * mean(psi_a))`, which
+  // is not a bias estimate.
   let bc = fitted.bias_corrected_coef()
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = fitted.psi_b[i] - fitted.coef() * fitted.psi_a[i]
-  }
-  inspect(expand_v086_close(bc, fitted.coef() + mean(bias)), content="true")
+  inspect(bc == fitted.coef(), content="true")
 }
 
 // ---------------------------------------------------------------------------
@@ -556,11 +581,11 @@ test "cvar_sandwich_se_smoke" {
   let se_pooled = fitted.cluster_sandwich_se(pooled)
   inspect(se_pooled.is_nan() == false, content="true")
   inspect(expand_v086_close(se_pooled, se_hc0) == false, content="true")
-  // CVAR's psi_a = -1 reduces the bias correction to
-  // `2 * coef + mean(psi_b)`.
+  // v0.91.0: documented no-op, returns `coef` unchanged.
+  // Through v0.90.0 CVAR returned `2 * coef + mean(psi_b)`
+  // (i.e. exactly `3 * coef`, since `coef == mean(psi_b)`
+  // for the constant-`psi_a` score), which is not a bias
+  // estimate.
   let bc = fitted.bias_corrected_coef()
-  inspect(
-    expand_v086_close(bc, 2.0 * fitted.coef() + mean(fitted.psi_b)),
-    content="true",
-  )
+  inspect(bc == fitted.coef(), content="true")
 }

@@ -23,15 +23,18 @@ test "sandwich_variance_hc0_matches_formula" {
   // Hand-computed case:
   //   psi_a = [1, 1, 1, 1], psi = [0.5, -0.5, 0.3, -0.3],
   //   M_inv = [[4.0]], n = 4, k = 1
-  //   HC0 = M_inv^2 * sum_i (psi_a[i]^2 * psi[i]^2) / n
-  //       = 16 * (0.25 + 0.25 + 0.09 + 0.09) / 4
-  //       = 16 * 0.68 / 4
-  //       = 2.72
+  //   HC0 = M_inv^2 * sum_i psi[i]^2 / n^2
+  //       = 16 * (0.25 + 0.25 + 0.09 + 0.09) / 16
+  //       = 16 * 0.68 / 16
+  //       = 0.68
+  // (v0.91.0: the accumulator dropped the `psi_a[i]` factor
+  // and the variance of `theta_hat` carries a second `1 / n`,
+  // so this closed form was 2.72 through v0.90.0.)
   let psi_a : Array[Double] = [1.0, 1.0, 1.0, 1.0]
   let psi : Array[Double] = [0.5, -0.5, 0.3, -0.3]
   let m_inv = Matrix::from_array([4.0], 1, 1)
   let v = sandwich_variance_hc0(psi_a, psi, m_inv, 4, 1)
-  let expected = 2.72
+  let expected = 0.68
   inspect((v - expected).abs() < 1.0e-12, content="true")
 }
 
@@ -113,10 +116,12 @@ test "cluster_sandwich_variance_independent_clusters" {
   //   S_1 = sum_{i in 1} psi = -5 * b
   //   n_0 = n_1 = 5, n = 10.
   // Jackknife correction n_c / (n_c - 1) = 5/4.
-  // var = M_inv^2 * (S_0^2 * 5/4 + S_1^2 * 5/4) / 10
-  //     = M_inv^2 * (5/4) * (25 a^2 + 25 b^2) / 10
-  //     = M_inv^2 * (5/4) * 5/2 * (a^2 + b^2)
-  //     = M_inv^2 * (25/8) * (a^2 + b^2)
+  // var = M_inv^2 * (S_0^2 * 5/4 + S_1^2 * 5/4) / n^2
+  //     = M_inv^2 * (5/4) * (25 a^2 + 25 b^2) / 100
+  //     = M_inv^2 * (5/16) * (a^2 + b^2)
+  // (v0.91.0: no `psi_a` weight inside `S_c`, and the outer
+  // `1 / n` of mean-root asymptotics, so this was
+  // `(25 / 8) * (a^2 + b^2)` through v0.90.0.)
   let a = 0.3
   let b = 0.4
   let psi_a : Array[Double] = Array::make(10, 1.0)
@@ -124,7 +129,7 @@ test "cluster_sandwich_variance_independent_clusters" {
   let cluster_ids : Array[Int] = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
   let m_inv = Matrix::from_array([1.0], 1, 1)
   let v = cluster_sandwich_variance(psi_a, psi, m_inv, cluster_ids, 1)
-  let expected = 25.0 / 8.0 * (a * a + b * b)
+  let expected = 5.0 / 16.0 * (a * a + b * b)
   inspect((v - expected).abs() < 1.0e-12, content="true")
   // And finite (no overflow / NaN from the jackknife).
   inspect(v.is_nan() == false, content="true")
@@ -137,6 +142,12 @@ test "cluster_sandwich_variance_independent_clusters" {
 ///|
 test "bias_corrected_theta_sum" {
   // theta = 0.5, biases = [0.1, 0.2] -> 0.5 + (0.3 / 2) = 0.65.
+  // v0.91.0: the free helper is still `theta + mean(bias)` for
+  // a caller-supplied EXTERNAL bias vector, but the doc no
+  // longer claims the DML score is such a vector -- it is
+  // orthogonal at the estimate, so passing the score here can
+  // only ever return a no-op. Every `bias_corrected_coef`
+  // therefore returns `coef` unchanged.
   let biases : Array[Double] = [0.1, 0.2]
   let t = bias_corrected_theta(0.5, biases)
   inspect((t - 0.65).abs() < 1.0e-12, content="true")
@@ -225,8 +236,11 @@ test "irm_cluster_sandwich_se_smoke" {
 
 ///|
 test "irm_bias_corrected_coef_smoke" {
-  // Synthetic DGP, fit IRM, call `bias_corrected_coef`,
-  // verify the result is finite.
+  // Synthetic DGP, fit IRM, call `bias_corrected_coef`.
+  // v0.91.0: it is a documented no-op and returns `coef`
+  // unchanged (the DML score is orthogonal at the estimate, so
+  // there is no score-based bias to correct). Through v0.90.0
+  // it returned `3 * coef` on this DGP.
   let n = 150
   let p = 2
   let x_mat = Matrix::zeros(n, p)
@@ -243,4 +257,5 @@ test "irm_bias_corrected_coef_smoke" {
   let bc = fitted.bias_corrected_coef()
   inspect(bc.is_nan() == false, content="true")
   inspect(bc.is_inf() == false, content="true")
+  inspect(bc == fitted.coef(), content="true")
 }

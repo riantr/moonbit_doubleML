@@ -43,14 +43,19 @@
 //
 // Assertions here are falsifiable, never "finite and > 0": each
 // estimator's HC0 SE is checked against an INDEPENDENTLY
-// recomputed `M_inv^2 * sum_i (psi_a[i] * psi[i])^2 / n_obs`, the
-// HC1 / HC2 / HC3 relationships are pinned against closed-form
-// `n / (n - 1)` factors, the cluster path is proved to consume
-// `cluster_ids` (all-singleton clusters == IID HC0, pooled
-// clusters != it), and `bias_corrected_coef` is checked against
-// `coef + mean(psi_b - coef * psi_a)`. The HC2 / HC3 leverage is
-// the v0.88.0 constant mean-regression diagonal `h_ii = 1 / n`,
-// so the asserted ordering is `HC1 == HC2 > HC0` and `HC3 > HC2`
+// recomputed `M_inv^2 * sum_i psi[i]^2 / n_obs^2` (v0.91.0: no
+// `psi_a[i]` weight and two factors of `n_obs`; both were wrong
+// through v0.90.0), the HC1 / HC2 / HC3 relationships are pinned
+// against closed-form `n / (n - 1)` factors, the cluster path is
+// proved to consume `cluster_ids` (all-singleton clusters == IID
+// HC0, pooled clusters != it), and `bias_corrected_coef` is
+// checked to return `coef` unchanged (a documented no-op since
+// v0.91.0; through v0.90.0 it returned
+// `coef + mean(psi_b - coef * psi_a)`, which is `3 * coef` for
+// a constant `psi_a = -1` and is not a bias estimate). The HC2
+// / HC3 leverage is the v0.88.0 constant mean-regression
+// diagonal `h_ii = 1 / n`, so the asserted ordering is
+// `HC1 == HC2 > HC0` and `HC3 > HC2`
 // -- a monotonic widening (MacKinnon 2012 sec 5.4). The pre-v0.88
 // ordering was `HC1 > HC0 > HC2 > HC3` and every HC2 / HC3
 // assertion below fails against it.
@@ -93,32 +98,41 @@ fn expand_v089_psi(
 
 ///|
 /// Independent recomputation of the HC0 variance
-/// `m_val^2 * sum_i (psi_a[i] * psi[i])^2 / n_obs`. Deliberately
+/// `m_val^2 * sum_i psi[i]^2 / n_obs^2`. Deliberately
 /// NOT routed through `sandwich_variance_hc0`, so a regression in
 /// the shared helper cannot move both sides together.
+///
+/// v0.91.0: the DML moment is a MEAN moment, so the
+/// per-observation quadratic form is `psi[i]^2` with no
+/// `psi_a[i]` factor, and the returned quantity is the
+/// variance of `theta_hat` (two factors of `n_obs`, not
+/// one). `psi_a` is kept in the signature -- and ignored
+/// -- so the call sites stay comparable with v0.89.0.
 fn expand_v089_ref_hc0(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
   n_obs : Int,
 ) -> Double {
+  let _ = psi_a
   let mut acc = 0.0
   for i = 0; i < n_obs; i = i + 1 {
-    let prod = psi_a[i] * psi[i]
-    acc = acc + prod * prod
+    let v = psi[i]
+    acc = acc + v * v
   }
   let m2 = m_val * m_val
-  m2 * acc / n_obs.to_double()
+  let n_d = n_obs.to_double()
+  m2 * acc / n_d / n_d
 }
 
 ///|
 /// Independent recomputation of the leverage-corrected HC2
 /// (`power = 1`) and HC3 (`power = 2`) variances,
-/// `m_val^2 * sum_i (psi_a[i] * psi[i])^2 / (1 - h_ii)^power / n`
+/// `m_val^2 * sum_i (psi[i]^2 / (1 - h_ii)^power) / n^2`
 /// with the v0.88.0 mean-regression leverage `h_ii = 1 / n_obs`
 /// (the projection-matrix diagonal of the intercept-only,
-/// equally-weighted mean regression implicit in the moment
-/// `E[psi_a * psi(theta)] = 0`) and the same `1.0e-10`
+/// equally-weighted mean regression implicit in the DML moment
+/// `E[theta * psi_a + psi_b] = 0`) and the same `1.0e-10`
 /// degenerate-input clip the package applies.
 fn expand_v089_ref_leverage(
   psi_a : Array[Double],
@@ -127,35 +141,41 @@ fn expand_v089_ref_leverage(
   n_obs : Int,
   power : Int,
 ) -> Double {
+  let _ = psi_a
   let eps : Double = 1.0e-10
   let mut acc = 0.0
-  let h_ii = 1.0 / n_obs.to_double()
+  let n_d = n_obs.to_double()
+  let h_ii = 1.0 / n_d
   for i = 0; i < n_obs; i = i + 1 {
-    let pa = psi_a[i]
     let one_minus_h = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
     let mut denom = one_minus_h
     if power == 2 {
       denom = one_minus_h * one_minus_h
     }
-    let prod = pa * psi[i]
-    acc = acc + prod * prod / denom
+    let v = psi[i]
+    acc = acc + v * v / denom
   }
   let m2 = m_val * m_val
-  m2 * acc / n_obs.to_double()
+  m2 * acc / n_d / n_d
 }
 
 ///|
 /// Independent recomputation of the cluster-robust variance
-/// `m_val^2 * sum_c S_c^2 * n_c / (n_c - 1) / n` with the
-/// singleton-cluster clip (`scale == 1` when `n_c <= 1`). Not
-/// routed through `cluster_sandwich_variance` on purpose.
+/// `m_val^2 * sum_c S_c^2 * n_c / (n_c - 1) / n^2` with
+/// the singleton-cluster clip (`scale == 1` when
+/// `n_c <= 1`). Not routed through
+/// `cluster_sandwich_variance` on purpose. v0.91.0 dropped
+/// the `psi_a[i]` weight inside `S_c` and the second `1 / n`
+/// (the outer 1/n of mean-root asymptotics), so all-singleton
+/// clusters again reproduce HC0 exactly.
 fn expand_v089_ref_cluster(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
   cluster_ids : Array[Int],
 ) -> Double {
-  let n = psi_a.length()
+  let _ = psi_a
+  let n = psi.length()
   let mut max_cid = -1
   for i = 0; i < n; i = i + 1 {
     if cluster_ids[i] > max_cid {
@@ -167,7 +187,7 @@ fn expand_v089_ref_cluster(
   let csize : Array[Int] = Array::make(n_clusters, 0)
   for i = 0; i < n; i = i + 1 {
     let c = cluster_ids[i]
-    csum[c] = csum[c] + psi_a[i] * psi[i]
+    csum[c] = csum[c] + psi[i]
     csize[c] = csize[c] + 1
   }
   let mut acc = 0.0
@@ -184,7 +204,8 @@ fn expand_v089_ref_cluster(
     acc = acc + csum[c] * csum[c] * scale
   }
   let m2 = m_val * m_val
-  m2 * acc / n.to_double()
+  let n_d = n.to_double()
+  m2 * acc / n_d / n_d
 }
 
 ///|
@@ -452,26 +473,25 @@ test "apo_bias_corrected_coef" {
     seed=3141,
   ).fit()
   let bc = fitted.bias_corrected_coef()
-  // General identity: `coef + mean(psi_b - coef * psi_a)`.
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = fitted.psi_b[i] - fitted.coef() * fitted.psi_a[i]
-  }
-  inspect(expand_v089_close(bc, fitted.coef() + mean(bias)), content="true")
-  // APO's closed form: `psi_a = -1` collapses the per-observation
-  // bias to `psi_b[i] + coef`, so the mean is `mean(psi_b) + coef`
-  // and the correction is `2 * coef + mean(psi_b)`.
-  inspect(
-    expand_v089_close(bc, 2.0 * fitted.coef() + mean(fitted.psi_b)),
-    content="true",
-  )
-  // And APO's `var_est` point estimate is `theta_hat = mean(psi_b)`
-  // (since `mean(psi_a) == -1`), so the closed form is exactly
-  // `3 * coef`. This is a real number equality, not a bound.
-  inspect(expand_v089_close(fitted.coef(), mean(fitted.psi_b)), content="true")
-  inspect(expand_v089_close(bc, 3.0 * fitted.coef()), content="true")
+  // v0.91.0: `bias_corrected_coef` is a documented no-op and
+  // returns `coef` unchanged, because the DML score is
+  // orthogonal at the estimate (`mean(coef * psi_a + psi_b)
+  // == 0` by construction) and no score-based correction can
+  // be non-trivial.
+  inspect(bc == fitted.coef(), content="true")
   inspect(bc.is_nan() == false, content="true")
-  inspect(bc != fitted.coef(), content="true")
+  // Through v0.90.0 this accessor returned
+  // `coef + mean(psi_b - coef * psi_a)`. APO's `psi_a` is the
+  // constant `-1` and its `theta_hat == mean(psi_b)`, so that
+  // expression collapses to EXACTLY `3 * coef` -- a real
+  // number, and emphatically not a bias estimate. Pin the
+  // arithmetic that produced it so the removal is documented
+  // rather than merely asserted.
+  let old = fitted.coef() +
+    mean(fitted.psi_b) -
+    fitted.coef() * mean(fitted.psi_a)
+  inspect(expand_v089_close(old, 3.0 * fitted.coef()), content="true")
+  inspect(old != fitted.coef(), content="true")
 }
 
 ///|
@@ -495,13 +515,12 @@ test "apo_bias_corrected_coef" {
 /// `var_est` score order, and must be exactly the pre-v0.90.0
 /// "other" order's complement.
 ///
-/// One residual, unrelated to the score order, survives: for
-/// `psi_a == -1` the sandwich variance is
-/// `M_inv^2 * sum((psi_a * psi)^2) / n == sum(psi^2) / n`, i.e.
-/// `n` times the DML variance `sum(psi^2) / (J^2 * n)`. The
-/// `psi_a[i]` factor in the HC accumulator is a separate open
-/// defect; this test asserts the sandwich value against the
-/// CURRENT accumulator, not against `se()`.
+/// The residual that survived v0.90.0 -- the sandwich variance
+/// being `n` times the DML variance because of the accumulator --
+/// is GONE as of v0.91.0. `sandwich_se(HC0)` is now `se()`
+/// exactly, so the two accessors are interchangeable and this
+/// test pins that directly; the `sqrt(n) * se()` form it used to
+/// assert is now asserted NOT to hold.
 
 ///|
 test "apo_var_est_se_order_split" {
@@ -529,15 +548,20 @@ test "apo_var_est_se_order_split" {
   let se_sand = (ss_sand / n_d / (j * j)).sqrt()
   // `se()` follows the `var_est` order -- unchanged by v0.90.0.
   inspect(expand_v089_close(fitted.se(), se_var), content="true")
-  // v0.90.0: `sandwich_se(HC0)` now follows the SAME order. It is
-  // still `sum(psi^2) / n` (not `/ (J^2 n)`) because of the
-  // `psi_a[i]` factor in the HC accumulator, so it is
-  // `sqrt(n) * se()` here, not `se()`.
+  // v0.91.0: with the accumulator corrected,
+  // `sandwich_se(HC0)` IS `se()` here (it was `sqrt(n) * se()`
+  // through v0.90.0). Both halves are asserted so the test cannot
+  // be satisfied by leaving the old scaling in place.
+  inspect(
+    expand_v089_close(fitted.sandwich_se(SandwichKind::hc0()), se_var),
+    content="true",
+  )
   inspect(
     expand_v089_close(
       fitted.sandwich_se(SandwichKind::hc0()),
       se_var * n_d.sqrt(),
-    ),
+    ) ==
+    false,
     content="true",
   )
   // The OLD (wrong) order is no longer what the sandwich reports.
@@ -680,19 +704,16 @@ test "did_binary_bias_corrected_coef" {
     n_rep=1,
     seed=3141,
   ).fit()
+  // The wrapper forwards to the inner DID, whose score lives on
+  // the post-subset wide-format sample -- pin that the forwarded
+  // accessor agrees with the inner one on that sample.
   let n = fitted.n_obs_subset()
   let psi_a = fitted.inner_psi_a()
-  let psi_b = fitted.inner_psi_b()
+  inspect(n == psi_a.length(), content="true")
   let bc = fitted.bias_corrected_coef()
-  let bias : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    bias[i] = psi_b[i] - fitted.coef() * psi_a[i]
-  }
-  inspect(expand_v089_close(bc, fitted.coef() + mean(bias)), content="true")
+  // v0.91.0: documented no-op, returns `coef` unchanged (and
+  // still forwards to the inner `DoubleMLDID`).
+  inspect(bc == fitted.coef(), content="true")
   inspect(bc == fitted.inner.bias_corrected_coef(), content="true")
   inspect(bc.is_nan() == false, content="true")
-  // The DID score at `theta_hat` is the ATT residual, so the
-  // correction is a genuine shift, not the identity: it must
-  // differ from `coef` on this noisy DGP.
-  inspect(bc != fitted.coef(), content="true")
 }

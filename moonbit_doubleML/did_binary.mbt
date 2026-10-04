@@ -613,10 +613,12 @@ pub fn DoubleMLDIDBinary::cluster_sandwich_se(
 }
 
 ///|
-/// v0.89.0+: finite-sample bias-corrected binary DID coefficient.
-/// Forwarded to the inner `DoubleMLDID::bias_corrected_coef`
-/// (`coef + mean(psi_b - coef * psi_a)` on the post-subset
-/// wide-format sample).
+/// v0.91.0+: returns the inner
+/// `DoubleMLDID::bias_corrected_coef` unchanged, i.e.
+/// the uncorrected `coef` on the post-subset
+/// wide-format sample -- a documented no-op, not a bias
+/// correction. See `DoubleMLDID::bias_corrected_coef`
+/// for why there is nothing to correct.
 ///
 /// Preconditions: `self.fitted`.
 pub fn DoubleMLDIDBinary::bias_corrected_coef(

@@ -1365,12 +1365,28 @@ pub fn DoubleMLDIDCrossSection::cluster_sandwich_se(
 }
 
 ///|
-/// v0.87.0+: finite-sample bias-corrected cross-section DID
-/// coefficient. Same `psi_b - coef * psi_a` per-observation
-/// bias form as `DoubleMLIRM::bias_corrected_coef`:
+/// v0.91.0+: returns `coef` UNCHANGED -- a documented
+/// no-op, not a bias correction.
 ///
-///     bias_per_obs[i] = psi_b[i] - coef * psi_a[i]
-///     theta_corrected = coef + mean(bias_per_obs)
+/// This estimator is a PROJECTION (`argmin_theta`)
+/// fit, not a `var_est` Z-estimator: its `coef` is the
+/// least-squares root `-<psi_a, psi_b> / ||psi_b||^2`
+/// and its `psi` is a residual, not an orthogonal
+/// score. There is no bias expression here that can be
+/// turned into a correction from the fitted values
+/// alone, so this accessor reports the uncorrected
+/// point estimate.
+///
+///
+/// v0.79.0 - v0.90.0 returned
+/// `coef + mean(psi_b - coef * psi_a)`, the score at
+/// `-coef` under a score convention this estimator
+/// does not even use (its own order is
+/// `psi_a + coef * psi_b`). The result was not a bias
+/// estimate. See `bias_corrected_theta` in
+/// `sandwich.mbt` for the algebra. The method is kept
+/// so the API surface stays stable; removing it
+/// outright is the obvious follow-up.
 ///
 /// Preconditions: `self.fitted`.
 pub fn DoubleMLDIDCrossSection::bias_corrected_coef(
@@ -1378,13 +1394,7 @@ pub fn DoubleMLDIDCrossSection::bias_corrected_coef(
 ) -> Double {
   try {
     require(self.fitted)
-    let n = self.psi_a.length()
-    require(n == self.psi_b.length())
-    let bias : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      bias[i] = self.psi_b[i] - self.coef * self.psi_a[i]
-    }
-    bias_corrected_theta(self.coef, bias)
+    self.coef
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
