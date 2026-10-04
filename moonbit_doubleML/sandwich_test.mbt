@@ -8,11 +8,11 @@
 // `bias_corrected_coef`).
 //
 // The hand-computed test inputs use a constant `psi_a` so
-// the leverage `h_ii = psi_a[i] * M_inv * psi_a[i]` is
-// trivially zero (or large, in the HC2 / HC3 widening case
-// where one observation carries an outsize `psi_a[i]`); the
-// numeric tests verify the formulas against the analytical
-// formulas listed in `sandwich.mbt` "Formulas" section.
+// the leverage `h_ii = 1 / n_obs` (the mean-regression
+// projection diagonal used since v0.88.0) is trivially the
+// same on every row; the numeric tests verify the formulas
+// against the analytical formulas listed in `sandwich.mbt`
+// "Formulas" section.
 
 // ---------------------------------------------------------------------------
 // Closed-form tests for the four HC estimators
@@ -38,9 +38,9 @@ test "sandwich_variance_hc0_matches_formula" {
 ///|
 test "sandwich_variance_hc1_corrects_hc0" {
   // HC1 = HC0 * n / (n - k). For n = 10, k = 1: scale = 10 / 9.
-  // The constant `psi_a = 1` keeps leverage at the trivially
-  // safe value `h_ii = 1 * (1 / 1) * 1 = 1`, which is at the
-  // eps-clip boundary in HC2 / HC3 (we don't use them here).
+  // (The HC2 / HC3 divisors on this constant-`psi_a` input are
+  // 10 / 9 and (10 / 9)^2 since v0.88.0 -- we do not use them
+  // here.)
   let n = 10
   let psi_a : Array[Double] = Array::make(n, 1.0)
   // psi = [1, -1, 1, -1, 1, -1, 1, -1, 1, -1] -> sum psi^2 = 10.
@@ -61,36 +61,38 @@ test "sandwich_variance_hc1_corrects_hc0" {
 
 ///|
 test "sandwich_variance_hc2_widens_hc0" {
-  // psi_a = [2.0, 0.5, 0.5, 0.5] (one high-leverage row at i=0)
-  // M_inv = [[1.0]] -> h_ii = psi_a[i]^2 * M_inv
-  //   h_00 = 4 * 1 = 4  (clipped to eps denominator)
-  //   h_11 = h_22 = h_33 = 0.25 * 1 = 0.25
-  // For row i=0 the HC2 denominator (1 - h_00) = (1 - 4) is
-  // negative; the eps-clipping (1e-10) makes its contribution
-  // enormous, so HC2 must exceed HC0.
+  // psi_a = [2.0, 0.5, 0.5, 0.5], n = 4. The leverage is the
+  // constant mean-regression diagonal h_ii = 1 / n = 0.25 on
+  // every row (the individual psi_a values and M_inv do not
+  // enter it), so the HC2 divisor is (1 - 1/4) = 3/4 and HC2
+  // must be exactly HC0 * 4/3 -- a widening.
   let psi_a : Array[Double] = [2.0, 0.5, 0.5, 0.5]
   let psi : Array[Double] = [1.0, -1.0, 1.0, -1.0]
   let m_inv = Matrix::from_array([1.0], 1, 1)
   let v0 = sandwich_variance_hc0(psi_a, psi, m_inv, 4, 1)
   let v2 = sandwich_variance_hc2(psi_a, psi, m_inv, 4, 1)
   inspect(v2 > v0, content="true")
-  // Variance must stay finite on the clipped h_ii input.
+  inspect((v2 - v0 * 4.0 / 3.0).abs() / v0 < 1.0e-12, content="true")
+  // Variance must stay finite.
   inspect(v2.is_nan() == false, content="true")
   inspect(v2.is_inf() == false, content="true")
 }
 
 ///|
 test "sandwich_variance_hc3_widens_hc2" {
-  // Same inputs as the HC2 widening test. With h_00 clipped,
-  // HC3 divides by (1 - h_ii)^2 instead of (1 - h_ii), so
-  // HC3 > HC2 (the same row gets divided by an even smaller
-  // epsilon, blowing up the same term further).
+  // Same inputs as the HC2 widening test. With the constant
+  // h_ii = 1 / 4 the HC3 divisor is (3/4)^2, so HC3 is exactly
+  // HC0 * (4/3)^2 -- strictly above HC2, i.e. the
+  // "jackknife" correction widens most (MacKinnon 2012
+  // sec 5.4).
   let psi_a : Array[Double] = [2.0, 0.5, 0.5, 0.5]
   let psi : Array[Double] = [1.0, -1.0, 1.0, -1.0]
   let m_inv = Matrix::from_array([1.0], 1, 1)
+  let v0 = sandwich_variance_hc0(psi_a, psi, m_inv, 4, 1)
   let v2 = sandwich_variance_hc2(psi_a, psi, m_inv, 4, 1)
   let v3 = sandwich_variance_hc3(psi_a, psi, m_inv, 4, 1)
   inspect(v3 > v2, content="true")
+  inspect((v3 - v0 * 16.0 / 9.0).abs() / v0 < 1.0e-12, content="true")
   inspect(v3.is_nan() == false, content="true")
   inspect(v3.is_inf() == false, content="true")
 }

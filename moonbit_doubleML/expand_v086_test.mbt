@@ -27,16 +27,17 @@
 //      the exact HC1 finite-sample identity, so a swapped
 //      HC1 / HC2 arm fails.
 //   3. The HC2 / HC3 leverage corrections are actually
-//      applied (`!=`) AND move in the direction the leverage
-//      sign predicts. For all four estimators here
-//      `mean(psi_a) < 0`, so the scalar leverage analog
-//      `h_ii = psi_a[i]^2 / mean(psi_a)` is negative, every
-//      `1 - h_ii` exceeds 1, and HC2 / HC3 legitimately
-//      SHRINK the variance relative to HC0. The strict
-//      ordering asserted below is therefore
-//      `HC1 > HC0 > HC2 > HC3`, not a monotonic widening --
-//      see the note in `sandwich.mbt` on the
-//      `M_inv = [[1 / mean(psi_a)]]` convention.
+//      applied (`!=`) AND WIDEN the variance, as
+//      MacKinnon (2012) sec 5.4 requires. Since v0.88.0 the
+//      leverage is the projection-matrix diagonal of the
+//      mean regression implicit in `E[psi_a * psi] = 0`,
+//      i.e. the constant `h_ii = 1 / n_obs`, so HC2 is
+//      exactly HC1 and HC3 is exactly `HC1^2 / HC0`; the
+//      asserted ordering is `HC1 == HC2 > HC0` and
+//      `HC3 > HC2`. (v0.79.0 - v0.87.0 used the signed
+//      `h_ii = psi_a[i]^2 / mean(psi_a)`, which is negative
+//      here and made the corrections SHRINK -- see the
+//      note in `sandwich.mbt` and `expand_v088_test.mbt`.)
 //   4. `cluster_sandwich_se` with all-singleton clusters
 //      equals `sandwich_se(HC0)` EXACTLY (singleton clusters
 //      contribute their raw `(psi_a * psi)^2` with no
@@ -144,11 +145,13 @@ test "sandwich_kind_dispatch_matches_direct_calls" {
   // so pin the spread explicitly).
   inspect(d_hc0 > 0.0, content="true")
   inspect(d_hc1 > d_hc0, content="true")
-  // psi_a = [1, 0.5, ...] with M_inv = 2 -> h_ii = 2 or 0.5.
-  // The 0.5 rows have 1 - h_ii = 0.5 < 1 (HC2 widens them)
-  // while the 1.0 rows have 1 - h_ii = -1 (clipped, widening
-  // enormously), so HC2 > HC0 here -- the opposite direction
-  // from the DML estimators, whose mean(psi_a) < 0.
+  // psi_a = [1, 0.5, ...] with M_inv = 2 and n = 12. Since
+  // v0.88.0 the leverage is the constant `h_ii = 1 / 12`
+  // (the mean-regression projection diagonal), so the HC2 /
+  // HC3 divisors are 12 / 11 and (12 / 11)^2 and every
+  // correction widens. HC2 == HC1 exactly.
+  let d_hc1b = sandwich_variance_hc1(psi_a, psi, m_inv, n, 1)
+  inspect(expand_v086_close(d_hc2, d_hc1b), content="true")
   inspect(d_hc2 > d_hc0, content="true")
   inspect(d_hc3 > d_hc2, content="true")
 }
@@ -254,14 +257,19 @@ test "iivm_sandwich_se_smoke" {
   let expected_scale = (n.to_double() / (n.to_double() - 1.0)).sqrt()
   inspect(expand_v086_close(se_hc1, se_hc0 * expected_scale), content="true")
   // (3) leverage-driven ordering. IIVM's mean(psi_a) is
-  // negative (it equals roughly -comp, the negative
-  // first-stage gap), so h_ii < 0 and HC2 / HC3 shrink.
+  // negative (roughly -comp, the negative first-stage gap).
+  // v0.88.0 uses the constant mean-regression leverage
+  // h_ii = 1 / n, so HC2 == HC1 and both corrections widen;
+  // v0.87.0 used the signed `h_ii = psi_a^2 / mean(psi_a)`
+  // and both shrank.
   let se_hc2 = fitted.sandwich_se(SandwichKind::hc2())
   let se_hc3 = fitted.sandwich_se(SandwichKind::hc3())
   inspect(mean(fitted.psi_a) < 0.0, content="true")
   inspect(se_hc1 > se_hc0, content="true")
-  inspect(se_hc2 < se_hc0, content="true")
-  inspect(se_hc3 < se_hc2, content="true")
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v086_close(se_hc2, se_hc1), content="true")
+  inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   // (4) singleton clusters reproduce the IID HC0 exactly;
   // pooled clusters do not.
   let singleton : Array[Int] = Array::make(n, 0)
@@ -367,8 +375,10 @@ test "pliv_sandwich_se_smoke" {
   let se_hc2 = fitted.sandwich_se(SandwichKind::hc2())
   let se_hc3 = fitted.sandwich_se(SandwichKind::hc3())
   inspect(se_hc1 > se_hc0, content="true")
-  inspect(se_hc2 < se_hc0, content="true")
-  inspect(se_hc3 < se_hc2, content="true")
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v086_close(se_hc2, se_hc1), content="true")
+  inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   let singleton : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
@@ -457,8 +467,10 @@ test "did_sandwich_se_smoke" {
   let se_hc2 = fitted.sandwich_se(SandwichKind::hc2())
   let se_hc3 = fitted.sandwich_se(SandwichKind::hc3())
   inspect(se_hc1 > se_hc0, content="true")
-  inspect(se_hc2 < se_hc0, content="true")
-  inspect(se_hc3 < se_hc2, content="true")
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v086_close(se_hc2, se_hc1), content="true")
+  inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   let singleton : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
@@ -495,9 +507,10 @@ test "cvar_sandwich_se_smoke" {
   inspect(fitted.psi_a.length() == n, content="true")
   inspect(fitted.psi_b.length() == n, content="true")
   // CVAR's psi_a is the constant -1, so mean(psi_a) = -1 and
-  // M_inv = -1; the scalar leverage analog
-  // h_ii = psi_a^2 * M_inv = -1 for every row, hence
-  // 1 - h_ii = 2 and HC2 is exactly HC0 / 2.
+  // M_inv = -1. Since v0.88.0 the leverage used by HC2 / HC3
+  // is the constant mean-regression diagonal h_ii = 1 / n,
+  // independent of the (negative) score sign; v0.87.0 used the
+  // signed `h_ii = psi_a^2 * M_inv = -1`.
   let m_val = 1.0 / mean(fitted.psi_a)
   inspect(expand_v086_close(m_val, -1.0), content="true")
   let psi = expand_v086_psi(fitted.psi_a, fitted.psi_b, fitted.coef(), n)
@@ -513,11 +526,17 @@ test "cvar_sandwich_se_smoke" {
   let se_hc2 = fitted.sandwich_se(SandwichKind::hc2())
   let se_hc3 = fitted.sandwich_se(SandwichKind::hc3())
   inspect(se_hc1 > se_hc0, content="true")
-  // With the constant -1 leverage the HC2 / HC3 variance
-  // divisors are exactly 2 and 4, so the SE ratios are pinned
-  // exactly at 1 / sqrt(2) and 1 / 2.
-  inspect(expand_v086_close(se_hc2, se_hc0 / 2.0.sqrt()), content="true")
-  inspect(expand_v086_close(se_hc3, se_hc0 / 4.0.sqrt()), content="true")
+  // CVAR's psi_a is the constant -1, so mean(psi_a) = -1 and
+  // M_inv = -1. Since v0.88.0 the leverage is the constant
+  // mean-regression diagonal `h_ii = 1 / n`, so the HC2 / HC3
+  // variance divisors are `n / (n - 1)` and `(n / (n - 1))^2`
+  // and HC2 is exactly HC1. (v0.79.0 - v0.87.0 used the
+  // negative leverage -1 here, i.e. divisors 2 and 4, so HC2
+  // was HC0 / 2 and HC3 was HC0 / 4.)
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v086_close(se_hc2, se_hc1), content="true")
+  inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   let singleton : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i

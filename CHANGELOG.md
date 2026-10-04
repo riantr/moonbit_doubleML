@@ -9,6 +9,134 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.88.0] -- fix the HC2 / HC3 leverage
+
+**BREAKING NUMERICAL CHANGE.** HC2 and HC3 values change -- and
+**increase** -- for **all 10** estimators that expose
+`sandwich_se`: `DoubleMLIRM`, `DoubleMLPLR`, `DoubleMLIIVM`,
+`DoubleMLPLIV`, `DoubleMLDID`, `DoubleMLCVAR`, `DoubleMLSSM`,
+`DoubleMLPLPR`, `DoubleMLDIDCrossSection`, `DoubleMLDIDCSBinary`.
+HC0 and HC1 are **bit-identical** to v0.87.0. Test count delta:
+native / wasm / js 628 -> 634 (+6); wasm-gc 634 -> 640 (+6).
+
+### Fixed
+
+- `sandwich_variance_hc2` / `sandwich_variance_hc3` in
+  `moonbit_doubleML/sandwich.mbt` computed the leverage as
+  `h_ii = psi_a[i] * M_inv[0, 0] * psi_a[i]`. That quantity is
+  not a hat-matrix diagonal in any sense: a leverage is
+  `x_i' (X'X)^{-1} x_i`, and multiplying a score value by itself
+  and by a scalar reciprocal-mean produces a number with no
+  interpretation whose sign flips with the sign of the score.
+  Every estimator in the package builds
+  `M_inv = [[1 / mean(psi_a)]]` and `psi_a` is typically a
+  negative score row, so `M_inv < 0` and `h_ii < 0` on every
+  row: `1 - h_ii` exceeded 1, the divisor grew, and HC2 / HC3
+  **shrank** the variance instead of widening it -- the opposite
+  of MacKinnon (2012) sec 5.4.
+  Concrete damage on the fixed synthetic input in
+  `expand_v088_test.mbt` (`n = 64`, `n_params = 1`,
+  `psi_a = -1` constant, `M_inv = [[-1.0]]`): `h_ii = -1` on every
+  row, so the divisors were exactly 2 and 4 and
+
+      var(HC2) = HC0 / 2 = 0.166015625   (v0.87.0)
+      var(HC3) = HC0 / 4 = 0.0830078125  (v0.87.0)
+
+  i.e. a smaller SE than the uncorrected sandwich. With a
+  non-constant negative `psi_a` the same input gives
+  `var(HC2) = 0.12935609720259825` and
+  `var(HC3) = 0.07791813402549888` against
+  `var(HC0) = 0.2175835503472222` -- again below HC0.
+- The replacement is the projection-matrix diagonal of the
+  regression whose moment condition is actually being inverted.
+  The moment is the single-parameter **mean** moment
+  `E[psi_a * psi(theta)] = 0`, so the implicit regression is a
+  mean regression: an intercept-only design with equal
+  per-observation weights. Its projection matrix is
+  `(1 / n) * J`, whose diagonal is the constant
+  `h_ii = 1 / n_obs` (and which satisfies `0 <= h_ii < 1` for
+  every `n_obs >= 2`). No estimator in the package persists a
+  per-observation design matrix -- the post-fit state is
+  `psi_a`, `psi_b`, `coef` (and the raw data on some structs,
+  which is not a hat-matrix diagonal) -- so `1 / n_obs` is used
+  **uniformly** across all of them, and that uniformity is what
+  keeps the fix inside `sandwich.mbt`: all 10 estimators reach it
+  through the v0.86.0 shared `sandwich_variance(kind, ...)`
+  dispatch (or, for IRM / PLR, an inline `match` over the same
+  four free functions), so **no estimator file changed**.
+- Same inputs, after the fix (`n = 64`):
+
+      var(HC0) = 0.2175835503472222          (unchanged)
+      var(HC1) = 0.2210372574955908          (unchanged)
+      var(HC2) = 0.2210372574955908          (was 0.12935609720259825)
+      var(HC3) = 0.22454578539234624         (was 0.07791813402549888)
+
+  and for constant `psi_a = -1`:
+
+      var(HC2) = 0.33730158730158727         (was 0.166015625)
+      var(HC3) = 0.34265558075081887         (was 0.0830078125)
+
+  Both corrections now widen, as intended. A side effect worth
+  noting: inputs that previously blew up through the
+  `1.0e-10` degenerate-leverage clip no longer do (a
+  `psi_a = +1`, `M_inv = [[1.0]]` input returned
+  `var(HC2) = 3.32e9` in v0.87.0 and `0.33730158730158727`
+  now).
+
+### Added
+
+- `moonbit_doubleML/expand_v088_test.mbt` -- 6 falsifiable
+  white-box tests, every one of which fails against the
+  v0.87.0 implementation (none of them is a finiteness check):
+  `hc2_equals_hc1` (to 1e-12 relative, plus the equivalent
+  `HC2 == HC0 * n / (n - 1)` statement),
+  `hc3_equals_hc1_squared_over_hc0`,
+  `leverage_is_in_unit_interval` (the leverage is recovered
+  from the `(HC0, HC2)` output pair by inverting
+  `HC2 = HC0 / (1 - h_ii)`, so the assertion reads the divisor
+  off the implementation instead of trusting a copy of the
+  formula; checked over five `psi_a` families -- constant `-1`,
+  all-positive, all-negative, mixed sign, and an extreme
+  dynamic range spanning `1e-3` to `1e3`),
+  `hc_ordering_now_widens`,
+  `hc0_and_hc1_unchanged` (the HC0 / HC1 values measured on the
+  v0.87.0 code before the edit, regression-pinned to 1e-15
+  relative), and `constant_psi_a_case` (the case that was most
+  wrong: pins the new HC2 / HC3 values and asserts they are now
+  larger than HC0).
+- The two exact identities the fix implies -- `HC2 == HC1` and
+  `HC3 == HC1^2 / HC0` -- are now the sanity check for this
+  family. Under the old formula neither held.
+
+### Changed
+
+- `moonbit_doubleML/expand_v086_test.mbt` /
+  `expand_v087_test.mbt`: the `HC1 > HC0 > HC2 > HC3`
+  "leverage-signed ordering" assertions, the
+  `expand_v087_ref_leverage` reference helper, and the
+  `se_hc0 / 2` + `se_hc0 / 4` ratio pins encoded the old
+  (wrong) leverage and are replaced by the HC2 == HC1 /
+  `HC1^2 / HC0` identities and the widening ordering.
+- `moonbit_doubleML/sandwich_test.mbt`: the two HC2 / HC3
+  hand-computed cases pinned their expected values through the
+  `1.0e-10` clip of the old negative leverage; they now pin
+  the exact factors `n / (n - 1)` and `(n / (n - 1))^2`
+  (4 / 3 and 16 / 9 on that input) and no longer depend on the
+  individual `psi_a[i]` values.
+- `moon.mod` 0.87.0 -> 0.88.0. The `import` block
+  (`moonbit-community/sqlite3@0.2.3`, `moonbitlang/async@0.20.3`)
+  is untouched.
+- README: version badge, test counts, and the sandwich
+  section now describe the corrected leverage.
+
+### Not changed
+
+- HC0, HC1 and the cluster-robust sandwich. The
+  `cluster_sandwich_variance` path never used a leverage.
+- `DoubleMLLPLR` and `DoubleMLLPQ` remain excluded from the
+  sandwich API for the unrelated v0.86.0 / v0.87.0 reasons
+  (no recoverable Jacobian / inverted field order).
+
 ## [0.87.0] -- sandwich variance expand (SSM / PLPR / DID cross-section / DID CS binary)
 
 Extends the v0.79.0 sandwich-variance API -- `sandwich_se(kind)`,

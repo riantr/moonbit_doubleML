@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.87.0** |
+| `moon.mod` version | **0.88.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **628 / 628** |
-| Tests (wasm-gc) | **634 / 634** (lib 628 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **634 / 634** |
+| Tests (wasm-gc) | **640 / 640** (lib 634 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
 | Sandwich variance coverage | **10 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`) |
@@ -510,18 +510,48 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   (`psi_a = score - theta_hat * psi_deriv`, `psi_b =
   psi_deriv`), so `mean(psi_a)` is a cancellation residual rather
   than the Jacobian -- feeding it into `M_inv = [[1 / mean(psi_a)]]`
-  inflates HC0 by ~60x over LPLR's own `se()` and drives HC2 / HC3
-  into the degenerate-leverage clip (`6.4e10`). See
+  inflates HC0 by ~60x over LPLR's own `se()`. See
   `expand_v087_test.mbt` for the full rationale and the two
   candidate fixes. The 5 new white-box tests assert the
   independently recomputed HC0 / HC2 / HC3 variances (not just
-  finiteness), the exact HC1 `sqrt(n / (n - 1))` identity, the
-  leverage-signed ordering `HC1 > HC0 > HC2 > HC3` (these four all
-  have `mean(psi_a) < 0`, so the package's
-  `M_inv = [[1 / mean(psi_a)]]` convention makes HC2 / HC3 shrink
-  -- pre-existing v0.79.0 behaviour, deliberately propagated),
-  exact singleton-cluster equality with the IID HC0, and the
-  bias-correction identity.
+  finiteness), the exact HC1 `sqrt(n / (n - 1))` identity, exact
+  singleton-cluster equality with the IID HC0, and the
+  bias-correction identity. (The leverage-signed ordering
+  `HC1 > HC0 > HC2 > HC3` they also asserted described the
+  v0.79.0 - v0.87.0 leverage bug and is corrected in v0.88.0
+  below.)
+- v0.88.0 verified counts: `moon test` 634 / 634 (native & wasm &
+  js) and 640 / 640 (wasm-gc: lib 634 + 6 doc tutorials).
+  **BREAKING NUMERICAL CHANGE, HC2 / HC3 only.** Fixes the
+  leverage used by `sandwich_variance_hc2` /
+  `sandwich_variance_hc3` in `sandwich.mbt`. v0.79.0 - v0.87.0
+  used `h_ii = psi_a[i] * M_inv[0,0] * psi_a[i]`, which is not a
+  hat-matrix diagonal; with the package convention
+  `M_inv = [[1 / mean(psi_a)]]` and the usual `mean(psi_a) < 0`
+  it came out **negative**, so `1 - h_ii > 1` and HC2 / HC3
+  **shrank** the variance instead of widening it -- the opposite
+  of MacKinnon (2012) sec 5.4. Worst case (`psi_a = -1`
+  constant, i.e. IRM / SSM / CVAR / DID ATT) `h_ii = -1` on every
+  row, so HC2 was exactly `HC0 / 2` and HC3 exactly `HC0 / 4`.
+  The moment actually being inverted is the single-parameter
+  **mean** moment `E[psi_a * psi(theta)] = 0`, whose implicit
+  regression is an intercept-only, equally weighted mean
+  regression; its projection matrix is `(1 / n) * J`, so every
+  leverage is the constant `h_ii = 1 / n_obs`. No estimator in
+  the package persists a per-observation design matrix (only
+  `psi_a`, `psi_b`, `coef`), so `1 / n_obs` is used uniformly --
+  which is also what keeps the fix inside `sandwich.mbt` with no
+  estimator-file changes. Under that leverage
+  **HC2 == HC1 exactly** and **HC3 == HC1^2 / HC0 exactly**, and
+  all three corrections widen (`HC3 > HC2 > HC1 == HC2 > HC0`).
+  `sandwich_se(HC2)` / `sandwich_se(HC3)` therefore **increase**
+  for all 10 estimators that expose them; `HC0` and `HC1` are
+  bit-identical to v0.87.0 (regression-pinned in
+  `expand_v088_test.mbt`, which adds the 6 falsifiable HC2 / HC3
+  tests: the `HC2 == HC1` and `HC3 == HC1^2 / HC0` identities,
+  `0 <= h_ii < 1` with `h_ii == 1 / n` across five `psi_a`
+  families, the widening ordering, the HC0 / HC1 regression
+  values, and the constant-`psi_a = -1` case).
 
 #Attribution
 

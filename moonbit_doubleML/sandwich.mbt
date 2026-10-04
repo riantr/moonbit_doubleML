@@ -4,7 +4,7 @@
 //
 // Scope:
 //   - HC0 / HC1 / HC2 / HC3 (Huber-White family, Long & Ervin
-//     2000, MacKinnon 2013) for the IID setting.
+//     2000, MacKinnon 2012) for the IID setting.
 //   - cluster-robust sandwich (Arellano 1987,
 //     Cameron-Gelbach-Miller 2011) for one cluster variable.
 //   - `bias_corrected_theta` -- a generic finite-sample bias
@@ -29,13 +29,38 @@
 // matrix; the formulas below only inspect `M_inv[0, 0]`
 // for the scalar case.
 //
+// The HC2 / HC3 leverage (v0.88.0):
+//   A leverage is a diagonal entry of a hat (projection)
+//   matrix -- `h_ii = x_i' (X'X)^{-1} x_i` -- and always
+//   satisfies `0 <= h_ii < 1`. The moment inverted here,
+//   `E[psi_a * psi(theta)] = 0`, is a single-parameter
+//   MEAN moment, so the regression implicit in it is a
+//   mean regression: an intercept-only design with equal
+//   per-observation weights. Its projection matrix is
+//   `(1 / n) * J`, whose diagonal is constant:
+//   `h_ii = 1 / n_obs` for every observation. HC2 then
+//   divides every term by `(1 - 1/n) = (n-1)/n`, i.e.
+//   HC2 == HC1 exactly, and HC3 divides by `((n-1)/n)^2`,
+//   i.e. HC3 == HC1^2 / HC0 exactly. Both identities are
+//   pinned by `expand_v088_test.mbt`.
+//
+//   v0.79.0 - v0.87.0 used `h_ii = psi_a[i] * M_inv[0,0]
+//   * psi_a[i]` instead. That quantity is not a hat-matrix
+//   diagonal in any sense, and with the package convention
+//   `M_inv = [[1 / mean(psi_a)]]` and `mean(psi_a) < 0`
+//   (the usual case, since `psi_a` is typically a negative
+//   score row) it comes out NEGATIVE, so `1 - h_ii > 1`
+//   and HC2 / HC3 SHRANK rather than widened -- the
+//   opposite of MacKinnon (2012). v0.88.0 replaces it with
+//   `1 / n_obs`; HC0 and HC1 are unaffected.
+//
 // All helpers in this file raise on malformed inputs via the
 // shared `check(...)` precondition (the same convention as
-// every other free function in this package). When `h_ii`
-// exceeds 1 or `(1 - h_ii)` falls below `1.0e-10` the
-// divisor is clipped to `1.0e-10` so HC2 / HC3 stay finite
-// on degenerate leverage inputs (the typical safeguard in
-// upstream `statsmodels` / `car` packages).
+// every other free function in this package). HC2 / HC3
+// keep the `1.0e-10` divisor clip as a finiteness
+// safeguard; with `h_ii = 1 / n_obs` it can only engage at
+// `n_obs <= 1` (the typical `statsmodels` / `car`
+// degenerate-input guard).
 
 // ---------------------------------------------------------------------------
 // SandwichKind enum
@@ -56,14 +81,16 @@ pub enum SandwichKind {
   /// `, robust` correction; matches `statsmodels.OLS`
   /// `cov_type='HC1'`.
   HC1
-  /// Divide by `(1 - h_ii)` per observation. Reduces
-  /// bias of the squared-residual HC0 estimator on
-  /// high-leverage rows (MacKinnon 2013 sec 5.4).
+  /// Divide by `(1 - h_ii)` per observation, with
+  /// `h_ii = 1 / n_obs` the mean-regression leverage.
+  /// Reduces bias of the squared-residual HC0 estimator on
+  /// high-leverage rows (MacKinnon 2012 sec 5.4). Equals
+  /// HC1 for this mean-moment family.
   HC2
-  /// Divide by `(1 - h_ii)^2`. The "jackknife"
-  /// variant (MacKinnon 2013 sec 5.4); widens the
-  /// confidence interval most aggressively on
-  /// high-leverage rows.
+  /// Divide by `(1 - h_ii)^2` per observation (same
+  /// `h_ii = 1 / n_obs`). The "jackknife" variant
+  /// (MacKinnon 2012 sec 5.4); widens the confidence
+  /// interval most aggressively.
   HC3
 } derive(Debug)
 
@@ -206,16 +233,25 @@ pub fn sandwich_variance_hc1(
 ///|
 /// HC2 sandwich variance: per-observation leverage
 /// correction `(1 - h_ii)` on the squared score
-/// (MacKinnon 2013 sec 5.4):
+/// (MacKinnon 2012 sec 5.4):
 ///
 ///     var = M_inv[0,0]^2 * sum_i (psi_a[i]^2 * psi[i]^2
 ///                               / (1 - h_ii)) / n
 ///
-/// where `h_ii = psi_a[i] * M_inv[0, 0] * psi_a[i]` is the
-/// scalar analog of the hat-matrix entry. When `h_ii >= 1`
-/// or `(1 - h_ii) < 1.0e-10` the divisor is clipped to
-/// `1.0e-10` (the typical `statsmodels` safeguard for
-/// degenerate leverage).
+/// where `h_ii` is the diagonal of the projection matrix of
+/// the mean regression implicit in the moment
+/// `E[psi_a * psi(theta)] = 0`. That design is intercept-only
+/// with equal weights, so its projection is `(1 / n) * J` and
+/// `h_ii = 1 / n_obs` on every row. Consequently
+/// `var(HC2) == var(HC0) * n / (n - 1)`, i.e. HC2 is exactly
+/// HC1 for this family.
+///
+/// v0.79.0 - v0.87.0 used `h_ii = psi_a[i] * M_inv[0,0] *
+/// psi_a[i]`, which is not a projection-matrix diagonal and
+/// goes negative under `M_inv = [[1 / mean(psi_a)]]` with
+/// `mean(psi_a) < 0`, shrinking the variance instead of
+/// widening it. The divisor is still clipped to `1.0e-10` so
+/// HC2 stays finite on the degenerate `n_obs == 1` input.
 ///
 /// Preconditions match `sandwich_variance_hc0`. Aborts on
 /// malformed input.
@@ -234,14 +270,16 @@ pub fn sandwich_variance_hc2(
     require(n_params >= 1)
     let m = m_inv.get(0, 0)
     let eps : Double = 1.0e-10
+    let n_d = n_obs.to_double()
+    // v0.88.0: constant mean-regression leverage (see the file
+    // header). Replaces the old signed `psi_a[i]^2 * M_inv`
+    // "leverage", which is not a hat-matrix diagonal.
+    let h_ii = 1.0 / n_d
+    let denom = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
     let mut acc = 0.0
     let mut acc_c = 0.0
-    let n_d = n_obs.to_double()
     for i = 0; i < n_obs; i = i + 1 {
-      let pa = psi_a[i]
-      let h_ii = pa * m * pa
-      let denom = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
-      let prod = pa * psi[i]
+      let prod = psi_a[i] * psi[i]
       let term = prod * prod / denom
       let y = term - acc_c
       let t = acc + y
@@ -261,7 +299,9 @@ pub fn sandwich_variance_hc2(
 /// correction that divides by `(1 - h_ii)^2` per
 /// observation. Otherwise identical to HC2 (same leverage
 /// computation, same precondition set, same degenerate-input
-/// safeguard).
+/// safeguard). Under `h_ii = 1 / n_obs` this means
+/// `var(HC3) == var(HC0) * (n / (n - 1))^2`, i.e. exactly
+/// `HC1^2 / HC0`.
 ///
 /// Preconditions match `sandwich_variance_hc0`. Aborts on
 /// malformed input.
@@ -280,15 +320,14 @@ pub fn sandwich_variance_hc3(
     require(n_params >= 1)
     let m = m_inv.get(0, 0)
     let eps : Double = 1.0e-10
+    let n_d = n_obs.to_double()
+    let h_ii = 1.0 / n_d
+    let one_minus_h = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
+    let denom = one_minus_h * one_minus_h
     let mut acc = 0.0
     let mut acc_c = 0.0
-    let n_d = n_obs.to_double()
     for i = 0; i < n_obs; i = i + 1 {
-      let pa = psi_a[i]
-      let h_ii = pa * m * pa
-      let one_minus_h = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
-      let denom = one_minus_h * one_minus_h
-      let prod = pa * psi[i]
+      let prod = psi_a[i] * psi[i]
       let term = prod * prod / denom
       let y = term - acc_c
       let t = acc + y

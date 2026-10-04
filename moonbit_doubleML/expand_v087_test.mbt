@@ -24,10 +24,9 @@
 // `n = 400` it evaluates to `+0.0134` while the true Jacobian
 // `mean(sc.psi_deriv)` is strictly negative. Feeding that into
 // `M_inv` inflates HC0 by ~60x over LPLR's own analytic `se()`
-// and pushes the scalar leverage `h_ii = psi_a^2 * M_inv` past
-// 1 on the rows where `|psi_a|` is near `sqrt(mean(psi_a))`,
-// so HC2 / HC3 hit the `1.0e-10` divisor clip and return
-// `6.4e10` / `6.4e10^2` instead of a variance. A wrong number
+// (and in v0.87.0 it also drove the HC2 / HC3 leverage past the
+// `1.0e-10` clip, returning `6.4e10` / `6.4e10^2` instead of a
+// variance). A wrong number
 // is worse than a missing one, so LPLR is skipped pending a
 // follow-up that either (a) swaps the persisted field order to
 // match the package norm, or (b) gets an explicitly
@@ -48,17 +47,20 @@
 //   3. `mean(psi_a) < 0` is asserted explicitly, then the
 //      HC2 / HC3 leverage corrections are pinned BOTH against
 //      an independent recomputation of the `(1 - h_ii)` and
-//      `(1 - h_ii)^2` divisors AND against the direction that
-//      sign predicts. Under the package's
-//      `M_inv = [[1 / mean(psi_a)]]` convention a negative
-//      `mean(psi_a)` makes `h_ii = psi_a^2 * M_inv` negative,
-//      so every `1 - h_ii` exceeds 1 and HC2 / HC3 legitimately
-//      SHRINK relative to HC0: the asserted strict ordering is
-//      `HC1 > HC0 > HC2 > HC3`, not a monotonic widening (see
-//      the note in `sandwich.mbt`). For the three estimators
+//      `(1 - h_ii)^2` divisors AND against the direction the
+//      corrections must move in. Since v0.88.0 the leverage is
+//      the constant mean-regression diagonal `h_ii = 1 / n`,
+//      so HC2 == HC1 and HC3 == HC1^2 / HC0 exactly and the
+//      asserted ordering is `HC1 == HC2 > HC0` with
+//      `HC3 > HC2` -- a monotonic widening, as
+//      MacKinnon (2012) sec 5.4 requires. (v0.79.0 - v0.87.0
+//      used the signed `h_ii = psi_a[i]^2 * M_inv`, negative
+//      here, so the divisors exceeded 1 and the corrections
+//      shrank: the old asserted ordering was
+//      `HC1 > HC0 > HC2 > HC3`. For the three estimators
 //      whose `psi_a` is the constant `-1` (SSM, both DID
-//      variants) the divisors are exactly 2 and 4, so the SE
-//      ratios are pinned exactly at `1 / sqrt(2)` and `1 / 2`.
+//      variants) the divisors are now exactly `n / (n - 1)`
+//      and `(n / (n - 1))^2`.)
 //   4. `cluster_sandwich_se` with all-singleton clusters
 //      equals `sandwich_se(HC0)` EXACTLY (singleton clusters
 //      contribute their raw `(psi_a * psi)^2` with no
@@ -118,9 +120,16 @@ fn expand_v087_ref_hc0(
 /// Independent recomputation of the leverage-corrected HC2
 /// (`power = 1`) and HC3 (`power = 2`) variances,
 /// `m_val^2 * sum_i (psi_a[i] * psi[i])^2 / (1 - h_ii)^power / n`
-/// with the scalar leverage analog `h_ii = psi_a[i] * M_inv *
-/// psi_a[i]` and the same `1.0e-10` degenerate-leverage clip
-/// the package applies.
+/// with the mean-regression leverage `h_ii = 1 / n_obs` (the
+/// projection-matrix diagonal of the intercept-only,
+/// equally-weighted mean regression implicit in the moment
+/// `E[psi_a * psi(theta)] = 0`) and the same `1.0e-10`
+/// degenerate-input clip the package applies.
+///
+/// v0.87.0 used the signed `h_ii = psi_a[i] * M_inv *
+/// psi_a[i]` here, which is negative under
+/// `M_inv = [[1 / mean(psi_a)]]` and made HC2 / HC3 shrink;
+/// see `sandwich.mbt` and `expand_v088_test.mbt`.
 fn expand_v087_ref_leverage(
   psi_a : Array[Double],
   psi : Array[Double],
@@ -130,9 +139,9 @@ fn expand_v087_ref_leverage(
 ) -> Double {
   let eps : Double = 1.0e-10
   let mut acc = 0.0
+  let h_ii = 1.0 / n_obs.to_double()
   for i = 0; i < n_obs; i = i + 1 {
     let pa = psi_a[i]
-    let h_ii = pa * m_val * pa
     let one_minus_h = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
     let mut denom = one_minus_h
     if power == 2 {
@@ -263,13 +272,12 @@ test "sandwich_expand_v087_ordering" {
   // Fixed synthetic input, no estimator involved: a constant
   // `psi_a = -1` row (the IRM / SSM / DID ATT leverage case) with
   // a deliberately non-symmetric `psi`. This pins the ordering
-  // v0.86 established on the shared dispatch so the four new
-  // estimator methods can only agree with it:
+  // on the shared dispatch so the four new estimator methods can
+  // only agree with it:
   //   HC1 = HC0 * sqrt(n / (n - 1))          (widen)
-  //   HC0 = 2 * HC2 variance, HC2 = HC0 / sqrt(2)
-  //   HC3 = HC0 / 2                          (constant leverage
-  //                                            divisor 4)
-  // i.e. the strict order HC1 > HC0 > HC2 > HC3.
+  //   HC2 = HC0 * n / (n - 1) = HC1          (h_ii = 1 / n)
+  //   HC3 = HC0 * (n / (n - 1))^2 = HC1^2/HC0
+  // i.e. HC1 == HC2 > HC0 and HC3 > HC2.
   let n = 64
   let psi_a : Array[Double] = Array::make(n, -1.0)
   let psi : Array[Double] = Array::make(n, 0.0)
@@ -285,12 +293,18 @@ test "sandwich_expand_v087_ordering" {
   // HC1 finite-sample identity.
   let expected_scale = n.to_double() / (n.to_double() - 1.0)
   inspect(expand_v087_close(v1, v0 * expected_scale), content="true")
-  // Constant leverage -1 -> divisors exactly 2 and 4.
-  inspect(expand_v087_close(v2, v0 / 2.0), content="true")
-  inspect(expand_v087_close(v3, v0 / 4.0), content="true")
+  // Mean-regression leverage h_ii = 1 / n -> divisors
+  // (n - 1) / n and ((n - 1) / n)^2.
+  inspect(expand_v087_close(v2, v0 * expected_scale), content="true")
+  inspect(
+    expand_v087_close(v3, v0 * expected_scale * expected_scale),
+    content="true",
+  )
   inspect(v1 > v0, content="true")
-  inspect(v2 < v0, content="true")
-  inspect(v3 < v2, content="true")
+  inspect(v2 > v0, content="true")
+  inspect(v3 > v2, content="true")
+  inspect(v2 == v1, content="true")
+  inspect(expand_v087_close(v3, v1 * v1 / v0), content="true")
   // Independent recomputation must agree with the dispatch.
   inspect(
     expand_v087_close(v0, expand_v087_ref_hc0(psi_a, psi, -1.0, n)),
@@ -371,11 +385,19 @@ test "ssm_sandwich_se_smoke" {
     ),
     content="true",
   )
-  // Constant -1 leverage -> divisors exactly 2 and 4.
-  inspect(expand_v087_close(se_hc2, se_hc0 / 2.0.sqrt()), content="true")
-  inspect(expand_v087_close(se_hc3, se_hc0 / 4.0.sqrt()), content="true")
-  inspect(se_hc2 < se_hc0, content="true")
-  inspect(se_hc3 < se_hc2, content="true")
+  // Constant psi_a = -1, so since v0.88.0 the leverage is the
+  // constant mean-regression diagonal h_ii = 1 / n and the
+  // divisors are n / (n - 1) and (n / (n - 1))^2 -- HC2 is
+  // exactly HC1. (v0.87.0 used the negative leverage -1, i.e.
+  // divisors 2 and 4, so HC2 was HC0 / 2.)
+  inspect(expand_v087_close(se_hc2, se_hc0 * expected_scale), content="true")
+  inspect(
+    expand_v087_close(se_hc3, se_hc0 * expected_scale * expected_scale),
+    content="true",
+  )
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v087_close(se_hc2, se_hc1), content="true")
   let singleton : Array[Int] = Array::make(n, 0)
   let pooled : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
@@ -427,8 +449,10 @@ test "plpr_sandwich_se_smoke" {
   inspect(n == fitted.psi_b.length(), content="true")
   inspect(n > 0, content="true")
   inspect(n != 240, content="true")
-  // PO psi_a = -v_hat^2 <= 0, so mean(psi_a) < 0 and the scalar
-  // leverage h_ii = psi_a^2 / mean(psi_a) is negative.
+  // PO psi_a = -v_hat^2 <= 0, so mean(psi_a) < 0 and
+  // M_inv < 0. Since v0.88.0 that sign no longer enters the
+  // leverage: HC2 / HC3 use the constant mean-regression
+  // diagonal h_ii = 1 / n.
   let m_val = 1.0 / mean(fitted.psi_a)
   inspect(m_val < 0.0, content="true")
   inspect(mean(fitted.psi_a) < 0.0, content="true")
@@ -464,10 +488,13 @@ test "plpr_sandwich_se_smoke" {
     ),
     content="true",
   )
-  // Non-constant leverage, but still negative mean(psi_a), so the
-  // HC2 / HC3 divisors still exceed 1 and the SEs shrink.
-  inspect(se_hc2 < se_hc0, content="true")
-  inspect(se_hc3 < se_hc2, content="true")
+  // Non-constant psi_a, but the leverage is the constant
+  // mean-regression diagonal h_ii = 1 / n, so HC2 == HC1 and
+  // both corrections widen.
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v087_close(se_hc2, se_hc1), content="true")
+  inspect(expand_v087_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   let singleton : Array[Int] = Array::make(n, 0)
   let pooled : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
@@ -540,8 +567,10 @@ test "did_cross_section_sandwich_se_smoke" {
     ),
     content="true",
   )
-  inspect(se_hc2 < se_hc0, content="true")
-  inspect(se_hc3 < se_hc2, content="true")
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v087_close(se_hc2, se_hc1), content="true")
+  inspect(expand_v087_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   let singleton : Array[Int] = Array::make(n, 0)
   let pooled : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
@@ -620,8 +649,10 @@ test "did_cs_binary_sandwich_se_smoke" {
     ),
     content="true",
   )
-  inspect(se_hc2 < se_hc0, content="true")
-  inspect(se_hc3 < se_hc2, content="true")
+  inspect(se_hc2 > se_hc0, content="true")
+  inspect(se_hc3 > se_hc2, content="true")
+  inspect(expand_v087_close(se_hc2, se_hc1), content="true")
+  inspect(expand_v087_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   let singleton : Array[Int] = Array::make(n, 0)
   let pooled : Array[Int] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
