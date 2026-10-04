@@ -71,9 +71,13 @@ fn expand_v089_close(x : Double, y : Double) -> Bool {
 }
 
 ///|
-/// Per-observation influence function `psi[i] = psi_a[i] +
-/// coef * psi_b[i]`, recomputed in the test from the fitted
-/// estimator's persisted IF components.
+/// Per-observation influence function `psi[i] = coef * psi_a[i]
+/// + psi_b[i]`, recomputed in the test from the fitted
+/// estimator's persisted IF components. v0.90.0 flipped the
+/// order (it was `psi_a[i] + coef * psi_b[i]` through
+/// v0.89.0). Deliberately NOT routed through the production
+/// `psi_at` helper, so a regression in `psi_at` cannot move
+/// this reference and the estimator's own value together.
 fn expand_v089_psi(
   psi_a : Array[Double],
   psi_b : Array[Double],
@@ -82,7 +86,7 @@ fn expand_v089_psi(
 ) -> Array[Double] {
   let psi : Array[Double] = Array::make(n_obs, 0.0)
   for i = 0; i < n_obs; i = i + 1 {
-    psi[i] = psi_a[i] + coef * psi_b[i]
+    psi[i] = coef * psi_a[i] + psi_b[i]
   }
   psi
 }
@@ -471,27 +475,33 @@ test "apo_bias_corrected_coef" {
 }
 
 ///|
-/// The package has TWO variance paths over the same persisted
-/// `psi_a` / `psi_b`, and they use DIFFERENT score orders:
+/// INVERTED IN v0.90.0 -- read this before touching it again.
 ///
-///   - `var_est` (and therefore `se()`) evaluates the score as
-///     `coef * psi_a + psi_b`, giving
-///     `se = sqrt(mean(psi^2)) / (|mean(psi_a)| * sqrt(n))`.
-///   - the sandwich family (and `bootstrap`, and the `psi_a` /
-///     `psi_b` field docs) evaluates it as
-///     `psi_a + coef * psi_b`.
+/// v0.89.0 introduced this test to pin a package-wide SPLIT: the
+/// `var_est` path (and therefore `se()`) evaluated the score as
+/// `coef * psi_a + psi_b`, while the sandwich family (and
+/// `bootstrap`) evaluated it as `psi_a + coef * psi_b`. For APO
+/// those are different functions of the same inputs (`psi_a = -1`,
+/// so one is `-coef + psi_b` and the other `-1 + coef * psi_b`)
+/// and the SEs differed by three orders of magnitude: `se()` was
+/// `0.0083` and `sandwich_se(HC0)` was `9.92`.
 ///
-/// For APO the two are different functions of the same inputs
-/// (`psi_a = -1`, so one is `-coef + psi_b` and the other is
-/// `-1 + coef * psi_b`), and the resulting SEs differ by more than
-/// three orders of magnitude on the DGP below: `se()` is `0.0083`
-/// and `sandwich_se(HC0)` is `9.92`.
+/// v0.90.0 established that the sandwich order was the WRONG one
+/// (see `expand_v090_test.mbt` for the falsifiable evidence) and
+/// routed the whole sandwich + bootstrap family through the single
+/// `psi_at(coef, psi_a, psi_b)` helper, which evaluates
+/// `var_est`'s function. The split is therefore GONE, and this
+/// test now pins its absence: `sandwich_se(HC0)` must follow the
+/// `var_est` score order, and must be exactly the pre-v0.90.0
+/// "other" order's complement.
 ///
-/// This is a pre-existing, package-wide split -- `DoubleMLIRM` and
-/// every other estimator that exposes both paths do the same -- and
-/// v0.89.0 does not change either one. The test exists so that a
-/// future change to either order is a deliberate decision (this
-/// test fails) rather than an accident (nothing fails).
+/// One residual, unrelated to the score order, survives: for
+/// `psi_a == -1` the sandwich variance is
+/// `M_inv^2 * sum((psi_a * psi)^2) / n == sum(psi^2) / n`, i.e.
+/// `n` times the DML variance `sum(psi^2) / (J^2 * n)`. The
+/// `psi_a[i]` factor in the HC accumulator is a separate open
+/// defect; this test asserts the sandwich value against the
+/// CURRENT accumulator, not against `se()`.
 
 ///|
 test "apo_var_est_se_order_split" {
@@ -517,19 +527,28 @@ test "apo_var_est_se_order_split" {
   let j = mean(fitted.psi_a)
   let se_var = (ss_var / n_d / (j * j * n_d)).sqrt()
   let se_sand = (ss_sand / n_d / (j * j)).sqrt()
-  // `se()` follows the `var_est` order.
+  // `se()` follows the `var_est` order -- unchanged by v0.90.0.
   inspect(expand_v089_close(fitted.se(), se_var), content="true")
-  // `sandwich_se(HC0)` follows the sandwich order (`M_inv^2 *
-  // sum (psi_a * psi)^2 / n` == `sum(psi^2) / (j^2 n)` for
-  // `psi_a = -1`).
-  inspect(expand_v089_close(se_sand, se_var) == false, content="true")
+  // v0.90.0: `sandwich_se(HC0)` now follows the SAME order. It is
+  // still `sum(psi^2) / n` (not `/ (J^2 n)`) because of the
+  // `psi_a[i]` factor in the HC accumulator, so it is
+  // `sqrt(n) * se()` here, not `se()`.
   inspect(
-    expand_v089_close(fitted.sandwich_se(SandwichKind::hc0()), se_sand),
+    expand_v089_close(
+      fitted.sandwich_se(SandwichKind::hc0()),
+      se_var * n_d.sqrt(),
+    ),
     content="true",
   )
-  // The two orders disagree by a large margin here, which is the
-  // concrete reason `se()` and `sandwich_se(HC0)` are NOT
-  // interchangeable in this package.
+  // The OLD (wrong) order is no longer what the sandwich reports.
+  inspect(expand_v089_close(se_sand, se_var) == false, content="true")
+  inspect(
+    expand_v089_close(fitted.sandwich_se(SandwichKind::hc0()), se_sand) == false,
+    content="true",
+  )
+  // The old order's inflation is still there in `se_sand` -- that
+  // is what the wrong order produced, and it is why the fix
+  // mattered.
   inspect(se_sand > 100.0 * se_var, content="true")
 }
 

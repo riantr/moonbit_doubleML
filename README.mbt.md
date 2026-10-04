@@ -25,14 +25,14 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.86.0** |
+| `moon.mod` version | **0.90.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **154** `.mbt` files (**62** production + **92** test) |
+| `.mbt` file count | **155** `.mbt` files (**62** production + **93** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **623 / 623** |
-| Tests (wasm-gc) | **629 / 629** (lib + 6 doc tutorials) |
-| Sandwich-variance coverage | **6 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.86.0) |
+| Tests (native / wasm / js) | **648 / 648** |
+| Tests (wasm-gc) | **654 / 654** (lib + 6 doc tutorials) |
+| Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -83,26 +83,32 @@ confidence intervals, joint CIs, and Romano-Wolf multiple-testing
 p-value adjustment. Reused via the `bootstrap.mbt` helper extracted
 in v0.55.0.
 
-**Huber-White sandwich API (v0.79.0+, expanded in v0.86.0)** --
+**Huber-White sandwich API (v0.79.0+, expanded through v0.89.0)** --
 `sandwich.mbt` provides the `sandwich_variance_hc0` / `_hc1` /
 `_hc2` / `_hc3` free functions, `cluster_sandwich_variance`, and
 `bias_corrected_theta`, all driven by the `SandwichKind` enum. From
 v0.86.0 they are reachable through ONE shared
 `sandwich_variance(kind, psi_a, psi, m_inv, n_obs, n_params)`
-dispatch, and 6 of the 22 `DoubleML*` estimators expose the
+dispatch, and **12 of the 22** `DoubleML*` estimators expose the
 estimator-level triple `sandwich_se(kind)` /
 `cluster_sandwich_se(cluster_ids)` / `bias_corrected_coef()`:
 `DoubleMLIRM`, `DoubleMLPLR`, `DoubleMLIIVM`, `DoubleMLPLIV`,
-`DoubleMLDID`, `DoubleMLCVAR`. (`DoubleMLRDD` and `DoubleMLBLP`
+`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`,
+`DoubleMLDIDCSBinary`, `DoubleMLCVAR`, `DoubleMLSSM`,
+`DoubleMLAPO`, `DoubleMLPLPR`. (`DoubleMLRDD` and `DoubleMLBLP`
 already emit HC0 intervals by calling
-`LinearRegression::sandwich_se` internally.) The remaining 16
-estimators are queued for v0.87+. Note the convention:
-`M_inv = [[1 / mean(psi_a)]]` and only `M_inv[0, 0]^2` enters the
-variance, and for these six estimators `mean(psi_a) < 0`, so the
-scalar leverage analog `h_ii = psi_a[i]^2 / mean(psi_a)` is
-negative -- HC2 / HC3 legitimately SHRINK the variance relative to
-HC0, and the SE ordering is `HC1 > HC0 > HC2 > HC3` rather than a
-monotonic widening.
+`LinearRegression::sandwich_se` internally.) Note the convention:
+the per-observation score is `psi[i] = psi_at(coef, psi_a, psi_b)[i]`
+= `coef * psi_a[i] + psi_b[i]` -- the estimating function
+`f(theta) = E[theta * psi_a + psi_b]` that `var_est` inverts, whose
+root is `theta_hat = -mean(psi_b) / mean(psi_a)` -- and
+`M_inv = [[1 / mean(psi_a)]] = 1 / (d f / d theta)`. Only
+`M_inv[0, 0]^2` enters the variance. The HC2 / HC3 leverage is the
+constant mean-regression diagonal `h_ii = 1 / n_obs` (fixed in
+v0.88.0), so `HC2 == HC1` and `HC3 == HC1^2 / HC0` and the ordering
+is `HC1 == HC2 > HC0` and `HC3 > HC2` -- a monotonic widening.
+See `expand_v090_test.mbt` for the score-order evidence and for the
+still-open factor between `se()` and `sandwich_se(HC0)`.
 
 **Coverage by class**:
 
@@ -381,14 +387,30 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `DoubleMLCVAR` (coverage 2 -> 6 of 22). `DoubleMLLPQ` is
   deliberately skipped: its Jacobian `deriv` is a `fit()` local and
   is never persisted, and its `psi` is the centered check function
-  at the bisection root with no `psi_a + coef * psi_b` split, so
+  at the bisection root with no `coef * psi_a + psi_b` split, so
   neither `psi_a` nor `M_inv` is recoverable post-fit. The 6 new
   white-box tests assert the HC1 `sqrt(n/(n-1))` identity, the
   independently recomputed HC0 variance, the leverage-driven
-  `HC1 > HC0 > HC2 > HC3` ordering, exact singleton-cluster
-  equality with the IID HC0, and the bias-correction identity --
-  not just finiteness. (The list above was not backfilled for
-  v0.70-v0.85; see `CHANGELOG.md` for those entries.)
+  ordering, exact singleton-cluster equality with the IID HC0, and
+  the bias-correction identity -- not just finiteness.
+- v0.90.0 verified counts: `moon test` 648 / 648 (native, wasm, js)
+  and 654 / 654 (wasm-gc). **BREAKING NUMERICAL CHANGE:**
+  `sandwich_se` / `cluster_sandwich_se` and every multiplier
+  `bootstrap()` t-stat change for the 11 affected estimators; `se()`
+  is unchanged and remains the reference. The sandwich family and
+  the bootstrap evaluated `E[psi_a + theta * psi_b]`, a different
+  function from `var_est`'s `E[theta * psi_a + psi_b]` whose root is
+  not `theta_hat`; on a fixed DGP the resulting `sandwich_se(HC0)`
+  was off by up to ~1100x. v0.90.0 adds one `psi_at(coef, psi_a,
+  psi_b)` helper in `sandwich.mbt` and routes all 13 psi-construction
+  sites through it. `DoubleMLDIDCrossSection` is deliberately NOT
+  routed: it is a projection (`argmin_theta`) estimator with the
+  offset / slope roles inverted and its own `se` formula.
+  `DoubleMLLPLR` also persists its IF components in the inverted
+  (offset, slope) order and is handled by passing the two arrays
+  swapped at its single call site -- its bootstrap output is
+  bit-identical to v0.89.0. (The list above was not backfilled for
+  v0.70-v0.85 or v0.87-v0.89; see `CHANGELOG.md` for those entries.)
 
 ##Attribution
 

@@ -1276,6 +1276,23 @@ pub fn DoubleMLDIDCrossSection::sensitivity_analysis_cluster(
 ///     `M_inv[0, 0]^2` enters the variance, so the sign of
 ///     the (up-to-sign) Jacobian inverse is irrelevant.
 ///
+/// v0.90.0: the score order here is DELIBERATELY NOT
+/// `psi_at(coef, psi_a, psi_b)`. `DoubleMLDIDCrossSection` is a
+/// PROJECTION estimator, not a `var_est` Z-estimator: its `fit`
+/// sets `theta_hat = -<psi_a, psi_b> / ||psi_b||^2` (the argmin of
+/// `sum_i (psi_a[i] + theta * psi_b[i])^2`) and derives its own
+/// `se = sqrt(sum(psi(theta_hat)^2)) / (n * |mean(psi_b)|)`.
+/// Its `psi_a` is therefore the OFFSET and its `psi_b` the SLOPE,
+/// the opposite of every estimator whose `fit` calls `var_est`
+/// (where `psi_a` is the Jacobian row and `psi_b` the offset, and
+/// `theta_hat = -mean(psi_b) / mean(psi_a)`).
+/// v0.90.0 fixes the `var_est` family to `psi_at`; flipping this
+/// estimator too would break the internal consistency between its
+/// own `fit`, `se()` and `bootstrap`. Its `M_inv` is likewise not
+/// `1 / mean(psi_a)` in any principled sense (the argmin has
+/// vanishing first derivative), and is left as-is pending a
+/// separate decision.
+///
 /// The variance's `n_obs` is `self.psi_a.length()` (the
 /// length `fit(...)` persists, equal to `self.data.n_obs()`).
 ///

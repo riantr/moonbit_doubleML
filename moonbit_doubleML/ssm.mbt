@@ -296,7 +296,7 @@ pub fn DoubleMLSSM::predictions_g_d0(self : DoubleMLSSM) -> Array[Double] {
 /// v0.64.0+: multiplier bootstrap for `DoubleMLSSM`. The
 /// per-observation influence function is
 ///
-///   `psi[i] = psi_a[i] + theta * psi_b[i]`
+///   `psi[i] = theta * psi_a[i] + psi_b[i]`
 ///
 /// where `psi_a[i] = -1` (constant) and `psi_b[i]` is the
 /// MAR-score element defined in the file header. Routes through
@@ -771,7 +771,7 @@ pub fn DoubleMLSSM::fit(
 ///   - `psi_a`  = `self.psi_a` -- the constant MAR-score
 ///     treatment term `-1`, so `mean(psi_a) = -1` by
 ///     construction and `M_inv = -1`.
-///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///   - `psi`    = `psi_at(self.coef, self.psi_a, self.psi_b)`
 ///     -- the per-observation influence function at the
 ///     fitted `coef`, matching the `psi[i] = psi_a[i] +
 ///     theta * psi_b[i]` form documented on
@@ -792,10 +792,7 @@ pub fn DoubleMLSSM::sandwich_se(
     require(self.fitted)
     let n = self.psi_a.length()
     require(n == self.psi_b.length())
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -827,10 +824,7 @@ pub fn DoubleMLSSM::cluster_sandwich_se(
     let n = self.psi_a.length()
     require(n == self.psi_b.length())
     require(cluster_ids.length() == n)
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)

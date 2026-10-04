@@ -652,7 +652,7 @@ fn DoubleMLPLIV::fit_cluster(
 /// v0.61.0+: multiplier bootstrap for `DoubleMLPLIV`. The
 /// per-observation influence function is
 ///
-///   psi[i] = psi_a[i] + theta * psi_b[i]
+///   psi[i] = theta * psi_a[i] + psi_b[i]
 ///          = -w*v + theta * v*u
 ///
 /// where `w = d - r_hat`, `v = z - m_hat`, `u = y - l_hat`
@@ -696,15 +696,14 @@ pub fn DoubleMLPLIV::bootstrap(
           m,
         )
     }
-    // Compute psi[i] = psi_a[i] + coef * psi_b[i] and
+    // Compute psi = psi_at(coef, psi_a, psi_b) and
     // ss_psi = sum(psi[i]^2) once. Both `psi_a` and `psi_b`
     // were populated by `fit(...)` from the last rep's
     // nuisances.
-    let psi : Array[Double] = Array::make(n, 0.0)
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mut ss_psi = 0.0
     for i = 0; i < n; i = i + 1 {
-      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
-      psi[i] = psi_i
+      let psi_i = psi[i]
       ss_psi = ss_psi + psi_i * psi_i
     }
     let n_d = n.to_double()
@@ -875,11 +874,11 @@ pub fn DoubleMLPLIV::sensitivity_analysis_cluster(
 ///   - `psi_a`  = `self.psi_a` -- the partialling-out
 ///     treatment score `-w_hat * v_hat` with
 ///     `w_hat = d - r_hat`, `v_hat = z - m_hat`.
-///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///   - `psi`    = `psi_at(self.coef, self.psi_a, self.psi_b)`
 ///     -- the per-observation influence function evaluated at
 ///     the fitted `coef`, where `psi_b = v_hat * u_hat` is the
 ///     partialling-out outcome score with `u_hat = y - l_hat`.
-///     Same `psi_a + coef * psi_b` shape as IRM / PLR.
+///     Same `psi_at` score order as IRM / PLR.
 ///   - `M_inv`  = `[[1 / mean(psi_a)]]` (1x1). Only
 ///     `M_inv[0, 0]^2` enters the variance, so the sign of
 ///     the (up-to-sign) Jacobian inverse is irrelevant.
@@ -892,10 +891,7 @@ pub fn DoubleMLPLIV::sandwich_se(
   try {
     require(self.fitted)
     let n = self.n_obs()
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -924,10 +920,7 @@ pub fn DoubleMLPLIV::cluster_sandwich_se(
     require(self.fitted)
     let n = self.n_obs()
     require(cluster_ids.length() == n)
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)

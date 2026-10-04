@@ -803,16 +803,29 @@ pub fn DoubleMLLPLR::fit(
 /// per-observation influence function (raw score at the fitted
 /// `coef_`) is
 ///
-///   psi[i] = psi_a[i] + coef * psi_b[i]
-///          = (sc.psi[i] - theta_hat * sc.psi_deriv[i])
-///            + theta_hat * sc.psi_deriv[i]
+///   psi[i] = coef * sc.psi_deriv[i] + (sc.psi[i] - coef * sc.psi_deriv[i])
 ///          = sc.psi[i]
 ///
-/// where `psi_a` (offset at theta_hat) and `psi_b` (slope
-/// `sc.psi_deriv`) are populated by `fit(...)` from the LAST
-/// rep's cross-fitted nuisances. The bootstrap draws
-/// `n_rep_boot` weight vectors of length `n_obs` from the chosen
-/// multiplier distribution, and stores
+/// NOTE the argument order below. LPLR persists its IF
+/// components in the INVERTED (offset, slope) order relative to
+/// every other estimator in the package: `self.psi_a` is the
+/// OFFSET at `theta_hat` (`sc.psi - theta_hat * sc.psi_deriv`) and
+/// `self.psi_b` is the SLOPE (`sc.psi_deriv`, the actual
+/// `d/dtheta` term). `psi_at(coef, psi_a, psi_b)` expects
+/// `(coefficient, offset)`, so LPLR passes `(self.psi_b,
+/// self.psi_a)` -- slope as `psi_a`, offset as `psi_b`. That
+/// recovers `psi_at(coef, sc.psi_deriv, sc.psi - coef *
+/// sc.psi_deriv) = sc.psi[i]`, the raw score at the fitted theta.
+///
+/// v0.90.0 makes this explicit. v0.75.0 - v0.89.0 called the
+/// shared helper with the arguments the other way round plus the
+/// old (swapped) score order, and the two wrongs cancelled; the
+/// arithmetic above shows the cancellation is exact, so the
+/// numeric output is unchanged by v0.90.0. Routing through
+/// `psi_at` means the cancellation is no longer load-bearing.
+///
+/// The bootstrap draws `n_rep_boot` weight vectors of length
+/// `n_obs` from the chosen multiplier distribution, and stores
 /// `boot_t_stat[b] = sum_i w[b, i] * psi[i] /
 /// (sqrt(n) * se_psi)` where `se_psi = sqrt(mean(psi^2))`.
 ///
@@ -836,8 +849,8 @@ pub fn DoubleMLLPLR::bootstrap(
     )
     require(n_rep_boot >= 2)
     let boot_t_stat = generic_bootstrap_t_stat(
-      self.psi_a,
       self.psi_b,
+      self.psi_a,
       self.coef_,
       method_name,
       n_rep_boot,

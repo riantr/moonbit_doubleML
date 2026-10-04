@@ -10,7 +10,7 @@
 //   3. require(n_rep_boot >= 2)
 //   4. weights = draw_bootstrap_weights(method_name, n_rep_boot,
 //      n_obs, seed) catch ... abort(...)
-//   5. psi[i] = psi_a[i] + coef * psi_b[i]
+//   5. psi[i] = psi_at(coef, psi_a, psi_b)[i]  (= coef*psi_a + psi_b)
 //   6. se_psi = sqrt(mean(psi^2))
 //   7. if se_psi <= 0: return zeros
 //   8. boot = did_bootstrap_t_stat(weights, psi, [se_psi],
@@ -21,9 +21,12 @@
 // each new estimator's `bootstrap()` is ~15 lines instead of ~50.
 //
 // Three inner variants cover the existing estimator shapes:
-//   - generic_bootstrap_t_stat: single-theta, psi = psi_a +
-//     coef * psi_b (PLR/IRM/PLIV/IIVM/APO/APOS/SSM/DID/DIDBinary/
-//     DIDCSBinary).
+//   - generic_bootstrap_t_stat: single-theta, psi =
+//     psi_at(coef, psi_a, psi_b) (CVAR/IRM/IIVM/PLIV/APO/APOS/PLPR/
+//     SSM/DID/DIDCSBinary, plus LPLR with its (offset, slope)
+//     fields passed the other way round). v0.90.0: the
+//     signature is unchanged; only the score order moved from
+//     `psi_a + coef * psi_b` to `coef * psi_a + psi_b`.
 //   - generic_bootstrap_single_psi: single-theta with a centered
 //     IF (LPQ/PQ; QTE reuses this with a flat
 //     [n_quantiles * n_obs] psi matrix and se_flat of length
@@ -59,12 +62,16 @@ fn generic_bootstrap_t_stat(
       ")",
     )
   }
-  // Combine psi_a + coef * psi_b and track ss_psi for se_psi.
-  let psi : Array[Double] = Array::make(n_obs, 0.0)
+  // Evaluate the score at `coef` and track ss_psi for se_psi.
+  // v0.90.0: the score is `psi_at(coef, psi_a, psi_b)` --
+  // `coef * psi_a + psi_b` -- the same function of `coef` that
+  // `var_est` integrates for `se()`. v0.64.0 - v0.89.0 used
+  // `psi_a + coef * psi_b`, which evaluates a different function
+  // whose root is not `coef`.
+  let psi = psi_at(coef, psi_a, psi_b)
   let mut ss_psi = 0.0
   for i = 0; i < n_obs; i = i + 1 {
-    let psi_i = psi_a[i] + coef * psi_b[i]
-    psi[i] = psi_i
+    let psi_i = psi[i]
     ss_psi = ss_psi + psi_i * psi_i
   }
   let n_d = n_obs.to_double()

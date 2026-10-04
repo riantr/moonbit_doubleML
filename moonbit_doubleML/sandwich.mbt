@@ -134,6 +134,56 @@ pub fn SandwichKind::hc3() -> SandwichKind {
 }
 
 // ---------------------------------------------------------------------------
+// Per-observation score evaluation (single source of truth)
+// ---------------------------------------------------------------------------
+
+///|
+/// Evaluate the per-observation estimating-function score at
+/// `coef`, for the package convention documented in `var_est.mbt`:
+///
+///     psi[i] = coef * psi_a[i] + psi_b[i]
+///
+/// i.e. the score of `f(theta) = E[theta * psi_a + psi_b]`, whose
+/// root is `theta_hat = -mean(psi_b) / mean(psi_a)` and whose
+/// Jacobian is `J = d f / d theta = mean(psi_a)`. `M_inv = 1 / J`
+/// (the `[[1 / mean(psi_a)]]` every sandwich method builds) is
+/// consistent with exactly this convention.
+///
+/// Added in v0.90.0. v0.64.0 - v0.89.0 built the score inline in 13
+/// places as `psi_a[i] + coef * psi_b[i]` -- the roles of `psi_a`
+/// (the Jacobian / coefficient row) and `psi_b` (the offset) were
+/// swapped, so the sandwich and multiplier-bootstrap families
+/// evaluated `g(theta) = E[psi_a + theta * psi_b]`, a DIFFERENT
+/// function whose root `-E[psi_a] / E[psi_b]` is not `theta_hat`.
+/// On a fixed DGP the resulting `sandwich_se(HC0)` differed from
+/// the analytic `se()` by three orders of magnitude. Thirteen inline
+/// copies of one algebraic expression will drift, so the expression
+/// now lives here and every caller routes through it.
+///
+/// `psi_a` and `psi_b` must share the same non-zero length; the call
+/// aborts via `require(...)` otherwise. Returns a fresh
+/// `Array[Double]` of that length.
+pub fn psi_at(
+  coef : Double,
+  psi_a : Array[Double],
+  psi_b : Array[Double],
+) -> Array[Double] {
+  try {
+    require(psi_a.length() == psi_b.length())
+    require(psi_a.length() >= 1)
+    let n = psi_a.length()
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = coef * psi_a[i] + psi_b[i]
+    }
+    psi
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Scalar sandwich variances
 // ---------------------------------------------------------------------------
 

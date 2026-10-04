@@ -618,7 +618,7 @@ pub fn DoubleMLAPO::has_cache(self : DoubleMLAPO) -> Bool {
 ///     treatment term, structurally the constant `-1` (the
 ///     potential-outcome score has no treatment-side variation),
 ///     so `mean(psi_a) == -1` and `M_inv = [[-1.0]]`.
-///   - `psi`   = `self.psi_a[i] + self.coef * self.psi_b[i]` --
+///   - `psi`   = `psi_at(self.coef, self.psi_a, self.psi_b)` --
 ///     the per-observation influence function at the fitted
 ///     `coef`, with `psi_b` the IPW-centred score
 ///     `g[i] + treated[i] * (y[i] - g[i]) / m[i]`. Matches the
@@ -642,10 +642,7 @@ pub fn DoubleMLAPO::sandwich_se(
     require(self.fitted)
     let n = self.psi_a.length()
     require(n == self.psi_b.length())
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -679,10 +676,7 @@ pub fn DoubleMLAPO::cluster_sandwich_se(
     let n = self.psi_a.length()
     require(n == self.psi_b.length())
     require(cluster_ids.length() == n)
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -733,7 +727,7 @@ pub fn DoubleMLAPO::bias_corrected_coef(self : DoubleMLAPO) -> Double {
 /// v0.61.0+: multiplier bootstrap for `DoubleMLAPO`. The
 /// per-observation influence function is
 ///
-///   psi[i] = psi_a[i] + theta * psi_b[i]
+///   psi[i] = theta * psi_a[i] + psi_b[i]
 ///          = -1 + theta * pb[i]
 ///
 /// where `pb[i] = g[i] + treated[i] * (y[i] - g[i]) / m[i]`
@@ -777,15 +771,14 @@ pub fn DoubleMLAPO::bootstrap(
           m,
         )
     }
-    // Compute psi[i] = psi_a[i] + coef * psi_b[i] and
+    // Compute psi = psi_at(coef, psi_a, psi_b) and
     // ss_psi = sum(psi[i]^2) once. `psi_a[i] = -1` and
     // `psi_b` is the IPW-centred potential-outcome score,
     // both populated by `fit(...)`.
-    let psi : Array[Double] = Array::make(n, 0.0)
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mut ss_psi = 0.0
     for i = 0; i < n; i = i + 1 {
-      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
-      psi[i] = psi_i
+      let psi_i = psi[i]
       ss_psi = ss_psi + psi_i * psi_i
     }
     let n_d = n.to_double()

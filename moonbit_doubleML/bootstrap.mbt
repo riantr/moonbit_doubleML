@@ -13,7 +13,7 @@
 //      `psi_matrix` flat array (length
 //      `n_groups * n_periods * n_obs`).
 //   2. `DoubleMLDIDCrossSection` (cross-section DID) —
-//      `n_thetas = 1` case; `psi_1 = psi_a + coef * psi_b`
+//      `n_thetas = 1` case; `psi_1 = coef * psi_a + psi_b`
 //      is a length-`n_obs` array; `se_1 = sqrt(mean(psi^2))`.
 //
 // The common core reduces to a flat-row-major matrix
@@ -36,7 +36,7 @@
 ///     `psi_matrix[flat * n_obs : (flat+1) * n_obs]` for
 ///     each group-time `(gi, pi)`.
 ///     For `DoubleMLDIDCrossSection`, this is a single
-///     row `[n_obs]` of `psi_a[i] + coef * psi_b[i]`.
+///     row `[n_obs]` of `coef * psi_a[i] + psi_b[i]`.
 ///   - `se : Array[Double]` — length `n_thetas`. The
 ///     standard error of the per-cell estimate. For DIDMulti,
 ///     `se[k] = se_matrix[gi * n_periods + pi]`. For

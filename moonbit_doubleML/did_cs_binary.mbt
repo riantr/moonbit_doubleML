@@ -1028,7 +1028,7 @@ pub fn DoubleMLDIDCSBinary::fit(
 /// v0.64.0+: multiplier bootstrap for `DoubleMLDIDCSBinary`.
 /// The per-observation influence function is
 ///
-///   `psi[i] = psi_a[i] + theta * psi_b[i]`
+///   `psi[i] = theta * psi_a[i] + psi_b[i]`
 ///
 /// where `psi_a[i]` and `psi_b[i]` are the per-row
 /// ATT-score elements (computed in `fit` on the post-subset
@@ -1160,7 +1160,7 @@ pub fn DoubleMLDIDCSBinary::sensitivity_analysis_cluster(
 ///     in-sample-normalized `-d / mean(d)`). Both are
 ///     non-positive, so `mean(psi_a) <= 0` and exactly `-1`
 ///     under in-sample normalization.
-///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///   - `psi`    = `psi_at(self.coef, self.psi_a, self.psi_b)`
 ///     -- the per-observation influence function at the
 ///     fitted `coef`, matching the `psi[i] = psi_a[i] +
 ///     theta * psi_b[i]` form documented on
@@ -1184,10 +1184,7 @@ pub fn DoubleMLDIDCSBinary::sandwich_se(
     require(self.fitted)
     let n = self.psi_a.length()
     require(n == self.psi_b.length())
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -1221,10 +1218,7 @@ pub fn DoubleMLDIDCSBinary::cluster_sandwich_se(
     let n = self.psi_a.length()
     require(n == self.psi_b.length())
     require(cluster_ids.length() == n)
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)

@@ -9,6 +9,146 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.90.0] -- evaluate psi at the estimate in the sandwich + bootstrap paths
+
+**BREAKING NUMERICAL CHANGE.** `sandwich_se` / `cluster_sandwich_se`
+and every multiplier `bootstrap()` t-stat change for the 11
+estimators whose `fit` routes through `var_est`. `se()` is unchanged
+and is the reference. `DoubleMLLPLR` is numerically unchanged.
+
+### Fixed
+
+- The per-observation score in the sandwich and bootstrap paths was
+  built as `psi_a[i] + coef * psi_b[i]` through v0.89.0. The
+  package's estimating function is the one `var_est.mbt` documents
+  and implements:
+  `f(theta) = E[theta * psi_a + psi_b]`, root
+  `theta_hat = -mean(psi_b) / mean(psi_a)`, Jacobian
+  `J = d f / d theta = mean(psi_a)`. The sandwich family instead
+  evaluated `g(theta) = E[psi_a + theta * psi_b]`, a **different**
+  function whose root `-E[psi_a] / E[psi_b]` is not `theta_hat`.
+  At the solution `mean(coef * psi_a + psi_b) = 0` by construction,
+  but `mean(psi_a + coef * psi_b)` is not zero in general, so the
+  bootstrap resampled a score with a large spurious mean and the
+  sandwich integrated the wrong quadratic form.
+- `M_inv = [[1 / mean(psi_a)]]` was already correct -- it is
+  `1 / (d f / d theta)` -- and is untouched.
+
+### Evidence (all measured, not derived)
+
+On a fixed DGP (`n = 400`, `n_folds = 2`, `n_rep = 1`, `seed =
+3141`; `DoubleMLData`):
+
+| estimator | `se()` | `sandwich_se(HC0)` v0.89.0 | `sandwich_se(HC0)` v0.90.0 | ratio v0.89.0 |
+|---|---|---|---|---|
+| `DoubleMLIRM` | `0.010826447108546225` | `2.4301613771745836` | `0.21652894217092453` | 224.4x |
+| `DoubleMLAPO` | `0.00903113134232221` | `9.896284488818608` | `0.1806226268464442` | 1095.8x |
+| `DoubleMLPLR` | `0.020629646119313564` | `4.284331370173791` | `0.19759510529621752` | 207.7x |
+
+- The falsifiable invariant is on the estimators whose per-observation
+  `psi_a` is the CONSTANT `-1` (`DoubleMLIRM` / `DoubleMLAPO` /
+  `DoubleMLSSM` / `DoubleMLCVAR`): with the corrected score order
+  `se() == sandwich_se(HC0) / sqrt(n)` to 1e-15 relative. It fails
+  by the factors in the table against v0.89.0. Pinned by
+  `se_matches_sandwich_hc0_for_constant_psi_a`.
+- The multiplier bootstrap t-stat
+  `sum_i w[b,i] * psi[i] / (sqrt(n) * sqrt(mean(psi^2)))` is
+  standardised by the psi's own RMS, so its **distribution** is
+  `N(0, 1)` under either order and cannot detect the bug: the
+  v0.89.0 t-stat SD on the IRM DGP is `1.0561`, indistinguishable
+  from 1. What is order-sensitive is the realisation for a given
+  weight draw, so `bootstrap_se_agrees_with_analytic_se` pins it
+  with a SEEDED bit-exact comparison: the first t-stat moves from
+  `-0.42061907999242576` (old order) to `0.9735330144697445`
+  (corrected order).
+- External cross-check: `validate_irm_with_python.py` against
+  upstream `doubleml-for-py` 0.11.3 gives `se = 0.100374472072` vs
+  the MoonBit-formula hand-rolled reference `0.098408723327` (2%
+  apart, model-class noise only), confirming `se()`'s order. (The
+  script's own `moon run examples/main` sub-step fails on an
+  unrelated target-default issue: that package only supports
+  `native`, the script invokes it without `--target native`.)
+
+### Added
+
+- `psi_at(coef, psi_a, psi_b)` in `moonbit_doubleML/sandwich.mbt` --
+  the single source of truth for the per-observation score at the
+  estimate. The expression previously appeared inline in **13**
+  places; 13 textual copies of one algebraic expression drift, so
+  every call site now routes through the helper. It aborts via
+  `require` on a length mismatch, matching every other precondition
+  in the file.
+- 8 white-box tests in `moonbit_doubleML/expand_v090_test.mbt`:
+  the constant-`psi_a` identity, the seeded bootstrap order check,
+  `psi_at` vs `var_est`, the `bias_per_obs` regression pin, the
+  v0.88 HC identities on three estimators (IRM constant `psi_a`;
+  PLR and IIVM non-constant), and the LPLR inverted-role handling.
+
+### Changed
+
+- `bootstrap_helper.mbt`'s `generic_bootstrap_t_stat` now builds its
+  psi with `psi_at`. Its signature is unchanged. Callers:
+  CVAR, DID, DIDCSBinary, LPLR, PLPR, SSM.
+- `DoubleMLDIDCrossSection` is **deliberately not** routed through
+  `psi_at`. It is a projection (`argmin_theta`) estimator, not a
+  `var_est` Z-estimator: its `fit` sets
+  `theta_hat = -<psi_a, psi_b> / ||psi_b||^2` and derives its own
+  `se = sqrt(sum(psi(theta_hat)^2)) / (n * |mean(psi_b)|)`, so its
+  `psi_a` is the OFFSET and its `psi_b` the SLOPE. Flipping it
+  would break the internal consistency between its own `fit`, `se()`
+  and `bootstrap`. The reason is now recorded in the file.
+- Doc comments in 12 files that stated the old formula were
+  corrected.
+
+### Not changed (deliberate, with numbers)
+
+- **The order fix alone does not make `se()` and `sandwich_se(HC0)`
+  interchangeable.** They still differ by `sqrt(n)` for constant
+  `psi_a` (`se() == sandwich_se(HC0) / sqrt(n)`, exact) and by a
+  data-dependent factor otherwise (PLR: `9.578x`; LPLR: `0.879x`).
+  The cause is a second, independent defect in the accumulator:
+  `sandwich_variance_hc0` sums `(psi_a[i] * psi[i])^2` where the DML
+  moment being inverted is a **mean** moment whose implicit
+  regressor is the constant `1`, so the correct accumulation is
+  `sum_i psi[i]^2`. Verified numerically: for PLR
+  `M_inv^2 * sum(psi(theta_hat)^2) / n == se()` to 1e-15
+  (`0.020629646119313567` vs `0.020629646119313564`), while the
+  shipped accumulator gives `0.19759510529621752`. For constant
+  `psi_a` the factor is exactly `c^2 * n`. Fixing it means
+  rewriting `sandwich_variance_hc0/1/2/3` +
+  `cluster_sandwich_variance` and the reference recomputations in
+  the v0.86-v0.89 test files -- a separate decision, not smuggled
+  into a psi-order release.
+- `bias_corrected_coef` is untouched. Its
+  `bias_per_obs[i] = psi_b[i] - coef * psi_a[i]` is NOT
+  `var_est`'s score at the estimate (which is
+  `psi_b[i] + coef * psi_a[i]`); it is the score at `-coef`, i.e.
+  the negated-argument form `E[psi_b - theta * psi_a]` whose root is
+  `+mean_b / mean_a`, not `var_est`'s `-mean_b / mean_a`. But under
+  `var_est`'s convention the score at the estimate is identically
+  mean-zero, so `mean(bias_per_obs) = 0` and any correction built
+  from it is a guaranteed no-op (on IRM / APO the current form
+  returns `3 * coef`). Making the accessor vacuous is a design
+  decision, not a mechanical fix. The current form is pinned as a
+  deliberate regression pin by `bias_corrected_coef_sign`, with the
+  correct sign recorded alongside.
+- `DoubleMLLPLR` gets no `sandwich_se` in this release. Its v0.87.0
+  blocker IS resolved -- `mean(slope) = -0.036387245464012986` is a
+  genuine Jacobian, whereas `mean(offset) = 0.01899446402902459`
+  (the value v0.87.0 would have fed into `M_inv`) is a
+  catastrophic-cancellation residual, and the old code inflated HC0
+  by ~60x with it. But with the corrected order and the true
+  Jacobian its HC0 lands at `0.879 * se()` -- a data-dependent
+  factor from the open accumulator defect, not a principled match --
+  so wiring it up would ship a wrong number. LPLR's `bootstrap`
+  output is bit-identical to v0.89.0: the old and new call sites
+  both evaluate `sc.psi`, previously by two cancelling errors and
+  now by one correct expression. Pinned by
+  `lplr_inverted_roles_are_handled`.
+- `var_est.mbt` behaviour, the v0.88.0 HC2 / HC3 leverage
+  (`h_ii = 1 / n_obs`), the `moon.mod` import block, and the shelved
+  GPU integration are all untouched.
+
 ## [0.89.0] -- sandwich variance for the APO family + DID binary wrapper
 
 Extends the v0.86.0 `sandwich_se` / `cluster_sandwich_se` /

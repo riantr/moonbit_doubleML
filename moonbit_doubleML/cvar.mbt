@@ -1075,7 +1075,7 @@ pub fn DoubleMLCVAR::fit(
 /// v0.75.0+: multiplier bootstrap for `DoubleMLCVAR`. The
 /// per-observation influence function is
 ///
-///   psi[i] = psi_a[i] + theta * psi_b[i]
+///   psi[i] = theta * psi_a[i] + psi_b[i]
 ///          = -1 + theta * psi_b[i]
 ///
 /// where `psi_b[i] = 1{d==treatment} * (g_target - g_hat) /
@@ -1146,13 +1146,13 @@ pub fn DoubleMLCVAR::bootstrap(
 ///   - `psi_a`  = `self.psi_a` -- the constant `-1` IRM-style
 ///     Riesz representer, so `mean(psi_a) = -1` and
 ///     `M_inv = -1`.
-///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///   - `psi`    = `psi_at(self.coef, self.psi_a, self.psi_b)`
 ///     -- the per-observation influence function evaluated at
 ///     the fitted `coef`, where `psi_b` carries the IPW
 ///     weighting:
 ///     `1{d == treatment} * (g_target - g_hat) / m_hat + g_hat`
 ///     with `g_target = max(coef, (y - q * coef) / (1 - q))`.
-///     Same `psi_a + coef * psi_b` shape as IRM / PLR.
+///     Same `psi_at` score order as IRM / PLR.
 ///   - `M_inv`  = `[[1 / mean(psi_a)]]` (1x1). Only
 ///     `M_inv[0, 0]^2` enters the variance, so the sign of
 ///     the (up-to-sign) Jacobian inverse is irrelevant.
@@ -1165,10 +1165,7 @@ pub fn DoubleMLCVAR::sandwich_se(
   try {
     require(self.fitted)
     let n = self.n_obs()
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -1197,10 +1194,7 @@ pub fn DoubleMLCVAR::cluster_sandwich_se(
     require(self.fitted)
     let n = self.n_obs()
     require(cluster_ids.length() == n)
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)

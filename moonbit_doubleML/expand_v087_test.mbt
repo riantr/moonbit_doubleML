@@ -13,9 +13,13 @@
 // (`sc.psi_deriv`, i.e. the actual `d/dtheta` term). The
 // package-wide sandwich convention is
 //
-//     psi[i]   = psi_a[i] + coef * psi_b[i]
+//     psi[i]   = coef * psi_a[i] + psi_b[i]
 //     M_inv    = [[1 / mean(psi_a)]]
 //     var(HC0) = M_inv[0,0]^2 * sum_i (psi_a[i] * psi[i])^2 / n
+//
+// (v0.90.0: the score order was `psi_a[i] + coef * psi_b[i]`
+// through v0.89.0 -- see `expand_v090_test.mbt` for the
+// evidence.)
 //
 // which requires `psi_a` to carry the Jacobian row. For LPLR
 // `mean(psi_a)` is a catastrophic-cancellation residual
@@ -79,10 +83,39 @@
 // ---------------------------------------------------------------------------
 
 ///|
-/// Per-observation influence function `psi[i] = psi_a[i] +
-/// coef * psi_b[i]`, recomputed in the test from the fitted
-/// estimator's persisted IF components.
+/// Per-observation influence function `psi[i] = coef * psi_a[i]
+/// + psi_b[i]`, recomputed in the test from the fitted
+/// estimator's persisted IF components. v0.90.0 flipped the
+/// order (it was `psi_a[i] + coef * psi_b[i]` through
+/// v0.89.0). Deliberately NOT routed through the production
+/// `psi_at` helper, so a regression in `psi_at` cannot move
+/// this reference and the estimator's own value together.
 fn expand_v087_psi(
+  psi_a : Array[Double],
+  psi_b : Array[Double],
+  coef : Double,
+  n_obs : Int,
+) -> Array[Double] {
+  let psi : Array[Double] = Array::make(n_obs, 0.0)
+  for i = 0; i < n_obs; i = i + 1 {
+    psi[i] = coef * psi_a[i] + psi_b[i]
+  }
+  psi
+}
+
+///|
+/// `DoubleMLDIDCrossSection`'s OWN score order. This estimator is a
+/// projection (`argmin_theta`) estimator, not a `var_est`
+/// Z-estimator: its `fit` sets
+/// `theta_hat = -<psi_a, psi_b> / ||psi_b||^2` and derives
+/// `se = sqrt(sum(psi(theta_hat)^2)) / (n * |mean(psi_b)|)`, so its
+/// `psi_a` is the OFFSET and its `psi_b` the SLOPE, the opposite of
+/// the `var_est` family. v0.90.0 therefore routes it through
+/// neither `psi_at` nor `expand_v087_psi`; it gets its own
+/// reference helper here. Changing it to the `var_est` order would
+/// break the consistency between its own `fit`, `se()` and
+/// `bootstrap`.
+fn expand_v087_psi_projection(
   psi_a : Array[Double],
   psi_b : Array[Double],
   coef : Double,
@@ -538,7 +571,9 @@ test "did_cross_section_sandwich_se_smoke" {
   let m_val = 1.0 / mean(psi_a)
   inspect(m_val < 0.0, content="true")
   inspect(mean(psi_a) < 0.0, content="true")
-  let psi = expand_v087_psi(psi_a, psi_b, fitted.coef(), n)
+  // DIDCrossSection keeps its own (offset, slope) score order --
+  // see expand_v087_psi_projection.
+  let psi = expand_v087_psi_projection(psi_a, psi_b, fitted.coef(), n)
   let se_hc0 = fitted.sandwich_se(SandwichKind::hc0())
   inspect(
     expand_v087_close(se_hc0, expand_v087_ref_hc0(psi_a, psi, m_val, n).sqrt()),
@@ -620,6 +655,8 @@ test "did_cs_binary_sandwich_se_smoke" {
   inspect(mean(psi_a) < 0.0, content="true")
   let m_val = 1.0 / mean(psi_a)
   inspect(m_val < 0.0, content="true")
+  // DIDCSBinary IS a var_est estimator, so it uses the corrected
+  // coef * psi_a + psi_b score order (unlike DIDCrossSection above).
   let psi = expand_v087_psi(psi_a, psi_b, fitted.coef(), n)
   let se_hc0 = fitted.sandwich_se(SandwichKind::hc0())
   inspect(

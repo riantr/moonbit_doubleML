@@ -51,7 +51,7 @@ pub struct DoubleMLPLR {
   se : Double
   fitted : Bool
   // v0.61.0+: per-observation influence function components
-  // `psi_a[i] + theta * psi_b[i]` for the multiplier bootstrap.
+  // `theta * psi_a[i] + psi_b[i]` for the multiplier bootstrap.
   // Populated by `fit(...)` (and re-cleared on re-fit). Length `n_obs`.
   psi_a : Array[Double]
   psi_b : Array[Double]
@@ -780,7 +780,7 @@ fn DoubleMLPLR::fit_cluster(
 /// v0.61.0+: multiplier bootstrap for `DoubleMLPLR`. The
 /// per-observation influence function is
 ///
-///   psi[i] = psi_a[i] + theta * psi_b[i]
+///   psi[i] = theta * psi_a[i] + psi_b[i]
 ///
 /// (computed at the fitted `coef` from the last rep's
 /// cross-fitted nuisances `l_hat` / `m_hat`). Draws
@@ -801,7 +801,7 @@ fn DoubleMLPLR::fit_cluster(
 /// on an un-fit model aborts with `PreconditionError`. The
 /// helper is `did_bootstrap_t_stat` (v0.55.0 extracted from
 /// `DoubleMLDIDCrossSection::bootstrap`); PLR is the
-/// `n_thetas=1` case with `psi[i] = psi_a[i] + coef * psi_b[i]`.
+/// `n_thetas=1` case with `psi[i] = psi_at(coef, psi_a, psi_b)[i]`.
 pub fn DoubleMLPLR::bootstrap(
   self : DoubleMLPLR,
   method_name? : String = "normal",
@@ -826,16 +826,15 @@ pub fn DoubleMLPLR::bootstrap(
           m,
         )
     }
-    // Compute psi[i] = psi_a[i] + coef * psi_b[i] and
+    // Compute psi = psi_at(coef, psi_a, psi_b) and
     // ss_psi = sum(psi[i]^2) once. `psi_a` / `psi_b` were
     // populated by `fit(...)` from the last rep's nuisances
     // (matching `l_hat` / `m_hat`); the bootstrap is run at the
     // already-fitted `coef`, no re-estimation.
-    let psi : Array[Double] = Array::make(n, 0.0)
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mut ss_psi = 0.0
     for i = 0; i < n; i = i + 1 {
-      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
-      psi[i] = psi_i
+      let psi_i = psi[i]
       ss_psi = ss_psi + psi_i * psi_i
     }
     let n_d = n.to_double()
@@ -945,10 +944,7 @@ pub fn DoubleMLPLR::sandwich_se(
   try {
     require(self.fitted)
     let n = self.n_obs()
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -972,7 +968,7 @@ pub fn DoubleMLPLR::sandwich_se(
 /// `DoubleMLIRM::cluster_sandwich_se`; routes through
 /// `cluster_sandwich_variance` with the per-observation
 /// PLR `psi_a` (`-v_hat^2`) and the per-observation IF
-/// `psi[i] = psi_a[i] + coef * psi_b[i]`.
+/// `psi[i] = psi_at(coef, psi_a, psi_b)[i]`.
 ///
 /// Preconditions: `self.fitted`,
 /// `cluster_ids.length() == n_obs`.
@@ -984,10 +980,7 @@ pub fn DoubleMLPLR::cluster_sandwich_se(
     require(self.fitted)
     let n = self.n_obs()
     require(cluster_ids.length() == n)
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)

@@ -173,7 +173,7 @@ pub struct DoubleMLDID {
   coef : Double
   se : Double
   // v0.15.0+: per-observation influence function components.
-  // `psi_a[i] + theta * psi_b[i]` is the per-observation
+  // `theta * psi_a[i] + psi_b[i]` is the per-observation
   // contribution to the DML theta estimator. Length `n_obs` (the
   // wide-format data). `psi_a` has mean `-1` (by construction
   // for the observational / experimental score); `psi_b` has
@@ -648,7 +648,7 @@ pub fn DoubleMLDID::fit(
 /// v0.64.0+: multiplier bootstrap for `DoubleMLDID`. The
 /// per-observation influence function is
 ///
-///   `psi[i] = psi_a[i] + theta * psi_b[i]`
+///   `psi[i] = theta * psi_a[i] + psi_b[i]`
 ///
 /// where `psi_a[i] = -d[i] / p_hat` (or `-1` for the
 /// experimental score) and `psi_b[i]` is the per-observation
@@ -775,7 +775,7 @@ pub fn DoubleMLDID::sensitivity_analysis_cluster(
 ///     score, `-1` for the experimental score, or
 ///     `-d / mean(d)` under in-sample normalization).
 ///     `mean(psi_a) = -1` by construction, so `M_inv = -1`.
-///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///   - `psi`    = `psi_at(self.coef, self.psi_a, self.psi_b)`
 ///     -- the per-observation influence function evaluated at
 ///     the fitted `coef`, where `psi_b` is the ATT outcome
 ///     score. Matches the `psi(theta) = theta * psi_a + psi_b`
@@ -792,10 +792,7 @@ pub fn DoubleMLDID::sandwich_se(
   try {
     require(self.fitted)
     let n = self.n_obs()
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
@@ -826,10 +823,7 @@ pub fn DoubleMLDID::cluster_sandwich_se(
     require(self.fitted)
     let n = self.n_obs()
     require(cluster_ids.length() == n)
-    let psi : Array[Double] = Array::make(n, 0.0)
-    for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
-    }
+    let psi = psi_at(self.coef, self.psi_a, self.psi_b)
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
     let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)

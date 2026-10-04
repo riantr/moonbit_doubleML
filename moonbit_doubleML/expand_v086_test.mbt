@@ -9,7 +9,7 @@
 // `d/dtheta mean(psi_ipw)`) as a local and never persists it
 // on the struct, and the stored `psi` is already the
 // *centered* score at the bisection root with no
-// `psi_a + coef * psi_b` decomposition (theta is a ROOT of
+// `coef * psi_a + psi_b` decomposition (theta is a ROOT of
 // the check function, not a ratio of two means). So neither
 // `M_inv` nor `psi_a` is cleanly recoverable post-fit. Per
 // the v0.86.0 scope decision ("a wrong sandwich variance is
@@ -53,9 +53,15 @@
 // ---------------------------------------------------------------------------
 
 ///|
-/// Per-observation influence function `psi[i] = psi_a[i] +
-/// coef * psi_b[i]`, recomputed in the test from the fitted
+/// Per-observation influence function `psi[i] = coef * psi_a[i]
+/// + psi_b[i]`, recomputed in the test from the fitted
 /// estimator's persisted IF components.
+///
+/// v0.90.0: the score order was `psi_a[i] + coef * psi_b[i]`
+/// through v0.89.0; see `expand_v090_test.mbt` for the evidence.
+/// Deliberately NOT routed through the production `psi_at`
+/// helper, so a regression in `psi_at` cannot move this
+/// reference and the estimator's own value together.
 fn expand_v086_psi(
   psi_a : Array[Double],
   psi_b : Array[Double],
@@ -64,7 +70,7 @@ fn expand_v086_psi(
 ) -> Array[Double] {
   let psi : Array[Double] = Array::make(n_obs, 0.0)
   for i = 0; i < n_obs; i = i + 1 {
-    psi[i] = psi_a[i] + coef * psi_b[i]
+    psi[i] = coef * psi_a[i] + psi_b[i]
   }
   psi
 }
