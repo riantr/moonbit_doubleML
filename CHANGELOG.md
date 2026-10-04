@@ -9,6 +9,167 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.89.0] -- sandwich variance for the APO family + DID binary wrapper
+
+Extends the v0.86.0 `sandwich_se` / `cluster_sandwich_se` /
+`bias_corrected_coef` API from 10 to **12** of 22 estimators. All
+three methods on both estimators route through the shared
+`sandwich_variance(kind, ...)` dispatch in `sandwich.mbt`; no
+per-estimator `match` block was added. `sandwich.mbt` is untouched
+(the v0.88.0 leverage fix stands). Test count delta: native / wasm
+/ js 634 -> 640 (+6); wasm-gc 640 -> 646 (+6).
+
+### Added
+
+- `DoubleMLAPO::sandwich_se(kind)`,
+  `DoubleMLAPO::cluster_sandwich_se(cluster_ids)` and
+  `DoubleMLAPO::bias_corrected_coef()` in
+  `moonbit_doubleML/apo.mbt`. APO is a clean add: `psi_a` (the
+  potential-outcome score's treatment term, structurally the
+  constant `-1`) and `psi_b` (`g[i] + treated[i] * (y[i] - g[i])
+  / m[i]`) are both persisted struct fields, populated by both the
+  IID `fit` path and the v0.65.0 `fit_cluster` path. The
+  construction is the package-wide one:
+  `psi[i] = psi_a[i] + coef * psi_b[i]`, `M_inv = [[1 / mean(psi_a)]]`,
+  variance `n_obs = self.psi_a.length()`.
+  `mean(psi_a) == -1` exactly for APO, so `M_inv == [[-1.0]]` and
+  only `M_inv[0,0]^2` matters.
+  `bias_corrected_coef` collapses in closed form to
+  `2 * coef + mean(psi_b)`, and since APO's `var_est` point
+  estimate is `theta_hat = mean(psi_b)` that is exactly `3 * coef`
+  -- pinned by a test.
+- `DoubleMLDIDBinary::sandwich_se(kind)`,
+  `DoubleMLDIDBinary::cluster_sandwich_se(cluster_ids)` and
+  `DoubleMLDIDBinary::bias_corrected_coef()` in
+  `moonbit_doubleML/did_binary.mbt`. These are **pure forwarders**:
+  the wrapper holds the whole fitted inner `DoubleMLDID`
+  (`inner : DoubleMLDID`), which already implements the v0.86.0 API
+  (added there in v0.86.0), so the methods delegate to
+  `self.inner` instead of recomputing, matching the existing
+  v0.82.0 memoize-forwarding style in the same file. Each guards on
+  `self.fitted` first, so an un-fit wrapper aborts on the wrapper's
+  own precondition rather than on the placeholder 4-row inner.
+  Because the inner owns the IF components, the sandwich sample is
+  the POST-SUBSET wide-format width `n_obs_subset()` -- **not** the
+  long-format panel width `data.n_obs()` and **not** the length of
+  `psi_a_long()` (which maps the inner psi back to the long panel
+  and zero-fills the out-of-cell rows).
+- 6 white-box tests in `moonbit_doubleML/expand_v089_test.mbt`.
+
+### Observed sample size (`n`)
+
+| Estimator | `psi_a.length()` | raw panel width | differs? |
+|---|---|---|---|
+| `DoubleMLAPO` | 400 | 400 (full sample) | no |
+| `DoubleMLDIDBinary` | 300 (`n_obs_subset()`) | 600 (long panel) | yes |
+
+APO has no transformed / subset domain: both the IID `fit` and the
+`fit_cluster` path build length-`n_obs` IF arrays, so
+`psi_a.length() == n_obs()`. `DoubleMLDIDBinary` is the
+post-subset case (like `DoubleMLDIDCSBinary` at 400 of 600),
+because the wrapper preprocesses the long panel into a wide
+one-row-per-unit subset before delegating. Contrast
+`DoubleMLPLPR` (180 of 240, transformed domain).
+
+### Not covered this cycle, and why
+
+- `DoubleMLAPOS` (`apo.mbt`) -- a **separate struct**, not a field
+  on APO. It persists only `coefs` / `ses` per treatment level. The
+  child `DoubleMLAPO`s are constructed inside `fit(...)`, their
+  `psi_a` / `psi_b` are dropped when only `coef()` / `se()` are
+  read out, and there is no inner estimator to forward to (unlike
+  `DoubleMLDIDBinary`, which keeps `inner`). A sandwich SE here
+  would need either a new persisted child-score field (score-field
+  design work, i.e. a different project) or a silent full
+  re-cross-fit on every call -- `bootstrap(...)` does re-fit the
+  children, but a sandwich SE is expected to be a cheap accessor on
+  an already-fitted model, and paying a full cross-fit per call is
+  a behaviour trap, not an API. A wrong-or-slow number is worse
+  than a missing one.
+- `DoubleMLDIDCS` (`did_cs.mbt`) -- **multi-cell**, so there is no
+  scalar `coef` / `se` to attach a scalar `sandwich_se` to (only
+  `coef_matrix` / `se_matrix` per `(g, t)` cell, plus
+  `coef_at` / `se_at`). Its per-cell `psi_a_matrix` is stored on
+  the LONG panel with out-of-cell rows zero-filled, so the
+  per-cell subset width the HC1 identity needs
+  (`h_ii = 1 / n_cell`) is not recoverable from the persisted
+  state: counting non-zeros does not work either, because a cell's
+  genuine `psi_a` is itself `0` on untreated rows. This needs a
+  per-cell width (or a per-cell subset-persisted psi) first, i.e.
+  the same class of work as the `DoubleMLLPLR` field-order
+  release.
+- `DoubleMLDIDMulti` (`did_multi.mbt`) -- a pure wrapper around
+  `inner : DoubleMLDIDCS` (as `self.inner.group_at(...)` /
+  `self.inner.n_periods()` in the source suggests), with no own
+  scores and no scalar coefficient (`coef_at_idx` / `se_at_idx`
+  only). Its inner has no sandwich API to forward to, so the same
+  blocker as DIDCS applies.
+- Still not attempted, unchanged from v0.86.0 / v0.87.0:
+  `DoubleMLLPLR` (IF pair persisted inverted),
+  `DoubleMLLPQ` (Jacobian is a `fit` local),
+  `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLRDD`, `DoubleMLBLP`,
+  `DoubleMLPolicyTree` (no struct-level `psi_a` / `psi_b` pair).
+
+### Tests
+
+`expand_v089_test.mbt` (6 tests, all falsifiable -- no
+"finite and > 0" assertions):
+
+- `sandwich_expand_v089_ordering` -- shared ordering pinned on the
+  dispatch with a fixed synthetic input, plus independent
+  recomputations of the HC0 / HC2 / HC3 / cluster variances. Since
+  v0.88.0 the leverage is the constant mean-regression diagonal
+  `h_ii = 1 / n`, so the asserted ordering is the **widening** one,
+  `HC1 == HC2 > HC0` and `HC3 > HC2`. The pre-v0.88 ordering
+  `HC1 > HC0 > HC2 > HC3` described the leverage bug and every one
+  of these HC2 / HC3 assertions fails against it.
+- `apo_sandwich_se_smoke` -- HC0 against an independently
+  recomputed `M_inv^2 * sum (psi_a * psi)^2 / n`; the three v0.88
+  identities; all-singleton clusters == IID HC0 and pooled
+  clusters strictly larger (which is what proves `cluster_ids` is
+  consumed); `n == n_obs()` pinned.
+- `apo_bias_corrected_coef` -- `coef + mean(psi_b - coef * psi_a)`,
+  the closed form `2 * coef + mean(psi_b)`, and `3 * coef` (using
+  `coef == mean(psi_b)` for APO's `psi_a = -1`).
+- `apo_var_est_se_order_split` -- pins that the package's two
+  variance paths use **different score orders**:
+  `var_est` (and therefore `se()`) evaluates `coef * psi_a + psi_b`
+  while the sandwich family (and `bootstrap`) evaluates
+  `psi_a + coef * psi_b`. On the test DGP (`n = 400`, APO) `se()`
+  is `0.0083` and `sandwich_se(HC0)` is `9.92`. This is a
+  pre-existing, package-wide split (it is the same for
+  `DoubleMLIRM` and every other estimator that exposes both), not
+  something v0.89.0 introduces; the test records it so that a
+  future change to either path is a deliberate decision rather than
+  an accident. `var_est` itself is not touched by this release.
+- `did_binary_sandwich_se_smoke` -- same identity set on the
+  wrapper, plus the post-subset `n` pin
+  (`n_obs_subset() == 300 != data.n_obs() == 600`,
+  `!= psi_a_long().length()`), and bit-identical equality with
+  `self.inner.sandwich_se(kind)` for all four kinds (a
+  recomputing wrapper would not reproduce them bit for bit).
+- `did_binary_bias_corrected_coef` -- the identity plus
+  bit-identical equality with `self.inner`.
+
+### Changed
+
+- `moonbit_doubleML/moon.mod`: `0.88.0` -> `0.89.0`. The
+  `moonbit-community/sqlite3@0.2.3` / `moonbitlang/async@0.20.3`
+  import block is untouched.
+- `README.mbt.md`: version, test counts (640 / 640 native, wasm,
+  js; 646 / 646 wasm-gc), sandwich coverage 10 -> 12 of 22, and a
+  v0.89.0 changelog bullet with the per-estimator `n` table.
+
+### Not changed
+
+- `moonbit_doubleML/sandwich.mbt` -- untouched. The v0.88.0
+  leverage fix is correct and stays.
+- No existing behaviour changes: this release only adds methods
+  that did not exist before.
+- The GPU integration stays shelved
+  (`moonbit_doubleML/_PARKED_linalg_gpu_wrap.mbt.parked` parked,
+  no `riantr/moonbit_linalg_gpu` dependency added).
+
 ## [0.88.0] -- fix the HC2 / HC3 leverage
 
 **BREAKING NUMERICAL CHANGE.** HC2 and HC3 values change -- and

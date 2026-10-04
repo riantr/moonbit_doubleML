@@ -605,6 +605,131 @@ pub fn DoubleMLAPO::has_cache(self : DoubleMLAPO) -> Bool {
 }
 
 ///|
+/// v0.89.0+: Huber-White sandwich standard error for the fitted
+/// APO (average potential outcome at `treatment_level`).
+/// Returns `sqrt(var)` where `var` comes from the shared
+/// `sandwich_variance(kind, ...)` dispatch in `sandwich.mbt`
+/// (HC0 / HC1 / HC2 / HC3).
+///
+/// The three inputs are the ones `fit(...)` already persists for
+/// the multiplier bootstrap (see the `psi_a` / `psi_b` field docs
+/// on `DoubleMLAPO`):
+///   - `psi_a` = `self.psi_a` -- the potential-outcome score's
+///     treatment term, structurally the constant `-1` (the
+///     potential-outcome score has no treatment-side variation),
+///     so `mean(psi_a) == -1` and `M_inv = [[-1.0]]`.
+///   - `psi`   = `self.psi_a[i] + self.coef * self.psi_b[i]` --
+///     the per-observation influence function at the fitted
+///     `coef`, with `psi_b` the IPW-centred score
+///     `g[i] + treated[i] * (y[i] - g[i]) / m[i]`. Matches the
+///     `psi(theta) = theta * psi_a + psi_b` form documented on
+///     `DoubleMLAPO::bootstrap`.
+///   - `M_inv` = `[[1 / mean(psi_a)]]` (1x1). Only
+///     `M_inv[0, 0]^2` enters the variance, so the sign of the
+///     (up-to-sign) Jacobian inverse is irrelevant.
+///
+/// APO has no transformed / subset domain: both the IID path and
+/// the v0.65.0 cluster path (`fit_cluster`) persist length-`n_obs`
+/// IF components, so the variance's `n_obs` is
+/// `self.psi_a.length() == self.n_obs()`.
+///
+/// Preconditions: `self.fitted`, `mean(psi_a) != 0`.
+pub fn DoubleMLAPO::sandwich_se(
+  self : DoubleMLAPO,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = sandwich_variance(kind, self.psi_a, psi, m_inv, n, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.89.0+: cluster-robust sandwich standard error for the
+/// fitted APO. Routes through `cluster_sandwich_variance` with
+/// the same `psi_a` / `psi` / `M_inv` inputs as the IID
+/// `sandwich_se` path. `cluster_ids[i]` is the cluster of
+/// observation `i` on the full-sample (not transformed) domain.
+/// When the model was fitted on cluster data
+/// (`data.cluster_vars` non-empty) the natural `cluster_ids` are
+/// those very unit ids; otherwise the caller supplies them.
+///
+/// Preconditions: `self.fitted`,
+/// `cluster_ids.length() == psi_a.length()`.
+pub fn DoubleMLAPO::cluster_sandwich_se(
+  self : DoubleMLAPO,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    require(cluster_ids.length() == n)
+    let psi : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+    }
+    let mean_a = mean(self.psi_a)
+    require(mean_a.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_a], 1, 1)
+    let variance_val = cluster_sandwich_variance(
+      self.psi_a,
+      psi,
+      m_inv,
+      cluster_ids,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.89.0+: finite-sample bias-corrected APO coefficient. Same
+/// `psi_b - coef * psi_a` per-observation bias form as
+/// `DoubleMLIRM::bias_corrected_coef` / `DoubleMLDID::bias_corrected_coef`:
+///
+///     bias_per_obs[i] = psi_b[i] - coef * psi_a[i]
+///     theta_corrected = coef + mean(bias_per_obs)
+///
+/// With APO's constant `psi_a = -1` this reduces in closed form to
+/// `2 * coef + mean(psi_b)`.
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLAPO::bias_corrected_coef(self : DoubleMLAPO) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_a.length()
+    require(n == self.psi_b.length())
+    let bias : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      bias[i] = self.psi_b[i] - self.coef * self.psi_a[i]
+    }
+    bias_corrected_theta(self.coef, bias)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.61.0+: multiplier bootstrap for `DoubleMLAPO`. The
 /// per-observation influence function is
 ///

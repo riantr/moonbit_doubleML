@@ -555,6 +555,83 @@ pub fn DoubleMLDIDBinary::has_cache(self : DoubleMLDIDBinary) -> Bool {
 }
 
 ///|
+/// v0.89.0+: Huber-White sandwich standard error for the fitted
+/// binary DID. Pure forwarder: the wrapper holds the whole fitted
+/// inner `DoubleMLDID` and that estimator already implements the
+/// v0.86.0 `sandwich_se` API, so the three methods are delegated
+/// rather than recomputed. The same applies to the
+/// `DoubleMLDIDCSBinary` / `DoubleMLDID::sandwich_se` contract
+/// (same `psi_a` / `psi` / `M_inv` construction, same shared
+/// `sandwich_variance(kind, ...)` dispatch in `sandwich.mbt`).
+///
+/// The inner `DoubleMLDID` owns the IF components, so the
+/// variance's `n_obs` is the POST-SUBSET wide-format panel width
+/// `self.n_obs_subset()` -- NOT `self.data.n_obs()` (the
+/// long-format panel) and NOT the length of `psi_a_long()`.
+/// `psi_a_long()` maps the inner psi back to the long panel and
+/// zero-fills rows outside the cell, so feeding it here (or
+/// passing `cluster_ids` of long-panel length) is wrong.
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLDIDBinary::sandwich_se(
+  self : DoubleMLDIDBinary,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    self.inner.sandwich_se(kind)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.89.0+: cluster-robust sandwich standard error for the
+/// fitted binary DID. Forwarded to the inner
+/// `DoubleMLDID::cluster_sandwich_se`, which routes through
+/// `cluster_sandwich_variance` with the inner's `psi_a` / `psi` /
+/// `M_inv`.
+///
+/// `cluster_ids` is on the POST-SUBSET wide-format indexing
+/// (`n_obs_subset()` rows, one per retained unit), typically the
+/// unit id of the cell's panel.
+///
+/// Preconditions: `self.fitted`,
+/// `cluster_ids.length() == self.n_obs_subset()`.
+pub fn DoubleMLDIDBinary::cluster_sandwich_se(
+  self : DoubleMLDIDBinary,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    self.inner.cluster_sandwich_se(cluster_ids)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.89.0+: finite-sample bias-corrected binary DID coefficient.
+/// Forwarded to the inner `DoubleMLDID::bias_corrected_coef`
+/// (`coef + mean(psi_b - coef * psi_a)` on the post-subset
+/// wide-format sample).
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLDIDBinary::bias_corrected_coef(
+  self : DoubleMLDIDBinary,
+) -> Double {
+  try {
+    require(self.fitted)
+    self.inner.bias_corrected_coef()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.15.0+: per-observation influence function component
 /// `psi_a` mapped from the cell's wide-format data back to
 /// the long-format panel. Length equals `data.n_obs()`

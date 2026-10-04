@@ -25,16 +25,16 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.88.0** |
+| `moon.mod` version | **0.89.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 148 production files |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **634 / 634** |
-| Tests (wasm-gc) | **640 / 640** (lib 634 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **640 / 640** |
+| Tests (wasm-gc) | **646 / 646** (lib 640 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
-| Sandwich variance coverage | **10 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`) |
+| Sandwich variance coverage | **12 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
 #Features
@@ -552,6 +552,52 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `0 <= h_ii < 1` with `h_ii == 1 / n` across five `psi_a`
   families, the widening ordering, the HC0 / HC1 regression
   values, and the constant-`psi_a = -1` case).
+- v0.89.0 verified counts: `moon test` 640 / 640 (native & wasm &
+  js) and 646 / 646 (wasm-gc: lib 640 + 6 doc tutorials). Extends
+  the v0.86.0 sandwich API to the APO family and the binary-DID
+  wrapper (coverage **10 -> 12** of 22 estimators):
+  - `DoubleMLAPO` -- clean add. `psi_a` (structurally the constant
+    `-1`) and `psi_b` (the IPW-centred potential-outcome score)
+    are both persisted struct fields, so `sandwich_se(kind)` /
+    `cluster_sandwich_se(cluster_ids)` / `bias_corrected_coef()`
+  - `DoubleMLDIDBinary` -- pure forwarder. The wrapper holds the
+    whole fitted inner `DoubleMLDID` (`inner : DoubleMLDID`),
+    which already implements the v0.86.0 API, so the three methods
+    delegate instead of recomputing (the tests assert
+    bit-identical results against `self.inner`). The inner owns the
+    IF components, so the sandwich sample is the POST-SUBSET
+    wide-format width `n_obs_subset()` (300 of a 600-row
+    long-format panel in the test DGP), NOT the panel width and NOT
+    the length of the zero-filled `psi_a_long()`.
+  - `DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`
+    deliberately skipped -- see the CHANGELOG entry. APOS persists
+    only `(coefs, ses)` per level and discards the child APOs' IF
+    components (no own scores, no inner estimator to forward to);
+    DIDCS is multi-cell and stores its per-cell `psi_a_matrix` on
+    the long panel with out-of-cell rows zero-filled, so the
+    per-cell subset width the HC1 identity needs is not
+    recoverable; DIDMulti is a pure wrapper around DIDCS with no
+    own scores and no scalar coefficient.
+  - The 6 new white-box tests in `expand_v089_test.mbt` assert the
+    v0.88.0 leverage identities on the estimator methods
+    (`HC1 == HC0 * sqrt(n / (n - 1))`, `HC2 == HC1`,
+    `HC3 == HC1^2 / HC0`, i.e. the WIDENING ordering
+    `HC1 == HC2 > HC0` and `HC3 > HC2` -- the pre-v0.88 ordering
+    `HC1 > HC0 > HC2 > HC3` is the bug, not the contract),
+    independently recomputed HC0 / HC2 / HC3 / cluster variances
+    (not just finiteness), exact singleton-cluster equality with
+    the IID HC0 plus a strictly different pooled-cluster value
+    (proving `cluster_ids` is consumed), the
+    `coef + mean(psi_b - coef * psi_a)` bias-correction identity
+    (plus APO's closed form `3 * coef`, since
+    `theta_hat = mean(psi_b)` and `psi_a = -1`), and the
+    post-subset `n` pin for the DID binary wrapper.
+  - Observed `n`: `DoubleMLAPO` persists its IF components on the
+    FULL sample domain (`psi_a.length() == n_obs()`, both the IID
+    and the `fit_cluster` path), so it has no `n` hazard;
+    `DoubleMLDIDBinary` is on the post-subset wide-format panel
+    (300 of 600), like `DoubleMLDIDCSBinary` (400 of 600) and
+    unlike `DoubleMLPLPR` (180 of 240).
 
 #Attribution
 
