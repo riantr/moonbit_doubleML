@@ -25,16 +25,16 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.91.0** |
+| `moon.mod` version | **0.92.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 148 production files |
+| `.mbt` file count | 160 in the library (87 production + 73 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **656 / 656** |
-| Tests (wasm-gc) | **662 / 662** (lib 656 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **664 / 664** |
+| Tests (wasm-gc) | **670 / 670** (lib 664 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
-| Sandwich variance coverage | **12 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0) |
+| Sandwich variance coverage | **13 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
 #Features
@@ -169,7 +169,7 @@ calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 standard errors, cluster-robust variance, multiplier bootstrap
 confidence intervals, joint CIs, and Romano-Wolf multiple-testing
 p-value adjustment. Reused via the `bootstrap.mbt` helper extracted
-in v0.55.0.
+in v0.55.0. See `#Sandwich variance` for the exact HC contract.
 
 **Cross-estimator joint sensitivity (v0.77.0+)** — the
 `joint_sensitivity(inputs, alpha)` helper in `sensitivity.mbt`
@@ -206,9 +206,13 @@ plus 14 `examples/<bin>/` driver binaries (all listed in
 built directly on `moonbitlang/async@0.20.3` — no third-party HTTP
 framework is pulled in.
 
-**Strict dependency hygiene** — only official `moonbitlang/*` packages
-in the library. Non-official deps restricted to `riantr/*` (this
-repo). Reproducible builds, minimal supply-chain surface.
+**Strict dependency hygiene** — the library imports only
+`moonbitlang/*` official packages. `moon.mod` additionally *declares*
+`moonbit-community/sqlite3@0.2.3` (added v0.85.0) so consumers can
+reach a persistence backend through `moon add`; no `.mbt` file in
+the library imports it yet. Non-official deps otherwise restricted
+to `riantr/*` (this repo). Reproducible builds, minimal
+supply-chain surface.
 
 **Learner injection via `LearnerDispatch`** — every estimator's
 `new()` / `fit()` accept `ml_g` / `ml_m` / `ml_l` / `ml_r` typed
@@ -231,7 +235,7 @@ byte-equality; non-default overrides change the IF and the coef.
 
 ```console
 $ moon test --deny-warn
-Total tests: 485, passed: 485, failed: 0.
+Total tests: 664, passed: 664, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
@@ -317,8 +321,9 @@ no third-party HTTP framework is pulled in.
 #Models
 
 22 estimators (`DoubleML*` structs) in 22 files (one struct per file,
-plus the supporting DGPs and score / nuisance kernels in 129 files
-total), all reachable through the same `DoubleMLXxx::new(...).fit()`
+plus the supporting DGPs and score / nuisance kernels in 160 `.mbt`
+files total: 87 production + 73 test), all reachable through the same
+`DoubleMLXxx::new(...).fit()`
 interface. The 19 marked *(upstream)* mirror the upstream
 `doubleml-for-py` API surface; the 3 *(extra)* rows are MoonBit
 additions for static-panel PLR, partially-logistic regression, and
@@ -349,10 +354,100 @@ binary-outcome CS-DID:
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(extra)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)* |
 
+#Sandwich variance
+
+`sandwich.mbt` implements the Huber-White family
+(`sandwich_variance_hc0` / `_hc1` / `_hc2` / `_hc3`, the
+`sandwich_variance(kind, ...)` dispatch, and
+`cluster_sandwich_variance`). **13 of the 22 estimators** expose the
+triple `sandwich_se(kind)` / `cluster_sandwich_se(cluster_ids)` /
+`bias_corrected_coef()`:
+
+`DoubleMLPLR` · `DoubleMLIRM` · `DoubleMLPLIV` · `DoubleMLIIVM` ·
+`DoubleMLDID` · `DoubleMLDIDBinary` · `DoubleMLDIDCrossSection` ·
+`DoubleMLDIDCSBinary` · `DoubleMLSSM` · `DoubleMLAPO` ·
+`DoubleMLPLPR` · `DoubleMLCVAR` · `DoubleMLLPLR`
+
+The remaining 9 are deliberately not wired up, each for a
+structural reason rather than a pending task. `DoubleMLAPOS`,
+`DoubleMLDIDCS` and `DoubleMLDIDMulti` are documented in the
+v0.89.0 entry below (no own scores, or a per-cell score matrix that
+does not carry the sample width the HC identities need).
+`DoubleMLPQ` / `DoubleMLQTE` / `DoubleMLLPQ` / `DoubleMLBLP` /
+`DoubleMLPolicyTree` do not persist the `(psi_a, psi_b)` influence-
+function pair the formulas are written against.
+`DoubleMLRDD` does persist a `psi_a`, but it is the intercept
+Riesz-representer row for the sensitivity decomposition on the
+bandwidth-restricted sample (length `n_local`), with no `psi_b`
+counterpart, and its own `se` comes from the WLS / White form
+(`cov_type`), not from `var_est` — giving it a sandwich SE is
+score-field design work, not a wiring change.
+
+## The contract
+
+`se()` is the reference and is never computed by this file. The
+moment being inverted is the **mean** moment
+`f(theta) = E[theta * psi_a + psi_b]` from `var_est.mbt`, so
+
+```moonbit nocheck
+sandwich_se(HC0) == se()                       // to the last ulp
+HC1 / HC0 == sqrt(n / (n - 1))                 // to 1e-12
+HC2 == HC1                                     // leverage h_ii = 1 / n
+HC3 == HC1^2 / HC0                             // ditto
+ordering:  HC3 > HC1 == HC2 > HC0              // monotonic widening
+cluster(all-singleton) == IID HC0 == se()      // pooled clusters differ
+bias_corrected_coef() == coef()                // documented no-op
+```
+
+**Exception — `DoubleMLDIDCrossSection`.** It is a projection
+(`argmin_theta`) estimator, not a `var_est` Z-estimator: its `fit`
+sets `theta_hat = -<psi_a, psi_b> / ||psi_b||^2` and derives its own
+`se`, it persists `psi_a` as the OFFSET and `psi_b` as the SLOPE
+(the second inverted-persistence estimator in the package, after
+`DoubleMLLPLR`), and its `M_inv = [[1 / mean(psi_a)]]` is not
+`1 / (d f / d theta)` in any principled sense — the argmin has a
+vanishing first derivative. The HC ladder and the cluster
+identities hold; the `HC0 == se()` identity does not, and since
+v0.90.0 that is deliberate rather than pending.
+
+`HC2` is **equal** to `HC1`, not strictly above it: the moment is
+single-parameter, so its implicit regression is intercept-only with
+equal weights, its projection matrix is `(1 / n) * J`, and every
+leverage is the constant `h_ii = 1 / n_obs`. The pre-v0.88
+ordering `HC1 > HC0 > HC2 > HC3` described a leverage bug (a
+non-hat-matrix `h_ii` that came out negative and made HC2 / HC3
+*shrink*), not the model. v0.88.0 fixed it; v0.91.0 fixed the
+accumulator, which is what buys the `HC0 == se()` identity above.
+
+`bias_corrected_coef()` is a **documented no-op** returning `coef`
+unchanged — all 13 methods (12 landed v0.86.0 - v0.91.0, LPLR's in
+v0.92.0; v0.91.0 is what turned them into no-ops). `coef` is the
+root of the moment, so `mean(coef * psi_a + psi_b) == 0`
+identically: the estimating function is orthogonal by construction,
+and there is no score-based bias to correct. The v0.79.0 - v0.90.0
+form passed the score at `-coef` rather than at `coef` and returned
+`coef * (1 - 2 * mean(psi_a))` — exactly `3 * coef` on every
+constant-`psi_a` estimator.
+
+`DoubleMLLPLR` (v0.92.0) is the other estimator whose persisted
+influence-function components are **inverted**: it stores
+`psi_a = score offset`, `psi_b = score derivative`, the mirror of
+the package convention. Its methods therefore pass the two arrays
+**swapped** — `psi_at(coef, self.psi_b, self.psi_a)` and
+`M_inv = [[1 / mean(self.psi_b)]]` — which is the same treatment its
+`bootstrap` call site has used since v0.90.0. Measured on the
+v0.90.0 LZZ2020 binary DGP (`n = 500`): `mean(psi_a) =
+0.01899446402902459` (a cancellation residual) vs the true Jacobian
+`mean(psi_b) = -0.036387245464012986`, and `sandwich_se(HC0) ==
+se() == 0.278056227496941` to the last ulp (bit-identical on
+`native` / `wasm-gc` / `wasm`; the two spellings of the same
+expression differ by one ulp on `js`, so the portable contract is
+the 1e-12 above, not `==`).
+
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.80.0, 148 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.92.0, 160 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
@@ -374,15 +469,17 @@ examples/                <- 14 driver binaries (all listed in moon.work)
   consumer_demo/         <- library-user pattern (`example/consumer_demo`)
   api_server/            <- HTTP service built on `moonbitlang/async`
 
-moon.work                <- 15-member workspace aggregator
+moon.work                <- 16-member workspace aggregator (1 library + doc + 14 examples)
 AGENTS.md                <- this file (per moonbit agent convention)
 skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 ```
 
 #Dependency rule (per `skills/moonbit_doubleML.md`)
 
-- Only official `moonbitlang/*` packages.
-- Non-official packages may only be `riantr/*` (this repo).
+- Only official `moonbitlang/*` packages in the library's source.
+- Non-official packages may only be `riantr/*` (this repo), plus the
+  single `moonbit-community/sqlite3@0.2.3` entry in the `moon.mod`
+  `import` block (v0.85.0) — declared, not imported by any `.mbt`.
 - Pin to the latest published version (e.g. `moonbitlang/async@0.20.3`).
 - Consequence: `examples/api_server/` builds directly on
   `moonbitlang/async`'s raw `Server` API. No third-party HTTP
@@ -601,7 +698,26 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
     `DoubleMLDIDBinary` is on the post-subset wide-format panel
     (300 of 600), like `DoubleMLDIDCSBinary` (400 of 600) and
     unlike `DoubleMLPLPR` (180 of 240).
-
+- v0.90.0 verified counts: `moon test` 648 / 648 (native & wasm &
+  js) and 654 / 654 (wasm-gc: lib 648 + 6 doc tutorials). Routes
+  every sandwich and bootstrap call site through a single
+  `psi_at(coef, psi_a, psi_b)` helper in `sandwich.mbt`, replacing
+  13 inline copies of `psi_a[i] + coef * psi_b[i]` in which the
+  roles of `psi_a` (the Jacobian / coefficient row) and `psi_b`
+  (the offset) were **swapped** — so the sandwich and
+  multiplier-bootstrap families were evaluating
+  `g(theta) = E[psi_a + theta * psi_b]`, a different function
+  whose root is not `theta_hat`. On a fixed DGP the resulting
+  `sandwich_se(HC0)` differed from the analytic `se()` by three
+  orders of magnitude. `psi_at` makes the order explicit in one
+  place so 13 copies cannot drift again. The score is now also
+  evaluated **at the estimate** rather than at zero on every path.
+  LPLR's own `bootstrap` call site is verified bit-identical
+  across v0.89.0 / v0.90.0 (the two errors cancelled there), and
+  its `psi` is now expressed as the explicit swap
+  `(self.psi_b, self.psi_a)`. `DoubleMLLPLR` still got no
+  `sandwich_se` at this point: its HC0 sat at `0.879 * se()`
+  because the accumulator defect v0.91.0 fixed was still open.
 - v0.91.0 verified counts: `moon test` 656 / 656 (native & wasm &
   js) and 662 / 662 (wasm-gc: lib 656 + 6 doc tutorials).
   **BREAKING NUMERICAL CHANGE, all 12 sandwich estimators.**
@@ -653,10 +769,79 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   - Not changed: `M_inv = [[1 / mean(psi_a)]]`, the v0.88.0
     leverage `h_ii = 1 / n_obs`, the v0.90.0 `psi_at`
     helper, and `var_est.mbt` (the reference, not the bug).
-    `DoubleMLLPLR` still gets no `sandwich_se` -- its
-    accumulator blocker is now resolved (its HC0 equals its
+    `DoubleMLLPLR` still gets no `sandwich_se` in this release --
+    its accumulator blocker is now resolved (its HC0 equals its
     `se()` to the last ulp, was `0.879 * se()`), but
-    exposing the accessor is a separate API decision.
+    exposing the accessor is a separate API decision, taken in
+    v0.92.0 below.
+- v0.92.0 verified counts: `moon test` 664 / 664 (native & wasm &
+  js) and 670 / 670 (wasm-gc: lib 664 + 6 doc tutorials). Adds the
+  `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`
+  triple to `DoubleMLLPLR` (coverage **12 -> 13** of 22) and
+  backfills the README for v0.87.0 - v0.92.0. `se()` and the 12
+  existing sandwich estimators are numerically unchanged;
+  `sandwich.mbt` and `var_est.mbt` are untouched.
+  - `DoubleMLLPLR` was skipped in v0.87.0 and again in v0.90.0 for
+    one structural reason: it persists its influence-function
+    components **inverted** (`self.psi_a` = the score OFFSET
+    `sc.psi - theta_hat * sc.psi_deriv`, `self.psi_b` = the
+    DERIVATIVE `sc.psi_deriv`), the mirror of the package
+    convention. So both the score and the Jacobian take the arrays
+    **swapped** -- `psi_at(coef, self.psi_b, self.psi_a)` and
+    `M_inv = [[1 / mean(self.psi_b)]]` -- which is exactly the
+    treatment its `bootstrap` call site has used since v0.90.0, so
+    the two paths cannot drift apart. v0.87.0 fed
+    `mean(self.psi_a)` (a catastrophic-cancellation residual) into
+    `M_inv`; on the test DGP that is `+0.01899446402902459` where
+    the Jacobian is `-0.036387245464012986`, i.e. the wrong sign
+    and a `1.9156763469825346`x inflation of HC0.
+    (The v0.87.0 report's "~60x" was a different DGP at
+    `n = 400` measured through the then-still-broken v0.87.0
+    accumulator; the two figures are not in conflict.)
+  - The payoff invariant now holds for LPLR, **to the last ulp**:
+    on the v0.90.0 LZZ2020 binary DGP (`n = 500`, `p = 6`,
+    `n_folds = n_folds_inner = 2`, `n_rep = 1`, `seed = 3141`)
+    with `coef = 0.5220088464187301`:
+    `mean(psi_a) = 0.01899446402902459` (offset) vs
+    `mean(psi_b) = -0.036387245464012986` (derivative);
+    `se() == HC0 == 0.278056227496941`; `HC1 == HC2 ==
+    0.2783347015051384`; `HC3 == 0.27861345440575247`; cluster
+    singleton `0.278056227496941` == `se()`, pooled (blocks of 4)
+    `0.28937508055158356`. The wrong-Jacobian HC0 would have been
+    `0.5326657381470845`. On `native` / `wasm-gc` / `wasm` the
+    `HC0 == se()` equality is bit-exact; on `js` the two spellings of
+    the same expression (`M_inv[0,0]^2 * acc / n / n` vs
+    `acc / n / (j * j * n)`) differ by one ulp, so the portable
+    contract is 1e-12 and the test asserts 1e-14, not `==`.
+  - `bias_corrected_coef` is the v0.91.0 documented no-op (returns
+    `coef` exactly), for the same orthogonality reason as the other
+    12; LPLR's `coef` is the root of
+    `f(theta) = E[theta * psi_b + psi_a]` in its persisted order.
+  - 8 white-box tests in `expand_v092_test.mbt`:
+    `lplr_se_equals_sandwich_hc0` (the decisive one, at 1e-14 with
+    a documented `js`-backend ulp caveat, plus the negative control
+    that the package-order score does *not* reproduce `se()`),
+    `lplr_hc1_hc0_ratio`,
+    `lplr_hc2_equals_hc1`, `lplr_hc3_equals_hc1_squared_over_hc0`,
+    `lplr_ordering`, `lplr_singleton_cluster_equals_se`,
+    `lplr_bias_corrected_coef_is_identity`, and
+    `lplr_jacobian_is_the_derivative_not_the_offset` (the
+    regression pin against the v0.87.0 bug: it recomputes HC0 under
+    *both* candidate Jacobians and requires the shipped value to
+    match the derivative one).
+  - README audit beyond the version / count / ordering updates:
+    the v0.90.0 release entry was missing entirely; the
+    `#Quick start` block still claimed `Total tests: 485`
+    (v0.62.0); `#Project layout` still said `moon.mod v0.80.0` and
+    `148 .mbt files`; `#Models` said `129 files total`; `moon.work`
+    was called a 15-member workspace (it has 16); and the
+    "strict dependency hygiene" / `#Dependency rule` claims that
+    the library uses only official `moonbitlang/*` packages had
+    been false since v0.85.0, which added a declared
+    `moonbit-community/sqlite3@0.2.3` import. A new
+    `#Sandwich variance` section now states the HC contract once,
+    in one place, including the `DoubleMLDIDCrossSection`
+    projection-estimator exception.
 
 #Attribution
 

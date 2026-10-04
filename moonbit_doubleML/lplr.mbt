@@ -1076,3 +1076,170 @@ pub fn DoubleMLLPLR::sensitivity_analysis_cluster(
     cf_d,
   )
 }
+
+// ---------------------------------------------------------------------------
+// Sandwich variance (v0.92.0)
+// ---------------------------------------------------------------------------
+
+///|
+/// v0.92.0+: Huber-White sandwich standard error for the fitted
+/// LPLR, routed through the shared
+/// `sandwich_variance(kind, ...)` dispatch in `sandwich.mbt`.
+///
+/// ## THE INVERSION -- READ BEFORE CHANGING THE ARGUMENT ORDER
+///
+/// `DoubleMLLPLR` persists its influence-function components
+/// **inverted** relative to every other estimator in the package.
+/// The internal `LplrScore` struct (see `lplr_score_at`) carries
+/// `psi` -- the score itself, which is the OFFSET in the
+/// `f(theta) = theta * deriv + offset` linearisation -- and
+/// `psi_deriv` -- the derivative of the score w.r.t. `theta`,
+/// i.e. the COEFFICIENT. `fit` persists them as
+///
+///     self.psi_a = sc.psi - theta_hat * sc.psi_deriv   (OFFSET)
+///     self.psi_b = sc.psi_deriv                        (DERIVATIVE)
+///
+/// so the field names are the mirror image of the package
+/// convention (`psi_a` = coefficient row, `psi_b` = offset).
+/// `var_est.mbt` -- the reference, unchanged -- is fed
+/// `(sc.psi_deriv, sc.psi - theta_hat * sc.psi_deriv)`, i.e. the
+/// tuple in package order, and its `J = mean(psi_a)` is therefore
+/// `mean(psi_deriv)`. Two consequences, and both are load-bearing:
+///
+///   1. The score must be evaluated with the arrays SWAPPED:
+///      `psi_at(coef, self.psi_b, self.psi_a)`, which recovers
+///      `theta_hat * sc.psi_deriv + (sc.psi - theta_hat *
+///      sc.psi_deriv) = sc.psi`, the raw score at the fitted
+///      `theta`. This is exactly the argument order its
+///      `bootstrap` call site has used since v0.90.0 (see
+///      `DoubleMLLPLR::bootstrap`), so the two paths cannot
+///      drift apart.
+///
+///   2. `M_inv` must be `[[1 / mean(self.psi_b)]]` --
+///      `mean(psi_deriv)`, the true Jacobian. v0.87.0 built
+///      `M_inv` from `mean(self.psi_a)`, which is
+///      `mean(sc.psi - theta_hat * sc.psi_deriv)`: a
+///      catastrophic-cancellation residual, not a derivative. It
+///      is ~60x smaller in magnitude here and its sign is not even
+///      stable, so the resulting HC0 was inflated by roughly 60x
+///      and HC2 / HC3 hit the `1e-10` degenerate-leverage clip
+///      (`6.4e10`). LPLR was skipped in v0.87.0 and again in
+///      v0.90.0 for this reason.
+///
+/// With both corrections in place the payoff invariant holds, as
+/// it does for the other 12 estimators:
+///
+///     sandwich_se(HC0) == se()
+///
+/// to floating-point tolerance. `se()` is `var_est` over the
+/// same `(psi_deriv, offset)` tuple, i.e.
+/// `sqrt(mean(psi(theta_hat)^2) / (mean(psi_deriv)^2 * n))`, which
+/// is algebraically `M_inv[0,0]^2 * sum_i psi[i]^2 / n / n` --
+/// the v0.91.0 accumulator, evaluated at the same point.
+///
+/// The three inputs are the ones `fit` already persists for the
+/// multiplier bootstrap:
+///   - `psi_a` (the length-`n` array `sandwich_variance` only
+///     reads for its length precondition) is the DERIVATIVE row
+///     `self.psi_b`;
+///   - `psi` = `psi_at(coef, self.psi_b, self.psi_a)`;
+///   - `M_inv` = `[[1 / mean(self.psi_b)]]` (1x1). Only
+///     `M_inv[0, 0]^2` enters the variance, so the sign of the
+///     (up-to-sign) Jacobian inverse is irrelevant.
+///
+/// `n_obs` is `self.psi_b.length()`: LPLR has no transformed or
+/// subset domain, so the persisted sample is the full
+/// `self.data.n_obs()`.
+///
+/// Preconditions: `self.fitted`, `mean(psi_b) != 0`.
+pub fn DoubleMLLPLR::sandwich_se(
+  self : DoubleMLLPLR,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_b.length()
+    let psi = psi_at(self.coef(), self.psi_b, self.psi_a)
+    let mean_deriv = mean(self.psi_b)
+    require(mean_deriv.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_deriv], 1, 1)
+    let variance_val = sandwich_variance(kind, self.psi_b, psi, m_inv, n, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.92.0+: cluster-robust sandwich standard error for the fitted
+/// LPLR (Arellano 1987, Cameron-Gelbach-Miller 2011). Routes
+/// through `cluster_sandwich_variance` with the SAME swapped
+/// `psi` and `M_inv` inputs as the IID `sandwich_se` path -- see
+/// that method's doc for why LPLR's influence-function components
+/// are stored inverted.
+///
+/// `DoubleMLBinaryData` carries no `cluster_vars`, so the caller
+/// must supply `cluster_ids` explicitly (any grouping variable the
+/// application has: region, site, panel unit). With all-singleton
+/// clusters the meat degenerates to `sum_i psi[i]^2` and the
+/// formula collapses to `sandwich_se(HC0)`, hence to `se()`.
+///
+/// Preconditions: `self.fitted`,
+/// `cluster_ids.length() == psi_b.length()`.
+pub fn DoubleMLLPLR::cluster_sandwich_se(
+  self : DoubleMLLPLR,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    let n = self.psi_b.length()
+    require(cluster_ids.length() == n)
+    let psi = psi_at(self.coef(), self.psi_b, self.psi_a)
+    let mean_deriv = mean(self.psi_b)
+    require(mean_deriv.abs() > 0.0)
+    let m_inv = Matrix::from_array([1.0 / mean_deriv], 1, 1)
+    let variance_val = cluster_sandwich_variance(
+      self.psi_b,
+      psi,
+      m_inv,
+      cluster_ids,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.92.0+: returns `coef` UNCHANGED -- a documented no-op, not
+/// a bias correction. Identical in reasoning to the twelve
+/// `bias_corrected_coef` methods added in v0.86.0 - v0.91.0;
+/// see `DoubleMLIRM::bias_corrected_coef` and `bias_corrected_theta`
+/// in `sandwich.mbt` for the full argument.
+///
+/// `coef` is the root of the DML moment
+/// `f(theta) = E[theta * psi_a + psi_b]` in `var_est.mbt`'s
+/// convention -- for LPLR, `psi_a` is the score DERIVATIVE and
+/// `psi_b` the score OFFSET -- so `mean(f(coef))` is identically
+/// zero: the estimating function is orthogonal by construction,
+/// and that orthogonality IS what makes the estimator
+/// consistent. Nothing computable from the fitted scores is a bias
+/// estimate for this class of estimator, so this accessor reports
+/// the uncorrected point estimate rather than a number that merely
+/// looks like a correction.
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLLPLR::bias_corrected_coef(self : DoubleMLLPLR) -> Double {
+  try {
+    require(self.fitted)
+    self.coef_
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
