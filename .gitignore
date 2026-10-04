@@ -141,3 +141,31 @@ dbg.txt
 # the verifier cycle commands).
 _prove_pilot/audit-scratch*
 _prove_pilot/moon_prove_help.log
+
+# CUDA / GPU build artifacts under linalg_gpu/ (or any vendored GPU
+# package). These are produced by `nvcc --shared` / the linker and are
+# NEVER tracked:
+#   - nvcuda64.dll (~30 MB) is the NVIDIA driver stub. Any machine with
+#     an NVIDIA driver already provides it; vendoring it would add 30 MB
+#     of binary to every clone and to git history permanently.
+#   - moonxi_linalg{,_sm120}.{dll,lib,exp} are the compiled kernels;
+#     rebuild locally with scripts/build_cuda_{windows.ps1,linux.sh}.
+#   - *.rc are nvcc link responses.
+# Tracked instead: the .mbt sources, linalg_stub.c, linalg_kernels.cu/.h.
+linalg_gpu/cuda/nvcuda64.dll
+linalg_gpu/cuda/moonxi_linalg.dll
+linalg_gpu/cuda/moonxi_linalg_sm120.dll
+linalg_gpu/cuda/*.lib
+linalg_gpu/cuda/*.exp
+linalg_gpu/cuda/*.rc
+gpu/cuda/nvcuda64.dll
+gpu/cuda/moonxi_linalg.dll
+gpu/cuda/moonxi_linalg_sm120.dll
+gpu/cuda/*.lib
+gpu/cuda/*.exp
+gpu/cuda/*.rc
+*.nvcuda64.dll
+**/nvcuda64.dll
+**/moonxi_linalg*.dll
+**/moonxi_linalg*.lib
+**/moonxi_linalg*.exp
