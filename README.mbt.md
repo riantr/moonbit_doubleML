@@ -298,7 +298,39 @@ binary-outcome CS-DID:
 | `DoubleMLRDD` | observational | regression discontinuity *(upstream)* |
 | `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(extra)* |
-| `DoubleMLPolicyTree` | policy | policy tree *(upstream)* |
+| `DoubleMLPolicyTree` | policy | policy tree *(upstream)*, + v0.98.0 honest split (`honest = true`) with `leaf_se` / `policy_value_se` |
+
+### Honest policy trees (v0.98.0)
+
+`DoubleMLPolicyTree::new(x, orth_signal, depth, honest = true,
+split_seed = 2024)` splits the sample: `policy_tree_build` sees only
+the splitting half, and every reported leaf statistic (`leaf_assignment`,
+`leaf_signal_mean`, `leaf_count`, `leaf_se`) is computed on the
+estimation half. That is the honesty of Athey & Imbens (2016, PNAS
+113(27):7353-7358), and it makes their property a property rather
+than a claim: with the partition held fixed, a leaf value is a plain
+sample mean, so `leaf_se[k] = sd(y_k) / sqrt(n_k)` has its usual
+sampling interpretation. `is_honest()` reports which regime produced a
+number, and `honest` defaults to `false` so existing callers are
+byte-identical.
+
+Two caveats are load-bearing and are documented in-source. Honesty
+fixes the *bias*, not the small-leaf variance: Cattaneo, Klusowski &
+Yu (arXiv:2509.11381) show that CART-type greedy splitting picks
+highly imbalanced splits with nonvanishing probability and that
+"sample splitting ... does not remove this limitation", which is why
+`min_leaf_n` (default 5) guards on estimation-half leaf counts and
+`unreliable_leaves()` names the offenders instead of reporting an
+untrustworthy `leaf_se` silently. And a single honest tree spends
+about half the sample on each of its two jobs -- Wager & Athey
+(2018, JASA) recover that precision by averaging many honest trees,
+which this package deliberately does not attempt.
+
+`policy_value_se()` is the EXACT standard error of the plain sample
+mean, **not** the tempting `sum_k (n_k/n)^2 se_k^2`: that form
+assumes independent leaf means, but group means of one sample are
+negatively correlated, and the independence form collapses to exactly
+zero when all the variation is between leaves.
 
 ##Project layout
 

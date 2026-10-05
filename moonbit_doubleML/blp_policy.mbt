@@ -1411,6 +1411,70 @@ pub struct DoubleMLPolicyTree {
   // assignment. Length = number of leaves in the fitted
   // tree.
   leaf_count : Array[Int]
+  // v0.98.0+: HONESTY (Athey & Imbens 2016, PNAS 113(27):
+  // 7353-7358). `honest = true` splits the training sample in
+  // two: `policy_tree_build` sees ONLY `split_indices` (the
+  // splitting half) and every reported leaf statistic --
+  // `leaf_assignment`, `leaf_signal_mean`, `leaf_count`,
+  // `leaf_se` -- is computed on `est_indices` (the estimation
+  // half) only. `honest = false` (the default) is the v0.97.0
+  // behaviour, byte-identical: the same rows choose the splits
+  // and produce the leaf means.
+  //
+  // WHY THIS MATTERS. In the non-honest tree each observation
+  // both picks the leaf it lands in AND sets that leaf's
+  // reported value, so `leaf_signal_mean` is the value of an
+  // ADAPTIVE (data-selected) estimator. Its bias does not vanish
+  // at a usable rate and interval coverage can fall well below
+  // nominal (Athey & Imbens 2016 report ~69% of nominal for
+  // adaptive vs honest recursive partitioning). Splitting the
+  // sample buys exactly their property:
+  //
+  //   "Honesty has the implication that the asymptotic
+  //    properties of treatment effect estimates within the
+  //    partitions are the same as if the partition had been
+  //    exogenously given."
+  //
+  // and makes that phrase a PROPERTY rather than a claim: the
+  // partition is a function of the splitting half alone, so
+  // each leaf mean on the estimation half is a plain sample
+  // mean of i.i.d. draws under a fixed partition.
+  //
+  // `split_seed` seeds the `kfold(n, 2, split_seed)` call that
+  // produces the two halves, so the split is deterministic and
+  // reproducible. `min_leaf_n` is the small-leaf guard threshold
+  // (see `leaf_se`); it is a constructor parameter rather than
+  // a hard-coded constant so a caller with a smaller
+  // estimation half can retune it.
+  //
+  // COST, ACCEPTED AND DOCUMENTED: a single honest tree throws
+  // away roughly half the sample from each of its two jobs. Athey
+  // & Imbens recover precision by growing many trees; Wager &
+  // Athey (2018, JASA) average many honest trees for exactly
+  // this reason in the causal forest. This package deliberately
+  // does NOT build a forest -- see the "future work" note on
+  // `leaf_se`. Users who need the precision should treat the
+  // single honest tree as a diagnostic.
+  honest : Bool
+  split_seed : Int
+  min_leaf_n : Int
+  // v0.98.0+: ORIGINAL row indices of the estimation half
+  // (length `n_est = ceil(n_obs / 2)` under honesty). These are
+  // the indices into `features` / `orth_signal`, NOT positions
+  // in a sliced copy. EMPTY when `honest = false`, where the
+  // estimation sample is the whole sample in identity order --
+  // keeping it empty is what leaves the default path's
+  // allocations (and therefore its numbers) untouched.
+  est_indices : Array[Int]
+  // v0.98.0+: ORIGINAL row indices of the splitting half
+  // (length `n_split = floor(n_obs / 2)`). EMPTY when
+  // `honest = false`.
+  split_indices : Array[Int]
+  // v0.98.0+: per-leaf standard errors of `leaf_signal_mean`
+  // measured ON THE ESTIMATION HALF, length `n_leaves`. EMPTY
+  // when `honest = false` -- see `leaf_se()` for why the
+  // adaptive analogue is deliberately not reported.
+  leaf_se : Array[Double]
   fitted : Bool
   // v0.85.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.84.0
@@ -1435,6 +1499,33 @@ pub struct DoubleMLPolicyTree {
   //   - `predictions[4]`    -> [split_feature, split_value, lt, rt]
   //   - `n_folds`           -> n_leaves (partition-count analogue)
   //   - `fold_split_seed`   -> `depth` (PolicyTree has no seed)
+  //
+  // v0.98.0+: UNDER HONESTY the layout shifts, because the cached
+  // payload is no longer indexed by all `n_obs` rows:
+  //   - `fold_ids`          -> `est_indices` (len n_est)
+  //   - `n_obs`             -> `n_est` (the cached row count;
+  //                            `is_valid` compares
+  //                            `fold_ids.length() == n_obs`, so
+  //                            this slot MUST hold n_est under
+  //                            honesty or the hit can never fire)
+  //   - `predictions[5]`    -> `leaf_se` (len n_leaves)
+  //   - `predictions[6]`    -> `split_indices` as Double
+  //                            (len n_split)
+  // The default (`honest = false`) layout above is UNCHANGED.
+  //
+  // v0.98.0+ CACHE KEY. `honest` and `split_seed` are structural
+  // -- they change which rows build the tree and which rows
+  // produce the leaf means -- so they are folded into the key via
+  // the `estimator_kind` string: `"policy_tree"` when not honest
+  // (byte-identical to v0.85.0-v0.97.0) and
+  // `"policy_tree_honest:<split_seed>"` when honest.
+  // `hash_hyperparams` folds `estimator_kind`'s length and bytes
+  // into the hyperparams hash and `is_valid` compares the stored
+  // string, so toggling `honest` or changing `split_seed`
+  // invalidates the cache in both directions. `min_leaf_n` is
+  // deliberately NOT in the key: it is a reporting threshold,
+  // not a fitting input, and it does not change a single fitted
+  // number.
   memoize_enabled : Bool
   fit_cache : FitCache
 } derive(Debug)
@@ -1443,14 +1534,40 @@ pub struct DoubleMLPolicyTree {
 pub extend DoubleMLPolicyTree with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
+/// v0.98.0+: the HONESTY switch, `honest`, plus its two supporting
+/// parameters `split_seed` and `min_leaf_n`. All three default to
+/// the inert setting, so a v0.97.0 call site sees byte-identical
+/// output -- see the `honest` field docstring on the struct for the
+/// definition and the motivation.
+///
+/// - `honest` (default `false`): when `true`, split the sample and
+///   build the tree on one half only. See the struct field.
+/// - `split_seed` (default `2024`): seeds the
+///   `kfold(n_obs, 2, split_seed)` call that produces the two
+///   halves. Ignored when `honest = false`. Only the FIRST of the
+///   two returned folds is used: its `train_indices()` is the
+///   splitting half (`floor(n_obs / 2)` rows) and its
+///   `test_indices()` is the estimation half
+///   (`ceil(n_obs / 2)` rows).
+/// - `min_leaf_n` (default `5`): the small-leaf guard threshold on
+///   ESTIMATION-half leaf counts. Must be `>= 2`. See `leaf_se` for
+///   why 5.
 pub fn DoubleMLPolicyTree::new(
   features : Matrix,
   orth_signal : Array[Double],
   depth? : Int = 1,
+  honest? : Bool = false,
+  split_seed? : Int = 2024,
+  min_leaf_n? : Int = 5,
 ) -> DoubleMLPolicyTree {
   try {
     require(features.rows() == orth_signal.length())
     require(depth >= 1)
+    // `min_leaf_n = 1` would make the guard vacuous and
+    // `min_leaf_n = 2` would still admit a 0-degree-of-freedom
+    // variance, so both are refused at construction rather than
+    // producing an undefined `leaf_se` later.
+    require(min_leaf_n >= 2)
     {
       features,
       orth_signal,
@@ -1463,6 +1580,15 @@ pub fn DoubleMLPolicyTree::new(
       leaf_assignment: [],
       leaf_signal_mean: [],
       leaf_count: [],
+      // v0.98.0+: honesty off by default so v0.97.0 callers see
+      // byte-identical fit() output. The three honest-only arrays
+      // stay empty until a `honest = true` fit populates them.
+      honest,
+      split_seed,
+      min_leaf_n,
+      est_indices: [],
+      split_indices: [],
+      leaf_se: [],
       fitted: false,
       // v0.85.0+: default memoize off so v0.84.0 callers see
       // byte-identical fit() output. Enable explicitly via
@@ -1632,6 +1758,79 @@ fn policy_tree_cache_decode(flat : Array[Double], slot : Int) -> PolicyTreeNode 
 }
 
 ///|
+/// v0.98.0+: the HONEST per-leaf standard errors, measured on the
+/// ESTIMATION half only.
+///
+/// WHY AN ORDINARY SAMPLE VARIANCE IS THE HONEST NUMBER HERE.
+/// Athey & Imbens (2016) define honesty as "not using the same
+/// information for selecting the model structure ... as for
+/// estimation given a model structure", and state the payoff
+/// exactly: under honesty "the asymptotic properties of treatment
+/// effect estimates within the partitions are the same as if the
+/// partition had been exogenously given". Held fixed, leaf `k`'s
+/// value IS a plain sample mean of `n_k` i.i.d. draws, so its
+/// variance is the textbook one:
+///
+///     leaf_se[k] = sqrt( sum_{i in k} (y_i - theta_k)^2
+///                        / ((n_k - 1) * n_k) )
+///
+/// i.e. the sample standard deviation (divisor `n_k - 1`) over
+/// `sqrt(n_k)`. That is the whole formula -- no sandwich.
+///
+/// WHY NOT `sandwich_variance` / `var_est`. Both are for DML
+/// SCORES. `var_est` computes the `-Q` ratio
+/// `theta = -mean(psi_b) / mean(psi_a)` and divides by
+/// `mean(psi_a)^2 * n`; a leaf mean is not a ratio of two means
+/// and has no `psi_a`/`psi_m` split, so routing it through
+/// `var_est` would estimate a different functional.
+/// `sandwich_variance_hc0` takes a `(1, 1)` `m_inv` and an
+/// `n_params` count, i.e. it is the meat of a LINEAR projection
+/// (the shape BLP / RDD `hac_se` use). A leaf mean is a third
+/// thing: a scalar mean under a fixed partition. It is also worth
+/// saying what is NOT being claimed: this SE excludes the
+/// variance contributed by the split SEARCH. Honesty buys
+/// nominal coverage for the WITHIN-partition effects, which is
+/// what Athey & Imbens promise; it does not make the partition
+/// itself exogenous, and no amount of honesty turns the selected
+/// partition into a fixed one.
+///
+/// `n_k <= 1` has zero degrees of freedom, so the sample variance
+/// is genuinely undefined there and the entry is set to
+/// `@double.not_a_number` -- not to `0.0`, which would read as
+/// "infinitely precise", and not to a huge finite number, which
+/// would read as an ordinary large SE. Every such leaf is also
+/// reported by `unreliable_leaves()` because
+/// `min_leaf_n >= 2 > n_k`.
+fn policy_tree_honest_leaf_se(
+  leaf_count : Array[Int],
+  leaf_mean : Array[Double],
+  signal : Array[Double],
+  leaf_assignment : Array[Int],
+) -> Array[Double] {
+  let n_leaves = leaf_count.length()
+  let n_est = signal.length()
+  // Uncentred second moment per leaf, accumulated in increasing
+  // row order over the ESTIMATION half only.
+  let leaf_sumsq : Array[Double] = Array::make(n_leaves, 0.0)
+  for j = 0; j < n_est; j = j + 1 {
+    let l = leaf_assignment[j]
+    let d = signal[j] - leaf_mean[l]
+    leaf_sumsq[l] = leaf_sumsq[l] + d * d
+  }
+  let out : Array[Double] = Array::make(n_leaves, 0.0)
+  for k = 0; k < n_leaves; k = k + 1 {
+    let nk = leaf_count[k]
+    if nk < 2 {
+      out[k] = @double.not_a_number
+    } else {
+      let nk_d = nk.to_double()
+      out[k] = (leaf_sumsq[k] / ((nk_d - 1.0) * nk_d)).sqrt()
+    }
+  }
+  out
+}
+
+///|
 pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree {
   // v0.85.0+: memoize check. PolicyTree is a deterministic policy
   // learner (no `n_folds` / `n_rep` / `cluster_vars`), so the cache
@@ -1643,9 +1842,83 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   // `O(n * depth)` leaf-walk / accumulation loop.
   let n_obs = self.orth_signal.length()
   let memoize = self.memoize_enabled
+  // v0.98.0+: THE HONESTY SPLIT. Reuse the package's existing
+  // seeded `kfold` helper rather than writing a third splitting
+  // routine -- `kfold(n_obs, 2, split_seed)` is a deterministic
+  // Fisher-Yates shuffle cut in half, and `Fold`'s two index
+  // lists are DISJOINT and jointly exhaustive by construction.
+  //
+  // `halves[0].train_indices()` (floor(n_obs / 2) rows) becomes
+  // the SPLITTING half; `halves[0].test_indices()` (ceil(n_obs /
+  // 2) rows) becomes the ESTIMATION half. Only fold 0 is used --
+  // the second fold is the complement of the first, so taking it
+  // would give back the same partition.
+  //
+  // Under `honest = false` both lists stay EMPTY and every
+  // derived quantity below is the whole sample in identity order,
+  // which is what keeps the default path byte-identical.
+  let halves : Array[Fold] = if self.honest {
+    kfold(n_obs, 2, self.split_seed)
+  } else {
+    []
+  }
+  let split_rows : Array[Int] = if self.honest {
+    halves[0].train_indices()
+  } else {
+    []
+  }
+  let est_rows : Array[Int] = if self.honest {
+    halves[0].test_indices()
+  } else {
+    []
+  }
+  // What `policy_tree_build` sees: the splitting half only.
+  let build_features : Matrix = if self.honest {
+    slice_matrix_rows(self.features, split_rows)
+  } else {
+    self.features
+  }
+  let build_signal : Array[Double] = if self.honest {
+    slice_vector(self.orth_signal, split_rows)
+  } else {
+    self.orth_signal
+  }
+  // What the leaf walk and every reported leaf statistic sees:
+  // the estimation half only.
+  let est_features : Matrix = if self.honest {
+    slice_matrix_rows(self.features, est_rows)
+  } else {
+    self.features
+  }
+  let est_signal : Array[Double] = if self.honest {
+    slice_vector(self.orth_signal, est_rows)
+  } else {
+    self.orth_signal
+  }
+  let n_est = if self.honest { est_rows.length() } else { n_obs }
+  // The cached row count. `FitCache::is_valid` enforces
+  // `fold_ids.length() == n_obs`, and the honest payload is keyed
+  // by the estimation half, so this slot must be `n_est` under
+  // honesty. Identical to `n_obs` on the default path.
+  let n_obs_cache = n_est
+  // v0.98.0+: the cache-kind discriminator. `honest` and
+  // `split_seed` are structural (they change which rows build the
+  // tree and which rows produce the means), so they go into the
+  // key. `hash_hyperparams` folds the string's length and bytes
+  // into `hparams_hash`, and `is_valid` compares the stored
+  // string, so this invalidates in both directions. The
+  // non-honest value is byte-identical to v0.85.0-v0.97.0.
+  let estimator_kind : String = if self.honest {
+    "policy_tree_honest:" + self.split_seed.to_string()
+  } else {
+    "policy_tree"
+  }
   let data_hash : UInt64 = if memoize {
     // PolicyTree has no `d` vector; pass an empty array so the
-    // hash reflects only the features + orth_signal content.
+    // hash reflects only the features + orth_signal content. This
+    // is the FULL sample under honesty too: every row feeds
+    // either the splitting half or the estimation half, so a
+    // change anywhere has to invalidate.
     hash_data(self.features, self.orth_signal, [])
   } else {
     0UL
@@ -1656,7 +1929,7 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     // through the `propensity_clip` slot (its Double analogue
     // here). Mirrors the BLP `cov_type` proxy convention.
     hash_hyperparams(
-      "policy_tree",
+      estimator_kind,
       LearnerDispatch::noop(),
       LearnerDispatch::noop(),
       self.depth.to_double(),
@@ -1687,15 +1960,16 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   let cache_hit = memoize &&
     self.fit_cache.is_valid(
       // PolicyTree has no seed; `depth` is the structural
-      // fingerprint of the fitted tree.
+      // fingerprint of the fitted tree. (`split_seed` rides on
+      // `estimator_kind` instead.)
       self.depth,
       n_leaves_hint,
       1,
-      n_obs,
+      n_obs_cache,
       data_hash,
       hparams_hash,
       cluster_hash,
-      "policy_tree",
+      estimator_kind,
     )
   if cache_hit {
     // Rebuild the tree + leaf statistics from the cache. The
@@ -1707,6 +1981,20 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     let cached_leaf_mean = preds[0]
     let cached_leaf_count = policy_tree_ints_from_doubles(preds[3])
     let cached_leaf_assignment = policy_tree_ints_from_doubles(preds[1])
+    // v0.98.0+: the honest-only payload. `fold_ids` holds
+    // `est_indices` under honesty (and `leaf_assignment` on the
+    // default path, where it is left where it was).
+    let cached_leaf_se : Array[Double] = if self.honest { preds[5] } else { [] }
+    let cached_split : Array[Int] = if self.honest {
+      policy_tree_ints_from_doubles(preds[6])
+    } else {
+      []
+    }
+    let cached_est : Array[Int] = if self.honest {
+      self.fit_cache.fold_ids
+    } else {
+      []
+    }
     return {
       features: self.features,
       orth_signal: self.orth_signal,
@@ -1719,12 +2007,18 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
       leaf_assignment: cached_leaf_assignment,
       leaf_signal_mean: cached_leaf_mean,
       leaf_count: cached_leaf_count,
+      honest: self.honest,
+      split_seed: self.split_seed,
+      min_leaf_n: self.min_leaf_n,
+      est_indices: cached_est,
+      split_indices: cached_split,
+      leaf_se: cached_leaf_se,
       fitted: true,
       memoize_enabled: self.memoize_enabled,
       fit_cache: self.fit_cache,
     }
   }
-  let root = policy_tree_build(self.features, self.orth_signal, self.depth)
+  let root = policy_tree_build(build_features, build_signal, self.depth)
   let (split_feature, split_value) = match root {
     Leaf(_) => (-1, 0.0)
     Split(feature, threshold, _, _) => (feature, threshold)
@@ -1737,14 +2031,23 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   let n_leaves = leaf_treatments.length()
   let leaf_signal_sum : Array[Double] = Array::make(n_leaves, 0.0)
   let leaf_count_arr : Array[Int] = Array::make(n_leaves, 0)
-  let leaf_assignment : Array[Int] = Array::make(n_obs, 0)
+  let leaf_assignment : Array[Int] = Array::make(n_est, 0)
+  // v0.98.0+: the tree built on the SPLITTING half is applied to
+  // the ESTIMATION half by the existing `policy_tree_leaf_index`
+  // walk -- that walk is what makes honesty work, and it is the
+  // same walk the default path uses. Under `honest = false`
+  // `est_features` IS `self.features`, `est_signal` IS
+  // `self.orth_signal`, and `n_est == n_obs`, so this loop is the
+  // v0.85.0-v0.97.0 loop with the same index expressions in the
+  // same order: byte-identical.
+  //
   // The per-row tree walk (`policy_tree_leaf_index`) is a
   // branchy depth-limited descent, so it stays a scalar loop. Only
   // the per-leaf mean is vectorised below.
-  for i = 0; i < n_obs; i = i + 1 {
-    let lf = policy_tree_leaf_index(root, self.features, i, 0)
-    leaf_assignment[i] = lf
-    leaf_signal_sum[lf] = leaf_signal_sum[lf] + self.orth_signal[i]
+  for j = 0; j < n_est; j = j + 1 {
+    let lf = policy_tree_leaf_index(root, est_features, j, 0)
+    leaf_assignment[j] = lf
+    leaf_signal_sum[lf] = leaf_signal_sum[lf] + est_signal[j]
     leaf_count_arr[lf] = leaf_count_arr[lf] + 1
   }
   // v0.85.0+: vectorise the per-leaf mean. `vector_divide` gives
@@ -1759,6 +2062,16 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     policy_tree_ints_to_doubles(leaf_count_arr),
     eps=1.0e-12,
   )
+  // v0.98.0+: the honest per-leaf SE, on the estimation half only.
+  // Empty on the default path -- the adaptive analogue is not a
+  // standard error and `leaf_se()` refuses to report it.
+  let leaf_se : Array[Double] = if self.honest {
+    policy_tree_honest_leaf_se(
+      leaf_count_arr, leaf_signal_mean, est_signal, leaf_assignment,
+    )
+  } else {
+    []
+  }
   // v0.85.0+: when memoize is on and the cache missed, write the
   // freshly-built tree + leaf statistics to the cache. See the
   // struct field docstring for the slot layout.
@@ -1771,23 +2084,47 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
       lt.to_double(),
       rt.to_double(),
     ]
-    FitCache::from_fit(
-      leaf_assignment,
+    // v0.98.0+: under honesty the fold-id slot carries the
+    // estimation-half indices (which really are a fold
+    // assignment, and whose length `n_est` is what the `n_obs`
+    // slot records), and two extra payload slots carry `leaf_se`
+    // and the splitting half. The default payload is byte-for-
+    // byte the v0.85.0 list.
+    let fold_ids_slot : Array[Int] = if self.honest {
+      est_rows
+    } else {
+      leaf_assignment
+    }
+    let preds : Array[Array[Double]] = if self.honest {
       [
         leaf_signal_mean,
         policy_tree_ints_to_doubles(leaf_assignment),
         flat,
         policy_tree_ints_to_doubles(leaf_count_arr),
         meta,
-      ],
+        leaf_se,
+        policy_tree_ints_to_doubles(split_rows),
+      ]
+    } else {
+      [
+        leaf_signal_mean,
+        policy_tree_ints_to_doubles(leaf_assignment),
+        flat,
+        policy_tree_ints_to_doubles(leaf_count_arr),
+        meta,
+      ]
+    }
+    FitCache::from_fit(
+      fold_ids_slot,
+      preds,
       self.depth,
       n_leaves,
       1,
-      n_obs,
+      n_obs_cache,
       data_hash,
       hparams_hash,
       cluster_hash,
-      "policy_tree",
+      estimator_kind,
     )
   } else {
     FitCache::empty()
@@ -1804,9 +2141,63 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     leaf_assignment,
     leaf_signal_mean,
     leaf_count: leaf_count_arr,
+    honest: self.honest,
+    split_seed: self.split_seed,
+    min_leaf_n: self.min_leaf_n,
+    est_indices: est_rows,
+    split_indices: split_rows,
+    leaf_se,
     fitted: true,
     memoize_enabled: self.memoize_enabled,
     fit_cache: next_cache,
+  }
+}
+
+///|
+/// v0.98.0+: turn HONESTY on or off. Same immutability contract as
+/// `enable_memoize()`: a new struct is returned, the receiver is
+/// untouched, and the config flag can be read with `is_honest()`
+/// BEFORE `fit()`.
+///
+/// Toggling this on an already-fitted, memoized model keeps the
+/// existing `fit_cache`, but the cache key includes the honesty flag,
+/// so the next `fit()` MISSES and recomputes -- the cache can never
+/// hand an adaptive fit's numbers to an honest request, nor the
+/// reverse. `clear_cache()` drops it outright.
+pub fn DoubleMLPolicyTree::enable_honesty(
+  self : DoubleMLPolicyTree,
+  on : Bool,
+) -> DoubleMLPolicyTree {
+  { ..self, honest: on, }
+}
+
+///|
+/// v0.98.0+: re-seed the honesty split. Ignored by the default
+/// (non-honest) path, which has no split to seed; folded into the
+/// memoize key, so changing it on a memoized model invalidates the
+/// cache exactly like toggling `honest` does.
+pub fn DoubleMLPolicyTree::enable_split_seed(
+  self : DoubleMLPolicyTree,
+  seed : Int,
+) -> DoubleMLPolicyTree {
+  { ..self, split_seed: seed, }
+}
+
+///|
+/// v0.98.0+: retune the small-leaf guard threshold. Requires `>= 2`.
+/// Raising it makes the guard STRICTER. Purely a reporting knob: it
+/// changes no fitted number, which is why it is deliberately NOT part
+/// of the memoize key.
+pub fn DoubleMLPolicyTree::set_min_leaf_n(
+  self : DoubleMLPolicyTree,
+  n : Int,
+) -> DoubleMLPolicyTree {
+  try {
+    require(n >= 2)
+    { ..self, min_leaf_n: n, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
 }
 
@@ -1899,6 +2290,407 @@ pub fn DoubleMLPolicyTree::split_value(self : DoubleMLPolicyTree) -> Double {
 }
 
 ///|
+/// v0.98.0+: which regime produced this model's numbers --
+/// `true` iff the fit split the sample (honesty), `false` for the
+/// v0.97.0 adaptive fit.
+///
+/// This is the check a caller should make before reading ANY of
+/// the uncertainty accessors. `leaf_se`, `policy_value`,
+/// `policy_value_se`, `leaf_influence` and the honest branch of
+/// `sensitivity_analysis` are all defined on the estimation half
+/// of an honest fit and refuse to report on an adaptive one;
+/// `is_honest()` lets the caller branch instead of catching an
+/// abort. Readable before `fit()` -- it is a configuration flag,
+/// not a fitted quantity.
+pub fn DoubleMLPolicyTree::is_honest(self : DoubleMLPolicyTree) -> Bool {
+  self.honest
+}
+
+///|
+/// v0.98.0+: the small-leaf guard threshold on ESTIMATION-half
+/// leaf counts. Leaves with fewer than this many estimation
+/// observations are reported by `unreliable_leaves()` and
+/// excluded from `policy_value_se()`. Default `5`; set via
+/// `new(min_leaf_n=...)`. Requires `>= 2`. Readable before
+/// `fit()`.
+pub fn DoubleMLPolicyTree::min_leaf_n(self : DoubleMLPolicyTree) -> Int {
+  self.min_leaf_n
+}
+
+///|
+/// v0.98.0+: the SPLITTING half -- original row indices of the
+/// observations `policy_tree_build` was allowed to look at.
+/// Length `floor(n_obs / 2)` under honesty. EMPTY when
+/// `honest = false`. Disjoint from `est_indices()` and jointly
+/// exhaustive of `range_indices(n_obs)`.
+pub fn DoubleMLPolicyTree::split_indices(
+  self : DoubleMLPolicyTree,
+) -> Array[Int] {
+  self.split_indices
+}
+
+///|
+/// v0.98.0+: the ESTIMATION half -- original row indices of the
+/// observations every reported leaf statistic is computed from.
+/// Length `ceil(n_obs / 2)` under honesty. EMPTY when
+/// `honest = false` (there the estimation sample is the whole
+/// sample in identity order).
+///
+/// Under honesty `leaf_assignment` has THIS length, not
+/// `n_obs`: position `j` of `leaf_assignment` describes row
+/// `est_indices()[j]`. `leaf_influence` returns arrays of the same
+/// length, indexed the same way.
+pub fn DoubleMLPolicyTree::est_indices(self : DoubleMLPolicyTree) -> Array[Int] {
+  self.est_indices
+}
+
+///|
+/// v0.98.0+: per-leaf standard errors of `leaf_signal_mean`,
+/// measured on the ESTIMATION half, length `n_leaves`. See
+/// `policy_tree_honest_leaf_se` for the formula and the full
+/// derivation.
+///
+/// WHAT THIS NUMBER IS NOT. It is CONDITIONAL ON THE FITTED
+/// STRUCTURE. It is the sampling variance of leaf `k`'s mean
+/// given that partition -- it does NOT include the variance from
+/// having SEARCHED for that partition. Athey & Imbens (2016) buy
+/// nominal coverage for the within-partition effects under
+/// honesty; they do not claim the partition itself is exogenous,
+/// and neither does this accessor. A leaf mean is a third kind of
+/// quantity: it is neither a DML score (so `sandwich_variance` is
+/// wrong) nor a projection of several coefficients (so `hac_se` is
+/// wrong), and it is not routed through either.
+///
+/// Requires `honest = true` AND a completed `fit()`. On an
+/// adaptive fit this ABORTS rather than returning the naive
+/// same-formula number, because that number is the standard error
+/// of an adaptive estimator whose bias does not vanish at a usable
+/// rate -- reporting it would be the exact silent failure this
+/// release exists to prevent. Use `is_honest()` to branch.
+pub fn DoubleMLPolicyTree::leaf_se(self : DoubleMLPolicyTree) -> Array[Double] {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    self.leaf_se
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.98.0+: `true` iff EVERY leaf holds at least `min_leaf_n()`
+/// estimation-half observations, i.e. iff every `leaf_se` entry is
+/// backed by enough degrees of freedom to be worth reading. This is
+/// the guard that keeps honesty honest about its own limits.
+///
+/// WHY THE GUARD EXISTS AT ALL. Cattaneo, Klusowski & Yu,
+/// "Accuracy Limits of Causal Trees for Individualized Treatment
+/// Effects" (arXiv:2509.11381) prove that CART-type greedy
+/// recursive partitioning "selects highly imbalanced splits with
+/// nonvanishing probability, producing terminal nodes containing
+/// very few observations and leading to large estimation variance",
+/// and -- the part that matters here -- that "sample splitting,
+/// often called 'honesty', does not remove this limitation". So
+/// honesty fixes the BIAS (the partition is no longer chosen by
+/// the same rows that fill it) and it does NOT fix the SMALL-LEAF
+/// VARIANCE. A leaf holding three estimation observations has a
+/// real, computed, and nearly meaningless `leaf_se`. Reporting it
+/// unflagged would be the "silent huge number" failure mode.
+pub fn DoubleMLPolicyTree::leaf_se_reliable(self : DoubleMLPolicyTree) -> Bool {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    self.unreliable_leaves().length() == 0
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.98.0+: the leaves whose estimation-half count is below
+/// `min_leaf_n()`, in DFS leaf order. Empty iff
+/// `leaf_se_reliable()`. This is the explicit, enumerable failure
+/// mode: a caller can see exactly WHICH leaves are untrustworthy
+/// rather than inferring it from one enormous `leaf_se`.
+///
+/// Leaves with fewer than 2 estimation observations also land
+/// here, and additionally carry a `NaN` in `leaf_se()` -- their
+/// sample variance has zero degrees of freedom and does not exist.
+pub fn DoubleMLPolicyTree::unreliable_leaves(
+  self : DoubleMLPolicyTree,
+) -> Array[Int] {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    let out : Array[Int] = []
+    for k = 0; k < self.leaf_count.length(); k = k + 1 {
+      if self.leaf_count[k] < self.min_leaf_n {
+        out.push(k)
+      }
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.98.0+: the smallest estimation-half leaf count -- the single
+/// number that tells a caller whether this honest fit is in the
+/// regime Cattaneo-Klusowski-Yu warn about. Requires
+/// `honest = true` AND a completed `fit()`.
+pub fn DoubleMLPolicyTree::smallest_leaf_count(
+  self : DoubleMLPolicyTree,
+) -> Int {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    let mut smallest = -1
+    for k = 0; k < self.leaf_count.length(); k = k + 1 {
+      if smallest < 0 || self.leaf_count[k] < smallest {
+        smallest = self.leaf_count[k]
+      }
+    }
+    smallest
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.98.0+: THE SCALAR. The policy value of the tree's own
+/// decision rule on the estimation half, i.e. the average value
+/// the tree assigns to the units it was shown:
+///
+///     policy_value = sum_k (n_k / n) * theta_k
+///
+/// over the estimation half, `n_k = leaf_count[k]`,
+/// `theta_k = leaf_signal_mean[k]`, `n = sum_k n_k`.
+///
+/// THE ESTIMAND, STATED PRECISELY, AND IT IS NOT WHAT YOU MIGHT
+/// EXPECT. Because `theta_k = (1/n_k) sum_{i in k} y_i`, the
+/// weights telescope and
+///
+///     sum_k (n_k / n) * theta_k = (1/n) * sum_k sum_{i in k} y_i
+///                               = (1/n) * sum_j y_j
+///                               = mean(y)
+///
+/// -- the policy value of a leaf-MEAN policy is IDENTICALLY the
+/// plain sample mean of `orth_signal` over the estimation half. That
+/// is not a bug in the formula, it is the standard fact that a
+/// policy whose action value is the group mean attains the group
+/// mean by construction and so has ZERO advantage over treating
+/// everyone. All the tree's information is in the per-leaf
+/// `leaf_signal_mean` / `leaf_se` pairs, NOT in this scalar. The
+/// scalar is worth exposing because that identity is the honest
+/// headline about what a single-leaf-mean policy tree buys, and
+/// because its exact variance is available for free (see
+/// `policy_value_se`).
+///
+/// This is a VALUE (a mean outcome), not a CATE. Requires
+/// `honest = true` AND a completed `fit()`. Unguarded: a
+/// population-weighted mean is not variance-dominated by one tiny
+/// leaf, so no abort is warranted here even when
+/// `leaf_se_reliable()` is false.
+pub fn DoubleMLPolicyTree::policy_value(self : DoubleMLPolicyTree) -> Double {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    let n_est = self.est_indices.length()
+    let mut acc = 0.0
+    for k = 0; k < self.leaf_signal_mean.length(); k = k + 1 {
+      acc = acc +
+        self.leaf_count[k].to_double() /
+        n_est.to_double() *
+        self.leaf_signal_mean[k]
+    }
+    acc
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.98.0+: standard error of `policy_value()`. It is the EXACT
+/// standard error of the plain sample mean of `orth_signal` over
+/// the estimation half:
+///
+///     policy_value_se = sqrt( sum_{j=1..n} (y_j - ybar)^2
+///                            / (n * (n - 1)) )
+///                     = sd(y) / sqrt(n)
+///
+/// WHY IT IS NOT `sum_k (n_k/n)^2 * se_k^2`, WHICH IS THE
+/// TEMPTING FORMULA AND IS WRONG. That expression assumes the leaf
+/// means are INDEPENDENT. They are not: they are `n_k` row means of
+/// ONE sample, and two disjoint group means from one sample are
+/// NEGATIVELY correlated, `Cov(theta_k, theta_l) =
+/// -s_k^2 s_l^2 / (n (n - 1))` for `k != l`. Dropping that
+/// covariance does not produce a conservative bound, it produces a
+/// wrong number in the wrong direction, and it is worst exactly
+/// where the tree is most interesting:
+///
+/// - If all the variation is BETWEEN leaves (`s_k^2 = 0` for every
+///   leaf -- zero within-leaf noise, genuine heterogeneity), the
+///   independence formula returns EXACTLY ZERO. The quantity it
+///   describes is a sample mean of genuinely spread-out data, so
+///   its true SE is `> 0`.
+/// - The two-leaf worst case makes it concrete: two leaves of size
+///   `n/2` with means `ybar +/- d` give `sum_j (y_j - ybar)^2 = n
+///   d^2`, hence `policy_value_se = |d| / sqrt(n - 1) > 0`, while
+///   the independence formula still returns `0`.
+///
+/// The exact form needs no cross-leaf covariance, which is why the
+/// joint `n_leaves x n_leaves` covariance matrix -- the honest
+/// per-leaf CIs would genuinely want it -- stays out of scope here.
+/// FUTURE WORK: expose the full covariance of the leaf means
+/// (`Cov(theta_k, theta_l) = -s_k^2 s_l^2 / (n (n-1))` off-diagonal,
+/// `s_k^2 / n_k` on it) so per-leaf CIs can be reported honestly at
+/// any depth. Building a FOREST of honest trees to recover the
+/// precision a single tree loses (Wager & Athey 2018, JASA) is also
+/// future work and is deliberately not attempted.
+///
+/// SAME CAVEAT AS `leaf_se()`: conditional on the fitted
+/// structure, not on the partition having been exogenous.
+///
+/// Requires `honest = true`, a completed `fit()`, AND
+/// `leaf_se_reliable() == true`. The reliability guard is
+/// deliberate: a scalar SE that is dominated by a three-observation
+/// leaf is a claim about sampling variability that the data cannot
+/// support, and aborting (with the standard precondition message)
+/// is the explicit failure mode. Check `smallest_leaf_count()` or
+/// `unreliable_leaves()` first if you want the number anyway.
+pub fn DoubleMLPolicyTree::policy_value_se(self : DoubleMLPolicyTree) -> Double {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    require(self.leaf_se_reliable())
+    let sig = slice_vector(self.orth_signal, self.est_indices)
+    let n_est = sig.length()
+    let ybar = mean(sig)
+    let mut ss = 0.0
+    for j = 0; j < n_est; j = j + 1 {
+      let d = sig[j] - ybar
+      ss = ss + d * d
+    }
+    (ss / (n_est.to_double() * (n_est.to_double() - 1.0))).sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.98.0+: THE LEAF-MEAN INFLUENCE FUNCTION, ONE LEAF AT A TIME.
+///
+/// DERIVATION. Leaf `k` of an honest tree is estimated by the mean
+/// of `n_k` i.i.d. observations of the estimation half. Write its
+/// estimating equation as an average over the leaf's own rows:
+///
+///     f_k(theta)  = (1/n_k) * sum_{i in k} (y_i - theta)
+///                 = (1/n_k) * sum_{i in k} y_i - theta
+///     f_k'(theta) = -n_k * (1/n_k) = -1
+///     f_k(theta_hat_k) = 0   at   theta_hat_k = mean(y in k)
+///
+/// For a Z-estimator `f(theta) = (1/n) sum_i f_i(theta)` the
+/// influence function is `IF_i = -f_i(theta_hat) / f'(theta_hat)`.
+/// Splitting the estimating function per observation,
+/// `f_i(theta) = (y_i - theta) / n_k`, so `f_i'(theta) = -1/n_k`
+/// and
+///
+///     IF_k(i) = -[(y_i - theta_hat_k) / n_k] / (-1)
+///             = (y_i - theta_hat_k) / n_k
+///
+/// on the estimation rows of leaf `k`, and `0` everywhere else.
+/// So `M_inv = 1 / f_k' = -1` and the per-observation Riesz
+/// denominator that `irm_style_sensitivity` consumes is
+/// `psi_a[i] = f_i'(theta_hat_k) = -1 / n_k` -- see
+/// `leaf_psi_a`.
+///
+/// TWO CONSISTENCY CHECKS WORTH WRITING DOWN. (i) It sums to zero
+/// within the leaf: `sum_{i in k} IF_k(i) = (1/n_k) sum_{i in k}
+/// (y_i - theta_hat_k) = 0`, which is required of any influence
+/// function. (ii) Its norm reproduces the leaf SE:
+/// `sum_{i in k} IF_k(i)^2 = (n_k - 1) s_k^2 / n_k^2`, which
+/// agrees with `leaf_se[k] = s_k / sqrt(n_k)` to within the
+/// familiar `(n_k - 1)/n_k` factor -- the two differ because
+/// `leaf_se` uses the `n_k - 1` divisor and `sqrt(sum IF^2)` does
+/// not.
+///
+/// Requires `honest = true` AND a completed `fit()`. Length equals
+/// `est_indices().length()`, position `j` corresponding to
+/// original row `est_indices()[j]` -- NOT to row `j`. On an
+/// adaptive fit the same array is computable but is not a valid
+/// influence function (the partition was chosen using these same
+/// rows), so this accessor refuses rather than pretending.
+pub fn DoubleMLPolicyTree::leaf_influence(
+  self : DoubleMLPolicyTree,
+  leaf : Int,
+) -> Array[Double] {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    require(leaf >= 0 && leaf < self.leaf_count.length())
+    let sig = slice_vector(self.orth_signal, self.est_indices)
+    let out : Array[Double] = Array::make(sig.length(), 0.0)
+    let nk_d = self.leaf_count[leaf].to_double()
+    for j = 0; j < sig.length(); j = j + 1 {
+      if self.leaf_assignment[j] == leaf {
+        out[j] = (sig[j] - self.leaf_signal_mean[leaf]) / nk_d
+      }
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.98.0+: the per-observation Riesz denominator
+/// `psi_a[i] = -1 / n_k` for the rows of leaf `leaf` in the
+/// estimation half and `0.0` elsewhere -- i.e. `leaf_influence`
+/// with its residual divisor pulled out, in exactly the shape
+/// `sensitivity_analysis` feeds to `irm_style_sensitivity`.
+///
+/// The default (`honest = false`) path passes the CONSTANT `-1.0`
+/// for its own rows instead, and that is what it still passes:
+/// `sensitivity_analysis`'s v0.69.0-v0.97.0 numbers are pinned
+/// and unchanged. `-1` is the per-LEAF derivative `f_k'` scaled up
+/// by `n_k`; `-1/n_k` is the per-OBSERVATION derivative `f_i'`,
+/// which is the honest one. Both are legitimate inputs to the
+/// Cinelli-Hazlett decomposition -- it consumes `psi_a` only
+/// through `psi_a^2`, so the sign is immaterial and the magnitude
+/// sets the variance scale -- but only the honest path's numbers
+/// describe an estimator whose partition is independent of the
+/// rows it is computed from.
+pub fn DoubleMLPolicyTree::leaf_psi_a(
+  self : DoubleMLPolicyTree,
+  leaf : Int,
+) -> Array[Double] {
+  try {
+    require(self.fitted)
+    require(self.honest)
+    require(leaf >= 0 && leaf < self.leaf_count.length())
+    let out : Array[Double] = Array::make(self.leaf_assignment.length(), 0.0)
+    let psi = -1.0 / self.leaf_count[leaf].to_double()
+    for j = 0; j < self.leaf_assignment.length(); j = j + 1 {
+      if self.leaf_assignment[j] == leaf {
+        out[j] = psi
+      }
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.69.0+: per-leaf sensitivity analysis for `DoubleMLPolicyTree`.
 ///
 /// PolicyTree is a deterministic policy learner: each
@@ -1921,6 +2713,35 @@ pub fn DoubleMLPolicyTree::split_value(self : DoubleMLPolicyTree) -> Double {
 /// `SensitivityResult`. `cf_y` / `cf_d` default to `0.05`
 /// matching the v0.66.0+ sensitivity family.
 ///
+/// v0.98.0+ -- BEHAVIOUR CHANGE UNDER `honest = true`, AND
+/// NOTHING CHANGES WITHOUT IT. This method BECAME HONESTY-AWARE,
+/// and the honest numbers DIFFER from the v0.97.0 numbers in two
+/// deliberate ways. On the DEFAULT path (`honest = false`,
+/// the v0.97.0 behaviour) the decomposition still runs over all
+/// `n_obs` rows in identity order with `psi_a = -1`, and every
+/// returned number is byte-identical to v0.69.0-v0.97.0; that is
+/// pinned in `expand_v098_test.mbt`. On the HONEST path it
+/// instead:
+///
+///   - runs over the ESTIMATION half only, so
+///     `n_rows == leaf_assignment.length() == ceil(n_obs / 2)`
+///     rather than `n_obs`, with position `j` describing original
+///     row `est_indices()[j]`; and
+///   - passes `psi_a = -1 / n_l`, the true per-observation
+///     derivative of the leaf-mean estimating function (derived
+///     in full on `leaf_influence`), rather than the constant
+///     `-1`.
+///
+/// Both changes are forced by honesty rather than cosmetic: the
+/// split half is not in `leaf_signal_mean`, so including it would
+/// contaminate every leaf's residual, and `-1` is `n_l` times the
+/// derivative that actually describes an honest leaf mean.
+/// Because `irm_style_sensitivity` consumes `psi_a` through
+/// `psi_a^2` only, the sign flip is immaterial but `nu2` scales by
+/// `1 / n_l^2` and the reported `rv` / `max_bias` move
+/// accordingly. Callers that want the old numbers must leave
+/// `honest` at its default.
+///
 /// Calling on an un-fit model aborts via
 /// `PreconditionError`.
 pub fn DoubleMLPolicyTree::sensitivity_analysis(
@@ -1929,7 +2750,23 @@ pub fn DoubleMLPolicyTree::sensitivity_analysis(
   cf_d? : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
-  let n_obs = self.orth_signal.length()
+  // v0.98.0+: WHICH ROWS, and WHICH psi_a. See the docstring for
+  // why this is a deliberate behaviour change under honesty and a
+  // no-op without it.
+  //
+  // Default path: `sig` IS `self.orth_signal` (same array object)
+  // and `n_rows == n_obs`, so `vector_subtract` sees exactly the
+  // operands it saw in v0.97.0 and the buckets below are filled
+  // in the same increasing-`i` order -- the results are
+  // byte-identical, not merely close.
+  let sig : Array[Double] = if self.honest {
+    slice_vector(self.orth_signal, self.est_indices)
+  } else {
+    self.orth_signal
+  }
+  // `leaf_assignment.length()` is `n_obs` on the default path and
+  // `n_est` under honesty, so one expression serves both.
+  let n_rows = self.leaf_assignment.length()
   let n_leaves = self.leaf_signal_mean.length()
   let zero_result : SensitivityResult = {
     rv: 0.0,
@@ -1948,14 +2785,11 @@ pub fn DoubleMLPolicyTree::sensitivity_analysis(
   // bucketed per leaf in increasing `i` order, so the residual
   // array handed to `irm_style_sensitivity` has the same layout
   // as before.
-  let leaf_mean_per_row : Array[Double] = Array::make(n_obs, 0.0)
-  for i = 0; i < n_obs; i = i + 1 {
+  let leaf_mean_per_row : Array[Double] = Array::make(n_rows, 0.0)
+  for i = 0; i < n_rows; i = i + 1 {
     leaf_mean_per_row[i] = self.leaf_signal_mean[self.leaf_assignment[i]]
   }
-  let residuals_all : Array[Double] = vector_subtract(
-    self.orth_signal,
-    leaf_mean_per_row,
-  )
+  let residuals_all : Array[Double] = vector_subtract(sig, leaf_mean_per_row)
   let residual_fill : Array[Int] = Array::make(n_leaves, 0)
   // Bucket residuals and psi_a per leaf, then call
   // `irm_style_sensitivity` once per leaf.
@@ -1964,9 +2798,18 @@ pub fn DoubleMLPolicyTree::sensitivity_analysis(
     if n_in_leaf == 0 {
       continue
     }
+    // v0.98.0+: `-1` on the default path (pinned, unchanged),
+    // `-1 / n_l` under honesty -- the true per-observation
+    // derivative `f_i'(theta)` of `f_l(theta) = (1/n_l) sum
+    // (y_i - theta)`; derivation on `leaf_influence`.
+    let psi_value : Double = if self.honest {
+      -1.0 / n_in_leaf.to_double()
+    } else {
+      -1.0
+    }
     let residuals : Array[Double] = Array::make(n_in_leaf, 0.0)
-    let psi_a : Array[Double] = Array::make(n_in_leaf, -1.0)
-    for i = 0; i < n_obs; i = i + 1 {
+    let psi_a : Array[Double] = Array::make(n_in_leaf, psi_value)
+    for i = 0; i < n_rows; i = i + 1 {
       if self.leaf_assignment[i] == l {
         residuals[residual_fill[l]] = residuals_all[i]
         residual_fill[l] = residual_fill[l] + 1

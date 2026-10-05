@@ -9,6 +9,199 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.98.0] -- `DoubleMLPolicyTree` gets honesty and a standard error
+
+`DoubleMLPolicyTree` had **no uncertainty quantification of any
+kind** through v0.97.0: no `se`, no `confint`, no `bootstrap`. Worse,
+and this is what had to be fixed first, `policy_tree_build` selected
+split features and thresholds by searching **the same observations**
+whose `orth_signal` then produced `leaf_signal_mean`. Every
+observation influenced both which leaf it landed in and that leaf's
+reported value. That is exactly the adaptive estimator whose bias
+does not vanish at a usable rate, and Athey & Imbens (2016) report
+interval coverage falling well below nominal for adaptive as against
+honest recursive partitioning.
+
+### Added
+
+- `DoubleMLPolicyTree::new(..., honest = false, split_seed = 2024,
+  min_leaf_n = 5)`. All three default to the inert setting, so every
+  v0.97.0 call site is byte-identical.
+- `DoubleMLPolicyTree::is_honest()` -- which regime produced a number.
+- `DoubleMLPolicyTree::leaf_se()` -- per-leaf standard error of
+  `leaf_signal_mean`, measured on the estimation half, length
+  `n_leaves`. Equals `sd(y in estimation half of leaf k) /
+  sqrt(n_k)`. Aborts on an adaptive fit.
+- `DoubleMLPolicyTree::leaf_se_reliable()`,
+  `unreliable_leaves()`, `smallest_leaf_count()`, `min_leaf_n()` --
+  the small-leaf guard and its reporting surface.
+- `DoubleMLPolicyTree::policy_value()` / `policy_value_se()` -- the
+  scalar, stated and derived in full below.
+- `DoubleMLPolicyTree::leaf_influence(leaf)` /
+  `leaf_psi_a(leaf)` -- the per-observation influence function for a
+  single leaf, and the Riesz denominator `sensitivity_analysis`
+  consumes.
+- `DoubleMLPolicyTree::est_indices()` / `split_indices()` -- the two
+  halves, so a caller can verify the partition or map estimation-half
+  positions back to original rows.
+- `DoubleMLPolicyTree::enable_honesty(on)` /
+  `enable_split_seed(seed)` / `set_min_leaf_n(n)` -- immutable
+  setters matching the `enable_memoize` convention.
+- `expand_v098_test.mbt`: 21 tests. **Sandwich coverage UNCHANGED at
+  16 of 22**, and hac coverage unchanged at 2 of 22 -- PolicyTree is
+  neither, and this release does not add it to either. A leaf mean
+  under a fixed partition is a third kind of quantity: not a DML
+  score (so `sandwich_variance` is wrong) and not a projection of
+  several coefficients (so `hac_se` is wrong).
+
+### THE SCALAR: WHAT IT IS, AND WHY ITS SE IS NOT THE OBVIOUS ONE
+
+`policy_value = sum_k (n_k/n) * theta_k` over the estimation half.
+Because `theta_k = (1/n_k) sum_{i in k} y_i`, the weights telescope
+and that expression is **identically the plain sample mean** of
+`orth_signal` over the estimation half. That is not a defect in the
+formula, it is the standard fact that a policy whose action value is
+the group mean attains the group mean by construction and so has
+zero advantage over treating everyone. All of a policy tree's
+information lives in the per-leaf `leaf_signal_mean` / `leaf_se`
+pairs.
+
+Its standard error is therefore the plain sample mean's, exactly:
+`sd(y_est) / sqrt(n_est)`, with **no** cross-leaf covariance needed.
+
+The briefing for this release proposed
+`sum_k (n_k/n)^2 * se_k^2`. **That was implemented as a rejection,
+not a deviation of convenience**: it assumes the leaf means are
+INDEPENDENT, and they are not -- two disjoint group means of one
+sample have covariance `-s_k^2 s_l^2 / (n(n-1))`. Dropping that term
+is not conservative, it is wrong in the wrong direction, and it is
+worst exactly where the tree is most interesting: if all the
+variation is BETWEEN leaves (`s_k^2 = 0` everywhere), it returns
+**exactly zero** for a quantity whose true SE is `> 0`. On the two-leaf
+worst case (`n/2` rows at `ybar +/- d`) the true SE is
+`|d| / sqrt(n-1)` while the independence form is still `0`. Measured
+on the v0.98.0 DGP it understates by a factor of ~2.8
+(`0.0222` against `0.0627`), and
+`policy_tree_policy_value_se` asserts that it disagrees, so the test
+proves the choice is real rather than accidental.
+
+### THE LEAF-MEAN INFLUENCE FUNCTION
+
+For leaf `k`, `f_k(theta) = (1/n_k) sum_{i in k} (y_i - theta)`, so
+`f_k'(theta) = -1` and `M_inv = -1`; splitting the estimating
+function per observation, `f_i(theta) = (y_i - theta)/n_k` with
+`f_i'(theta) = -1/n_k`, hence
+
+    IF_k(i) = -f_i(theta_hat_k) / f_k'(theta_hat_k)
+            = (y_i - theta_hat_k) / n_k
+
+on the leaf's estimation rows and `0` elsewhere. It sums to zero
+within the leaf, and `sum IF_k(i)^2 = (n_k - 1) s_k^2 / n_k^2`
+reproduces `leaf_se[k] = s_k / sqrt(n_k)` up to the familiar
+`(n_k - 1)/n_k` factor. Lives in `blp_policy.mbt` on
+`DoubleMLPolicyTree::leaf_influence` (full derivation in the
+docstring).
+
+### BEHAVIOUR CHANGE: `sensitivity_analysis` BECAME HONESTY-AWARE
+
+**Under `honest = true` the numbers CHANGE, on purpose.** Two forced
+changes: the decomposition now runs over the ESTIMATION half only
+(`leaf_assignment.length() == ceil(n_obs/2)`, not `n_obs`), and
+`psi_a` becomes `-1 / n_l`, the true per-observation derivative,
+instead of the constant `-1`. Both regimes are pinned:
+`policy_tree_sensitivity_analysis_default_pinned` holds the v0.97.0
+numbers byte-identically (`NU2 = [1, 1, 1, 1]`, the signature of
+`psi_a = -1`), and `policy_tree_sensitivity_analysis_honest_pinned`
+holds the honest ones. `NU2` is the legible one -- it drops to
+`[0.0004, 0.0004938271604938276, 0.0002777777777777777,
+0.0004938271604938276]`, which are `1/50^2, 1/45^2, 1/60^2, 1/45^2`,
+i.e. exactly `1 / n_l^2` for leaf counts `[50, 45, 60, 45]`.
+
+**Without `honest` nothing changes**: the decomposition still runs
+over all `n_obs` rows in identity order with `psi_a = -1`, and the
+loop is fed the same array object it was fed in v0.97.0, so the
+results are byte-identical rather than merely close.
+
+### WHAT THE NUMBERS ARE NOT
+
+`leaf_se` and `policy_value_se` are **conditional on the fitted
+structure**. They are the sampling variance of a leaf mean *given*
+that partition; neither includes the variance from having searched
+for it. Athey & Imbens buy nominal coverage for the WITHIN-partition
+effects under honesty; they do not claim the partition itself is
+exogenous, and neither does this package. Said on every accessor.
+
+### THE SMALL-LEAF GUARD, AND WHAT HONESTY DOES NOT FIX
+
+**Athey & Imbens (2016, PNAS 113(27):7353-7358)** establish what
+honesty buys: "Honesty has the implication that the asymptotic
+properties of treatment effect estimates within the partitions are
+the same as if the partition had been exogenously given." They
+implement it by splitting the training sample in two -- one for
+constructing the tree, one for estimating within its leaves -- and
+report ~69% of nominal coverage for the adaptive alternative.
+
+**Cattaneo, Klusowski & Yu (2025), "Accuracy Limits of Causal Trees
+for Individualized Treatment Effects" (arXiv:2509.11381)** establish
+the limit of it: greedy CART-type recursive partitioning "selects
+highly imbalanced splits with nonvanishing probability, producing
+terminal nodes containing very few observations and leading to large
+estimation variance", and -- decisively here -- "sample splitting,
+often called 'honesty', does not remove this limitation". So honesty
+fixes the BIAS and does NOT fix the SMALL-LEAF VARIANCE. Hence
+`min_leaf_n`, default **5**, chosen so a reported `leaf_se` always has
+at least 4 degrees of freedom in its within-leaf variance; at that
+floor the plug-in variance's own relative standard error is
+`sqrt(2/(n_k-1)) = 0.71`, so the number is honestly labelled as
+barely estimated. It is a constructor parameter, not a magic constant,
+and it is deliberately NOT in the memoize key because it changes no
+fitted number.
+
+The failure mode is explicit rather than a silent huge number:
+`leaf_se_reliable()` / `unreliable_leaves()` enumerate the offenders,
+a leaf with `n_k <= 1` reports `NaN` (zero degrees of freedom --
+`0.0` would read as infinitely precise), `policy_value()` still
+returns because a population-weighted mean is not
+variance-dominated by one small leaf, and `policy_value_se()` ABORTS.
+Measured on the `n = 18` fixture (`leaf_count = [4, 2, 2, 1]`): the
+two-observation leaf reports `leaf_se = 1.274`, over 20x the healthy
+`0.095` beside it, and the one-observation leaf reports `NaN`.
+
+### Also
+
+- The memoize key had to learn about the honesty split: under
+  honesty the cached payload is indexed by the estimation half, so
+  `fold_ids` holds `est_indices`, the `n_obs` slot holds `n_est` (or
+  `FitCache::is_valid`'s `fold_ids.length() == n_obs` check could
+  never fire), and `predictions[5]` / `predictions[6]` carry
+  `leaf_se` and the splitting half. `honest` and `split_seed` ride in
+  the `estimator_kind` discriminator, so toggling either invalidates
+  the cache in both directions. The default cache layout is
+  unchanged.
+- `moon.pkg` gains `moonbitlang/core/double` -- a CORE package, not a
+  new external dependency -- for the `@double.not_a_number` sentinel.
+- Joint `n_leaves x n_leaves` covariance of the leaf means: **NOT
+  implemented**, noted as future work on `policy_value_se`. The
+  closed form is available (`-s_k^2 s_l^2 / (n(n-1))` off-diagonal,
+  `s_k^2 / n_k` on it) and is what per-leaf CIs at depth > 1 would
+  want. **No forest**: Wager & Athey (2018, JASA) recover the
+  precision a single honest tree loses by averaging many honest
+  trees; a single honest tree spends about half the sample on each
+  of its two jobs. That cost is accepted and documented, not fixed.
+
+### Verification
+
+`moon check --deny-warn --json` -> `"status":"success"`, 0 warnings,
+on `native` / `wasm-gc` / `wasm` / `js`. `moon test`: **750** native,
+**756** wasm-gc, 750 wasm, 750 js -- all passing, i.e. 729 -> 750
+native (735 -> 756 wasm-gc) with 21 new tests and zero changes to the
+existing 729.
+
+Every number pinned as pre-change was MEASURED on `e2737c8`
+(v0.97.0) by stashing the v0.98.0 source change out of the working
+tree and running the v0.98.0 DGP through the v0.97.0 API, before any
+edit to `blp_policy.mbt`.
+
 ## [0.97.0] -- `DoubleMLBLP` gets its own `hac_se` (not `sandwich_se`)
 
 The same treatment `DoubleMLRDD` got in v0.96.0, applied to the other
