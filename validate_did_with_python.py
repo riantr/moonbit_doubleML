@@ -177,7 +177,7 @@ def main() -> None:
     print("=" * 70)
     print("Running MoonBit port: `moon run examples/main` ...")
     proc = subprocess.run(
-        ["moon", "run", "examples/main"],
+        ["moon", "run", "--target", "native", "examples/main"],
         cwd=Path(__file__).parent,
         capture_output=True,
         text=True,
