@@ -9,6 +9,93 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.94.0] -- `DoubleMLPQ` sandwich API
+
+`DoubleMLPQ` had no `sandwich_se` because its Jacobian `deriv` was a
+`fit()` local (the third value `solve_pq` returns) that reached the
+SE computation and then died, and its stored `psi` is the centered
+PQ quantile score with no `psi_a + coef * psi_b` split to
+reconstruct it from. Both now resolved.
+
+### Added
+
+- `DoubleMLPQ` persists `psi_a` (length `n_obs`, every entry equal
+  to `d mean(psi(theta)) / d theta` at `coef`). The derivative of a
+  *mean* is a scalar, so the per-observation array is a uniform-API
+  convenience, not a claim of per-observation variation.
+  `DoubleMLPQ::fit_cluster` builds it from that path's own
+  `deriv_r`; the two paths run `solve_pq` under different folds and
+  are not interchangeable.
+- `DoubleMLPQ::sandwich_se` / `cluster_sandwich_se` /
+  `bias_corrected_coef`. Sandwich coverage 14 -> **15 of 22**.
+
+### The invariant
+
+With `M_inv = 1/deriv` and `psi = self.psi`, the HC0 accumulator
+reduces to `sum(psi^2) / (deriv^2 * n)` -- exactly what `fit`
+computes for `se`. So
+
+    sandwich_se(HC0) == se()
+
+holds, and it is **exactly** equal, not merely within tolerance:
+measured `(hc0 - se).abs() / se == 0.0` on all four backends
+(`native`, `wasm`, `wasm-gc`, `js`). The portable contract the test
+pins is 1e-14 relative, since the two sides differ only in where
+the `1 / deriv^2` sits (`M_inv[0,0]^2 * acc / n / n` vs
+`(acc / n) / (deriv * deriv * n)`) -- a last-ulp reassociation.
+
+The `deriv == 0` guard **aborts** rather than clips, for the same
+reason as v0.93.0: clipping would break the identity for
+small-but-nonzero `deriv` (because `se()` uses the unclipped value),
+and the `1e-12` floor also catches sub-normal `deriv`, where
+`1 / deriv` overflows and the variance returns `inf` while still
+passing a `>= 0.0` check.
+
+### The trap, measured
+
+PQ's estimating function is a quantile FIRST-ORDER CONDITION,
+`mean(psi(theta)) = 0`, not the package-wide
+`f(theta) = E[theta * psi_a + psi_b]` mean moment. Its Jacobian is
+therefore the IPW-weighted density of `y` at `theta` among the
+treated -- genuinely data-dependent, and emphatically not a
+constant. `quantile.mbt` did **not** carry LPQ's false "psi_a is
+the constant -1" comment (the pre-v0.94.0 text described `deriv`
+correctly as `d mean(psi) / d theta`), so there was nothing to
+correct -- only to pin.
+
+On the v0.94.0 DGP (`n = 500`, `y = 2 d + 6 u` on the treated arm)
+`deriv = 0.2108547194294484`, so a constant `-1` (or `+1` -- the
+variance sees the Jacobian only through its SQUARE, so the two
+readings are equally wrong and both are pinned) gives
+`0.038452774372704515` against the true
+`0.18236620207863424`: a **4.74x** under-statement on a
+`coef` of `5.13`. Refitting on a doubled outcome width moves
+`deriv` to `0.12051006779069894` (1.75x, against an ideal 2x -- the
+central-difference step is a fraction of the outcome RANGE, which
+doubles too), which no hard-coded constant can do.
+
+`psi_a` cannot drift on a memoize cache hit: `FitCache` for `"pq"`
+stores `[[theta, deriv], psi]`, but `fit` binds `deriv` to the same
+name on both paths, so building `psi_a` from that single binding
+after the `cache_hit` branch is correct on both by construction.
+`pq_sandwich_after_memoize_cache_hit` pins it.
+
+### Notes
+
+- `sandwich_se` does not call the shared `psi_at` helper: PQ's
+  `self.psi` is already the score evaluated at `coef` and there is no
+  `psi_b` to reconstruct it from. Documented at the method.
+- On a CLUSTERED fit `DoubleMLPQ::fit_cluster` computes `se()` as
+  the unit-level cluster-robust variance, so the
+  `sandwich_se(HC0) == se()` invariant is an IID-path property only;
+  use `cluster_sandwich_se` there. Documented at the method.
+- README sandwich coverage row updated 14 -> 15 (re-counted, not
+  trusted). The neighbouring test-count rows were stale (664 / 670)
+  and are corrected to the measured 684 / 690.
+- `moon fmt --check` remains broken in this workspace (non-zero on
+  an unrelated `linalg_gpu` junction); `moon fmt` was run and only
+  the files touched here moved.
+
 ## [0.93.0] -- `DoubleMLLPQ` sandwich API (third skip, now cleared)
 
 `DoubleMLLPQ` was skipped from the sandwich rollout in v0.86.0 and

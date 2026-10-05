@@ -297,6 +297,19 @@ pub struct DoubleMLPQ {
   // `coef`. Persisted from `solve_pq(...)` so the multiplier
   // bootstrap can use it without recomputing.
   psi : Array[Double]
+  // v0.94.0+: the PQ score's theta-derivative at `coef`, i.e.
+  // `d mean(psi(theta)) / d theta` (the central-difference
+  // `deriv` `solve_pq` returns -- the IPW-weighted density of
+  // `y` at `theta` among the treated). Persisted because the
+  // sandwich variance needs it as the Jacobian
+  // (`M_inv = 1 / deriv`) and it cannot be recovered after
+  // `fit()` returns. Length `n_obs`, every entry equal to the
+  // same scalar -- the derivative of a MEAN is a scalar, so a
+  // per-observation array here is a uniform-API convenience,
+  // not a claim of per-observation variation. It is emphatically
+  // NOT a constant: see the section comment above the sandwich
+  // methods.
+  psi_a : Array[Double]
   // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
   // length-`n_rep_boot` array of t-statistics for `coef`.
   // Populated by `bootstrap(...)`; empty until then.
@@ -347,6 +360,7 @@ pub fn DoubleMLPQ::new(
       se: 0.0,
       fitted: false,
       psi: Array::make(data.y.length(), 0.0),
+      psi_a: Array::make(data.y.length(), 0.0),
       boot_t_stat: [],
       boot_method: "",
       n_rep_boot: 0,
@@ -460,6 +474,24 @@ pub fn DoubleMLPQ::fit(
     (t, p, d, local_fold_ids)
   }
   let n_d = n.to_double()
+  // v0.94.0+: persist the Jacobian as a uniform-API length-`n_obs`
+  // array of the SAME scalar on every row, so `mean(psi_a) == deriv`
+  // and `sandwich_variance`'s `psi_a` slot can be filled directly.
+  //
+  // Placement is load-bearing for the memoize path. `deriv` is
+  // RECONPUTED only on a cache MISS (on a hit it is restored from
+  // `FitCache.predictions[0][1]`, packed alongside `theta` since
+  // v0.84.0), but it is bound to the SAME name on BOTH paths by the
+  // `(theta, psi, deriv, fold_ids)` destructuring above. Building
+  // `psi_a` from that single binding -- after the `cache_hit` branch
+  // -- is therefore correct on both paths by construction, and there
+  // is no second restore path that can drift.
+  // `expand_v094_test.mbt::pq_sandwich_after_memoize_cache_hit` pins
+  // that.
+  let psi_a : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    psi_a[i] = deriv
+  }
   // SE = sqrt(E[psi^2] / n) / |deriv|, the standard
   // one-step influence-function variance for a Z-estimator.
   // v0.84.0+: vectorise the `gamma = sum(psi^2)` accumulator
@@ -467,6 +499,19 @@ pub fn DoubleMLPQ::fit(
   // helpers. Because `psi * psi` is element-wise square,
   // `vector_multiply(psi, psi)` and `mean()` give the same
   // sum-of-squares as the inline loop.
+  //
+  // v0.94.0: `deriv` is `d mean(psi(theta)) / d theta` at the
+  // bisection root -- the IPW-weighted density of `y` at `theta`
+  // among the treated, from the central difference in `solve_pq`.
+  // It is DATA-DEPENDENT, not a constant of the estimator: PQ is a
+  // quantile Z-estimator whose estimating equation is the
+  // FIRST-ORDER CONDITION `mean(psi(theta)) = 0`, not the
+  // package-wide `f(theta) = E[theta * psi_a + psi_b]` mean moment,
+  // so there is no per-observation coefficient row to read a
+  // constant off. Reading `M_inv` as `-1` (or `+1`) instead of
+  // `1 / deriv` shrinks the SE by `|deriv|`; on the v0.94.0 DGP
+  // that is 4.74x (0.18237 -> 0.03845 on a `coef` of 5.13). Pinned
+  // by `expand_v094_test.mbt`.
   let psi_sq = vector_multiply(psi, psi)
   let gamma = mean(psi_sq)
   let se = (gamma / (deriv * deriv * n_d)).sqrt()
@@ -504,6 +549,7 @@ pub fn DoubleMLPQ::fit(
     se,
     fitted: true,
     psi,
+    psi_a,
     boot_t_stat: [],
     boot_method: "",
     n_rep_boot: 0,
@@ -594,6 +640,22 @@ fn DoubleMLPQ::fit_cluster(
     ses[0] = se_r
     last_psi = psi_r
     let (coef, se) = aggregate_coef_se(coefs, ses)
+    // v0.94.0+: same uniform-API Jacobian array as the IID path,
+    // built from this path's own `deriv_r` (the cluster path runs
+    // `solve_pq` under cluster folds, so the two paths' Jacobians
+    // are NOT interchangeable and each must persist its own).
+    //
+    // Note that `se` here is the UNIT-LEVEL cluster-robust variance
+    // `sqrt(var_unit / (deriv_r^2 * n_units))`, not the IID
+    // `sqrt(mean(psi^2) / (deriv^2 * n))`. The
+    // `sandwich_se(HC0) == se()` invariant is therefore an IID-path
+    // property only -- on a clustered fit the caller should compare
+    // against `cluster_sandwich_se(self.data.cluster_vars)` (or the
+    // unit-level variance directly), which is what `se` already is.
+    let psi_a : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      psi_a[i] = deriv_r
+    }
     {
       data: self.data,
       treatment: self.treatment,
@@ -607,6 +669,7 @@ fn DoubleMLPQ::fit_cluster(
       se,
       fitted: true,
       psi: last_psi,
+      psi_a,
       boot_t_stat: [],
       boot_method: "",
       n_rep_boot: 0,
@@ -838,6 +901,218 @@ pub fn DoubleMLPQ::sensitivity_analysis_cluster(
     cf_y,
     cf_d,
   )
+}
+
+// ---------------------------------------------------------------------------
+// v0.94.0: the sandwich API
+// ---------------------------------------------------------------------------
+//
+// WHY PQ IS NOT ONE OF THE ORDINARY 12
+// =====================================
+//
+// `var_est.mbt` defines the package's estimating function as
+//     f(theta) = E[theta * psi_a + psi_b]
+// a mean moment whose root is `-mean(psi_b) / mean(psi_a)` and whose
+// Jacobian is `J = mean(psi_a)`. For the twelve estimators that
+// follow that convention, the sandwich is a mechanical three-liner:
+// evaluate the score with `psi_at(coef, self.psi_a, self.psi_b)` and
+// set `M_inv = [[1 / mean(self.psi_a)]]`.
+//
+// PQ does not fit that template, and forcing it to is what kept it
+// off the list:
+//
+//   1. PQ's estimating equation is a quantile FIRST-ORDER
+//      CONDITION, `mean(psi(theta)) = 0`, found by bisection. It
+//      has no `psi_b` to solve for, and no `psi_at` split to
+//      reconstruct the score from. `self.psi` is ALREADY the score
+//      evaluated at `coef`, and this method therefore uses it
+//      directly. Calling `psi_at` here would evaluate a DIFFERENT
+//      function whose root is not `coef`.
+//
+//   2. Its Jacobian is `d mean(psi(theta)) / d theta`, a genuinely
+//      data-dependent scalar -- the IPW-weighted density of `y` at
+//      `theta` among the treated, computed in `solve_pq` as the
+//      central difference `(sum_p - sum_m) / (n * 2h)`. It is NOT a
+//      constant, and it is NOT `mean` of any per-observation array.
+//
+// The payoff invariant, and the whole reason for persisting the
+// Jacobian in v0.94.0:
+//
+//     sandwich_variance_hc0 = M_inv[0,0]^2 * sum_i psi[i]^2 / n^2
+//                           = (1/deriv^2) * sum_i psi[i]^2 / n^2
+//
+// which is exactly what `fit` computes for `se`,
+// `(gamma / (deriv^2 * n))` with `gamma = mean(psi^2)`. So:
+//
+//     sandwich_se(HC0) == se()
+//
+// to floating-point tolerance, and `se()` remains the reference.
+//
+// `self.psi_a` is the length-`n_obs` array whose every entry is the
+// same scalar `deriv`, so `mean(self.psi_a) == deriv` exactly.
+// `sandwich_variance` reads that array only to satisfy its length
+// preconditions (the v0.91.0 accumulator carries no `psi_a` weight);
+// the Jacobian enters solely through `M_inv`.
+
+///|
+/// The Jacobian inverse `M_inv = [[1 / deriv]]` (1x1), where
+/// `deriv` is the data-dependent `d mean(psi(theta)) / d theta` at
+/// `coef` (the IPW-weighted treated density of `y` at `theta`).
+/// Only `M_inv[0,0]^2` enters the variance, so the sign of the
+/// inverse is irrelevant.
+///
+/// The degenerate-input guard is `require(deriv.abs() >= 1e-12)`,
+/// which ABORTS rather than clips. Two reasons:
+///
+///   - `fit` already uses the same `deriv` in
+///     `(gamma / (deriv * deriv * n_d)).sqrt()`, where `deriv == 0`
+///     makes the SE `+inf` -- a fitted model can still reach this
+///     method with such a `deriv`, and a clip here would silently
+///     return a number `se()` does not.
+///   - Clipping to `1e-12` would break the `sandwich_se(HC0) == se()`
+///   invariant for small-but-nonzero `deriv`, because `se()` uses
+///   the unclipped value. Aborting keeps the two paths honest
+///   rather than quietly returning a different number.
+///
+/// The `1e-12` floor (rather than `!= 0`) also catches the
+/// sub-normal case where `1 / deriv` overflows to infinity and the
+/// variance would come back `inf` while still passing a
+/// `>= 0.0` check.
+fn DoubleMLPQ::m_inv_1x1(self : DoubleMLPQ) -> Matrix {
+  try {
+    require(self.fitted)
+    require(self.psi_a.length() == self.psi.length())
+    require(self.psi.length() >= 1)
+    let deriv = self.psi_a[0]
+    require(deriv.abs() >= 1.0e-12)
+    Matrix::from_array([1.0 / deriv], 1, 1)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.94.0+: heteroskedasticity-consistent (Huber-White) sandwich
+/// standard error for the fitted PQ. Routes through the shared
+/// `sandwich_variance` dispatch, so the HC0 / HC1 / HC2 / HC3
+/// relationships are the package-wide ones (see the file header in
+/// `sandwich.mbt` and the identities pinned in
+/// `expand_v088_test.mbt`).
+///
+/// The two inputs are NOT the usual `(psi_at(...), 1/mean(psi_a))`
+/// pair, and the deviation is deliberate -- see the section comment
+/// above. `self.psi` is used AS the score (it is already evaluated
+/// at `coef`; there is no `psi_b` to reconstruct it from, and
+/// `psi_at` would evaluate a different function whose root is not
+/// `coef`), and the Jacobian is the persisted data-dependent
+/// `deriv` in `self.psi_a[0]`, NOT a hard-coded constant.
+///
+/// `n_obs` is `self.psi.length()`, the full sample: PQ has no
+/// transformed or subset domain.
+///
+/// On a CLUSTERED fit (non-empty `data.cluster_vars`,
+/// `DoubleMLPQ::fit_cluster`) `se()` is the unit-level
+/// cluster-robust variance, not the IID one, so the
+/// `sandwich_se(HC0) == se()` invariant does not hold there; use
+/// `cluster_sandwich_se(self.data.cluster_vars)`, which is the
+/// unit-level analogue of this method.
+///
+/// Preconditions: `self.fitted`, `|psi_a[0]| >= 1e-12`.
+pub fn DoubleMLPQ::sandwich_se(
+  self : DoubleMLPQ,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    let m_inv = self.m_inv_1x1()
+    let n = self.psi.length()
+    let variance_val = sandwich_variance(
+      kind,
+      self.psi_a,
+      self.psi,
+      m_inv,
+      n,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.94.0+: cluster-robust sandwich standard error for the fitted
+/// PQ (Arellano 1987, Cameron-Gelbach-Miller 2011). Routes through
+/// `cluster_sandwich_variance` with the SAME `self.psi` and `M_inv`
+/// inputs as the IID `sandwich_se` path -- see the section comment
+/// above for why those are not the ordinary `(psi_at(...),
+/// 1/mean(psi_a))` pair.
+///
+/// `DoubleMLData` carries `cluster_vars`, so a clustered fit can pass
+/// `self.data.cluster_vars` directly; on the IID constructor path
+/// (`cluster_vars = []`) the caller must supply the grouping
+/// variable explicitly -- any clustering the application has: region,
+/// site, panel unit. With all-singleton clusters the meat
+/// degenerates to `sum_i psi[i]^2` and the formula collapses to
+/// `sandwich_se(HC0)`, hence to `se()` on an IID fit.
+///
+/// Preconditions: `self.fitted`, `|psi_a[0]| >= 1e-12`,
+/// `cluster_ids.length() == psi.length()`.
+pub fn DoubleMLPQ::cluster_sandwich_se(
+  self : DoubleMLPQ,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    let m_inv = self.m_inv_1x1()
+    let n = self.psi.length()
+    require(cluster_ids.length() == n)
+    let variance_val = cluster_sandwich_variance(
+      self.psi_a,
+      self.psi,
+      m_inv,
+      cluster_ids,
+      1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.94.0+: returns `coef` UNCHANGED -- a documented no-op, not a
+/// bias correction. Identical in reasoning to the thirteen
+/// `bias_corrected_coef` methods added in v0.86.0 - v0.93.0; see
+/// `DoubleMLIRM::bias_corrected_coef` and `bias_corrected_theta`
+/// in `sandwich.mbt` for the full argument.
+///
+/// `coef` is the bisection root of the PQ quantile moment
+/// `mean(psi(theta)) = 0`. That estimating function is orthogonal
+/// at its root by construction -- and that orthogonality IS what
+/// makes the estimator consistent -- so no correction built from
+/// the fitted scores is a bias estimate for this class of
+/// estimator. This accessor therefore reports the uncorrected point
+/// estimate rather than a number that merely looks like a
+/// correction.
+///
+/// The pre-v0.91.0 form `coef + mean(psi_b - coef * psi_a)` is
+/// algebraically `3 * coef` for a constant-`psi_a` estimator and is
+/// not a bias estimate for ANY of them; the v0.91.0 argument applies
+/// here unchanged.
+///
+/// Preconditions: `self.fitted`.
+pub fn DoubleMLPQ::bias_corrected_coef(self : DoubleMLPQ) -> Double {
+  try {
+    require(self.fitted)
+    self.coef
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|

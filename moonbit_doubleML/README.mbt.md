@@ -25,16 +25,16 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.93.0** |
+| `moon.mod` version | **0.94.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 160 in the library (87 production + 73 test) |
+| `.mbt` file count | 162 in the library (87 production + 75 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **664 / 664** |
-| Tests (wasm-gc) | **670 / 670** (lib 664 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **684 / 684** |
+| Tests (wasm-gc) | **690 / 690** (lib 684 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
-| Sandwich variance coverage | **14 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0). Not covered: `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree` (no persisted IF components), `DoubleMLAPOS` and `DoubleMLDIDCS` / `DoubleMLDIDMulti` (per-cell scores not recoverable post-fit) |
+| Sandwich variance coverage | **15 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0). Not covered: `DoubleMLQTE`, `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree` (no persisted IF components), `DoubleMLAPOS` and `DoubleMLDIDCS` / `DoubleMLDIDMulti` (per-cell scores not recoverable post-fit) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
 #Features
@@ -447,7 +447,7 @@ the 1e-12 above, not `==`).
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.93.0, 161 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.94.0, 162 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 
