@@ -458,9 +458,15 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   not `theta_hat`; on a fixed DGP the resulting `sandwich_se(HC0)`
   was off by up to ~1100x. v0.90.0 adds one `psi_at(coef, psi_a,
   psi_b)` helper in `sandwich.mbt` and routes all 13 psi-construction
-  sites through it. `DoubleMLDIDCrossSection` is deliberately NOT
-  routed: it is a projection (`argmin_theta`) estimator with the
-  offset / slope roles inverted and its own `se` formula.
+  sites through it. `DoubleMLDIDCrossSection` was deliberately NOT
+  routed then, on the stated ground that it is a projection
+  (`argmin_theta`) estimator with the offset / slope roles
+  inverted and its own `se` formula -- **v0.102.0 removed that
+  exception**: upstream `DoubleMLDIDCS` is a `LinearScoreMixin`
+  subclass on the plain linear score, so this port's `fit` now
+  routes through `var_est` like the others and its sandwich uses
+  the same order. See `CHANGELOG.md` v0.102.0, including the
+  measured point estimate and SE.
   `DoubleMLLPLR` also persists its IF components in the inverted
   (offset, slope) order and is handled by passing the two arrays
   swapped at its single call site -- its bootstrap output is

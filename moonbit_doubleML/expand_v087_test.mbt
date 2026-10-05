@@ -109,30 +109,13 @@ fn expand_v087_psi(
   psi
 }
 
-///|
-/// `DoubleMLDIDCrossSection`'s OWN score order. This estimator is a
-/// projection (`argmin_theta`) estimator, not a `var_est`
-/// Z-estimator: its `fit` sets
-/// `theta_hat = -<psi_a, psi_b> / ||psi_b||^2` and derives
-/// `se = sqrt(sum(psi(theta_hat)^2)) / (n * |mean(psi_b)|)`, so its
-/// `psi_a` is the OFFSET and its `psi_b` the SLOPE, the opposite of
-/// the `var_est` family. v0.90.0 therefore routes it through
-/// neither `psi_at` nor `expand_v087_psi`; it gets its own
-/// reference helper here. Changing it to the `var_est` order would
-/// break the consistency between its own `fit`, `se()` and
-/// `bootstrap`.
-fn expand_v087_psi_projection(
-  psi_a : Array[Double],
-  psi_b : Array[Double],
-  coef : Double,
-  n_obs : Int,
-) -> Array[Double] {
-  let psi : Array[Double] = Array::make(n_obs, 0.0)
-  for i = 0; i < n_obs; i = i + 1 {
-    psi[i] = psi_a[i] + coef * psi_b[i]
-  }
-  psi
-}
+///
+/// v0.102.0: `DoubleMLDIDCrossSection` no longer has a score
+/// order of its own. Its `fit` is now on the shared
+/// `var_est` path (score `psi = theta * psi_a + psi_b`), so
+/// the `expand_v087_psi_projection` helper that encoded
+/// `psi_a[i] + coef * psi_b[i]` for it is deleted and it
+/// uses `expand_v087_psi` like the other nine.
 
 ///|
 /// Independent recomputation of the HC0 variance
@@ -585,9 +568,10 @@ test "did_cross_section_sandwich_se_smoke" {
   let m_val = 1.0 / mean(psi_a)
   inspect(m_val < 0.0, content="true")
   inspect(mean(psi_a) < 0.0, content="true")
-  // DIDCrossSection keeps its own (offset, slope) score order --
-  // see expand_v087_psi_projection.
-  let psi = expand_v087_psi_projection(psi_a, psi_b, fitted.coef(), n)
+  // v0.102.0: DIDCrossSection is on the shared `var_est`
+  // score order now (`coef * psi_a[i] + psi_b[i]`), the same
+  // order as every other estimator here.
+  let psi = expand_v087_psi(psi_a, psi_b, fitted.coef(), n)
   let se_hc0 = fitted.sandwich_se(SandwichKind::hc0())
   inspect(
     expand_v087_close(se_hc0, expand_v087_ref_hc0(psi_a, psi, m_val, n).sqrt()),

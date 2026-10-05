@@ -169,9 +169,15 @@ test "did_cross_section_psi_a_basic" {
 
 ///|
 /// v0.20.0+: psi_b is accessible post-fit, length
-/// `n_obs`, and the sum of (psi_a + theta * psi_b)
-/// is approximately zero (the orthogonalization
-/// property).
+/// `n_obs`, and the mean of the influence function
+/// `theta * psi_a + psi_b` is zero -- the moment
+/// condition `fit` solves. v0.102.0: the score order
+/// changed (it was `psi_a + theta * psi_b`), and under
+/// the new order this is an identity rather than an
+/// approximation: `coef = -mean(psi_b) / mean(psi_a)`,
+/// so `mean(coef * psi_a + psi_b) = coef * mean(psi_a)
+/// + mean(psi_b)` is zero up to floating-point rounding.
+/// The bound is tightened from `< 1.0` accordingly.
 test "did_cross_section_orthogonalization" {
   let data = build_cross_section_dgp(200, 2, 1.0)
   let fitted = DoubleMLDIDCrossSection::new(data, n_folds=2, n_rep=1, seed=3141).fit()
@@ -181,13 +187,9 @@ test "did_cross_section_orthogonalization" {
   let n = psi_a.length().to_double()
   let mut sum_psi = 0.0
   for i = 0; i < psi_a.length(); i = i + 1 {
-    sum_psi = sum_psi + psi_a[i] + theta * psi_b[i]
+    sum_psi = sum_psi + theta * psi_a[i] + psi_b[i]
   }
-  // The mean of the influence function should be
-  // approximately zero (the sample analogue of
-  // E[psi] = 0). The variance is the SE; for n=200
-  // the mean should be O(SE / sqrt(n)) ~ O(0.1).
-  inspect((sum_psi / n).abs() < 1.0, content="true")
+  inspect((sum_psi / n).abs() < 1.0e-10, content="true")
 }
 
 ///|

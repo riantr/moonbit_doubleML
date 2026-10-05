@@ -9,6 +9,114 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.102.0] -- `DoubleMLDIDCrossSection`'s `M_inv` contract, and the estimator behind it
+
+The open question going into this version was narrow: `DoubleMLDIDCrossSection`
+persists `(psi_a, psi_b)` in the opposite order from every other estimator,
+and its `M_inv = 1 / mean(psi_a)` came with a comment saying it was "not
+`1 / mean(psi_a)` in any principled sense (the argmin has vanishing first
+derivative), and is left as-is pending a separate decision".
+
+Answering it required deciding which estimator this class is, and it is not
+the one the code claimed. Upstream `DoubleMLDIDCS` -- the class this file
+ports -- is declared `class DoubleMLDIDCS(LinearScoreMixin, DoubleML)`, and
+the mixin is unambiguous: `_est_coef` returns `-np.mean(psi_b) /
+np.mean(psi_a)`, `_compute_score_deriv` returns `psi_a`, and the manual test
+harness for DIDCS calls `did_dml2(psi_a, psi_b)` whose variance is
+`var_did` = `1 / n * mean((theta * psi_a + psi_b)^2) / mean(psi_a)^2`. Three
+independent places, one convention: a linear score, `psi = theta * psi_a +
+psi_b`, with `psi_a` the Jacobian row.
+
+This port instead solved `argmin_theta sum_i (psi_a[i] + theta * psi_b[i])^2`
+and hand-rolled `se = sqrt(sum(psi(theta_hat)^2) / inner_bb)`. Two measured
+defects follow, on a DGP whose true ATT is 1.0 (`chacha8_rng(42)`, `n_folds=2`,
+`seed=3141`):
+
+```
+          argmin coef   argmin se  |  var_est coef   var_est se
+n =  300     0.8339      0.36535   |     1.0041       0.034849
+n =  600     0.8301      0.37080   |     0.9918       0.025446
+n = 2400     0.8503      0.36135   |     0.9934       0.012023
+```
+
+- **The point estimate was persistently biased.** The argmin reads ~0.84 at
+  every sample size -- a -15% bias that does not shrink with `n`, so it is
+  systematic, not noise. The moment root sits on the truth.
+- **The standard error never shrank.** `sum(psi^2) / inner_bb` is
+  `mean(psi^2) / mean(psi_b^2)`, in which `n` cancels: there is no `1 / n`
+  anywhere in it. A consistent estimator's SE must fall like `1 / sqrt(n)`,
+  and this one read 0.3654 / 0.3708 / 0.3613 across an 8x change in `n`.
+
+The `M_inv` question dissolved once that was settled. With `fit` on the
+shared `var_est` path, `d psi / d theta = psi_a` and `J = mean(psi_a)`, so
+`M_inv = 1 / mean(psi_a)` is the principled value rather than a placeholder,
+and `sandwich_se(hc0)` equals `se()` **to the bit** -- the invariant the
+other 19 estimators already satisfy. On the old code the same ratio was
+0.062367882616389564.
+
+### Changed
+
+- `DoubleMLDIDCrossSection::fit` now calls the shared `var_est(psi_a, psi_b)`
+  for both `coef` and `se`, replacing the argmin closed form and the
+  hand-rolled variance. `fit`'s `try` / `catch` is gone with it: its
+  `require`s moved into `var_est`, which reports precondition failures in the
+  same `precondition failed at <loc>` format.
+- `sandwich_se` / `cluster_sandwich_se` / `bootstrap` build
+  `psi[i] = coef * psi_a[i] + psi_b[i]`. `M_inv` is unchanged at
+  `[[1 / mean(psi_a)]]`; only its status changes.
+- **`coef()` and `se()` values change.** At n = 600 the point estimate goes
+  0.8301487873802966 -> 0.9917909151155246 and the SE
+  0.37080353886901474 -> 0.025445635686350013. v0.99.0 - v0.101.0 shipped
+  the biased values and are not re-issued; v0.80.0 - v0.89.0 remain outside
+  the registry for the same reason.
+- `bias_corrected_coef` still returns `coef` unchanged, but for the reason the
+  other estimators give: the score is orthogonal, so `bias_corrected_theta` is
+  the identity. Its old justification -- "a PROJECTION (`argmin_theta`) fit ...
+  its `psi` is a residual, not an orthogonal score" -- described a fit that
+  did not exist upstream and, after this change, does not exist here either.
+- `did_cross_section_orthogonalization` tightens from `|mean(psi)| < 1.0` to
+  `< 1.0e-10`. Under the new order `mean(coef * psi_a + psi_b)` is an
+  identity, not an approximation: `coef = -mean(psi_b) / mean(psi_a)`, so the
+  two means cancel. The old loose bound could not tell the two score orders
+  apart at all.
+- `expand_v087_psi_projection` is deleted. It existed only to encode
+  `psi_a[i] + coef * psi_b[i]` for this estimator; `DoubleMLDIDCrossSection`
+  now uses `expand_v087_psi` with the other nine.
+
+### Added
+
+- `expand_v102_didcs_test.mbt`, 7 tests: the moment root pinned bitwise
+  against `-mean(psi_b) / mean(psi_a)`; `HC0 == se()` bitwise; the SE falling
+  with `n`; the point estimate recovering the true ATT; the HC1 / HC2 / HC3
+  small-sample algebra; the cluster path differing from the IID path; and the
+  multiplier-bootstrap joint interval.
+
+Writing the HC algebra test cost one wrong assertion worth recording:
+`sandwich_se` returns `sqrt(variance)`, so on SE *ratios* the correction
+enters as `sqrt(n / (n - 1))`, not `n / (n - 1)`. Asserting the variance
+factor against an SE ratio is off by 0.0008 -- small enough to read as a
+tolerance choice, and wrong.
+
+### Verification
+
+Three mutations, each reverted:
+
+| mutation | caught by |
+|---|---|
+| `sandwich_se` `M_inv` back to `1 / mean(psi_b)` | `didcs102_hc0_equals_se_bitwise`, `did_cross_section_sandwich_se_smoke` |
+| `sandwich_se` psi order back to `psi_a + coef * psi_b` | same two |
+| `fit` restored to the argmin closed form | `didcs102_coef_is_the_moment_root`, `didcs102_hc0_equals_se_bitwise`, `didcs102_se_shrinks_with_sample_size`, `didcs102_coef_recovers_true_att`, `did_cross_section_orthogonalization` |
+
+The third mutation left the HC1/HC2/HC3 algebra, the cluster and the
+bootstrap tests green. That is the informative part: those three pin the
+small-sample and aggregation plumbing given a score, not which score order
+produces it. They are not redundant with the other four, and the other four
+are not redundant with them.
+
+792 / 792 on native, wasm and js; 798 / 798 on wasm-gc. Delta +7 from
+v0.101.0's 785 / 791. `moon check --target all` clean. Python cross-checks
+23 / 23 PASS.
+
 ## [0.101.0] -- `DoubleMLQTE` gets a joint covariance
 
 `sandwich_se_at(j, kind)` (v0.95.0) pins each requested quantile

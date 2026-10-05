@@ -136,12 +136,15 @@ pub struct DoubleMLDIDCrossSection {
   // Post-fit outputs.
   coef : Double
   se : Double
-  // v0.20.0+ per-observation influence function
-  // `psi = psi_a + theta * psi_b` on the cross-section
-  // sample (length n). Used by the multiplier bootstrap
-  // in v0.20.0+ `bootstrap` (deferred to a follow-up
-  // release; psi_a / psi_b are exposed individually for
-  // forward-compat).
+  // v0.20.0+ per-observation score elements
+  // `psi_a` / `psi_b` (length n) on the cross-section
+  // sample, with the score
+  // `psi = theta * psi_a + psi_b` -- the upstream
+  // `DoubleMLDIDCS` convention. v0.102.0 corrected the
+  // sign of the `theta` term: through v0.101.0 this
+  // comment (and `fit`, `bootstrap` and `sandwich_se`)
+  // read it as `psi_a + theta * psi_b`, i.e. with the two
+  // arrays swapped, which is not an equivalent rewriting.
   psi_a : Array[Double]
   psi_b : Array[Double]
   // Post-fit nuisance predictions (4 g-functions +
@@ -985,84 +988,86 @@ pub fn DoubleMLDIDCrossSection::fit(
   ml_g? : LearnerDispatch = self.ml_g,
   ml_m? : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDCrossSection {
-  try {
-    // Step 1: cross-fit the nuisance functions (v0.62.0+:
-    // routes `ml_g` and `ml_m` through `crossfit_nuisance`).
-    let (g00, g01, g10, g11, m) = crossfit_nuisance(
-      self.data,
-      self.n_folds,
-      self.n_rep,
-      self.seed,
-      self.propensity_clip,
-      self.ps_processor,
-      ml_g,
-      ml_m,
-    )
-    // Step 2: compute psi_a, psi_b.
-    let (psi_a, psi_b) = compute_score(
-      self.data.y,
-      self.data.d,
-      self.data.t,
-      g00,
-      g01,
-      g10,
-      g11,
-      m,
-      self.score,
-      self.in_sample_normalization,
-    )
-    // Step 3: theta_hat = argmin_theta sum_i (psi_a[i]
-    // + theta * psi_b[i])^2 = -<psi_a, psi_b> / ||psi_b||^2.
-    let n = self.data.n_obs()
-    let mut inner_ab = 0.0
-    let mut inner_bb = 0.0
-    for i = 0; i < n; i = i + 1 {
-      inner_ab = inner_ab + psi_a[i] * psi_b[i]
-      inner_bb = inner_bb + psi_b[i] * psi_b[i]
-    }
-    require(inner_bb > 0.0)
-    let theta = -inner_ab / inner_bb
-    // Step 4: HC0 SE. The influence function is
-    // `psi[i] = psi_a[i] + theta * psi_b[i]`, and the
-    // variance is `(1/n) * sum_i psi[i]^2 / mean_b^2`
-    // where `mean_b^2 = inner_bb / n^2` (the squared
-    // average of psi_b).
-    let n_d = n.to_double()
-    let mut ss_psi = 0.0
-    for i = 0; i < n; i = i + 1 {
-      let psi_i = psi_a[i] + theta * psi_b[i]
-      ss_psi = ss_psi + psi_i * psi_i
-    }
-    let mean_b2 = inner_bb / (n_d * n_d)
-    require(mean_b2 > 0.0)
-    let var_theta = ss_psi / (n_d * n_d * mean_b2)
-    let se = var_theta.sqrt()
-    // Step 5: cache the nuisance predictions and psi.
-    {
-      ..self,
-      // v0.60.0+: persist per-fit learner overrides on the
-      // returned struct. Default `None` preserves v0.59.0
-      // behaviour for plain `fit()` callers.
-      ml_g,
-      ml_m,
-      coef: theta,
-      se,
-      psi_a,
-      psi_b,
-      g_d0_t0: g00,
-      g_d0_t1: g01,
-      g_d1_t0: g10,
-      g_d1_t1: g11,
-      m_hat: m,
-      fitted: true,
-      boot_t_stat: self.boot_t_stat,
-      boot_method: self.boot_method,
-      n_rep_boot: self.n_rep_boot,
-      boot_seed: self.boot_seed,
-    }
-  } catch {
-    PreconditionError::Violated(loc) =>
-      abort("precondition failed at " + loc.to_string())
+  // v0.102.0: the trailing `try` / `catch` is gone. `fit`
+  // used to compute `theta_hat` and `se` itself, which is
+  // where its `require`s lived; both now come from
+  // `var_est`, which reports its own precondition failures
+  // in the same `precondition failed at <loc>` format.
+  // Step 1: cross-fit the nuisance functions (v0.62.0+:
+  // routes `ml_g` and `ml_m` through `crossfit_nuisance`).
+  let (g00, g01, g10, g11, m) = crossfit_nuisance(
+    self.data,
+    self.n_folds,
+    self.n_rep,
+    self.seed,
+    self.propensity_clip,
+    self.ps_processor,
+    ml_g,
+    ml_m,
+  )
+  // Step 2: compute psi_a, psi_b.
+  let (psi_a, psi_b) = compute_score(
+    self.data.y,
+    self.data.d,
+    self.data.t,
+    g00,
+    g01,
+    g10,
+    g11,
+    m,
+    self.score,
+    self.in_sample_normalization,
+  )
+  // Step 3+4: theta_hat and the HC0 SE, both from the
+  // shared `var_est` helper.
+  //
+  // v0.102.0: this used to be a projection (argmin) fit,
+  // `theta_hat = -<psi_a, psi_b> / ||psi_b||^2` on
+  // `psi = psi_a + theta * psi_b`, with a hand-rolled
+  // `se = sqrt(sum_i psi_i^2 / inner_bb)`. Two defects,
+  // both measured (see CHANGELOG v0.102.0):
+  //   - that `se` has no `1 / n` in it -- `sum psi^2 /
+  //     inner_bb` is `mean(psi^2) / mean(psi_b^2)`, in
+  //     which `n` cancels -- so the reported SE does not
+  //     shrink with the sample size. Measured: se =
+  //     0.3654 / 0.3708 / 0.3613 at n = 300 / 600 / 2400.
+  //   - the argmin point estimate is persistently biased:
+  //     0.8339 / 0.8301 / 0.8503 at the same three n,
+  //     against a true ATT of 1.0. It does not converge.
+  //
+  // The score is `psi(W; theta) = theta * psi_a + psi_b`
+  // (upstream `DoubleMLDIDCS`, which is a
+  // `LinearScoreMixin` subclass: `_est_coef` returns
+  // `-np.mean(psi_b) / np.mean(psi_a)` and
+  // `_compute_score_deriv` returns `psi_a`), so
+  // `d psi / d theta = psi_a` and `J = mean(psi_a)` --
+  // the same convention as every other estimator that
+  // calls `var_est`. Measured after the switch:
+  // theta = 1.0041 / 0.9918 / 0.9934, and the SE now
+  // falls like 1 / sqrt(n).
+  let (theta, se) = var_est(psi_a, psi_b)
+  // Step 5: cache the nuisance predictions and psi.
+  {
+    ..self,
+    // v0.60.0+: persist per-fit learner overrides on the
+    // returned struct. Default `None` preserves v0.59.0
+    // behaviour for plain `fit()` callers.
+    ml_g,
+    ml_m,
+    coef: theta,
+    se,
+    psi_a,
+    psi_b,
+    g_d0_t0: g00,
+    g_d0_t1: g01,
+    g_d1_t0: g10,
+    g_d1_t1: g11,
+    m_hat: m,
+    fitted: true,
+    boot_t_stat: self.boot_t_stat,
+    boot_method: self.boot_method,
+    n_rep_boot: self.n_rep_boot,
+    boot_seed: self.boot_seed,
   }
 }
 
@@ -1072,7 +1077,7 @@ pub fn DoubleMLDIDCrossSection::fit(
 /// the chosen multiplier distribution, computes
 /// `boot_t_stat[b] = sum_i w[b, i] * psi[i] /
 /// (sqrt(n) * se)` where
-/// `psi[i] = psi_a[i] + theta * psi_b[i]` is the
+/// `psi[i] = theta * psi_a[i] + psi_b[i]` is the
 /// per-observation influence function, and returns a
 /// fitted model with `boot_t_stat` populated.
 ///
@@ -1113,11 +1118,11 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
         )
     }
     // Compute the per-observation influence function
-    // `psi[i] = psi_a[i] + theta * psi_b[i]` once.
+    // `psi[i] = theta * psi_a[i] + psi_b[i]` once.
     let psi : Array[Double] = Array::make(n, 0.0)
     let mut ss_psi = 0.0
     for i = 0; i < n; i = i + 1 {
-      let psi_i = self.psi_a[i] + self.coef * self.psi_b[i]
+      let psi_i = self.coef * self.psi_a[i] + self.psi_b[i]
       psi[i] = psi_i
       ss_psi = ss_psi + psi_i * psi_i
     }
@@ -1267,31 +1272,30 @@ pub fn DoubleMLDIDCrossSection::sensitivity_analysis_cluster(
 ///     `d / mean(d)`. Every variant is a non-negative
 ///     weight, so `mean(psi_a) <= 0` and, under in-sample
 ///     normalization, exactly `-1`.
-///   - `psi`    = `self.psi_a[i] + self.coef * self.psi_b[i]`
+///   - `psi`    = `psi_at(self.coef, self.psi_a, self.psi_b)`
 ///     -- the per-observation influence function at the
-///     fitted `coef`, matching the `psi[i] = psi_a[i] +
-///     theta * psi_b[i]` form used by `fit` and
-///     `bootstrap`.
-///   - `M_inv`  = `[[1 / mean(psi_a)]]` (1x1). Only
-///     `M_inv[0, 0]^2` enters the variance, so the sign of
-///     the (up-to-sign) Jacobian inverse is irrelevant.
+///     fitted `coef`, the shared helper `fit` /
+///     `bootstrap` / the other 19 `sandwich_se` methods
+///     use.
+///   - `M_inv`  = `[[1 / mean(psi_a)]]` (1x1). This is
+///     `1 / J` with `J = mean(psi_a) = dE[psi] / d theta`,
+///     the Jacobian inverse of the score
+///     `psi = theta * psi_a + psi_b`.
 ///
-/// v0.90.0: the score order here is DELIBERATELY NOT
-/// `psi_at(coef, psi_a, psi_b)`. `DoubleMLDIDCrossSection` is a
-/// PROJECTION estimator, not a `var_est` Z-estimator: its `fit`
-/// sets `theta_hat = -<psi_a, psi_b> / ||psi_b||^2` (the argmin of
-/// `sum_i (psi_a[i] + theta * psi_b[i])^2`) and derives its own
-/// `se = sqrt(sum(psi(theta_hat)^2)) / (n * |mean(psi_b)|)`.
-/// Its `psi_a` is therefore the OFFSET and its `psi_b` the SLOPE,
-/// the opposite of every estimator whose `fit` calls `var_est`
-/// (where `psi_a` is the Jacobian row and `psi_b` the offset, and
-/// `theta_hat = -mean(psi_b) / mean(psi_a)`).
-/// v0.90.0 fixes the `var_est` family to `psi_at`; flipping this
-/// estimator too would break the internal consistency between its
-/// own `fit`, `se()` and `bootstrap`. Its `M_inv` is likewise not
+/// v0.102.0: through v0.101.0 this method used
+/// `psi[i] = psi_a[i] + coef * psi_b[i]` and carried a
+/// comment block declaring that its `M_inv` was "not
 /// `1 / mean(psi_a)` in any principled sense (the argmin has
-/// vanishing first derivative), and is left as-is pending a
-/// separate decision.
+/// vanishing first derivative)". That reasoning described
+/// a projection (`argmin_theta`) `fit` that did not match
+/// the upstream estimator, and the formula it quoted for
+/// `se` was not the one `fit` computed either. With `fit`
+/// now on the shared `var_est` path the score order is
+/// the family's, `M_inv = 1 / mean(psi_a)` is the
+/// principled value rather than a placeholder, and
+/// `sandwich_se(hc0)` equals `se()` to the bit -- the same
+/// invariant the other 19 estimators already satisfy.
+/// See CHANGELOG v0.102.0 for the measurements.
 ///
 /// The variance's `n_obs` is `self.psi_a.length()` (the
 /// length `fit(...)` persists, equal to `self.data.n_obs()`).
@@ -1307,7 +1311,7 @@ pub fn DoubleMLDIDCrossSection::sandwich_se(
     require(n == self.psi_b.length())
     let psi : Array[Double] = Array::make(n, 0.0)
     for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+      psi[i] = self.coef * self.psi_a[i] + self.psi_b[i]
     }
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
@@ -1344,7 +1348,7 @@ pub fn DoubleMLDIDCrossSection::cluster_sandwich_se(
     require(cluster_ids.length() == n)
     let psi : Array[Double] = Array::make(n, 0.0)
     for i = 0; i < n; i = i + 1 {
-      psi[i] = self.psi_a[i] + self.coef * self.psi_b[i]
+      psi[i] = self.coef * self.psi_a[i] + self.psi_b[i]
     }
     let mean_a = mean(self.psi_a)
     require(mean_a.abs() > 0.0)
@@ -1368,21 +1372,39 @@ pub fn DoubleMLDIDCrossSection::cluster_sandwich_se(
 /// v0.91.0+: returns `coef` UNCHANGED -- a documented
 /// no-op, not a bias correction.
 ///
-/// This estimator is a PROJECTION (`argmin_theta`)
-/// fit, not a `var_est` Z-estimator: its `coef` is the
-/// least-squares root `-<psi_a, psi_b> / ||psi_b||^2`
-/// and its `psi` is a residual, not an orthogonal
-/// score. There is no bias expression here that can be
-/// turned into a correction from the fitted values
-/// alone, so this accessor reports the uncorrected
-/// point estimate.
+/// v0.102.0: the score is `psi = theta * psi_a + psi_b`
+/// and `coef = -mean(psi_b) / mean(psi_a)`, so the score
+/// is an orthogonal moment score whose derivative in
+/// `theta` is `mean(psi_a)` -- a non-zero constant
+/// here. Note which branch produces it: with the
+/// default `in_sample_normalization = false` the
+/// observational weight is `d / p_hat` with
+/// `p_hat = mean(d)`, so `mean(psi_a) = -1` exactly;
+/// the in-sample-normalized branch weights by
+/// `d / mean(d)` and lands on the same `-1`. (The
+/// `experimental` score instead uses a constant
+/// `weight_psi_a = 1`, giving `mean(psi_a) = -1` by
+/// construction too.) That is the same situation as
+/// every other `var_est` estimator in the package, and
+/// for the same reason: `bias_corrected_theta` is
+/// provably the identity for an orthogonal score, so
+/// nothing computable from the fitted scores is a bias
+/// estimate for this class of estimator. This accessor
+/// reports the uncorrected point estimate rather than
+/// a number that merely looks like a correction.
+///
+/// (v0.91.0 - v0.101.0 gave a different reason for the
+/// same return value: it described this estimator as a
+/// PROJECTION (`argmin_theta`) fit whose `psi` was "a
+/// residual, not an orthogonal score". That
+/// description matched neither the upstream
+/// `DoubleMLDIDCS` nor, after the v0.102.0 `fit`
+/// correction, this estimator.)
 ///
 ///
 /// v0.79.0 - v0.90.0 returned
 /// `coef + mean(psi_b - coef * psi_a)`, the score at
-/// `-coef` under a score convention this estimator
-/// does not even use (its own order is
-/// `psi_a + coef * psi_b`). The result was not a bias
+/// `-coef`. The result was not a bias
 /// estimate. See `bias_corrected_theta` in
 /// `sandwich.mbt` for the algebra. The method is kept
 /// so the API surface stays stable; removing it
