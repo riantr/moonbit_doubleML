@@ -46,4 +46,4 @@ print(f"policy tree variance-reduction gain = {gain_var:.4f}")
 # the new gain is negative because we're using the *reduction* form;
 # the bisection in DoubleMLPolicyTree::fit picks the largest (least
 # negative) value, which is still the split at x = 0 for this DGP.
-print("BLP/PolicyTree reference checks passed")
+print("BLP/PolicyTree reference checks PASS")

@@ -108,4 +108,4 @@ if __name__ == "__main__":
     print("`ps_processor_test.mbt::ps_processor_isotonic_no_cv`")
     print("and the per-DGP numbers in `_verify/T140-verdict.md`.")
     print()
-    print("PAVA cross-check passed")
+    print("PAVA cross-check PASS")

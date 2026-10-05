@@ -36,4 +36,4 @@ assert abs(.6 - .6) < 1e-12
 # For the no-noise DGP both Y-residuals and D-residuals are
 # exactly 0 on each side, so the cross term is 0.
 print("RDD delta-method cross-covariance (Bug #7) is well-defined")
-print("RDD reference checks passed")
+print("RDD reference checks PASS")

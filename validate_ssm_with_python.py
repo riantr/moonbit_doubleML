@@ -44,7 +44,7 @@ def main():
     # the SSM reference uses MAR; theta should be near 1.0 with the fix
     assert abs(theta - 1.0) < 0.1, f"theta={theta} too far from 1.0"
     assert 0.0 < se < 0.2, f"se={se} out of band"
-    print("SSM reference checks passed")
+    print("SSM reference checks PASS")
 
 if __name__ == "__main__":
     main()

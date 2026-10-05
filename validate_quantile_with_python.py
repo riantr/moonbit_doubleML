@@ -50,4 +50,4 @@ print(f"LPQ with Z=D (all compliers, full-sample comp={comp_full:.3f}, sign={sig
 assert abs(qte - 0.99) < 1e-12
 assert abs(pq1 - 1.49) < 0.02
 assert abs(cvar1 - 1.74) < 0.02
-print("reference checks passed")
+print("reference checks PASS")
