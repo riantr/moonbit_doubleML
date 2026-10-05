@@ -284,7 +284,7 @@ binary-outcome CS-DID:
 | `DoubleMLDID` | observational | difference-in-differences *(upstream)* |
 | `DoubleMLDIDBinary` | observational | DID with binary outcome *(upstream)* |
 | `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(upstream)* |
-| `DoubleMLDIDCSBinary` | observational | CS-DID with binary outcome *(extra)* |
+| `DoubleMLDIDCSBinary` | observational | CS-DID with binary outcome *(upstream)* |
 | `DoubleMLDIDMulti` | observational | multi-period DID with group-time ATT aggregation *(upstream)* |
 | `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(upstream)* |
 | `DoubleMLSSM` | MAR | sample selection (missing-at-random) *(upstream)* |
@@ -293,12 +293,27 @@ binary-outcome CS-DID:
 | `DoubleMLPQ` | quantile | potential quantile *(upstream)* |
 | `DoubleMLQTE` | quantile | quantile treatment effect *(upstream)* |
 | `DoubleMLLPQ` | local polynomial | local potential quantile *(upstream)* |
-| `DoubleMLLPLR` | partialling-out | partially logistic regression, Liu-Zhang-Zhou 2021 *(extra)* |
+| `DoubleMLLPLR` | partialling-out | partially logistic regression, Liu-Zhang-Zhou 2021 *(upstream)* |
 | `DoubleMLCVAR` | CVaR | conditional value-at-risk *(upstream)* |
 | `DoubleMLRDD` | observational | regression discontinuity *(upstream)* |
 | `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |
-| `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(extra)* |
+| `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(upstream)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)*, + v0.98.0 honest split (`honest = true`) with `leaf_se` / `policy_value_se` |
+
+**Provenance (v0.103.0).** Every one of the 22 has a counterpart in
+`doubleml` 0.11.4 -- verified against the published sdist, not the
+GitHub tree, so this is the shipped artefact. Modules:
+`plm/{plr,pliv,lplr,plpr}.py`, `irm/{irm,iivm,apo,apos,pq,qte,lpq,cvar,ssm}.py`,
+`did/{did,did_binary,did_cs,did_cs_binary,did_multi}.py`, `rdd/rdd.py`
+(the class there is `RDFlex`), `utils/{blp,policytree}.py`.
+
+Three rows were previously marked *(extra)* -- `DoubleMLDIDCSBinary`,
+`DoubleMLLPLR`, `DoubleMLPLPR`. That was wrong: all three ship
+upstream, so they had a reference implementation all along and
+simply were not being compared against it. The labels are corrected
+here. `DoubleMLDIDCSBinary` and `DoubleMLDIDBinary` are absent from
+upstream's `__all__` but present as importable classes in their
+modules.
 
 ### Honest policy trees (v0.98.0)
 

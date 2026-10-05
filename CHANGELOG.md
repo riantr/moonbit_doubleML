@@ -9,6 +9,112 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.103.0] -- the DIDCS cross-check that could not fail, and an audit of the other 22
+
+v0.102.0 fixed a -15% persistent bias and a standard error that did
+not shrink with `n` in `DoubleMLDIDCrossSection`. This version asks the
+question that should have caught it: why did 23 Python cross-checks not
+notice?
+
+Because `validate_did_cross_section_with_python.py` mirrored the bug.
+It claimed to "replicate the upstream `DoubleMLDIDCS._score_elements`
+algorithm" -- which it did, and that transcription was always correct --
+and then estimated with
+
+```python
+theta = -np.dot(psi_a, psi_b) / np.dot(psi_b, psi_b)   # argmin, not upstream
+se    = np.sqrt(ss_psi / (n * n * mean_b2))            # the 1/n-free variance
+```
+
+which is what the MoonBit code did, not what upstream does. It also
+never compared anything to MoonBit: the file computed a numpy estimate,
+printed it, and printed `Cross-section DID reference: PASS`
+unconditionally. No assert, no subprocess, no parse.
+
+A validator that transcribes upstream and then estimates with the local
+implementation is a check that confirms the local implementation to
+itself. The failure mode is worth naming: **the transcription is
+faithful, so nothing looks wrong, and the mirroring happens one layer
+above the part anyone reviewed.**
+
+### Fixed
+
+- `validate_did_cross_section_with_python.py` now estimates with
+  upstream's `LinearScoreMixin` convention -- `theta =
+  -mean(psi_b) / mean(psi_a)`, `psi = theta * psi_a + psi_b`,
+  `J = mean(psi_a)`, `var = mean(psi^2) / (J^2 * n)` -- in a new
+  `upstream_estimate` helper whose docstring records the 0.11.4 source
+  lines it mirrors. The score-element transcription is untouched.
+- It now **reads MoonBit's output**: `moon run examples/did_cross_section
+  --target native`, parsed, and compared. It **fails closed** -- a failed
+  subprocess or an unparseable line yields `FAIL` and a non-zero exit,
+  not a warning.
+- Three enforced checks replace the unconditional PASS: the point
+  estimate against this file's reference, the point estimate against
+  the true ATT, and the SE falling like `1 / sqrt(n)`.
+
+### Changed
+
+- `examples/did_cross_section` prints two extra lines the validator
+  needs. The DGP generator is factored into `build_dgp(n, p, theta0,
+  seed, noise_amp)` so both additions reuse it verbatim.
+  - `scale n=2000 ATT_hat = ..., se = ...` -- the same DGP at 4x the
+    sample size, for the `1 / sqrt(n)` check.
+  - `noisy ATT_hat = ..., se = ...` -- the same DGP with 10x the noise
+    amplitude, for a coefficient check that is actually diagnostic.
+
+The noise amplitude is the point. On the example's original DGP the
+noise term is `0.05 * U(-1, 0.5)`, a standard deviation near 0.02
+against regressors near 1.0, and on data that close to deterministic
+**wrong point estimates coincide with right ones**: under the v0.102.0
+mutation this example read `ATT_hat = 1.0024` against the correct
+0.9961. A coefficient check on that DGP cannot fail. At noise
+amplitude 0.5 the same comparison separates them by 0.10.
+
+Verified by reverting `fit` to the argmin closed form: the low-noise
+coefficient check passes (0.0064 < 0.05, as predicted), while the
+noisy-DGP check fails at 0.1037, the noisy-versus-truth check fails at
+0.1433, and the SE ratio fails at 0.910 against a band of
+[0.35, 0.70]. Three teeth, two of them on the estimator's definition
+and one on its variance.
+
+### Audit -- what the other 22 validators actually do
+
+| class | validators | what it means |
+|---|---|---|
+| real gate, fails closed | `did`, `iivm`, `irm`, `pliv` | spawns `moon run`, parses, compares, exits non-zero on failure |
+| real gate, **fails open** | `apos`, `did_cs_binary` | spawns `moon run`, but on failure prints "skipping" and still exits 0 |
+| deferred | `did_cs`, `did_binary` | prints "run `moon run examples/...` yourself"; never compares |
+| imports `subprocess`, never runs it | `pava` | `run_moonbit_pava` raises `NotImplementedError`, is never called, verdict is an unconditional PASS |
+| no MoonBit at all | `blp_policy`, `bootstrap`, `cluster_iv`, `cluster_plr`, `cv_repeated`, `cvar`, `gain_statistics`, `lplr`, `padjust`, `plpr`, `quantile`, `rdd`, `ssm` | a numpy re-derivation is printed; the verdict is not tied to the port |
+
+So 4 of 23 were real gates before this version, 5 after. `pava` is the
+worst case: it imports `subprocess`, defines a runner that raises
+`NotImplementedError`, and its closing line is a hard-coded
+`PAVA cross-check PASS` with a comment telling the reader to go compare
+the numbers in a markdown file by hand.
+
+### Changed -- provenance corrections
+
+Every one of the 22 estimators has a counterpart in `doubleml` 0.11.4,
+verified against the **published sdist** rather than the GitHub tree:
+`plm/{plr,pliv,lplr,plpr}.py`, `irm/{irm,iivm,apo,apos,pq,qte,lpq,cvar,ssm}.py`,
+`did/{did,did_binary,did_cs,did_cs_binary,did_multi}.py`, `rdd/rdd.py`
+(class `RDFlex`), `utils/{blp,policytree}.py`.
+
+`README.mbt.md` marked `DoubleMLDIDCSBinary`, `DoubleMLLPLR` and
+`DoubleMLPLPR` as *(extra)*. All three ship upstream. They had a
+reference implementation available the whole time and were simply never
+compared against it; the labels are corrected.
+
+### Verification
+
+792 / 792 on native, wasm and js; 798 / 798 on wasm-gc, unchanged from
+v0.102.0 -- this version touches no `*.mbt` under the package, only the
+example, the validator, the docs and the version. `moon check --target
+all` clean. Python cross-checks 23 / 23 PASS, with the DIDCS entry now
+able to report FAIL.
+
 ## [0.102.0] -- `DoubleMLDIDCrossSection`'s `M_inv` contract, and the estimator behind it
 
 The open question going into this version was narrow: `DoubleMLDIDCrossSection`
