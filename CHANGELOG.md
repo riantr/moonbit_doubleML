@@ -9,6 +9,120 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.96.0] -- `DoubleMLRDD` gets its own `hac_se` (not `sandwich_se`)
+
+`DoubleMLRDD` was the one estimator in the family that already had an
+HC0 path (`cov_type = "HC0"`) but no `sandwich_se`. It does not get one
+in v0.96.0, and the reason is algebraic rather than bookkeeping: RDD's
+HC0 and the shared `sandwich_variance` helper are both called
+"Huber-White", and that shared prefix is the trap.
+
+### Added
+
+- `DoubleMLRDD::hac_se(kind)` -- HC0 / HC1 / HC2 / HC3 for the
+  local-regression discontinuity contrast.
+- `DoubleMLRDD::cluster_hac_se(cluster_ids)` -- the Arellano /
+  Cameron-Gelbach-Miller clustered analogue, with the same
+  `(n_c - 1)` jackknife clip for single-observation clusters that
+  `cluster_sandwich_variance` uses.
+- `DoubleMLRDD::leverage()` -- the WLS hat-matrix diagonal
+  `h_k = w_k * xa_k' (X'WX + ridge I)^{-1} xa_k` on the
+  bandwidth-restricted sample.
+- `DoubleMLRDD::n_local_params()` -- the per-side local-regression
+  parameter count `data.x.cols() + 2`, read from the code, which is
+  the `k` in the HC1 finite-sample correction.
+- `rdd_side` now also returns `hc0_m`, `hc0_e` and `leverage`, and
+  `fit` persists them (and threads them through the `FitCache`).
+  They are locals inside `rdd_side` today; nothing outside could
+  reach them.
+- `expand_v096_test.mbt`: 16 tests. **Sandwich coverage is UNCHANGED
+  at 16 of 22** -- RDD is not sandwich coverage and was never counted
+  in it.
+
+### WHY NOT `sandwich_se`, AND WHERE THE `psi_a^4` COMES FROM
+
+RDD's own HC0 meat, per side, is
+`sum_k w_k^2 * m_k^2 * e_k^2` with `m_k` the intercept row of a FULL
+`p1 x p1` normal inverse and NO `1 / n^2` divisor. The shared helper
+is a scalar-Jacobian MEAN-moment sandwich:
+`M_inv[0,0]^2 * sum_i psi[i]^2 / n^2` since v0.91.0, and through
+v0.90.0 it accumulated `sum_i (psi_a[i] * psi[i])^2`.
+
+Substituting RDD's combined influence function
+`psi[k] = psi_a[k] * residuals[k]` -- exactly what `bootstrap(...)`
+hands to `did_bootstrap_t_stat` -- into the pre-v0.91.0 accumulator
+does not give `sum (psi_a e)^2`. It gives
+
+    sum_k ( psi_a[k] * (psi_a[k] * e_k) )^2
+  = sum_k ( psi_a[k]^2 * e_k )^2
+  = sum_k psi_a[k]^4 * e_k^2
+
+a FOURTH power, against RDD's second power `w_k^2 * psi_a[k]^2 * e_k^2`
+(whose `M[0,:] . x_k` factor IS `psi_a[k]`). The gap is a
+data-dependent `psi_a[k]^2` per row and is of order `1e-2` on the
+v0.96.0 DGP, so the wrong number looks entirely reasonable. v0.91.0
+removed the `psi_a` factor because it was not part of the moment,
+which removes THAT error and leaves the scalar `M_inv` (RDD has no DML
+moment and therefore no scalar Jacobian) and the `1 / n^2` (RDD's
+variance is a sum over the rows of two separate regressions, not a mean
+moment), both of which are also wrong here.
+
+The HC2 / HC3 leverage splits the same way: the shared helper uses the
+CONSTANT mean-regression leverage `h = 1 / n` (which is why
+`HC2 == HC1` there), while RDD's is a real WLS hat diagonal that varies
+per local row. RDD's HC2 / HC3 are therefore NOT HC1.
+
+Hence the name: `hac_se` says what the number is. `SandwichKind` is
+reused, because it is only the package's vocabulary for the HC family
+and carries no algebra.
+
+### THE ANCHOR, AND WHERE IT DOES NOT HOLD
+
+`hac_se(HC0) == se()` BIT-IDENTICALLY on a `cov_type = "HC0"` fit,
+because that is exactly the branch `fit` took. `se()` / `coef()` are
+pinned to their v0.95.0 values (measured on `bc33920` BEFORE any
+source change) so the persistence change provably did not perturb
+`fit`, including the fuzzy delta-method path.
+
+- `cov_type = "homoskedastic"` fit: `se()` is the homoskedastic form,
+  so `hac_se(HC0) != se()` by a factor of about 2.4 here. Pinned, so
+  the anchor test above is unambiguous about which path it exercised.
+- non-OLS `ml_g`: `rdd_side` drops the kernel weights and no HC0 state
+  exists. `hac_se` ABORTS rather than returning the homoskedastic
+  number under an HC0 name.
+- `fuzzy = true`: `se()` is the delta-method variance of the RATIO
+  `c = raw / jump`, mixing the Y-side and D-side fits and a
+  `1 / n_side^2`-scaled cross-moment. `hac_se` ABORTS.
+- HC1 / HC2 / HC3 ABORT when a side has no more rows than the design
+  has parameters. This guard is NOT redundant with the `[0, 1)`
+  leverage check: on the v0.96.0 degenerate fixture (1 local row per
+  side, `p1 = 3`) the reported leverage is `0.999999999825377` --
+  inside `[0, 1)`, because the `1e-10` ridge holds it just below 1 --
+  so a range check alone would pass and HC2 would divide the meat by
+  `1.7e-10`, reporting an SE inflated by `~1e5`. Aborting, not
+  clipping: a clip is what silently broke identities in v0.93 /
+  v0.94.
+
+`cov_type`, `fit()`'s existing output, and the
+`sensitivity_analysis` decomposition are all unchanged.
+
+### TESTING NOTES WORTH KEEPING
+
+Two DGP defects were found while writing these tests, both of the
+v0.93 / v0.94 species -- a formula that is right and a fixture that is
+degenerate:
+
+- An outcome EXACTLY spanned by the local design leaves every residual
+  at zero, so the whole sandwich is floating-point noise. The first
+  lopsided fixture had `y = 1 + 0.8 u + 1.5 x` on the left side and
+  reported `se = 9.3e-12` where `3.5e-2` was right.
+- A one-sided assertion (`trace - 4.0 < 1e-6`) passes for a trace of
+  `2.0`. It is now `(trace - 2.0).abs() < 1e-5`.
+
+Test counts: 696 -> 712 native, 702 -> 718 wasm-gc, and 712 on both
+`wasm` and `js`. `moon check --deny-warn` is clean on all four
+targets.
+
 ## [0.95.0] -- `DoubleMLQTE` per-quantile sandwich API
 
 `DoubleMLQTE` had no `sandwich_se` because its per-arm Jacobians

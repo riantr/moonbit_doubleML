@@ -110,6 +110,29 @@ is `HC1 == HC2 > HC0` and `HC3 > HC2` -- a monotonic widening.
 See `expand_v090_test.mbt` for the score-order evidence and for the
 still-open factor between `se()` and `sandwich_se(HC0)`.
 
+**`DoubleMLRDD` is not in that list, and does not join it (v0.96.0).**
+It has its own `hac_se(kind)` / `cluster_hac_se(cluster_ids)` /
+`leverage()` / `n_local_params()`, and it is deliberately NOT named
+`sandwich_se`, because the two HC0 formulas are different algebras.
+RDD's is a kernel-weighted local-regression sandwich,
+`sum_k w_k^2 * m_k^2 * e_k^2` with `m_k` the intercept row of a full
+`p1 x p1` normal inverse and no `1 / n^2` divisor; the shared helper
+is a scalar-Jacobian MEAN-moment sandwich,
+`M_inv[0,0]^2 * sum_i psi[i]^2 / n^2`. Feeding RDD's influence function
+`psi_a[k] * residuals[k]` into the pre-v0.91.0 accumulator
+`sum (psi_a * psi)^2` yields `sum psi_a[k]^4 * e_k^2` -- a fourth
+power against RDD's second -- and the resulting error is a plausible
+`1e-2`, not an obvious one. RDD also has no DML moment, hence no
+scalar `M_inv` to supply, and its HC2 / HC3 leverage is a real WLS hat
+diagonal rather than the shared helper's constant `1 / n`, so
+`HC2 == HC1` does not carry over. The anchor is
+`hac_se(HC0) == se()` bit-identically on a `cov_type = "HC0"` fit; on
+a `"homoskedastic"` fit it is deliberately not, and `hac_se` refuses a
+non-OLS learner and a `fuzzy = true` fit rather than returning a
+number under the wrong name. Sandwich coverage above is unchanged --
+RDD is not sandwich coverage. See `CHANGELOG.md` [0.96.0] and
+`expand_v096_test.mbt`.
+
 **Coverage by class**:
 
 - *Observational / quasi-experimental*: `DoubleMLDID`,
