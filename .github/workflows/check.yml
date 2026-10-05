@@ -56,6 +56,20 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Four validators (did / iivm / irm / pliv) shell out to
+      # `moon run --target native examples/main` and parse its stdout, so
+      # this job needs the MoonBit toolchain even though it does not
+      # otherwise build anything.
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Update dependencies
+        run: |
+          moon version --all
+          moon update
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
