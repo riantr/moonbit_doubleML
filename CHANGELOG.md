@@ -9,6 +9,38 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.92.2] -- stop release automation on tag push; backfill v0.75.1 - v0.79.0
+
+**No library-code change.** The library is byte-identical to 0.92.0.
+
+### Changed
+
+- `publish.yml` no longer triggers on `push: tags`.
+  `MOONCAKES_RIANTR_TOKEN` is not set on this repository, so all 37 tag
+  pushes produced red runs. `workflow_dispatch` is kept, with its `tag`
+  input, so the workflow works unchanged once the secret is configured
+  -- the other eleven steps have been green since v0.92.1. Re-enabling
+  is a four-line addition, documented in the comment above `on:`.
+- Backfilled four previously unpublished releases that carry no known
+  numerical defect: **v0.75.1**, **v0.77.0**, **v0.78.0**, **v0.79.0**.
+
+### Deliberately not published
+
+v0.80.0 - v0.89.0 remain off the registry. They carry the
+`sandwich_se` defects fixed in v0.88.0 (HC2/HC3 leverage had the
+wrong sign, so the variance *shrank*), v0.90.0 (the score was
+evaluated as `psi_a + coef*psi_b` instead of `coef*psi_a + psi_b`,
+off by 224x - 1096x) and v0.91.0 (`bias_corrected_coef` returned
+`3*coef`). Publishing them would make silently-wrong standard errors
+pinnable by anyone doing `moon add riantr/moonbit_doubleML@0.88.0`.
+Use v0.90.0 or later, or v0.79.0 or earlier.
+
+### Note
+
+mooncakes.io treats `latest_version` as the most recently *published*
+version, not the highest number. Backfilling in ascending order left
+0.78.0 as `latest`; this release restores it.
+
 ## [0.92.1] -- CI release path, unblock five stacked CI defects
 
 **No library-code change.** The library is byte-identical to 0.92.0;
