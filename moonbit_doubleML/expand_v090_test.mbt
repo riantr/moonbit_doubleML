@@ -317,7 +317,7 @@ test "psi_at_helper_matches_var_est" {
 /// `psi_b[i] + coef * psi_a[i]`); it is the score at `-coef`, i.e.
 /// the negated-argument form `f(theta) = E[psi_b - theta * psi_a]`
 /// whose root is `+mean_b / mean_a`, not `var_est`'s
-/// `-mean_b / mean_a`. The two conventions are not interchangable
+/// `-mean_b / mean_a`. The two conventions are not interchangeable
 /// and mixing them is why `bias_corrected_coef` on IRM / APO
 /// returned `3 * coef` (the algebra collapses: with `psi_a = -1`,
 /// `mean(psi_b - coef*psi_a) = coef + coef = 2*coef`).
