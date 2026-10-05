@@ -105,7 +105,7 @@ jobs:
           mkdir -p "$HOME/.moon"
           printf '%s' "$SECRET" > "$HOME/.moon/credentials.json"
           trap 'rm -f "$HOME/.moon/credentials.json"' EXIT
-          moon publish
+          moon -C moonbit_doubleML publish
         env:
           SECRET: ${{ secrets.MOONCAKES_RIANTR_TOKEN }}
 
