@@ -25,16 +25,16 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.94.0** |
+| `moon.mod` version | **0.95.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 162 in the library (87 production + 75 test) |
+| `.mbt` file count | 163 in the library (87 production + 76 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **684 / 684** |
-| Tests (wasm-gc) | **690 / 690** (lib 684 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **696 / 696** |
+| Tests (wasm-gc) | **702 / 702** (lib 696 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
-| Sandwich variance coverage | **15 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0). Not covered: `DoubleMLQTE`, `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree` (no persisted IF components), `DoubleMLAPOS` and `DoubleMLDIDCS` / `DoubleMLDIDMulti` (per-cell scores not recoverable post-fit) |
+| Sandwich variance coverage | **16 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0; `DoubleMLQTE` exposes the per-quantile `sandwich_se_at(j, kind)` / `cluster_sandwich_se_at(j, cluster_ids)` / `bias_corrected_coef_at(j)` form). Not covered: `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree` (no persisted IF components), `DoubleMLAPOS` and `DoubleMLDIDCS` / `DoubleMLDIDMulti` (per-cell scores not recoverable post-fit) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 
 #Features
@@ -359,23 +359,32 @@ binary-outcome CS-DID:
 `sandwich.mbt` implements the Huber-White family
 (`sandwich_variance_hc0` / `_hc1` / `_hc2` / `_hc3`, the
 `sandwich_variance(kind, ...)` dispatch, and
-`cluster_sandwich_variance`). **13 of the 22 estimators** expose the
-triple `sandwich_se(kind)` / `cluster_sandwich_se(cluster_ids)` /
-`bias_corrected_coef()`:
+`cluster_sandwich_variance`). **16 of the 22 estimators** are wired
+up. 15 expose the no-index triple `sandwich_se(kind)` /
+`cluster_sandwich_se(cluster_ids)` / `bias_corrected_coef()`:
 
 `DoubleMLPLR` · `DoubleMLIRM` · `DoubleMLPLIV` · `DoubleMLIIVM` ·
 `DoubleMLDID` · `DoubleMLDIDBinary` · `DoubleMLDIDCrossSection` ·
 `DoubleMLDIDCSBinary` · `DoubleMLSSM` · `DoubleMLAPO` ·
-`DoubleMLPLPR` · `DoubleMLCVAR` · `DoubleMLLPLR`
+`DoubleMLPLPR` · `DoubleMLCVAR` · `DoubleMLLPLR` · `DoubleMLLPQ` ·
+`DoubleMLPQ`
 
-The remaining 9 are deliberately not wired up, each for a
+The sixteenth, `DoubleMLQTE`, is a per-quantile estimator (one
+scalar estimand per entry in the user-supplied `quantiles` array), so
+its three methods take the quantile index --
+`sandwich_se_at(j, kind)` / `cluster_sandwich_se_at(j, cluster_ids)` /
+`bias_corrected_coef_at(j)`. No joint cross-quantile covariance is
+implied or computed; see the v0.95.0 entry in `CHANGELOG.md` for why
+its `M_inv` is `[[1.0]]` rather than `1 / deriv`.
+
+The remaining 6 are deliberately not wired up, each for a
 structural reason rather than a pending task. `DoubleMLAPOS`,
 `DoubleMLDIDCS` and `DoubleMLDIDMulti` are documented in the
 v0.89.0 entry below (no own scores, or a per-cell score matrix that
 does not carry the sample width the HC identities need).
-`DoubleMLPQ` / `DoubleMLQTE` / `DoubleMLLPQ` / `DoubleMLBLP` /
-`DoubleMLPolicyTree` do not persist the `(psi_a, psi_b)` influence-
-function pair the formulas are written against.
+`DoubleMLBLP` / `DoubleMLPolicyTree` do not persist the
+`(psi_a, psi_b)` influence-function pair the formulas are written
+against.
 `DoubleMLRDD` does persist a `psi_a`, but it is the intercept
 Riesz-representer row for the sensitivity decomposition on the
 bandwidth-restricted sample (length `n_local`), with no `psi_b`
@@ -447,7 +456,7 @@ the 1e-12 above, not `==`).
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.94.0, 162 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.95.0, 163 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 

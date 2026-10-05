@@ -9,6 +9,147 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.95.0] -- `DoubleMLQTE` per-quantile sandwich API
+
+`DoubleMLQTE` had no `sandwich_se` because its per-arm Jacobians
+`deriv1` / `deriv0` were `fit()` locals that reached the SE
+computation and then died, and its stored `psi_flat` is a flat
+per-quantile IF matrix with no `psi_a + coef * psi_b` split. Both
+now resolved -- but NOT the way v0.94.0 resolved PQ, and the
+difference is structural rather than bookkeeping.
+
+### Added
+
+- `DoubleMLQTE` persists `derivs1` / `derivs0` (length
+  `n_quantiles` each): the per-quantile, per-treatment-arm
+  `d mean(psi_k(theta)) / d theta` that `solve_pq` returns. Two per
+  quantile, not one, because a quantile treatment effect is a
+  CONTRAST of two independent scalar Z-estimators
+  (`theta_1 - theta_0`); a single "the QTE Jacobian" would have to be
+  either a difference of derivatives taken at two different parameter
+  values (the Jacobian of nothing) or a fabricated constant.
+  `DoubleMLQTE::fit_cluster` builds its own from that path's own
+  `deriv1` / `deriv0` (the cluster path runs `solve_pq` under
+  cluster folds, so the two paths' values are not interchangeable).
+- `DoubleMLQTE::sandwich_se_at(j, kind)` /
+  `cluster_sandwich_se_at(j, cluster_ids)` /
+  `bias_corrected_coef_at(j)`. Sandwich coverage 15 -> **16 of 22**.
+- `expand_v095_test.mbt`: 12 tests.
+
+### WHY THIS IS NOT v0.94.0 AGAIN, AND WHY `M_inv` IS `[[1.0]]`
+
+PQ is a single scalar quantile Z-estimator: its stored score is the
+RAW quantile score, so its Jacobian has to enter the variance and
+`M_inv = 1 / deriv` is mandatory. Reading PQ's Jacobian as the
+constant `-1` (or `+1`, which the SQUARE makes equally wrong)
+shrinks the SE by `|deriv|` -- 4.74x on the v0.94.0 DGP.
+
+QTE is a contrast of two such estimators per quantile, and `fit`
+already applied both Jacobians before storing the IF:
+
+    u_i = psi_1[i] / deriv_1 - psi_0[i] / deriv_0
+    ses[j] = (gamma / n).sqrt(),   gamma = mean(u^2)
+
+Writing the contrast as a one-parameter Z-estimator by substituting
+`theta_1 = theta_0 + theta_j`, the estimating equation's
+`theta_j`-derivative is `(1 / deriv_1) * deriv_1 - 0 = 1`. So the
+contrast's Jacobian is IDENTICALLY 1 -- an identity of the
+studentised score, not a constant this implementation chose --
+`M_inv = [[1.0]]`, and every per-observation Jacobian row of `u` is
+exactly 1 (which is why the methods hand `sandwich_variance` an
+all-ones `psi_a` and still land on the package's
+`M_inv = [[1 / mean(psi_a)]]` convention).
+
+Two consequences, both pinned:
+
+- `sandwich_se_at(j, HC0) == ses[j]` holds and is **bit-identical**,
+  not merely within tolerance: `mean` (`matrix.mbt`) and
+  `sandwich_variance_hc0`'s accumulator are the SAME Kahan
+  compensation over the same `u_i * u_i` products in the same index
+  order, and both then divide by `n` twice. Measured `==` (not
+  within-tolerance) on all four backends.
+- The trap runs the OTHER way from PQ's. A hard-coded
+  `M_inv = [[-1]]` / `[[+1]]` is not merely close here -- it is
+  exactly right, for the structural reason above. The reading that
+  actually bites is applying the persisted Jacobians a second time
+  (`1 / derivs1[j]`, `1 / derivs0[j]`, or
+  `1 / (derivs1[j] - derivs0[j])`), which DOUBLE-COUNTS the
+  Jacobian and INFLATES the SE by `1 / |deriv|`.
+
+The persisted per-arm Jacobians therefore enter the variance path as
+a degeneracy GUARD and nothing else: `m_inv_1x1_at` ABORTS when
+either `|derivs_k[j]| < 1e-12` rather than clipping. As in v0.93.0
+and v0.94.0, the inline `ses[j]` itself has no such guard -- a
+`deriv == 0` makes `fit`'s `psi1 / deriv1` term `inf`, so `ses[j]`
+comes back `+inf` rather than aborting. A `1e-12` floor (rather than
+`!= 0`) also catches the sub-normal case where `1 / deriv`
+overflows while the variance would still pass a `>= 0.0` check.
+
+### Measured, per quantile
+
+v0.95.0 DGP (`n = 500`, triangular outcomes: treated on `[2, 10]`,
+control on `[0, 6]`, quantiles `[0.2, 0.6]`):
+
+| | q = 0.2 | q = 0.6 |
+| --- | --- | --- |
+| `coefs[j]` | `2.7772054907057497` | `3.099355106448453` |
+| `derivs1[j]` | `0.12168601749821675` | `0.18461659439694153` |
+| `derivs0[j]` | `0.20695802729871676` | `0.2684646317232943` |
+| `ses[j]` | `0.2652873117685927` | `0.22847511268663798` |
+| `sandwich_se_at(j, HC0)` | `0.2652873117685927` | `0.22847511268663798` |
+| exact `==` | yes | yes |
+| `M_inv = [[-1]]` reading | `0.2652873117685927` | `0.22847511268663798` |
+| `M_inv = [[+1]]` reading | `0.2652873117685927` | `0.22847511268663798` |
+| `M_inv = 1 / derivs1[j]` | `2.180096918468717` (8.2x) | `1.2375654173069452` (5.4x) |
+| `M_inv = 1 / derivs0[j]` | `1.2818411309346571` (4.8x) | `0.8510436224691474` (3.7x) |
+| `M_inv = 1 / (d1 - d0)` | `3.1110714100588397` (11.7x) | `2.724871326413624` (11.9x) |
+
+Every `|deriv|` is decisively far from 1, the two arms differ from
+each other, and the two quantiles differ from each other -- the
+triangular (non-flat) outcome densities are what make the per-quantile
+path observable; a uniform-outcome DGP would return the same density
+at every quantile and could not tell a per-quantile implementation
+from one that ignored `j`. Doubling both outcome widths moves them
+to `0.0681 / 0.1158` (q = 0.2) and `0.0929 / 0.1502` (q = 0.6),
+which no hard-coded constant can do.
+
+### Notes
+
+- `sandwich_se_at` does not call the shared `psi_at` helper:
+  `psi_flat`'s row is already the score evaluated at `coefs[j]` and
+  there is no `psi_b` to reconstruct it from. Documented at the
+  method. Note that on this DGP the `psi_at` misreading is caught by
+  the MEAN (`psi_at(coef, ones, u) = coef + u` is off-mean by the
+  estimand), not by the SE magnitude -- `u`'s spread is an order of
+  magnitude above `coefs[j]`, so the two SEs land within a few
+  percent of each other.
+- `n_params` is 1, NOT `quantiles.length()`: each quantile is a 1x1
+  problem. Pinned by `qte_hc1_hc0_ratio`, which rules out the
+  `k = n_quantiles` reading.
+- On a CLUSTERED fit `DoubleMLQTE::fit_cluster` computes `ses[j]` as
+  the unit-level cluster variance `sqrt(var_unit / n_units)`, so the
+  `sandwich_se_at(j, HC0) == ses[j]` invariant is an IID-path property
+  only (and `cluster_sandwich_se_at` is `n_obs`-denominated with the
+  Arellano jackknife correction, so the two agree only up to those two
+  differences). Documented at the method; the clustered path is
+  covered by `qte_cluster_fit_persists_jacobians`, which recomputes
+  the unit-level variance from `psi_flat` rather than asserting the
+  difference in prose.
+- A JOINT cross-quantile covariance is deliberately out of scope: a
+  larger feature, not needed for the per-quantile 1x1 case.
+- README sandwich coverage row updated 15 -> 16 (re-counted, not
+  trusted: 16 `pub fn (DoubleML\w+)::sandwich_se` / `::sandwich_se_at`
+  definitions). The `#Sandwich variance` prose section still claimed
+  13 of 22 (a v0.86.0 leftover) and still listed `DoubleMLQTE` as
+  unwired; both were corrected to match the table, and the estimator
+  list now names all 16.
+- v0.95.0 verified counts: `moon test` 696 / 696 (native & wasm &
+  js) and 702 / 702 (wasm-gc: lib 696 + 6 doc tutorials);
+  `moon check --deny-warn` clean on all four backends.
+- `moon fmt --check` remains broken in this workspace (non-zero on
+  an unrelated `linalg_gpu` junction); `moon fmt` was run and only
+  the files touched here moved.
+
 ## [0.94.0] -- `DoubleMLPQ` sandwich API
 
 `DoubleMLPQ` had no `sandwich_se` because its Jacobian `deriv` was a

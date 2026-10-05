@@ -1134,6 +1134,30 @@ pub struct DoubleMLQTE {
   // `i`). Populated by `fit`; required by the multiplier
   // bootstrap.
   psi_flat : Array[Double]
+  // v0.95.0+: the two per-quantile Jacobians that built
+  // `psi_flat`, one per treatment arm -- `derivs1[j]` is
+  // `d mean(psi_1(theta)) / d theta` at `coefs[j]` for the
+  // treated arm and `derivs0[j]` the same for the control arm,
+  // i.e. each the negative IPW-weighted density of `y` at that
+  // arm's quantile among that arm's rows (as in `DoubleMLPQ`).
+  // Length `n_quantiles` each.
+  //
+  // They are persisted because they used to die: `fit` read them
+  // out of `solve_pq`, divided them into `psi_flat`, and dropped
+  // them, so a caller had no way to see how far the quantile
+  // roots sat from a flat density, nor to notice that the IF
+  // scaling `1 / deriv` was already applied.
+  //
+  // There are TWO per quantile, not one, because a quantile
+  // treatment effect is a CONTRAST of two independent
+  // scalar Z-estimators (`theta_1 - theta_0`), not one. Any
+  // single "the QTE Jacobian" would have to be either a
+  // difference of derivatives taken at two different parameter
+  // values (the Jacobian of nothing) or a fabricated constant.
+  // See the section comment above `sandwich_se_at` for why the
+  // variance must NOT re-apply them either.
+  derivs1 : Array[Double]
+  derivs0 : Array[Double]
   // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is
   // a flat `[n_rep_boot * n_quantiles]` array of t-statistics.
   // Populated by `bootstrap(...)`; empty until then.
@@ -1178,6 +1202,10 @@ pub fn DoubleMLQTE::new(
     coefs: Array::make(quantiles.length(), 0.0),
     ses: Array::make(quantiles.length(), 0.0),
     psi_flat: Array::make(quantiles.length() * data.n_obs(), 0.0),
+    // v0.95.0+: sentinel zeros; `fit` (both the IID path and
+    // `fit_cluster`) replaces them with the per-arm Jacobians.
+    derivs1: Array::make(quantiles.length(), 0.0),
+    derivs0: Array::make(quantiles.length(), 0.0),
     boot_t_stat: [],
     boot_method: "",
     n_rep_boot: 0,
@@ -1206,6 +1234,10 @@ pub fn DoubleMLQTE::fit(
   let c = Array::make(n_q, 0.0)
   let s = Array::make(n_q, 0.0)
   let psi_flat : Array[Double] = Array::make(n_q * n_obs, 0.0)
+  // v0.95.0+: the per-quantile per-arm Jacobians, persisted so the
+  // sandwich API can guard on them and callers can read them back.
+  let d1s : Array[Double] = Array::make(n_q, 0.0)
+  let d0s : Array[Double] = Array::make(n_q, 0.0)
   // v0.84.0+: memoize check (mirrors the per-estimator
   // pattern). QTE is a single-fit estimator (no `n_rep`),
   // so memoize is honored unconditionally when enabled --
@@ -1346,6 +1378,17 @@ pub fn DoubleMLQTE::fit(
       }
       (t0, p0, d0)
     }
+    // v0.95.0+: persist this quantile's two arm Jacobians. Placed
+    // AFTER both destructurings and OUTSIDE the `cache_hit` branch,
+    // so it is correct on both paths by the same single-binding
+    // argument as PQ's `psi_a`: `deriv1` / `deriv0` are restored
+    // from `thetas_derivs[j * 4 + 1] / [j * 4 + 3]` on a hit and
+    // returned by `solve_pq` on a miss, and they are bound to the
+    // SAME names on both.
+    // `expand_v095_test.mbt::qte_sandwich_after_memoize_cache_hit`
+    // pins that.
+    d1s[j] = deriv1
+    d0s[j] = deriv0
     c[j] = theta1 - theta0
     // v0.84.0+: vectorise the per-observation `u` IF
     // computation as `psi1/deriv1 - psi0/deriv0`. The
@@ -1397,6 +1440,9 @@ pub fn DoubleMLQTE::fit(
     coefs: c,
     ses: s,
     psi_flat,
+    // v0.95.0+: the per-quantile per-arm Jacobians this fit used.
+    derivs1: d1s,
+    derivs0: d0s,
     boot_t_stat: [],
     boot_method: "",
     n_rep_boot: 0,
@@ -1446,6 +1492,15 @@ fn DoubleMLQTE::fit_cluster(
       self.quantiles.length() * n_obs,
       0.0,
     )
+    // v0.95.0+: the cluster path runs `solve_pq` under CLUSTER
+    // folds, so its Jacobians are NOT the IID path's and this
+    // struct literal needs its own wiring from its own `deriv1` /
+    // `deriv0` (the same separate-wiring requirement v0.94.0 hit
+    // for PQ's `psi_a`). Leaving these at the `new()` zeros would
+    // still compile, and the sandwich methods would then abort on
+    // the `|deriv| >= 1e-12` guard.
+    let d1s : Array[Double] = Array::make(self.quantiles.length(), 0.0)
+    let d0s : Array[Double] = Array::make(self.quantiles.length(), 0.0)
     let rep_seed = self.seed
     let folds_u = kfold(n_units, self.n_folds, rep_seed)
     let (folds_row, _unit_fold, _fold_n_units) = expand_unit_folds_to_rows(
@@ -1485,6 +1540,8 @@ fn DoubleMLQTE::fit_cluster(
             "solve_pq: upper bracket sign failed after 20 widens (cluster-aware folds)",
           )
       }
+      d1s[j] = deriv1
+      d0s[j] = deriv0
       c[j] = theta1 - theta0
       let u : Array[Double] = Array::make(n_obs, 0.0)
       for i = 0; i < n_obs; i = i + 1 {
@@ -1516,6 +1573,9 @@ fn DoubleMLQTE::fit_cluster(
       coefs: c,
       ses: s,
       psi_flat,
+      // v0.95.0+: this path's own per-quantile per-arm Jacobians.
+      derivs1: d1s,
+      derivs0: d0s,
       boot_t_stat: [],
       boot_method: "",
       n_rep_boot: 0,
@@ -1861,4 +1921,330 @@ pub fn DoubleMLQTE::sensitivity_analysis_cluster(
     cf_y,
     cf_d,
   )
+}
+
+// ---------------------------------------------------------------------------
+// v0.95.0: the per-quantile sandwich API
+// ---------------------------------------------------------------------------
+//
+// WHY QTE IS NEITHER ONE OF THE ORDINARY 12 NOR PQ
+// ===============================================
+//
+// `var_est.mbt` defines the package's estimating function as
+//     f(theta) = E[theta * psi_a + psi_b]
+// a mean moment whose root is `-mean(psi_b) / mean(psi_a)` and whose
+// Jacobian is `J = mean(psi_a)`. For the twelve estimators that
+// follow that convention the sandwich is a mechanical three-liner:
+// `psi_at(coef, self.psi_a, self.psi_b)` with
+// `M_inv = [[1 / mean(self.psi_a)]]`.
+//
+// `DoubleMLPQ` (v0.94.0) is a single scalar quantile Z-estimator:
+// `theta` solves `mean(psi(theta)) = 0`, its stored score is the RAW
+// quantile score, and its Jacobian is the data-dependent scalar
+// `deriv = d mean(psi(theta)) / d theta`. PQ therefore needs
+// `M_inv = [[1 / deriv]]`, and its SE carries a factor `1 / |deriv|`.
+//
+// QTE is a third shape: per quantile `j` it is a CONTRAST of two
+// independent scalar Z-estimators, `theta_j = theta_1 - theta_0`,
+// each of the PQ form. Its stored per-observation IF,
+// `psi_flat[j * n_obs + i]`, is
+//
+//     u_i = psi_1[i] / deriv_1 - psi_0[i] / deriv_0
+//
+// which ALREADY carries both Jacobians: `fit` divides them in and
+// then computes
+//
+//     ses[j] = (gamma / n).sqrt(),   gamma = mean(u^2)
+//
+// So QTE's Jacobian has already done its work inside the stored score.
+//
+// THE STRUCTURAL FACT: `M_inv` IS 1 HERE
+// ---------------------------------------
+// Write the contrast as a one-parameter Z-estimator by substituting
+// `theta_1 = theta_0 + theta_j`. Its estimating equation is
+//
+//     mean( psi_1(theta_0 + theta_j) / deriv_1
+//            - psi_0(theta_0) / deriv_0 ) = 0
+//
+// whose `theta_j`-derivative is
+//
+//     (1 / deriv_1) * d mean(psi_1) / d theta_j - 0
+//   = (1 / deriv_1) * deriv_1
+//   = 1.
+//
+// The contrast's Jacobian is therefore IDENTICALLY 1 -- per quantile,
+// for every data set. That is an identity of the studentised score,
+// not a constant this implementation picked. Equivalently, every
+// per-observation Jacobian row of `u` is exactly 1, which is why
+// `sandwich_se_at` hands `sandwich_variance` an all-ones `psi_a` and
+// gets `M_inv = [[1 / mean(psi_a)]] = [[1.0]]` under the SAME
+// convention as the other fifteen estimators.
+//
+// This is the one place QTE REJECTS the PQ template, and it is a trap
+// in the opposite direction from PQ's: multiplying the stored
+// `psi_flat` row by a further `1 / derivs1[j]` (or `derivs0[j]`, or
+// `1 / (derivs1[j] - derivs0[j])`) DOUBLE-COUNTS the Jacobian and
+// INFLATES the SE by `1 / |deriv|` (PQ's constant reading instead
+// SHRANK its SE, because PQ's stored score is raw). The persisted
+// per-arm Jacobians therefore enter the variance path as a degeneracy
+// GUARD and nothing else; see `m_inv_1x1_at`. They remain persisted
+// because they are the record of how the stored IF was built, and
+// because until v0.95.0 they were dropped on the floor after doing
+// that. `expand_v095_test.mbt::qte_jacobian_is_not_a_constant` pins
+// both the guard's inputs and the measured size of the
+// double-counting error.
+//
+// THE PAYOFF INVARIANT
+// --------------------
+//
+//     sandwich_variance_hc0 = M_inv[0,0]^2 * sum_i u_i^2 / n / n
+//                           = sum_i u_i^2 / n / n      (M_inv == 1)
+//
+// while `fit` computes `ses[j] = (gamma / n).sqrt()` with
+// `gamma = mean(u^2)`. `mean` (`matrix.mbt`) and
+// `sandwich_variance_hc0`'s accumulator are the SAME Kahan
+// compensated loop over the same `u_i * u_i` products in the same
+// index order, and both then divide by `n` twice. So the two sides
+// are BIT-IDENTICAL, not merely equal to a tolerance:
+//
+//     sandwich_se_at(j, HC0) == ses[j]
+//
+// The score is used AS STORED and `psi_at` is deliberately NOT called:
+// `psi_flat`'s row is already the score evaluated at `coefs[j]`,
+// there is no `psi_b` to reconstruct it from, and `psi_at` would
+// evaluate the different function `coef * psi_a + psi_b`, whose root
+// is not `coefs[j]`.
+//
+// SCOPE
+// -----
+// These methods are per-quantile and stay that way. `quantiles` is a
+// user-supplied array of separate scalar estimands, so no joint
+// cross-quantile covariance is implied, computed, or needed; a joint
+// `Cov(theta_j, theta_j')` is a different, larger feature and is
+// deliberately out of scope.
+
+///|
+/// The Jacobian inverse `M_inv` (1x1) for quantile `quantile_index`.
+///
+/// For QTE this is `[[1.0]]`, NOT `[[1 / deriv]]` -- see the section
+/// comment above: the contrast's Jacobian is identically 1 because
+/// `psi_flat`'s row already carries the `1 / deriv_1` and
+/// `1 / deriv_0` scaling, so `M_inv[0,0]^2` is the only entry the
+/// variance ever inspects.
+///
+/// The two persisted per-arm Jacobians ARE read here, as the
+/// degenerate-input guard, and the guard ABORTS rather than clips:
+///
+///   - `fit` scales each arm's score by `1 / deriv` with no guard of
+///     its own, so a `deriv == 0` (or sub-normal) has already put
+///     `inf` / `nan` into `psi_flat`'s row and left `ses[j]` at `inf`
+///     or `nan`. Returning a finite number here would report a
+///     sandwich over a score that is not finite.
+///   - The `1e-12` floor (rather than `!= 0`) also catches the
+///     sub-normal case where `1 / deriv` overflows to `inf` while the
+///     resulting variance would still pass a `>= 0.0` check.
+///
+/// Note what this does NOT do: it does not put `1 / deriv` into the
+/// variance. Clipping would additionally break the
+/// `sandwich_se_at(j, HC0) == ses[j]` invariant for small-but-nonzero
+/// Jacobians, since `ses[j]` uses the unclipped value.
+fn DoubleMLQTE::m_inv_1x1_at(
+  self : DoubleMLQTE,
+  quantile_index : Int,
+) -> Matrix {
+  try {
+    let n_q = self.quantiles.length()
+    require(n_q >= 1)
+    require(quantile_index >= 0)
+    require(quantile_index < n_q)
+    require(self.coefs.length() == n_q)
+    require(self.ses.length() == n_q)
+    require(self.derivs1.length() == n_q)
+    require(self.derivs0.length() == n_q)
+    let n_obs = self.data.n_obs()
+    require(n_obs >= 1)
+    require(self.psi_flat.length() == n_q * n_obs)
+    require(self.derivs1[quantile_index].abs() >= 1.0e-12)
+    require(self.derivs0[quantile_index].abs() >= 1.0e-12)
+    Matrix::from_array([1.0], 1, 1)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Quantile `quantile_index`'s per-observation IF, extracted as the
+/// slice `psi_flat[j * n_obs .. (j + 1) * n_obs]` of a fresh array.
+fn DoubleMLQTE::psi_row(
+  self : DoubleMLQTE,
+  quantile_index : Int,
+) -> Array[Double] {
+  try {
+    let n_q = self.quantiles.length()
+    require(n_q >= 1)
+    require(quantile_index >= 0)
+    require(quantile_index < n_q)
+    let n_obs = self.data.n_obs()
+    require(n_obs >= 1)
+    require(self.psi_flat.length() == n_q * n_obs)
+    let row : Array[Double] = Array::make(n_obs, 0.0)
+    let offset = quantile_index * n_obs
+    for i = 0; i < n_obs; i = i + 1 {
+      row[i] = self.psi_flat[offset + i]
+    }
+    row
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.95.0+: heteroskedasticity-consistent (Huber-White) sandwich
+/// standard error for quantile `quantile_index` of a fitted QTE.
+/// Routes through the shared `sandwich_variance` dispatch, so the
+/// HC0 / HC1 / HC2 / HC3 relationships are the package-wide ones
+/// (see the file header in `sandwich.mbt` and the identities pinned
+/// in `expand_v088_test.mbt`).
+///
+/// The three inputs are NOT the usual `(psi_at(...), 1/mean(psi_a))`
+/// pair, and both deviations are deliberate -- see the section
+/// comment above:
+///
+///   - the score is `psi_flat`'s own row for this quantile, used AS
+///     STORED (it is already evaluated at `coefs[j]`; there is no
+///     `psi_b` to reconstruct it from, and `psi_at` would evaluate a
+///     different function whose root is not `coefs[j]`);
+///   - the Jacobian is `M_inv = [[1.0]]`, NOT `1 / derivs1[j]` or
+///     `1 / derivs0[j]`. The per-arm Jacobians are already inside the
+///     stored score; the contrast's Jacobian in the studentised form
+///     is identically 1.
+///
+/// `psi_a` is therefore the all-ones array, which is the honest
+/// per-observation Jacobian row of `u` (and satisfies
+/// `sandwich_variance`'s length preconditions); the v0.91.0
+/// accumulator carries no `psi_a` weight, so the Jacobian reaches the
+/// variance only through `M_inv`.
+///
+/// `n_obs` is the full sample, the same `n_obs` `fit` divides by when
+/// it computes `ses[j]`, and `n_params` is 1: one scalar estimand per
+/// quantile, NOT `quantiles.length()`.
+///
+/// On a CLUSTERED fit (non-empty `data.cluster_vars`,
+/// `DoubleMLQTE::fit_cluster`) `ses[j]` is the unit-level
+/// cluster-robust variance `sqrt(var_unit / n_units)`, not the IID one,
+/// so the `sandwich_se_at(j, HC0) == ses[j]` invariant does not hold
+/// there; use `cluster_sandwich_se_at(j, self.data.cluster_vars)`, which
+/// is the Arellano unit-level analogue (equal to `n_obs`-denominated
+/// `cluster_sandwich_variance`, so the two agree only up to the
+/// `n_units` vs `n_obs` denominator and the jackknife correction).
+///
+/// Preconditions: `0 <= quantile_index < quantiles.length()`,
+/// `|derivs1[j]| >= 1e-12`, `|derivs0[j]| >= 1e-12`.
+pub fn DoubleMLQTE::sandwich_se_at(
+  self : DoubleMLQTE,
+  quantile_index : Int,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    let m_inv = self.m_inv_1x1_at(quantile_index)
+    let n_obs = self.data.n_obs()
+    let psi_j = self.psi_row(quantile_index)
+    let psi_a : Array[Double] = Array::make(n_obs, 1.0)
+    let variance_val = sandwich_variance(kind, psi_a, psi_j, m_inv, n_obs, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.95.0+: cluster-robust sandwich standard error for quantile
+/// `quantile_index` of a fitted QTE (Arellano 1987, Cameron-Gelbach-
+/// Miller 2011). Routes through `cluster_sandwich_variance` with the
+/// SAME `psi_flat` row and `M_inv` as the IID `sandwich_se_at` path --
+/// see the section comment above for why those are not the ordinary
+/// `(psi_at(...), 1/mean(psi_a))` pair.
+///
+/// `DoubleMLData` carries `cluster_vars`, so a clustered fit can pass
+/// `self.data.cluster_vars` directly; on the IID constructor path
+/// (`cluster_vars = []`) the caller must supply the grouping variable
+/// explicitly -- any clustering the application has: region, site,
+/// panel unit. With all-singleton clusters the meat degenerates to
+/// `sum_i u_i^2` and the formula collapses to `sandwich_se_at(j, HC0)`,
+/// hence to `ses[j]` on an IID fit.
+///
+/// Preconditions: `0 <= quantile_index < quantiles.length()`,
+/// `|derivs1[j]| >= 1e-12`, `|derivs0[j]| >= 1e-12`,
+/// `cluster_ids.length() == n_obs`.
+pub fn DoubleMLQTE::cluster_sandwich_se_at(
+  self : DoubleMLQTE,
+  quantile_index : Int,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    let m_inv = self.m_inv_1x1_at(quantile_index)
+    let n_obs = self.data.n_obs()
+    require(cluster_ids.length() == n_obs)
+    let psi_j = self.psi_row(quantile_index)
+    let psi_a : Array[Double] = Array::make(n_obs, 1.0)
+    let variance_val = cluster_sandwich_variance(
+      psi_a, psi_j, m_inv, cluster_ids, 1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.95.0+: returns `coefs[quantile_index]` UNCHANGED -- a documented
+/// no-op, not a bias correction. Identical in reasoning to the fifteen
+/// `bias_corrected_coef` methods added in v0.86.0 - v0.94.0; see
+/// `DoubleMLPQ::bias_corrected_coef` and `bias_corrected_theta` in
+/// `sandwich.mbt` for the full argument.
+///
+/// `coefs[j]` is a difference of two bisection roots of the PQ
+/// quantile moment `mean(psi_k(theta_k)) = 0`. Those estimating
+/// functions are orthogonal at their roots by construction -- and that
+/// orthogonality IS what makes the roots consistent -- so no
+/// correction built from the fitted scores is a bias estimate for this
+/// class of estimator. This accessor therefore reports the uncorrected
+/// point estimate rather than a number that merely looks like a
+/// correction.
+///
+/// The pre-v0.91.0 form `coef + mean(psi_b - coef * psi_a)` is
+/// algebraically `3 * coef` for a constant-`psi_a` estimator and is
+/// not a bias estimate for ANY of them; the v0.91.0 argument applies
+/// here unchanged. There is a QTE-specific reason the naive
+/// correction is not merely vacuous but actively wrong: the
+/// contrast's score `u = psi_1 / deriv_1 - psi_0 / deriv_0` is the
+/// difference of two arm scores whose individual means are each
+/// near-zero but need not be zero at the reported root, so adding
+/// `mean(u)` back to `coefs[j]` shifts a consistent estimate by
+/// whatever those two residual means happen to be.
+///
+/// QTE persists no `fitted : Bool` (its `bootstrap` and
+/// `sensitivity_analysis` use the same `coefs.length() > 0` proxy), so
+/// this method uses it too.
+///
+/// Preconditions: `0 <= quantile_index < coefs.length()`.
+pub fn DoubleMLQTE::bias_corrected_coef_at(
+  self : DoubleMLQTE,
+  quantile_index : Int,
+) -> Double {
+  try {
+    require(self.coefs.length() > 0)
+    require(quantile_index >= 0)
+    require(quantile_index < self.coefs.length())
+    self.coefs[quantile_index]
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
