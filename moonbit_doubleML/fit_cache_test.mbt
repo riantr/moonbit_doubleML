@@ -122,7 +122,15 @@ test "memoize_returns_same_coef" {
   let irm = DoubleMLIRM::new(data, n_folds=4, n_rep=1, seed=3141).enable_memoize()
   let fit1 = irm.fit()
   // Second fit: should hit the cache (same seed / data / learners).
-  let fit2 = irm.fit()
+  //
+  // v0.99.0 fix: this must be `fit1.fit()`, not `irm.fit()`.
+  // `DoubleMLIRM::fit` takes `self` by value and returns a NEW
+  // estimator, so the cache writeback lands on `fit1` only --
+  // `irm` still carries the empty constructor cache. Re-fitting
+  // `irm` re-ran the whole cross-fit, so this test was comparing
+  // fresh-vs-fresh and would have passed with the cache-read
+  // branch deleted outright.
+  let fit2 = fit1.fit()
   inspect(fit1.has_cache(), content="true")
   inspect(fit2.has_cache(), content="true")
   let d_coef = (fit1.coef() - fit2.coef()).abs()

@@ -25,15 +25,16 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.97.0** |
+| `moon.mod` version | **0.99.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 165 in the library (87 production + 78 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **729 / 729** |
-| Tests (wasm-gc) | **735 / 735** (lib 729 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **755 / 755** |
+| Tests (wasm-gc) | **761 / 761** (lib 755 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
+| Cache read-path audit | 13 estimators have a hit-vs-fresh assertion; **5 of those 13 additionally carry a corruption probe** (IRM, PLR, CVAR, BLP, PQ) since v0.99.0. A corruption probe writes a known-wrong value into one cached slot and requires the reported estimate to move, so a dead cache-read path fails the suite. A hit-vs-fresh assertion alone does not: the fresh recompute is deterministic, so replaying nothing and replaying correctly are indistinguishable to it. |
 | Sandwich variance coverage | **16 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0; `DoubleMLQTE` exposes the per-quantile `sandwich_se_at(j, kind)` / `cluster_sandwich_se_at(j, cluster_ids)` / `bias_corrected_coef_at(j)` form). Not covered: `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree` (no persisted IF components), `DoubleMLAPOS` and `DoubleMLDIDCS` / `DoubleMLDIDMulti` (per-cell scores not recoverable post-fit) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 

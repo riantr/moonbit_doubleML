@@ -9,6 +9,100 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.99.0] -- the memoization tests could not fail
+
+`enable_memoize()` shipped in v0.80.0 and was extended to all 22
+estimators by v0.85.0. Two releases of testing later, the tests
+added to cover it were structurally incapable of failing. This is a
+test-suite release: **no production code changed** (`irm.mbt`,
+`plr.mbt`, `cvar.mbt`, `quantile.mbt` and `blp_policy.mbt` are
+byte-identical to v0.98.0 -- the mutation harness in
+"Verification" below was reverted before the commit).
+
+### Fixed
+
+- **11 vacuous cache tests** across `fit_cache_test.mbt`,
+  `expand_v083_test.mbt` and `expand_v084_test.mbt`. They read
+
+  ```moonbit
+  let fit1 = est.fit()      // cache writeback lands here
+  let fit2 = est.fit()      // `est` still has an EMPTY cache
+  ```
+
+  `fit` takes `self` by value and returns a **new** estimator, so
+  the writeback never reached `est` and `est.fit()` re-entered the
+  MISS branch. Every "cache hit reproduces the fresh fit"
+  assertion was comparing fresh-vs-fresh. Fixed to `fit1.fit()`,
+  which is the only value in scope holding a populated cache.
+
+  Affected: `memoize_returns_same_coef`, `cvar` / `ssm` / `blp` /
+  `plpr` / `lplr` `_enable_memoize_smoke`, `apos` / `apo` / `pq` /
+  `qte` / `rdd` `_enable_memoize_smoke`.
+
+  The v0.85.0 `DoubleMLPolicyTree` tests were already correct --
+  they carry a comment saying the second fit must be driven from
+  `fit1` -- as were the six v0.93.0-v0.98.0
+  `*_after_memoize_cache_hit` tests. That is how the correct
+  pattern became known without being backfilled to the two
+  releases that needed it.
+
+### Added
+
+- **5 cache corruption probes** (`expand_v099_test.mbt`), one per
+  distinct cache layout: IRM (`[g0, g1, m, m_raw]`), PLR
+  (`[g, m]`), CVAR (`[g, m_final, ipw_vec]`, where `ipw_vec` is
+  indexed by *fold* rather than by observation), BLP
+  (`[coef, se, [rss], [var_y], residuals]`, no fold partition at
+  all), and PQ (`[[theta, deriv], psi_flat]`, two scalars packed
+  into slot 0).
+
+  Each probe is three points: a MISS, a HIT on an **intact** cache
+  that must reproduce the miss **bit-for-bit** (not to a
+  tolerance), and a HIT on a **corrupted** cache that must *not*.
+  The corruption writes a known-wrong value into one cached slot;
+  the cache key is derived from (data, learners, fold parameters)
+  and not from the prediction contents, so the key stays valid and
+  the hit branch is forced -- the probe isolates the read rather
+  than accidentally re-testing a miss.
+
+  For BLP and PQ the slot probed *is* the reported estimate, so the
+  assertion is exact rather than directional: BLP's `coef[0]` must
+  move by exactly the injected `+7.0`, and PQ's must move by
+  exactly `+3.0`. PQ gets a second probe on the neighbouring
+  `deriv` slot, which must leave `coef` untouched and divide `se`
+  by exactly 2 (the IID path is `gamma / (deriv^2 * n)`).
+
+### Verification
+
+The point of the corruption probe is the one thing a hit-vs-fresh
+assertion cannot do, so it was checked rather than assumed. For
+each of three layouts, `cache_hit` was forced to `false` in the
+implementation -- deleting the read path outright -- and the
+suite re-run:
+
+| read path killed | corruption probe | hit-vs-fresh test |
+|---|---|---|
+| `irm.mbt` | **RED** | GREEN |
+| `quantile.mbt` (PQ) | **RED** | GREEN |
+| `blp_policy.mbt` | **RED** | GREEN |
+
+The right-hand column is the finding. Fixing the 11 call sites
+turned them into real tests, but it did **not** give them teeth:
+with the cache read deleted, they still pass, because the fresh
+recompute is deterministic and reproduces the same bits. The
+corruption probe is the only assertion in the suite that
+distinguishes a live read path from a dead one.
+
+With the mutation reverted, the read path was confirmed correct
+for all five probed layouts -- the cached values are consumed
+verbatim, and intact-cache replays are bit-identical to the fresh
+fit (difference exactly `0`, not "within tolerance").
+
+### Test count
+
+755 / 755 on native, wasm and js; 761 / 761 on wasm-gc. Delta +5,
+all of it the new probes.
+
 ## [0.98.0] -- `DoubleMLPolicyTree` gets honesty and a standard error
 
 `DoubleMLPolicyTree` had **no uncertainty quantification of any

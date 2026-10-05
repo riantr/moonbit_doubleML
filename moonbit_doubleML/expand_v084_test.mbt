@@ -69,7 +69,11 @@ test "apos_enable_memoize_smoke" {
   let apos = DoubleMLAPOS::new(data, [0.0, 1.0], n_folds=2, n_rep=1, seed=8401).enable_memoize()
   let fit1 = apos.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = apos.fit()
+  // v0.99.0 fix: `fit1.fit()`, not `apos.fit()` -- `fit` takes
+  // `self` by value, so the cache writeback lands on `fit1`.
+  // Re-fitting `apos` re-reads its own empty cache and the
+  // comparison below was fresh-vs-fresh.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   let c1 = fit1.coefs()
   let c2 = fit2.coefs()
@@ -99,7 +103,8 @@ test "apo_enable_memoize_smoke" {
   ).enable_memoize()
   let fit1 = apo.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = apo.fit()
+  // v0.99.0 fix: `fit1.fit()` -- see the APOS test for the reason.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   let d_coef = (fit1.coef() - fit2.coef()).abs()
   let d_se = (fit1.se() - fit2.se()).abs()
@@ -124,7 +129,8 @@ test "pq_enable_memoize_smoke" {
   ).enable_memoize()
   let fit1 = pq.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = pq.fit()
+  // v0.99.0 fix: `fit1.fit()` -- see the APOS test for the reason.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   let d_coef = (fit1.coef() - fit2.coef()).abs()
   let d_se = (fit1.se() - fit2.se()).abs()
@@ -148,7 +154,8 @@ test "qte_enable_memoize_smoke" {
   ).enable_memoize()
   let fit1 = qte.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = qte.fit()
+  // v0.99.0 fix: `fit1.fit()` -- see the APOS test for the reason.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   let c1 = fit1.coefs()
   let c2 = fit2.coefs()
@@ -188,7 +195,11 @@ test "rdd_enable_memoize_smoke" {
   ).enable_memoize()
   let fit1 = rdd.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = rdd.fit()
+  // v0.99.0 fix: `fit1.fit()` -- see the APOS test for the reason.
+  // (RDD's cache stores the whole `(coef, se, n_local,
+  // residuals, psi_a)` tuple, so the hit path must return
+  // bit-identical numbers.)
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   let d_coef = (fit1.coef() - fit2.coef()).abs()
   let d_se = (fit1.se() - fit2.se()).abs()

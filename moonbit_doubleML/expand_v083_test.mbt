@@ -59,7 +59,15 @@ test "cvar_enable_memoize_smoke" {
   inspect(fit1.has_cache(), content="true")
   // Second fit: cache hit (same seed / data / learners /
   // propensity clip / quantile).
-  let fit2 = cvar.fit()
+  //
+  // v0.99.0 fix: this MUST be `fit1.fit()`, not `cvar.fit()`.
+  // `fit` takes `self` by value and RETURNS a new estimator, so
+  // the cache writeback lands on `fit1` only. Re-fitting the
+  // original `cvar` re-reads its own (empty) cache, so the
+  // "cache hit" branch was never entered and the assertion
+  // below was comparing fresh-vs-fresh. `fit1` is the only
+  // value in scope that holds a populated cache.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   // Both fits must agree to 1e-10 -- the cache-hit path is
   // byte-equivalent to the fresh cross-fit path.
@@ -85,7 +93,9 @@ test "ssm_enable_memoize_smoke" {
   let ssm = DoubleMLSSM::new(data, n_folds=2, n_rep=1, seed=8302).enable_memoize()
   let fit1 = ssm.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = ssm.fit()
+  // v0.99.0: `fit1.fit()`, not `ssm.fit()` -- see the CVAR test
+  // above for why the pre-fit value can never hit the cache.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   // Both fits must agree to 1e-10 (SSM's cache-hit path
   // reuses the LAST rep's per-observation nuisances).
@@ -116,7 +126,10 @@ test "blp_enable_memoize_smoke" {
   let blp = DoubleMLBLP::new(basis, orth, cov_type="HC0").enable_memoize()
   let fit1 = blp.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = blp.fit()
+  // v0.99.0: `fit1.fit()` -- BLP's cache carries
+  // `(coef, s, rss, var_y, residuals)`, all of which are written
+  // back onto the value `fit` returns.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   // Both fits must agree to 1e-10 (BLP's cache-hit path
   // reuses the cached OLS projection byte-for-byte).
@@ -163,7 +176,8 @@ test "plpr_enable_memoize_smoke" {
   ).enable_memoize()
   let fit1 = plpr.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = plpr.fit()
+  // v0.99.0: `fit1.fit()` -- see the CVAR test for the reason.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   // Both fits must agree to 1e-10 (PLPR's cache-hit path
   // reuses the LAST rep's `(l_pred, m_pred, g_pred)` +
@@ -190,7 +204,8 @@ test "lplr_enable_memoize_smoke" {
   ).enable_memoize()
   let fit1 = lplr.fit()
   inspect(fit1.has_cache(), content="true")
-  let fit2 = lplr.fit()
+  // v0.99.0: `fit1.fit()` -- see the CVAR test for the reason.
+  let fit2 = fit1.fit()
   inspect(fit2.has_cache(), content="true")
   // Both fits must agree to 1e-10 (LPLR's cache-hit path
   // reuses the LAST rep's `(t_pred, m_pred, a_pred)` plus
