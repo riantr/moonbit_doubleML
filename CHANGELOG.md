@@ -9,6 +9,103 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.101.0] -- `DoubleMLQTE` gets a joint covariance
+
+`sandwich_se_at(j, kind)` (v0.95.0) pins each requested quantile
+separately. The quantiles are estimated from the **same
+observations**, so their influence functions are correlated, and a
+report that gives only marginal SEs cannot answer any question posed
+jointly over two levels -- a monotonicity test, a distributional
+contrast, a simultaneous confidence band. The dependence is not a
+rounding artefact either. Measured on the v0.101.0 DGP
+(n = 500, levels `[0.25, 0.5, 0.75]`):
+
+```
+off(0,1) =  0.0000831188886999179   corr = +0.076
+off(0,2) = -0.0003123459141433044   corr = -0.265
+off(1,2) =  0.0001389538078765003   corr = +0.124
+```
+
+A contrast `theta_0.75 - theta_0.25` gets a variance
+`Sigma[2,2] + Sigma[0,0] - 2 * Sigma[0,2]`, which is **1.265x** the
+value an independence assumption predicts. Note the sign: because the
+dependence is negative for the wide pair, independence
+*understates* that contrast's variance -- the opposite of the
+"correlated estimates are conservative" intuition.
+
+### Added
+
+- `DoubleMLQTE::joint_covariance(kind) -> Matrix` -- the `J x J`
+  asymptotic covariance of `(theta_1, ..., theta_J)`,
+  `Sigma[j,k] = M_inv^2 * sum_i psi_flat[j,i] * psi_flat[k,i] / n^2`.
+- `DoubleMLQTE::cluster_joint_covariance(cluster_ids) -> Matrix` --
+  the cluster-robust analogue, summing within clusters instead of
+  within observations, with the same jackknife `n_c / (n_c - 1)`
+  scaling the single-estimand cluster path uses.
+
+**No new persisted state.** The standing note for this item was that
+it would need two more `n_q x n_obs` arrays for the raw `psi1` /
+`psi0`. It does not: `fit` already stores the combined score
+`psi_flat[j*n_obs + i] = psi_1/deriv_1 - psi_0/deriv_0`, i.e. with
+the contrast's own Jacobian already baked in, which is why
+`M_inv = 1.0` here just as it is in `sandwich_se_at`. The
+off-diagonal is a product sum over an array that was there all along.
+
+### The diagonal is the existing SE's variance, bit for bit
+
+`joint_covariance(HC0).get(j, j)` is bit-identical to
+`sandwich_variance(HC0, ...)` on quantile `j`'s own row, for every
+supported kind. Getting there took two corrections that both
+produced a *plausible* number rather than an error:
+
+1. **`ses[j] * ses[j]` is not the variance `ses[j]` is the square
+   root of.** `x * x` is not an exact inverse of `sqrt(x)` in
+   IEEE-754, so asserting the diagonal against the squared SE fails
+   in the last ulp for two of the three quantiles. The test asserts
+   against the variance and states the ulp difference as a measured
+   fact instead.
+2. **The finite-sample correction's association matters.** HC2 and
+   HC3 divide *inside* the compensated accumulator while HC1
+   multiplies the finished sum. Applying one matrix-wide scalar
+   instead is the same real number but differs in the last ulp -- and
+   folding HC1's scale in *before* the `n` divisions cost the diagonal
+   its bit-identity for two of three quantiles. HC1's multiplier is
+   now applied after, matching `sandwich_variance_hc1`'s
+   `v0 * scale`.
+
+### Cluster: not a diagonal rescale
+
+With all-singleton clusters the cluster matrix reproduces the IID one
+exactly, which is pinned with `==` on every entry. With pooled
+clusters the answer changes, and the interesting part is *how*:
+
+```
+IID     off(0,1) = +0.0000831188886999179
+pooled  off(0,1) = -0.00007010688883157336
+```
+
+The sign flips. A caller who clustered the marginal SEs but left the
+levels independent would get the right variances and the wrong
+signs -- the specific failure this API exists to prevent.
+
+### Verification
+
+Two mutations, each reverted before this commit:
+
+| mutation | caught by | still green |
+|---|---|---|
+| off-diagonal forced to 0 (pretend the levels are independent) | 5 of 7 -- the four off-diagonal / contrast / cache tests plus `cluster_joint_collapses_to_iid`, which compares against the unmutated cluster path | the two diagonal-only tests, correctly |
+| `cluster_ids` accepted and then ignored | `qte_cluster_joint_pooled_differs`, and only that | the rest, correctly |
+
+The first row is the point: a mutation that zeroes the off-diagonal
+cannot be caught by a test that only looks at the diagonal, which is
+why the off-diagonal tests exist separately rather than being folded
+into the invariant test.
+
+### Test count
+
+785 / 785 on native, wasm and js; 791 / 791 on wasm-gc. Delta +7.
+
 ## [0.100.0] -- the last three multi-estimand estimators get the sandwich API
 
 Sandwich coverage goes **16 / 22 -> 19 / 22**. The three estimators

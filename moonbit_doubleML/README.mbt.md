@@ -25,16 +25,17 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.100.0** |
+| `moon.mod` version | **0.101.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 165 in the library (87 production + 78 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **778 / 778** |
-| Tests (wasm-gc) | **784 / 784** (lib 778 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **785 / 785** |
+| Tests (wasm-gc) | **791 / 791** (lib 785 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
 | Cache read-path audit | 13 estimators have a hit-vs-fresh assertion; **5 of those 13 additionally carry a corruption probe** (IRM, PLR, CVAR, BLP, PQ) since v0.99.0. A corruption probe writes a known-wrong value into one cached slot and requires the reported estimate to move, so a dead cache-read path fails the suite. A hit-vs-fresh assertion alone does not: the fresh recompute is deterministic, so replaying nothing and replaying correctly are indistinguishable to it. |
+| Joint covariance | `DoubleMLQTE::joint_covariance(kind)` / `cluster_joint_covariance(cluster_ids)` since v0.101.0. The quantile estimates share observations, so their influence functions are correlated and the per-quantile `sandwich_se_at` cannot answer any question posed jointly over two levels. Measured off-diagonal correlations on the v0.101.0 DGP: `+0.076`, `-0.265`, `+0.124`; a two-level contrast's variance is **1.265x** the one an independence assumption predicts, and clustering can flip the SIGN of an off-diagonal term. The diagonal is bit-identical to the variance `ses[j]` is the square root of. |
 | Sandwich variance coverage | **19 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0; `DoubleMLQTE` exposes the per-quantile `sandwich_se_at(j, kind)` / `cluster_sandwich_se_at(j, cluster_ids)` / `bias_corrected_coef_at(j)` form, and as of v0.100.0 so do the three multi-estimand estimators: `DoubleMLAPOS::sandwich_se_at(level, kind)`, `DoubleMLDIDCS::sandwich_se_at(group, period, kind)`, and `DoubleMLDIDMulti::sandwich_se_at_idx(idx, kind)`). Not covered: `DoubleMLRDD` and `DoubleMLBLP` (projection / local-regression families -- they take the separate `hac_se` API added in v0.96.0 / v0.97.0) and `DoubleMLPolicyTree` (honest-split inference, no persisted IF components) |
 | HTTP service | `examples/api_server/` — hand-rolled on `moonbitlang/async`, no third-party framework |
 

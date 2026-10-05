@@ -2248,3 +2248,238 @@ pub fn DoubleMLQTE::bias_corrected_coef_at(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// The per-observation divisor HC2 and HC3 apply to each squared
+/// score, as `(0.0, 1.0)` for the kinds that apply none. Mirrors
+/// `sandwich_variance_hc2` / `_hc3`, including the `eps` floor on
+/// `1 - h_ii` so a degenerate `n_obs == 1` stays finite.
+///
+/// It is `(0, 1)` and not a constant for HC2/HC3 rather than a
+/// post-hoc matrix-wide multiply, because the single-estimand path
+/// divides INSIDE its compensated accumulator
+/// (`term = v * v / denom`). Multiplying the finished sum by
+/// `n / (n - 1)` instead is algebraically the same number but differs
+/// in the last ulp, which would cost this API the bit-identical
+/// diagonal the rest of the package pins.
+fn qte_leverage_divisor(kind : SandwichKind, n_obs : Int) -> Double {
+  let eps = 1.0e-10
+  let n_d = n_obs.to_double()
+  let h_ii = 1.0 / n_d
+  match kind {
+    HC0 => 0.0
+    HC1 => 0.0
+    HC2 => {
+      let one_minus_h = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
+      one_minus_h
+    }
+    HC3 => {
+      let one_minus_h = if 1.0 - h_ii < eps { eps } else { 1.0 - h_ii }
+      one_minus_h * one_minus_h
+    }
+  }
+}
+
+///|
+/// The post-accumulation multiplier HC1 applies (`HC0 * n / (n - k)`
+/// with `k = 1`), and `1.0` for the other kinds. HC2 and HC3 are
+/// `0.0` here because their correction already went into the
+/// accumulator; adding it twice would be wrong.
+fn qte_post_scale(kind : SandwichKind, n_obs : Int) -> Double {
+  let n_d = n_obs.to_double()
+  match kind {
+    HC0 => 1.0
+    HC1 => n_d / (n_d - 1.0)
+    HC2 => 1.0
+    HC3 => 1.0
+  }
+}
+
+///|
+/// v0.101.0+: the JOINT asymptotic covariance of the whole quantile
+/// vector `(theta_1, ..., theta_J)`, a `J x J` `Matrix`.
+///
+/// `sandwich_se_at(j, kind)` answers "how precisely is quantile `j`
+/// pinned down". It cannot answer "how do the quantile estimates
+/// move together", because that is a property of the whole vector
+/// and not of any one component. The missing information is real
+/// rather than cosmetic: the off-diagonal terms are non-zero (and
+/// can have either sign), so treating the quantiles as independent
+/// mis-states the uncertainty of any statement made jointly about
+/// them -- a monotonicity or distributional-shape test, a
+/// simultaneous confidence band, a contrast spanning two levels.
+///
+/// The estimator is
+///
+///     Sigma[j, k] = M_inv^2 * sum_i psi_flat[j, i] * psi_flat[k, i] / n^2
+///
+/// with `M_inv = 1.0` for the same reason `sandwich_se_at` uses
+/// `M_inv = [[1.0]]`: the contrast's own Jacobian is already baked
+/// into the stored score. `fit` builds each row as
+/// `u = psi_1 / deriv_1 - psi_0 / deriv_0` (see the `psi_flat[j *
+/// n_obs + i] = u[i]` write in `fit`), so no `derivs` factor appears
+/// here and none should be added.
+///
+/// DIAGONAL IS THE EXISTING SE'S VARIANCE, BIT FOR BIT. Setting
+/// `j == k` in the sum above reproduces
+/// `sandwich_variance_hc0`'s Kahan-compensated accumulation over the
+/// same products in the same index order, and its
+/// `M_inv^2 * acc / n / n` shape, so `joint_covariance(HC0).get(j,
+/// j)` is bit-identical to that function's return value -- it IS the
+/// variance `ses[j]` is the square root of. Pinned by
+/// `expand_v101_test.mbt::qte_joint_diagonal_is_the_se_variance`.
+///
+/// The weaker-looking `joint_covariance(HC0).get(j, j) == ses[j] * ses[j]`
+/// holds only to the last ulp, and that is a property of IEEE-754
+/// rather than of this code: `x * x` is not an exact inverse of
+/// `sqrt(x)`. Measured on the v0.101.0 DGP, one of three quantiles
+/// matches bit-for-bit and two differ by ~2e-19 absolute on values of
+/// ~1.1e-3. Assert equality against the VARIANCE, not against the
+/// squared SE.
+///
+/// Everything the API adds is in the off-diagonal. `kind` selects
+/// the finite-sample correction, applied in the same shape the
+/// single-estimand path uses -- HC2 and HC3 divide inside the
+/// compensated accumulator, HC1 multiplies the finished sum -- so
+/// the diagonal stays bit-identical to `sandwich_variance(kind, ...)`
+/// for every supported kind.
+///
+/// Preconditions: `quantiles.length() >= 1`, `n_obs >= 1`,
+/// `psi_flat.length() == quantiles.length() * n_obs`.
+pub fn DoubleMLQTE::joint_covariance(
+  self : DoubleMLQTE,
+  kind : SandwichKind,
+) -> Matrix {
+  try {
+    let n_q = self.quantiles.length()
+    require(n_q >= 1)
+    let n_obs = self.data.n_obs()
+    require(n_obs >= 1)
+    require(self.psi_flat.length() == n_q * n_obs)
+    let n_d = n_obs.to_double()
+    let divisor = qte_leverage_divisor(kind, n_obs)
+    let post = qte_post_scale(kind, n_obs)
+    let m2 = 1.0
+    let out = Matrix::zeros(n_q, n_q)
+    for j = 0; j < n_q; j = j + 1 {
+      let off_j = j * n_obs
+      for k = 0; k < n_q; k = k + 1 {
+        let off_k = k * n_obs
+        let mut acc = 0.0
+        let mut acc_c = 0.0
+        for i = 0; i < n_obs; i = i + 1 {
+          let mut term = self.psi_flat[off_j + i] * self.psi_flat[off_k + i]
+          if divisor > 0.0 {
+            term = term / divisor
+          }
+          let y = term - acc_c
+          let t = acc + y
+          acc_c = t - acc - y
+          acc = t
+        }
+        // `raw` first, then the post multiplier, so HC1's
+        // association matches `sandwich_variance_hc1`'s
+        // `v0 * scale` exactly. Folding the scale in before the
+        // divisions -- `(scale * acc) / n / n` -- is the same real
+        // number but rounds differently, and cost the diagonal its
+        // bit-identity for two of three quantiles when it was tried.
+        let raw = m2 * acc / n_d / n_d
+        out.set(j, k, post * raw)
+      }
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.101.0+: cluster-robust analogue of `joint_covariance`, for a fit
+/// whose observations are not independent (panel units, sites,
+/// matched pairs). `cluster_ids` must carry one entry per
+/// observation.
+///
+/// The construction is the one `cluster_sandwich_variance` uses for a
+/// single estimand, generalised to a pair: instead of summing the
+/// products observation by observation, sum them within each cluster
+/// and multiply the per-cluster sums.
+///
+///     Sigma[j, k] = M_inv^2 * sum_c scale_c * S_c[j] * S_c[k] / n^2
+///     S_c[j]      = sum_{i in c} psi_flat[j, i]
+///     scale_c     = n_c / (n_c - 1) for n_c > 1, else 1
+///
+/// The denominator stays `n^2` (the observation count), the same
+/// choice the single-estimand cluster path makes: the cluster sums
+/// already carry the cluster sizes. There is no `HC1`-style
+/// small-sample knob here for the same reason the single-estimand
+/// cluster path has none -- the jackknife `scale_c` is that
+/// correction.
+///
+/// With all-singleton clusters `S_c[i] = psi_flat[j, i]` and
+/// `scale_c = 1`, so this collapses onto `joint_covariance(HC0)`
+/// exactly. Pinned by
+/// `expand_v101_test.mbt::qte_cluster_joint_collapses_to_iid`.
+pub fn DoubleMLQTE::cluster_joint_covariance(
+  self : DoubleMLQTE,
+  cluster_ids : Array[Int],
+) -> Matrix {
+  try {
+    let n_q = self.quantiles.length()
+    require(n_q >= 1)
+    let n_obs = self.data.n_obs()
+    require(n_obs >= 1)
+    require(self.psi_flat.length() == n_q * n_obs)
+    require(cluster_ids.length() == n_obs)
+    let mut max_cid = -1
+    for i = 0; i < n_obs; i = i + 1 {
+      require(cluster_ids[i] >= 0)
+      if cluster_ids[i] > max_cid {
+        max_cid = cluster_ids[i]
+      }
+    }
+    require(max_cid >= 0)
+    let n_clusters = max_cid + 1
+    let cluster_size : Array[Int] = Array::make(n_clusters, 0)
+    // Per-cluster, per-quantile sums, flat `[n_clusters * n_q]`.
+    let cluster_psi : Array[Double] = Array::make(n_clusters * n_q, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      let c = cluster_ids[i]
+      cluster_size[c] = cluster_size[c] + 1
+      for j = 0; j < n_q; j = j + 1 {
+        cluster_psi[c * n_q + j] = cluster_psi[c * n_q + j] +
+          self.psi_flat[j * n_obs + i]
+      }
+    }
+    let n_d = n_obs.to_double()
+    let m2 = 1.0
+    let out = Matrix::zeros(n_q, n_q)
+    for j = 0; j < n_q; j = j + 1 {
+      for k = 0; k < n_q; k = k + 1 {
+        let mut acc = 0.0
+        let mut acc_c = 0.0
+        for c = 0; c < n_clusters; c = c + 1 {
+          let nc = cluster_size[c]
+          if nc == 0 {
+            continue
+          }
+          let scale = if nc <= 1 {
+            1.0
+          } else {
+            nc.to_double() / (nc.to_double() - 1.0)
+          }
+          let term = cluster_psi[c * n_q + j] * cluster_psi[c * n_q + k] * scale
+          let y = term - acc_c
+          let t = acc + y
+          acc_c = t - acc - y
+          acc = t
+        }
+        out.set(j, k, m2 * acc / n_d / n_d)
+      }
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
