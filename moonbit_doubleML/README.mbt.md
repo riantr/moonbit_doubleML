@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.95.0** |
+| `moon.mod` version | **0.97.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 163 in the library (87 production + 76 test) |
+| `.mbt` file count | 165 in the library (87 production + 78 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **696 / 696** |
-| Tests (wasm-gc) | **702 / 702** (lib 696 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **729 / 729** |
+| Tests (wasm-gc) | **735 / 735** (lib 729 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
 | Sandwich variance coverage | **16 / 22 estimators** (`sandwich_se` + `cluster_sandwich_se` + `bias_corrected_coef`, the last a documented no-op since v0.91.0; `DoubleMLQTE` exposes the per-quantile `sandwich_se_at(j, kind)` / `cluster_sandwich_se_at(j, cluster_ids)` / `bias_corrected_coef_at(j)` form). Not covered: `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree` (no persisted IF components), `DoubleMLAPOS` and `DoubleMLDIDCS` / `DoubleMLDIDMulti` (per-cell scores not recoverable post-fit) |
@@ -392,6 +392,32 @@ counterpart, and its own `se` comes from the WLS / White form
 (`cov_type`), not from `var_est` — giving it a sandwich SE is
 score-field design work, not a wiring change.
 
+As of v0.96.0 `DoubleMLRDD` and as of v0.97.0 `DoubleMLBLP` take the
+other route: each exposes its OWN `hac_se(kind)` /
+`cluster_hac_se(cluster_ids)` plus `leverage()`, and neither gets
+`sandwich_se`. The reason is algebraic, not bookkeeping. BLP is an
+OLS projection of an orthogonal signal onto `basis`, so its HC0 meat
+is `sum_i ((M[j,:] . xa_i)^2 * e_i^2)` over the intercept-augmented
+design `[1, basis]`, with a full `p1 x p1` normal inverse, one row
+per coefficient, and no `1 / n^2`; the shared helper is a
+scalar-Jacobian mean-moment sandwich. Routing BLP through it yields a
+plausible, finite, wrong number, and the result is a length-`p1`
+vector where the helper's `M_inv` is a 1x1. The anchor that proves
+the wiring is `hac_se(HC0) == se` bit-identically, elementwise, on a
+`cov_type = "HC0"` fit; it is not claimed on `cov_type = "nonrobust"`.
+BLP and RDD are still NOT sandwich coverage and are not counted in
+the 16 / 22 above.
+
+`DoubleMLPolicyTree` remains deliberately unwired, and v0.97.0
+records that as a decision rather than a pending task: its split
+threshold is CHOSEN FROM THE DATA (`policy_tree_build` searches
+features and values for the best split), so the naive per-observation
+influence function of a leaf mean,
+`(y_i - theta_k) / n_k * 1{i in k}`, omits the term contributed by the
+split selection itself. Correct inference there is the policy-tree /
+honest-splitting literature, not a derivation available from this
+codebase, so no influence function was invented for it.
+
 ## The contract
 
 `se()` is the reference and is never computed by this file. The
@@ -456,7 +482,7 @@ the 1e-12 above, not `==`).
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.95.0, 163 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.97.0, 165 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 

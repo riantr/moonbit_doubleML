@@ -9,6 +9,166 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.97.0] -- `DoubleMLBLP` gets its own `hac_se` (not `sandwich_se`)
+
+The same treatment `DoubleMLRDD` got in v0.96.0, applied to the other
+projection estimator. BLP already had BOTH standard-error conventions
+working -- `cov_type = "HC0"` (White's sandwich, via
+`LinearRegression::sandwich_se`) and `cov_type = "nonrobust"`
+(`sigma^2 (X'X)^-1`) -- but no public way to ask for HC1 / HC2 / HC3,
+and no way to reach the HC0 path without constructing the estimator
+with `cov_type = "HC0"`. v0.97.0 closes that without touching
+`cov_type`, the `fit` output, or the memoize `cov_clip` proxy.
+
+### Added
+
+- `DoubleMLBLP::hac_se(kind)` -- HC0 / HC1 / HC2 / HC3, returning an
+  `Array[Double]` of length `n_params()`. BLP estimates `p`
+  coefficients, so this mirrors `coef` / `se` (both length `p`)
+  rather than returning a scalar the way RDD's does.
+- `DoubleMLBLP::cluster_hac_se(cluster_ids)` -- the Arellano /
+  Cameron-Gelbach-Miller clustered analogue, per coefficient, with
+  the same `(n_c - 1)` jackknife clip for single-observation
+  clusters that `cluster_sandwich_variance` uses. No `1 / n^2`
+  divisor, for the same reason as everywhere else in the package.
+- `DoubleMLBLP::leverage()` -- the OLS hat-matrix diagonal
+  `h_i = xa_i' (X'X + ridge I)^-1 xa_i` of the intercept-augmented
+  design. Recomputed from the persisted `basis` on each call: BLP is a
+  single closed-form projection, so there is nothing to persist and
+  nothing in the `FitCache` to extend.
+- `DoubleMLBLP::n_params()` -- `basis.cols() + 1`, the `k` of the HC1
+  finite-sample correction. Available before `fit`, mirroring
+  `DoubleMLRDD::n_local_params`.
+- `expand_v097_test.mbt`: 17 tests. **Sandwich coverage is UNCHANGED at
+  16 of 22** -- BLP is not sandwich coverage, same as RDD.
+
+### `p` READ FROM THE CODE: `basis.cols()` IS NOT `p`
+
+`LinearRegression::fit` augments the design with an intercept column
+(`basis` is stored WITHOUT one -- see `DoubleMLBLP::predictions`), so
+the projection estimates `p1 = basis.cols() + 1 = 3` coefficients on
+the v0.97.0 DGP's two basis columns, with the intercept at index 0.
+That `p1` is what the HC1 correction `n / (n - p1)` uses, and it is
+the same `p` the `nonrobust` branch already uses for
+`sigma^2 = RSS / (n - p)`. On the DGP the HC1 SE ratio is
+`sqrt(400 / 397) = 1.0037723...`; an implementation that used
+`basis.cols()` would give `sqrt(400 / 398)` and fail the ratio pin.
+
+### WHY NOT `sandwich_se`
+
+BLP is a projection estimator: no `psi_a`, no `psi_b`, no
+`E[theta psi_a + psi_b]` moment, no scalar `M_inv`. Its HC0 meat is
+`sum_i ((M[j,:] . xa_i)^2 * e_i^2)` with a full `p1 x p1` normal
+inverse and no `1 / n^2`, against the shared helper's
+`M_inv[0,0]^2 * sum_i psi[i]^2 / n / n` -- a scalar Jacobian, a DML
+influence function, and a mean-moment divisor, all three of which are
+wrong for BLP independently. Beyond the algebra, the helper takes a
+1x1 `M_inv` and returns a scalar where BLP's answer is a
+length-`p1` vector, so it could not be reused even if the moment
+matched. Full algebra is in the `blp_policy.mbt` section comment
+"WHY BLP DOES NOT REUSE `sandwich_se`", mirroring RDD's.
+
+The HC2 / HC3 leverage splits the same way: the shared helper uses the
+CONSTANT mean-regression leverage `h_ii = 1 / n`, which is what makes
+`sandwich_variance_hc2 == sandwich_variance_hc1` hold in the DML
+family. BLP's is a real hat diagonal that varies per row, so
+`hac_se(HC2) != hac_se(HC1)` -- pinned, so a future reader who
+"unifies" the two will see the test break.
+
+### SCOPE OF THE ANCHOR
+
+`hac_se(HC0) == se` holds BIT-IDENTICALLY, ELEMENTWISE, exactly on a
+`cov_type = "HC0"` fit. It is NOT claimed on `cov_type = "nonrobust"`,
+whose `se` is the homoskedastic form, and that is asserted rather than
+left unstated (`blp_hac_se_hc0_differs_from_se_on_nonrobust_path`).
+Unlike RDD there is no learner refusal: BLP's HC0 branch calls
+`LinearRegression::sandwich_se` on a fresh `LinearRegression::new()`,
+independent of the `ml_g` dispatch, so `hac_se` is a function of
+`(basis, orth_signal)` alone. `hac_se(HC0)` calls that same
+expression, so the anchor is bit-identical BY CONSTRUCTION rather than
+by matching a re-implementation.
+
+### THE GUARDS, AND WHAT HC2 / HC3 DO ON A NEAR-SINGULAR DESIGN
+
+Two guards, in this order. First a degrees-of-freedom check
+(`n > p1`), because a rank-deficient fit reports `h_i = 1 - ridge`,
+which is INSIDE `[0, 1)` -- so a range check alone would NOT fire while
+HC2 divided the meat by a regularizer artifact. Measured on the
+`n = p1 = 3` fixture: `h_0 = 0.833333333258889` and `se` is rounding
+noise (`8.498667959259792e-13`). This is RDD's v0.96.0 failure mode
+reproduced for BLP, which is why the df check must run first. Second a
+`[0, 1)` range check, which ABORTS rather than clipping. HC0 is exempt
+from both so the anchor survives even on a degenerate fit.
+
+There is deliberately NO `1 - h` floor, and the near-singular
+measurement is why. On a design with one extreme row
+(`basis[n-1, 0] = 1e8`), `h_max = 0.9999999999999863` and
+`1 - h = 1.3655743202889425e-14` -- four orders below the `1e-10`
+ridge that produced it. The inflation is then REAL and UNBOUND, and
+confined to exactly the coefficient whose column carries the singular
+row:
+
+    HC0     = [0.02063110943723901, 2.0801434736970338e-10, 0.0715284191225321]
+    HC2/HC0 = [1.0025364388264777, 276.73848187957105,           1.0035030500182698]
+    HC3/HC0 = [1.0067352776561909, 2368149052.6520414,           1.0074030044105038]
+
+The other two coefficients widen by under 1%. Coefficient 1's HC0 is
+itself degenerate (the projection interpolates that column), and for
+OLS the deleted residual is `e_i / (1 - h_i)` exactly -- which is the
+quantity HC2 squares -- so the reported number is the honest
+leave-one-out leverage-corrected variance, not a corrupted one. A
+floor guard would need an arbitrary threshold AND would abort the two
+healthy coefficients along with the one that is not. So the guards
+refuse only the genuinely unidentified case, and a near-singular fit
+is reported with its full spread, which is loud enough that it cannot
+be mistaken for a healthy fit. A duplicated-column fixture
+(rank 2, `n = 400 >> p1 = 3`, so the df guard cannot see it) is
+bounded by what its own leverage implies, `h_max =
+0.009963035583496094`, and both bounds are asserted.
+
+### LEVERAGE TRACE, MEASURED NOT HIDDEN
+
+`sum_i h_i` is the rank of the augmented design, up to the `1e-10`
+ridge. On the v0.97.0 DGP it measures `2.999999999997666` against
+rank 3 -- LOW by `2.334e-12` (relative `7.8e-13`), because
+`X^a (X'X + ridge I)^-1 X^{a'}` is a projection MINUS a rank-`p1`
+correction. The v0.96.0 RDD worker measured the same sign and cause
+on a worse-conditioned design (`5.999999999787386` against rank 6, low
+by `2.1e-10`); BLP's shortfall is 100x smaller because its design is
+better conditioned. The test pins the trace and the `[0, 1)` bound
+and writes the discrepancy down rather than hiding it.
+
+### `DoubleMLPolicyTree`: DELIBERATELY DEFERRED, AND WHY
+
+PolicyTree gets NOTHING in v0.97.0, and that is a decision rather
+than an oversight. Its split threshold is CHOSEN FROM THE DATA
+(`policy_tree_build` searches features and values for the best
+split), so the data-dependent split invalidates the standard
+Z-estimator asymptotics: the naive per-observation influence function
+of a leaf mean, `(y_i - theta_k) / n_k * 1{i in k}`, omits the term
+contributed by the split selection itself. Getting that right is a
+literature question -- policy trees / policy learning with honest
+confidence intervals -- not a derivation available from this codebase.
+No influence function was invented for it, and no `hac_se` was added.
+
+### VERIFICATION
+
+- `moon check --deny-warn` clean on `native` / `wasm-gc` / `wasm` / `js`
+  (0 warnings, 0 errors on all four).
+- `moon test`: **729 / 729** on `native`, `wasm`, `js`; **735 / 735**
+  on `wasm-gc` (lib 729 + 6 doc tutorials). Baselines before this
+  change were 712 (native) and 718 (wasm-gc), so the delta is the 17
+  new tests on both.
+- `moon info` re-run; the four new `DoubleMLBLP` methods are listed
+  above.
+- `coef` / `se` regression pin: measured on v0.96.0 (commit `a24ab06`)
+  BEFORE any source change, exact-equality pinned on both `cov_type`
+  paths in `blp_existing_se_and_coef_unchanged`. The persistence and
+  plumbing change is purely additive and did not perturb `fit`.
+- `CHANGELOG.md` is CRLF and `.mbt` files are LF; all edits went
+  through line-ending-safe tooling and `git diff --stat` shows
+  additions only.
+
 ## [0.96.0] -- `DoubleMLRDD` gets its own `hac_se` (not `sandwich_se`)
 
 `DoubleMLRDD` was the one estimator in the family that already had an

@@ -745,6 +745,486 @@ pub fn DoubleMLBLP::confint_joint(
   }
 }
 
+// ---------------------------------------------------------------------------
+// v0.97.0: `hac_se` / `cluster_hac_se` -- the projection HAC sandwich
+// ---------------------------------------------------------------------------
+//
+// WHY BLP DOES NOT REUSE `sandwich_se` / `sandwich_variance`
+// ==========================================================
+//
+// Same reason RDD does not, and the same trap wearing the same
+// "Huber-White" name. `sandwich_variance_hc0` (the shared DML helper
+// in `sandwich.mbt`) and BLP's own HC0 branch (`fit`, `cov_type ==
+// "HC0"`, which delegates to `LinearRegression::sandwich_se`) are not
+// the same algebra, and routing BLP through the shared helper
+// produces a number that is plausible, finite, and NOT BLP's HC0.
+//
+// The two meats, side by side. BLP's (`linear.mbt`,
+// `LinearRegression::sandwich_se`, sqrt'd at `fit`):
+//
+//     var_j = sum_i ( (M[j, :] . xa_i)^2 * e_i^2 ),
+//     M = (X'X + ridge I)^-1,  X = [1, basis],  e = y - X . beta
+//
+// -- a full `p1 x p1` inverse, a ROW of it per coefficient, and NO
+// `1 / n^2`. The shared helper (`sandwich_variance_hc0`, since
+// v0.91.0):
+//
+//     M_inv[0,0]^2 * sum_i psi[i]^2 / n / n
+//
+// Three independent mismatches, any one of which is fatal:
+//
+//   1. THE SCALAR JACOBIAN. `sandwich_variance_hc0` takes a 1x1
+//      `M_inv` and squares it (`M_inv[0,0]^2`). BLP has no DML
+//      moment, so it has no scalar Jacobian: it estimates `p1`
+//      coefficients off the whole `(X'X)^-1`, and coefficient `j`
+//      picks out its `[j, :]` ROW. Forcing a 1x1 in means either
+//      passing `[[1.0]]` (dropping the entire `(X'X)^-1`
+//      conditioning, so every coefficient would get the same
+//      variance) or inventing a `1 / mean(...)` that is not a
+//      derivative of anything. BLP's answer is a VECTOR, so even a
+//      correct shared helper would need a different signature.
+//
+//   2. THE PER-ROW TERM. The DML influence function is a SUM of two
+//      score terms, `psi[i] = psi_a[i] * theta + psi_b[i]`, and the
+//      meat squares the WHOLE thing. BLP has no `psi_a` and no
+//      `psi_b`: its per-row sandwich term is a PRODUCT
+//      `m_j(xa_i) * e_i` of a projection (the `j`-th row of the
+//      normal inverse dotted with the augmented row) and a residual.
+//      Squaring the product is a second power of each factor;
+//      routing the DML form in instead replaces the data-dependent
+//      `m_j(xa_i)^2` with a factor the DML package has no way to
+//      produce.
+//
+//   3. THE `1 / n^2`. The shared helper is a MEAN moment, so it
+//      divides the meat by `n` twice. BLP's variance is a sum of
+//      squared row scores over `n_obs` rows -- the same kind of
+//      quantity as `LinearRegression::sandwich_se`, whose per-
+//      coefficient output `fit` sqrt's. Dividing by `n_obs^2 =
+//      400^2` would shrink every SE by 400x and the HC0 anchor
+//      `hac_se(HC0) == se` would fail by exactly that factor --
+//      loudly, which is the only reason to prefer the mistake that
+//      is quiet.
+//
+// The HC2 / HC3 leverage splits the same way. The shared helper
+// uses the CONSTANT mean-regression leverage `h_ii = 1 / n_obs`,
+// which is what makes `sandwich_variance_hc2 ==
+// sandwich_variance_hc1` hold in the DML family (see the
+// `SandwichKind` doc). BLP's is a genuine OLS hat diagonal
+// `h_i = xa_i' (X'X + ridge I)^-1 xa_i` that VARIES per row, so
+// BLP's HC2 / HC3 are NOT HC1 and that identity does not carry
+// over.
+//
+// CONSEQUENCE: `DoubleMLBLP` exposes `hac_se`, NOT `sandwich_se`.
+// BLP is a projection estimator, not a DML-score estimator -- it
+// has no `psi_a`, no `psi_b`, no `E[theta psi_a + psi_b]` moment, no
+// scalar `M_inv` -- so a method literally named `sandwich_se` would
+// promise a DML sandwich contract it cannot honour, and would have
+// the wrong SIGNATURE (scalar `M_inv` vs a `p1`-vector result). The
+// name says what the number is: the HAC sandwich of an OLS
+// projection of an orthogonal signal onto a basis.
+//
+// SCOPE OF THE ANCHOR
+// -------------------
+// `hac_se(HC0) == se` BIT-IDENTICALLY, ELEMENTWISE, holds exactly
+// when the fit took the HC0 branch, i.e. `cov_type = "HC0"`:
+//
+//   - `cov_type = "nonrobust"` fit: `se` is
+//     `sqrt(sigma^2 * (X'X)^-1_jj)` with `sigma^2 = RSS / (n - p)`,
+//     a homoskedastic variance, so `hac_se(HC0) != se` there.
+//     Pinned by `blp_hac_se_hc0_differs_from_se_on_nonrobust_path`.
+//   - not fitted: ABORTS via `PreconditionError`.
+//
+// Unlike RDD, there is no learner refusal. BLP's HC0 branch calls
+// `LinearRegression::sandwich_se(basis, orth_signal)` on a FRESH
+// `LinearRegression::new()`, independent of the `ml_g` dispatch, so
+// `hac_se` is a function of `(basis, orth_signal)` alone for every
+// learner and the anchor holds whatever `ml_g` is. (`ml_g` moves
+// `residuals` / `rss`, which the HC0 meat does not read -- it reads
+// `e = y - X . beta` from the OLS model.)
+//
+// The four HC variants, with `n = n_obs` and `p1 = n_params()`:
+//
+//     HC0:  sum_i ( (M[j,:] . xa_i)^2 * e_i^2 )
+//     HC1:  the same, with the sum scaled by n / (n - p1)
+//     HC2:  each term divided by (1 - h_i)
+//     HC3:  each term divided by (1 - h_i)^2
+//
+// `p1` READ FROM THE CODE, not assumed: `LinearRegression::fit`
+// augments the design with an intercept column (`basis` is stored
+// WITHOUT one -- see `predictions`), so the projection estimates
+// `p1 = basis.cols() + 1` coefficients and `coef.length() ==
+// se.length() == p1` with the intercept at index 0. This is the same
+// `p` the `nonrobust` branch already uses at `sigma^2 = RSS / (n -
+// p)`, so the HC1 correction is consistent with the homoskedastic SE
+// sitting next to it in the same struct. `n_params()` exposes it.
+
+///|
+/// v0.97.0+: the number of coefficients the BLP projection
+/// estimates, `basis.cols() + 1`. `LinearRegression::fit` augments
+/// the stored `basis` with an intercept column, so this is
+/// `coef.length()` and `se.length()` on a fitted model, with the
+/// intercept at index 0.
+///
+/// This is the `k` of the HC1 finite-sample correction
+/// `n / (n - k)` in `hac_se(HC1)`, and the same `p` the
+/// `cov_type = "nonrobust"` branch uses for `RSS / (n - p)`. Read it
+/// from here rather than assuming `basis.cols()`: the two differ by
+/// the intercept.
+///
+/// Available before `fit` (it is a property of the design, not of
+/// the fit), mirroring `DoubleMLRDD::n_local_params`.
+pub fn DoubleMLBLP::n_params(self : DoubleMLBLP) -> Int {
+  self.basis.cols() + 1
+}
+
+///|
+/// Internal: the OLS hat-matrix diagonal of the intercept-augmented
+/// BLP design,
+/// `h_i = xa_i' * (X'X + ridge I)^-1 * xa_i`
+/// with `X = [1, basis]`, `xa_i` the i-th augmented row, and
+/// `ridge = 1e-10` -- the `LinearRegression::new()` default that
+/// `fit` and `LinearRegression::sandwich_se` both use, so the
+/// leverage is regularised exactly as the point estimate and the
+/// HC0 meat are.
+///
+/// Length `n_obs`. The single source of the leverage for
+/// `leverage()` and for `hac_se` HC2 / HC3, so those three cannot
+/// drift apart. No fit is required (it reads only the persisted
+/// `basis`); nothing new is persisted for it.
+fn DoubleMLBLP::blp_hat_diagonal(self : DoubleMLBLP) -> Array[Double] {
+  let xa = augment_with_intercept(self.basis)
+  let n = xa.nrows
+  let p1 = xa.ncols
+  let xtx = matmul(xa.transpose(), xa)
+  let m = inv_spd(add_ridge(xtx, 1.0e-10))
+  let h = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let mut acc = 0.0
+    for a = 0; a < p1; a = a + 1 {
+      let xa_i_a = xa.data[i * p1 + a]
+      for b = 0; b < p1; b = b + 1 {
+        acc = acc + xa_i_a * m.data[a * p1 + b] * xa.data[i * p1 + b]
+      }
+    }
+    h[i] = acc
+  }
+  h
+}
+
+///|
+/// v0.97.0+: the OLS hat-matrix diagonal of the BLP design, the same
+/// quantity `hac_se` HC2 / HC3 divide by. Length `n_obs`.
+///
+/// `X^a (X'X + ridge I)^-1 X^{a'}` is a projection plus a
+/// `ridge`-order perturbation, so every entry lies in `[0, 1)` and
+/// the entries sum to the RANK of the augmented design -- the trace
+/// of a projection is its rank -- which is `n_params()` for a
+/// full-rank `basis` and LESS for a rank-deficient one (a constant
+/// or duplicated basis column), always up to the `ridge` term.
+/// `expand_v097_test.mbt` pins the trace against the rank and the
+/// `[0, 1)` bound.
+///
+/// Recomputed from the persisted `basis` on every call: BLP is a
+/// single closed-form OLS projection, so there is nothing to
+/// persist for it and nothing in the `FitCache` to extend.
+pub fn DoubleMLBLP::leverage(self : DoubleMLBLP) -> Array[Double] {
+  try {
+    require(self.fitted)
+    self.blp_hat_diagonal()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Degrees-of-freedom guard for the HC1 / HC2 / HC3 variants: the
+/// projection must have MORE rows than the augmented design has
+/// parameters, or the fit is rank-deficient.
+///
+/// This is not a formality, and it is not a formality that a
+/// leverage-range check can replace. With `1e-10` ridge, a
+/// rank-deficient design reports `h_i = 1 - 1e-10` rather than the
+/// exact `1`, so `1 - h_i` is POSITIVE and a pure "is `1 - h_i > 0`"
+/// check does NOT fire -- while HC2 would then divide the meat by
+/// `~1e-10` and report an SE inflated by `1 / sqrt(1e-10) ~ 1e5`.
+/// So this df check has to come FIRST, and the range check alone is
+/// not sufficient. This is the same ordering, and the same measured
+/// failure mode, as `rdd_hac_require_df` (v0.96.0).
+///
+/// HC0 is deliberately NOT guarded: on such a fit `fit` itself still
+/// reports a number, and `hac_se(HC0) == se` is the anchor this API
+/// promises -- refusing HC0 would break the one identity it makes.
+fn blp_hac_require_df(kind_name : String, n : Int, p1 : Int) -> Unit {
+  if n <= p1 {
+    abort(
+      "DoubleMLBLP::hac_se(" +
+      kind_name +
+      "): the projection has " +
+      n.to_string() +
+      " rows but the augmented design has " +
+      p1.to_string() +
+      " parameters (basis.cols() = " +
+      (p1 - 1).to_string() +
+      " plus the intercept LinearRegression::fit adds), so it is rank-deficient. HC1 needs n - k > 0, and HC2 / HC3 need an identified leverage: a rank-deficient design reports h_i = 1 - ridge, so the (1 - h_i) divisor would be a ridge artifact and inflate the variance by ~1 / ridge. Supply more rows or fewer basis columns.",
+    )
+  }
+}
+
+///|
+/// v0.97.0+: heteroskedasticity-consistent (Huber-White) standard
+/// errors for the BLP projection, in the HC0 / HC1 / HC2 / HC3
+/// family. Returns a length-`n_params()` vector -- one SE per
+/// coefficient, intercept at index 0 -- mirroring `coef` and `se`,
+/// which are both that length.
+///
+/// This is NOT `sandwich_se`. Read the section comment above
+/// ("WHY BLP DOES NOT REUSE `sandwich_se`") for the algebra: BLP's
+/// meat is `sum_i ( (M[j,:] . xa_i)^2 * e_i^2 )` with a full
+/// `p1 x p1` normal inverse and no `1 / n^2`, where the shared DML
+/// helper is a scalar-Jacobian MEAN-moment sandwich. The
+/// `SandwichKind` enum is reused -- it is the package's shared
+/// vocabulary for the HC family -- but the arithmetic behind each
+/// variant is the projection one.
+///
+/// The invariant that proves the wiring: on a `cov_type = "HC0"`
+/// fit, `se` IS the HC0 standard error, so
+/// `hac_se(HC0) == se` holds BIT-IDENTICALLY, elementwise. It is
+/// NOT claimed on a `cov_type = "nonrobust"` fit, whose `se` is the
+/// homoskedastic `sigma^2 (X'X)^-1` form.
+///
+/// HC2 / HC3 divide each term by `1 - h_i` (HC2) or `(1 - h_i)^2`
+/// (HC3) using the OLS hat diagonal from `leverage()`. If any `h_i`
+/// leaves `[0, 1)` the divisor would be non-positive, which means
+/// the projection is rank-deficient. This ABORTS rather than
+/// clipping: a clip is what silently broke identities in v0.93 /
+/// v0.94, and for a leverage in `[0, 1)` no correction should ever
+/// fire. See `blp_hac_require_df` for why the df check has to run
+/// first.
+pub fn DoubleMLBLP::hac_se(
+  self : DoubleMLBLP,
+  kind : SandwichKind,
+) -> Array[Double] {
+  try {
+    require(self.fitted)
+    let n = self.orth_signal.length()
+    let p1 = self.n_params()
+    // The SE vector is indexed by coefficient, so its length is
+    // fixed by the design, not by `cov_type`.
+    require(p1 == self.coef.length())
+    require(p1 == self.se.length())
+    let needs_df = match kind {
+      HC0 => false
+      HC1 => true
+      HC2 => true
+      HC3 => true
+    }
+    if needs_df {
+      blp_hac_require_df(kind.to_string(), n, p1)
+    }
+    let out = Array::make(p1, 0.0)
+    let uses_leverage = match kind {
+      HC0 | HC1 => false
+      HC2 | HC3 => true
+    }
+    if !uses_leverage {
+      // HC0 / HC1: call the SAME expression `fit` calls on its HC0
+      // branch, so `hac_se(HC0) == se` is bit-identical BY
+      // CONSTRUCTION rather than by matching a re-implementation.
+      // `LinearRegression::new()` carries the same default ridge
+      // (1e-10) `fit` uses.
+      let var_diag = LinearRegression::new()
+        .fit(self.basis, self.orth_signal)
+        .sandwich_se(self.basis, self.orth_signal)
+      // HC1 is a pure variance scale (the Stata `, robust` /
+      // `statsmodels cov_type='HC1'` convention). The SE ratio is
+      // therefore `sqrt(n / (n - p1))`, and `blp_hac_require_df`
+      // has already guaranteed the denominator is positive.
+      let scale = match kind {
+        HC1 => n.to_double() / (n.to_double() - p1.to_double())
+        _ => 1.0
+      }
+      for j = 0; j < p1; j = j + 1 {
+        out[j] = (var_diag[j] * scale).sqrt()
+      }
+      return out
+    }
+    // HC2 / HC3: the same meat, per term, divided by the leverage.
+    // The divisor for row i is `1 - h_i` (HC2) or `(1 - h_i)^2`
+    // (HC3); the `[0, 1)` range check ABORTS rather than clips.
+    let h = self.blp_hat_diagonal()
+    require(h.length() == n)
+    let div = Array::make(n, 1.0)
+    for i = 0; i < n; i = i + 1 {
+      let hi = h[i]
+      if !(hi >= 0.0 && hi < 1.0) {
+        abort(
+          "DoubleMLBLP::hac_se: leverage h_" +
+          i.to_string() +
+          " = " +
+          hi.to_string() +
+          " is outside [0, 1). An OLS hat-matrix diagonal always lies in [0, 1) unless the projection is rank-deficient (fewer rows than parameters, or a collinear basis), so 1 - h_i would be non-positive. Aborting instead of clipping.",
+        )
+      }
+      let one_minus_h = 1.0 - hi
+      div[i] = match kind {
+        HC3 => one_minus_h * one_minus_h
+        _ => one_minus_h
+      }
+    }
+    // Rebuild the HC0 ingredients in exactly the association
+    // `LinearRegression::sandwich_se` accumulates them in --
+    // `M[j,:]` by back-solving `(X'X + ridge I) m_j = e_j` (the
+    // implementation's route, not a full inverse), the row product
+    // left-to-right, and the residual as `y_i - (X . beta)_i` from
+    // the OLS model. With every `div[i] == 1.0` this reduces to
+    // `hac_se(HC0)`; `expand_v097_test.mbt` pins that reduction on a
+    // constant-leverage design.
+    let xa = augment_with_intercept(self.basis)
+    let ols_model = LinearRegression::new().fit(self.basis, self.orth_signal)
+    let beta = ols_model.coefficients()
+    let pred = matvec(xa, beta)
+    let xtx_aug = add_ridge(matmul(xa.transpose(), xa), 1.0e-10)
+    let ej = Array::make(p1, 0.0)
+    for j = 0; j < p1; j = j + 1 {
+      ej[j] = 1.0
+      let mj = solve_spd(xtx_aug, ej)
+      ej[j] = 0.0
+      let mut acc = 0.0
+      for i = 0; i < n; i = i + 1 {
+        let mut mjx = 0.0
+        for a = 0; a < p1; a = a + 1 {
+          mjx = mjx + mj[a] * xa.data[i * p1 + a]
+        }
+        let ei = self.orth_signal[i] - pred[i]
+        acc = acc + mjx * mjx * ei * ei / div[i]
+      }
+      out[j] = acc.sqrt()
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.97.0+: cluster-robust (Arellano 1987, Cameron-Gelbach-Miller
+/// 2011) standard errors for the BLP projection -- the clustered
+/// analogue of `hac_se(HC0)`, one SE per coefficient.
+///
+/// `cluster_ids[i]` is the 0-based cluster of the i-th row of
+/// `basis` and `orth_signal`, and `cluster_ids.length()` must equal
+/// `n_obs`. Cluster indices are 0-based; `1 + max(cluster_ids)` is
+/// the number of clusters.
+///
+/// Per-row score for coefficient `j`, `s_ij = m_j(xa_i) * e_i` (the
+/// BLP HC0 term under a square root, with its sign), aggregated
+/// within cluster:
+///
+///     S_cj    = sum_{i in c} s_ij
+///     var_j   = sum_c S_cj^2 * n_c / (n_c - 1)
+///
+/// with the `(n_c - 1)` jackknife correction clipped to 1 for
+/// single-observation clusters (the `statsmodels
+/// cov_type='cluster'` convention, and the same clip
+/// `cluster_sandwich_variance` uses). There is NO `1 / n^2`
+/// divisor: the shared helper needs one because its moment is a
+/// MEAN moment, while this is a sum of squared row scores, exactly
+/// like `hac_se(HC0)`.
+///
+/// With all-singleton clusters the meat collapses to
+/// `sum_i s_ij^2`, i.e. `hac_se(HC0)` -- to floating-point
+/// tolerance, NOT bit-exactly, for two reasons: the per-row square
+/// is formed as `s_i * s_i` here against the `m^2 e^2`
+/// association in `hac_se`, and this accumulator is
+/// Kahan-compensated (as in `cluster_sandwich_variance`) against
+/// `hac_se`'s plain running sum. Pooled clusters differ.
+///
+/// `DoubleMLBLP` has no `cluster_vars` field, so the user must pass
+/// `cluster_ids` explicitly. Calling on an un-fit model aborts via
+/// `PreconditionError`.
+pub fn DoubleMLBLP::cluster_hac_se(
+  self : DoubleMLBLP,
+  cluster_ids : Array[Int],
+) -> Array[Double] {
+  try {
+    require(self.fitted)
+    let n = self.orth_signal.length()
+    let p1 = self.n_params()
+    require(p1 == self.coef.length())
+    require(cluster_ids.length() == n)
+    let mut max_cid = -1
+    for i = 0; i < n; i = i + 1 {
+      require(cluster_ids[i] >= 0)
+      if cluster_ids[i] > max_cid {
+        max_cid = cluster_ids[i]
+      }
+    }
+    require(max_cid >= 0)
+    let n_clusters = max_cid + 1
+    // One accumulator PER CLUSTER: `Array::make(n_clusters, row)`
+    // would alias a single inner array across every cluster, so the
+    // rows are allocated explicitly.
+    let cluster_sum : Array[Array[Double]] = Array::make(n_clusters, [])
+    for c = 0; c < n_clusters; c = c + 1 {
+      cluster_sum[c] = Array::make(p1, 0.0)
+    }
+    let cluster_size : Array[Int] = Array::make(n_clusters, 0)
+    let xa = augment_with_intercept(self.basis)
+    let ols_model = LinearRegression::new().fit(self.basis, self.orth_signal)
+    let beta = ols_model.coefficients()
+    let pred = matvec(xa, beta)
+    let xtx_aug = add_ridge(matmul(xa.transpose(), xa), 1.0e-10)
+    let ej = Array::make(p1, 0.0)
+    for j = 0; j < p1; j = j + 1 {
+      ej[j] = 1.0
+      let mj = solve_spd(xtx_aug, ej)
+      ej[j] = 0.0
+      for i = 0; i < n; i = i + 1 {
+        let mut mjx = 0.0
+        for a = 0; a < p1; a = a + 1 {
+          mjx = mjx + mj[a] * xa.data[i * p1 + a]
+        }
+        let s = mjx * (self.orth_signal[i] - pred[i])
+        cluster_sum[cluster_ids[i]][j] = cluster_sum[cluster_ids[i]][j] + s
+      }
+    }
+    for i = 0; i < n; i = i + 1 {
+      cluster_size[cluster_ids[i]] = cluster_size[cluster_ids[i]] + 1
+    }
+    let out = Array::make(p1, 0.0)
+    // Kahan-compensated, matching `cluster_sandwich_variance`.
+    for j = 0; j < p1; j = j + 1 {
+      let mut acc = 0.0
+      let mut acc_c = 0.0
+      for c = 0; c < n_clusters; c = c + 1 {
+        let nc = cluster_size[c]
+        if nc == 0 {
+          continue
+        }
+        let scale = if nc <= 1 {
+          1.0
+        } else {
+          nc.to_double() / (nc.to_double() - 1.0)
+        }
+        let sc = cluster_sum[c][j]
+        let term = sc * sc * scale
+        let y = term - acc_c
+        let t = acc + y
+        acc_c = t - acc - y
+        acc = t
+      }
+      require(acc >= 0.0)
+      out[j] = acc.sqrt()
+    }
+    out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
 ///|
 /// A binary tree node used by `DoubleMLPolicyTree`. A `Leaf` is a
 /// terminal that always returns the given treatment. A `Split` carries
