@@ -14,5 +14,6 @@ members = [
   "examples/fuzz",
   "examples/lplr",
   "examples/main",
+  "examples/pava",
   "examples/plpr",
 ]

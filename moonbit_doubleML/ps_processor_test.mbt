@@ -150,19 +150,34 @@ test "pava_empty_input" {
 
 ///|
 /// `pava` with weights: two weight-1 elements `[1.0, 0.0]`
-/// pool to `0.5`. A single element with weight `w` is reported
-/// as the weighted mean `y / w` (the standard PAVA output for a
-/// single-block result).
+/// pool to `0.5`.
+///
+/// v0.104.0: the single-element half of this test used to
+/// assert `pava([0.3], weights=[4.0]) == 0.075`, on the stated
+/// ground that "a single element with weight `w` gives the
+/// weighted mean `y / w`". That is not the weighted mean of
+/// anything -- a single observation's weighted mean is the
+/// observation, independent of its weight, and
+/// `sklearn.isotonic.isotonic_regression([0.3],
+/// sample_weight=[4.0])` returns `0.3`. The `y / w` value was
+/// the `sum_y / sum_w` bug in `pava` leaking into a test that
+/// then described it as the standard. Corrected here and
+/// pinned against sklearn in `validate_pava_with_python.py`.
 test "pava_with_weights" {
   let y = [1.0, 0.0]
   let w = [1.0, 1.0]
   let r = pava(y, weights=w)
   inspect((r[0] - 0.5).abs() < 1.0e-15, content="true")
   inspect((r[1] - 0.5).abs() < 1.0e-15, content="true")
-  // A single element with weight `w` gives the weighted mean
-  // `y / w`. With y=0.3 and w=4, the output is 0.075.
+  // A single element's weighted mean is the element itself;
+  // the weight scales the objective, not the answer.
   let r2 = pava([0.3], weights=[4.0])
-  inspect((r2[0] - 0.075).abs() < 1.0e-15, content="true")
+  inspect((r2[0] - 0.3).abs() < 1.0e-15, content="true")
+  // Two elements that pool, with unequal weights:
+  // (1000*0.9 + 1*0.1) / 1001 = 0.8992007992...
+  let r3 = pava([0.9, 0.1], weights=[1000.0, 1.0])
+  inspect((r3[0] - 0.8992007992007992).abs() < 1.0e-12, content="true")
+  inspect((r3[1] - 0.8992007992007992).abs() < 1.0e-12, content="true")
 }
 
 ///|

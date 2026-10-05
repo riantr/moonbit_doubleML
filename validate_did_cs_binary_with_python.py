@@ -395,7 +395,17 @@ def main() -> int:
         else:
             print(f"  PASS  upstream ATT within {MODEL_TOL} of hand-rolled ({up['coef']:.4f})")
 
-    if mb is not None:
+    # v0.104.0: this used to be `if mb is not None:`. A failed
+    # `moon run`, or output without the `ATT_hat` / `se` lines,
+    # left `ok` at True and printed "All checks PASSED." -- so
+    # the one comparison this file exists to make could be
+    # skipped by a build that did not compile.
+    if mb is None:
+        print("  FAIL  MoonBit side did not run (subprocess failure or "
+              "unparseable output); the MoonBit-vs-hand-rolled comparison "
+              "was not made, so this file has no verdict to report")
+        ok = False
+    else:
         if abs(mb["coef"] - hr["coef"]) > MODEL_TOL:
             print(f"  FAIL  MoonBit vs hand-rolled ATT gap {abs(mb['coef'] - hr['coef']):.4f} > {MODEL_TOL}")
             ok = False

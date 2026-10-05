@@ -1,111 +1,187 @@
-"""v0.14.0: cross-check the MoonBit PAVA + isotonic regression
-implementation against the upstream sklearn `IsotonicRegression`
-on a tie-free DGP.
+"""v0.104.0: exact cross-check of the MoonBit isotonic-regression
+core against `sklearn.isotonic.isotonic_regression`.
 
-The PAVA on a strictly-monotonic-by-x input is bit-equal to
-sklearn's `IsotonicRegression.predict`. We test the in-sample
-(non-CV) calibration on a 10-element DGP with strictly
-distinct propensity scores and binary treatment.
+WHAT THIS REPLACED, and why it matters. Through v0.103.0 this
+file imported `subprocess` and defined two MoonBit drivers --
+`run_moonbit_pava` and `moonbit_isotonic_via_psprocessor` -- both
+of which did nothing but `raise NotImplementedError` and were
+never called. `reference_check` then printed sklearn's numbers
+for a human to compare by hand against a markdown file, and the
+file ended in a hard-coded
+
+    PAVA cross-check PASS
+
+with no assertion anywhere. A validator whose verdict cannot
+change is decoration, and this one was wearing the label of a
+gate: v0.103.0's audit classified it as "imports subprocess,
+never runs it".
+
+WHY THIS CHECK IS SHARP WHERE THE OTHERS ARE LOOSE. Every other
+cross-check in this repository has to allow for Monte-Carlo
+error, because the MoonBit side draws from `chacha8_rng` and the
+Python side from `numpy.random.default_rng` and the two streams
+cannot be aligned. PAVA has no sampling in it. The isotonic fit
+of a sorted vector is the unique minimiser of the weighted sum of
+squared residuals subject to monotonicity, so feeding both sides
+the same literal `y` gives the same number to rounding. The
+tolerance below is 1e-12, not the `max(MODEL_TOL, 2*se)` style
+bounds the MC checks need.
+
+The example `examples/pava` prints one line per case; the vectors
+below are duplicated from `examples/pava/main.mbt`, and a
+mismatch in the case LABELS is itself a failure so the two files
+cannot silently drift apart.
 """
 
-import json
-import os
+import re
 import subprocess
 import sys
-import tempfile
 
 import numpy as np
-from sklearn.isotonic import IsotonicRegression
+from sklearn.isotonic import isotonic_regression
+
+# Elementwise tolerance. Both sides compute the same minimiser in
+# a different summation order, so this is rounding, not slack.
+TOL = 1e-12
+
+# (label, y already sorted by x, sample_weight or None).
+# Mirrors examples/pava/main.mbt. The comments there explain what
+# each vector is for; the short version is that v2 is the cascade
+# case (3,2,1 pools down, 5,4 pools up, and the trailing 6 must
+# not drag the 4.5 block up) and v4 is the only weighted one, so
+# a bug that drops the weights changes v4 alone.
+CASES = [
+    ("v0", [0.9, 0.7, 0.8, 0.1], None),
+    ("v1", [0.1, 0.3, 0.3, 0.7], None),
+    ("v2", [3.0, 2.0, 1.0, 5.0, 4.0, 6.0], None),
+    ("v3", [0.01, 0.02, 0.03, 0.9, 0.4, 0.5, 0.6], None),
+    ("v4", [0.2, 0.5, 0.1, 0.8], [1.0, 1.0, 0.25, 1.0]),
+]
 
 
-def run_moonbit_pava(x, y):
-    """Invoke a one-shot MoonBit program that runs PAVA on
-    (x, y) and prints the result. Returns a list of floats.
+def run_moonbit():
+    """Spawn `moon run examples/pava` and parse the case lines.
 
-    The MoonBit entry point reads the input from a temp file
-    and writes the result to stdout. We use the public `pava`
-    function from the `riantr/moonbit_doubleML` package.
+    Returns {label: [floats]}. Raises on any failure -- the
+    caller turns that into FAIL, because a skipped MoonBit side
+    is exactly the hole this file was written to close.
     """
-    raise NotImplementedError("use the end-to-end PSProcessor path instead")
-
-
-def sklearn_isotonic(x, y):
-    ir = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
-    ir.fit(np.asarray(x).reshape(-1, 1), np.asarray(y))
-    return ir.predict(np.asarray(x).reshape(-1, 1))
-
-
-def sklearn_isotonic_cv(x, y, n_folds=5, seed=3141):
-    from sklearn.model_selection import cross_val_predict
-    return cross_val_predict(
-        IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0),
-        np.asarray(x).reshape(-1, 1), np.asarray(y), cv=n_folds,
-        method="predict",
+    result = subprocess.run(
+        ["moon", "run", "examples/pava", "--target", "native"],
+        capture_output=True,
+        text=True,
+        timeout=900,
     )
+    if result.returncode != 0:
+        # `stderr` is not guaranteed to be a string -- a build that
+        # dies before the toolchain attaches leaves it as None, and
+        # slicing it here would raise a TypeError that masks the
+        # real cause. Coerce first.
+        err = result.stderr or ""
+        raise RuntimeError(
+            f"moon run examples/pava exited {result.returncode}: "
+            f"{err[:400]}"
+        )
+    out = result.stdout or ""
+    out = {}
+    for m in re.finditer(
+        r"^case\[(\w+)\]\s+n=(\d+)\s+pava\s*=\s*([-\d.eE+ ]+)$",
+        result.stdout,
+        re.MULTILINE,
+    ):
+        label, n_declared, payload = m.group(1), int(m.group(2)), m.group(3)
+        values = [float(v) for v in payload.split()]
+        if len(values) != n_declared:
+            raise RuntimeError(
+                f"case[{label}]: header says n={n_declared} but "
+                f"{len(values)} values follow"
+            )
+        out[label] = values
+    if not out:
+        raise RuntimeError(
+            "no `case[...]` lines in example output:\n" + result.stdout[:600]
+        )
+    return out
 
 
-def moonbit_isotonic_via_psprocessor(x, y, clipping_threshold=0.01,
-                                     cv=False):
-    """Drive the MoonBit PSProcessor::adjust_ps through a small
-    one-shot program and parse its output.
+def main():
+    print("=" * 70)
+    print("MoonBit PAVA vs sklearn.isotonic.isotonic_regression")
+    print("=" * 70)
 
-    We use a one-shot driver that takes the JSON-encoded x and
-    y arrays and writes the JSON-encoded calibrated output to
-    stdout. The driver is generated into a temp .mbt file and
-    compiled with `moon test` (single test).
-    """
-    x_json = json.dumps(list(x))
-    y_json = json.dumps(list(y))
-    cv_str = "true" if cv else "false"
-    cv_opt = (
-        f'cv=Some([(Array::make(0, 0), Array::make(0, 0))])' if False
-        else "cv=None"
-    )
-    # Use the simplest driver: write the input to a file the
-    # driver reads.
-    raise NotImplementedError("skipped: see _verify/T140-verdict.md for end-to-end cross-check")
+    print("\n--- sklearn reference (fixed inputs, no sampling) ---")
+    expected = {}
+    for label, y, w in CASES:
+        ref = isotonic_regression(
+            np.asarray(y, dtype=float),
+            sample_weight=(
+                None if w is None else np.asarray(w, dtype=float)
+            ),
+        )
+        expected[label] = np.asarray(ref, dtype=float)
+        print(f"  case[{label}] n={len(y)} ref = {np.round(ref, 12).tolist()}")
 
+    print("\n--- MoonBit: `moon run examples/pava` ---")
+    try:
+        got = run_moonbit()
+    except Exception as exc:  # noqa: BLE001 - any failure is a FAIL
+        print(f"could not obtain the MoonBit output: {exc}")
+        print("")
+        print("PAVA cross-check FAIL")
+        sys.exit(1)
 
-def reference_check():
-    # 10-element DGP, no ties in x.
-    rng = np.random.default_rng(3141)
-    n = 10
-    x = np.round(rng.uniform(0.1, 0.9, size=n), 4)  # 4 decimals, very unlikely to tie
-    # Generate binary y from a logistic model: P(y=1|x) = sigmoid(a + b*x).
-    a, b = -2.0, 5.0
-    p = 1.0 / (1.0 + np.exp(-(a + b * x)))
-    y = (rng.uniform(0, 1, size=n) < p).astype(float)
+    missing = [label for label, _, _ in CASES if label not in got]
+    extra = [label for label in got if label not in expected]
+    if missing or extra:
+        print(f"case labels disagree: missing={missing} extra={extra}")
+        print("  (the vector tables in this file and in "
+              "examples/pava/main.mbt have drifted apart)")
+        print("")
+        print("PAVA cross-check FAIL")
+        sys.exit(1)
 
-    # sklearn in-sample (non-CV)
-    ir_pred = sklearn_isotonic(x, y)
-    print(f"sklearn isotonic in-sample:  {np.round(ir_pred, 6).tolist()}")
-    # sklearn CV (5-fold)
-    ir_cv = sklearn_isotonic_cv(x, y, n_folds=5, seed=3141)
-    print(f"sklearn isotonic CV (5-fold): {np.round(ir_cv, 6).tolist()}")
+    ok_all = True
+    print("")
+    print("--- checks ---")
+    for label, y, w in CASES:
+        got_arr = np.asarray(got[label], dtype=float)
+        ref_arr = expected[label]
+        if got_arr.shape != ref_arr.shape:
+            print(f"  case[{label}] FAIL: length {got_arr.shape} vs "
+                  f"{ref_arr.shape}")
+            ok_all = False
+            continue
+        worst = float(np.max(np.abs(got_arr - ref_arr)))
+        ok = worst < TOL
+        ok_all = ok_all and ok
+        print(
+            f"  case[{label}] max|moonbit - sklearn| = {worst:.3e} "
+            f"< {TOL:.0e} -> {'PASS' if ok else 'FAIL'}"
+        )
+        if not ok:
+            print(f"    moonbit = {got_arr.tolist()}")
+            print(f"    sklearn = {ref_arr.tolist()}")
 
-    # The MoonBit PSProcessor::adjust_ps with calibration_method =
-    # "isotonic" and no CV, with clipping_threshold = 0.01,
-    # should produce a calibrated output that equals sklearn's
-    # in-sample prediction (after the same clip).
-    #
-    # We don't have a way to drive the MoonBit binary from this
-    # script directly (no FFI); the actual numerical equality
-    # check is in `_verify/T140-verdict.md` based on the test
-    # logs in `ps_processor_test.mbt`. For the script we just
-    # print the sklearn reference for the human verifier to
-    # cross-check against the test logs.
-    return ir_pred, ir_cv
+    # A monotone result is a property, not a comparison, so it is
+    # worth stating on its own: every case must come back
+    # non-decreasing. An implementation that returned its input
+    # unchanged would match `isotonic_regression` on v1 and fail
+    # everywhere else, but this catches the case where sklearn
+    # were also wrong -- cheap, and it documents the contract.
+    monotone = True
+    for label in expected:
+        arr = np.asarray(got[label], dtype=float)
+        if np.any(np.diff(arr) < 0):
+            print(f"  case[{label}] FAIL: output is not non-decreasing")
+            monotone = False
+    print(f"  all outputs non-decreasing -> {'PASS' if monotone else 'FAIL'}")
+
+    ok_all = ok_all and monotone
+    print("")
+    print("PAVA cross-check " + ("PASS" if ok_all else "FAIL"))
+    if not ok_all:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print("v0.14.0 PAVA / isotonic cross-check (sklearn reference)")
-    print("=" * 70)
-    ir_pred, ir_cv = reference_check()
-    print()
-    print("Reference (sklearn) produced above. The MoonBit output")
-    print("should match within `1e-12` on the same DGP; see")
-    print("`ps_processor_test.mbt::ps_processor_isotonic_no_cv`")
-    print("and the per-DGP numbers in `_verify/T140-verdict.md`.")
-    print()
-    print("PAVA cross-check PASS")
+    main()

@@ -9,6 +9,106 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.104.0] -- `pava`'s weighted path was wrong, and the cross-checks that could not have said so
+
+v0.103.0 audited the 23 Python cross-checks and found that 19 of them
+could not fail. This version fixes three of them, and the first one
+immediately paid for itself by finding a real bug in shipped code.
+
+### Fixed
+
+- **`pava` computed weighted block means wrongly.** Each block's mean
+  was formed as `sum_y / sum_w`, but `sum_y` was seeded with the RAW
+  `y[i]` instead of `w[i] * y[i]`, and every subsequent pool folded in
+  another raw sum. The numerator was therefore unweighted while the
+  denominator was not. With unit weights the two coincide, which is
+  why nothing caught it; with any non-uniform weight the fitted block
+  value is simply wrong.
+
+  ```
+  y = [0.2, 0.5, 0.1, 0.8], w = [1, 1, 0.25, 1]
+  correct  (1*0.5 + 0.25*0.1) / 1.25 = 0.525 / 1.25 = 0.42
+  shipped                        0.6 / 1.25             = 0.48
+  ```
+
+  `sklearn.isotonic.isotonic_regression` returns `0.42`. No internal
+  caller passed weights -- `fit_isotonic` calls `pava(sorted_y)` with
+  unit weights -- so the wrong path was reachable only from outside the
+  package, which is why the test suite never exercised it either.
+- **`ps_processor_test.mbt::pava_with_weights` was asserting the bug.**
+  Its second half claimed "a single element with weight `w` gives the
+  weighted mean `y / w`" and checked `pava([0.3], weights=[4.0]) ==
+  0.075`. A single observation's weighted mean is the observation:
+  sklearn returns `0.3`, and `0.075` is the `sum_y / sum_w` division
+  leaking into a test that then described it as "the standard PAVA
+  output". Corrected, and extended with an unequal-weight pooling case
+  (`(1000*0.9 + 1*0.1) / 1001 = 0.8992007992`, also sklearn's answer).
+- `validate_pava_with_python.py` no longer ends in a hard-coded
+  `PAVA cross-check PASS`. Both of its MoonBit drivers raised
+  `NotImplementedError` and were never called; the file printed
+  sklearn's numbers for a human to compare against a markdown file.
+  It now spawns `moon run examples/pava` and compares elementwise.
+- `validate_apos_with_python.py` and
+  `validate_did_cs_binary_with_python.py` no longer fail open. Both
+  spawned `moon run`, but a failed subprocess, a missing example or an
+  unparseable output took a "skipping" path and left the run green --
+  a build that did not compile produced a pass. Both now exit non-zero
+  with a `FAIL` line.
+- `validate_pava_with_python.py`'s error path no longer raises
+  `TypeError` while reporting a real failure: `result.stderr` is `None`
+  when a build dies before the toolchain attaches, and slicing it
+  unguarded replaced the diagnosis with `'NoneType' object is not
+  subscriptable`.
+
+### Added
+
+- `examples/pava` and a `moon.work` entry for it, printing `pava` on
+  five fixed vectors chosen to hit different parts of the block stack:
+  a single pool, an already-monotone input with a tie (a buggy pool
+  that fired on equality would show here), a cascade where the trailing
+  `6` must not drag the `4.5` block up, a realistic profile with a
+  plateau, and the weighted case.
+- `expand_v104_pava_test.mbt`, 3 tests, so the four `moon test` CI jobs
+  hold this property even without the Python side.
+
+### Why the PAVA check is sharper than every other one
+
+Every other cross-check has to allow for Monte-Carlo error, because
+MoonBit draws from `chacha8_rng` and Python from
+`numpy.random.default_rng` and the streams cannot be aligned. PAVA has
+no sampling in it: the isotonic fit of a sorted vector is the unique
+minimiser of the weighted sum of squared residuals subject to
+monotonicity, so the same literal `y` gives the same number on both
+sides. The tolerance is `1e-12`, not the `max(MODEL_TOL, 2*se)` style
+bounds the others need, and four of the five cases agree bitwise.
+
+**A new example does not see the local source until it is in
+`moon.work`.** `moon.work` is an explicit member list, and an example
+outside it resolves `riantr/moonbit_doubleML@0.52.0` from the registry
+instead of the workspace member -- into a `.mooncakes/` directory
+inside the example. The first run of `examples/pava` did exactly that
+and reported the *published* 0.52.0 value of `0.48`, which is exactly
+the wrong answer the fix was supposed to remove: a cross-check that
+would have gone green while validating a different version of the
+package. The member entry fixes it. Worth knowing for any future
+example.
+
+### Verification
+
+| mutation | caught by |
+|---|---|
+| `pava`'s seeding line back to `cur_sum = y[i]` | `validate_pava_with_python.py` case[v4] (0.06 > 1e-12, exit 1); the four unit-weight cases stay green |
+| `examples/pava/main.mbt` removed | `validate_pava_with_python.py` exits 1 with `moon run examples/pava exited 1` |
+
+795 / 795 on native, wasm and js; 801 / 801 on wasm-gc. Delta +3 from
+v0.103.0's 792 / 798. `moon check --target all` clean. Python
+cross-checks 23 / 23 PASS.
+
+Cross-check suite after this version: **8 real fail-closed gates** --
+`did`, `iivm`, `irm`, `pliv` (always), plus `did_cross_section`
+(v0.103.0) and `apos`, `did_cs_binary`, `pava` (fail-closed here); 2
+still deferred (`did_cs`, `did_binary`); 13 reference-only.
+
 ## [0.103.0] -- the DIDCS cross-check that could not fail, and an audit of the other 22
 
 v0.102.0 fixed a -15% persistent bias and a standard error that did

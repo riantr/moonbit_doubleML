@@ -308,7 +308,20 @@ pub fn pava(y : Array[Double], weights? : Array[Double] = []) -> Array[Double] {
     let block_w : Array[Double] = []
     let block_size : Array[Int] = []
     for i = 0; i < n; i = i + 1 {
-      let mut cur_sum = y[i]
+      // v0.104.0: this seeded the block's weighted sum with the
+      // RAW `y[i]`, so a block's mean came out as
+      // `(sum of y) / (sum of w)` instead of
+      // `(sum of w * y) / (sum of w)`. With unit weights the
+      // two coincide, which is why the unweighted cases still
+      // passed after the fix; with any non-uniform weight the
+      // fitted block value is wrong. Caught by
+      // `validate_pava_with_python.py` against
+      // `sklearn.isotonic.isotonic_regression`: for
+      // y = [0.2, 0.5, 0.1, 0.8], w = [1, 1, 0.25, 1] the pooled
+      // block holds 0.5 and 0.1, whose correct weighted mean is
+      // (1*0.5 + 0.25*0.1) / 1.25 = 0.42; this computed
+      // (0.5 + 0.1) / 1.25 = 0.48.
+      let mut cur_sum = w[i] * y[i]
       let mut cur_w = w[i]
       let mut cur_size = 1
       // Pool with previous blocks as long as the last block's

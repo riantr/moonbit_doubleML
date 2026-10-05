@@ -252,25 +252,35 @@ def main():
     print(f"handrolled ses:   {hr_ses}")
 
     # 2) MoonBit (via `moon run examples/apos`).
+    #
+    # v0.104.0: this used to print "WARN: could not run ... /
+    # Skipping MoonBit cross-check." and fall through to the
+    # unconditional `PASS: apos reference` at the bottom. A
+    # failed subprocess, a missing example, or a parse that
+    # found no `coef=` line all took that path -- so a build
+    # that did not compile at all produced a green run. It is
+    # now a hard failure.
     mb_coefs, mb_ses = run_moonbit_apos()
     if mb_coefs is None:
-        print("WARN: could not run `moon run examples/apos` (cmd entry missing?).")
-        print("Skipping MoonBit cross-check.")
-    else:
-        print(f"moonbit   coefs: {mb_coefs}")
-        print(f"moonbit   ses:   {mb_ses}")
-        for i, lvl in enumerate(args.levels):
-            ref = hr_coefs[i]
-            mb = mb_coefs[i]
-            se_bound = max(MODEL_TOL, 2.0 * hr_ses[i])
-            ok = abs(mb - ref) < se_bound
-            print(
-                f"  level {lvl}: |mb - handrolled| = {abs(mb - ref):.4f} "
-                f"< max(MODEL_TOL={MODEL_TOL}, 2.0*hr_se={2.0 * hr_ses[i]:.4f}) = "
-                f"{se_bound:.4f} -> {'PASS' if ok else 'FAIL'}"
-            )
-            if not ok:
-                sys.exit(1)
+        print("FAIL: could not run `moon run examples/apos`, or its output "
+              "carried no `coef=..., se=...` line. The MoonBit side of this "
+              "cross-check did not run, so there is nothing to conclude.")
+        print("APOS reference: FAIL")
+        sys.exit(1)
+    print(f"moonbit   coefs: {mb_coefs}")
+    print(f"moonbit   ses:   {mb_ses}")
+    for i, lvl in enumerate(args.levels):
+        ref = hr_coefs[i]
+        mb = mb_coefs[i]
+        se_bound = max(MODEL_TOL, 2.0 * hr_ses[i])
+        ok = abs(mb - ref) < se_bound
+        print(
+            f"  level {lvl}: |mb - handrolled| = {abs(mb - ref):.4f} "
+            f"< max(MODEL_TOL={MODEL_TOL}, 2.0*hr_se={2.0 * hr_ses[i]:.4f}) = "
+            f"{se_bound:.4f} -> {'PASS' if ok else 'FAIL'}"
+        )
+        if not ok:
+            sys.exit(1)
 
     # 3) Optional upstream Python.
     if HAS_UPSTREAM:
@@ -292,9 +302,13 @@ def main():
             if not ok:
                 sys.exit(1)
     else:
-        print("(upstream doubleml not installed; skipping upstream check)")
+        print("(upstream doubleml not installed; the MoonBit-vs-handrolled "
+              "comparison above is the gate, this one is an extra)")
 
-    print("Reference: run `moon run examples/apos` for the MoonBit output.")
+    # v0.104.0: the "Reference: run `moon run examples/apos` yourself"
+    # line is gone. It was printed even on the success path, which
+    # read as though the MoonBit side had been skipped. It no longer
+    # can be: a skipped MoonBit side exits 1 above.
     print("PASS: apos reference")
 
 
