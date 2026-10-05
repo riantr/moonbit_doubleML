@@ -102,6 +102,13 @@ jobs:
 
       - name: Publish to Mooncakes
         run: |
+          # Distinguish "secret not configured" from "publish rejected".
+          # moon publish exits 255 for both (and for a version conflict),
+          # so without this the annotation gives no way to tell them apart.
+          if [ -z "$SECRET" ]; then
+            echo "::error::MOONCAKES_RIANTR_TOKEN is not set on this repository; moon publish cannot authenticate"
+            exit 1
+          fi
           mkdir -p "$HOME/.moon"
           printf '%s' "$SECRET" > "$HOME/.moon/credentials.json"
           trap 'rm -f "$HOME/.moon/credentials.json"' EXIT
