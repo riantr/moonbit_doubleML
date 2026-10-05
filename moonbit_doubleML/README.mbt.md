@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.92.0** |
+| `moon.mod` version | **0.92.1** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 160 in the library (87 production + 73 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -447,7 +447,7 @@ the 1e-12 above, not `==`).
 #Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.92.0, 160 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.92.1, 160 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
 

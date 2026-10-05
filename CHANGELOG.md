@@ -9,6 +9,47 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.92.1] -- CI release path, unblock five stacked CI defects
+
+**No library-code change.** The library is byte-identical to 0.92.0;
+`moon check` / `moon test` are unchanged. This patch exists because the
+publish and cross-check pipelines had five stacked defects that made
+every automated release fail and left the repository's CI permanently
+red.
+
+### Fixed
+
+- `publish.yml` ran `moon publish` from the workspace root, which aborts
+  with "cannot infer a target module" before contacting mooncakes. The
+  credentials written immediately above it were therefore never
+  exercised across all 37 historical runs. Now uses
+  `moon -C moonbit_doubleML publish`.
+- `publish.yml` now fails loudly when `MOONCAKES_RIANTR_TOKEN` is unset.
+  `moon publish` exits 255 for a version conflict, an authentication
+  failure and a workspace error alike, so the exit code alone could not
+  distinguish them.
+- `python-cross-check` never installed the MoonBit toolchain, so the
+  four validators that shell out to `moon run` could not run at all.
+- `validate_did` / `_iivm` / `_irm` / `_pliv` called `moon run` without a
+  target. `examples/main` has declared `supported_targets = "native"`
+  since v0.75.1, so the workspace default of wasm-gc was rejected.
+- `validate_ssm` / `_rdd` / `_quantile` / `_pava` / `_blp_policy` ended
+  with a lowercase "passed", which the job's case-sensitive `*PASS*`
+  glob never matched.
+
+### CI
+
+All five jobs green for the first time: `moon test --deny-warn` on
+native / wasm / wasm-gc / js, plus `Python cross-check` (23/23).
+
+### Note
+
+v0.80.0 - v0.89.0 were never published to mooncakes.io. Ten of the
+twelve unpublished versions carry the `sandwich_se` defects that
+v0.88.0 / v0.90.0 / v0.91.0 fixed, so they are deliberately left
+unpublished rather than made pinnable. v0.75.1 / v0.77.0 / v0.78.0 /
+v0.79.0 are candidates for backfill.
+
 ## [0.92.0] -- wire up `DoubleMLLPLR`'s sandwich API; README backfill for v0.87.0 - v0.92.0
 
 **NOT a numerical change for any existing estimator.** `se()` and the
