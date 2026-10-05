@@ -362,6 +362,213 @@ pub fn DoubleMLDIDMulti::se_at_idx(
 }
 
 ///|
+/// v0.100.0+: the inner `(group_idx, period_idx)` that
+/// `gt_combinations[idx]` selects, by the same linear scan
+/// `coef_at_idx` and `se_at_idx` perform: read the triple
+/// `(g, t_pre, t_eval)`, scan `inner.group_at(i)` for `gi` and
+/// `inner.period_at(i)` for the index of `t_eval`. `t_pre` is
+/// ignored here exactly as it is there -- the inner is keyed by
+/// `(g, t_eval)` only, and `t_pre` is fixed at `g` by every
+/// keyword expansion.
+///
+/// This is a NEW private helper for the v0.100.0 sandwich
+/// accessors. It deliberately does NOT replace the inline scan in
+/// `coef_at_idx` / `se_at_idx`: those two are byte-for-byte
+/// unchanged, so nothing that already works can regress behind a
+/// refactor. The scan is duplicated in three places rather than
+/// extracted from two.
+fn did_multi_inner_cell_at_idx(est : DoubleMLDIDMulti, idx : Int) -> (Int, Int) {
+  try {
+    let (g, t_pre, t_eval) = est.gt_combinations[idx]
+    let mut gi = -1
+    let mut pi = -1
+    for i = 0; i < est.inner.n_groups(); i = i + 1 {
+      if est.inner.group_at(i) == g {
+        gi = i
+      }
+    }
+    for i = 0; i < est.inner.n_periods(); i = i + 1 {
+      if est.inner.period_at(i) == t_eval {
+        pi = i
+      }
+    }
+    require(gi >= 0 && pi >= 0)
+    ignore(t_pre)
+    (gi, pi)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: heteroskedasticity-consistent (Huber-White) sandwich
+/// standard error for the combination at row-major index `idx`
+/// (the same `(g, t_pre, t_eval)` triple ordering as `coef_at_idx`
+/// and `se_at_idx`). The per-cell analogue of the DID family's
+/// joint `sandwich_se`: this wrapper estimates no scalar of its own,
+/// so the natural index is the one it already exposes, the
+/// combination index.
+///
+/// `DoubleMLDIDMulti` persists NO per-cell score state -- only
+/// `group_sizes` and `boot_t_stat` -- so this method is a pure
+/// FORWARD. The triple is mapped to the inner `(gi, pi)` and the
+/// answer is `self.inner.sandwich_se_at(gi, pi, kind)` returned
+/// unchanged, with no arithmetic in between. Hence
+///
+///     sandwich_se_at_idx(idx, kind) ==
+///       inner.sandwich_se_at(gi, pi, kind)
+///
+/// bit for bit, and on the IID path
+///
+///     sandwich_se_at_idx(idx, HC0) == se_at_idx(idx)
+///
+/// holds for the reason it holds one level down: the inner's HC0 was
+/// MEASURED equal to its own `se_at` on every non-degenerate cell
+/// (abs_diff exactly `0.0`), because `var_est` and
+/// `sandwich_variance_hc0` run the same op sequence over the same
+/// Kahan sum of the same products in the same index order and
+/// `M_inv[0, 0]^2 == 1.0` exactly (the DID score's
+/// `psi_a[i] = -d[i] / p_hat` with `p_hat = mean(d)` gives
+/// `mean(psi_a) == -1`). The wrapper adds no `n_params` and no
+/// second estimate, so nothing about that identity is disturbed
+/// here.
+///
+/// The one thing the wrapper does add is COVERAGE. `gt_combinations`
+/// may name a combination the inner never estimated: `"all"` and
+/// `"universal"` emit the pre-treatment placebos
+/// `(g, t_pre = g, t_eval < g)`, and the CS-DID fit only estimates
+/// `t_eval > g`, so those map to an EMPTY inner cell. There this
+/// method ABORTS, by forwarding the inner's refusal: the inner
+/// rejects an unestimated cell rather than return a misleading
+/// `0.0` off an empty score row. That is not smoothed over. A
+/// caller sweeping every index must skip the degenerate
+/// combinations itself, exactly as it must for the inner API -- and
+/// `se_at_idx` at the same index returns `0.0` rather than
+/// aborting, so the two accessors are NOT interchangeable over a
+/// full sweep.
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= idx < gt_combinations.length()`, `gt_combinations[idx]`
+/// maps to an inner `(gi, pi)`, that cell was actually estimated,
+/// `mean(psi_a) != 0`, and `n_obs > n_params` for HC1 / HC2 / HC3.
+pub fn DoubleMLDIDMulti::sandwich_se_at_idx(
+  self : DoubleMLDIDMulti,
+  idx : Int,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    require(idx >= 0 && idx < self.gt_combinations.length())
+    let (gi, pi) = did_multi_inner_cell_at_idx(self, idx)
+    self.inner.sandwich_se_at(gi, pi, kind)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: cluster-robust sandwich standard error (Arellano
+/// 1987, Cameron-Gelbach-Miller 2011) for the combination at
+/// row-major index `idx`. Same pure forward as
+/// `sandwich_se_at_idx`: the inner cell is resolved and
+/// `self.inner.cluster_sandwich_se_at(gi, pi, cluster_ids)` is
+/// returned unchanged.
+///
+/// `DoubleMLDIDCSData` has no `cluster_vars` field, so there is
+/// still no default cluster and the caller must supply
+/// `cluster_ids`. They are PER CELL ROW, not per long-format panel
+/// row: `cluster_ids.length()` must equal THAT cell's `n_wide`, i.e.
+/// one entry per unit observed in both the pre and the eval period.
+/// The long-format panel `id` (length `n_units * n_periods`) is the
+/// WRONG array to pass for a cell whose `n_wide` is smaller, and
+/// because the mapping is per index, an `idx`-independent array of
+/// the wrong length fails at whichever index it is passed to. For a
+/// DID the natural grouping is the panel unit.
+///
+/// Why this is not `se_at_idx` with a different flavour: the
+/// difference is the MEAT, not the denominator.
+/// `cluster_sandwich_variance` divides by the cell's own `n_wide`
+/// -- the same divisor HC0 uses -- but sums `S_c = (sum_{i in c}
+/// psi[i])^2` per cluster, so the within-cluster cross terms enter
+/// and each cluster carries a jackknife factor `n_c / (n_c - 1)`.
+/// With all-singleton clusters the meat collapses to `sum_i
+/// psi[i]^2` and the result is exactly
+/// `sandwich_se_at_idx(idx, HC0)`; with real clusters it is larger.
+/// (It is also not a drop-in for a cluster-robust `se_at`: that is a
+/// different, row-level estimator which this DIDCS fit path does not
+/// compute.)
+///
+/// Aborts at a degenerate combination for the same reason
+/// `sandwich_se_at_idx` does -- the inner refuses an unestimated
+/// cell, and the wrapper forwards that rather than papering over it.
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= idx < gt_combinations.length()`, the combination maps to
+/// an estimated inner cell with `mean(psi_a) != 0`,
+/// `cluster_ids.length() == n_wide`, all `cluster_ids[i] >= 0`.
+pub fn DoubleMLDIDMulti::cluster_sandwich_se_at_idx(
+  self : DoubleMLDIDMulti,
+  idx : Int,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    require(idx >= 0 && idx < self.gt_combinations.length())
+    let (gi, pi) = did_multi_inner_cell_at_idx(self, idx)
+    self.inner.cluster_sandwich_se_at(gi, pi, cluster_ids)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: `coef_at_idx(idx)` UNCHANGED -- a documented no-op,
+/// not a bias correction. Identical in reasoning to
+/// `DoubleMLDIDCS::bias_corrected_coef_at` and the rest of the
+/// family; see `DoubleMLPQ::bias_corrected_coef` in `sandwich.mbt`
+/// for the full argument. The child's ATT is the root of the DML
+/// moment `f(theta) = E[theta * psi_a + psi_b]`, so
+/// `mean(f(coef_at))` is identically zero: the estimating function is
+/// orthogonal by construction, and that orthogonality is exactly
+/// what makes the estimator consistent. Nothing computable from the
+/// fitted scores is a bias estimate for this class of estimator, so
+/// this accessor reports the uncorrected point estimate rather than
+/// a number that merely looks like a correction. The pre-v0.91.0
+/// form `coef + mean(psi_b - coef * psi_a)` is that vector at
+/// `-coef`, NOT at `coef`; with `coef = -mean_b / mean_a` its mean
+/// is `-2 * coef * mean(psi_a)`, so it returned
+/// `coef * (1 - 2 * mean(psi_a))` -- exactly `3 * coef` when
+/// `mean(psi_a) = -1`, which is this score's case for every cell.
+///
+/// A genuine difference from `sandwich_se_at_idx`: a DEGENERATE
+/// combination does NOT abort here. The answer is the identity on
+/// `coef_at_idx`, and `coef_at_idx` reports `0.0` for an
+/// unestimated cell, so `0.0` is the consistent answer rather than
+/// a misleading one. `0.0` is also why this accessor is safe to
+/// call across a full sweep while the sandwich pair is not.
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= idx < gt_combinations.length()`, and `gt_combinations[idx]`
+/// maps to an inner `(gi, pi)`.
+pub fn DoubleMLDIDMulti::bias_corrected_coef_at_idx(
+  self : DoubleMLDIDMulti,
+  idx : Int,
+) -> Double {
+  try {
+    require(self.fitted)
+    require(idx >= 0 && idx < self.gt_combinations.length())
+    let (gi, pi) = did_multi_inner_cell_at_idx(self, idx)
+    self.inner.bias_corrected_coef_at(gi, pi)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.82.0+: turn on memoization for subsequent `fit()` calls.
 /// The flag is forwarded to the inner `DoubleMLDIDCS`.
 pub fn DoubleMLDIDMulti::enable_memoize(

@@ -190,6 +190,53 @@ pub struct DoubleMLDIDCS {
   // `irm_style_sensitivity` decomposition (the
   // `residuals` argument to `irm_style_sensitivity`).
   residuals_matrix : Array[Double]
+  // v0.100.0+: per-(g, t) WIDE-format influence-function
+  // components for the `sandwich_se_at` /
+  // `cluster_sandwich_se_at` / `bias_corrected_coef_at` API,
+  // indexed row-major by the flat cell index
+  // `group_idx * n_periods + period_idx` -- the SAME index
+  // `coef_at` / `se_at` use. `length` is
+  // `n_groups * n_periods`; an entry is the EMPTY array for a
+  // cell that was not estimated.
+  //
+  // Unlike `psi_matrix` / `psi_a_matrix` above, these are NOT
+  // scattered onto the full long-format panel: each entry is the
+  // child `DoubleMLDIDBinary`'s OWN `psi_a` / `psi_b` row, i.e.
+  // the exact arrays that child's `var_est` call summed. The
+  // reversed long-format `psi_matrix` is the wrong score for the
+  // sandwich in any case: it is built as `psi_a + theta * psi_b`
+  // (see the comment at the long-format mapping below), whereas
+  // `var_est.mbt` -- the package authority, and the one
+  // `sandwich.mbt::psi_at` implements -- defines
+  // `psi(theta) = theta * psi_a + psi_b`. The two differ in which
+  // component carries the `theta` weight.
+  //
+  // WHY THE WIDE ROW SET AND NOT THE LONG PANEL
+  // -------------------------------------------
+  // `se_matrix[k]` IS `sub_fitted.se()`, and that number is
+  // `var_est(psi_a, psi_b)` over the child's WIDE-format data:
+  // the units observed in BOTH the pre and the eval period after
+  // `preprocess_did_binary`, whose length is
+  // `inner_psi_a.length()`. That is NOT the `sub_n` long-format
+  // sub-panel rows the cell loop below builds, and not the
+  // `n_groups * n_periods * n_obs` long panel. Measured on the
+  // 4-cohort / 4-period / 200-unit panel of
+  // `expand_v100_didcs_test.mbt`, cell (g = 1, t = 2) has
+  // `sub_n = 200`, `n_wide = 100`, `n_panel = 800`, and only 50
+  // of the 100 wide rows carry a non-zero `psi_a`. `var_est`
+  // divides by `n_wide`, so both `sub_n` and the non-zero count
+  // are the wrong denominator; see the section comment above
+  // `m_inv_1x1_at` for the full measurement.
+  //
+  // Keeping the rows wide rather than long is also cheaper than
+  // the long-format matrices above: `n_wide <= sub_n < n_obs`.
+  //
+  // An empty cell (`t_eval <= g`, or no observed pre-period)
+  // stores the EMPTY array here. That is what lets the sandwich
+  // accessors REFUSE such a cell with a clear message instead of
+  // reporting a misleading `0.0` the way `se_at` does.
+  cell_psi_a : Array[Array[Double]]
+  cell_psi_b : Array[Array[Double]]
   n_groups : Int
   n_periods : Int
   fitted : Bool
@@ -250,6 +297,12 @@ pub fn DoubleMLDIDCS::new(
       psi_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
       psi_a_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
       residuals_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
+      // v0.100.0+: per-cell WIDE-format IF rows; populated by
+      // `fit`. Empty entries are placeholders that `fit`
+      // overwrites (whole-array assignment only, never in-place
+      // mutation, so the shared `[]` default is never aliased).
+      cell_psi_a: Array::make(n_groups * n_periods, []),
+      cell_psi_b: Array::make(n_groups * n_periods, []),
       n_groups,
       n_periods,
       fitted: false,
@@ -366,6 +419,436 @@ pub fn DoubleMLDIDCS::period_at(self : DoubleMLDIDCS, period_idx : Int) -> Int {
   }
 }
 
+// ---------------------------------------------------------------------------
+// v0.100.0: per-cell sandwich API (the `sandwich_se_at` triple)
+// ---------------------------------------------------------------------------
+//
+// WHY DIDCS IS PER CELL, AND WHY IT IS NOT LIKE APOS
+// =================================================
+// `DoubleMLDIDCS` runs one independent child
+// `DoubleMLDIDBinary` per `(g, t)` cell and keeps
+// `coef_matrix` / `se_matrix`. Each child is a separate scalar
+// Z-estimator with its own cross-fit, its own score and its own
+// root, so each cell is a 1x1 sandwich problem and the methods are
+// PER CELL, indexed like `coef_at` / `se_at`
+// (`group_idx * n_periods + period_idx`) and shaped after
+// `DoubleMLAPOS::sandwich_se_at` (v0.100.0) and
+// `DoubleMLQTE::sandwich_se_at` (v0.95.0) rather than the joint
+// multi-column `sandwich_se` of the DID family.
+//
+// Nothing has to be re-derived. The child already computed
+// `psi_a` / `psi_b` for its own multiplier bootstrap, and
+// `DoubleMLDIDBinary::sandwich_se` (v0.89.0) already routes
+// those exact arrays through the shared `sandwich_variance`
+// dispatch. Before v0.100.0 this file threw them away one level
+// up: the cell loop read `inner_psi_a()` / `inner_psi_b()` to
+// build the long-format matrices and then dropped the rest.
+//
+// THE `psi` ORDER IS NOT INTERCHANGEABLE
+// --------------------------------------
+// The long-format `psi_matrix` this file has persisted since
+// v0.15.0 is built as
+//
+//     psi = psi_a + theta * psi_b
+//
+// but `var_est.mbt` (the package authority, and what
+// `sandwich.mbt::psi_at` implements) defines
+//
+//     psi(theta) = theta * psi_a + psi_b
+//
+// The DID ATT score's `psi_a` is the treatment-weight term and
+// `psi_b` the outcome score, so the two expressions are
+// different functions: under the reversed order the estimating
+// equation's derivative `dE[psi] / dtheta` is `E[psi_b]`, not
+// `E[psi_a]`, and the root is not `theta_hat`. `psi_matrix` is
+// therefore NOT a valid input to the sandwich, which is why the
+// new `cell_psi_a` / `cell_psi_b` fields store the child's rows
+// separately rather than unpacking `psi_matrix`. `psi_matrix` is
+// left exactly as it was -- it feeds the multiplier bootstrap in
+// `DoubleMLDIDMulti::bootstrap`, and changing its convention is
+// out of scope here.
+//
+// THE DENOMINATOR, MEASURED
+// ------------------------
+// `se_matrix[k]` is `sub_fitted.se()` and nothing else, so the
+// per-cell sandwich reproduces it iff it uses the row set and
+// the `n` that the child's own `var_est` call used:
+//
+//     se = var_est(psi_a, psi_b)
+//        = (Kahan sum of psi[i]^2 / n_wide)
+//          / (mean(psi_a)^2 * n_wide)
+//
+// where `psi[i] = coef * psi_a[i] + psi_b[i]` and `n_wide` is the
+// WIDE-format row count -- the `n_wide` units observed in BOTH
+// the pre and the eval period after `preprocess_did_binary`, read
+// back as `inner_psi_a().length()`.
+//
+// The three plausible denominators, measured on the
+// 4-cohort / 4-period / 200-unit panel of
+// `expand_v100_didcs_test.mbt` at cell (g = 1, t = 2):
+//
+//     n_wide = 100   <- `var_est`'s n. CORRECT.
+//     sub_n  = 200   <- the long-format sub-panel the cell loop
+//                       builds (50 G + 50 never-treated units, each
+//                       observed in both of the two periods).
+//     n_panel= 800   <- the full long-format panel.
+//     (non-zero `psi_a` rows: 50 -- a fourth candidate, and the
+//      one that looks right if you only read the sparse
+//      `psi_a_matrix`.)
+//
+// The analytic identity `var = sum(psi^2) / sum(psi_a)^2` makes
+// the variance invariant to which superset of the cell's rows you
+// sum over, PROVIDED `mean(psi_a)` and `n` come from the SAME row
+// set. Mixing them -- which is what reconstructing from the sparse
+// long-format matrices forces, because a written zero and an
+// unwritten zero are indistinguishable -- is what breaks it. So
+// the fields store whole rows and the helpers take
+// `length()` and `mean()` from the same array; no scalar `j` is
+// persisted and nothing is inferred from zero patterns.
+//
+// BIT-IDENTITY, NOT A TOLERANCE
+// ----------------------------
+// `var_est` ends with `gamma / n` then `/(mean(psi_a)^2 * n)`;
+// `sandwich_variance_hc0` computes `M_inv[0,0]^2 * acc / n / n`
+// over the same Kahan sum of the same products in the same index
+// order. The two op sequences coincide because for this score
+// `psi_a[i] = -d[i] / p_hat` with `p_hat = mean(d)`, so
+// `mean(psi_a) == -1` exactly and `M_inv[0,0]^2 == 1.0` exactly
+// (the `* 1.0` is the IEEE identity). Measured on the cell above,
+// `sandwich_se_at(0, 2, HC0) - se_at(0, 2) == 0.0` bit for bit;
+// `expand_v100_didcs_test.mbt` asserts `==` and PRINTS the
+// discrepancy for every non-degenerate cell so the claim is
+// checkable from the test log.
+//
+// This holds for `n_rep >= 1` because the child calls `var_est`
+// ONCE, on the nuisances it persisted, so the stored rows and the
+// shipped `se` always describe the same score.
+//
+// THE MEMOIZE CACHE-HIT PATH
+// --------------------------
+// Unlike APOS, `DoubleMLDIDCS` has NO `FitCache` of its own: the
+// struct has no `fit_cache` field and `fit` has no `cache_hit`
+// branch. `memoize_enabled` is forwarded down the chain
+// (`DoubleMLDIDCS` -> `DoubleMLDIDBinary` -> `DoubleMLDID`), and
+// the cache that actually exists is the inner
+// `DoubleMLDID::fit_cache`, which stores the per-rep nuisance
+// PREDICTIONS `[g0_hat, g1_hat, m_clipped]` and re-derives
+// `psi_a` / `psi_b` from them on a hit. That re-derivation is
+// deterministic and does not depend on the cross-fit, so a cache
+// hit reproduces the child's `psi_a` / `psi_b` / `coef` / `se`
+// BYTE for BYTE -- which is what makes it safe for the cell loop
+// to read them unconditionally on every `fit`, hit or miss.
+//
+// So the analogue of APOS's "restore the third predictions slot"
+// is here: there is no separate restore branch to get right,
+// because the parent re-enters the child loop on a hit and the
+// child fills the same slots either way. What the second `fit()`
+// must therefore preserve is the per-cell WIDE rows, and the
+// regression this guards against is a `fit` that returned the
+// `new()` all-empty `cell_psi_a` / `cell_psi_b` sentinel on the
+// hit path -- which would ABORT inside `m_inv_1x1_at` rather
+// than quietly return a wrong number. The cache-hit test drives
+// the second fit from the FIRST returned value (`f1.fit()`),
+// because `fit` takes `self` BY VALUE: `est.fit()` twice re-reads
+// `est`'s own cold chain and the test would be vacuous.
+
+///|
+/// Flat cell index `group_idx * n_periods + period_idx`, after
+/// validating `self.fitted` and both indices against
+/// `n_groups` / `n_periods`. Mirrors the guard in `coef_at` /
+/// `se_at` so every accessor in the family rejects the same
+/// inputs the same way.
+fn DoubleMLDIDCS::cell_flat_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int,
+  period_idx : Int,
+) -> Int {
+  try {
+    require(self.fitted)
+    require(group_idx >= 0 && group_idx < self.n_groups)
+    require(period_idx >= 0 && period_idx < self.n_periods)
+    group_idx * self.n_periods + period_idx
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The `(g, t)` cell's WIDE-format `psi_a` row -- the child's own
+/// `inner_psi_a()`, the array its `var_est` call averaged. A fresh
+/// array of the row's own length, so the sandwich's accumulator
+/// and the caller's `psi_at` result are never aliased with the
+/// persisted state.
+///
+/// Aborts on an unestimated cell: `t_eval <= g`, or no observed
+/// pre-treatment period, or an empty sub-panel. `se_at` reports
+/// `0.0` for such a cell and a sandwich SE is not defined, so
+/// returning a zero here would be a plausible-looking wrong
+/// answer rather than an obvious absence.
+fn DoubleMLDIDCS::cell_psi_a_row_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int,
+  period_idx : Int,
+) -> Array[Double] {
+  let flat = self.cell_flat_at(group_idx, period_idx)
+  let row = self.cell_psi_a[flat]
+  if row.length() == 0 {
+    abort(
+      "DoubleMLDIDCS: cell (group_idx=" +
+      group_idx.to_string() +
+      ", period_idx=" +
+      period_idx.to_string() +
+      ") has no estimate (t_eval <= g, no observed pre-period, or " +
+      "an empty sub-panel); se_at() reports 0.0 for it and no " +
+      "sandwich SE is defined",
+    )
+  }
+  row
+}
+
+///|
+/// The `(g, t)` cell's WIDE-format `psi_b` row -- the child's own
+/// `inner_psi_b()`. Same guards and same flat index as
+/// `cell_psi_a_row_at`; the two are always the same length
+/// (`fit` asserts it at the point of capture).
+fn DoubleMLDIDCS::cell_psi_b_row_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int,
+  period_idx : Int,
+) -> Array[Double] {
+  let flat = self.cell_flat_at(group_idx, period_idx)
+  let row = self.cell_psi_b[flat]
+  if row.length() == 0 {
+    abort(
+      "DoubleMLDIDCS: cell (group_idx=" +
+      group_idx.to_string() +
+      ", period_idx=" +
+      period_idx.to_string() +
+      ") has no estimate (t_eval <= g, no observed pre-period, or " +
+      "an empty sub-panel); se_at() reports 0.0 for it and no " +
+      "sandwich SE is defined",
+    )
+  }
+  row
+}
+
+///|
+/// The `(g, t)` cell's Jacobian inverse `M_inv` (1x1):
+/// `[[1 / mean(psi_a)]]`, with `mean(psi_a)` taken over the
+/// SAME `n_wide` rows the score is accumulated over -- the pairing
+/// the whole file comment above insists on.
+///
+/// For this score `psi_a[i] = -d[i] / p_hat` with
+/// `p_hat = mean(d)` (observational) or `p_hat = mean(d)`
+/// (in-sample normalization), so `mean(psi_a) == -1` and
+/// `M_inv[0,0] == -1.0`, `M_inv[0,0]^2 == 1.0` exactly; only the
+/// square enters the variance, so the sign is immaterial. The
+/// `mean != 0` guard is kept anyway: it is the assertion that
+/// this cell's IF components are present and well-formed, and it
+/// is the same shape the fifteen other estimators expose.
+fn DoubleMLDIDCS::m_inv_1x1_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int,
+  period_idx : Int,
+) -> Matrix {
+  let psi_a = self.cell_psi_a_row_at(group_idx, period_idx)
+  let mean_a = mean(psi_a)
+  if !(mean_a.abs() > 0.0) {
+    abort(
+      "DoubleMLDIDCS: cell (group_idx=" +
+      group_idx.to_string() +
+      ", period_idx=" +
+      period_idx.to_string() +
+      ") has a degenerate Jacobian, mean(psi_a) = 0",
+    )
+  }
+  Matrix::from_array([1.0 / mean_a], 1, 1)
+}
+
+///|
+/// v0.100.0+: heteroskedasticity-consistent (Huber-White) sandwich
+/// standard error for the `(g, t)` cell of a fitted CS-DID.
+/// Routes through the shared `sandwich_variance` dispatch, so the
+/// HC0 / HC1 / HC2 / HC3 relationships are the package-wide ones
+/// (see the file header in `sandwich.mbt` and the identities
+/// pinned in `expand_v088_test.mbt` and
+/// `expand_v100_didcs_test.mbt`).
+///
+/// The three inputs are the ones the child `DoubleMLDIDBinary`
+/// already computed and persisted for its own multiplier
+/// bootstrap:
+///   - `psi_a` = the child's wide-format `psi_a` row, i.e. the
+///     treatment-weight term `-d / p_hat`;
+///   - `psi`   = `psi_at(coef_at(g, t), psi_a, psi_b)` -- the
+///     per-observation influence function at the fitted cell
+///     coefficient, in the package-wide
+///     `psi(theta) = theta * psi_a + psi_b` order. This is the
+///     order `var_est` uses, and it is the OPPOSITE of the
+///     `psi_a + theta * psi_b` order the long-format
+///     `psi_matrix` uses -- see the section comment above;
+///   - `M_inv` = `[[1 / mean(psi_a)]]`, which is `[[-1.0]]` here
+///     (only `M_inv[0, 0]^2` enters the variance).
+///
+/// `n_obs` is the cell's `n_wide` -- the child's own wide-format
+/// row count, the same `n` its `var_est` divided by -- and
+/// `n_params` is 1: ONE scalar estimand (this cell's ATT), NOT
+/// `n_groups` and NOT the number of visited cells. The plausible
+/// misreading `k = n_groups` would give `sqrt(n / (n - k))` for
+/// HC1 and is ruled out in the test.
+///
+/// `coef_at(g, t)` IS the child's stored `coef`, the same number
+/// `var_est` solved for, so on the IID path
+///
+///     sandwich_se_at(g, t, HC0) == se_at(g, t)
+///
+/// holds BIT-IDENTICALLY (measured difference `0.0`; see the
+/// section comment and `expand_v100_didcs_test.mbt`).
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= group_idx < n_groups`, `0 <= period_idx < n_periods`,
+/// the cell was actually estimated, `mean(psi_a) != 0`, and
+/// `n_obs > n_params` for HC1 / HC2 / HC3.
+pub fn DoubleMLDIDCS::sandwich_se_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int,
+  period_idx : Int,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    let m_inv = self.m_inv_1x1_at(group_idx, period_idx)
+    let psi_a = self.cell_psi_a_row_at(group_idx, period_idx)
+    let psi_b = self.cell_psi_b_row_at(group_idx, period_idx)
+    require(psi_a.length() == psi_b.length())
+    let coef = self.coef_matrix[self.cell_flat_at(group_idx, period_idx)]
+    let psi = psi_at(coef, psi_a, psi_b)
+    let n_obs = psi_a.length()
+    let variance_val = sandwich_variance(kind, psi_a, psi, m_inv, n_obs, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: cluster-robust sandwich standard error for the
+/// `(g, t)` cell of a fitted CS-DID (Arellano 1987,
+/// Cameron-Gelbach-Miller 2011). Routes through
+/// `cluster_sandwich_variance` with the SAME `psi_a` / `psi` /
+/// `M_inv` inputs as the IID `sandwich_se_at` path, and the same
+/// per-cell `n_wide` row set.
+///
+/// `DoubleMLDIDCSData` has no `cluster_vars` field (the CS-DID
+/// estimator itself fits no cluster path), so the caller must
+/// supply `cluster_ids` explicitly. The ids are PER CELL AND PER
+/// CELL ROW, not per long-format panel row:
+/// `cluster_ids.length()` must equal this cell's
+/// `cell_psi_a[g * n_periods + t].length()`, i.e. the child's
+/// `n_wide`. For a `(g, t)` cell that is one entry per unit
+/// observed in both the pre and the eval period, so the panel
+/// `data.id` (length `n_units * n_periods`, long format) is the
+/// WRONG array to pass; slice the cell's rows first, or build the
+/// ids from the same `(g in {G, C}, t in {pre, eval})` rule the
+/// cell loop uses. Cluster indices are 0-based and
+/// `1 + max(cluster_ids)` is the number of clusters. For a DID
+/// the natural grouping is the panel unit.
+///
+/// NOT equal to the IID HC0 once clusters hold more than one row,
+/// and the reason is the MEAT, not the denominator:
+/// `cluster_sandwich_variance` sums `S_c = (sum_{i in c}
+/// psi[i])^2` per cluster, so the within-cluster cross terms
+/// enter, and each cluster carries a per-cluster jackknife factor
+/// `n_c / (n_c - 1)` (clipped to 1 for a singleton cluster). The
+/// divisor is the same `n_wide^2` as HC0, and all rows of the
+/// cell are the same rows. With ALL-SINGLETON clusters the meat
+/// degenerates to `sum_i psi[i]^2`, the jackknife factors are all
+/// 1, and the formula collapses to `sandwich_se_at(g, t, HC0)`
+/// exactly -- which is the property `expand_v100_didcs_test.mbt`
+/// pins.
+///
+/// This is the ROW-level cluster variance. A clustered FIT's
+/// `se_at` in this package is divided by `n_units` (panel units),
+/// not by the row count, so `cluster_sandwich_se_at` is not a
+/// drop-in for a cluster-robust `se_at`; the DIDCS fit path takes
+/// no clustering at all, so there is no clustered `se_at` to
+/// disagree with here.
+///
+/// Preconditions: `self.fitted`, valid indices, the cell was
+/// actually estimated, `mean(psi_a) != 0`,
+/// `cluster_ids.length() == n_wide`, all `cluster_ids[i] >= 0`.
+pub fn DoubleMLDIDCS::cluster_sandwich_se_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int,
+  period_idx : Int,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    let m_inv = self.m_inv_1x1_at(group_idx, period_idx)
+    let psi_a = self.cell_psi_a_row_at(group_idx, period_idx)
+    let psi_b = self.cell_psi_b_row_at(group_idx, period_idx)
+    require(psi_a.length() == psi_b.length())
+    let n_wide = psi_a.length()
+    require(cluster_ids.length() == n_wide)
+    let coef = self.coef_matrix[self.cell_flat_at(group_idx, period_idx)]
+    let psi = psi_at(coef, psi_a, psi_b)
+    let variance_val = cluster_sandwich_variance(
+      psi_a, psi, m_inv, cluster_ids, 1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: returns `coef_at(group_idx, period_idx)` UNCHANGED
+/// -- a documented no-op, not a bias correction. Identical in
+/// reasoning to `DoubleMLAPO::bias_corrected_coef` (v0.91.0),
+/// `DoubleMLAPOS::bias_corrected_coef_at` (v0.100.0) and
+/// `DoubleMLQTE::bias_corrected_coef_at`; see
+/// `DoubleMLPQ::bias_corrected_coef` and `bias_corrected_theta`
+/// in `sandwich.mbt` for the full argument.
+///
+/// `coef_at(g, t)` is the child's root of the DML moment
+/// `f(theta) = E[theta * psi_a + psi_b]` (`var_est.mbt`), so
+/// `mean(f(coef_at(g, t)))` is identically zero: the estimating
+/// function is orthogonal by construction, and that orthogonality
+/// IS what makes the estimator consistent. Nothing computable
+/// from the fitted scores is a bias estimate for this class of
+/// estimator, so this accessor reports the uncorrected point
+/// estimate rather than a number that merely looks like a
+/// correction.
+///
+/// The pre-v0.91.0 form `coef + mean(psi_b - coef * psi_a)` is
+/// that vector at `-coef`, NOT at `coef`; since
+/// `coef = -mean_b / mean_a` its mean is
+/// `mean_b - coef * mean_a = -2 * coef * mean_a`, so the
+/// accessor returned `coef * (1 - 2 * mean(psi_a))` -- exactly
+/// `3 * coef` when `mean(psi_a) = -1`, which is exactly this
+/// score's case for every cell. That is not a bias estimate.
+///
+/// Unlike `sandwich_se_at`, an unestimated cell does NOT abort
+/// here: the answer is the identity on `coef_at`, and `coef_at`
+/// reports `0.0` for such a cell, so `0.0` is the consistent
+/// answer rather than a misleading one.
+///
+/// The method is per cell, matching the rest of the v0.100.0
+/// DIDCS API.
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= group_idx < n_groups`, `0 <= period_idx < n_periods`.
+pub fn DoubleMLDIDCS::bias_corrected_coef_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int,
+  period_idx : Int,
+) -> Double {
+  self.coef_matrix[self.cell_flat_at(group_idx, period_idx)]
+}
+
 ///|
 /// Run the CS-DID estimation: for every `(g, t_eval)` triple with
 /// `t_eval > g`, restrict the panel to the never-treated cohort
@@ -416,6 +899,15 @@ pub fn DoubleMLDIDCS::fit(
     // the per-cell IRM-style sensitivity helper.
     let residuals_values : Array[Array[Double]] = []
     let mut residuals_values_acc = residuals_values
+    // v0.100.0+: per-cell WIDE-format `psi_a` / `psi_b` -- the
+    // child's own rows, i.e. the arrays its `var_est` call
+    // summed. Parallel to `psi_values_acc`, and visited in the same
+    // order, so the reassembly pass below can index all four
+    // accumulators with the single `coef_idx` cursor.
+    let cell_psi_a_values : Array[Array[Double]] = []
+    let mut cell_psi_a_values_acc = cell_psi_a_values
+    let cell_psi_b_values : Array[Array[Double]] = []
+    let mut cell_psi_b_values_acc = cell_psi_b_values
     for gi = 0; gi < self.n_groups; gi = gi + 1 {
       let g_value = self.data.groups[gi]
       // Find the index of the period equal to g_value (the
@@ -561,6 +1053,23 @@ pub fn DoubleMLDIDCS::fit(
         psi_values_acc = psi_values_acc + [psi_long]
         psi_a_values_acc = psi_a_values_acc + [psi_a_long]
         residuals_values_acc = residuals_values_acc + [residuals_long]
+        // v0.100.0+: persist the child's OWN wide-format IF rows
+        // for the sandwich API. Copied rather than aliased so the
+        // persisted state cannot be mutated through the discarded
+        // child, and length-checked here rather than at read time
+        // so a future change to the child's IF layout fails at the
+        // point of the change instead of silently mis-slicing a
+        // sandwich SE much later.
+        require(inner_psi_a.length() == inner_psi_b.length())
+        require(inner_psi_a.length() >= 1)
+        let wide_a : Array[Double] = Array::make(inner_psi_a.length(), 0.0)
+        let wide_b : Array[Double] = Array::make(inner_psi_b.length(), 0.0)
+        for k_wide2 = 0; k_wide2 < inner_psi_a.length(); k_wide2 = k_wide2 + 1 {
+          wide_a[k_wide2] = inner_psi_a[k_wide2]
+          wide_b[k_wide2] = inner_psi_b[k_wide2]
+        }
+        cell_psi_a_values_acc = cell_psi_a_values_acc + [wide_a]
+        cell_psi_b_values_acc = cell_psi_b_values_acc + [wide_b]
       }
     }
     // Reassemble the row-major matrix. For missing cells (g, t) with
@@ -599,6 +1108,19 @@ pub fn DoubleMLDIDCS::fit(
       self.n_groups * self.n_periods * n,
       0.0,
     )
+    // v0.100.0+: per-cell WIDE-format `psi_a` / `psi_b` rows for
+    // the sandwich API, row-major by flat cell index. Cells that
+    // were not visited keep the EMPTY array, which the sandwich
+    // accessors treat as "no estimate here" and refuse with a
+    // clear message.
+    let final_cell_psi_a : Array[Array[Double]] = Array::make(
+      self.n_groups * self.n_periods,
+      [],
+    )
+    let final_cell_psi_b : Array[Array[Double]] = Array::make(
+      self.n_groups * self.n_periods,
+      [],
+    )
     let mut coef_idx = 0
     for gi = 0; gi < self.n_groups; gi = gi + 1 {
       let g_value = self.data.groups[gi]
@@ -634,6 +1156,12 @@ pub fn DoubleMLDIDCS::fit(
           final_psi_a[flat * n + k] = psi_a_k[k]
           final_res[flat * n + k] = res_k[k]
         }
+        // v0.100.0+: same placement for the wide-format IF rows.
+        // Whole-array assignment: the per-cell rows are shared by
+        // reference with `cell_psi_a_values_acc` and are never
+        // mutated in place afterwards.
+        final_cell_psi_a[flat] = cell_psi_a_values_acc[coef_idx]
+        final_cell_psi_b[flat] = cell_psi_b_values_acc[coef_idx]
         coef_idx = coef_idx + 1
       }
     }
@@ -644,6 +1172,14 @@ pub fn DoubleMLDIDCS::fit(
       psi_matrix: final_psi,
       psi_a_matrix: final_psi_a,
       residuals_matrix: final_res,
+      // v0.100.0+: persisted per-cell WIDE-format IF rows. Set
+      // here (not left to the `new()` sentinel) on EVERY `fit`,
+      // so the state is correct whether or not memoize is on and
+      // whether or not this call re-used cached nuisance
+      // predictions. See the section comment above
+      // `m_inv_1x1_at` for the cache-hit argument.
+      cell_psi_a: final_cell_psi_a,
+      cell_psi_b: final_cell_psi_b,
       fitted: true,
       boot_t_stat: [],
       boot_method: "",

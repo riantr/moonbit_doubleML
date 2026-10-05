@@ -9,6 +9,134 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.100.0] -- the last three multi-estimand estimators get the sandwich API
+
+Sandwich coverage goes **16 / 22 -> 19 / 22**. The three estimators
+left were exactly the three that report *one estimate per cell*
+rather than a single scalar: `DoubleMLAPOS` (one effect per
+requested treatment level), `DoubleMLDIDCS` (one ATT per
+`(group, period)` cell) and `DoubleMLDIDMulti` (one ATT per
+`(g, t_pre, t_eval)` combination).
+
+The standing note on these three was "per-cell scores not
+recoverable post-fit". That was half right, and the wrong half is
+what made this a real task rather than a wrapper: the scores
+**already existed** and were simply not exposed. `DoubleMLAPO`
+persisted its per-observation `psi_a` / `psi_b` for the multiplier
+bootstrap from v0.61.0 on, and the parent threw them away at
+`apo.mbt` `c[j] = z.coef()`. `DoubleMLDIDMulti` persists nothing of
+its own at all, because it is a thin wrapper around an inner
+`DoubleMLDIDCS` that already holds the arrays.
+
+### Added
+
+- `DoubleMLAPOS::sandwich_se_at(treatment_index, kind)` /
+  `cluster_sandwich_se_at(treatment_index, cluster_ids)` /
+  `bias_corrected_coef_at(treatment_index)`. A new
+  `psi_b_flat` field carries each level's row, row-major over
+  `(treatment_index, n_obs)`; `psi_a` is the constant `-1` and is
+  regenerated rather than stored. It is cached as a THIRD
+  `FitCache` slot so a memoize cache hit restores it -- the parent
+  cache previously held only `(coefs, ses)`.
+- `DoubleMLDIDCS::sandwich_se_at(group_idx, period_idx, kind)` /
+  `cluster_sandwich_se_at(...)` / `bias_corrected_coef_at(...)`,
+  plus `cell_psi_a` / `cell_psi_b` per-cell fields. Indexed like
+  the existing `coef_at` / `se_at`.
+- `DoubleMLDIDMulti::sandwich_se_at_idx(idx, kind)` /
+  `cluster_sandwich_se_at_idx(idx, cluster_ids)` /
+  `bias_corrected_coef_at_idx(idx)`, following the file's existing
+  `coef_at_idx` / `se_at_idx` convention. These add no state of
+  their own: they map `idx` to the inner `(gi, pi)` the same way
+  `se_at_idx` already does and delegate.
+
+### The invariant, measured
+
+For all three, `sandwich_se*(HC0)` reproduces the estimator's own
+reported SE **bit-for-bit**. These are the measured numbers, printed
+by the tests so the claim is checkable from the log rather than taken
+on faith:
+
+```
+APOS100     level=0            hc0=0.016428719403717526  ses=0.016428719403717526  abs_diff=0
+APOS100     level=1            hc0=0.016797717953668436  ses=0.016797717953668436  abs_diff=0
+DIDCS100    cell=(0,2)         hc0=0.004859889897037379  se_at=0.004859889897037379  abs_diff=0
+DIDCS100    cell=(0,3)         hc0=0.0037146443681798516 se_at=0.0037146443681798516 abs_diff=0
+DIDCS100    cell=(1,3)         hc0=0.004824516832386515  se_at=0.004824516832386515  abs_diff=0
+DIDMULTI100 idx=1 inner=(0,2)  hc0=0.004859889897037379  se_at_idx=0.004859889897037379 abs_diff=0
+DIDMULTI100 idx=2 inner=(0,3)  hc0=0.0037146443681798516 se_at_idx=0.0037146443681798516 abs_diff=0
+DIDMULTI100 idx=5 inner=(1,3)  hc0=0.004824516832386515  se_at_idx=0.004824516832386515 abs_diff=0
+```
+
+Asserted with `==`, not a tolerance.
+
+Getting there took three wrong turns that are worth recording,
+because each one produced a *plausible* number rather than an
+error:
+
+1. **`psi_matrix` is the wrong array.** `DoubleMLDIDCS` has
+   persisted `psi_matrix` / `psi_a_matrix` since v0.15.0, and they
+   are the obvious thing to reach for. They are the score the
+   *multiplier bootstrap* uses, which is not the score the SE is
+   derived from; its mean is not `E[psi_a]` and its root is not
+   `theta_hat`. The tests pin this by measuring both orderings
+   (correct-order psi mean `-3.55e-17`, reversed `-4.92e-03` --
+   different by nine orders of magnitude). The new
+   `cell_psi_a` / `cell_psi_b` store the child's rows directly.
+2. **The per-cell denominator is the cell's own `n`, not the panel
+   `n`, and not the number of rows with a nonzero `psi_a`.** The
+   long-format panel is 800 rows, the sub-panel the child actually
+   fits is 200, and the child's variance uses 100. Using the panel
+   `n` gave an SE 16x too small; using the nonzero count was off by
+   0.7%.
+3. **Pairing a mean over one row set with a variance over another
+   is how the 0.7% was "explained".** Persisting `sub_n` and
+   `mean(inner_psi_a)` as two scalars bakes the bug in, because they
+   are taken over different row sets. The correct `M_inv` is
+   `1 / mean(psi_a)` over the child's own wide rows, and it is
+   exactly `-1.0`, which is why `M_inv^2 == 1.0` exactly and HC0
+   lands on the same IEEE operation sequence as `var_est`.
+
+`DoubleMLAPOS` is the easy case by comparison: its `psi_a` is the
+constant `-1`, so `M_inv = -1` and `M_inv^2 = 1` needs no
+reconstruction at all.
+
+### Removed -- four tests that could not fail
+
+`expand_v100_didcs_test.mbt` shipped four `panic_*` tests, one per
+guard. They were deleted before this version was tagged.
+
+`abort()` inside a MoonBit test does **not** raise a failed test. It
+kills the whole test executable:
+
+```
+Error: failed to run test for target Native
+The test executable exited with exit code: 0xc0000409
+```
+
+and no `Total tests:` summary is printed at all. Measured directly:
+a bare `abort()` in a test body does the same. So "assert this call
+aborts" is **unexpressible** -- if the guard fires the run dies, and
+if it does not fire the test passes having proved nothing. A test of
+that shape is worse than no test, because it reads as coverage.
+
+The guards are real: `sandwich_se_at(3, 0, ...)` with
+`n_groups() == 3` was observed aborting with
+`precondition failed at did_cs.mbt:568`. What is assertable is the
+state those guards read, so that is what the replacement test
+checks -- a rejected cell's row is empty, `se_at` reports `0.0` for
+it rather than a real-looking standard error, and a live cell
+accepts exactly one cluster id per cell row. This is a property of
+the harness, not of these three estimators, and it applies to any
+future guard test in this repository.
+
+### Test count
+
+778 / 778 on native, wasm and js; 784 / 784 on wasm-gc. Delta +23
+from v0.99.0's 755: +8 APOS, +12 DIDCS (net of the four deleted),
++6 DIDMulti, and -3 for a temporary probe file that was not
+committed. `moon check --target all` clean. Python cross-checks
+23 / 23 PASS.
+
 ## [0.99.0] -- the memoization tests could not fail
 
 `enable_memoize()` shipped in v0.80.0 and was extended to all 22

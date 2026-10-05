@@ -999,6 +999,28 @@ pub struct DoubleMLAPOS {
   // identical inputs skips the entire per-level loop.
   memoize_enabled : Bool
   fit_cache : FitCache
+  // v0.100.0+: per-level `psi_b`, flattened row-major as
+  // `psi_b_flat[treatment_index * n_obs + i]`. This is the EXACT
+  // array the child `DoubleMLAPO` already persisted as its own
+  // `psi_b` (see the `psi_b: pb` writes in `DoubleMLAPO::fit` /
+  // `DoubleMLAPO::fit_cluster`); the per-level loop used to read
+  // only `z.coef()` / `z.se()` and drop it on the floor, which is
+  // what left `DoubleMLAPOS` out of the 17-estimator sandwich
+  // family. Empty until `fit` runs.
+  //
+  // The sibling `psi_a` is deliberately NOT stored: APO's `psi_a`
+  // is the CONSTANT `-1` for every observation (the
+  // potential-outcome score has no treatment-side variation), so
+  // `Array::make(n_obs, -1.0)` reproduces the child's `pa` bit for
+  // bit at zero memory cost. `m_inv_1x1_at` reads it back and
+  // requires `mean(psi_a) != 0`, the same guard
+  // `DoubleMLAPO::sandwich_se` uses.
+  //
+  // Carried through the memoize path as
+  // `fit_cache.predictions[2]`, so a cache hit restores the IF
+  // components WITHOUT re-fitting the children (re-fitting would
+  // defeat the cache, which is the whole point of the layer).
+  psi_b_flat : Array[Double]
 } derive(Debug)
 
 ///|
@@ -1079,6 +1101,8 @@ pub fn DoubleMLAPOS::new(
     // `.enable_memoize()` for caching.
     memoize_enabled: false,
     fit_cache: FitCache::empty(),
+    // v0.100.0+: per-level IF components; populated by `fit`.
+    psi_b_flat: [],
   }
 }
 
@@ -1162,17 +1186,35 @@ pub fn DoubleMLAPOS::fit(
         cluster_hash,
         "apos",
       )
-    let (c, s) = if cache_hit {
-      // Cache hit: pull `(coefs, ses)` straight from the
+    let (c, s, pb_flat) = if cache_hit {
+      // Cache hit: pull `(coefs, ses, psi_b_flat)` straight from the
       // stored predictions. The sentinel `fold_ids` length
       // (1 in the empty-cache / 1 + n_obs in the cached
       // variant) does not gate the parent's hit path -- the
-      // parent's prediction layout is `[coefs, ses]`.
+      // parent's prediction layout is `[coefs, ses, psi_b_flat]`.
+      //
+      // v0.100.0: `psi_b_flat` is the THIRD slot. It has to be,
+      // because a hit skips the child loop entirely -- there is no
+      // live child left to read `psi_b` from, so without the third
+      // slot every `sandwich_se_at` call on a memoized APOS would
+      // see `psi_b_flat == []` and abort on the length guard. The
+      // `require`s here ABORT rather than degrade to a re-fit: a
+      // cache that cannot serve the IF components is not a cache,
+      // and silently re-fitting is the behaviour the layer exists
+      // to avoid.
       let preds = self.fit_cache.predictions
-      (preds[0], preds[1])
+      require(preds.length() == 3)
+      require(preds[2].length() == n_levels * n_obs)
+      (preds[0], preds[1], preds[2])
     } else {
       let c = Array::make(n_levels, 0.0)
       let s = Array::make(n_levels, 0.0)
+      // v0.100.0: per-level `psi_b` rows, row-major. The child
+      // already computed and persisted this array for its own
+      // multiplier bootstrap (`DoubleMLAPO::bootstrap` reads
+      // `self.psi_b`), so keeping it costs a copy and NO extra
+      // cross-fit, no re-training and no recomputation.
+      let pb_flat = Array::make(n_levels * n_obs, 0.0)
       for j = 0; j < n_levels; j = j + 1 {
         // v0.49.0: the parent APOS fits each child `DoubleMLAPO` with
         // `n_rep = self.n_rep` so the child draws its own fold
@@ -1201,8 +1243,19 @@ pub fn DoubleMLAPOS::fit(
         let z = child_memo.fit()
         c[j] = z.coef()
         s[j] = z.se()
+        // v0.100.0: keep the child's `psi_b` row. `z.psi_a` is the
+        // constant `-1` (same value at every index) and is NOT
+        // copied -- `Array::make(n_obs, -1.0)` regenerates it
+        // exactly. Length is checked rather than assumed so a
+        // future child that changes its IF layout fails here,
+        // loudly, instead of silently mis-slicing the row.
+        require(z.psi_b.length() == n_obs)
+        let offset = j * n_obs
+        for i = 0; i < n_obs; i = i + 1 {
+          pb_flat[offset + i] = z.psi_b[i]
+        }
       }
-      (c, s)
+      (c, s, pb_flat)
     }
     // v0.84.0+: writeback when memoize is on and the cache
     // missed. The parent-side sentinel is a length-`n_obs`
@@ -1213,7 +1266,7 @@ pub fn DoubleMLAPOS::fit(
     let next_cache = if memoize && !cache_hit {
       FitCache::from_fit(
         Array::make(n_obs, 0),
-        [c, s],
+        [c, s, pb_flat],
         self.seed,
         self.n_folds,
         self.n_rep,
@@ -1244,6 +1297,11 @@ pub fn DoubleMLAPOS::fit(
       boot_seed: 0,
       memoize_enabled: self.memoize_enabled,
       fit_cache: next_cache,
+      // v0.100.0: per-level IF components, bound from EITHER the
+      // per-level loop (miss) or the third cache slot (hit), so
+      // there is exactly one binding and no second restore path
+      // that can drift.
+      psi_b_flat: pb_flat,
     }
   } catch {
     PreconditionError::Violated(loc) =>
@@ -1334,6 +1392,315 @@ pub fn DoubleMLAPOS::treatment_levels(self : DoubleMLAPOS) -> Array[Double] {
 /// v0.49.0: number of requested treatment levels.
 pub fn DoubleMLAPOS::n_treatment_levels(self : DoubleMLAPOS) -> Int {
   self.treatment_levels.length()
+}
+
+// ---------------------------------------------------------------------------
+// v0.100.0: per-level sandwich API (the `sandwich_se_at` triple)
+// ---------------------------------------------------------------------------
+//
+// WHY APOS IS PER LEVEL, AND WHY IT IS NOT LIKE THE DID FAMILY
+// =============================================================
+// `DoubleMLAPOS` fits one independent child `DoubleMLAPO` per
+// requested treatment level and keeps `coefs[j]` / `ses[j]`. Each
+// child is a separate scalar Z-estimator with its own cross-fit,
+// its own score and its own root, so each level is a 1x1 sandwich
+// problem and the methods are PER LEVEL, following
+// `DoubleMLQTE::sandwich_se_at` (v0.95.0) rather than the joint
+// `sandwich_se` of the DID family (which has a multi-column IF
+// matrix and a real `M_inv` to invert).
+//
+// What APOS does NOT do, unlike the DID family, is re-derive the
+// score: the child already persists `psi_a` / `psi_b` for its own
+// multiplier bootstrap, and `DoubleMLAPO::sandwich_se` (v0.89.0)
+// already routes those exact arrays through the shared
+// `sandwich_variance` dispatch. This file is the per-level
+// transcription of that, over the child's own arrays.
+//
+// THE STRUCTURAL FACT: `M_inv` IS -1 HERE
+// --------------------------------------
+// APO's score has no treatment-side variation, so the child's
+// `psi_a[i]` is the CONSTANT `-1` at every observation
+// (`pa = Array::make(n, -1.0)` in `DoubleMLAPO::fit`), giving
+//
+//     mean(psi_a) = -1   and   M_inv = [[1 / mean(psi_a)]] = [[-1.0]]
+//
+// Only `M_inv[0,0]^2` enters the variance, so the sign is
+// irrelevant and `M_inv[0,0]^2 == 1` exactly. This is why
+// APOS -- unlike PQ or QTE, whose Jacobians are data-dependent --
+// needs no `m_inv` guard beyond `mean(psi_a) != 0`: there is no
+// fitted derivative that can be zero or sub-normal.
+//
+// THE PAYOFF INVARIANT
+// --------------------
+//
+//     sandwich_se_at(j, HC0) == ses[j]
+//
+// and it is BIT-IDENTICAL, not merely equal to a tolerance.
+// `var_est` (var_est.mbt) computes
+//
+//     psi[i]  = coef * psi_a[i] + psi_b[i]     (same order as `psi_at`)
+//     gamma   = Kahan sum of psi[i]^2
+//     sigma2  = (gamma / n) / (mean(psi_a)^2 * n)
+//
+// while `sandwich_variance_hc0` computes
+//
+//     acc     = Kahan sum of psi[i]^2
+//     var     = M_inv[0,0]^2 * acc / n / n
+//
+// Same Kahan loop, same index order, same products; `coef` is the
+// same number (it IS the child's stored `coef`, and
+// `sandwich_se_at` reads `coefs[j]`); and `mean(psi_a)^2 == 1.0`
+// exactly, so the multiply by `1.0` is the IEEE identity and the
+// two sides run the identical sequence of operations.
+// `expand_v100_apos_test.mbt` pins exact equality (`==`).
+//
+// The invariant holds for any `n_rep` on the IID path: the child
+// averages its per-rep nuisances and then calls `var_est` ONCE on
+// the averaged `pa` / `pb`, so the persisted `psi_b` and the
+// shipped `se` always describe the same score.
+//
+// IT DOES NOT HOLD ON A CLUSTERED FIT. With non-empty
+// `data.cluster_vars` the child routes to
+// `DoubleMLAPO::fit_cluster`, where `se` is the unit-level
+// cluster-robust `sqrt(var_unit / n_units)` from
+// `cluster_causal_param_and_se` and `coef` is the fold-weighted
+// cluster score ratio -- a different quantity from the row-level
+// IID variance, and with a `n_units` (not `n_obs`) denominator.
+// Use `cluster_sandwich_se_at(j, self.data.cluster_vars)` there;
+// it agrees with the shipped cluster SE only up to that
+// denominator and the jackknife correction.
+
+///|
+/// Treatment level `treatment_index`'s per-observation `psi_b`,
+/// extracted as the slice
+/// `psi_b_flat[treatment_index * n_obs .. (treatment_index + 1) * n_obs]`
+/// of a fresh array. The `.. self`-style struct-literal methods
+/// (`bootstrap`, `enable_memoize`, ...) carry the field for free.
+fn DoubleMLAPOS::psi_b_row_at(
+  self : DoubleMLAPOS,
+  treatment_index : Int,
+) -> Array[Double] {
+  try {
+    let n_levels = self.treatment_levels.length()
+    require(n_levels >= 1)
+    require(treatment_index >= 0)
+    require(treatment_index < n_levels)
+    require(self.coefs.length() == n_levels)
+    require(self.ses.length() == n_levels)
+    let n_obs = self.data.n_obs()
+    require(n_obs >= 1)
+    require(self.psi_b_flat.length() == n_levels * n_obs)
+    let row : Array[Double] = Array::make(n_obs, 0.0)
+    let offset = treatment_index * n_obs
+    for i = 0; i < n_obs; i = i + 1 {
+      row[i] = self.psi_b_flat[offset + i]
+    }
+    row
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Treatment level `treatment_index`'s `psi_a` (the constant `-1`
+/// row) -- see the section comment above for why it is regenerated
+/// rather than persisted.
+fn DoubleMLAPOS::psi_a_row_at(
+  self : DoubleMLAPOS,
+  treatment_index : Int,
+) -> Array[Double] {
+  try {
+    let n_levels = self.treatment_levels.length()
+    require(n_levels >= 1)
+    require(treatment_index >= 0)
+    require(treatment_index < n_levels)
+    let n_obs = self.data.n_obs()
+    require(n_obs >= 1)
+    require(self.psi_b_flat.length() == n_levels * n_obs)
+    Array::make(n_obs, -1.0)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The Jacobian inverse `M_inv` (1x1) for treatment level
+/// `treatment_index`: `[[1 / mean(psi_a)]]`, which for APO is
+/// `[[-1.0]]` because `psi_a` is the constant `-1` -- see the
+/// section comment above.
+///
+/// The `mean(psi_a) != 0` guard is kept (it is the one
+/// `DoubleMLAPO::sandwich_se` uses) rather than dropped as
+/// vacuously true: it is the assertion that this level's IF
+/// components are present and well-formed, and it is the same
+/// shape a reader of the fifteen other estimators expects.
+fn DoubleMLAPOS::m_inv_1x1_at(
+  self : DoubleMLAPOS,
+  treatment_index : Int,
+) -> Matrix {
+  try {
+    let psi_a = self.psi_a_row_at(treatment_index)
+    let mean_a = mean(psi_a)
+    require(mean_a.abs() > 0.0)
+    Matrix::from_array([1.0 / mean_a], 1, 1)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: heteroskedasticity-consistent (Huber-White) sandwich
+/// standard error for treatment level `treatment_index` of a
+/// fitted APOS. Routes through the shared `sandwich_variance`
+/// dispatch, so the HC0 / HC1 / HC2 / HC3 relationships are the
+/// package-wide ones (see the file header in `sandwich.mbt` and
+/// the identities pinned in `expand_v088_test.mbt`).
+///
+/// The three inputs are the ones the child `DoubleMLAPO` already
+/// computed and persisted for its own multiplier bootstrap:
+///   - `psi_a` = the regenerated constant `-1` row;
+///   - `psi`   = `psi_at(coefs[treatment_index], psi_a, psi_b)` --
+///     the per-observation influence function at the fitted
+///     coefficient, with `psi_b` the IPW-centred potential-outcome
+///     score `g[i] + treated[i] * (y[i] - g[i]) / m[i]`. Uses the
+///     package-wide `psi(theta) = theta * psi_a + psi_b` order
+///     (`sandwich.mbt` is the authority, not the
+///     `psi_a + theta * psi_b` phrasing some DID-family comments
+///     use);
+///   - `M_inv` = `[[1 / mean(psi_a)]]` = `[[-1.0]]`; only
+///     `M_inv[0, 0]^2` enters the variance.
+///
+/// `n_obs` is the full sample -- the same `n_obs` the child divides
+/// by in `var_est` -- and `n_params` is 1: ONE scalar estimand per
+/// treatment level, NOT `treatment_levels.length()`. The plausible
+/// misreading `k = n_levels` would give `sqrt(n / (n - k))` for
+/// HC1 and is ruled out in the test.
+///
+/// On the IID path `sandwich_se_at(j, HC0) == ses[j]` EXACTLY (see
+/// the section comment); on a CLUSTERED fit `ses[j]` is the
+/// unit-level cluster-robust SE and the invariant does not hold --
+/// use `cluster_sandwich_se_at(j, self.data.cluster_vars)`.
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= treatment_index < treatment_levels.length()`,
+/// `mean(psi_a) != 0`.
+pub fn DoubleMLAPOS::sandwich_se_at(
+  self : DoubleMLAPOS,
+  treatment_index : Int,
+  kind : SandwichKind,
+) -> Double {
+  try {
+    require(self.fitted)
+    let m_inv = self.m_inv_1x1_at(treatment_index)
+    let n_obs = self.data.n_obs()
+    let psi_b = self.psi_b_row_at(treatment_index)
+    let psi_a = self.psi_a_row_at(treatment_index)
+    let psi = psi_at(self.coefs[treatment_index], psi_a, psi_b)
+    let variance_val = sandwich_variance(kind, psi_a, psi, m_inv, n_obs, 1)
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: cluster-robust sandwich standard error for treatment
+/// level `treatment_index` of a fitted APOS (Arellano 1987,
+/// Cameron-Gelbach-Miller 2011). Routes through
+/// `cluster_sandwich_variance` with the SAME `psi_a` / `psi` /
+/// `M_inv` inputs as the IID `sandwich_se_at` path.
+///
+/// `DoubleMLData` carries `cluster_vars`, so a clustered fit can
+/// pass `self.data.cluster_vars` directly; on the IID constructor
+/// path (`cluster_vars = []`) the caller must supply the grouping
+/// variable explicitly -- any clustering the application has:
+/// region, site, panel unit. With all-singleton clusters the meat
+/// degenerates to `sum_i psi[i]^2` and the formula collapses to
+/// `sandwich_se_at(j, HC0)`, hence to `ses[j]` on an IID fit.
+///
+/// NOT equal to the IID HC0 with real clusters, on two counts:
+/// the within-cluster cross terms enter the meat, and the
+/// denominator is `n_obs` (observations) here while a clustered
+/// FIT's `ses[j]` is divided by `n_units`. This is the same
+/// row-level-vs-unit-level distinction QTE documents.
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= treatment_index < treatment_levels.length()`,
+/// `mean(psi_a) != 0`,
+/// `cluster_ids.length() == n_obs`.
+pub fn DoubleMLAPOS::cluster_sandwich_se_at(
+  self : DoubleMLAPOS,
+  treatment_index : Int,
+  cluster_ids : Array[Int],
+) -> Double {
+  try {
+    require(self.fitted)
+    let m_inv = self.m_inv_1x1_at(treatment_index)
+    let n_obs = self.data.n_obs()
+    require(cluster_ids.length() == n_obs)
+    let psi_b = self.psi_b_row_at(treatment_index)
+    let psi_a = self.psi_a_row_at(treatment_index)
+    let psi = psi_at(self.coefs[treatment_index], psi_a, psi_b)
+    let variance_val = cluster_sandwich_variance(
+      psi_a, psi, m_inv, cluster_ids, 1,
+    )
+    require(variance_val >= 0.0)
+    variance_val.sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.100.0+: returns `coefs[treatment_index]` UNCHANGED -- a
+/// documented no-op, not a bias correction. Identical in reasoning
+/// to `DoubleMLAPO::bias_corrected_coef` (v0.91.0, the sibling
+/// estimator) and to `DoubleMLQTE::bias_corrected_coef_at`;
+/// see `DoubleMLPQ::bias_corrected_coef` and
+/// `bias_corrected_theta` in `sandwich.mbt` for the full argument.
+///
+/// `coefs[j]` is the root of the DML moment
+/// `f(theta) = E[theta * psi_a + psi_b]` (`var_est.mbt`), so
+/// `mean(f(coefs[j]))` is identically zero: the estimating function
+/// is orthogonal by construction, and that orthogonality IS what
+/// makes the estimator consistent. Nothing computable from the
+/// fitted scores is a bias estimate for this class of estimator, so
+/// this accessor reports the uncorrected point estimate rather than
+/// a number that merely looks like a correction.
+///
+/// The pre-v0.91.0 form `coef + mean(psi_b - coef * psi_a)` is
+/// that vector at `-coef`, NOT at `coef`; since
+/// `coef = -mean_b / mean_a` its mean is
+/// `mean_b - coef * mean_a = -2 * coef * mean_a`, so the accessor
+/// returned `coef * (1 - 2 * mean(psi_a))` -- exactly `3 * coef`
+/// when `mean(psi_a) = -1` (APO's case). That is not a bias
+/// estimate.
+///
+/// The method is per level, matching the rest of the v0.100.0
+/// APOS API.
+///
+/// Preconditions: `self.fitted`,
+/// `0 <= treatment_index < coefs.length()`.
+pub fn DoubleMLAPOS::bias_corrected_coef_at(
+  self : DoubleMLAPOS,
+  treatment_index : Int,
+) -> Double {
+  try {
+    require(self.fitted)
+    require(self.coefs.length() > 0)
+    require(treatment_index >= 0)
+    require(treatment_index < self.coefs.length())
+    self.coefs[treatment_index]
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
