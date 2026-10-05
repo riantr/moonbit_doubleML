@@ -9,6 +9,63 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.93.0] -- `DoubleMLLPQ` sandwich API (third skip, now cleared)
+
+`DoubleMLLPQ` was skipped from the sandwich rollout in v0.86.0 and
+v0.90.0 with the same recorded reason: its Jacobian `deriv` is a
+`fit()` local and is never persisted, and its stored `psi` is the
+centered IPW score with no `psi_a + coef * psi_b` split. Both now
+resolved.
+
+### Added
+
+- `DoubleMLLPQ` persists `psi_a` (length `n_obs`, every entry equal
+  to `d/dtheta mean(psi_ipw)` at `coef`). The derivative of a *mean*
+  is a scalar, so the per-observation array is a uniform-API
+  convenience, not a claim of per-observation variation.
+- `DoubleMLLPQ::sandwich_se` / `cluster_sandwich_se` /
+  `bias_corrected_coef`. Sandwich coverage 13 -> **14 of 22**.
+
+### The trap, and the invariant that catches it
+
+A comment beside the old `deriv` claimed the IPW score's `psi_a` is
+the constant `-1`, so the Jacobian would be `-1`. **That was false**,
+and following it produces an SE 5.86x too small. LPQ's estimating
+function is a quantile first-order condition, not the package-wide
+`f(theta) = E[theta*psi_a + psi_b]`; its Jacobian is genuinely
+data-dependent. The comment is corrected.
+
+With `M_inv = 1/deriv` and `psi = self.psi`, the HC0 accumulator
+reduces to `sum(psi^2) / (deriv^2 * n)` -- exactly what
+`var_est_with_jacobian` computes for `se`. So
+
+    sandwich_se(HC0) == se()
+
+holds **bit-identically**, not merely within tolerance. A test pins
+both the `-1` and `+1` readings as wrong, and another refits on a
+doubled outcome width to show the Jacobian tracks the data density
+(1.99x against an ideal 2x) -- something no hard-coded constant does.
+
+`psi_a` cannot drift on a memoize cache hit: `FitCache` stores only
+nuisance predictions, so `fit()` recomputes `psi` and `deriv` on
+every call and `psi_a` is built after the cache-hit branch. There is
+no second restore path to fall out of sync.
+
+### Notes
+
+- `sandwich_se` does not call the shared `psi_at` helper: LPQ's
+  `self.psi` is already the score evaluated at `coef` and there is no
+  `psi_b` to reconstruct it from. Documented at the method.
+- The Jacobian guard **aborts** rather than clips. Clipping (the
+  `comp_safe` idiom) would break `sandwich_se(HC0) == se()` for
+  small-but-nonzero `deriv`, because `se()` uses the unclipped value;
+  the `1e-12` floor also catches sub-normal `deriv`, where `1/deriv`
+  overflows and the variance returns `inf` while still passing a
+  `>= 0.0` check.
+- Sandwich coverage in the README was 13; the real count was 14
+  (`DoubleMLDIDBinary` was missed). Corrected, with the eight
+  uncovered estimators named.
+
 ## [0.92.2] -- stop release automation on tag push; backfill v0.75.1 - v0.79.0
 
 **No library-code change.** The library is byte-identical to 0.92.0.
