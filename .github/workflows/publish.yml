@@ -2,9 +2,20 @@ name: publish-package
 run-name: publish moonbit_doubleML ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 on:
-  push:
-    tags:
-      - "v*"
+  # Tag-push triggering is disabled. MOONCAKES_RIANTR_TOKEN is not set on
+  # this repository, so every tag push produced a red run: the step below
+  # now fails fast with an explicit "token is not set" annotation instead
+  # of an opaque moon exit 255, but a permanently red run is worse than
+  # none. Releases are published with `moon -C moonbit_doubleML publish`
+  # from a checkout.
+  #
+  # To re-enable tag-driven releases: add
+  #     push:
+  #       tags:
+  #         - "v*"
+  # back under `on:`, and set the secret in
+  # Settings -> Secrets and variables -> Actions. Every other step of
+  # this workflow is green as of v0.92.1.
   workflow_dispatch:
     inputs:
       tag:
