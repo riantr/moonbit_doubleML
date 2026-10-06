@@ -69,6 +69,8 @@ HERE = Path(__file__).resolve().parent
 # Spawn `moon`, parse its output, and exit non-zero if any of that fails.
 MUST_READ_MOONBIT = {
     "validate_apos_with_python.py",
+    "validate_cluster_iv_with_python.py",
+    "validate_cluster_plr_with_python.py",
     "validate_did_with_python.py",
     "validate_did_cross_section_with_python.py",
     "validate_did_cs_binary_with_python.py",
@@ -85,8 +87,6 @@ MUST_BE_FAIL_CLOSED = MUST_READ_MOONBIT
 MUST_NOT_READ_MOONBIT = {
     "validate_blp_policy_with_python.py",
     "validate_bootstrap_with_python.py",
-    "validate_cluster_iv_with_python.py",
-    "validate_cluster_plr_with_python.py",
     "validate_cv_repeated_with_python.py",
     "validate_cvar_with_python.py",
     "validate_did_binary_with_python.py",

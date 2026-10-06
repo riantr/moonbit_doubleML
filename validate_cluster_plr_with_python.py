@@ -1,7 +1,7 @@
-"""v0.28.0: cross-check the MoonBit DoubleMLPLR with cluster_vars
+"""v0.106.0: cross-check the MoonBit DoubleMLPLR with cluster_vars
 against BOTH the upstream `doubleml.plm.DoubleMLPLR` with
-`cluster_cols` and an independent hand-rolled Python reference
-of the clustered DML path.
+`cluster_cols` and an independent hand-rolled Python reference of
+the clustered DML path.
 
 The cluster-robust path runs when `cluster_cols` is non-empty
 in upstream, or when `cluster_vars` is non-empty in MoonBit.
@@ -10,30 +10,99 @@ cluster stay on the same side of every split; the coefficient
 is the fold-weighted ratio of cluster score sums; the SE is
 unit-level cluster-robust.
 
-Assertions:
-  1. The upstream theta_hat is finite; the upstream cluster SE
-     is at least 1.2x the row-level SE (the DGP has strong
-     within-unit correlation, so the row-level SE is
-     deflated relative to the cluster-robust one).
-  2. The hand-rolled numpy cluster reference reports
-     cluster SE / row SE in [1.0, 3.0] (the structural ratio
-     on this DGP), and cluster SE > row SE.
-  3. The MoonBit reference values (printed by
-     `examples/main` and `plr_cluster_test.mbt::plr_cluster_se_*`)
-     match the upstream cluster pattern.
+WHAT CHANGED IN v0.106.0, and why
+==================================
+Through v0.105.0 this file never ran MoonBit. It printed
+
+    "MoonBit reference (plr_cluster_test.mbt::plr_cluster_se_larger):
+       cluster_se / row_se ~= 1.6"
+
+as a hand-typed claim, compared it against nothing, and the claim
+was about a ratio.
+
+A ratio is the wrong instrument for the defect that matters here.
+`cluster_sandwich_variance` returns `M_inv^2 * sum_c S_c^2 *
+n_c/(n_c-1) / n^2`. Drop the `n^2` -- exactly the mistake
+`DoubleMLDIDCrossSection` carried until v0.102.0, where the `1/n`
+had been cancelled in the algebra -- and `cluster SE / row SE` is
+UNCHANGED, because the row SE is wrong by the same factor. The
+ratio still reads ~1.7 and the check still passes.
+
+So v0.106.0 reads the MoonBit side and checks ABSOLUTE scale. Four
+things are asserted, in decreasing order of sharpness:
+
+  1. The singleton identity, which is algebra rather than
+     statistics. With every observation in its own cluster,
+     `sum_c S_c^2` collapses to `sum_i psi[i]^2` and
+     `cluster_sandwich_se(singletons)` must reproduce `se()`. There
+     is no sampling content in this claim at all, so it is asserted
+     at a relative 1e-14 rather than a Monte-Carlo band. Measured
+     on the example: bit-identical at n=800 and one ulp apart at
+     n=200 (`0.08850001538500225` vs `0.08850001538500228`).
+  2. Each of the three SEs falls by ~1/sqrt(4) when the unit count
+     goes 50 -> 200. This is the check the ratio could not make.
+  3. The cluster SE exceeds the row SE at BOTH sizes, which is the
+     textbook claim and the reason the DGP has a unit random effect
+     on both D and Y.
+  4. `sandwich_se` and `cluster_dml_se` -- two independent
+     implementations of the same idea, one via
+     `cluster_sandwich_variance` and one via `var_est_cluster` --
+     agree within a factor.
+
+The Python side runs the same 1/sqrt(n) comparison on its own
+hand-rolled reference, so the band is anchored on an independent
+implementation instead of on MoonBit's own output.
+
+This file FAILS CLOSED.
 """
 
+import re
+import subprocess
+import sys
 import warnings
 
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold
+
+# Measured on `examples/cluster` (n_units 50 -> 200, n_periods 4):
+#
+#   row_se        0.08850001538500225 -> 0.04314159352022145   0.4875
+#   cluster_dml_se 0.13359133763701572 -> 0.06997162346723808   0.5237
+#   sandwich_se    0.1530737743491516  -> 0.0782291616278563    0.5110
+#
+# A consistent estimator gives 1/sqrt(4) = 0.5. The band is
+# deliberately wider than the 0.5 that a textbook would quote: the
+# clustered estimators carry a fold-level random component, and the
+# n=200 point is a single draw. What the band rules out is a
+# variance whose 1/n is gone, which reads as a ratio near 1.0 (or,
+# for a variance with no 1/n^2, near 2.0).
+SE_RATIO_LO = 0.40
+SE_RATIO_HI = 0.65
+
+# The singleton identity is exact algebra, not a statistical
+# estimate, so the tolerance only has to absorb the last-ulp
+# difference between the summation orders of `var_est` (a plain
+# mean) and `cluster_sandwich_variance` (a Kahan-compensated loop
+# over clusters).
+SINGLETON_REL_TOL = 1.0e-14
+
+# Cluster SE must exceed the row SE on this DGP: the unit random
+# effect enters both D and Y, so the within-unit correlation
+# deflates the row-level SE. Measured ratios: sandwich/row 1.730 and
+# 1.813, cluster_dml/row 1.509 and 1.622.
+CLUSTER_OVER_ROW_MIN = 1.2
+
+# Two implementations of cluster-robust variance should not differ by
+# more than a modest factor. Measured: 1.146 and 1.118.
+TWO_IMPL_MAX_FACTOR = 1.5
 
 
 def build_clustered_dgp(
     n_units: int, n_periods: int, theta0: float, seed: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Mirror of `plr_cluster_test.mbt::build_clustered_dgp`."""
+    """Mirror of `examples/cluster/main.mbt::build_panel` for Python."""
     rng = np.random.default_rng(seed)
     p = 3
     n = n_units * n_periods
@@ -127,7 +196,6 @@ def handrolled_clustered_plr(
             te = np.where(te_mask)[0]
             yield tr, te, half
 
-    # Cross-fit nuisances with cluster folds.
     l_hat = np.zeros(n)
     m_hat = np.zeros(n)
     for tr, te, _ in folds():
@@ -139,7 +207,6 @@ def handrolled_clustered_plr(
     psi_a = -(v**2)
     psi_b = v * u
 
-    # Cluster-weighted coefficient.
     num = 0.0
     den = 0.0
     for tr, te, half in folds():
@@ -148,7 +215,6 @@ def handrolled_clustered_plr(
         num += w * psi_b[te].sum()
     theta = -num / den
 
-    # Cluster-robust variance (one-cluster-variable branch).
     resid = theta * psi_a + psi_b
     gamma = 0.0
     j_hat = 0.0
@@ -170,7 +236,6 @@ def handrolled_row_plr(
     x: np.ndarray, y: np.ndarray, d: np.ndarray
 ) -> tuple[float, float]:
     """Row-level (non-cluster) PLR for comparison."""
-    from sklearn.model_selection import KFold
     kf = KFold(n_splits=2, shuffle=True, random_state=3141)
     n = len(y)
     l_hat = np.zeros(n)
@@ -189,9 +254,58 @@ def handrolled_row_plr(
     return theta, se
 
 
+def run_moonbit() -> dict:
+    """Spawn `moon run examples/cluster` and parse the PLR lines.
+
+    Raises on any failure. The caller treats a raise as FAIL.
+    """
+    result = subprocess.run(
+        ["moon", "run", "examples/cluster", "--target", "native"],
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    if result.returncode != 0:
+        err = result.stderr if result.stderr else result.stdout
+        raise RuntimeError(
+            f"moon run examples/cluster exited {result.returncode}: {err[:400]}"
+        )
+    out = result.stdout
+    plr = {}
+    for tag in ("base", "big"):
+        m = re.search(
+            r"^plr\s+" + tag + r"\s+n=(\d+)\s+theta=([0-9.eE+-]+)\s+"
+            r"row_se=([0-9.eE+-]+)\s+cluster_dml_se=([0-9.eE+-]+)\s+"
+            r"sandwich_se=([0-9.eE+-]+)\s+singleton_se=([0-9.eE+-]+)\s*$",
+            out,
+            re.MULTILINE,
+        )
+        if not m:
+            raise RuntimeError(
+                f"could not parse the `plr {tag} ...` line from the example "
+                f"output. Those rows carry every MoonBit-side number this "
+                f"file checks.\n" + out[:900]
+            )
+        plr[tag] = {
+            "n": int(m.group(1)),
+            "theta": float(m.group(2)),
+            "row_se": float(m.group(3)),
+            "cluster_dml_se": float(m.group(4)),
+            "sandwich_se": float(m.group(5)),
+            "singleton_se": float(m.group(6)),
+        }
+    if plr["big"]["n"] != 4 * plr["base"]["n"]:
+        raise RuntimeError(
+            f"expected the big PLR panel to be 4x the base one, got "
+            f"{plr['base']['n']} -> {plr['big']['n']}; the 1/sqrt(n) check "
+            f"assumes a 4x step"
+        )
+    return plr
+
+
 def main() -> None:
     print("=" * 76)
-    print("v0.28.0 DoubleMLPLR cluster-robust cross-check")
+    print("v0.106.0 DoubleMLPLR cluster-robust cross-check")
     print("=" * 76)
     n_units, n_periods, theta0, seed = 50, 4, 1.0, 7
     x, y, d, cluster = build_clustered_dgp(
@@ -215,36 +329,139 @@ def main() -> None:
         f"{'handrolled row    ':<28s} | {th_hr_row:10.4f} | {se_hr_row:10.4f}"
     )
     print()
-    print("MoonBit reference (plr_cluster_test.mbt::plr_cluster_se_larger):")
-    print("  cluster_se / row_se ~= 1.6 (upstream pattern: 1.4-1.5)")
-    print()
+
     ok = True
-    # 1. upstream cluster SE is meaningfully larger than row SE
+    # --- Python-side structural checks (unchanged in spirit from v0.28.0)
     if not (se_c_up > 1.2 * se_r_up):
         ok = False
         print(
             f"    FAIL upstream cluster SE / row SE = {se_c_up / se_r_up:.3f}, expected > 1.2"
         )
-    # 2. handrolled cluster SE is also larger than row SE
     if not (se_hr > 1.2 * se_hr_row):
         ok = False
         print(
             f"    FAIL handrolled cluster SE / row SE = {se_hr / se_hr_row:.3f}, expected > 1.2"
         )
-    # 3. handrolled cluster theta is finite and roughly upstream-shaped
     if not (0.0 < abs(th_hr) < 1.0e3):
         ok = False
         print(f"    FAIL handrolled cluster theta = {th_hr}")
-    # 4. cross-implementation agreement: both cluster SEs within 2x
-    ratio = se_c_up / se_hr if se_hr != 0 else float("inf")
-    if not (0.3 < ratio < 3.0):
+    ratio_up_hr = se_c_up / se_hr if se_hr != 0 else float("inf")
+    if not (0.3 < ratio_up_hr < 3.0):
         ok = False
         print(
-            f"    FAIL upstream/handrolled cluster SE ratio = {ratio:.3f}, expected in [0.3, 3.0]"
+            f"    FAIL upstream/handrolled cluster SE ratio = {ratio_up_hr:.3f}, expected in [0.3, 3.0]"
         )
+
+    # --- The Python side runs the SAME 1/sqrt(n) comparison, so the band
+    # the MoonBit side is held to is anchored on an independent
+    # implementation rather than on MoonBit's own output.
+    x4, y4, d4, c4 = build_clustered_dgp(
+        4 * n_units, n_periods, theta0, seed
+    )
+    th_hr4, se_hr4, _, _ = handrolled_clustered_plr(x4, y4, d4, c4)
+    th_row4, se_row4 = handrolled_row_plr(x4, y4, d4)
+    py_cluster_ratio = se_hr4 / se_hr if se_hr != 0 else float("inf")
+    py_row_ratio = se_row4 / se_hr_row if se_hr_row != 0 else float("inf")
+    print(
+        f"handrolled 1/sqrt(n) at 4x units: cluster {py_cluster_ratio:.4f}, "
+        f"row {py_row_ratio:.4f}  (1/sqrt(4) = 0.5)"
+    )
+    for label, r in (("cluster", py_cluster_ratio), ("row", py_row_ratio)):
+        if not (SE_RATIO_LO < r < SE_RATIO_HI):
+            ok = False
+            print(
+                f"    FAIL handrolled {label} SE ratio {r:.4f} outside "
+                f"[{SE_RATIO_LO}, {SE_RATIO_HI}]"
+            )
     print()
-    verdict = "PASS" if ok else "FAIL"
-    print(f"Cross-check: {verdict}")
+
+    # --- MoonBit side.
+    print("--- MoonBit side: `moon run examples/cluster` ---")
+    try:
+        mb = run_moonbit()
+    except Exception as exc:  # noqa: BLE001 - any failure is a FAIL
+        print(f"could not obtain the MoonBit estimate: {exc}")
+        print()
+        print("Clustered PLR reference: FAIL")
+        raise SystemExit(1)
+
+    base, big = mb["base"], mb["big"]
+    print(
+        f"  n={base['n']} row_se={base['row_se']:.6f} "
+        f"cluster_dml_se={base['cluster_dml_se']:.6f} "
+        f"sandwich_se={base['sandwich_se']:.6f}"
+    )
+    print(
+        f"  n={big['n']} row_se={big['row_se']:.6f} "
+        f"cluster_dml_se={big['cluster_dml_se']:.6f} "
+        f"sandwich_se={big['sandwich_se']:.6f}"
+    )
+    print()
+
+    print("--- checks on the MoonBit side ---")
+    # 1. The singleton identity: algebra, not statistics.
+    for tag in ("base", "big"):
+        row_se = mb[tag]["row_se"]
+        sing = mb[tag]["singleton_se"]
+        rel = abs(sing - row_se) / row_se if row_se != 0 else float("inf")
+        good = rel < SINGLETON_REL_TOL
+        if not good:
+            ok = False
+        print(
+            f"  singleton identity ({tag}): rel |singleton_se - row_se| = "
+            f"{rel:.3e} < {SINGLETON_REL_TOL:.0e} -> "
+            f"{'PASS' if good else 'FAIL'}"
+        )
+    print(
+        "    (exact algebra: one cluster per observation makes the cluster"
+        " sum collapse to the row sum)"
+    )
+
+    # 2. Absolute scale: each SE falls by ~1/sqrt(4).
+    for key in ("row_se", "cluster_dml_se", "sandwich_se"):
+        r = big[key] / base[key] if base[key] != 0 else float("inf")
+        good = SE_RATIO_LO < r < SE_RATIO_HI
+        if not good:
+            ok = False
+        print(
+            f"  {key:<16s} ratio at 4x = {r:.6f} in "
+            f"({SE_RATIO_LO}, {SE_RATIO_HI}) -> {'PASS' if good else 'FAIL'}"
+        )
+    print(
+        "    (the check a cluster/row ratio cannot make: a variance that"
+        " lost its 1/n is wrong in both columns at once)"
+    )
+
+    # 3. Clustering must actually inflate the SE on this DGP.
+    for tag in ("base", "big"):
+        for key in ("cluster_dml_se", "sandwich_se"):
+            r = mb[tag][key] / mb[tag]["row_se"]
+            good = r > CLUSTER_OVER_ROW_MIN
+            if not good:
+                ok = False
+            print(
+                f"  {tag:<4s} {key:<16s} / row_se = {r:.4f} > "
+                f"{CLUSTER_OVER_ROW_MIN} -> {'PASS' if good else 'FAIL'}"
+            )
+
+    # 4. Two implementations of cluster-robust variance agree.
+    for tag in ("base", "big"):
+        r = mb[tag]["sandwich_se"] / mb[tag]["cluster_dml_se"]
+        good = 1.0 / TWO_IMPL_MAX_FACTOR < r < TWO_IMPL_MAX_FACTOR
+        if not good:
+            ok = False
+        print(
+            f"  {tag:<4s} sandwich_se / cluster_dml_se = {r:.4f} within "
+            f"1/{TWO_IMPL_MAX_FACTOR}..{TWO_IMPL_MAX_FACTOR} -> "
+            f"{'PASS' if good else 'FAIL'}"
+        )
+    print(
+        "    (cluster_sandwich_variance vs var_est_cluster: independent"
+        " implementations of the same estimator)"
+    )
+
+    print()
+    print(f"Clustered PLR reference: {'PASS' if ok else 'FAIL'}")
     if not ok:
         raise SystemExit(1)
 

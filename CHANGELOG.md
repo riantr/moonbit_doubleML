@@ -9,6 +9,129 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.106.0] -- the cluster cross-checks compared a ratio that cannot see a missing `1/n`
+
+v0.105.0 made the validator audit executable. This version uses the
+same instrument on the two cluster cross-checks, and the first thing
+worth reporting is what the audit found: both were comparing a ratio,
+and a ratio is blind to the defect that matters here.
+
+### The problem with `cluster SE / row SE`
+
+`cluster_sandwich_variance` returns
+
+    M_inv^2 * sum_c S_c^2 * n_c/(n_c-1) / n^2
+
+Drop the `n^2` -- exactly the mistake
+`DoubleMLDIDCrossSection` carried until v0.102.0, where the `1/n` had
+been algebraically cancelled -- and `cluster SE / row SE` is
+**unchanged**, because the row SE is wrong by the same factor. The
+v0.28.0 check `cluster SE / row SE > 1.2` reads ~1.7 either way and
+passes.
+
+Measured, not argued. With the `1/n^2` removed from
+`sandwich.mbt:591`:
+
+| quantity | correct | `1/n^2` removed | old check | new check |
+|---|---|---|---|---|
+| `cluster SE / row SE` (n=200) | 1.730 | **229.17** | `> 1.2` **PASS** | `> 1.2` PASS |
+| `sandwich_se` ratio at 4x | 0.511 | **2.044** | n/a | FAIL |
+| singleton identity, rel. error (n=200) | 3.1e-16 | **1.99e+02** | n/a | FAIL |
+
+The ratio-based check saw a 132x error and said nothing. Two
+absolute-scale checks caught it.
+
+### Fixed
+
+- **`validate_cluster_plr_with_python.py` never ran MoonBit.** It
+  printed `"MoonBit reference (plr_cluster_test.mbt::plr_cluster_se_larger):
+  cluster_se / row_se ~= 1.6"` as a hand-typed claim, compared it
+  against nothing, and the claim was about a ratio. It now spawns
+  `moon run examples/cluster`, parses four SE quantities at two
+  sample sizes, and is fail-closed.
+- **`validate_cluster_iv_with_python.py` never ran MoonBit either.**
+  Its docstring claimed "the MoonBit reference values from
+  `pliv_cluster_test.mbt` and `iivm_cluster_test.mbt` agree with the
+  upstream and hand-rolled cluster SE to within a 5x factor"; no such
+  comparison existed. The 30-seed upstream study is kept intact and
+  the MoonBit block is added on top of it.
+
+### Added
+
+- **`examples/cluster`** — a new demo that reports every cluster SE
+  at 1x and 4x the sample size, which is what makes an absolute-scale
+  check possible at all:
+
+  ```
+  plr  base n=200 row_se=0.08850001538500225  cluster_dml_se=0.13359133763701572  sandwich_se=0.1530737743491516   singleton_se=0.08850001538500228
+  plr  big  n=800 row_se=0.04314159352022145  cluster_dml_se=0.06997162346723808  sandwich_se=0.0782291616278563   singleton_se=0.04314159352022145
+  pliv base n=200 row_se=0.6025039291764758   cluster_dml_se=0.8440111407637021   sandwich_se=0.7953762917055258   singleton_se=0.6025039291764758
+  pliv big  n=800 row_se=0.45037331308263384  cluster_dml_se=0.4395477202567836   sandwich_se=0.4550413091735931   singleton_se=0.45037331308263384
+  ```
+
+  Three separate code paths are covered -- `var_est` (row),
+  `var_est_cluster` (the `cluster_vars` fit) and
+  `cluster_sandwich_variance` -- plus `singleton_se`, the exact
+  control: with one cluster per observation the cluster sum collapses
+  to the row sum, so `cluster_sandwich_se(singletons)` must reproduce
+  `se()`. That claim is **algebra, not statistics**: bit-identical at
+  n=800 for PLR and at both sizes for PLIV, one ulp apart at n=200.
+  It is asserted at a relative `1e-14`.
+- **`expand_v106_test.mbt`** (4 tests) carries the same facts into
+  `moon test`, which runs on all four backends; the cross-check only
+  runs in one CI job.
+- The meta-gate's classification moves `cluster_plr` and
+  `cluster_iv` from reference-only to gates:
+  **11 gates / 12 reference-only**.
+
+### The two shapes of check, and why the order matters
+
+`validate_cluster_iv_with_python.py` is shaped differently from the
+PLR one, and the difference is measured, not stylistic. On the CKMS
+two-way cluster DGP, two claims that hold for PLR are **false** for
+PLIV:
+
+- **`row_se` does not scale like `1/sqrt(n)`**: measured `0.7475` at
+  a 4x step, not `0.5`. At n=200 the PLIV estimate reads 1.459
+  against a true 1.0 -- 0.76 row SEs out -- and is still settling when
+  n quadruples. Asserting `1/sqrt(n)` here would be asserting the
+  estimator is already in its asymptotic regime at n=200, which it
+  measurably is not. This is the same trap `examples/lplr` sets.
+- **`cluster SE > row SE` stops holding**: true at n=200 (0.844 vs
+  0.603), false at n=800 (0.440 vs 0.450).
+  `make_pliv_multiway_cluster` hard-codes 50 clusters per direction,
+  so the cluster SE cannot fall below roughly `1/sqrt(50)` while the
+  row SE keeps shrinking. Clustering is not always conservative.
+
+Both are printed with their numbers and **neither is asserted**; the
+negative controls are pinned in `expand_v106_test.mbt` so a future
+attempt to "fix" the PLIV checks by copying the PLR ones runs into a
+test. The PLR band is also cross-checked on the Python side, which
+gives 0.454 (cluster) and 0.442 (row) for the same 4x step -- an
+independent implementation landing in the same place, so the band is
+not fitted to MoonBit's own output.
+
+A second mutation confirms the ordering: ignoring `cluster_ids`
+entirely (the same shape as the inert `score` argument found in
+v0.105.0) leaves PLIV's `sandwich_se` 4x ratio at 0.633, **inside**
+the band. It is caught by the exact-algebra singleton identity and by
+the two-implementation comparison, not by the scaling check. When a
+band check and an identity check disagree about a mutation, the
+identity is the one to trust.
+
+### Verification
+
+- `moon check --target all` -- 0 errors, 0 warnings. `moon fmt
+  --check` clean.
+- `moon test --deny-warn` -- native / wasm / js **804/804**,
+  wasm-gc **810/810** (was 800 / 800 / 800 / 806; +4 in
+  `expand_v106_test.mbt`).
+- Cross-check suite -- **24/24**, CI-equivalent and case-sensitive.
+- Mutations, both caught by both validators: removing the `1/n^2` from
+  `cluster_sandwich_variance`; making `cluster_sandwich_variance`
+  accept `cluster_ids` and ignore them. `sandwich.mbt` is byte-clean
+  after both.
+
 ## [0.105.0] -- LPLR's `score="instrument"` was an inert parameter, and the audit that found it could not fail
 
 v0.103.0 audited the 23 Python cross-checks and wrote the result into

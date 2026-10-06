@@ -1,0 +1,8 @@
+import {
+  "riantr/moonbit_doubleML",
+  "moonbitlang/core/random",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "native"

@@ -29,11 +29,15 @@ Assertions:
      point). Both extremes have been observed in pre-v0.30.0
      path simulations on weak-IV DGPs; this DGP is
      specifically tuned to exercise the well-conditioned region.
-  4. The MoonBit reference values from `pliv_cluster_test.mbt`
-     and `iivm_cluster_test.mbt` agree with the upstream and
-     hand-rolled cluster SE to within a 5x factor.
+  4. The MoonBit side, read from `examples/cluster` at two sample
+     sizes. See the v0.106.0 note in `main()` for exactly which of
+     the four quantities are asserted there and which are printed
+     without an assertion, and why.
 """
 
+import re
+import subprocess
+import sys
 import warnings
 
 import numpy as np
@@ -200,6 +204,224 @@ def handrolled_cluster_pliv(
     return theta, se
 
 
+# --------------------------------------------------------------------------
+# v0.106.0: the MoonBit side.
+#
+# Measured on `examples/cluster` (CKMS2021 two-way cluster DGP,
+# `make_pliv_multiway_cluster` hard-codes 50 clusters per direction,
+# n_obs 200 -> 800):
+#
+#   row_se          0.6025039291764758  -> 0.45037331308263384  0.7475
+#   cluster_dml_se  0.8440111407637021  -> 0.4395477202567836   0.5207
+#   sandwich_se     0.7953762917055258  -> 0.4550413091735931   0.5721
+#   singleton_se    == row_se at BOTH sizes, bit for bit
+#
+# Two quantities are deliberately NOT asserted, and the numbers
+# above are the reason.
+#
+#  - `row_se` does NOT scale like 1/sqrt(n) here (0.7475, not 0.5).
+#    At n=200 the estimate is 1.459 against a true 1.0, i.e. 0.8
+#    standard errors out, and it is still settling when n quadruples.
+#    Asserting 1/sqrt(n) on the row SE would be asserting that the
+#    estimator is already in its asymptotic regime at n=200, which it
+#    measurably is not. This is the same trap `examples/lplr` sets:
+#    a wide 1/sqrt(n) band is worthless on a noisy DGP.
+#  - `cluster_dml_se > row_se` holds at n=200 (0.844 > 0.603) and
+#    FAILS at n=800 (0.440 < 0.450). That is not a formula defect.
+#    The cluster count is pinned at 50 in both directions, so the
+#    cluster SE cannot fall below roughly 1/sqrt(50) while the row SE
+#    keeps shrinking with n. Clustering is not always conservative,
+#    and on a DGP whose within-cluster correlation is mild it stops
+#    being so as n grows. The assertion is kept for n=200, where the
+#    DGP's design intends it, and the 4x case is printed as a
+#    measured fact rather than asserted.
+# --------------------------------------------------------------------------
+# Band for the cluster-side SE ratio at 4x. The two cluster
+# quantities measure 0.5207 and 0.5721; 1/sqrt(4) = 0.5. This rules
+# out a variance that lost its 1/n (which would read near 1.0 here).
+PLIV_CLUSTER_SE_RATIO_LO = 0.40
+PLIV_CLUSTER_SE_RATIO_HI = 0.75
+
+# Same exact-algebra claim as the PLR validator: one cluster per
+# observation makes the cluster sum collapse to the row sum. This one
+# is bit-identical on both PLIV sizes, so the tolerance is there only
+# to cover the summation-order difference, not to paper over a real
+# gap.
+PLIV_SINGLETON_REL_TOL = 1.0e-14
+
+# sandwich_se vs cluster_dml_se: measured 0.9423 and 1.0352.
+PLIV_TWO_IMPL_MAX_FACTOR = 1.5
+
+
+def run_moonbit() -> dict:
+    """Spawn `moon run examples/cluster` and parse the PLIV lines.
+
+    Raises on any failure. The caller treats a raise as FAIL; this
+    function never reports a partial result as success.
+    """
+    result = subprocess.run(
+        ["moon", "run", "examples/cluster", "--target", "native"],
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    if result.returncode != 0:
+        err = result.stderr if result.stderr else result.stdout
+        raise RuntimeError(
+            f"moon run examples/cluster exited {result.returncode}: {err[:400]}"
+        )
+    out = result.stdout
+    pliv = {}
+    for tag in ("base", "big"):
+        m = re.search(
+            r"^pliv\s+" + tag + r"\s+n=(\d+)\s+theta=([0-9.eE+-]+)\s+"
+            r"row_se=([0-9.eE+-]+)\s+cluster_dml_se=([0-9.eE+-]+)\s+"
+            r"sandwich_se=([0-9.eE+-]+)\s+singleton_se=([0-9.eE+-]+)\s*$",
+            out,
+            re.MULTILINE,
+        )
+        if not m:
+            raise RuntimeError(
+                f"could not parse the `pliv {tag} ...` line from the example "
+                f"output. Those rows carry every MoonBit-side number this "
+                f"file checks.\n" + out[:900]
+            )
+        pliv[tag] = {
+            "n": int(m.group(1)),
+            "theta": float(m.group(2)),
+            "row_se": float(m.group(3)),
+            "cluster_dml_se": float(m.group(4)),
+            "sandwich_se": float(m.group(5)),
+            "singleton_se": float(m.group(6)),
+        }
+    if pliv["big"]["n"] != 4 * pliv["base"]["n"]:
+        raise RuntimeError(
+            f"expected the big PLIV sample to be 4x the base one, got "
+            f"{pliv['base']['n']} -> {pliv['big']['n']}"
+        )
+    return pliv
+
+
+def check_moonbit(ok: bool) -> bool:
+    """The v0.106.0 MoonBit-side block. Returns the updated verdict."""
+    print()
+    print("--- MoonBit side: `moon run examples/cluster` (PLIV) ---")
+    try:
+        mb = run_moonbit()
+    except Exception as exc:  # noqa: BLE001 - any failure is a FAIL
+        print(f"could not obtain the MoonBit estimate: {exc}")
+        return False
+
+    base, big = mb["base"], mb["big"]
+    for tag in ("base", "big"):
+        d = mb[tag]
+        print(
+            f"  n={d['n']} theta={d['theta']:.6f} row_se={d['row_se']:.6f} "
+            f"cluster_dml_se={d['cluster_dml_se']:.6f} "
+            f"sandwich_se={d['sandwich_se']:.6f}"
+        )
+    print()
+
+    # 1. The singleton identity. Algebra, not statistics.
+    for tag in ("base", "big"):
+        row_se = mb[tag]["row_se"]
+        sing = mb[tag]["singleton_se"]
+        rel = abs(sing - row_se) / row_se if row_se != 0 else float("inf")
+        good = rel < PLIV_SINGLETON_REL_TOL
+        if not good:
+            ok = False
+        print(
+            f"  singleton identity ({tag}): rel |singleton_se - row_se| = "
+            f"{rel:.3e} < {PLIV_SINGLETON_REL_TOL:.0e} -> "
+            f"{'PASS' if good else 'FAIL'}"
+        )
+    print(
+        "    (exact algebra: one cluster per observation makes the cluster"
+        " sum collapse to the row sum; measured bit-identical here)"
+    )
+
+    # 2. The cluster-side SEs still carry their 1/sqrt(n).
+    for key in ("cluster_dml_se", "sandwich_se"):
+        r = big[key] / base[key] if base[key] != 0 else float("inf")
+        good = PLIV_CLUSTER_SE_RATIO_LO < r < PLIV_CLUSTER_SE_RATIO_HI
+        if not good:
+            ok = False
+        print(
+            f"  {key:<16s} ratio at 4x = {r:.6f} in "
+            f"({PLIV_CLUSTER_SE_RATIO_LO}, {PLIV_CLUSTER_SE_RATIO_HI}) -> "
+            f"{'PASS' if good else 'FAIL'}"
+        )
+
+    # 3. Clustering inflates the SE at the size the DGP is designed for.
+    r_base = base["cluster_dml_se"] / base["row_se"]
+    good = r_base > 1.2
+    if not good:
+        ok = False
+    print(
+        f"  base  cluster_dml_se / row_se = {r_base:.4f} > 1.2 -> "
+        f"{'PASS' if good else 'FAIL'}"
+    )
+
+    # 4. Two implementations of cluster-robust variance agree.
+    for tag in ("base", "big"):
+        r = mb[tag]["sandwich_se"] / mb[tag]["cluster_dml_se"]
+        good = (
+            1.0 / PLIV_TWO_IMPL_MAX_FACTOR < r < PLIV_TWO_IMPL_MAX_FACTOR
+        )
+        if not good:
+            ok = False
+        print(
+            f"  {tag:<4s} sandwich_se / cluster_dml_se = {r:.4f} within "
+            f"1/{PLIV_TWO_IMPL_MAX_FACTOR}..{PLIV_TWO_IMPL_MAX_FACTOR} -> "
+            f"{'PASS' if good else 'FAIL'}"
+        )
+
+    # 5. The coefficient converges to the truth as n grows.
+    r_theta = abs(big["theta"] - 1.0)
+    good = r_theta < 0.20
+    if not good:
+        ok = False
+    print(
+        f"  big   |theta - 1.0| = {r_theta:.4f} < 0.20 -> "
+        f"{'PASS' if good else 'FAIL'}"
+    )
+    print(f"       (at n={base['n']} it reads {base['theta']:.4f}, "
+          f"{abs(base['theta'] - 1.0) / base['row_se']:.2f} row SEs out)")
+
+    # --- Printed WITHOUT an assertion, with the reason. Both of these
+    # would be flaky or wrong if asserted, and the numbers are here so
+    # the decision is reviewable rather than implicit.
+    row_ratio = big["row_se"] / base["row_se"]
+    big_ratio = big["cluster_dml_se"] / big["row_se"]
+    print()
+    print("  reported, deliberately NOT asserted:")
+    print(
+        f"    row_se ratio at 4x            = {row_ratio:.4f} "
+        f"(1/sqrt(4) = 0.5)"
+    )
+    print(
+        "      the estimator is not yet in its asymptotic regime at n=200;"
+    )
+    print(
+        "      a 1/sqrt(n) band here would be a band around the noise, not"
+    )
+    print(
+        "      a check."
+    )
+    print(
+        f"    big  cluster_dml_se / row_se  = {big_ratio:.4f} (base was "
+        f"{r_base:.4f})"
+    )
+    print(
+        "      clustering stops being conservative once the cluster count"
+    )
+    print(
+        "      is pinned at 50 while n grows; that is a property of the DGP,"
+    )
+    print("      not of the variance formula.")
+    return ok
+
+
 def main() -> None:
     print("=" * 76)
     print("v0.32.0 cluster-robust PLIV cross-check (strong-IV DGP)")
@@ -303,6 +525,8 @@ def main() -> None:
       print(
           f"  median: {median_se_ratio:.3f}"
       )
+
+    ok = check_moonbit(ok)
 
     print()
     verdict = "PASS" if ok else "FAIL"
