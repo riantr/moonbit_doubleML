@@ -1932,34 +1932,7 @@ pub fn DoubleMLRDD::bandwidth_mse(self : DoubleMLRDD, h : Double) -> Double {
     let h_pilot = rdd_pilot_bandwidth(self.data)
     require(h_pilot > 0.0)
     require(h > 0.0)
-    let (yl_p, _, _, res_l_p, _, _, _, _) = rdd_side(
-      self.ml_g,
-      self.data,
-      -1.0,
-      self.cutoff,
-      h_pilot,
-      false,
-      self.cov_type,
-      self.kernel,
-    )
-    let (yr_p, _, _, res_r_p, _, _, _, _) = rdd_side(
-      self.ml_g,
-      self.data,
-      1.0,
-      self.cutoff,
-      h_pilot,
-      false,
-      self.cov_type,
-      self.kernel,
-    )
-    let xi_pilot = yr_p - yl_p
-    let mut sigma4 = 0.0
-    for r in res_l_p {
-      sigma4 = sigma4 + r * r
-    }
-    for r in res_r_p {
-      sigma4 = sigma4 + r * r
-    }
+    let (xi_pilot, sigma4) = rdd_pilot_stage(self)
     let (yl, _, _, _, _, _, _, _) = rdd_side(
       self.ml_g,
       self.data,
@@ -1984,6 +1957,87 @@ pub fn DoubleMLRDD::bandwidth_mse(self : DoubleMLRDD, h : Double) -> Double {
     let b = h / h_pilot
     let b2 = b * b
     bias * bias + b2 * b2 * sigma4 / n.to_double()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// `Sigma^4` of the MSE-optimal criterion: the pooled residual second
+/// moment across both sides, taken at `h_pilot`.
+///
+/// Public, and for a reason that is about the GATE rather than the
+/// user. `bandwidth_mse` evaluates `(xi(h) - xi_pilot)^2 + b^4*sigma4/n`,
+/// and at `h = h_pilot` the bias term is identically zero BY
+/// CONSTRUCTION -- `xi(h_pilot)` is `xi_pilot` -- so
+///
+///     bandwidth_mse(h_pilot) == sigma4 / n        (exactly)
+///
+/// is an identity the test suite can check without recomputing any
+/// local fit. That is what makes the criterion checkable from the
+/// outside: before this accessor existed, deleting the `b^4`
+/// variance term from `bandwidth_mse` left the search still minimising
+/// its own criterion, so every assertion stayed green and the gate
+/// could not testify about the criterion at all. With `sigma4`
+/// readable, that mutation returns 0 at the pilot instead of
+/// `sigma4 / n` and the suite goes red.
+///
+/// Note this still does NOT prove the criterion is Cattaneo's -- it
+/// pins the variance term's scale and the pilot's self-consistency.
+/// `xi(b)` at a non-pilot bandwidth needs `rdd_side`'s per-side
+/// residual arrays, whose lengths differ, so the pairing Cattaneo
+/// uses remains a separate design decision (see `optimal_bandwidth`).
+pub fn DoubleMLRDD::bandwidth_sigma4(self : DoubleMLRDD) -> Double {
+  let (_, sigma4) = rdd_pilot_stage(self)
+  sigma4
+}
+
+///|
+/// The pilot-stage pair the criterion is built from: the intercept
+/// difference at `h_pilot`, and the pooled residual second moment
+/// there.
+///
+/// Shared by `bandwidth_mse` and `bandwidth_sigma4` so the two cannot
+/// drift -- a criterion whose public `sigma4` and internal `sigma4`
+/// were computed separately would make the identity above fail for
+/// reasons unrelated to the maths.
+///
+/// A free function rather than a method, for the same reason as
+/// `rdd_pilot_bandwidth`: `fn name(self : Type)` at top level is
+/// deprecated method syntax and does not bind as one.
+fn rdd_pilot_stage(m : DoubleMLRDD) -> (Double, Double) {
+  try {
+    let h_pilot = rdd_pilot_bandwidth(m.data)
+    require(h_pilot > 0.0)
+    let (yl, _, _, res_l, _, _, _, _) = rdd_side(
+      m.ml_g,
+      m.data,
+      -1.0,
+      m.cutoff,
+      h_pilot,
+      false,
+      m.cov_type,
+      m.kernel,
+    )
+    let (yr, _, _, res_r, _, _, _, _) = rdd_side(
+      m.ml_g,
+      m.data,
+      1.0,
+      m.cutoff,
+      h_pilot,
+      false,
+      m.cov_type,
+      m.kernel,
+    )
+    let mut sigma4 = 0.0
+    for r in res_l {
+      sigma4 = sigma4 + r * r
+    }
+    for r in res_r {
+      sigma4 = sigma4 + r * r
+    }
+    (yr - yl, sigma4)
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

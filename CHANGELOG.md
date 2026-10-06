@@ -9,6 +9,85 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.112.0] -- the bandwidth criterion is now checkable from outside, not merely self-consistent
+
+v0.110.0 shipped the RDD kernel menu and the MSE-optimal bandwidth. This
+release closes the one limitation that release recorded about its own gate.
+
+### What was wrong with the gate
+
+`bandwidth_mse(h)` evaluates
+
+    (xi(h) - xi_pilot)^2 + (h/h_pilot)^4 * sigma4 / n
+
+and v0.110.0's suite verified only that `optimal_bandwidth` MINIMISES that
+expression. It could not verify the expression itself: deleting the `b^4 *
+sigma4 / n` term leaves the search still minimising its own criterion, every
+assertion stayed green, and the mutation survived. A gate that cannot testify
+about the criterion is not a gate on the criterion -- it is a gate on the
+search only, wearing the criterion's name.
+
+### The fix, and why it is an identity rather than a recomputation
+
+At `h = h_pilot` the bias term is **identically zero by construction**:
+`xi(h_pilot)` IS `xi_pilot`. So the whole criterion collapses to its variance
+term:
+
+    bandwidth_mse(h_pilot) == bandwidth_sigma4() / n        (exactly)
+
+That is an exact identity over the same floating-point expression, so it is
+checked with `==`, not a tolerance, and it needs no local fit recomputed on
+the test side -- which is what makes it possible at all, since `xi(b)` at a
+non-pilot bandwidth would require `rdd_side`'s two per-side residual arrays of
+UNEQUAL length, and pairing them is a separate design decision (see below).
+
+With `bandwidth_sigma4()` public, dropping the variance term returns 0 at the
+pilot instead of `sigma4 / n`, and the suite goes red.
+
+### Added
+
+- **`DoubleMLRDD::bandwidth_sigma4()`** -- the pooled residual second moment at
+  `h_pilot`, the quantity the variance term is built from.
+- **`rdd_pilot_stage`**, a shared private helper giving `(xi_pilot, sigma4)`,
+  used by BOTH `bandwidth_mse` and `bandwidth_sigma4`. Two independent
+  computations of `sigma4` would let the identity above fail for reasons
+  unrelated to the mathematics.
+- **`v110_bandwidth_mse_at_pilot_equals_the_variance_term`**, plus a check that
+  `bandwidth_mse(2*h_pilot) > bandwidth_mse(h_pilot)`, which is the `b^4`
+  scaling made visible: the bias term is added to a strictly positive
+  variance floor and cannot pull the criterion back below it.
+
+### Verification
+
+`_verify/mut_v110_rdd.ps1`, now four mutations:
+
+| mutation | verdict |
+|---|---|
+| M1 point-estimate weights ignore the kernel | **KILLED** |
+| M2 cluster-path weights ignore the kernel | **KILLED** |
+| M3 bandwidth search minimises the MAXIMUM | SURVIVED -- **equivalent mutant** |
+| M4 criterion loses its `b^4` variance term | **KILLED** (was unkillable in v0.110.0) |
+
+M3 remains equivalent and is reported as such rather than as a hole: the
+criterion is monotone increasing in `b` on this DGP, so the true argmin IS the
+first grid point, and `best_mse` starting at `1e300` means an argmax keeps the
+same point. The cause is mathematical -- under smooth misspecification bias
+scales like `b^2` and variance like `b^4`, so the criterion is `~b^4` and its
+minimum sits at the grid boundary.
+
+### What is STILL not proved, stated plainly
+
+This does **not** prove the criterion is Cattaneo's. It pins the variance
+term's scale and the pilot's self-consistency, which is what was missing.
+Recomputing `xi(b)` at a non-pilot bandwidth from the outside would need
+`rdd_side`'s per-side residual arrays, whose lengths differ; Cattaneo's
+`Sigma^4` is built from PAIRED left/right residual differences and this port
+uses the pooled sum of squares instead. Same units, same `b^4` scaling, no
+pairing. Closing that is a design decision about the pairing, not a test.
+
+Tests: **833 -> 834**. native/wasm/js 834, wasm-gc 840.
+`moon check --target all --deny-warn` clean; `moon fmt --check` clean.
+
 ## [0.111.0] -- plotting is deliberately not ported, and the claim is now enforced in both directions
 
 Last item of the v0.107.0 coverage audit. The first two were shipped as

@@ -202,6 +202,39 @@ test "v110_cluster_path_uses_the_same_kernel" {
 }
 
 ///|
+/// The criterion must be checkable from OUTSIDE, not merely
+/// self-consistent. At `h = h_pilot` the bias term
+/// `(xi(h) - xi_pilot)^2` is identically zero BY CONSTRUCTION, so the
+/// whole criterion collapses to its variance term:
+///
+///     bandwidth_mse(h_pilot) == bandwidth_sigma4() / n      (exactly)
+///
+/// That identity is what pins the `b^4 * sigma4 / n` term. Deleting it
+/// leaves the search still minimising its own criterion, so every other
+/// assertion in this file stays green -- which is precisely why
+/// `bandwidth_sigma4` had to be made public.
+test "v110_bandwidth_mse_at_pilot_equals_the_variance_term" {
+  let data = v110_rdd_data(600, 2.0)
+  let m = DoubleMLRDD::new(
+    data,
+    bandwidth=0.8,
+    kernel=RDDKernel::parse("triangular"),
+  )
+  let h_pilot = m.pilot_bandwidth()
+  let sigma4 = m.bandwidth_sigma4()
+  let n = m.n_obs()
+  assert_true(sigma4 > 0.0)
+  // exact equality, not a tolerance: both sides are the same
+  // floating-point expression over the same `sigma4`.
+  assert_true(m.bandwidth_mse(h_pilot) == sigma4 / n.to_double())
+  // and the b^4 scaling is real: doubling the multiplier multiplies
+  // the variance term by 16, so the criterion at 2*h_pilot must be
+  // strictly larger than at h_pilot (the bias term cannot pull it
+  // back below, because it is added to a positive variance floor).
+  assert_true(m.bandwidth_mse(2.0 * h_pilot) > m.bandwidth_mse(h_pilot))
+}
+
+///|
 /// The MSE-optimal bandwidth must actually MINIMISE the criterion, and the
 /// criterion is public so this can be checked without re-running the
 /// search. Sampling the grid is enough to kill an argmin that was
