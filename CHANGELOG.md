@@ -132,6 +132,162 @@ identity is the one to trust.
   accept `cluster_ids` and ignore them. `sandwich.mbt` is byte-clean
   after both.
 
+## [0.107.0] -- the SSM and PLPR cross-checks, plus one identity that is exactly true and one estimator that is not stable
+
+v0.106.0 fixed the cluster cross-checks. This version finishes the
+three-batch sweep: `ssm` and `plpr` were the last two validators
+still validating nothing about MoonBit.
+
+### The SSM check worth having is not a coefficient
+
+`validate_ssm_with_python.py` was 51 lines, two `assert`s, no
+`subprocess` import, and ended in a hard-coded
+`print("SSM reference checks PASS")`. It validated a hand-rolled
+Python MAR score. It said "SSM" and there was no SSM in it.
+
+SSM is a `var_est`-shaped estimator, which means its two
+standard-error accessors compute the same quantity by different
+routes:
+
+```
+se() = sqrt( mean(psi^2) / (J^2 * n) )     via var_est
+HC0  = sqrt( sum(psi^2) / n / J^2 )        via sandwich
+```
+
+So `HC0 == se()` is **algebra, not statistics**. There is no
+sampling content, so it gets no Monte-Carlo band. Measured on the new
+`examples/ssm`: the difference is **exactly `0.0`** on all four lines.
+
+This is worth pinning precisely because the two accessors spent most
+of the package's history disagreeing. `sandwich_variance_hc0` carried
+a `1/n` the accumulator did not, so HC0 sat at `sqrt(n) * se()`
+through v0.90.0, and `DoubleMLDIDCS` and `DoubleMLLPLR` were held out
+of the sandwich API entirely for related reasons. An identity that is
+exactly true today is exactly what a refactor silently breaks, and
+no coefficient band would notice.
+
+Mutation: removing one `/n_d` from `sandwich_variance_hc0` -- i.e.
+reinstating the v0.90.0 defect -- drives the relative gap to **21.4**
+(n=500) and **43.7** (n=2000), and the validator exits 1. The
+`validate_cluster_plr_with_python.py` gate stays GREEN under the same
+mutation, because it exercises `cluster_sandwich_variance`, a
+different function. The identity check isolates the defect; the
+1/sqrt(n) band beside it does not, since `se()` is untouched.
+
+### A negative control, because the estimator is not stable everywhere
+
+Measuring the 1/sqrt(n) law across seeds on this DGP:
+
+| seed | n=500 | n=2000 | 4x ratio |
+|---|---|---|---|
+| 99 | 0.036788 | 0.019333 | **0.5255** |
+| 7 | 0.040243 | 0.019581 | **0.4866** |
+| 3141 | 0.154311 | 0.019593 | 0.1270 |
+
+Seeds 99 and 7 sit on `1/sqrt(4) = 0.5`. Seed 3141 does not: its SE
+is already ~4x the others at n=500, and at n=8000 the fit **diverges
+outright** -- `theta = -121.88`, `se = 122.88`.
+
+Two things follow, and both are asserted in
+`expand_v107_test.mbt::v107_ssm_se_is_fragile_to_the_split` so a later
+edit cannot quietly drop them:
+
+1. This is not a scale error, and **nothing in this version widens a
+   band to accommodate it**. A band wide enough to hold a 4x swing
+   would also hold a flat SE, which is the defect the check exists to
+   catch. It is recorded as a measurement and not asserted.
+2. `HC0 == se()` still holds **exactly** at n=8000, where the value
+   itself is meaningless. The two have to be diagnosed separately,
+   which is why the identity test includes seed 3141 at both sizes.
+
+If a future change to `ssm.mbt` makes the SE well-behaved on that
+seed, the negative-control test fails and the cross-check's band can
+be re-derived from new measurements. That is the intended direction
+of travel.
+
+The Python reference runs the same 1/sqrt(n) comparison on its own
+MAR implementation and gives 0.4772, independently inside the band --
+so the band is not fitted to MoonBit's own output.
+
+### PLPR: four printed literals that were accurate and still useless
+
+`validate_plpr_with_python.py` ended with
+
+```
+MoonBit reference (plpr_test.mbt, seed=3141):
+  cre_general  theta=1.028282 se=0.017046
+  ...
+  All four must stay within [0.9, 1.15] x se [0.004, 0.08].
+```
+
+compared against nothing. They were accurate, which is worse than
+stale: an accurate literal that nothing reads cannot go stale and
+therefore never announces that the code moved underneath it.
+
+The file now runs `moon run examples/plpr` and asserts two things
+beyond the obvious per-approach bands:
+
+- **`cre_general`, `cre_normal` and `wg_approx` agree with each other
+  to 1e-8.** On this panel -- linear in `d`, homogeneous effect --
+  those three reduce to the same estimator, so their agreement is a
+  property of the DGP, not of the noise. Measured spread: **8.0e-11**.
+  A per-approach "theta ~ 1.03" band would not notice one of the
+  three drifting; this does.
+- **`fd_exact` must NOT be one of them** (measured gap 8.6e-4). First
+  differences are a different estimator, and if they coincided the
+  "four approaches" would be one.
+
+Two mutations, both caught (exit 1): making `cre_normal` fall through
+to `fd_exact`, and making `wg_approx` do the same. Both are the
+inert-parameter shape found in `DoubleMLLPLR::score` in v0.105.0 --
+a validated argument that never reaches the arithmetic.
+
+### Added
+
+- **`examples/ssm`** -- a self-contained MAR-selection demo printing
+  `se()` and `sandwich_se(HC0)` side by side at two seeds x two
+  sample sizes, plus the `hc0_minus_se` difference. `examples/main`
+  already demos SSM but with a DGP threaded through that example's
+  shared RNG stream and covariate matrix, and extracting it would
+  disturb four other estimators' draws.
+- **`expand_v107_test.mbt`** (4 tests) carries both into `moon test`,
+  which runs on all four backends.
+- The meta-gate moves `ssm` and `plpr` from reference-only to gates,
+  and `ssm` leaves `KNOWN_HARDCODED_VERDICT`: **13 gates / 10
+  reference-only / 7 known typed verdicts**, down from 23 unclassified
+  at v0.103.0.
+
+### Verification
+
+- `moon check --target all` -- 0 errors, 0 warnings. `moon fmt
+  --check` clean.
+- `moon test --deny-warn` -- native / wasm / js **808/808**,
+  wasm-gc **814/814** (was 804 / 804 / 804 / 810; +4 in
+  `expand_v107_test.mbt`).
+- Cross-check suite -- **24/24**, CI-equivalent and case-sensitive.
+- Three mutations, all caught: `sandwich_variance_hc0` losing its
+  `1/n`; `examples/plpr` silently routing `cre_normal` to
+  `fd_exact`; `examples/plpr` silently routing `wg_approx` to
+  `fd_exact`. `sandwich.mbt` and `examples/plpr/main.mbt` are
+  byte-clean after all three.
+
+### Where the sweep leaves the suite
+
+Seven batches of cross-checking, from v0.103.0 to here, have moved
+every validator from "unclassified" to one of three states:
+
+| state | count | files |
+|---|---|---|
+| reads MoonBit, fail-closed | 13 | did, iivm, irm, pliv, did_cs, did_cs_binary, apos, pava, lplr, cluster_plr, cluster_iv, ssm, plpr |
+| reference-only | 10 | cvar, did_binary, plpr's neighbours: blp_policy, bootstrap, cv_repeated, cvar, did_binary, did_cs, gain_statistics, padjust, quantile, rdd |
+| known typed verdict | 7 | blp_policy, bootstrap, cv_repeated, gain_statistics, padjust, quantile, rdd |
+
+The last row is the honest remainder: seven reference-only validators
+still print a typed `PASS`. They are named in
+`validate_suite_meta.py`, so the set is reviewable and a fix deletes
+an entry in the same commit. What they have never had is a MoonBit
+wire, and deciding whether to give them one is the open question.
+
 ## [0.105.0] -- LPLR's `score="instrument"` was an inert parameter, and the audit that found it could not fail
 
 v0.103.0 audited the 23 Python cross-checks and wrote the result into

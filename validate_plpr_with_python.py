@@ -26,14 +26,38 @@ What is asserted here:
      naive row-level path would report ~0.32 for the CRE approaches).
   2. The hand-rolled clustered reference agrees with upstream on
      theta (|diff| < 0.08) and on se (ratio within [0.5, 2]).
-  3. The MoonBit expectations quoted in plpr_test.mbt (theta ~1.03,
-     se ~0.017-0.020 on this DGP) sit inside the upstream/hand-rolled
-     spread.
+  3. The MoonBit side, read from `examples/plpr` (v0.107.0):
+     - all four approaches recover the true theta;
+     - `cre_general`, `cre_normal` and `wg_approx` agree with EACH
+       OTHER to 1e-8. On this DGP -- linear in `d`, no treatment
+       heterogeneity, the exact case the three are all designed for --
+       those three reduce to the same estimator, so their agreement
+       is an algebraic claim about the DGP rather than a statistical
+       one. Measured spread: 8.0e-11. This is the sharpest available
+       check here, and it is what a stale hand-copied literal cannot
+       do.
+     - `fd_exact` must NOT be one of them. First differences are a
+       different estimator, so if it came out identical the four
+       would really be one and the "four approaches" would be a
+       fiction.
+     - every SE lands in a plausible band and all four are positive.
 
-The MoonBit-side numbers come from `moon test` / `examples/plpr` output;
-this script emits the reference values to compare against.
+WHAT CHANGED IN v0.107.0
+========================
+Assertion 3 used to be four printed literals:
+
+    "MoonBit reference (plpr_test.mbt, seed=3141):
+       cre_general  theta=1.028282 se=0.017046 ..."
+
+which were compared against nothing. They were accurate, which is
+worse: an accurate literal that nothing reads cannot go stale and
+therefore never announces that the code moved underneath it. This
+file now spawns `moon run examples/plpr` and is fail-closed.
 """
 
+import re
+import subprocess
+import sys
 import warnings
 
 import numpy as np
@@ -44,6 +68,56 @@ import doubleml as dml
 from doubleml.plm import DoubleMLPLPR
 
 APPROACHES = ["cre_general", "cre_normal", "fd_exact", "wg_approx"]
+
+# v0.107.0. On this DGP -- linear in `d`, no treatment heterogeneity,
+# which is the exact case CRE-general, CRE-normal and the
+# within-transformation are each built for -- those three reduce to the
+# same estimator. Measured spread on `examples/plpr`: 8.0e-11.
+#
+# The band is 100x that, absolute on a value of order 1.03, i.e.
+# relative 1e-8. The fit and the fold split are both deterministic
+# here, so this cannot go flaky; it exists to catch one of the three
+# drifting away from the others, which a per-approach "theta ~ 1.03"
+# band would not notice at all.
+CRE_TRIO_TOL = 1.0e-8
+
+
+def run_moonbit() -> dict:
+    """Spawn `moon run examples/plpr` and parse the four approach blocks.
+
+    Raises on any failure. The caller treats a raise as FAIL; this
+    function never reports a partial result as success.
+    """
+    result = subprocess.run(
+        ["moon", "run", "examples/plpr", "--target", "native"],
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    if result.returncode != 0:
+        err = result.stderr if result.stderr else result.stdout
+        raise RuntimeError(
+            f"moon run examples/plpr exited {result.returncode}: {err[:400]}"
+        )
+    out = result.stdout
+    blocks = re.split(r"^--- ", out, flags=re.MULTILINE)
+    parsed: dict = {}
+    for approach in APPROACHES:
+        block = next((b for b in blocks if b.startswith(approach)), None)
+        if block is None:
+            raise RuntimeError(
+                f"could not find the `--- {approach} ... ---` block in the "
+                f"example output. Without all four approaches this file "
+                f"cannot check that they are four.\n" + out[:900]
+            )
+        th = re.search(r"theta_hat\s*=\s*([0-9.eE+-]+)", block)
+        se = re.search(r"^se\s*=\s*([0-9.eE+-]+)", block, re.MULTILINE)
+        if not th or not se:
+            raise RuntimeError(
+                f"could not parse theta_hat/se for {approach}:\n" + block[:400]
+            )
+        parsed[approach] = {"theta": float(th.group(1)), "se": float(se.group(1))}
+    return parsed
 
 
 def build_panel_dgp(
@@ -237,13 +311,76 @@ def main() -> None:
                 ok = False
                 print(f"    FAIL {name}: {approach}")
 
+    # ---------------------------------------------------------------
+    # v0.107.0: the MoonBit side, read from `examples/plpr`.
+    # ---------------------------------------------------------------
     print()
-    print("MoonBit reference (plpr_test.mbt, seed=3141):")
-    print("  cre_general  theta=1.028282 se=0.017046")
-    print("  cre_normal   theta=1.028282 se=0.017046")
-    print("  fd_exact     theta=1.029138 se=0.020015")
-    print("  wg_approx    theta=1.028282 se=0.017046")
-    print("  All four must stay within [0.9, 1.15] x se [0.004, 0.08].")
+    print("--- MoonBit side: `moon run examples/plpr` ---")
+    try:
+        mb = run_moonbit()
+    except Exception as exc:  # noqa: BLE001 - any failure is a FAIL
+        print(f"could not obtain the MoonBit estimate: {exc}")
+        print()
+        print("Cross-check: FAIL")
+        raise SystemExit(1)
+
+    for approach in APPROACHES:
+        d = mb[approach]
+        print(
+            f"  moonbit {approach:<12s} theta={d['theta']:.6f} "
+            f"se={d['se']:.6f}"
+        )
+    print()
+    print("--- MoonBit-side checks ---")
+
+    for approach in APPROACHES:
+        d = mb[approach]
+        checks_mb = [
+            (f"theta recovers 1.0 ({approach})", 0.9 < d["theta"] < 1.15),
+            (f"se in band ({approach})", 0.004 < d["se"] < 0.08),
+            (
+                f"se is the clustered one, not the row-level 0.32 ({approach})",
+                d["se"] < 0.1,
+            ),
+        ]
+        for name, passed in checks_mb:
+            if not passed:
+                ok = False
+                print(f"    FAIL {name}: {d['theta']} / {d['se']}")
+
+    # The three approaches that must coincide on this DGP. Linear in d
+    # with no heterogeneity is the case CRE-general, CRE-normal and
+    # the within-transformation are each designed for, so their
+    # agreement is a property of the DGP, not of the noise.
+    trio = ("cre_general", "cre_normal", "wg_approx")
+    base_theta = mb["cre_general"]["theta"]
+    spread = max(abs(mb[a]["theta"] - base_theta) for a in trio)
+    trio_ok = spread < CRE_TRIO_TOL
+    if not trio_ok:
+        ok = False
+    print(
+        f"  cre_general / cre_normal / wg_approx agree to {spread:.3e} "
+        f"< {CRE_TRIO_TOL:.0e} -> {'PASS' if trio_ok else 'FAIL'}"
+    )
+    print(
+        "    (all three are exact for a linear, homogeneous-effect panel;"
+        " this is algebra, not a statistical band)"
+    )
+
+    # ... and the fourth must NOT be one of them.
+    fd_gap = abs(mb["fd_exact"]["theta"] - base_theta)
+    fd_ok = fd_gap > CRE_TRIO_TOL
+    if not fd_ok:
+        ok = False
+    print(
+        f"  fd_exact is a DIFFERENT estimator: |theta_fd - theta_cre| = "
+        f"{fd_gap:.3e} > {CRE_TRIO_TOL:.0e} -> {'PASS' if fd_ok else 'FAIL'}"
+    )
+    print(
+        "    (first differences must not coincide with CRE; if they did,"
+        " the four approaches would be one)"
+    )
+
     print()
     verdict = "PASS" if ok else "FAIL"
     print(f"Cross-check: {verdict}")

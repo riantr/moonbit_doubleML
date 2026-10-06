@@ -79,6 +79,8 @@ MUST_READ_MOONBIT = {
     "validate_lplr_with_python.py",
     "validate_pava_with_python.py",
     "validate_pliv_with_python.py",
+    "validate_plpr_with_python.py",
+    "validate_ssm_with_python.py",
 }
 
 MUST_BE_FAIL_CLOSED = MUST_READ_MOONBIT
@@ -93,10 +95,8 @@ MUST_NOT_READ_MOONBIT = {
     "validate_did_cs_with_python.py",
     "validate_gain_statistics_with_python.py",
     "validate_padjust_with_python.py",
-    "validate_plpr_with_python.py",
     "validate_quantile_with_python.py",
     "validate_rdd_with_python.py",
-    "validate_ssm_with_python.py",
 }
 
 # Reference-only files whose verdict line is a typed literal. Known
@@ -109,7 +109,6 @@ KNOWN_HARDCODED_VERDICT = {
     "validate_padjust_with_python.py",
     "validate_quantile_with_python.py",
     "validate_rdd_with_python.py",
-    "validate_ssm_with_python.py",
 }
 
 SUBPROCESS_CALL = re.compile(r"subprocess\.(run|Popen|check_output|check_call)")
