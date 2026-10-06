@@ -9,6 +9,86 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.111.0] -- plotting is deliberately not ported, and the claim is now enforced in both directions
+
+Last item of the v0.107.0 coverage audit. The first two were shipped as
+v0.109.0 (`set_sample_splitting`) and v0.110.0 (the RDD kernel menu and the
+MSE-optimal bandwidth). This one is a decision rather than an implementation,
+and the substance of the release is that **the decision is written down and
+cannot quietly become false.**
+
+### What upstream has that this package does not
+
+`doubleml-for-py` ships three plotting modules and three `plot()` entry
+points:
+
+- `doubleml/utils/_plots.py`
+- `doubleml/did/utils/_plot.py`
+- `plot` on `DoubleMLDIDMulti` (event-study), `DoubleMLDID` (aggregated DID)
+  and `DoubleMLPolicyTree`
+
+None of it is ported. That is a decision.
+
+### Why
+
+Every one of those entry points reaches matplotlib. MoonBit's official
+packages carry no plotting backend, and the backends this package targets are
+wasm / native / js, where a plotting library is either unavailable or a large
+non-`moonbitlang/*` dependency. Porting them would trade the property the
+package is built around -- a zero-non-official-dependency supply chain, stated
+in the README as a strict rule -- for three charts.
+
+### What is provided instead
+
+The estimators already expose what the plots draw:
+`DoubleMLDIDMulti::aggregate_event` / `::aggregate_time` /
+`::aggregate_group` return `DIDAggregationResult`, and
+`DoubleMLPolicyTree` exposes `leaf_influence`, `leaf_se` and `policy_value`.
+Rendering those is a few lines in whatever tooling the caller already uses.
+
+### Added
+
+- **A `Plotting: deliberately not ported` section in `README.mbt.md`**, naming
+  the five upstream entry points, the reason, and the alternative.
+- **`validate_plotting_scope.py`**, which enforces the claim in BOTH
+  directions:
+  1. the README states the decision -- absent, the gate fails, because a
+     decision nobody wrote down reads as an omission;
+  2. no plotting entry point exists in the package;
+  3. **if one does exist, the gate FAILS**, because the README is then lying
+     and the lying is the defect.
+
+Direction 3 is the whole point. A gate that only checked "the README says not
+ported" would keep passing after plotting landed, which is exactly when the
+sentence becomes false.
+
+Measured, in this order:
+
+| state | verdict |
+|---|---|
+| before the README section existed | FAIL -- "a decision nobody wrote down reads as an omission" |
+| after | PASS |
+| a `DoubleMLPolicyTree::plot` definition added | **FAIL** -- "the README is now false; update it in the same commit that added the code" |
+| that definition removed | PASS |
+
+### A scope note, written down rather than left to be discovered
+
+`validate_plotting_scope.py` is **not** matched by `validate_suite_meta.py`'s
+`validate_*_with_python.py` glob, so the meta-gate does not audit it. The three
+buckets that meta-gate maintains -- reads MoonBit / reference-only /
+hard-coded verdict -- do not describe a fourth kind, a validator that audits a
+documentation claim against the source tree, and forcing this file into one of
+them would be a false label. Naming it outside the glob and saying so is the
+honest option.
+
+### Verification
+
+`moon check --target all --deny-warn` 0 error 0 warning; native / wasm / js
+**833 / 833**; wasm-gc **839 / 839**; `validate_suite_meta.py` PASS;
+`validate_plotting_scope.py` PASS.
+
+No estimator behaviour changed in this release. Tests unchanged at 833.
+
 ## [0.110.0] -- RDD gets a kernel menu and an MSE-optimal bandwidth, and both claims are checked
 
 v0.109.0 closed the sample-splitting gap. This is the RDD item from the same

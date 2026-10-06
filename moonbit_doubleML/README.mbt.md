@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.110.0** |
+| `moon.mod` version | **0.111.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 179 in the library (87 production + 92 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -907,6 +907,36 @@ upstream scope.
   This keeps the port resilient to upstream refactors.
 - Strict dependency rule (see above): only `moonbitlang/*` official
   packages. Minimal supply-chain surface.
+
+### Plotting: deliberately not ported
+
+Upstream `doubleml-for-py` ships three plotting modules and three
+`plot()` entry points — `doubleml/utils/_plots.py`,
+`doubleml/did/utils/_plot.py`, and `plot` on `DoubleMLDIDMulti`,
+`DoubleMLDID` and `DoubleMLPolicyTree` (the event-study plot, the
+aggregated-DID plot, and the policy-tree plot). **None of that is
+ported, and that is a decision rather than an oversight.**
+
+The reason is the dependency rule above. Every one of those entry points
+reaches matplotlib, and MoonBit's official packages carry no plotting
+backend; the backends this package does target are wasm / native / js,
+where a plotting library is either unavailable or a large
+non-`moonbitlang/*` dependency. Adding it would trade the property this
+package is built around — a zero-non-official-dependency supply chain —
+for three charts.
+
+If you need them, the estimators already expose what they plot:
+`DoubleMLDIDMulti::aggregate_event` / `::aggregate_time` /
+`::aggregate_group` return `DIDAggregationResult`, and
+`DoubleMLPolicyTree` exposes `leaf_influence`, `leaf_se` and
+`policy_value`. Rendering those is a few lines on your side, in whatever
+tooling you already use.
+
+The claim is enforced, not just asserted:
+`validate_plotting_scope.py` checks that this section exists AND that
+no plotting entry point has appeared in the package. If plotting is ever
+added, that validator goes red and this paragraph has to be updated in
+the same commit — so this sentence cannot quietly become a lie.
 
 #Used By
 
