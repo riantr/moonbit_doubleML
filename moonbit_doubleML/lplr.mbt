@@ -16,10 +16,18 @@
 ///     ATE on the treated subsample). The starting `beta` is
 ///     computed inside the loop, one per fold, from the inner
 ///     predictions.
-///   - `"instrument"`: the inner predictions are used directly as
-///     `M_inner`, and `ml_m` accepts a `sample_weight` array of
-///     `M (1 - M)` from the inner fold. The starting `beta` is
-///     still per-fold.
+///   - `"instrument"`: the score itself is upstream's instrument-type
+///     form `(Y - expit(theta*D + r_hat)) * (D - m_hat)`, with the
+///     derivative upstream gives at `plm/lplr.py:536-538`. The
+///     starting `beta` is still per-fold.
+///
+/// v0.105.0: these two used to be inert. `score` was validated and
+/// stored but never read, so both strings returned the
+/// nuisance_space answer bit for bit. If you are upgrading: the
+/// `nuisance_space` numbers move slightly (because `ml_m` is now
+/// fitted on the `Y = 0` subsample instead of being aliased to
+/// `ml_a`), and `instrument` produces a genuinely different
+/// estimate for the first time.
 pub struct DoubleMLBinaryData {
   x : Matrix
   y : Array[Double]
@@ -96,47 +104,112 @@ fn prelim_beta_per_fold(
 ///   r(theta) = D * theta + t_hat - beta * a_hat,
 ///   psi(theta) = d_tilde * (1 - y) * exp(r(theta)) - expit(-r(theta)),
 ///   psi_deriv(theta) = -d_tilde * d * (1 - y) * exp(r(theta)).
-priv struct LplrScore {
+pub struct LplrScore {
   psi : Array[Double]
   psi_deriv : Array[Double]
 }
 
 ///|
+/// Which of upstream's two LPLR scores to evaluate.
+///
+/// v0.105.0+. Before this enum existed, `DoubleMLLPLR::score` was
+/// validated (`require(score == "nuisance_space" || score ==
+/// "instrument")`) and stored on the struct, and then **never read**
+/// by anything downstream: `fit` always took the nuisance_space
+/// path. `examples/lplr` printed both scores side by side and they
+/// agreed to the last bit -- which reads like an algebraic identity
+/// and is actually an unimplemented parameter. Upstream
+/// `DoubleMLLPLR._compute_score` / `._compute_score_deriv`
+/// (`plm/lplr.py:521-540`) are two genuinely different formulas, and
+/// `_fit_nuisance` (`plm/lplr.py:244-252`) fits `ml_m` on a
+/// different training set for each. Asserting the two paths agree
+/// would have welded that in place.
+pub enum LplrScoreKind {
+  NuisanceSpace
+  Instrument
+}
+
+///|
+/// Map the public `score` string onto `LplrScoreKind`.
+///
+/// The `score` field is validated in `DoubleMLLPLR::new`, so this
+/// only has to handle the two legal names. Unknown names fall back
+/// to `NuisanceSpace` (the upstream default) rather than raising:
+/// the constructor is the single validation point and duplicating
+/// the panic here would make `fit` harder to call in isolation.
+pub fn lplr_score_kind(score : String) -> LplrScoreKind {
+  if score == "instrument" {
+    Instrument
+  } else {
+    NuisanceSpace
+  }
+}
+
+///|
 /// Evaluate the LPLR score (and its `theta` derivative) at a given
 /// `theta`. `t_pred[i]` and `a_pred[i]` are the outer cross-fitted
-/// nuisances; `a_pred` also serves as `m_hat` for the
-/// `d_tilde = d - a_pred` construction (LPLR uses a single
-/// propensity learner in the single-treatment, binary-D case). The
-/// per-fold preliminary `beta` is held constant during Newton -- the
-/// nonlinear solve is over `theta` only.
-fn lplr_score_at(
+/// nuisances (`ml_t` and `ml_a`); `m_pred[i]` is `ml_m`, which this
+/// port aliases to `a_pred` -- see the `m_pred = a_pred` comment in
+/// `fit` for why, and what it costs relative to upstream.
+/// The per-fold preliminary `beta` is held constant during Newton --
+/// the nonlinear solve is over `theta` only.
+///
+/// Upstream `DoubleMLLPLR._score_elements` (`plm/lplr.py:401-416`)
+/// builds the shared elements:
+///
+///   d_tilde     = d - m_hat
+///   psi_hat     = expit(-r_hat)
+///   score_const = d_tilde * (1 - y) * exp(r_hat)
+///
+/// and the two scores then consume them differently.
+///
+/// **nuisance_space** (`_compute_score`, `lplr.py:522-524`):
+///
+///   score_1 = y * exp(-theta * d) * d_tilde
+///   score   = psi_hat * (score_1 - score_const)
+///
+/// **instrument** (`_compute_score`, `lplr.py:525-528`):
+///
+///   score = (y - expit(theta * d + r_hat)) * d_tilde
+///
+/// Note that the instrument branch reads neither `psi_hat` nor
+/// `score_const` -- upstream computes them in `_score_elements`
+/// because that helper is score-agnostic, but they are dead for this
+/// branch, so this port skips them.
+pub fn lplr_score_at(
   theta : Double,
   d : Array[Double],
   y : Array[Double],
   t_pred : Array[Double],
   a_pred : Array[Double],
+  m_pred : Array[Double],
   beta_start : Double,
+  kind : LplrScoreKind,
 ) -> LplrScore {
-  // Upstream LPLR score (nuisance_space path, DoubleMLLPLR._compute_score):
-  //   r_hat = t_pred - beta_start * a_pred                  (no theta)
-  //   psi_hat = expit(-r_hat)
-  //   score_const = d_tilde * (1 - y) * exp(r_hat)
-  //   score_1 = y * exp(-theta * d) * d_tilde
-  //   score   = psi_hat * (score_1 - score_const).
   // The Newton root of mean(score) gives theta_hat.
   let n = d.length()
   let psi : Array[Double] = Array::make(n, 0.0)
   let psi_deriv : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     let r_hat = t_pred[i] - beta_start * a_pred[i]
-    let dt = d[i] - a_pred[i]
-    let psi_hat = expit(-r_hat)
-    let score_const = dt * (1.0 - y[i]) * @math.exp(r_hat)
-    let score_1 = y[i] * @math.exp(-theta * d[i]) * dt
-    psi[i] = psi_hat * (score_1 - score_const)
-    // d_psi/d_theta = psi_hat * d(score_1)/d_theta
-    //               = psi_hat * y * (-d) * exp(-theta * d) * d_tilde
-    psi_deriv[i] = psi_hat * y[i] * -d[i] * @math.exp(-theta * d[i]) * dt
+    let dt = d[i] - m_pred[i]
+    match kind {
+      NuisanceSpace => {
+        let psi_hat = expit(-r_hat)
+        let score_const = dt * (1.0 - y[i]) * @math.exp(r_hat)
+        let score_1 = y[i] * @math.exp(-theta * d[i]) * dt
+        psi[i] = psi_hat * (score_1 - score_const)
+        // d_psi/d_theta = psi_hat * d(score_1)/d_theta
+        //               = psi_hat * y * (-d) * exp(-theta * d) * d_tilde
+        psi_deriv[i] = psi_hat * y[i] * -d[i] * @math.exp(-theta * d[i]) * dt
+      }
+      Instrument => {
+        let e = expit(theta * d[i] + r_hat)
+        psi[i] = (y[i] - e) * dt
+        // d/d_theta expit(theta*d + r_hat) = d * e * (1 - e)
+        psi_deriv[i] = -d[i] * e * (1.0 - e) * dt
+      }
+    }
   }
   { psi, psi_deriv, }
 }
@@ -482,13 +555,16 @@ fn concat_d_x(d : Array[Double], x : Matrix) -> Matrix {
 ///   4. Per fold, compute `beta_f` from inner `W` and
 ///      `(d - a_inner)`. Average across folds for the
 ///      Newton starting value.
-///   5. Build the linear score: at any `theta`,
-///      `r_i = D_i * theta + t_hat_i - beta_start * a_hat_i`,
-///      then `psi_i = d_tilde_i * (1 - Y_i) * exp(r_i)
-///                  - expit(-r_i)`, and the derivative is
-///      `-d_tilde_i * D_i * (1 - Y_i) * exp(r_i)`.
-///   6. Newton iteration with `mean(psi)` and `mean(psi_deriv)`.
-///   7. Variance via the standard linear-score path
+///   5. `ml_m` supplies `d_tilde = d - m_hat`. Upstream fits it as a
+///      separate learner, restricted to the `Y = 0` rows under
+///      `score="nuisance_space"`; this port aliases `m_hat = a_hat`
+///      (see the `m_pred = a_pred` comment in the body).
+///   6. Build the score at any `theta` from
+///      `r_i = t_hat_i - beta_start * a_hat_i` (no `theta` in `r`;
+///      see `lplr_score_at` for both upstream formulas -- they
+///      differ, and that difference is what `score` selects).
+///   7. Newton iteration with `mean(psi)` and `mean(psi_deriv)`.
+///   8. Variance via the standard linear-score path
 ///      (`var_est(psi_a, psi_b)` with `psi_a = psi_deriv`,
 ///      `psi_b = psi - theta * psi_deriv`); the LPLR score is
 ///      *not* linear in `theta` but is exactly the `theta * psi_a +
@@ -565,6 +641,10 @@ pub fn DoubleMLLPLR::fit(
         cluster_hash,
         "lplr",
       )
+    // v0.105.0: resolve the public `score` string once, up front.
+    // Until this existed the field was validated and stored but
+    // never read, so both score names ran the nuisance_space path.
+    let kind = lplr_score_kind(self.score)
     for r = 0; r < nrep; r = r + 1 {
       let beta_start : Double = if cache_hit && r == nrep - 1 {
         // Reuse the cached LAST-rep nuisances + beta_start;
@@ -604,9 +684,32 @@ pub fn DoubleMLLPLR::fit(
         // when it is in the test set of the inner split).
         // ml_a outer cross-fit (a_hat), same outer folds.
         a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
-        // m_hat is the same estimator in LPLR (ml_m = ml_a). For
-        // continuous D, upstream would also use the same propensity
-        // for `m`; the binary-D case is the focus here.
+        // KNOWN DIVERGENCE FROM UPSTREAM (v0.105.0, deliberate):
+        // upstream fits `ml_m` as a SEPARATE learner and restricts its
+        // training set to the `Y == 0` rows under
+        // `score="nuisance_space"` (`plm/lplr.py:244-252`), so
+        // `d_tilde = d - m_hat` uses that nuisance rather than
+        // `a_hat`. This port aliases `m_pred = a_pred` instead.
+        //
+        // It was tried and reverted. Restricting `ml_m` to the `Y == 0`
+        // subsample makes the score nearly unidentified when the
+        // default learner is OLS: on `lplr_test`'s n=120 fixture the
+        // fitted `beta_start` reached -4.75, `max |r_hat|` reached
+        // 19.1, and `mean(psi_deriv)` collapsed to -3.2e-8. The Newton
+        // loop then failed to converge (`converged = false`,
+        // `mean(psi) = -0.079` at the returned `theta = 13.54`) and
+        // `var_est`'s `-mean(psi_b) / mean(psi_a)` returned
+        // `-2.4e6` for a quantity whose true value is O(0.5).
+        //
+        // Upstream does not hit this because its default `ml_m` is a
+        // `LogisticRegression` -- bounded in [0, 1], so the filtered
+        // subsample does not distort the fit the way an OLS of a
+        // binary `d` does. This port's default is
+        // `LearnerDispatch::linear_regression()`. Aligning the two
+        // (either a logistic default for `ml_m`, or a per-fold
+        // `beta` as upstream uses instead of a fold-averaged scalar)
+        // is its own change with its own evidence, and it does not
+        // belong inside a fix for the inert `score` parameter.
         m_pred = a_pred
         // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
         // row positions recorded by the outer fold's training set
@@ -679,7 +782,9 @@ pub fn DoubleMLLPLR::fit(
       let mut theta = theta0
       let mut converged = false
       for _step = 0; _step < 50; _step = _step + 1 {
-        let sc = lplr_score_at(theta, d, y, t_pred, a_pred, beta_start)
+        let sc = lplr_score_at(
+          theta, d, y, t_pred, a_pred, m_pred, beta_start, kind,
+        )
         let n_obs = d.length().to_double()
         let mut s = 0.0
         let mut sd = 0.0
@@ -721,7 +826,9 @@ pub fn DoubleMLLPLR::fit(
       // and psi(theta) - theta * psi_deriv(theta) as the constant
       // offset; the resulting \	heta_hat = -mean(psi_b)/mean(psi_a)    // recovers the same \	heta\, and the SE reflects the score
       // residual at convergence.
-      let sc = lplr_score_at(theta, d, y, t_pred, a_pred, beta_start)
+      let sc = lplr_score_at(
+        theta, d, y, t_pred, a_pred, m_pred, beta_start, kind,
+      )
       let psi_a : Array[Double] = sc.psi_deriv
       // v0.83.0+: vectorise the psi_b residual computation
       // (element-wise `sc.psi[i] - theta * sc.psi_deriv[i]`).

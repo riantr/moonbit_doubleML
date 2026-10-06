@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.101.0** |
+| `moon.mod` version | **0.105.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 165 in the library (87 production + 78 test) |
+| `.mbt` file count | 174 in the library (87 production + 87 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **785 / 785** |
-| Tests (wasm-gc) | **791 / 791** (lib 785 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **800 / 800** |
+| Tests (wasm-gc) | **806 / 806** (lib 800 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
 | Cache read-path audit | 13 estimators have a hit-vs-fresh assertion; **5 of those 13 additionally carry a corruption probe** (IRM, PLR, CVAR, BLP, PQ) since v0.99.0. A corruption probe writes a known-wrong value into one cached slot and requires the reported estimate to move, so a dead cache-read path fails the suite. A hit-vs-fresh assertion alone does not: the fresh recompute is deterministic, so replaying nothing and replaying correctly are indistinguishable to it. |
@@ -349,7 +349,7 @@ binary-outcome CS-DID:
 | `DoubleMLPQ` | quantile | potential quantile *(upstream)* |
 | `DoubleMLQTE` | quantile | quantile treatment effect *(upstream)* |
 | `DoubleMLLPQ` | local polynomial | local potential quantile *(upstream)* |
-| `DoubleMLLPLR` | partialling-out | partially logistic regression, Liu-Zhang-Zhou 2021 *(extra)* |
+| `DoubleMLLPLR` | nuisance_space *(default)* / instrument | partially logistic regression, Liu-Zhang-Zhou 2021 *(extra)*. The two scores are upstream's two distinct formulas (`doubleml/plm/lplr.py:521-540`), both implemented since v0.105.0; before that the `score` argument was validated and then never read, so both names returned the same answer. |
 | `DoubleMLCVAR` | CVaR | conditional value-at-risk *(upstream)* |
 | `DoubleMLRDD` | observational | regression discontinuity *(upstream)* |
 | `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |

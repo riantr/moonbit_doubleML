@@ -67,11 +67,18 @@ fn main {
   println("=== MoonBit DML demo: Partially Logistic Regression (LZZ2020) ===")
   println("true alpha = 0.5 (logit-scale causal effect)")
   println("")
-  // Both score paths.
+  // Both score paths. The two are DIFFERENT formulas upstream
+  // (`DoubleMLLPLR._compute_score`, plm/lplr.py:521-530); through
+  // v0.104.0 this port validated the `score` string and then never
+  // read it, so both rows printed identical numbers.
   let names = [
     ("nuisance_space", "nuisance space score (default)"),
-    ("instrument", "instrument score (sample-weighted)"),
+    ("instrument", "instrument score (upstream form, unweighted ml_m)"),
   ]
+  let mut th_ns = 0.0
+  let mut th_in = 0.0
+  let mut se_ns = 0.0
+  let mut se_in = 0.0
   for i = 0; i < names.length(); i = i + 1 {
     let sc_name = names[i].0
     let sc_desc = names[i].1
@@ -88,5 +95,48 @@ fn main {
     println("se        = \{fitted.se()}")
     println("95% CI    = [\{lo}, \{hi}]")
     println("")
+    if sc_name == "instrument" {
+      th_in = fitted.coef()
+      se_in = fitted.se()
+    } else {
+      th_ns = fitted.coef()
+      se_ns = fitted.se()
+    }
   }
+  println(
+    "score gap: |theta_instrument - theta_nuisance_space| = \{(th_in - th_ns).abs()}",
+  )
+  println(
+    "          |se_instrument    - se_nuisance_space|    = \{(se_in - se_ns).abs()}",
+  )
+  println("")
+  // v0.105.0: the same DGP at 4x the sample size.
+  //
+  // The coefficient is not the useful check here. This DGP gives
+  // se ~ 0.27 at n = 500, so two independent draws of the same
+  // estimator differ by ~sqrt(2) * 0.27 in expectation -- any
+  // Monte-Carlo-tolerant band wide enough for that is far too wide
+  // to notice a wrong standard error. The SE's own 1/sqrt(n)
+  // scaling is the sharp quantity, and it does not depend on the
+  // two sides sharing an RNG stream: MoonBit draws from
+  // `chacha8_rng` and the Python reference from `default_rng`,
+  // and those cannot be aligned.
+  //
+  // A wrong `M_inv` is what this catches. LPLR's `M_inv` is
+  // `1 / mean(psi_deriv)`, and v0.87.0 had it as
+  // `1 / mean(psi_a)` -- a catastrophic-cancellation residual
+  // rather than the Jacobian. v0.92.0 corrected it. Nothing has
+  // held the line since.
+  let data_big = build_dgp(@moonbit_doubleML.chacha8_rng(3141), 2000, 0.5)
+  let fitted_big = @moonbit_doubleML.DoubleMLLPLR::new(
+    data_big,
+    score="nuisance_space",
+    n_folds=2,
+    n_folds_inner=2,
+    seed=3141,
+  ).fit()
+  println("--- scale (same DGP, 4x the sample size, nuisance_space) ---")
+  println("scale n=2000 theta_hat = \{fitted_big.coef()}")
+  println("scale n=2000 se        = \{fitted_big.se()}")
+  println("LPLR example done")
 }

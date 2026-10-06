@@ -9,6 +9,161 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.105.0] -- LPLR's `score="instrument"` was an inert parameter, and the audit that found it could not fail
+
+v0.103.0 audited the 23 Python cross-checks and wrote the result into
+this file as prose. Prose does not fail: three of the files in that
+audit's own "fails open" / "never runs" categories kept their shape
+for another release. This version turns that audit into an executable
+gate -- and the first thing the gate's author did with it was read
+`examples/lplr` properly, which turned up a defect in shipped code.
+
+### Fixed
+
+- **`DoubleMLLPLR`'s `score="instrument"` did nothing.** The
+  constructor validated the name (`require(score == "nuisance_space"
+  || score == "instrument")`) and stored it on the struct, and the
+  field was then never read by anything downstream. `fit` always ran
+  the `nuisance_space` path. `examples/lplr` printed both scores side
+  by side and they agreed to the last bit -- which reads like an
+  algebraic identity and is actually an unimplemented parameter.
+
+  Upstream branches in four places (`doubleml/plm/lplr.py`):
+
+  | where | lines | what differs |
+  |---|---|---|
+  | `_fit_nuisance` | 244-252 | `ml_m`'s training set (`Y == 0` subsample vs full) and its weights |
+  | `_nuisance_tuning` | 450-455 | tuning subset |
+  | `_compute_score` | 521-530 | entirely different formula |
+  | `_compute_score_deriv` | 532-540 | entirely different formula |
+
+  ```python
+  # nuisance_space                        # instrument
+  score_1 = y*exp(-theta*d)*d_tilde       score = (y - expit(theta*d + r_hat)) * d_tilde
+  score   = psi_hat * (score_1 -          deriv = -d * expit(theta*d + r_hat)
+                         score_const)                       * (1 - expit(...)) * d_tilde
+  ```
+
+  The two share nothing but `r_hat` and `d_tilde`. Both are now
+  implemented; `lplr_score_at` branches on a new `LplrScoreKind`.
+
+  **No numerical change on the default path.** `nuisance_space` at
+  the example's seed reads exactly what v0.104.0 read
+  (`theta_hat = 0.46411015764901836`, `se = 0.2711142439446058`); only
+  `instrument` moves, from a wrong answer to its own.
+
+### Added
+
+- **`validate_suite_meta.py` -- a meta-gate over the cross-validator
+  suite.** It mechanically classifies all 23 files and asserts the
+  classification against an explicit expectation table:
+
+  ```
+  gates (read MoonBit + fail-closed): 9   reference-only: 14   known typed verdicts: 8
+  ```
+
+  Five invariants per file: it emits a *computed* verdict (both a
+  `PASS` and a `FAIL` literal, the `"... " + ("PASS" if ok else
+  "FAIL")` shape the CI greps for); it prints no hard-coded
+  `'...PASS'` literal; it really spawns `moon` via a `subprocess` call
+  whose arguments contain `"moon"` if it is on the gate list; it does
+  not spawn `moon` if it is reference-only; and a gate file has a
+  non-zero-exit construct.
+
+  The subprocess check is deliberately on the **call site**, not on
+  `import subprocess`: `validate_pava` imported the module, defined
+  `run_moonbit_pava` which raised `NotImplementedError`, never called
+  it, and printed a hard-coded `PASS`. A rule of the form "mentions
+  `moon` => reads MoonBit" would have been satisfied by that file.
+
+  Four mutations confirm it bites: neutering `pava`'s subprocess call,
+  un-wiring `lplr`, fixing a tracked verdict without updating the
+  table, and adding an unlisted validator each turn it red.
+
+- **Eight reference-only validators are now on an explicit
+  `KNOWN_HARDCODED_VERDICT` list** rather than described in prose:
+  `blp_policy`, `bootstrap`, `cv_repeated`, `gain_statistics`,
+  `padjust`, `quantile`, `rdd`, `ssm`. They still print a typed
+  `PASS`; that is a real defect and not this version's job, but
+  fixing one now means deleting it from the list in the same commit,
+  which puts the fix in the diff.
+
+### Changed
+
+- **`validate_lplr_with_python.py` now actually runs MoonBit.** It
+  previously printed `"MoonBit reference ... theta_hat = 0.46403803,
+  se = 0.26968752"` as a hand-copied literal, compared it against
+  nothing, and that literal had been stale since at least v0.92. It
+  now spawns `moon run examples/lplr`, parses both score blocks and
+  the `scale` block, and is fail-closed.
+- `examples/lplr` prints the gap between the two scores explicitly
+  (`0.04714984768376973` at the example's seed), and its
+  `instrument` label no longer claims a sample weighting this port
+  does not apply.
+
+### What the rewritten validator does and does not assert
+
+The decisive check is that the two MoonBit scores **differ** -- exact,
+zero Monte-Carlo error, and the only check here that could not have
+passed by accident. Note the direction. An
+`assert psi_nuisance == psi_instrument` would have read as an elegant
+invariant and would have welded the unimplemented parameter in as a
+property of the estimator; that is the same ratchet shape as v0.102.0
+(`M_inv` "has no principled form") and v0.104.0 (`y / w` "is the
+standard PAVA output").
+
+No tight coefficient comparison appears, and the file says why: with
+`draw_sample_splitting=True` and no seeded split, upstream's own
+refits of this DGP give a theta standard deviation of **0.26** on a
+true value near 0.5, and the `instrument` median came out at 0.04.
+MoonBit draws from `chacha8_rng` and Python from `default_rng`; the
+splits cannot be aligned. A band tight enough to be diagnostic would
+be tighter than upstream's own noise. The checks are therefore
+(a) the scores differ, (b) the SE falls like `1/sqrt(n)`, (c) a
+Monte-Carlo band, with the band reported alongside the spread that
+justifies it. The `nuisance_space` agreement is in fact 125x tighter
+than its band (`|mb - handrolled| = 0.0065` against `0.8133`).
+
+### Known divergence from upstream, left in place on purpose
+
+Upstream fits `ml_m` as a separate learner and restricts its training
+set to the `Y == 0` rows under `nuisance_space`; this port writes
+`m_pred = a_pred`. Aligning it was tried in this version and reverted.
+On `lplr_test`'s n=120 fixture the filtered OLS fit drove
+`beta_start` to `-4.75`, `max |r_hat|` to `19.1`, and
+`mean(psi_deriv)` to `-3.2e-8`; the Newton loop then failed to
+converge (`converged = false`, `mean(psi) = -0.079` at the returned
+`theta = 13.54`) and `var_est`'s `-mean(psi_b) / mean(psi_a)`
+returned **-2.4e6** for a quantity whose true value is `O(0.5)`.
+
+Upstream does not hit this because its default `ml_m` is a
+`LogisticRegression`, whose `predict` cannot leave `[0, 1]`; this
+port's default is `LearnerDispatch::linear_regression()`. Closing the
+gap needs either a logistic default for `ml_m` or a per-fold `beta`
+as upstream uses in place of a fold-averaged scalar. Either is its own
+change with its own evidence, and neither belongs inside a fix for an
+inert parameter. The numbers and the reasoning are recorded at the
+`m_pred = a_pred` assignment in `lplr.mbt` so the next person does not
+have to rediscover them.
+
+That investigation did surface one real latent defect, recorded here
+rather than fixed here: **`fit` discards the Newton convergence flag**
+(`let _ = converged`), so a non-converged solve reports its number
+instead of failing. Nothing in the suite currently triggers it.
+
+### Verification
+
+- `moon check --target all` -- 0 errors, 0 warnings.
+- `moon test --deny-warn` -- native / wasm / js **800/800**,
+  wasm-gc **806/806** (was 795 / 795 / 795 / 801; +5 new tests in
+  `expand_v105_test.mbt`).
+- Cross-check suite -- **24/24** (23 validators plus the meta-gate),
+  CI-equivalent and case-sensitive.
+- Mutations: `Instrument` arm reverted to the `nuisance_space`
+  formula turns the score-literal test, the two-scores-differ test
+  and the validator's score-gap check red; `m_pred` reverted to the
+  `m_pred = a_pred` alias turns the `m_hat` test red.
+
 ## [0.104.0] -- `pava`'s weighted path was wrong, and the cross-checks that could not have said so
 
 v0.103.0 audited the 23 Python cross-checks and found that 19 of them
