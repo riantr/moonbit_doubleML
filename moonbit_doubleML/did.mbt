@@ -881,3 +881,102 @@ pub fn DoubleMLDID::bias_corrected_coef(self : DoubleMLDID) -> Double {
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// `DoubleMLDID::tune` - score a grid of nuisance-learner
+/// combinations and re-fit the estimator with the winner.
+///
+/// # Slots
+///
+/// Tunes the two DID nuisance slots in the propensity-first
+/// sense documented on `TuneParam` (see the slot-semantics
+/// table there): the FIRST slot is the treatment / propensity
+/// learner `E[g | x]`, the SECOND is the outcome learner
+/// `E[m0 + d * m1 | x]`. The first slot is stored on the
+/// field named `learner_l`; that field name is not a
+/// statement about which learner it holds, and always has
+/// been `learner_l`. Build each grid row with
+/// `TuneParam::for_treatment(learner_g, learner_m)` so the
+/// call site carries the role rather than leaving a reader to
+/// infer it from a field called `learner_l`.
+///
+/// # Routing
+///
+/// The fold draw, the scoring and the selection rule all go
+/// through the shared `tune_score_grid` core in `tune.mbt`;
+/// this method adds no numerics of its own. Only the first
+/// slot is scored: the winning `learner_l` is then paired
+/// with the same grid row's `learner_m` for the re-fit under
+/// the FINAL-FIT fold schedule (`self.n_folds`).
+///
+/// v0.108.0: new. `DoubleMLDID` had no `tune` at all, which
+/// was a coverage gap against upstream, where `tune` reaches
+/// every estimator through the `BaseDML` mixin.
+///
+/// # Caveats found while reading the fit path
+///
+///   - `n` is NOT taken from `self.n_obs()`. The core derives
+///     it from `self.data.y.length()`, which is what the
+///     `n_obs`-less estimators in this package need. On DID
+///     the two agree: `DoubleMLDIDData::new` requires
+///     `x.nrows == y.length` and `n_obs` is `x.rows()`.
+///   - `fit` exposes no `tune_result` parameter, so the
+///     per-candidate score vector is NOT retained on the
+///     returned estimator. This is the one thing not carried
+///     over from `DoubleMLPLR::tune`, which stashes a
+///     `TuneResult`. Recorded here rather than dropped
+///     silently.
+///   - `fit` cross-fits `n_rep` times, re-seeding per
+///     repetition (`self.seed + r`) and averaging the nuisance
+///     vectors, and it stratifies on `self.strata` when
+///     strata are present. The tune score is a SINGLE
+///     unstratified cross-fit, so it reflects one draw rather
+///     than the rep-averaged nuisance the final fit actually
+///     uses. `tune` forwards no `n_rep` / strata knob: both
+///     stay on `self`.
+///
+/// # No cluster guard
+///
+/// `require(!self.data.is_cluster_data())` is deliberately
+/// ABSENT here, unlike on `DoubleMLAPO::tune`. Not an
+/// oversight: `DoubleMLDIDData` is `{x, y, d}`, defines no
+/// `is_cluster_data()`, and carries no `cluster_vars` -
+/// cluster ids reach DID as an explicit argument to
+/// `DoubleMLDID::cluster_sandwich_se(cluster_ids)` at
+/// standard-error time instead. There is no cluster state on
+/// the data container for a guard to read, so a guard here
+/// could never fire.
+///
+/// Stated so the absence is not read as an endorsement:
+/// cluster-aware tuning is not ENFORCED on DID, and it is not
+/// implemented either. Tune folds are drawn over rows, where a
+/// correct cluster-DML tune needs folds over unique units. Use
+/// `DoubleMLDID::fit(ml_g=..., ml_m=...)` with hand-picked
+/// candidates on the cluster path until a unit-wise fold
+/// schedule lands.
+pub fn DoubleMLDID::tune(
+  self : DoubleMLDID,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLDID {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

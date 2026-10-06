@@ -1453,3 +1453,114 @@ pub fn DoubleMLDIDCS::sensitivity_analysis_cluster(
   }
   out_all
 }
+
+///|
+/// `DoubleMLDIDCS::tune` - score a grid of nuisance-learner
+/// combinations and re-fit the estimator with the winner.
+///
+/// # Slots
+///
+/// Tunes the two DID nuisance slots in the propensity-first
+/// sense documented on `TuneParam` (see its slot-semantics
+/// table): FIRST slot is the treatment / propensity learner
+/// `E[g | x]`, SECOND is the outcome learner
+/// `E[m0 + d * m1 | x]`. The first slot lives on the field
+/// named `learner_l` - that name is not a claim about which
+/// learner it holds. Build rows with
+/// `TuneParam::for_treatment(learner_g, learner_m)` so the
+/// call site carries the role.
+///
+/// # Routing
+///
+/// The fold draw, the scoring and the selection rule all go
+/// through the shared `tune_score_grid` core in `tune.mbt`;
+/// this method adds no numerics of its own. Only the first
+/// slot is scored, and the winning `learner_l` is paired with
+/// the same grid row's `learner_m` for the re-fit.
+///
+/// v0.108.0: new. `DoubleMLDIDCS` had no `tune` at all, which
+/// was a coverage gap against upstream, where `tune` reaches
+/// every estimator through the `BaseDML` mixin.
+///
+/// # Caveats found while reading the fit path
+///
+///   - This is the estimator the core's `y.length()` design
+///     exists for: `DoubleMLDIDCS` exposes NO `n_obs()`
+///     (its only size accessors are `n_groups` and
+///     `n_periods`). A core keyed on `self.n_obs()` could not
+///     have served it without pushing a new accessor onto a
+///     public type purely to serve a helper. The score is
+///     therefore over the long-format panel,
+///     `data.y.length()` rows.
+///   - `fit` takes only `(ml_g, ml_m)` as tunables. It then
+///     builds a per-`(group, period)` child `DoubleMLDIDBinary`
+///     and forwards `ml_g~` / `ml_m~` into the child's `fit`.
+///     The `score="observational"` and
+///     `in_sample_normalization=self.in_sample_normalization`
+///     settings on that child are real arguments of the fit
+///     path, but they are NOT `DoubleMLDIDCS::fit`
+///     parameters - `fit` reads them off `self` and passes
+///     them down. `tune` therefore has nothing to forward
+///     here, and a caller who needs a different DML score or
+///     normalization on the tuned model must set it on the
+///     estimator before calling `tune`, since the winning
+///     re-fit is `self.fit(...)` and inherits `self`'s values.
+///   - ROW SET MISMATCH. `fit` cross-fits each cell on that
+///     cell's wide 2-period sub-panel, whereas
+///     `tune_score_grid` scores against the full long-format
+///     `data.x` / `data.y`. Candidates are ranked over more
+///     rows than they are later cross-fitted on. Known gap,
+///     not an endorsement.
+///   - `fit` exposes no `tune_result` parameter, so the
+///     per-candidate score vector is not retained on the
+///     returned estimator (as on `DoubleMLDID::tune`, and
+///     unlike `DoubleMLPLR::tune` which stores a
+///     `TuneResult`). Recorded rather than dropped silently.
+///
+/// # No cluster guard
+///
+/// `require(!self.data.is_cluster_data())` is deliberately
+/// ABSENT. `DoubleMLDIDCSData` is
+/// `{x, y, d, t, id, g, groups, times}` and defines no
+/// `is_cluster_data()`; it does carry `id`, the panel unit id,
+/// but cluster ids are passed explicitly to
+/// `DoubleMLDIDCS::cluster_sandwich_se_at(group_idx, period_idx, cluster_ids)`
+/// rather than held as guard-readable container state, so a
+/// guard on `self.data` could never fire. Adding the method
+/// here would have meant inventing a cluster flag to guard on,
+/// which is out of scope for this change.
+///
+/// The honest consequence, and the reason this one is worth
+/// reading twice: DIDCS is a repeated-unit panel estimator and
+/// its tune folds are drawn over ROWS (unit-periods), not over
+/// unique units, so a single unit's own rows can land on both
+/// sides of a fold. The absence of the guard is a statement
+/// that the guard is not implementable today, NOT that
+/// row-wise folds are correct on this data. Unit-wise tune
+/// folds remain an open gap.
+pub fn DoubleMLDIDCS::tune(
+  self : DoubleMLDIDCS,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLDIDCS {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

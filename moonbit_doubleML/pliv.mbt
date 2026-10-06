@@ -765,44 +765,21 @@ pub fn DoubleMLPLIV::tune(
     require(n_folds_tune >= 2)
     require(!self.data.is_cluster_data())
     let scoring = TuneScoring::parse(scoring_method)
-    let folds_tune = kfold(self.n_obs(), n_folds_tune, seed)
-    let n = self.n_obs()
-    let scores : Array[Double] = Array::make(param_set.length(), 0.0)
-    for i = 0; i < param_set.length(); i = i + 1 {
-      let l_hat_c = cross_fit_predict_dispatch(
-        param_set[i],
-        self.data.x,
-        self.data.y,
-        folds_tune,
-      )
-      scores[i] = if l_hat_c.length() == n {
-        tune_score_outcome(self.data.y, l_hat_c, scoring)
-      } else {
-        TUNE_SCORE_FAIL_SENTINEL
-      }
-    }
-    let best_idx = if scoring is NegMSE {
-      let mut bi = 0
-      let mut bv = scores[0]
-      for i = 1; i < scores.length(); i = i + 1 {
-        if scores[i] > bv {
-          bv = scores[i]
-          bi = i
-        }
-      }
-      bi
-    } else {
-      let mut bi = 0
-      let mut bv = scores[0]
-      for i = 1; i < scores.length(); i = i + 1 {
-        if scores[i] < bv {
-          bv = scores[i]
-          bi = i
-        }
-      }
-      bi
-    }
-    self.fit(learner=param_set[best_idx])
+    // v0.108.0: scoring loop + fold draw + argmin moved into
+    // `tune_score_grid`. PLIV keeps its own `Array[LearnerDispatch]`
+    // grid shape (it has a single nuisance slot, so a two-learner
+    // `TuneParam` would be a wrapper around one value) and passes it
+    // straight through - the core is keyed on the learner array, not
+    // on `TuneParam`, precisely so both shapes share it.
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set,
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    self.fit(learner=param_set[grid.best_index])
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

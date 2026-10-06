@@ -983,6 +983,77 @@ pub fn DoubleMLLPLR::bootstrap(
 }
 
 ///|
+/// Tune the `(ml_g, ml_m)` nuisance-learner pair via MSE-on-l_hat
+/// cross-fitting. The winning pair is re-fit on the FINAL-FIT fold
+/// partition (`self.n_folds`) under `DoubleMLLPLR::fit`; the
+/// tune-time cross-fit is not reused. `scoring_method` is `"MSE"`
+/// (default), `"RMSE"` or `"NegMSE"`; `n_folds_tune` defaults to
+/// 5 and `seed` to 3141. Returns a re-fitted `DoubleMLLPLR`.
+///
+/// Slot semantics: LPLR is a partially linear outcome family, so
+/// the FIRST `TuneParam` slot is the OUTCOME learner and the
+/// second is the nuisance / propensity learner. Build the grid
+/// with `TuneParam::for_outcome`. Concretely the first slot
+/// becomes `ml_g` (routed by `fit` to the `ml_t` W-regressor
+/// slot) and the second becomes `ml_m` (routed to the
+/// binary-classification slots). This is worth stating because
+/// the `ml_g` field name reads as a propensity name -- see the
+/// `learner_g` / `learner_m` accessors, which document `ml_g` as
+/// the outcome-nuisance learner.
+///
+/// v0.108.0: new. LPLR had no `tune` at all, so it was one of the
+/// estimators carrying a coverage gap against upstream, where
+/// `tune` reaches every estimator through the `BaseDML` mixin.
+/// The fold draw, the scoring loop and the argmin/argmax
+/// selection route through the shared `tune_score_grid` core.
+/// LPLR exposes no `n_obs()`, which is exactly why the core takes
+/// its observation count from `y.length()` rather than from an
+/// accessor.
+///
+/// `n_folds_inner` (the per-fold inner cross-fit count behind the
+/// preliminary Newton start) is NOT a `fit` parameter, so there is
+/// nothing for this method to forward and nothing it can drop:
+/// `fit` reads `self.n_folds_inner` off the struct, validates it
+/// in `new`, and re-persists it on the returned model. The re-fit
+/// therefore uses the tuned model's own inner fold count. The
+/// grid scoring does not use `n_folds_inner` at all -- it uses
+/// `n_folds_tune` -- so changing `n_folds_inner` cannot change
+/// which candidate wins, only the estimate produced afterwards.
+///
+/// No cluster guard: `DoubleMLBinaryData` exposes no
+/// `is_cluster_data()`, and `fit` states that LPLR is not cluster
+/// data and runs the row-level variance path. There is no
+/// clustered path here to mis-handle, so the guard would be
+/// unreachable at best; the method does not add the method or the
+/// guard.
+pub fn DoubleMLLPLR::tune(
+  self : DoubleMLLPLR,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLLPLR {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// Pick a one-step starting `theta` for Newton. The per-fold
 /// preliminary `beta_start` already gives a reasonable scale (the
 /// ratio of treatment to logit shift); we evaluate the score and

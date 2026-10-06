@@ -1072,6 +1072,85 @@ pub fn DoubleMLDIDCrossSection::fit(
 }
 
 ///|
+/// `DoubleMLDIDCrossSection::tune` - score a grid of
+/// `(learner_g, learner_m)` pairs and re-fit with the winner.
+///
+/// Slot semantics: this is a propensity-first family, so the
+/// first `TuneParam` slot is the treatment / propensity learner
+/// `E[g|d,x]` and the second is the outcome learner. The first
+/// field is still named `learner_l` (the names are fixed by the
+/// partially-linear family and do not change with it); build
+/// candidates with `TuneParam::for_treatment(learner_g,
+/// learner_m)` so the call site carries the slot's role instead
+/// of leaving a reader to infer it from a field called
+/// `learner_l`.
+///
+/// v0.108.0: new. `DIDCrossSection` had no `tune` at all, so it
+/// was one of the estimators carrying a coverage gap against
+/// upstream, where `tune` reaches every estimator through the
+/// `BaseDML` mixin. It routes through the shared
+/// `tune_score_grid` core in `tune.mbt` - fold draw, cross-fit,
+/// scoring and the argmin/argmax selection all live there -
+/// rather than re-implementing the loop a ninth time.
+///
+/// The re-fit is `self.fit(ml_g=..., ml_m=...)`. `fit` reads
+/// `n_folds`, `n_rep`, `seed`, `propensity_clip` and
+/// `ps_processor` from `self` and re-applies its own final-fit
+/// fold schedule, so nothing else is carried across by hand and
+/// no bootstrap state is dropped (`fit` itself re-applies
+/// `boot_t_stat` / `boot_method` / `n_rep_boot` / `boot_seed`).
+/// The grid's candidate cross-fits are NOT reused for the final
+/// fit - the winner's nuisances are re-cross-fitted from
+/// scratch under `self.n_folds`, same as every other `::tune`.
+///
+/// Caveat on what the score means: it is MSE of the first-slot
+/// learner cross-fitted against the OUTCOME `y`, not against the
+/// treatment `d`. `fit` actually builds 4 g-functions
+/// `g(d,t,x)` plus 1 propensity `m(x)` from these two learners,
+/// and the grid never observes the per-cell nuisance quality or
+/// the propensity error, so a candidate can win on outcome fit
+/// and still be the worse propensity model. This is the same
+/// convention the other propensity-first `::tune` methods
+/// (`APO` / `APOS` / `IRM` / `IIVM`) use; read the grid as a
+/// shortlist, not a per-cell optimum.
+///
+/// There is no cluster guard here, deliberately. Unlike
+/// `DoubleMLData` / `DoubleMLIIVMData` / `DoubleMLPLIVData`,
+/// `DoubleMLDIDCrossSectionData` has no `cluster_vars` field and
+/// no `is_cluster_data()` method at all, so clustered-inference
+/// data cannot be represented in this type in the first place.
+/// Writing the guard would not compile, and adding the method is
+/// outside this change. This is not the v0.108.0 `APO`
+/// asymmetry (a guard missing where the data type has one) - the
+/// accessors genuinely do not exist here.
+pub fn DoubleMLDIDCrossSection::tune(
+  self : DoubleMLDIDCrossSection,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLDIDCrossSection {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.21.0+: multiplier bootstrap. Draws
 /// `n_rep_boot` weight vectors of length `n_obs` from
 /// the chosen multiplier distribution, computes

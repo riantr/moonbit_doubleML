@@ -9,6 +9,230 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.108.0] -- `tune` existed on 5 of 22 estimators, and the gate that claimed to check it could not fail
+
+v0.107.0 finished the SSM / PLPR cross-checks. This version works the
+first item of the v0.107.0 coverage audit instead: the gap where
+`tune` reaches every estimator upstream (through the `BaseDML` mixin)
+but only 5 of 22 here.
+
+### The number was wrong twice, and both corrections are measurements
+
+The audit reported **17** estimators missing a `tune`. Building the
+wrappers against the actual `fit` signatures produced **14**, and the
+3 that dropped out are not a shortfall:
+
+| class | n | estimators | why |
+|---|---:|---|---|
+| two-slot | 12 | APOS, CVAR, DID, DIDBinary, DIDCS, DIDCSBinary, DIDCrossSection, DIDMulti, LPLR, PQ, QTE, SSM | `fit` takes two learner slots |
+| one-slot | 2 | PLPR, RDD | grid is a bare `Array[LearnerDispatch]`, per the `PLIV` precedent |
+| **not applicable** | 2 | **LPQ**, **PolicyTree** | `DoubleMLLPQ::fit(Self)` and `DoubleMLPolicyTree::fit(Self)` take no learner at all. There is nothing to tune. `PolicyTree` is itself the learner; its hyperparameters (`depth`, `min_leaf_n`, `split_seed`) are not a `TuneParam` grid. |
+| **different mechanism** | 1 | **BLP** | no `data` field; `ml_g` fits the demand *characteristics*, and there is no outcome-nuisance to cross-fit against `y`. Needs its own design. Deferred. |
+
+A second measurement changed the design: **6 of the 22 expose no
+`n_obs()` at all** (`APOS`, `DIDCS`, `DIDCrossSection`, `DIDMulti`,
+`LPLR`, `PLPR`). Every pre-existing `::tune` drew its fold schedule
+from `self.n_obs()`, so a shared core keyed on that accessor would
+have pushed a new public method onto six types to serve a helper. The
+core derives `n` from `y.length()` instead.
+
+### The gate was dead, and that is measured, not asserted
+
+The v0.65.0 tests were named `irm_tune_picks_ols_candidate` and three
+siblings. Each built its grid out of one or two **identical**
+candidates -- `[lr, lr]`, or just `[lr]` -- and then asserted only that
+the resulting coefficient was not NaN. The selection step had nothing
+to decide.
+
+Inverting the argmin in `tune.mbt` from `<` to `>` and re-running the
+whole suite:
+
+```
+Total tests: 808, passed: 808, failed: 0.
+```
+
+The names were claims, not checks.
+
+### Added
+
+- **14 `::tune` methods** (the table above), each routing through the
+  new shared core. `tune` coverage goes from 5/22 to **19/22**; the 3
+  remaining are the not-applicable and deferred cases, each recorded
+  with its reason rather than left as a silent absence.
+- **`tune_score_grid` + `TuneGridScore`** in `tune.mbt`: the
+  estimator-independent half of `tune`. Draws the tune-time folds,
+  cross-fits every candidate against the outcome, scores, and returns
+  the per-candidate scores plus the winning index.
+- **`TuneParam::for_outcome` / `TuneParam::for_treatment`**: intent-
+  labelled aliases of `TuneParam::new`, identical in behaviour.
+
+### Changed
+
+- **Five `::tune` implementations collapsed onto the core.** `PLR`,
+  `PLIV`, `IRM`, `IIVM` and `APO` each carried a byte-identical copy of
+  the scoring loop and of the argmin/argmax selection -- roughly 40
+  duplicated lines apiece, including the `NegMSE` higher-is-better
+  branch that had to be rewritten at every site. That duplication is
+  what let the argmin be inverted with the suite green.
+- **`DoubleMLPLR::tune` lost its single-candidate fast path.** It never
+  actually skipped the scoring -- it computed one score and hand-built
+  a `TuneResult` -- so it was a second copy of the result-construction
+  logic that could drift from the multi-candidate path rather than a
+  shortcut. With one candidate the grid scores it and selects index 0:
+  the same answer by a shorter route.
+- **`TuneParam` documents what its fields mean.** The field is
+  `learner_l` and always has been, but `apo.mbt` / `irm.mbt` /
+  `iivm.mbt` described their pair as `(learner_g, learner_m)`, which
+  reads as a promise that the field is named `learner_g`. A slot-
+  semantics table now states, per family, which role each slot holds.
+- **`n_folds_tune >= 2` stays at every call site** rather than moving
+  into the core. It is the check that carries the most weight --
+  `kfold(n, 1, seed)` yields one fold, so the "cross-fit" degenerates
+  to in-sample prediction and every candidate is scored on its own
+  training fit, silently rewarding the most overfitting one. A check
+  that important should be visible, not inferred. It is also why the
+  core is not error-typed: a polymorphic `raise` there widens the try
+  body's error set and breaks the
+  `catch { PreconditionError::Violated(loc) => ... }` exhaustiveness
+  every `::tune` relies on.
+
+### Fixed
+
+- **`DoubleMLAPO::tune` was missing its cluster guard.** `PLR`, `PLIV`,
+  `IRM` and `IIVM` all carried
+  `require(!self.data.is_cluster_data())`; APO did not, so
+  `DoubleMLAPO::tune` silently ran on cluster data where its four
+  siblings aborted. Cluster-DML tune folds must be drawn over unique
+  units, not rows, and a row-wise schedule on clustered data produces
+  a plausible-looking score for a wrong cross-fit rather than an error.
+  `APOS` inherits the guard.
+- **The `TuneParam` doc claimed a field name that does not exist**
+  (above).
+- **The fail-sentinel comment claimed coverage it did not have.** The
+  v0.58.0 text gave "an RFLearner with 0 trees" as the example of a
+  degenerate candidate that scores `TUNE_SCORE_FAIL_SENTINEL` and is
+  excluded. It does not: `RFLearner::fit` raises `PreconditionError` on
+  `n_trees=0` and its own `catch` escalates that to `abort`
+  (`rfl.mbt:404`), so the process dies before any caller sees a vector,
+  let alone a wrong-length one. A test written against that claim
+  killed the test binary with `moonbit_panic`. The guard is kept as
+  defence for a future learner that returns a short vector *without*
+  aborting, and is now documented as unreachable today rather than
+  described as live. No learner in the current `LearnerDispatch` set
+  can reach it -- they all return `x.rows()`-length vectors.
+
+### Verification
+
+New gate in `expand_v108_test.mbt`, plus the four v0.65.0 tests
+rewritten. Three things make it able to fail:
+
+1. **Every grid is ordered `[worst, best]`** -- `NoopLearner` predicts
+   0. This is the load-bearing detail: with the good candidate first,
+   an inverted argmin, a skipped argmin and a zeroed score vector all
+   still pick index 0 and all still pass.
+2. **The DGP makes OLS dominate rather than edge out Noop.** The v0.65.0
+   generator was `y = 1.2*d + 0.5*x0 + noise`, whose variance is
+   dominated by the `1.2*d` term that OLS on `x` cannot see: OOF MSE
+   lands near 0.36 against Noop's 0.44, a factor of **1.2**. A
+   selection assertion on a 1.2x separation is a bet on the draw. The
+   new generator is `y = 3.0*x0 + 0.1*u`, giving OOF MSE ~3e-3 against
+   Noop's ~3.0 -- about **900x**, a property of the DGP rather than of
+   the seed. No 1/sqrt(n) band is used or needed: a band wide enough to
+   absorb a 900x misselection would also absorb a completely broken
+   scorer.
+3. **Assertions, never `abort`.** An abort kills the whole test binary,
+   so a mis-selection would take the other tests' results down with it
+   and the failure would be unattributable.
+
+One identity was written as `== 0.0` and **measured** at
+`9.123421520996841e-24`, not zero: on a noiseless linear outcome OLS
+reproduces `y` out of fold up to the floating-point roundoff floor of
+the 2x2 normal-equation solve. The assertion is now a magnitude one
+(`< 1.0e-20` against Noop's measured `2.768660418644647`) with the
+measured numbers recorded in the comment. Asserting `== 0.0` would have
+been a false identity.
+
+Mutation harness: `_verify/mut_v108_tune.ps1`. Failure counts as the gate grew:
+
+| mutation | v0.65.0 gate | after this release's gate |
+|---|---:|---:|
+| M1 selection rule inverted (argmin -> argmax) | **0 failures** | **11** |
+| M2 selection never applied (`best_index: 0`) | 0 | 12 |
+| M3 fail-sentinel guard inverted (`==` -> `!=`) | 0 | 13 |
+
+M1 is the mutation that used to survive silently.
+
+Each run restores `tune.mbt` from a backup and reports a SHA256 match rather
+than comparing against `HEAD` -- mid-release the working tree is *supposed* to
+differ from `HEAD`, and a `HEAD` comparison reports "DIRTY" on a perfectly
+restored file, which teaches the reader to ignore the line.
+
+Tests: **808 -> 816**. Four new core tests (`expand_v108_test.mbt`), one new
+PLR selection test, four `v065_wbtest.mbt` tests rewritten in place, four new
+per-wrapper plumbing tests (SSM / RDD / PLPR / LPLR). `moon check --target all`
+0 error 0 warning.
+
+### Known limitations of the new wrappers — recorded, not fixed
+
+Each of these is in the affected method's doc comment. They are listed here
+too because a caveat that lives only in a doc comment tends to be read once
+and then treated as a design decision.
+
+- **The score is a proxy for propensity-first families.** The core cross-fits
+  the first-slot learner against the OUTCOME `y`, never against the treatment
+  `d`. For `APO` / `APOS` / `IRM` / `IIVM` / `CVAR` / `DID*` / `SSM` the grid
+  therefore never sees propensity quality: a candidate can win on outcome fit
+  and still be the worse propensity model. This is **inherited, not new** --
+  the pre-existing `APO` / `IRM` / `IIVM` / `PLIV` implementations scored the
+  same way -- but it now applies to fourteen more estimators instead of four.
+  Fixing it means scoring `g` against `d` for those families, which is a
+  change to the core's contract, not a wrapper.
+- **Row-set mismatch on the binary DID estimators and `DIDCS`.** Their `fit`
+  cross-fits on the post-subset wide panel (and `kfold_stratified` on `G+2T`),
+  while the core scores the full long-format `data.x` / `data.y` with plain
+  row-wise folds. Candidates are ranked on more rows, and under an unbalanced
+  schedule than they are later fitted on. Fixing it means subsetting inside the
+  core.
+- **`DoubleMLDIDCSBinary::n_obs()` returns `n_obs_subset`**, i.e. the
+  post-subset count, which is deliberately not what the core uses
+  (`data.y.length()`).
+- **`PLPR`'s grid folds are row-wise over the raw panel** while its `fit`
+  folds are unit-level over the *transformed* cross-section, so PLPR's ranking
+  is a raw-domain proxy. PLPR is unconditionally clustered, so there is no
+  guard that could catch this; making the grid score on `transform_panel(...)`
+  output is a design change beyond adding `::tune`.
+- **`SSM`'s `ml_pi` is a `fit` default (`= self.ml_m`), not a struct field.**
+  The grid cannot reach it, so an `SSM` re-fit uses the PRE-TUNE `self.ml_m`
+  for the selection propensity rather than the winning candidate. The
+  grid tunes `(g, m)` only. `ml_pi` is genuinely used downstream, so this is a
+  real limitation rather than a no-op.
+- **`DoubleMLCVAR::fit` clears bootstrap state** (`boot_t_stat: []`,
+  `boot_method: ""`, `n_rep_boot: 0`, `boot_seed: 0`) on every call, so tuning
+  an already-bootstrapped model drops that bootstrap. Pre-existing `fit`
+  behaviour, newly reachable through `tune`.
+- **No `tune_result` on the returned model** for any of the new wrappers:
+  their `fit` signatures have no `tune_result` parameter, so the per-candidate
+  score vector is not retained. Only `DoubleMLPLR` records one.
+- **No `tune` anywhere on the DID family persists a `score` argument.**
+  `DIDCS::fit` uses `score="observational"` and `in_sample_normalization`, but
+  those are read off `self` and passed to the per-cell child, not `fit`
+  parameters -- so set them on the estimator *before* tuning.
+- **`LPLR` field name and slot role disagree.** The `fit` argument is `ml_g`
+  and LPLR's own accessors document `learner_g` as the OUTCOME learner, with
+  `learner_m` the propensity. A reader who maps "g" to "propensity" builds the
+  grid backwards. `v108_lplr_tune_first_slot_lands_in_ml_g` pins it.
+
+### Not done, and why
+
+- **BLP `tune`** needs a different mechanism, not a wrapper: its `ml_g`
+  fits demand characteristics and there is no outcome-nuisance to score
+  against `y`. Deferred to its own version.
+- **Optuna itself** is still not ported. The grid is learner PAIRINGS
+  (`TuneParam`); upstream's is a per-learner HYPERPARAMETER grid
+  (`param_grid_func` + `_create_study` + `DMLOptunaResult`). Closing
+  the coverage gap did not close that difference, and this entry does
+  not claim it did.
+
 ## [0.106.0] -- the cluster cross-checks compared a ratio that cannot see a missing `1/n`
 
 v0.105.0 made the validator audit executable. This version uses the

@@ -1072,6 +1072,85 @@ pub fn DoubleMLCVAR::fit(
 }
 
 ///|
+/// `DoubleMLCVAR::tune` - score a grid of `(learner_g,
+/// learner_m)` pairs and re-fit with the winner.
+///
+/// Slot semantics: CVAR is a propensity-first family, so the
+/// first `TuneParam` slot is the treatment / propensity learner
+/// `E[g|d,x]` and the second is the outcome learner `E[m|x]`. The
+/// first field is still named `learner_l` (the field names are
+/// fixed by the partially-linear family); build candidates with
+/// `TuneParam::for_treatment(learner_g, learner_m)` so the call
+/// site carries the slot's role.
+///
+/// v0.108.0: new. `CVAR` had no `tune` at all, so it was one of
+/// the estimators carrying a coverage gap against upstream, where
+/// `tune` reaches every estimator through the `BaseDML` mixin.
+/// It routes through the shared `tune_score_grid` core in
+/// `tune.mbt` - fold draw, cross-fit, scoring and the
+/// argmin/argmax selection all live there.
+///
+/// CVAR-specific caveats:
+///
+///   - The re-fit is `self.fit(ml_g=..., ml_m=...)`, which reads
+///     `quantile`, `treatment`, `ps_processor`, `n_folds`,
+///     `n_rep` / `seed` and the memoize flag from `self`. Nothing
+///     is carried across by hand, and the tune-time folds are
+///     discarded - the winner is re-cross-fitted under
+///     `self.n_folds`.
+///   - `DoubleMLCVAR::fit` clears the bootstrap fields back to
+///     `boot_t_stat: []` / `boot_method: ""` / `n_rep_boot: 0` /
+///     `boot_seed: 0` on every call. So calling `tune` on a model
+///     that already carries a bootstrap drops that bootstrap state
+///     - you have to re-run `bootstrap` on the returned model.
+///     That is `fit`'s pre-existing behaviour, not something
+///     `tune` adds, but it is visible here because `tune` is a
+///     second way to reach `fit`.
+///   - The score is MSE of the first-slot learner cross-fitted
+///     against the outcome `y`, not against the treatment `d`, so
+///     it is a shortlisting proxy and not a direct measure of
+///     propensity quality. Same convention as the other
+///     propensity-first `::tune` methods.
+///
+/// The cluster guard IS present here, and unlike the `DID*`
+/// siblings it is reachable: CVAR's `data` is a `DoubleMLData`,
+/// which does carry `cluster_vars` and does expose
+/// `is_cluster_data()`. Cluster-DML tune folds must be drawn over
+/// unique units rather than rows - a row-wise fold schedule on
+/// clustered data splits a unit across the train/test boundary
+/// and produces a plausible-looking score for a wrong cross-fit
+/// rather than an error, which is exactly the silent
+/// mis-scoring that the v0.108.0 `APO` fix closed on the other
+/// side of the family. Aborting here is the correct behaviour.
+pub fn DoubleMLCVAR::tune(
+  self : DoubleMLCVAR,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLCVAR {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    require(!self.data.is_cluster_data())
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.75.0+: multiplier bootstrap for `DoubleMLCVAR`. The
 /// per-observation influence function is
 ///

@@ -623,6 +623,86 @@ pub fn DoubleMLDIDMulti::fit(
 }
 
 ///|
+/// `DoubleMLDIDMulti::tune` - score a grid of `(learner_g,
+/// learner_m)` pairs and re-fit the per-cell DID model with the
+/// winner.
+///
+/// Slot semantics: propensity-first family, same as
+/// `DoubleMLDIDCrossSection::tune` and the other `DID*`
+/// estimators. The first `TuneParam` slot is the treatment /
+/// propensity learner, the second is the outcome learner, and the
+/// first field is still named `learner_l` because the field names
+/// are fixed by the partially-linear family. Use
+/// `TuneParam::for_treatment(learner_g, learner_m)` so the call
+/// site states the slot's role.
+///
+/// v0.108.0: new. `DIDMulti` had no `tune` at all, so it was one
+/// of the estimators carrying a coverage gap against upstream,
+/// where `tune` reaches every estimator through the `BaseDML`
+/// mixin. It routes through the shared `tune_score_grid` core in
+/// `tune.mbt`, same as every other `::tune`.
+///
+/// What `tune` forwards, and what it does NOT touch:
+///
+///   - Forwarded: `ml_g` / `ml_m` from the winning
+///     `TuneParam`, i.e. the first two arguments of `fit`.
+///   - Carried over from `self` implicitly: everything else,
+///     because `DoubleMLDIDMulti::fit` takes ONLY `ml_g` and
+///     `ml_m` and rebuilds the model with `{ ..self, inner,
+///     ml_g, ml_m, fitted: true }`. In particular the per-`(g,
+///     t)` cell grid survives untouched: `gt_combinations` (and
+///     its `gt_combinations_keyword` spelling) is a
+///     `DoubleMLDIDMulti::new` argument, NOT a `fit` argument, so
+///     there is no cell list for `tune` to plumb through and no
+///     way for it to silently narrow the cell set. The fold
+///     schedule, `n_rep` / `seed` and the memoize flag likewise
+///     never appear in the `tune` -> `fit` call: the memoize
+///     forwarding and the two-stage inner refit (pre- and
+///     post-memoize) are `fit`'s own business.
+///   - Dropped: nothing. The only state the tune stage produces
+///     is the fold draw and the candidate scores, and those are
+///     discarded by design - the winner is re-cross-fitted from
+///     scratch under the final-fit fold schedule rather than
+///     reusing the tune-time predictions.
+///
+/// Same scoring caveat as the sibling: the score is MSE of the
+/// first-slot learner cross-fitted against the outcome `y`, not
+/// against `d`, so it is a shortlisting proxy rather than a
+/// per-cell nuisance optimum.
+///
+/// No cluster guard, deliberately: `DoubleMLDIDCSData` has no
+/// `cluster_vars` field and no `is_cluster_data()` method, so
+/// there is nothing to guard and the call would not compile. The
+/// data type's `id` field is a panel unit id used for
+/// aggregation, not a cluster-var accessor.
+pub fn DoubleMLDIDMulti::tune(
+  self : DoubleMLDIDMulti,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLDIDMulti {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.15.0+: multiplier bootstrap for joint confidence
 /// intervals. Draws `n_rep_boot` weight vectors from the
 /// chosen multiplier distribution and computes

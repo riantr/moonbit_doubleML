@@ -1559,3 +1559,69 @@ pub fn DoubleMLRDD::learner_g(self : DoubleMLRDD) -> LearnerDispatch {
 pub fn DoubleMLRDD::n_local(self : DoubleMLRDD) -> Int {
   self.n_local
 }
+
+///|
+/// v0.108.0+ (NEW): score a grid of candidates for RDD's ONE
+/// nuisance slot and re-fit `DoubleMLRDD` with the winner, via the
+/// shared `tune_score_grid` core. This closes a coverage gap against
+/// upstream, where `tune` reaches every estimator through the
+/// `BaseDML` mixin; `PQ` / `QTE` / `RDD` had no `tune` before
+/// v0.108.0.
+///
+/// Slot tuned: `ml_g`, and ONLY `ml_g`. RDD has a single nuisance
+/// slot, so `param_set` is a bare `Array[LearnerDispatch]` -- the
+/// same shape `DoubleMLPLIV::tune` uses; a `TuneParam` would be a
+/// two-slot wrapper around one value.
+///
+/// DO NOT "fix" `ml_g` into a propensity / treatment slot. Despite
+/// the `g` in the name (it is inherited from the field name, not
+/// from any role), RDD's `ml_g` is the DISCONTINUITY-SIDE,
+/// OUTCOME-side learner for `E[y|x]` -- the local polynomial fit on
+/// each side of the cutoff under the triangular kernel (see the
+/// `ml_g` struct-field doc and `rdd_side`). It is NOT `E[g|d,x]`.
+/// The `TuneParam` slot-semantics table in `tune.mbt` lists `RDD`'s
+/// first slot as the discontinuity-side learner `E[y|x]` for
+/// exactly this reason.
+///
+/// Structural config is NOT re-derived here: `cutoff`, `bandwidth`,
+/// `fuzzy` and `cov_type` are already carried by the model being
+/// tuned, and `DoubleMLRDD::fit` reads them off `self` (it copies
+/// `self.cutoff` / `self.bandwidth` / `self.fuzzy` /
+/// `self.cov_type` straight onto the returned struct) and threads
+/// them into every `rdd_side` call. `tune` passes only `ml_g`, so
+/// tuning the learner cannot perturb the design.
+///
+/// Cluster guard: ABSENT, deliberately. `DoubleMLRDDData` has NO
+/// `is_cluster_data()` method -- RDD's data type is not the
+/// cluster-aware `DoubleMLData`, and adding the method (or the
+/// guard) would mean inventing a cluster concept for a data type
+/// that never had one. RDD's dependence is handled through the
+/// bandwidth-restricted local sample, not cluster ids. Cluster
+/// inference lives in the separate explicit
+/// `DoubleMLRDD::cluster_hac_se` / `sensitivity_analysis_cluster`
+/// entry points.
+pub fn DoubleMLRDD::tune(
+  self : DoubleMLRDD,
+  param_set~ : Array[LearnerDispatch],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLRDD {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set,
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    self.fit(ml_g=param_set[grid.best_index])
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

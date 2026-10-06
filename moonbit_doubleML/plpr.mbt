@@ -1197,6 +1197,92 @@ pub fn DoubleMLPLPR::bootstrap(
 }
 
 ///|
+/// Tune the single nuisance `learner` via MSE-on-l_hat
+/// cross-fitting. The winning learner is re-fit on the FINAL-FIT
+/// fold partition (`self.n_folds`) under `DoubleMLPLPR::fit`; the
+/// tune-time cross-fit is not reused. `scoring_method` is `"MSE"`
+/// (default), `"RMSE"` or `"NegMSE"`; `n_folds_tune` defaults to
+/// 5 and `seed` to 3141. Returns a re-fitted `DoubleMLPLPR`.
+///
+/// Grid shape: `param_set` is a bare `Array[LearnerDispatch]`,
+/// NOT an `Array[TuneParam]`. PLPR is a one-slot estimator, so a
+/// two-learner `TuneParam` would be a wrapper around a single
+/// value, and upstream's one-slot estimators use the bare array
+/// (same shape as `DoubleMLPLIV::tune`). PLPR is outcome-first:
+/// the candidates are outcome learners `E[y|x]`, so there is no
+/// slot role to disambiguate and no `for_outcome` / `for_treatment`
+/// factory to reach for.
+///
+/// v0.108.0: new. PLPR had no `tune` at all, so it was one of the
+/// estimators carrying a coverage gap against upstream, where
+/// `tune` reaches every estimator through the `BaseDML` mixin.
+/// The fold draw, the scoring loop and the argmin/argmax
+/// selection route through the shared `tune_score_grid` core,
+/// which is keyed on the learner array precisely so both the
+/// two-slot and the one-slot grid shapes can share it. PLPR
+/// exposes no `n_obs()`, which is why the core derives the
+/// observation count from `y.length()`.
+///
+/// `max_attempts` is NOT forwarded. It is a `fit` parameter with
+/// no corresponding struct field, so there is no
+/// `self.max_attempts` to read; the re-fit gets `fit`'s default
+/// of 1 retry. A caller who needs the numerical-retry path must
+/// call `fit(learner = ..., max_attempts = k)` explicitly after
+/// tuning, rather than expecting `tune` to preserve it.
+///
+/// Two mismatches between the tune-time cross-fit and the
+/// estimation path, stated here because a guard cannot fix them
+/// and a caller choosing learners needs to know:
+///
+///   1. Fold granularity. `tune_score_grid` draws a ROW-WISE
+///      `kfold` schedule, while `fit` always runs the clustered
+///      DML path with folds drawn over whole UNITS
+///      (`unique_units(tf.id)`). For a panel this is the same
+///      row-vs-unit hazard the cluster guard exists to block in
+///      the other estimators, except that PLPR is unconditionally
+///      clustered, so there is no non-clustered case to admit and
+///      no guard could do useful work.
+///   2. Domain. The grid scores candidates against the RAW panel
+///      (`self.panel.x` / `self.panel.y`), while `fit` estimates on
+///      the TRANSFORMED cross-section produced by
+///      `transform_panel` (`fd_exact` first-differences and drops
+///      rows, `wg_approx` within-transforms). The ranking is a
+///      proxy measured on the raw domain, not on the domain the
+///      estimate is computed in.
+///
+/// No cluster guard: `DoubleMLPanelData` has no `cluster_vars`
+/// field and exposes no `is_cluster_data()`, so the guard has
+/// nothing to call. The method does not add the method.
+pub fn DoubleMLPLPR::tune(
+  self : DoubleMLPLPR,
+  param_set~ : Array[LearnerDispatch],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLPLPR {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    // `param_set` is already a learner array, so it is passed
+    // straight through; see the doc comment on the grid shape.
+    let grid = tune_score_grid(
+      self.panel.x,
+      self.panel.y,
+      param_set,
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    // `max_attempts` is deliberately absent; see the doc comment.
+    self.fit(learner=param_set[grid.best_index])
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.73.0+: cluster-robust analogue of
 /// `DoubleMLPLPR::sensitivity_analysis`. Same
 /// partialling-out / IV-type residual form `y - l_hat`

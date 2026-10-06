@@ -1278,3 +1278,110 @@ pub fn DoubleMLDIDCSBinary::bias_corrected_coef(
       abort("precondition failed at " + loc.to_string())
   }
 }
+
+///|
+/// `DoubleMLDIDCSBinary::tune` - score a grid of
+/// nuisance-learner combinations and re-fit the estimator with
+/// the winner.
+///
+/// # Slots
+///
+/// Tunes the two DID nuisance slots in the propensity-first
+/// sense documented on `TuneParam` (see its slot-semantics
+/// table): FIRST slot is the treatment / propensity learner
+/// `E[g | x]`, SECOND is the outcome learner
+/// `E[m0 + d * m1 | x]`. The first slot lives on the field
+/// named `learner_l` - that name is not a claim about which
+/// learner it holds. Build rows with
+/// `TuneParam::for_treatment(learner_g, learner_m)` so the
+/// call site carries the role.
+///
+/// # Routing
+///
+/// The fold draw, the scoring and the selection rule all go
+/// through the shared `tune_score_grid` core in `tune.mbt`;
+/// this method adds no numerics of its own. Only the first
+/// slot is scored, and the winning `learner_l` is paired with
+/// the same grid row's `learner_m` for the re-fit under the
+/// FINAL-FIT fold schedule (`self.n_folds` / `self.seed`).
+///
+/// v0.108.0: new. `DoubleMLDIDCSBinary` had no `tune` at all,
+/// which was a coverage gap against upstream, where `tune`
+/// reaches every estimator through the `BaseDML` mixin.
+///
+/// # Caveats found while reading the fit path
+///
+///   - This estimator SHARES `DoubleMLDIDCSData` with
+///     `DoubleMLDIDCS`, so the same data container and the
+///     same row set feed both tune families. `n` therefore
+///     comes from `self.data.y.length()` via the core, which
+///     is the FULL panel. That is deliberately NOT
+///     `self.n_obs()`: on this type `n_obs()` returns
+///     `n_obs_subset`, the POST-subset count, which is a
+///     different and smaller number. Using the estimator
+///     accessor here would have scored a full-panel cross-fit
+///     against a subset denominator.
+///   - ROW SET MISMATCH, and the stratification asymmetry with
+///     it. `fit` runs `cs_bin_panel_subset` to restrict the
+///     panel to the four `(G_indicator, T_indicator)` cells and
+///     then cross-fits on that post-subset panel using
+///     `kfold_stratified(n_sub, strata, self.n_folds, self.seed)`
+///     on the key `G_indicator + 2 * T_indicator`, so each fold
+///     balances the `(G, T)` cells. `tune_score_grid`
+///     instead draws plain row-wise `kfold` folds over the
+///     full long-format `data.x` / `data.y`, with no strata.
+///     So candidates are ranked on strictly more rows than
+///     they are later cross-fitted on, and under a fold
+///     schedule that does not balance the DID cells. Both are
+///     known gaps, not endorsements.
+///   - `fit` exposes no `tune_result` parameter, so the
+///     per-candidate score vector is not retained on the
+///     returned estimator (as on `DoubleMLDID::tune`, and
+///     unlike `DoubleMLPLR::tune` which stores a
+///     `TuneResult`). Recorded rather than dropped silently.
+///
+/// # No cluster guard
+///
+/// `require(!self.data.is_cluster_data())` is deliberately
+/// ABSENT. The `DoubleMLDIDCSData` it shares with
+/// `DoubleMLDIDCS` defines no `is_cluster_data()`; it does
+/// carry `id`, the panel unit id, but cluster ids are passed
+/// explicitly to
+/// `DoubleMLDIDCSBinary::cluster_sandwich_se(cluster_ids)`
+/// rather than held as guard-readable container state, so a
+/// guard on `self.data` could never fire. Adding the method
+/// here would have meant inventing a cluster flag to guard on,
+/// which is out of scope for this change.
+///
+/// The honest consequence, as on `DoubleMLDIDCS`: this is a
+/// repeated-unit panel estimator whose tune folds are drawn
+/// over ROWS, not unique units, and a unit's own rows can
+/// land on both sides of a fold. The missing guard records
+/// that it is not implementable today, not that row-wise
+/// folds are correct here. Unit-wise tune folds remain open.
+pub fn DoubleMLDIDCSBinary::tune(
+  self : DoubleMLDIDCSBinary,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLDIDCSBinary {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}

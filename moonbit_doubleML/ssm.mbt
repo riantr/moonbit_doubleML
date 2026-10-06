@@ -348,6 +348,78 @@ pub fn DoubleMLSSM::bootstrap(
 }
 
 ///|
+/// Tune the `(ml_g, ml_m)` nuisance-learner pair via MSE-on-g_hat
+/// cross-fitting. The winning pair is re-fit on the FINAL-FIT fold
+/// partition (`self.n_folds`) under `DoubleMLSSM::fit`; the
+/// tune-time cross-fit is not reused. `scoring_method` is `"MSE"`
+/// (default), `"RMSE"` or `"NegMSE"`; `n_folds_tune` defaults to
+/// 5 and `seed` to 3141. Returns a re-fitted `DoubleMLSSM`.
+///
+/// Slot semantics: SSM is a propensity-first family, so the FIRST
+/// `TuneParam` slot is the treatment/propensity learner and the
+/// second is the outcome learner. Build the grid with
+/// `TuneParam::for_treatment` so the call site carries the role
+/// rather than relying on the field name `learner_l`.
+///
+/// v0.108.0: new. SSM had no `tune` at all, so it was one of the
+/// estimators carrying a coverage gap against upstream, where
+/// `tune` reaches every estimator through the `BaseDML` mixin.
+/// The fold draw, the scoring loop and the argmin/argmax
+/// selection route through the shared `tune_score_grid` core, the
+/// same core `PLR` / `PLIV` / `IRM` / `IIVM` / `APO` use. No second
+/// copy of the selection rule lives here; that duplication is what
+/// previously let an inverted argmin ship with the suite green.
+///
+/// The third `fit` slot, `ml_pi` (the selection propensity
+/// `P(S = 1 | D, X)`), is NOT tuned: `TuneParam` carries exactly
+/// two learners, so the grid cannot reach it. This differs from
+/// `IIVM`, which carries its third slot (`ml_r`) over from the
+/// model being tuned. SSM has no `ml_pi` field on the struct at
+/// all -- `fit` declares `ml_pi? : LearnerDispatch = self.ml_m`
+/// -- so there is no `self.ml_pi` to forward, and this method
+/// passes no `ml_pi`, letting `fit` apply its own default.
+/// Consequence worth stating plainly: the re-fit uses the
+/// PRE-TUNE `self.ml_m` for the selection propensity, not the
+/// winning candidate. The grid tunes `(g, m)`; `pi` is whatever
+/// the model being tuned already had.
+///
+/// No cluster guard, and that is not an oversight carried over
+/// from `APO` (the pre-v0.108.0 asymmetry). `DoubleMLSSMData`
+/// carries no `cluster_vars` field and exposes no
+/// `is_cluster_data()`, so there is no clustered path for a
+/// row-wise tune schedule to silently mis-handle. The method is
+/// not adding one, for the same reason it does not add the guard:
+/// the data type has no cluster concept to guard.
+pub fn DoubleMLSSM::tune(
+  self : DoubleMLSSM,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLSSM {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    // `ml_pi` is deliberately absent: see the doc comment. `fit`
+    // defaults it to `self.ml_m`, the pre-tune value.
+    self.fit(ml_g=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// v0.64.0+: per-observation IF accessors.
 pub fn DoubleMLSSM::psi_a(self : DoubleMLSSM) -> Array[Double] {
   try {

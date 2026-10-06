@@ -957,45 +957,20 @@ pub fn DoubleMLIIVM::tune(
     require(n_folds_tune >= 2)
     require(!self.data.is_cluster_data())
     let scoring = TuneScoring::parse(scoring_method)
-    let folds_tune = kfold(self.n_obs(), n_folds_tune, seed)
-    let n = self.n_obs()
-    let scores : Array[Double] = Array::make(param_set.length(), 0.0)
-    for i = 0; i < param_set.length(); i = i + 1 {
-      let c = param_set[i]
-      let g_hat_c = cross_fit_predict_dispatch(
-        c.learner_l,
-        self.data.x,
-        self.data.y,
-        folds_tune,
-      )
-      scores[i] = if g_hat_c.length() == n {
-        tune_score_outcome(self.data.y, g_hat_c, scoring)
-      } else {
-        TUNE_SCORE_FAIL_SENTINEL
-      }
-    }
-    let best_idx = if scoring is NegMSE {
-      let mut bi = 0
-      let mut bv = scores[0]
-      for i = 1; i < scores.length(); i = i + 1 {
-        if scores[i] > bv {
-          bv = scores[i]
-          bi = i
-        }
-      }
-      bi
-    } else {
-      let mut bi = 0
-      let mut bv = scores[0]
-      for i = 1; i < scores.length(); i = i + 1 {
-        if scores[i] < bv {
-          bv = scores[i]
-          bi = i
-        }
-      }
-      bi
-    }
-    let best_param = param_set[best_idx]
+    // v0.108.0: scoring loop + fold draw + argmin moved into
+    // `tune_score_grid`. IIVM has a third nuisance slot (`ml_r`, the
+    // residual-maker) that the grid does not reach: `TuneParam` holds
+    // two learners, so `ml_r` is carried over from the model being
+    // tuned, exactly as before the refactor.
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
     self.fit(
       ml_g=best_param.learner_l,
       ml_m=best_param.learner_m,

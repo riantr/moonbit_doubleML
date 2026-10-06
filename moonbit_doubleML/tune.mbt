@@ -1,8 +1,8 @@
 ///|
 /// `TuneParam` — one row of the candidate grid passed to
-/// `DoubleMLPLR::tune`. Holds a concrete nuisance-learner
-/// combination (one `learner_l`, one `learner_m`) to be scored
-/// against the others in the grid.
+/// `DoubleML*::tune`. Holds a concrete nuisance-learner
+/// combination (one first-slot learner, one second-slot learner)
+/// to be scored against the others in the grid.
 ///
 /// The grid is `Array[TuneParam]` (typed, not `Dict`). Reasons
 /// for the typed wrapper vs a `Dict[String, LearnerDispatch]`:
@@ -14,8 +14,28 @@
 ///     is a documented struct, not a magic-key dict)
 ///
 /// Python upstream `doubleml.DoubleMLPLR.tune` uses a similar
-/// shape internally (a list of `{"learner_l": ..., "learner_m":
-/// ...}` type) but exposes it via kwargs to `set_tune_params`.
+/// shape internally (a list of `{"learner_l": ..., "learner_m": ...}`
+/// type) but exposes it via kwargs to `set_tune_params`.
+///
+/// # Slot semantics - read this before filling a grid
+///
+/// The fields are named for the **partially linear outcome** family.
+/// Several estimator families reuse the same two slots with a
+/// different meaning, and the field names do **not** change with the
+/// family:
+///
+/// | family | first slot (`learner_l`) actually holds | second slot (`learner_m`) |
+/// |---|---|---|
+/// | `PLR` `PLIV` `LPLR` `PLPR` | outcome learner `E[y\|x]` | nuisance `E[m\|x]` |
+/// | `APO` `APOS` `IRM` `IIVM` `CVAR` `PQ` `QTE` `SSM` `DID*` | treatment / propensity learner `E[g\|d,x]` | outcome learner `E[m0+d·m1\|x]` |
+/// | `RDD` | discontinuity-side learner `E[y\|x]` | unused (RDD has a single slot) |
+///
+/// v0.108.0: the pre-existing doc comments in `apo.mbt` / `irm.mbt` /
+/// `iivm.mbt` described their pair as `(learner_g, learner_m)`, which
+/// reads as a promise that the field is named `learner_g`. It is not
+/// - the field is `learner_l` and always has been. Those comments now
+/// name the slot's *role* instead. Use `TuneParam::for_outcome` /
+/// `TuneParam::for_treatment` so the call site carries the role.
 pub struct TuneParam {
   learner_l : LearnerDispatch
   learner_m : LearnerDispatch
@@ -34,6 +54,37 @@ pub fn TuneParam::new(
   learner_m : LearnerDispatch,
 ) -> TuneParam {
   { learner_l, learner_m, }
+}
+
+///|
+/// Intent-labelled alias of `TuneParam::new` for the **partially
+/// linear** families, where the first slot really is the outcome
+/// learner `E[y|x]` and the second is the nuisance `E[m|x]`.
+///
+/// Identical to `TuneParam::new` - it exists so the call site states
+/// the intent instead of relying on the field name. Prefer it on
+/// `PLR` / `PLIV` / `LPLR` / `PLPR`.
+pub fn TuneParam::for_outcome(
+  learner_l : LearnerDispatch,
+  learner_m : LearnerDispatch,
+) -> TuneParam {
+  { learner_l, learner_m, }
+}
+
+///|
+/// Intent-labelled alias of `TuneParam::new` for the families whose
+/// **first slot is the treatment / propensity learner** `E[g|d,x]`
+/// and whose second slot is the outcome learner.
+///
+/// Identical to `TuneParam::new`. Prefer it on `APO` / `APOS` /
+/// `IRM` / `IIVM` / `CVAR` / `PQ` / `QTE` / `SSM` and the `DID*`
+/// family, so a reader is not left inferring the slot meaning from a
+/// field called `learner_l`.
+pub fn TuneParam::for_treatment(
+  learner_g : LearnerDispatch,
+  learner_m : LearnerDispatch,
+) -> TuneParam {
+  { learner_l: learner_g, learner_m, }
 }
 
 ///|
@@ -146,6 +197,104 @@ fn tune_score_outcome(
 }
 
 ///|
+/// Per-candidate raw scores plus the index of the winner.
+pub(all) struct TuneGridScore {
+  /// Raw score per candidate, in the caller's `learners` order.
+  scores : Array[Double]
+  /// Index of the winning candidate under the caller's scoring rule.
+  best_index : Int
+}
+
+///|
+/// Selection rule: lower score wins, except under `NegMSE` where the
+/// sign is already flipped to higher-is-better and the comparison
+/// inverts. Private to this file; `tune_score_grid` is the only caller.
+fn tune_argmin(scores : Array[Double], scoring : TuneScoring) -> Int {
+  let mut bi = 0
+  let mut bv = scores[0]
+  if scoring is NegMSE {
+    for i = 1; i < scores.length(); i = i + 1 {
+      if scores[i] > bv {
+        bv = scores[i]
+        bi = i
+      }
+    }
+  } else {
+    for i = 1; i < scores.length(); i = i + 1 {
+      if scores[i] < bv {
+        bv = scores[i]
+        bi = i
+      }
+    }
+  }
+  bi
+}
+
+///|
+/// The estimator-independent half of `tune`: cross-fit every candidate
+/// learner against the outcome, score it, and select the winner.
+///
+/// Extracted in v0.108.0. The five pre-existing `::tune`
+/// implementations (`PLR` / `PLIV` / `IRM` / `IIVM` / `APO`) each
+/// carried their own byte-identical copy of the scoring loop and of the
+/// argmin/argmax selection - roughly 40 duplicated lines apiece,
+/// including the `NegMSE` higher-is-better branch that has to be
+/// rewritten at every site. That duplication is what let the argmin
+/// survive being inverted with the whole suite green (see
+/// `expand_v108_test.mbt`).
+///
+/// `n_folds_tune` folds are drawn fresh from `seed`, deliberately
+/// independent of the final fit's own fold schedule, so candidate
+/// quality is not selected on the same splits the estimate is later
+/// computed from.
+///
+/// The observation count comes from `y.length()`, NOT from an
+/// estimator accessor: six of the estimators this serves (`APOS`
+/// `DIDCS` `DIDCrossSection` `DIDMulti` `LPLR` `PLPR`) expose no
+/// `n_obs()` at all, and every one of them has `data.y` available
+/// instead. A core keyed on `self.n_obs()` would have pushed a new
+/// accessor onto six public types purely to serve a helper.
+///
+/// A candidate whose cross-fit returns a wrong-length vector scores
+/// `TUNE_SCORE_FAIL_SENTINEL`, which the selection rule then excludes.
+///
+/// v0.108.0: the previous version of this comment gave
+/// "an RFLearner with 0 trees" as the example, and that was wrong.
+/// `RFLearner::fit` raises `PreconditionError` on `n_trees=0` and its
+/// own `catch` escalates it to `abort` (`rfl.mbt:404`), so the
+/// process dies before any caller sees a vector - let alone a
+/// wrong-length one. No learner in the current `LearnerDispatch` set
+/// can reach the sentinel: they all return `x.rows()`-length vectors.
+/// The guard stays as defence for a future learner that returns a
+/// short vector WITHOUT aborting, but it is not a live path today and
+/// is not described as one.
+///
+/// A learner that PANICS cannot be recovered here at all: `abort` is
+/// not interceptible, so a panicking candidate aborts the whole
+/// process rather than being excluded from the grid.
+pub fn tune_score_grid(
+  x : Matrix,
+  y : Array[Double],
+  learners : Array[LearnerDispatch],
+  n_folds_tune : Int,
+  seed : Int,
+  scoring : TuneScoring,
+) -> TuneGridScore {
+  let n = y.length()
+  let folds_tune = kfold(n, n_folds_tune, seed)
+  let scores : Array[Double] = Array::make(learners.length(), 0.0)
+  for i = 0; i < learners.length(); i = i + 1 {
+    let pred = cross_fit_predict_dispatch(learners[i], x, y, folds_tune)
+    scores[i] = if pred.length() == n {
+      tune_score_outcome(y, pred, scoring)
+    } else {
+      TUNE_SCORE_FAIL_SENTINEL
+    }
+  }
+  TuneGridScore::{ scores, best_index: tune_argmin(scores, scoring), }
+}
+
+///|
 /// `DoubleMLPLR::tune` — score a grid of nuisance-learner
 /// combinations and re-fit the model with the winner.
 ///
@@ -207,109 +356,52 @@ pub fn DoubleMLPLR::tune(
 ) -> DoubleMLPLR {
   try {
     require(param_set.length() > 0)
+    // `n_folds_tune >= 2` stays at the call site rather than in the
+    // shared core, and that is deliberate. It is the check that
+    // carries the most weight - `kfold(n, 1, seed)` yields one fold,
+    // so the "cross-fit" degenerates to in-sample prediction and every
+    // candidate gets scored on its own training fit, silently
+    // rewarding the most overfitting candidate instead of the most
+    // generalising one. A check that important should be visible at
+    // every call site, not inferred from a helper. It is also the
+    // reason the core is not an error-typed function: a polymorphic
+    // `raise` here would widen the try body's error set and break the
+    // `catch { PreconditionError::Violated(loc) => ... }` exhaustiveness
+    // that every `::tune` relies on.
     require(n_folds_tune >= 2)
     // v0.58.0: cluster-data not yet supported (see file header).
     require(!self.data.is_cluster_data())
     let scoring = TuneScoring::parse(scoring_method)
-    // Single-entry grid: skip the scoring loop, re-fit directly
-    // (TUNE_DESIGN.md §7: "param_set.length() == 1: skip tune,
-    // return re-fit"). Re-bounded control flow keeps the loop
-    // body uniform across all paths.
-    if param_set.length() == 1 {
-      let c0 = param_set[0]
-      // No score comparison possible with one candidate, but
-      // still record a TuneResult so callers can see what was
-      // chosen. `best_score` is the in-sample MSE on `l_hat`
-      // computed under `folds_tune` (purely informational —
-      // tune() did not run an argmin over multiple candidates).
-      let n = self.n_obs()
-      let folds_tune = kfold(n, n_folds_tune, seed)
-      let l_hat_0 = cross_fit_predict_dispatch(
-        c0.learner_l,
-        self.data.x,
-        self.data.y,
-        folds_tune,
-      )
-      let score_0 = if l_hat_0.length() == n {
-        tune_score_outcome(self.data.y, l_hat_0, scoring)
-      } else {
-        TUNE_SCORE_FAIL_SENTINEL
-      }
-      let result : TuneResult = {
-        best: c0,
-        best_score: score_0,
-        all_scores: [score_0],
-      }
-      return self.fit(
-        learner_l=c0.learner_l,
-        learner_m=c0.learner_m,
-        score~,
-        tune_result=Some(result),
-      )
-    }
-    let n = self.n_obs()
-    let folds_tune = kfold(n, n_folds_tune, seed)
-    let scores : Array[Double] = Array::make(param_set.length(), 0.0)
-    for i = 0; i < param_set.length(); i = i + 1 {
-      let c = param_set[i]
-      // Per-candidate cross-fit under `folds_tune`. A defensive
-      // length check on `l_hat_c` covers the divergence case
-      // (TUNE_DESIGN.md §7): if a learner returns a wrong-size
-      // array (e.g. an RFLearner with 0 trees), the score is
-      // set to +Inf so the argmin rule excludes the bad
-      // candidate. True exception-based divergent-learner
-      // recovery is deferred to v0.59.0+ when `Learner::predict`
-      // becomes Result-typed.
-      let l_hat_c = cross_fit_predict_dispatch(
-        c.learner_l,
-        self.data.x,
-        self.data.y,
-        folds_tune,
-      )
-      scores[i] = if l_hat_c.length() == n {
-        tune_score_outcome(self.data.y, l_hat_c, scoring)
-      } else {
-        TUNE_SCORE_FAIL_SENTINEL
-      }
-    }
-    // argmin over `scores`. For NegMSE (higher-is-better) we
-    // negate so the same argmin rule applies uniformly.
-    let best_idx = if scoring is NegMSE {
-      let mut bi = 0
-      let mut bv = scores[0]
-      for i = 1; i < scores.length(); i = i + 1 {
-        if scores[i] > bv {
-          bv = scores[i]
-          bi = i
-        }
-      }
-      bi
-    } else {
-      let mut bi = 0
-      let mut bv = scores[0]
-      for i = 1; i < scores.length(); i = i + 1 {
-        if scores[i] < bv {
-          bv = scores[i]
-          bi = i
-        }
-      }
-      bi
-    }
-    let best_param = param_set[best_idx]
-    // Build the TuneResult to record on the re-fitted model.
-    // `best_score` is the raw winning score in the chosen
-    // metric's natural scale (lower-is-better for MSE / RMSE,
-    // higher-is-better for NegMSE). Callers compare across
-    // scoring rules by re-running tune with a different rule.
+    // v0.108.0: the scoring loop, the fold draw and the argmin/argmax
+    // selection moved into `tune_score_grid`. The single-candidate
+    // fast path went with them: it never actually skipped the scoring
+    // (it computed one score and hand-built a `TuneResult` by hand),
+    // so it was a second copy of the result-construction logic that
+    // could drift from the multi-candidate path rather than a
+    // shortcut. With one candidate the grid scores it and selects
+    // index 0, which is the same answer by a shorter route.
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    // `best_score` is the raw winning score in the chosen metric's
+    // natural scale (lower-is-better for MSE / RMSE, higher-is-better
+    // for NegMSE). Callers compare across scoring rules by re-running
+    // tune with a different rule.
     let result : TuneResult = {
       best: best_param,
-      best_score: scores[best_idx],
-      all_scores: scores,
+      best_score: grid.scores[grid.best_index],
+      all_scores: grid.scores,
     }
-    // Final re-fit with the chosen (learner_l, learner_m) under
-    // the FINAL-FIT fold schedule (`self.n_folds`), NOT under
-    // `folds_tune`. The re-fit call produces its own OOF
-    // cross-fit and DML score.
+    // Final re-fit with the chosen (learner_l, learner_m) under the
+    // FINAL-FIT fold schedule (`self.n_folds`), NOT under the tune
+    // folds. The re-fit call produces its own OOF cross-fit and DML
+    // score.
     self.fit(
       learner_l=best_param.learner_l,
       learner_m=best_param.learner_m,

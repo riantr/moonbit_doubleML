@@ -1116,6 +1116,63 @@ pub fn DoubleMLPQ::bias_corrected_coef(self : DoubleMLPQ) -> Double {
 }
 
 ///|
+/// v0.108.0+ (NEW): score a grid of nuisance-learner pairs and
+/// re-fit `DoubleMLPQ` with the winner, via the shared
+/// `tune_score_grid` core (fold draw + MSE/RMSE/NegMSE scoring +
+/// argmin all live there; this method only adapts the grid shape
+/// and calls `fit`).
+///
+/// Slots tuned: BOTH `ml_l` and `ml_m`, i.e. `TuneParam`'s
+/// `learner_l` / `learner_m`. PQ's `ml_l` is the OUTCOME-side
+/// learner -- `solve_pq` calls `cross_fit_conditional(ml_l, ...)`
+/// on the binarized outcome `1{y <= theta}` and `ml_m` is the
+/// PROPENSITY learner (`fit_propensity(ml_m, ...)`), which is the
+/// reverse of `DoubleMLAPO`'s pair. So build grid rows with
+/// `TuneParam::for_outcome`, not `for_treatment`: the fields are
+/// named for the partially linear family and do not change meaning
+/// with the family (see the slot-semantics table on `TuneParam`).
+///
+/// Only `ml_l` is SCORED (MSE-on-outcome cross-fit, the
+/// convention shared by every `tune` in this package); `ml_m` rides
+/// along as the co-varying slot, exactly as in
+/// `DoubleMLAPO::tune` / `DoubleMLPLR::tune`.
+///
+/// Cluster guard: PRESENT, because `DoubleMLData` has
+/// `is_cluster_data()` and `DoubleMLPQ::fit` dispatches to
+/// `fit_cluster`. `DoubleMLAPO::tune` shipped for years without
+/// this guard while its siblings had it -- cluster-DML tune folds
+/// must be drawn over unique units, not rows, and a row-wise fold
+/// schedule on clustered data yields a plausible-looking score for a
+/// wrong cross-fit. Do not drop it.
+pub fn DoubleMLPQ::tune(
+  self : DoubleMLPQ,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLPQ {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    require(!self.data.is_cluster_data())
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_l=best_param.learner_l, ml_m=best_param.learner_m)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 pub struct DoubleMLQTE {
   data : DoubleMLData
   quantiles : Array[Double]
@@ -2478,6 +2535,57 @@ pub fn DoubleMLQTE::cluster_joint_covariance(
       }
     }
     out
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.108.0+ (NEW): score a grid of nuisance-learner pairs and
+/// re-fit `DoubleMLQTE` with the winner, via the shared
+/// `tune_score_grid` core (fold draw + MSE/RMSE/NegMSE scoring +
+/// argmin all live there; this method only adapts the grid shape
+/// and calls `fit`). This closes a coverage gap against upstream,
+/// where `tune` reaches every estimator through the `BaseDML`
+/// mixin; `PQ` / `QTE` / `RDD` had no `tune` before v0.108.0.
+///
+/// Slots tuned: BOTH `ml_l` and `ml_m`, the same pair as
+/// `DoubleMLPQ::tune` and for the same reason -- `ml_l` is the
+/// OUTCOME-side learner and `ml_m` is the PROPENSITY learner, the
+/// reverse of the `APO` ordering. Use `TuneParam::for_outcome`,
+/// not `for_treatment`.
+///
+/// Only `ml_l` is SCORED; `ml_m` rides along as the co-varying
+/// slot. QTE fits one quantile per entry of `self.quantiles`, so a
+/// single winning pair is applied to ALL of them -- this method
+/// does not tune per quantile, and upstream does not either.
+///
+/// Cluster guard: PRESENT, because `DoubleMLData` has
+/// `is_cluster_data()` and `DoubleMLQTE::fit` dispatches to
+/// `fit_cluster`.
+pub fn DoubleMLQTE::tune(
+  self : DoubleMLQTE,
+  param_set~ : Array[TuneParam],
+  scoring_method? : String = "MSE",
+  n_folds_tune? : Int = 5,
+  seed? : Int = 3141,
+) -> DoubleMLQTE {
+  try {
+    require(param_set.length() > 0)
+    require(n_folds_tune >= 2)
+    require(!self.data.is_cluster_data())
+    let scoring = TuneScoring::parse(scoring_method)
+    let grid = tune_score_grid(
+      self.data.x,
+      self.data.y,
+      param_set.map(fn(p : TuneParam) { p.learner_l }),
+      n_folds_tune,
+      seed,
+      scoring,
+    )
+    let best_param = param_set[grid.best_index]
+    self.fit(ml_l=best_param.learner_l, ml_m=best_param.learner_m)
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
