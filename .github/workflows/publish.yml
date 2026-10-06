@@ -2,20 +2,30 @@ name: publish-package
 run-name: publish moonbit_doubleML ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 on:
-  # Tag-push triggering is disabled. MOONCAKES_RIANTR_TOKEN is not set on
-  # this repository, so every tag push produced a red run: the step below
-  # now fails fast with an explicit "token is not set" annotation instead
-  # of an opaque moon exit 255, but a permanently red run is worse than
-  # none. Releases are published with `moon -C moonbit_doubleML publish`
-  # from a checkout.
+  # v0.113.0: tag-push triggering is back ON.
   #
-  # To re-enable tag-driven releases: add
-  #     push:
-  #       tags:
-  #         - "v*"
-  # back under `on:`, and set the secret in
-  # Settings -> Secrets and variables -> Actions. Every other step of
-  # this workflow is green as of v0.92.1.
+  # It was disabled at 7186945 ("ci(publish): stop triggering releases on tag
+  # push") for two reasons, and only ONE of them was ever the token:
+  #
+  #   1. MOONCAKES_RIANTR_TOKEN was not set, so every tag push produced a
+  #      red run -- 45 of them, all failures. The token IS set now.
+  #   2. The last run to reach the end (v0.92.0, 2026-10-05) failed at
+  #      `Check typos`, NOT at the token guard -- so the token was never
+  #      the only blocker and the recorded reason was incomplete.
+  #
+  # Cause 2 is fixed: `_typos.toml` now excludes the verbatim upstream
+  # `doubleml/double_ml_*.py` copies under `_verify/`, and lists the
+  # paired `levl`/`levr` leverage-profile names. `typos` v1.19.0 --
+  # the version pinned below -- is clean on the working tree.
+  #
+  # Releases are now published by THIS workflow. Do not also publish by
+  # hand: `moon publish` on an existing version fails, and mooncakes
+  # `latest` means "whatever was published last", so a manual publish
+  # would leave the registry pointing somewhere the tag order does not
+  # suggest.
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:

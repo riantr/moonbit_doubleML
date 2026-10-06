@@ -14,6 +14,12 @@ extend-exclude = [
   "_verify/UPSTREAM_*.md",
   # CHANGELOG historical entries — preserve names as written
   "CHANGELOG.md",
+  # Upstream `doubleml/double_ml_*.py` sources copied VERBATIM into
+  # _verify/ for provenance. They are evidence, not our text: correcting
+  # a typo inside a copy would make it stop matching what we read, which
+  # is the only reason the copy exists. This is why `agregate` at
+  # _verify/double_ml_score_mixins.py:117 is left as upstream has it.
+  "_verify/double_ml_*.py",
 ]
 
 [default.extend-words]
@@ -39,6 +45,15 @@ Complier = "Complier"
 # cholesky inner-product accumulator.
 iy = "iy"
 lik = "lik"
+
+# `levl` / `levr` are the left / right leverage profiles returned by the
+# WLS side fit and are always written as a PAIR. Spelling them out
+# would break the symmetry that makes the pair readable, and "level" is
+# the wrong noun here anyway -- these are leverage vectors, not levels.
+# `levl` alone reads as a typo to the dictionary because it collides with
+# "level"; that collision is why it is listed rather than renamed.
+levl = "levl"
+levr = "levr"
 
 # `unparseable` is a valid English spelling (per Merriam-Webster
 # and Wiktionary). `mis` is the 3-letter abbreviation used in
