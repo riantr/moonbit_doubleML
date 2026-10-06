@@ -9,6 +9,115 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.113.0] -- `Sigma^4` becomes `rdrobust`'s nearest-neighbour matching, and a previously untestable mutation turns out to have been an artefact of the criterion
+
+v0.112.0 made the bandwidth criterion checkable from outside. This release
+fixes the criterion itself, after `rdrobust`'s actual conventions were looked
+up rather than recalled.
+
+### What was wrong
+
+`Sigma^4` was a pooled sum of squared residuals across both sides. That is
+**not** what Cattaneo, Calonico & Tchetgen (2020) do. `rdrobust` pairs a left
+residual with its `nnmatch` NEAREST right-side neighbours by running-variable
+distance and squares the differences — its default is `vce = "nn"`,
+`nnmatch = 3`. Pooling discards the matching entirely, so it was a different
+estimator wearing the same name, and it changes the number
+`optimal_bandwidth` returns.
+
+### The matching rule, stated exactly
+
+For each left local-row observation `i` at offset `u_i < 0`, take the
+`nnmatch` right observations whose `|u|` is closest to `|u_i|`, and average
+the squared residual differences over those neighbours:
+
+    sigma4 = (1 / N_left) * SUM_i  mean_j (eps_right[j] - eps_left[i])^2
+
+`|u|` ties break by ascending row index, so the result is deterministic. The
+inner mean uses however many neighbours exist; an empty right side fires
+`require` rather than silently returning 0.
+
+### One trap that had to be handled explicitly
+
+`rdd_side` returns residuals indexed by LOCAL ROW, and the running-variable
+offsets were not available to the matcher. `rdd_side_offsets` reconstructs
+them, and its predicate and iteration order are copied VERBATIM from
+`rdd_kernel_weights` (left `u < 0` first, then right `u >= 0`, both ascending
+by observation index). That is not stylistic: matching a residual to the
+wrong `|u|` produces a completely different `Sigma^4` with no error raised
+anywhere. If that predicate ever drifts from `rdd_kernel_weights`, the
+matching is wrong and nothing says so.
+
+### The mutation that stopped being equivalent
+
+`_verify/mut_v110_rdd.ps1` runs five mutations. M3 — argmin accidentally
+written as argmax — was an EQUIVALENT MUTANT for three releases and is now
+KILLED. The reason is worth more than the test:
+
+| | M1 | M2 | M3 | M4 | M5 |
+|---|---|---|---|---|---|
+| v0.110.0 | KILLED | KILLED | *equivalent* | survived | — |
+| v0.112.0 | KILLED | KILLED | *equivalent* | KILLED | — |
+| v0.113.0 | KILLED | KILLED | **KILLED** | KILLED | KILLED |
+
+A pooled `Sigma^4` made the criterion monotone increasing in `b`, so the true
+argmin WAS the first grid point — and `best_mse` starting at `1e300` means an
+argmax keeps that same point. The comparison direction was unobservable, so
+the mutation was untestable rather than survived-for-a-lack-of-care.
+
+Switching to nearest-neighbour matching changed the criterion's SHAPE: it no
+longer runs away monotonically, it has an interior minimum, and inverting
+the comparison now changes the answer. **Being faithful to upstream is also
+what made the search observable.** An equivalent mutant is a property of the
+criterion, not only of the mutated code — and it can be removed by changing
+the thing being measured rather than by strengthening the test.
+
+### The new tests
+
+- **`v110_sigma4_responds_to_nnmatch`** — `nnmatch` 1 / 3 / 9 must give three
+  different numbers. A pooled sum, or an implementation that ignores
+  `nnmatch`, returns one number for all three and fails here. This is the
+  assertion that distinguishes real matching from a rename.
+- **`v110_sigma4_scales_with_the_square_of_the_outcome_noise`** — scaling the
+  WHOLE outcome by 3 must scale `sigma4` by 9, checked at 1e-9 relative.
+
+  The first version of this test scaled only the NOISE, and it was wrong:
+  the signal terms stay fixed, so the residual is
+  `(signal - fitted signal) + 3*noise`, not 3x the original. The test failed,
+  which is how the error surfaced. Homogeneity requires scaling the whole
+  outcome.
+
+### What is still not faithful to `rdrobust`, stated plainly
+
+- **No local-linear kernel weighting over the matched pairs.** `rdrobust`
+  weights by the kernel; this pools by left-observation count. Same units
+  (outcome^2) and the same `b^4` scaling, so the search's shape is right,
+  but the numbers are not digit-for-digit.
+- **No CCT second bandwidth `b`, no bias correction, no robust
+  bias-corrected confidence intervals.** `rdrobust`'s `bwselect(CCT)` — its
+  DEFAULT — computes an estimation bandwidth AND a bias-correction bandwidth,
+  subtracts the estimated bias, and inflates the standard error. This package
+  has the estimation bandwidth only. **This is the largest remaining gap and
+  it was understated in v0.110.0, which framed the shortfall as "the missing
+  `u^2` term".** It is a whole missing stage, not a missing monomial.
+- **The local polynomial is LINEAR in `u`**, where `rdrobust` estimates with
+  `q = 2` by default.
+- The grid has 50 points, not 100.
+
+### Verification
+
+| mutation | verdict |
+|---|---|
+| M1 point-estimate weights ignore the kernel | KILLED |
+| M2 cluster-path weights ignore the kernel | KILLED |
+| M3 bandwidth search minimises the MAXIMUM | **KILLED** (was equivalent) |
+| M4 criterion loses its `b^4` variance term | KILLED |
+| M5 `Sigma^4` ignores `nnmatch` | KILLED |
+
+Tests: **834 -> 836**. native/wasm/js 836, wasm-gc 842.
+`moon check --target all --deny-warn` 0 error 0 warning; `moon fmt --check`
+clean.
+
 ## [0.112.0] -- the bandwidth criterion is now checkable from outside, not merely self-consistent
 
 v0.110.0 shipped the RDD kernel menu and the MSE-optimal bandwidth. This

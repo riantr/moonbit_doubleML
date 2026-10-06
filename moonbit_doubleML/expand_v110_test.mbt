@@ -42,16 +42,48 @@
 /// misspecified by this port's local-LINEAR design matrix (`[1, u, x...]`),
 /// and the size of that misspecification bias depends on the weighting
 /// kernel -- which is also why the kernel is worth choosing at all.
-fn v110_rdd_data(n : Int, theta : Double) -> DoubleMLRDDData {
+fn v110_rdd_data(
+  n : Int,
+  theta : Double,
+  y_scale? : Double = 1.0,
+) -> DoubleMLRDDData {
   let x = Matrix::zeros(n, 1)
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
   let score = Array::make(n, 0.0)
+  // Noise is drawn into a pool first, then applied.
+  //
+  // `y_scale` multiplies the WHOLE outcome, not just the noise. That
+  // distinction is the entire content of the homogeneity test: scaling
+  // only the noise leaves the signal terms fixed, so the residual is
+  // `(signal - fitted signal) + 3*noise` and is NOT 3x the original.
+  // Scaling all of `y` scales every fitted intercept and therefore
+  // every residual by exactly `y_scale`, and a sum of squared residual
+  // differences must then scale by its square.
+  //
+  // An earlier version hand-rolled a hash for the noise. It had to keep
+  // every intermediate under 2^30 (MoonBit `Int` is 31-bit) and the
+  // surviving small-constant mixes avalanche badly over the few hundred
+  // indices a test uses, which correlates the noise with the running
+  // variable -- exactly the confound a rejection test should not have.
+  // The rng pool mixes properly and costs one array.
+  let rng = chacha8_rng(31)
+  let noise : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    noise[i] = rng.double()
+  }
   for i = 0; i < n; i = i + 1 {
     let u = (i.to_double() + 0.5) / (n.to_double() / 2.0) - 1.0
     score[i] = u
     d[i] = if u >= 0.0 { 1.0 } else { 0.0 }
-    y[i] = theta + 0.7 * u + 0.4 * u * u + theta * d[i]
+    y[i] = (
+        theta +
+        0.7 * u +
+        0.4 * u * u +
+        theta * d[i] +
+        0.1 * (noise[i] - 0.5) * 2.0
+      ) *
+      y_scale
   }
   DoubleMLRDDData::new(x, y, d, score)
 }
@@ -199,6 +231,73 @@ test "v110_cluster_path_uses_the_same_kernel" {
     }
   }
   assert_true(differ)
+}
+
+///|
+/// `Sigma^4` must actually be doing NEAREST-NEIGHBOUR MATCHING.
+///
+/// This is the assertion that distinguishes the v0.113.0 implementation
+/// from the v0.110.0-v0.112.0 pooled sum of squares: `nnmatch = 1` and
+/// `nnmatch = 3` pair each left residual with a different number of
+/// right neighbours, so they MUST disagree. A pooled sum, or an
+/// implementation that ignores `nnmatch` entirely, returns the same
+/// number for both and fails here.
+///
+/// That matters because `rdrobust`'s default is `vce = "nn"` with
+/// `nnmatch = 3`, and pooling was not the same estimator wearing the
+/// same name.
+test "v110_sigma4_responds_to_nnmatch" {
+  let data = v110_rdd_data(600, 2.0)
+  let m = DoubleMLRDD::new(
+    data,
+    bandwidth=0.8,
+    kernel=RDDKernel::parse("triangular"),
+  )
+  // MoonBit optional parameters are passed BY NAME, not positionally.
+  let s1 = m.bandwidth_sigma4(nnmatch=1)
+  let s3 = m.bandwidth_sigma4(nnmatch=3)
+  let s9 = m.bandwidth_sigma4(nnmatch=9)
+  assert_true(s1 > 0.0)
+  assert_true(s3 > 0.0)
+  // 1 and 3 must differ, or the matching is not happening
+  assert_true(s1 != s3)
+  // and a wider neighbour set is a different number again
+  assert_true(s3 != s9)
+}
+
+///|
+/// `Sigma^4` is a sum of SQUARED residual differences, so scaling the
+/// outcome noise by `k` must scale it by exactly `k^2`. This is a
+/// homogeneity property with no sampling in it: the same fitted
+/// design, the same folds, the same matching, only the residual scale
+/// differs.
+///
+/// Not asserted as `==`: the WLS solve under a doubled outcome can
+/// differ from the original in the last bit or two, so the ratio is
+/// checked at 1e-9 relative rather than exactly. The margin is still
+/// four to six orders of magnitude tighter than anything statistical,
+/// and it pins the two things a mutation here could break: that the
+/// differences are SQUARED, and that no normalisation sneaks in.
+test "v110_sigma4_scales_with_the_square_of_the_outcome_noise" {
+  let base = v110_rdd_data(600, 2.0)
+  // scale the WHOLE outcome by 3, so every residual scales by 3
+  let loud = v110_rdd_data(600, 2.0, y_scale=3.0)
+  let quiet = DoubleMLRDD::new(
+    base,
+    bandwidth=0.8,
+    kernel=RDDKernel::parse("triangular"),
+  )
+  let loud_m = DoubleMLRDD::new(
+    loud,
+    bandwidth=0.8,
+    kernel=RDDKernel::parse("triangular"),
+  )
+  let s_quiet = quiet.bandwidth_sigma4()
+  let s_loud = loud_m.bandwidth_sigma4()
+  assert_true(s_quiet > 0.0)
+  assert_true(s_loud > 0.0)
+  let ratio = s_loud / s_quiet
+  assert_true((ratio - 9.0).abs() < 1.0e-9)
 }
 
 ///|

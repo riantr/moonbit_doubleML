@@ -1926,13 +1926,17 @@ pub fn DoubleMLRDD::pilot_bandwidth(self : DoubleMLRDD) -> Double {
 /// never used (`unused_error_type`), which `--deny-warn` then treats as
 /// a build failure. The two guards stay because they document the
 /// precondition; they just do not widen the signature.
-pub fn DoubleMLRDD::bandwidth_mse(self : DoubleMLRDD, h : Double) -> Double {
+pub fn DoubleMLRDD::bandwidth_mse(
+  self : DoubleMLRDD,
+  h : Double,
+  nnmatch? : Int = 3,
+) -> Double {
   try {
     let n = self.n_obs()
     let h_pilot = rdd_pilot_bandwidth(self.data)
     require(h_pilot > 0.0)
     require(h > 0.0)
-    let (xi_pilot, sigma4) = rdd_pilot_stage(self)
+    let (xi_pilot, sigma4) = rdd_pilot_stage(self, nnmatch)
     let (yl, _, _, _, _, _, _, _) = rdd_side(
       self.ml_g,
       self.data,
@@ -1964,39 +1968,60 @@ pub fn DoubleMLRDD::bandwidth_mse(self : DoubleMLRDD, h : Double) -> Double {
 }
 
 ///|
-/// `Sigma^4` of the MSE-optimal criterion: the pooled residual second
-/// moment across both sides, taken at `h_pilot`.
+/// `Sigma^4` of the MSE-optimal criterion, as **nearest-neighbour
+/// matched** residual differences -- `rdrobust`'s `vce = "nn"` with
+/// `nnmatch = 3`, its default.
 ///
-/// Public, and for a reason that is about the GATE rather than the
-/// user. `bandwidth_mse` evaluates `(xi(h) - xi_pilot)^2 + b^4*sigma4/n`,
-/// and at `h = h_pilot` the bias term is identically zero BY
-/// CONSTRUCTION -- `xi(h_pilot)` is `xi_pilot` -- so
+/// # Why this replaced a pooled sum of squares
 ///
-///     bandwidth_mse(h_pilot) == sigma4 / n        (exactly)
+/// v0.110.0-v0.112.0 used `sum of all squared residuals on both sides`.
+/// That is NOT what Cattaneo et al. (2020) do: `rdrobust` pairs a left
+/// residual with its `nnmatch` NEAREST right-side neighbours by
+/// running-variable distance and squares the differences. Pooling discards
+/// the matching entirely, so it is a different estimator wearing the same
+/// name -- and it changes the number `optimal_bandwidth` returns.
 ///
-/// is an identity the test suite can check without recomputing any
-/// local fit. That is what makes the criterion checkable from the
-/// outside: before this accessor existed, deleting the `b^4`
-/// variance term from `bandwidth_mse` left the search still minimising
-/// its own criterion, so every assertion stayed green and the gate
-/// could not testify about the criterion at all. With `sigma4`
-/// readable, that mutation returns 0 at the pilot instead of
-/// `sigma4 / n` and the suite goes red.
+/// # The rule, stated exactly
 ///
-/// Note this still does NOT prove the criterion is Cattaneo's -- it
-/// pins the variance term's scale and the pilot's self-consistency.
-/// `xi(b)` at a non-pilot bandwidth needs `rdd_side`'s per-side
-/// residual arrays, whose lengths differ, so the pairing Cattaneo
-/// uses remains a separate design decision (see `optimal_bandwidth`).
-pub fn DoubleMLRDD::bandwidth_sigma4(self : DoubleMLRDD) -> Double {
-  let (_, sigma4) = rdd_pilot_stage(self)
+/// For each left local-row observation `i` with running-variable offset
+/// `u_i < 0`, take the `nnmatch` right observations whose `|u|` are closest
+/// to `|u_i|`, and average the squared residual differences over those
+/// neighbours:
+///
+///     sigma4 = (1 / N_left) * SUM_i  mean_j (eps_right[j] - eps_left[i])^2
+///
+/// with the inner mean taken over however many neighbours exist. Ties in
+/// `|u|` are broken by ascending row index, so the result is deterministic.
+///
+/// # What is a deliberate simplification, and what is not
+///
+/// The one thing this does NOT do is shrink the left sample: `rdrobust`
+/// weights by a local-linear kernel over the matched pairs. Pooling by
+/// left observation count, as above, is a coarser rule with the same
+/// units (outcome^2) and the same `b^4` scaling in the criterion, so it
+/// keeps the search's shape; it does not reproduce `rdrobust`'s numbers
+/// to the digit. That is recorded rather than papered over.
+///
+/// `nnmatch` is a parameter because a mutation that ignores it is
+/// otherwise indistinguishable from one that honours it -- see
+/// `v110_sigma4_responds_to_nnmatch`.
+///
+/// Two neighbours short: the inner mean uses however many exist. If the
+/// right side is EMPTY there is nothing to match and the procedure is
+/// undefined; `require` fires and the caller sees an abort, which is the
+/// same outcome the pilot stage already had.
+pub fn DoubleMLRDD::bandwidth_sigma4(
+  self : DoubleMLRDD,
+  nnmatch? : Int = 3,
+) -> Double {
+  let (_, sigma4) = rdd_pilot_stage(self, nnmatch)
   sigma4
 }
 
 ///|
 /// The pilot-stage pair the criterion is built from: the intercept
-/// difference at `h_pilot`, and the pooled residual second moment
-/// there.
+/// difference at `h_pilot`, and the nearest-neighbour matched
+/// `Sigma^4` there.
 ///
 /// Shared by `bandwidth_mse` and `bandwidth_sigma4` so the two cannot
 /// drift -- a criterion whose public `sigma4` and internal `sigma4`
@@ -2006,8 +2031,9 @@ pub fn DoubleMLRDD::bandwidth_sigma4(self : DoubleMLRDD) -> Double {
 /// A free function rather than a method, for the same reason as
 /// `rdd_pilot_bandwidth`: `fn name(self : Type)` at top level is
 /// deprecated method syntax and does not bind as one.
-fn rdd_pilot_stage(m : DoubleMLRDD) -> (Double, Double) {
+fn rdd_pilot_stage(m : DoubleMLRDD, nnmatch : Int) -> (Double, Double) {
   try {
+    require(nnmatch >= 1)
     let h_pilot = rdd_pilot_bandwidth(m.data)
     require(h_pilot > 0.0)
     let (yl, _, _, res_l, _, _, _, _) = rdd_side(
@@ -2030,16 +2056,131 @@ fn rdd_pilot_stage(m : DoubleMLRDD) -> (Double, Double) {
       m.cov_type,
       m.kernel,
     )
-    let mut sigma4 = 0.0
-    for r in res_l {
-      sigma4 = sigma4 + r * r
-    }
-    for r in res_r {
-      sigma4 = sigma4 + r * r
-    }
-    (yr - yl, sigma4)
+    let u_l = rdd_side_offsets(m, -1.0, h_pilot)
+    let u_r = rdd_side_offsets(m, 1.0, h_pilot)
+    (yr - yl, rdd_nn_matched_sigma4(u_l, res_l, u_r, res_r, nnmatch))
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// The running-variable offsets of one side's local rows, in the SAME
+/// order `rdd_design` assigned them.
+///
+/// The predicate and the iteration order are copied from
+/// `rdd_kernel_weights` verbatim (left `u < 0` first, then right
+/// `u >= 0`, both in ascending observation index). That is not
+/// stylistic: `rdd_side` returns residuals indexed by LOCAL ROW, and
+/// matching a residual to the wrong `|u|` would silently produce a
+/// different `Sigma^4` with no error anywhere. If this predicate ever
+/// drifts from `rdd_kernel_weights`, the matching is wrong.
+fn rdd_side_offsets(
+  m : DoubleMLRDD,
+  side : Double,
+  h : Double,
+) -> Array[Double] {
+  let out : Array[Double] = []
+  for i = 0; i < m.data.n_obs(); i = i + 1 {
+    let u = m.data.score[i] - m.cutoff
+    if (side < 0.0 && u < 0.0) || (side > 0.0 && u >= 0.0) {
+      if u.abs() <= h {
+        out.push(u)
+      }
+    }
+  }
+  out
+}
+
+///|
+/// `sigma4 = (1/N_left) * SUM_i mean_j (eps_right[j] - eps_left[i])^2`,
+/// with the inner mean over the `nnmatch` right neighbours whose `|u|`
+/// is closest to `|u_i|`, ties broken by ascending index.
+///
+/// The neighbour search is a straight selection over the right side:
+/// `nnmatch` is a small constant (3 by default) and the sides are
+/// O(n) long, so an O(N_left * nnmatch) scan after one sort is both
+/// simpler to read and cheaper than a heap.
+fn rdd_nn_matched_sigma4(
+  u_l : Array[Double],
+  res_l : Array[Double],
+  u_r : Array[Double],
+  res_r : Array[Double],
+  nnmatch : Int,
+) -> Double raise PreconditionError {
+  let n_l = u_l.length()
+  let n_r = u_r.length()
+  // No right observations to match against: the procedure is undefined
+  // and the caller must see that, not a silent 0.
+  if n_r == 0 || n_l == 0 {
+    require(false)
+  }
+  // right rows sorted by |u| once, so each left row's nearest neighbours
+  // are a contiguous scan
+  let idx = Array::make(n_r, 0)
+  for i = 0; i < n_r; i = i + 1 {
+    idx[i] = i
+  }
+  let keys = u_r.copy()
+  idx.sort_by(fn(a : Int, b : Int) {
+    let ka = keys[a].abs()
+    let kb = keys[b].abs()
+    if ka < kb {
+      -1
+    } else if ka > kb {
+      1
+    } else {
+      a - b
+    }
+  })
+  let sorted_abs = Array::make(n_r, 0.0)
+  for k = 0; k < n_r; k = k + 1 {
+    sorted_abs[k] = u_r[idx[k]].abs()
+  }
+  let m = if nnmatch < n_r { nnmatch } else { n_r }
+  let mut acc = 0.0
+  for i = 0; i < n_l; i = i + 1 {
+    let target = u_l[i].abs()
+    // expand symmetrically out from the insertion point
+    let mut lo = 0
+    let mut hi = n_r - 1
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if sorted_abs[mid] < target {
+        lo = mid + 1
+      } else {
+        hi = mid
+      }
+    }
+    let mut sum = 0.0
+    let mut taken = 0
+    let mut a = lo - 1
+    let mut b = lo
+    while taken < m {
+      let take_left = if a < 0 {
+        false
+      } else if b >= n_r {
+        true
+      } else {
+        let dl = target - sorted_abs[a]
+        let db = sorted_abs[b] - target
+        db < dl
+      }
+      if take_left {
+        let row = idx[a]
+        let d = res_r[row] - res_l[i]
+        sum = sum + d * d
+        a = a - 1
+      } else {
+        let row = idx[b]
+        let d = res_r[row] - res_l[i]
+        sum = sum + d * d
+        b = b + 1
+      }
+      taken = taken + 1
+    }
+    acc = acc + sum / taken.to_double()
+  }
+  acc / n_l.to_double()
 }
