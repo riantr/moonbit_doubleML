@@ -9,6 +9,175 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.109.0] -- `set_sample_splitting` had no door, and no estimator could take one
+
+v0.108.0 closed the `tune` coverage gap. This is the next item off the same
+audit: upstream's `set_sample_splitting`, which every estimator inherits
+through `SampleSplittingMixin`, had no counterpart here at all.
+
+### It is a mechanism change, not a missing entry point
+
+The obvious reading is "add a setter". Reading the code says otherwise. Every
+estimator drew its folds INLINE inside `fit`:
+
+```moonbit
+let nrep = self.n_rep
+...
+let folds = kfold(n, self.n_folds, self.seed + r)
+```
+
+and no estimator struct stored a `folds` field. A setter that recorded splits
+without changing those lines would have been inert -- stored, never read, which
+is the v0.108.0 failure mode in a new place.
+
+### The contract is a DERIVATION, and that is the part that surprises people
+
+Upstream (`doubleml/double_ml_sampling_mixins.py:76` ->
+`_check_sample_splitting`) does not validate a splitting and keep the configured
+fold count. It sets `n_folds` and `n_rep` **from the supplied partition**: a
+two-fold split handed to a model built with `n_folds=5` yields a two-fold
+model. Reproduced here.
+
+Validation rules, enforced by the new shared `check_sample_splitting`:
+
+- every repetition carries the SAME number of folds;
+- within each repetition the test index sets are pairwise disjoint and their
+  union is exactly `[0, n_obs)` -- a partition, not merely a cover;
+- every train and test index lies inside `[0, n_obs)`.
+
+The single-fold "no sample splitting" case needs no special branch: one `Fold`
+whose train and test both cover everything is a valid partition with
+`folds = 1`, which is what upstream detects and reports.
+
+`check_sample_splitting` is annotated `-> SampleSplitting raise
+PreconditionError`. That is not decoration: an unqualified `raise` widens the
+try body's error set to "anything", and every caller's
+`catch { PreconditionError::Violated(loc) => .. }` then reports
+`partial_match` and refuses to build. Every failure raised there IS a
+`PreconditionError`, so naming the type is both accurate and what keeps the
+callers exhaustive. (v0.108.0 hit this same wall and worked around it by moving
+a guard back to the call site; the annotation is the better answer.)
+
+### Added
+
+- **`check_sample_splitting` + `SampleSplitting`** in `kfold.mbt`.
+- **`set_sample_splitting` / `sample_splitting` on 12 estimators**: `APO`,
+  `APOS`, `CVAR`, `DID`, `IIVM`, `IRM`, `LPLR`, `PLIV`, `PLR`, `PQ`, `QTE`,
+  `SSM`. `DoubleMLPLR` is the reference implementation; the other eleven were
+  built against it.
+- **`examples/splitting`** plus **`validate_splitting_contract.py`**, which
+  prove the REFUSALS. An abort inside a test kills the whole test binary, so
+  the negative cases cannot live in `expand_v109_test.mbt`; out of process a
+  non-zero exit is clean and attributable. Six rejected shapes: `overlapcover`,
+  `overlap`, `short`, `ragged`, `outofrange`, `empty`. Mode `ok` additionally
+  checks the DERIVATION, running a model constructed as `n_folds=9, n_rep=7`
+  and requiring the printed counts to be 3 and 2.
+
+### Fixed, by not being introduced
+
+- **The fit cache is not keyed on the fold assignment.** It hashes data +
+  learner + cluster state with no fold term, so caching an externally-split fit
+  could return a DIFFERENT partition's predictions. Every such path sets
+  `&& !external` on the memoize term, and every `set_sample_splitting` clears
+  the cache. Extending the key would mean changing `FitCache` for every
+  memoizing estimator at once; refusing to cache can only cost time, whereas a
+  stale hit cannot be made safe by ignoring it.
+- **The returned model carries `smpls` forward.** `fit`, `fit_cluster` and
+  `bootstrap` all build a fresh struct; a missing field there would make the
+  NEXT fit silently revert to drawing its own folds. A bootstrap re-fit is the
+  worst case, because the estimate would still look plausible.
+- **`validate_splitting_contract.py` no longer depends on the machine locale.**
+  `subprocess.run(text=True)` decodes `moon`'s abort traceback as GBK on a
+  zh-CN Windows box and raised `UnicodeDecodeError`, which propagated out as a
+  non-zero exit -- that LOOKED like a correctly refused partition and passed by
+  accident. On an English box the same path would not raise, so the verdict
+  depended on the environment. `encoding="utf-8", errors="replace"` is now
+  pinned, verified under `cp936`.
+- **A redundant hook was deleted rather than kept.** `fit` had
+  `let nrep = if external { self.smpls.length() } else { self.n_rep }`. Replacing
+  it with plain `self.n_rep` changed nothing on any input reachable through the
+  public API, because `set_sample_splitting` had already written the derived
+  count into the field. Defensive code that no mutation can fail is a ratchet,
+  not a safeguard.
+
+### Verification
+
+The primary gate is an EQUIVALENCE IDENTITY, not a statistical band: supplying
+the folds `kfold(n, k, seed)` itself returns must reproduce the estimator's own
+draw **bit-identically** -- coefficient, standard error and the `l_hat` vector.
+No sampling is involved on either side, so the tolerance is `==`.
+
+`_verify/mut_v109_split.ps1`, four mutations:
+
+| mutation | tests | validator |
+|---|---|---|
+| M1 supplied folds ignored (`fit` always draws) | 1 failure | green |
+| M2 derivation dropped (configured counts kept) | 2 failures | **red** |
+| M3 disjointness `require` dropped | green by construction | **red** (`overlapcover` accepted) |
+| M4 APOS propagation dropped | 1 failure | green |
+
+M3 is green in-process BY CONSTRUCTION and caught only out of process. That is
+the honest reason `examples/splitting` exists.
+
+**The gate found its own four vacuous versions before it was trusted.** Each was
+caught only by refusing to explain a green result:
+
+1. The harness first reported "3/3 killed" when in fact the suite had **never
+   run** -- a stray `--deny-warn` warning in an unrelated package turned the
+   build red, and the harness counted a build failure as a kill. It now reports
+   INCONCLUSIVE when no test total appears.
+2. The original M2 was an **equivalent mutant**, and the harness would have
+   declared the gate decorative over it. The redundant hook was deleted and M2
+   replaced with a real defect.
+3. The first `overlap` example ALSO failed the coverage check, so deleting the
+   disjointness check changed nothing observable. `overlapcover` was added:
+   two folds overlapping on rows 60..119 whose union is still all of `[0, 200)`,
+   violating disjointness alone. One input must break one property to pin it.
+4. The APOS propagation test compared a 4-fold/1-rep supplied partition against
+   the drawn 9-fold/3-rep one, and dropping the propagation changed nothing:
+   **under a near-linear DGP the PLR/APO estimate is invariant to the fold
+   COUNT and the repetition COUNT to within double precision** (measured: the
+   coefficient was `1.6250146409182047` either way). Fold-count change is a
+   poor discriminator; a partition SEED is not, and the test was rewritten to
+   vary the seed.
+
+That last one is the same shape as v0.106.0's finding: a comparison that cannot
+see a change cannot testify about it.
+
+Tests: **816 -> 827**. native/wasm/js 827, wasm-gc 833.
+`moon check --target all --deny-warn` 0 error 0 warning; `moon fmt --check` clean.
+
+### Not done, and why
+
+- **The DID cell family** (`DIDCS`, `DIDCSBinary`, `DIDCrossSection`, `DIDMulti`)
+  has no `set_sample_splitting`. They do not cross-fit either: they build
+  per-cell child estimators. Propagating a splitting there is a different
+  mechanism from the row-level one used here and deserves its own release.
+  `APOS` shows the shape -- compose the child's setter, 5 lines -- but the DID
+  cells construct children per (G, T) cell and would need the partition to mean
+  something coherent across cells, which is a decision, not a copy.
+- **`PLPR`** has no `set_sample_splitting`. It is unconditionally unit-clustered
+  and its folds are unit-level on a transformed cross-section, so a row-level
+  partition is the wrong shape. Upstream takes `all_smpls_cluster` alongside
+  `all_smpls` for exactly this case; porting the cluster half is its own
+  decision.
+- **Cluster paths everywhere** keep drawing unit-level folds and ignore
+  row-level supplied splits. Documented per method; making them honour
+  external splits needs a unit-indexed splitting and a unit-indexed validator,
+  which `check_sample_splitting` is not.
+- **`DoubleMLRDD` and `DoubleMLBLP` will never have one.** Neither calls
+  `kfold`: RDD is a local-polynomial estimator with no cross-fitting, and BLP
+  fits demand characteristics rather than a nuisance. Same category as their
+  having no `tune`.
+- **`CVAR`'s preliminary inner split is not overridden.** Its index space is
+  the `train_1` SUBSET of each outer training fold, so a row-level partition
+  cannot be substituted without a second, differently-shaped splitting
+  threaded through a free function. A fully-split CVaR still differs from an
+  unsplit one even when the outer partitions coincide.
+- **`DID` with `strata` set**: supplying a splitting means `strata` no longer
+  balances the (G, T) cells. The one place where this changes something beyond
+  fold boundaries; documented on the method.
+
 ## [0.108.0] -- `tune` existed on 5 of 22 estimators, and the gate that claimed to check it could not fail
 
 v0.107.0 finished the SSM / PLPR cross-checks. This version works the

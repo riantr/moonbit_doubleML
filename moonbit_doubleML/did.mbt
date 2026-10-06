@@ -124,6 +124,15 @@ pub struct DoubleMLDID {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
+  // INSTEAD of calling `stratified_kfold` / `kfold` -- the external
+  // partition wins over BOTH of the strategies `fit` picks between.
+  // `set_sample_splitting` also DERIVES `n_folds` and `n_rep` from
+  // the supplied partition and writes both into the fields above, so
+  // those stay the source of truth for the repetition loop -- do not
+  // build `smpls` by hand, call the setter.
+  smpls : Array[Array[Fold]]
   propensity_clip : Double
   // Propensity-score processor. v0.10.0+ replacement for the
   // bare `propensity_clip` scalar: `fit` now applies
@@ -226,6 +235,9 @@ pub fn DoubleMLDID::new(
       n_folds,
       n_rep,
       seed,
+      // v0.109.0: no external splitting unless `set_sample_splitting`
+      // is called, so every pre-existing caller keeps the drawn path.
+      smpls: [],
       propensity_clip,
       ps_processor,
       score,
@@ -408,13 +420,27 @@ pub fn DoubleMLDID::fit(
   ignore(ml_g)
   ignore(ml_m)
   let n = self.n_obs()
+  // v0.109.0: true when the caller supplied the split through
+  // `set_sample_splitting`. It gates the two places where behaviour
+  // genuinely differs -- the memoize decision and the fold draw --
+  // but NOT the repetition count, which the derivation already
+  // wrote into `self.n_rep`.
+  let external = self.smpls.length() > 0
   let nrep = self.n_rep
   // v0.82.0+: memoize check. Mirrors the IRM / PLR / IIVM /
   // PLIV plumbing. DID uses an averaged nuisance vector
   // (g0_hat, g1_hat, m_hat averaged across reps), so the
   // cache stores the LAST rep's cross-fitted nuisances and the
   // subsequent per-rep accumulators are rebuilt against them.
-  let memoize = self.memoize_enabled && nrep == 1
+  //
+  // v0.109.0: external splits are EXCLUDED from the cache. The key
+  // is built from data + learner + cluster hashes and has no term
+  // for the fold assignment, so two different supplied partitions
+  // would collide and the second fit would silently return the
+  // first one's predictions. The external path turns memoize off,
+  // which can only cost time; reusing a stale split cannot be made
+  // safe by ignoring it.
+  let memoize = self.memoize_enabled && nrep == 1 && !external
   let data_hash : UInt64 = if memoize {
     // DoubleMLDIDData (v0.82.0) does not carry cluster_vars;
     // pass an empty vector to `hash_data`. The DID cluster path
@@ -460,7 +486,19 @@ pub fn DoubleMLDID::fit(
       // Choose the partitioning strategy. With `strata` set (length
       // = n), use `stratified_kfold` so each fold balances the
       // (G, T) cells; otherwise plain `kfold`.
-      let folds = if self.strata.length() == n {
+      //
+      // v0.109.0: the external splitting is tested FIRST and wins over
+      // both strategies. Had it been tested second, the stratified
+      // branch would have kept drawing its own (G, T)-balanced folds
+      // and silently ignored the caller's partition on exactly the
+      // models that ask for strata -- the case where a wrong split is
+      // least likely to be noticed, because the estimate still looks
+      // plausible. `check_sample_splitting` already proved
+      // `self.smpls[r]` is a partition of `[0, n)`, so there is no
+      // re-validation here.
+      let folds = if external {
+        self.smpls[r]
+      } else if self.strata.length() == n {
         stratified_kfold(self.strata, self.n_folds, self.seed + r)
       } else {
         kfold(n, self.n_folds, self.seed + r)
@@ -618,6 +656,11 @@ pub fn DoubleMLDID::fit(
     n_folds: self.n_folds,
     n_rep: self.n_rep,
     seed: self.seed,
+    // v0.109.0: carry the external splitting onto the returned model
+    // so a re-fit (including the one `tune` performs) keeps using
+    // it. Dropping it here would make the NEXT fit silently revert
+    // to drawing its own folds.
+    smpls: self.smpls,
     propensity_clip: self.propensity_clip,
     ps_processor: self.ps_processor,
     score: self.score,
@@ -978,5 +1021,88 @@ pub fn DoubleMLDID::tune(
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Record a caller-supplied sample splitting and DERIVE the fold and
+/// repetition counts from it. Returns a new `DoubleMLDID`; the
+/// receiver is unchanged, as everywhere in this package.
+///
+/// `smpls` is one entry per repetition, each entry one `Fold` per fold
+/// -- the nested form is the only form, so a single repetition is
+/// `[f0, f1, f2]` wrapped once, i.e. `[[f0, f1, f2]]`.
+///
+/// The derivation is upstream's, and it is the part that surprises
+/// people: `set_sample_splitting`
+/// (`doubleml/double_ml_sampling_mixins.py:76`) sets `n_folds` and
+/// `n_rep` FROM the supplied partition, so handing a two-fold split to
+/// a model built with `n_folds=5` yields a two-fold model. On the
+/// returned model `n_folds` / `n_rep` are updated to match, and `fit`
+/// uses the supplied folds instead of drawing them.
+///
+/// Validation, via `check_sample_splitting`: every repetition carries
+/// the same number of folds, and within each repetition the test index
+/// sets are disjoint and cover exactly `[0, n_obs)`. A supplied
+/// partition that is not a partition aborts rather than quietly
+/// producing a cross-fit that leaks across folds.
+///
+/// # Interaction with `strata`
+///
+/// DID picks between two fold strategies: `stratified_kfold` when
+/// `strata` has length `n_obs`, plain `kfold` otherwise. An external
+/// splitting REPLACES BOTH. `strata` is then not consulted by `fit` at
+/// all, so a supplied partition is used verbatim and the usual
+/// guarantee that each fold balances the (G, T) cells no longer holds
+/// -- balance is then whatever the caller's partition happens to
+/// provide. This is the intended reading of "use these folds", but it
+/// is the one case where supplying a splitting changes something other
+/// than the fold boundaries, so it is called out here rather than left
+/// to be discovered.
+///
+/// Memoization is turned OFF on the returned model regardless of
+/// `memoize_enabled`. The fit cache is keyed on data + learner +
+/// cluster hashes with no term for the fold assignment, so caching an
+/// externally-split fit could return a DIFFERENT partition's
+/// predictions. The fit cache is also cleared here, for the same
+/// reason.
+///
+/// Note that a subsequent `fit()` on the returned model rebuilds
+/// `boot_t_stat` / `n_rep_boot` from scratch, so a bootstrap computed
+/// before `set_sample_splitting` is dropped by that fit. That is the
+/// package-wide convention, not something this method introduces; call
+/// `bootstrap(...)` again on the fitted model if you need it.
+pub fn DoubleMLDID::set_sample_splitting(
+  self : DoubleMLDID,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLDID {
+  try {
+    let checked = check_sample_splitting(smpls, self.n_obs())
+    {
+      ..self,
+      n_folds: checked.folds,
+      n_rep: checked.reps,
+      smpls: checked.smpls,
+      // A re-fit under a new splitting must not reuse a cache entry
+      // written under the old one.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied and `fit` draws its own. `Some` carries the
+/// DERIVED counts next to the folds, so a caller can read back what
+/// the estimator actually used rather than inferring it from the
+/// constructor arguments it no longer has any say over.
+pub fn DoubleMLDID::sample_splitting(self : DoubleMLDID) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.n_rep, })
   }
 }

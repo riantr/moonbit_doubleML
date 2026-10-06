@@ -28,6 +28,19 @@ pub struct DoubleMLCVAR {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
+  // INSTEAD of calling `kfold` for the OUTER folds.
+  // `set_sample_splitting` also DERIVES `n_folds` and `n_rep` from
+  // the supplied partition and writes both into the fields above, so
+  // those stay the source of truth for the repetition loop -- do not
+  // build `smpls` by hand, call the setter.
+  //
+  // The PRELIMINARY fold set inside `cvar_inner_crossfit` is NOT
+  // covered by this: it is drawn over one outer training fold's
+  // `train_1` subset, a different index space from `[0, n)`. See
+  // `set_sample_splitting`.
+  smpls : Array[Array[Fold]]
   propensity_clip : Double
   normalize_ipw : Bool
   // v0.60.0+: injected nuisance learners. Defaults to
@@ -130,6 +143,9 @@ pub fn DoubleMLCVAR::new(
     n_folds,
     n_rep,
     seed,
+    // v0.109.0: no external splitting unless `set_sample_splitting`
+    // is called, so every pre-existing caller keeps the drawn path.
+    smpls: [],
     propensity_clip,
     normalize_ipw,
     ml_g,
@@ -800,6 +816,13 @@ pub fn DoubleMLCVAR::fit(
   try {
     require(self.quantile > 0.0 && self.quantile < 1.0)
     let n = self.n_obs()
+    // v0.109.0: true when the caller supplied the split through
+    // `set_sample_splitting`. It gates the two places where behaviour
+    // genuinely differs -- the memoize decision and the outer fold
+    // draw. Note this file has no `let nrep` binding: the loop below
+    // and the cache key both read `self.n_rep` directly, which is
+    // already the DERIVED value, so they need no override.
+    let external = self.smpls.length() > 0
     let treated = indicator_level(self.data.d, self.treatment)
     // Per-rep accumulators. The per-rep nuisances are discarded
     // except for the final rep's (which become the public
@@ -835,7 +858,15 @@ pub fn DoubleMLCVAR::fit(
     // When memoize_enabled is false (the default), the entire
     // cache code path is skipped so v0.82.0 callers see a
     // byte-identical fit() output.
-    let memoize = self.memoize_enabled && self.n_rep == 1
+    //
+    // v0.109.0: external splits are EXCLUDED from the cache. The key
+    // is built from data + learner + cluster hashes and has no term
+    // for the fold assignment, so two different supplied partitions
+    // would collide and the second fit would silently return the
+    // first one's nuisances. The external path turns memoize off,
+    // which can only cost time; reusing a stale split cannot be made
+    // safe by ignoring it.
+    let memoize = self.memoize_enabled && self.n_rep == 1 && !external
     let data_hash : UInt64 = if memoize {
       hash_data(
         self.data.x,
@@ -881,7 +912,17 @@ pub fn DoubleMLCVAR::fit(
         }
         (preds[0], preds[1], preds[2])
       } else {
-        let folds = kfold(n, self.n_folds, self.seed + r)
+        // v0.109.0: the external splitting wins over the drawn one for
+        // the OUTER folds. `check_sample_splitting` already proved
+        // `self.smpls[r]` is a partition of `[0, n)`, so no
+        // re-validation here. The PRELIMINARY stratified fold set
+        // lives inside `cvar_inner_crossfit` and is NOT overridden --
+        // see that method's doc for why it cannot be.
+        let folds = if external {
+          self.smpls[r]
+        } else {
+          kfold(n, self.n_folds, self.seed + r)
+        }
         let g_hat = Array::make(n, 0.0)
         let m_hat = Array::make(n, 0.0)
         let ipw_vec : Array[Double] = Array::make(folds.length(), 0.0)
@@ -1047,6 +1088,11 @@ pub fn DoubleMLCVAR::fit(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.109.0: carry the external splitting onto the returned
+      // model so a re-fit (including the one `tune` performs) keeps
+      // using it. Dropping it here would make the NEXT fit silently
+      // revert to drawing its own folds.
+      smpls: self.smpls,
       propensity_clip: self.propensity_clip,
       normalize_ipw: self.normalize_ipw,
       ml_g,
@@ -1330,5 +1376,118 @@ pub fn DoubleMLCVAR::bias_corrected_coef(self : DoubleMLCVAR) -> Double {
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Record a caller-supplied sample splitting and DERIVE the fold and
+/// repetition counts from it. Returns a new `DoubleMLCVAR`; the
+/// receiver is unchanged, as everywhere in this package.
+///
+/// `smpls` is one entry per repetition, each entry one `Fold` per fold
+/// -- the nested form is the only form, so a single repetition is
+/// `[f0, f1, f2]` wrapped once, i.e. `[[f0, f1, f2]]`.
+///
+/// The derivation is upstream's, and it is the part that surprises
+/// people: `set_sample_splitting`
+/// (`doubleml/double_ml_sampling_mixins.py:76`) sets `n_folds` and
+/// `n_rep` FROM the supplied partition, so handing a two-fold split to
+/// a model built with `n_folds=5` yields a two-fold model. On the
+/// returned model `n_folds` / `n_rep` are updated to match, and `fit`
+/// uses the supplied folds instead of drawing them.
+///
+/// Validation, via `check_sample_splitting`: every repetition carries
+/// the same number of folds, and within each repetition the test index
+/// sets are disjoint and cover exactly `[0, n_obs)`. A supplied
+/// partition that is not a partition aborts rather than quietly
+/// producing a cross-fit that leaks across folds.
+///
+/// # What this splitting does and does not replace
+///
+/// CVaR has TWO fold sets, not one, and only the outer one is
+/// replaced:
+///
+///   - The OUTER folds (`kfold(n, self.n_folds, self.seed + r)`,
+///     driven per repetition by `fit`) ARE taken from `smpls`.
+///
+///   - The PRELIMINARY fold set stays drawn. Inside
+///     `cvar_inner_crossfit`, each outer training fold is first split
+///     50/50 by `stratified_half_split` into `(train_1, train_2)`,
+///     and a stratified `n_folds`-fold cross-fit of the preliminary
+///     propensity runs over `train_1` alone.
+///
+/// That second set cannot be taken from `smpls`, and the reason is
+/// structural rather than a shortcut: its index space is the
+/// `train_1` SUBSET of rows, reached through a per-fold
+/// `kfold_stratified(train_1.length(), slice_vector(d, train_1), ...)`
+/// whose fold lengths vary with the outer fold, while `smpls` is a
+/// partition of `[0, n)`. Substituting it would need a second,
+/// differently-shaped splitting threaded through the free function's
+/// signature, plus a way to reconcile an arbitrary caller partition
+/// with a per-fold subset - and any mismatch there would break the
+/// propensity cross-fit inside one outer fold. So the preliminary set
+/// keeps being drawn, seeded as before. The consequence worth knowing:
+/// a fully externally-split CVaR still differs from an un-split one
+/// even when both partitions coincide, because its preliminary
+/// propensity cross-fit is still redrawn. That is stated here rather
+/// than left to be discovered by a test that compares estimates.
+///
+/// Memoization is turned OFF on the returned model regardless of
+/// `memoize_enabled`. The fit cache is keyed on data + learner +
+/// cluster hashes with no term for the fold assignment, so caching an
+/// externally-split fit could return a DIFFERENT partition's
+/// predictions. The fit cache is also cleared here, for the same
+/// reason.
+///
+/// # Existing bootstrap state
+///
+/// `fit` rebuilds `boot_t_stat` / `boot_method` / `n_rep_boot` /
+/// `boot_seed` from scratch on every call, so the `fit` that a caller
+/// makes next on the returned model DROPS any bootstrap the model was
+/// carrying. `tune` ends in such a `fit`, which makes this easy to hit
+/// by accident: set a splitting on a bootstrapped model, tune it, and
+/// the bootstrap is gone with no error. This method does not change
+/// that behaviour and does not clear the bootstrap itself (it returns
+/// `..self`, so any bootstrap survives the call) - it is a property of
+/// `fit`, shared with every estimator in this package, recorded here
+/// because CVaR's `tune` makes it reachable in one step. Call
+/// `bootstrap(...)` again on the fitted model if you need it.
+pub fn DoubleMLCVAR::set_sample_splitting(
+  self : DoubleMLCVAR,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLCVAR {
+  try {
+    let checked = check_sample_splitting(smpls, self.n_obs())
+    {
+      ..self,
+      n_folds: checked.folds,
+      n_rep: checked.reps,
+      smpls: checked.smpls,
+      // A re-fit under a new splitting must not reuse a cache entry
+      // written under the old one.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied and `fit` draws its own. `Some` carries the
+/// DERIVED counts next to the folds, so a caller can read back what
+/// the estimator actually used rather than inferring it from the
+/// constructor arguments it no longer has any say over.
+///
+/// On CVaR this reports the OUTER splitting only. The preliminary
+/// per-fold propensity cross-fit inside `cvar_inner_crossfit` is drawn
+/// internally and is not represented here - see
+/// `set_sample_splitting` for why.
+pub fn DoubleMLCVAR::sample_splitting(self : DoubleMLCVAR) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.n_rep, })
   }
 }

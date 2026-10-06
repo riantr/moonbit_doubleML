@@ -43,6 +43,17 @@ pub struct DoubleMLPLR {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
+  // INSTEAD of calling `kfold`. The repetition count still comes from
+  // `n_rep`, because `set_sample_splitting` already writes the DERIVED
+  // count into that field -- an `if external { smpls.length() } else
+  // { n_rep }` override in `fit` was measured to be an equivalent
+  // mutant and deleted rather than left as unfalsifiable decoration.
+  // Set `smpls` through `DoubleMLPLR::set_sample_splitting`, which
+  // validates the partition and derives both counts -- do not build it
+  // by hand.
+  smpls : Array[Array[Fold]]
   // cross-fitted nuisance predictions
   l_hat : Array[Double]
   m_hat : Array[Double]
@@ -102,6 +113,9 @@ pub fn DoubleMLPLR::new(
       n_folds,
       n_rep,
       seed,
+      // v0.109.0: no external splitting unless `set_sample_splitting`
+      // is called, so every pre-existing caller keeps the drawn path.
+      smpls: [],
       l_hat: Array::make(data.n_obs(), 0.0),
       m_hat: Array::make(data.n_obs(), 0.0),
       coef: 0.0,
@@ -397,6 +411,26 @@ pub fn DoubleMLPLR::fit(
       )
     }
     let n = self.n_obs()
+    // v0.109.0: true when the caller supplied the split through
+    // `set_sample_splitting`. It gates the two places where behaviour
+    // genuinely differs -- the memoize decision and the fold draw -- but
+    // NOT the repetition count, which the derivation already wrote into
+    // `self.n_rep`.
+    let external = self.smpls.length() > 0
+    // v0.109.0: `set_sample_splitting` writes the DERIVED counts into
+    // `self.n_folds` / `self.n_rep`, so reading `self.n_rep` here is
+    // already reading the derived value and needs no `if external`
+    // override. An earlier draft had
+    // `let nrep = if external { self.smpls.length() } else { self.n_rep }`
+    // and that turned out to be an EQUIVALENT mutant: replacing it with
+    // plain `self.n_rep` changed no behaviour on any input reachable
+    // through the public API, because the derivation already happened at
+    // `set_sample_splitting` time. Defensive code that no mutation can
+    // fail is a ratchet, not a safeguard, so it is gone.
+    //
+    // Upstream is explicit that the derivation belongs here, in the sense
+    // that `set_sample_splitting` sets `n_folds` and `n_rep` FROM the
+    // supplied partition (see that method's doc).
     let nrep = self.n_rep
     // v0.82.0+: memoize check. The cache stores the LAST rep's
     // fold assignment and nuisance predictions. We honor the
@@ -409,7 +443,16 @@ pub fn DoubleMLPLR::fit(
     // When memoize_enabled is false (the default), the entire
     // cache code path is skipped so v0.81.0 callers see a
     // byte-identical fit() output.
-    let memoize = self.memoize_enabled && nrep == 1
+    //
+    // v0.109.0: external splits are EXCLUDED from the cache. The key
+    // is built from data + learner + cluster hashes and has no term
+    // for the fold assignment, so two different supplied partitions
+    // would collide and the second fit would silently return the
+    // first one's predictions. Rather than extend the key (a change to
+    // FitCache that every memoizing estimator would have to adopt at
+    // once), the external path turns memoize off. That can only cost
+    // time; reusing a stale split cannot be made safe by ignoring it.
+    let memoize = self.memoize_enabled && nrep == 1 && !external
     let data_hash : UInt64 = if memoize {
       hash_data(
         self.data.x,
@@ -456,7 +499,14 @@ pub fn DoubleMLPLR::fit(
         fold_ids = self.fit_cache.fold_ids
         (preds[0], preds[1])
       } else {
-        let folds = kfold(n, self.n_folds, self.seed + r)
+        // v0.109.0: the external splitting wins over the drawn one.
+        // `check_sample_splitting` already proved `self.smpls[r]`
+        // is a partition of `[0, n)`, so no re-validation here.
+        let folds = if external {
+          self.smpls[r]
+        } else {
+          kfold(n, self.n_folds, self.seed + r)
+        }
         let l_p = cross_fit_predict_dispatch(
           learner_l,
           self.data.x,
@@ -545,6 +595,14 @@ pub fn DoubleMLPLR::fit(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.109.0: carry the external splitting onto the returned model
+      // (both `fit` and `bootstrap` build one) so a re-fit or a
+      // bootstrap over a model that was given explicit splits keeps
+      // using them. Dropping it here would make the NEXT fit silently
+      // revert to drawing its own folds -- and a bootstrap re-fit is
+      // exactly the case where a surprise fold change would be hardest
+      // to notice, because the estimate would still look plausible.
+      smpls: self.smpls,
       l_hat: l_pred,
       m_hat: m_pred,
       coef,
@@ -747,6 +805,14 @@ fn DoubleMLPLR::fit_cluster(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.109.0: carry the external splitting onto the returned model
+      // (both `fit` and `bootstrap` build one) so a re-fit or a
+      // bootstrap over a model that was given explicit splits keeps
+      // using them. Dropping it here would make the NEXT fit silently
+      // revert to drawing its own folds -- and a bootstrap re-fit is
+      // exactly the case where a surprise fold change would be hardest
+      // to notice, because the estimate would still look plausible.
+      smpls: self.smpls,
       l_hat: l_pred,
       m_hat: m_pred,
       coef,
@@ -773,6 +839,82 @@ fn DoubleMLPLR::fit_cluster(
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Record a caller-supplied sample splitting and DERIVE the fold and
+/// repetition counts from it. Returns a new `DoubleMLPLR`; the receiver
+/// is unchanged, as everywhere in this package.
+///
+/// `smpls` is one entry per repetition, each entry one `Fold` per fold
+/// -- the nested form is the only form, so a single repetition is
+/// `[f0, f1, f2]` wrapped once, i.e. `[[f0, f1, f2]]`.
+///
+/// The derivation is upstream's, and it is the part that surprises
+/// people: `set_sample_splitting`
+/// (`doubleml/double_ml_sampling_mixins.py:76`) sets `n_folds` and
+/// `n_rep` FROM the supplied partition, so handing a two-fold split to
+/// a model built with `n_folds=5` yields a two-fold model. On the
+/// returned model `n_folds` / `n_rep` are updated to match, and `fit`
+/// uses the supplied folds instead of drawing them.
+///
+/// Validation, via `check_sample_splitting`: every repetition carries
+/// the same number of folds, and within each repetition the test index
+/// sets are disjoint and cover exactly `[0, n_obs)`. A supplied
+/// partition that is not a partition aborts rather than quietly
+/// producing a cross-fit that leaks across folds.
+///
+/// Memoization is switched OFF for the external path, and the fit cache
+/// is cleared here. Two separate things, and an earlier draft of this
+/// comment conflated them: the returned model still carries
+/// `memoize_enabled = true` (the struct spread preserves it), and what
+/// actually prevents caching is the `&& !external` term inside `fit`.
+/// The net effect is the same -- an externally-split fit never reads or
+/// writes the cache -- but "the model is switched off" would have been
+/// false, and a reader checking `memoize_enabled` would conclude the
+/// opposite. The cache key is built from data + learner + cluster
+/// hashes and has no term for the fold assignment, so honouring a cache
+/// entry here could return a DIFFERENT partition's predictions. The
+/// clear is required for the same reason: an entry written under the
+/// previous splitting would otherwise outlive it.
+///
+/// The one-fold "no sample splitting" case needs no special handling:
+/// a single `Fold` whose train and test both cover everything is a
+/// valid partition with `folds = 1`, which is what upstream detects
+/// and reports.
+pub fn DoubleMLPLR::set_sample_splitting(
+  self : DoubleMLPLR,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLPLR {
+  try {
+    let checked = check_sample_splitting(smpls, self.n_obs())
+    {
+      ..self,
+      n_folds: checked.folds,
+      n_rep: checked.reps,
+      smpls: checked.smpls,
+      // A re-fit under a new splitting must not reuse a cache entry
+      // written under the old one.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied and `fit` draws its own. `Some` carries the
+/// DERIVED counts next to the folds, so a caller can read back what
+/// the estimator actually used rather than inferring it from the
+/// constructor arguments it no longer has any say over.
+pub fn DoubleMLPLR::sample_splitting(self : DoubleMLPLR) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.n_rep, })
   }
 }
 

@@ -279,6 +279,15 @@ pub struct DoubleMLPQ {
   quantile : Double
   n_folds : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". When non-empty, `fit` uses `smpls[0]` for its cross-fit
+  // INSTEAD of calling `kfold`. PQ is a SINGLE-FIT estimator (there
+  // is no `n_rep` field and no repetition loop), so only the FIRST
+  // repetition is consumed; the repetition count is read back through
+  // `sample_splitting` but has nothing to drive. Set it through
+  // `DoubleMLPQ::set_sample_splitting`, which validates the
+  // partition and derives the fold count -- do not build it by hand.
+  smpls : Array[Array[Fold]]
   propensity_clip : Double
   // v0.60.0+: injected nuisance learners (replaces the
   // v0.59.0 hardcoded `LinearRegression` used internally by
@@ -353,6 +362,9 @@ pub fn DoubleMLPQ::new(
       quantile,
       n_folds,
       seed,
+      // v0.109.0: no external splitting unless `set_sample_splitting`
+      // is called, so every pre-existing caller keeps the drawn path.
+      smpls: [],
       propensity_clip,
       ml_l,
       ml_m,
@@ -389,16 +401,28 @@ pub fn DoubleMLPQ::fit(
     return self.fit_cluster(ml_l~, ml_m~)
   }
   let n = self.data.n_obs()
+  // v0.109.0: true when the caller supplied the split through
+  // `set_sample_splitting`. It gates the two places where behaviour
+  // genuinely differs -- the memoize decision and the fold draw.
+  let external = self.smpls.length() > 0
   // v0.84.0+: memoize check (mirrors the per-estimator
   // pattern). PQ is a single-fit estimator (no `n_rep`),
-  // so memoize is honored unconditionally when enabled --
-  // the cache stores the LAST (and only) `solve_pq` call's
+  // so there is no `nrep == 1` term to add -- memoize is honored
+  // whenever it is enabled, unless the split was supplied. The
+  // cache stores the LAST (and only) `solve_pq` call's
   // `(theta, psi, deriv)` plus row-to-fold mapping. On a
   // cache hit we skip the entire `solve_pq` (propensity
   // cross-fit + bisection + 3x outcome cross-fits) and just
   // recompute the `(coef, se)` aggregation from cached
   // values.
-  let memoize = self.memoize_enabled
+  //
+  // v0.109.0: external splits are EXCLUDED from the cache, for
+  // the same reason as in `DoubleMLPLR`: the key is built from
+  // data + learner + cluster hashes and has no term for the fold
+  // assignment, so two different supplied partitions would
+  // collide and the second fit would silently return the first
+  // one's predictions.
+  let memoize = self.memoize_enabled && !external
   let data_hash : UInt64 = if memoize {
     hash_data(
       self.data.x,
@@ -448,7 +472,14 @@ pub fn DoubleMLPQ::fit(
     }
     (preds[0][0], preds[1], preds[0][1], local_fold_ids)
   } else {
-    let folds = kfold(n, self.n_folds, self.seed)
+    // v0.109.0: the external splitting wins over the drawn one.
+    // `check_sample_splitting` already proved `self.smpls[0]` is a
+    // partition of `[0, n)`, so no re-validation here.
+    let folds = if external {
+      self.smpls[0]
+    } else {
+      kfold(n, self.n_folds, self.seed)
+    }
     let (t, p, d) = solve_pq(
       ml_l,
       ml_m,
@@ -542,6 +573,10 @@ pub fn DoubleMLPQ::fit(
     quantile: self.quantile,
     n_folds: self.n_folds,
     seed: self.seed,
+    // v0.109.0: carried through so the NEXT `fit` keeps using the
+    // supplied partition; dropping it here would silently revert
+    // the next fit to drawing its own folds.
+    smpls: self.smpls,
     propensity_clip: self.propensity_clip,
     ml_l,
     ml_m,
@@ -662,6 +697,12 @@ fn DoubleMLPQ::fit_cluster(
       quantile: self.quantile,
       n_folds: self.n_folds,
       seed: self.seed,
+      // v0.109.0: carried through. The cluster path draws its own
+      // UNIT-level folds and ignores the supplied ROW-level ones
+      // (see `set_sample_splitting`), but the field must survive
+      // or an IID re-fit of this returned model would silently
+      // revert to drawing its own folds.
+      smpls: self.smpls,
       propensity_clip: self.propensity_clip,
       ml_l,
       ml_m,
@@ -1173,11 +1214,107 @@ pub fn DoubleMLPQ::tune(
 }
 
 ///|
+/// Record a caller-supplied sample splitting and DERIVE the fold count
+/// from it. Returns a new `DoubleMLPQ`; the receiver is unchanged, as
+/// everywhere in this package.
+///
+/// `smpls` is one entry per repetition, each entry one `Fold` per fold
+/// -- the nested form is the only form, so a single repetition is
+/// `[f0, f1, f2]` wrapped once, i.e. `[[f0, f1, f2]]`.
+///
+/// The derivation is upstream's, and it is the part that surprises
+/// people: `set_sample_splitting`
+/// (`doubleml/double_ml_sampling_mixins.py:76`) sets `n_folds` FROM
+/// the supplied partition, so handing a two-fold split to a model
+/// built with `n_folds=5` yields a two-fold model. On the returned
+/// model `n_folds` is updated to match, and `fit` uses the supplied
+/// folds instead of drawing them.
+///
+/// Validation, via `check_sample_splitting`: every repetition carries
+/// the same number of folds, and within each repetition the test index
+/// sets are disjoint and cover exactly `[0, n_obs)`. A supplied
+/// partition that is not a partition aborts rather than quietly
+/// producing a cross-fit that leaks across folds.
+///
+/// PQ has NO `n_rep`, so the repetition axis has nothing to drive: it
+/// is a single-fit estimator with no repetition loop, and `fit`
+/// consumes `smpls[0]` only. A multi-repetition partition is
+/// therefore accepted and validated in full, but repetitions 1.. are
+/// not used by `fit`. `sample_splitting` reads the repetition count
+/// back as supplied, so a caller who passed several can see that the
+/// count did not shrink to one. There is no per-quantile reading to
+/// confuse this with either: PQ is a single `(quantile, treatment)`
+/// estimator and `smpls` applies to the one nuisance cross-fit it
+/// runs.
+///
+/// Memoization is turned OFF on the returned model regardless of
+/// `memoize_enabled`. The fit cache is keyed on data + learner +
+/// cluster hashes with no term for the fold assignment, so caching an
+/// externally-split fit could return a DIFFERENT partition's
+/// predictions. The fit cache is also cleared here, for the same
+/// reason.
+///
+/// Cluster data: the supplied folds are ROW-level, and `fit_cluster`
+/// draws its own UNIT-level partition via `kfold(n_units, ...)` and
+/// ignores them. The external splitting applies to the row-level
+/// (IID) path only.
+///
+/// The one-fold "no sample splitting" case needs no special handling:
+/// a single `Fold` whose train and test both cover everything is a
+/// valid partition with `folds = 1`, which is what upstream detects
+/// and reports.
+pub fn DoubleMLPQ::set_sample_splitting(
+  self : DoubleMLPQ,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLPQ {
+  try {
+    let checked = check_sample_splitting(smpls, self.n_obs())
+    {
+      ..self,
+      n_folds: checked.folds,
+      smpls: checked.smpls,
+      // A re-fit under a new splitting must not reuse a cache entry
+      // written under the old one.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied and `fit` draws its own. `Some` carries the
+/// DERIVED counts next to the folds, so a caller can read back what
+/// the estimator actually used rather than inferring it from the
+/// constructor arguments it no longer has any say over. `folds` is
+/// what `fit` cross-fits with; `reps` is the supplied repetition
+/// count, of which `fit` consumes only the first.
+pub fn DoubleMLPQ::sample_splitting(self : DoubleMLPQ) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.smpls.length(), })
+  }
+}
+
+///|
 pub struct DoubleMLQTE {
   data : DoubleMLData
   quantiles : Array[Double]
   n_folds : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". When non-empty, `fit` uses `smpls[0]` for its nuisance
+  // cross-fit INSTEAD of calling `kfold`. The partitioning is SHARED
+  // across quantiles: one partition, `2 * n_quantiles` `solve_pq`
+  // calls, so `smpls` is not a per-quantile knob. QTE is also a
+  // single-fit estimator (no `n_rep` field, no repetition loop), so
+  // only the FIRST repetition is consumed. Set it through
+  // `DoubleMLQTE::set_sample_splitting`, which validates the
+  // partition and derives the fold count -- do not build it by hand.
+  smpls : Array[Array[Fold]]
   propensity_clip : Double
   // v0.60.0+: injected nuisance learners (same forward-
   // compat story as `DoubleMLPQ`).
@@ -1253,6 +1390,9 @@ pub fn DoubleMLQTE::new(
     quantiles,
     n_folds,
     seed,
+    // v0.109.0: no external splitting unless `set_sample_splitting`
+    // is called, so every pre-existing caller keeps the drawn path.
+    smpls: [],
     propensity_clip,
     ml_l,
     ml_m,
@@ -1295,16 +1435,42 @@ pub fn DoubleMLQTE::fit(
   // sandwich API can guard on them and callers can read them back.
   let d1s : Array[Double] = Array::make(n_q, 0.0)
   let d0s : Array[Double] = Array::make(n_q, 0.0)
+  // v0.109.0: true when the caller supplied the split through
+  // `set_sample_splitting`. It gates the two places where behaviour
+  // genuinely differs -- the memoize decision and the fold draw.
+  let external = self.smpls.length() > 0
+  // v0.109.0: the external splitting wins over the drawn one.
+  // `check_sample_splitting` already proved `self.smpls[0]` is a
+  // partition of `[0, n_obs)`, so no re-validation here. ONE
+  // partition, bound once here and shared by the `fold_ids` map
+  // below and by every `solve_pq` call: one nuisance cross-fit per
+  // `(quantile, arm)` pair on ONE common partition. That is what
+  // the drawn path did too -- `solve_pq` re-derived the identical
+  // `kfold(n_obs, n_folds, seed)` on each of its `2 * n_quantiles`
+  // calls -- so handing it `folds~` changes no result.
+  let folds = if external {
+    self.smpls[0]
+  } else {
+    kfold(n_obs, self.n_folds, self.seed)
+  }
   // v0.84.0+: memoize check (mirrors the per-estimator
   // pattern). QTE is a single-fit estimator (no `n_rep`),
-  // so memoize is honored unconditionally when enabled --
-  // the cache stores per-quantile per-treatment
+  // so there is no `nrep == 1` term to add -- memoize is honored
+  // whenever it is enabled, unless the split was supplied. The
+  // cache stores per-quantile per-treatment
   // `(theta1, deriv1, theta0, deriv0)` plus the flat
   // `(psi1, psi0)` matrices. On a cache hit we skip all
   // `2 * n_quantiles` `solve_pq` calls and just recompute
   // the `(coefs, ses, psi_flat)` aggregation from cached
   // values.
-  let memoize = self.memoize_enabled
+  //
+  // v0.109.0: external splits are EXCLUDED from the cache, for the
+  // same reason as in `DoubleMLPLR`: the key is built from data +
+  // learner + cluster hashes and has no term for the fold
+  // assignment, so two different supplied partitions would collide
+  // and the second fit would silently return the first one's
+  // predictions.
+  let memoize = self.memoize_enabled && !external
   let data_hash : UInt64 = if memoize {
     hash_data(
       self.data.x,
@@ -1362,7 +1528,6 @@ pub fn DoubleMLQTE::fit(
   let fold_ids : Array[Int] = if cache_hit {
     self.fit_cache.fold_ids
   } else {
-    let folds = kfold(n_obs, self.n_folds, self.seed)
     let local_fold_ids : Array[Int] = Array::make(n_obs, 0)
     for f = 0; f < folds.length(); f = f + 1 {
       for i in folds[f].test_indices() {
@@ -1393,6 +1558,7 @@ pub fn DoubleMLQTE::fit(
         self.n_folds,
         self.seed,
         self.propensity_clip,
+        folds~,
       ) catch {
         BracketSignError::UpperSignFailed =>
           abort(
@@ -1422,6 +1588,7 @@ pub fn DoubleMLQTE::fit(
         self.n_folds,
         self.seed,
         self.propensity_clip,
+        folds~,
       ) catch {
         BracketSignError::UpperSignFailed =>
           abort(
@@ -1491,6 +1658,10 @@ pub fn DoubleMLQTE::fit(
     quantiles: self.quantiles,
     n_folds: self.n_folds,
     seed: self.seed,
+    // v0.109.0: carried through so the NEXT `fit` keeps using the
+    // supplied partition; dropping it here would silently revert
+    // the next fit to drawing its own folds.
+    smpls: self.smpls,
     propensity_clip: self.propensity_clip,
     ml_l,
     ml_m,
@@ -1624,6 +1795,12 @@ fn DoubleMLQTE::fit_cluster(
       quantiles: self.quantiles,
       n_folds: self.n_folds,
       seed: self.seed,
+      // v0.109.0: carried through. The cluster path draws its own
+      // UNIT-level folds and ignores the supplied ROW-level ones
+      // (see `set_sample_splitting`), but the field must survive
+      // or an IID re-fit of this returned model would silently
+      // revert to drawing its own folds.
+      smpls: self.smpls,
       propensity_clip: self.propensity_clip,
       ml_l,
       ml_m,
@@ -2589,5 +2766,97 @@ pub fn DoubleMLQTE::tune(
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Record a caller-supplied sample splitting and DERIVE the fold count
+/// from it. Returns a new `DoubleMLQTE`; the receiver is unchanged, as
+/// everywhere in this package.
+///
+/// `smpls` is one entry per repetition, each entry one `Fold` per fold
+/// -- the nested form is the only form, so a single repetition is
+/// `[f0, f1, f2]` wrapped once, i.e. `[[f0, f1, f2]]`.
+///
+/// The derivation is upstream's, and it is the part that surprises
+/// people: `set_sample_splitting`
+/// (`doubleml/double_ml_sampling_mixins.py:76`) sets `n_folds` FROM
+/// the supplied partition, so handing a two-fold split to a model
+/// built with `n_folds=5` yields a two-fold model. On the returned
+/// model `n_folds` is updated to match, and `fit` uses the supplied
+/// folds instead of drawing them.
+///
+/// Validation, via `check_sample_splitting`: every repetition carries
+/// the same number of folds, and within each repetition the test index
+/// sets are disjoint and cover exactly `[0, n_obs)`. A supplied
+/// partition that is not a partition aborts rather than quietly
+/// producing a cross-fit that leaks across folds.
+///
+/// ONE partition serves the WHOLE model, not one per quantile. QTE
+/// produces one estimate per entry of `quantiles`, but each of those
+/// is a contrast of two `solve_pq` solves (treated arm `d=1`,
+/// control arm `d=0`), and all `2 * n_quantiles` of them cross-fit on
+/// the SAME partition. `smpls` therefore tunes the nuisance
+/// cross-fit that the quantiles share; it is NOT a per-quantile
+/// knob, and there is no way to give quantile `j` its own folds.
+///
+/// QTE has NO `n_rep`, so the repetition axis has nothing to drive:
+/// it is a single-fit estimator with no repetition loop, and `fit`
+/// consumes `smpls[0]` only. A multi-repetition partition is
+/// therefore accepted and validated in full, but repetitions 1.. are
+/// not used by `fit`. `sample_splitting` reads the repetition count
+/// back as supplied, so a caller who passed several can see that the
+/// count did not shrink to one.
+///
+/// Memoization is turned OFF on the returned model regardless of
+/// `memoize_enabled`. The fit cache is keyed on data + learner +
+/// cluster hashes with no term for the fold assignment, so caching an
+/// externally-split fit could return a DIFFERENT partition's
+/// predictions. The fit cache is also cleared here, for the same
+/// reason.
+///
+/// Cluster data: the supplied folds are ROW-level, and `fit_cluster`
+/// draws its own UNIT-level partition via `kfold(n_units, ...)` and
+/// ignores them. The external splitting applies to the row-level
+/// (IID) path only.
+///
+/// The one-fold "no sample splitting" case needs no special handling:
+/// a single `Fold` whose train and test both cover everything is a
+/// valid partition with `folds = 1`, which is what upstream detects
+/// and reports.
+pub fn DoubleMLQTE::set_sample_splitting(
+  self : DoubleMLQTE,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLQTE {
+  try {
+    let checked = check_sample_splitting(smpls, self.n_obs())
+    {
+      ..self,
+      n_folds: checked.folds,
+      smpls: checked.smpls,
+      // A re-fit under a new splitting must not reuse a cache entry
+      // written under the old one.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied and `fit` draws its own. `Some` carries the
+/// DERIVED counts next to the folds, so a caller can read back what
+/// the estimator actually used rather than inferring it from the
+/// constructor arguments it no longer has any say over. `folds` is the
+/// ONE partition every quantile's nuisance cross-fit ran on; `reps`
+/// is the supplied repetition count, of which `fit` consumes only the
+/// first.
+pub fn DoubleMLQTE::sample_splitting(self : DoubleMLQTE) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.smpls.length(), })
   }
 }

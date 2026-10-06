@@ -17,5 +17,6 @@ members = [
   "examples/main",
   "examples/pava",
   "examples/plpr",
+  "examples/splitting",
   "examples/ssm",
 ]

@@ -233,6 +233,88 @@ pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
 }
 
 ///|
+/// A validated caller-supplied sample splitting, with the fold and
+/// repetition counts DERIVED from the input rather than configured
+/// separately.
+pub(all) struct SampleSplitting {
+  /// One entry per repetition; each entry is one entry per fold.
+  smpls : Array[Array[Fold]]
+  /// Derived: the inner length. Every repetition must agree on it.
+  folds : Int
+  /// Derived: the outer length.
+  reps : Int
+}
+
+///|
+/// Validate a caller-supplied sample splitting against `n_obs` and
+/// derive `folds` and `reps` from it.
+///
+/// The MoonBit counterpart of upstream's `_check_sample_splitting`
+/// (`doubleml/utils/_checks.py`), enforcing the same contract:
+///
+///   * every repetition carries the SAME number of folds;
+///   * within each repetition the test index sets are pairwise
+///     disjoint and their union is exactly `[0, n_obs)` -- a
+///     partition, not merely a cover;
+///   * every train and test index lies inside `[0, n_obs)`.
+///
+/// The derivation is the part that is easy to get backwards, so it is
+/// worth stating plainly: `folds` and `reps` come OUT of the supplied
+/// partition. Upstream is explicit that passing a two-fold split to a
+/// model built with `n_folds=5` makes the model two-fold, and
+/// reproducing that is the whole point. On this path the estimator's
+/// own `n_folds` / `n_rep` are never consulted.
+///
+/// The `raise PreconditionError` annotation is not decoration. An
+/// unqualified `raise` widens the try body's error set to "anything",
+/// and every caller's
+/// `catch { PreconditionError::Violated(loc) => .. }` then reports
+/// `partial_match` and refuses to build. Every failure raised here IS
+/// a `PreconditionError` (they are all `require(..)`), so naming the
+/// type is both accurate and what keeps the callers exhaustive.
+///
+/// Upstream's `_check_is_partition` tests `len(test_indices) ==
+/// n_obs` plus full coverage, which is a permutation test; the
+/// `seen` array below checks disjointness and cover separately and
+/// reaches the same verdict with the failure attributable to which
+/// property broke.
+///
+/// The single-fold "no sample splitting" case is NOT special-cased.
+/// Upstream detects it -- train and test both covering everything,
+/// with the swap also forming a partition -- and reports `folds = 1`.
+/// That partition satisfies the rules below with `folds = 1`, so the
+/// generic path lands on the same answer without a branch.
+pub fn check_sample_splitting(
+  smpls : Array[Array[Fold]],
+  n_obs : Int,
+) -> SampleSplitting raise PreconditionError {
+  require(n_obs > 0)
+  require(smpls.length() > 0)
+  let n_folds = smpls[0].length()
+  require(n_folds > 0)
+  for rep in smpls {
+    require(rep.length() == n_folds)
+    // `seen` is per repetition: each one is its own partition of
+    // `[0, n_obs)`, so a row may be tested in rep 0 and again in rep 1.
+    let seen : Array[Bool] = Array::make(n_obs, false)
+    for f in rep {
+      for i in f.test_indices() {
+        require(i >= 0 && i < n_obs)
+        require(seen[i] == false)
+        seen[i] = true
+      }
+      for i in f.train_indices() {
+        require(i >= 0 && i < n_obs)
+      }
+    }
+    for i = 0; i < n_obs; i = i + 1 {
+      require(seen[i])
+    }
+  }
+  SampleSplitting::{ smpls, folds: n_folds, reps: smpls.length(), }
+}
+
+///|
 /// Draw `n_folds` (train, test) splits that together partition
 /// `[0, n_obs)` using a deterministic shuffle seeded with `seed`. The
 /// resulting list has length `n_folds`. If `n_obs` is not a multiple of

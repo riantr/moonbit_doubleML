@@ -102,6 +102,14 @@ pub struct DoubleMLIIVM {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
+  // INSTEAD of calling `kfold`, and the repetition count comes from
+  // the supplied partition's length rather than from the configured
+  // `n_rep`. Set it through `DoubleMLIIVM::set_sample_splitting`,
+  // which validates the partition and derives both counts -- do not
+  // build it by hand.
+  smpls : Array[Array[Fold]]
   propensity_clip : Double
   // v0.59.0+: injected nuisance learners (replaces the v0.57.0
   // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
@@ -171,6 +179,10 @@ pub fn DoubleMLIIVM::new(
       n_folds,
       n_rep,
       seed,
+      // v0.109.0: no external splitting unless
+      // `set_sample_splitting` is called, so every pre-existing caller
+      // keeps the drawn path.
+      smpls: [],
       propensity_clip,
       ml_g,
       ml_m,
@@ -453,9 +465,30 @@ pub fn DoubleMLIIVM::fit(
     ignore(ml_m)
     ignore(ml_r)
     let n = self.n_obs()
+    // v0.109.0: true when the caller supplied the split through
+    // `set_sample_splitting`. It gates the two places where behaviour
+    // genuinely differs -- the memoize decision and the fold draw --
+    // but NOT the repetition count, which the derivation already wrote
+    // into `self.n_rep`.
+    let external = self.smpls.length() > 0
+    // v0.109.0: `set_sample_splitting` writes the DERIVED counts into
+    // `self.n_folds` / `self.n_rep`, so reading `self.n_rep` here is
+    // already reading the derived value and needs no `if external`
+    // override. An `if external` override here was measured to be an
+    // EQUIVALENT mutant and deleted on the PLR side; defensive code
+    // that no mutation can fail is a ratchet, not a safeguard.
     let nrep = self.n_rep
     // v0.82.0+: memoize check. Mirrors the IRM plumbing.
-    let memoize = self.memoize_enabled && nrep == 1
+    //
+    // v0.109.0: external splits are EXCLUDED from the cache. The key
+    // is built from data + learner + cluster hashes and has no term
+    // for the fold assignment, so two different supplied partitions
+    // would collide and the second fit would silently return the
+    // first one's predictions. Rather than extend the key (a change to
+    // FitCache that every memoizing estimator would have to adopt at
+    // once), the external path turns memoize off. That can only cost
+    // time; reusing a stale split cannot be made safe by ignoring it.
+    let memoize = self.memoize_enabled && nrep == 1 && !external
     let data_hash : UInt64 = if memoize {
       hash_data(
         self.data.x,
@@ -504,7 +537,14 @@ pub fn DoubleMLIIVM::fit(
         fold_ids = self.fit_cache.fold_ids
         (preds[0], preds[1], preds[2], preds[3], preds[4])
       } else {
-        let folds = kfold(n, self.n_folds, self.seed + r)
+        // v0.109.0: the external splitting wins over the drawn one.
+        // `check_sample_splitting` already proved `self.smpls[r]` is a
+        // partition of `[0, n)`, so no re-validation here.
+        let folds = if external {
+          self.smpls[r]
+        } else {
+          kfold(n, self.n_folds, self.seed + r)
+        }
         let cross = cross_fit_iivm(
           ml_g,
           ml_m,
@@ -617,6 +657,13 @@ pub fn DoubleMLIIVM::fit(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.109.0: carry the external splitting onto the returned model
+      // so a later re-fit keeps using the supplied folds. BOTH `fit`
+      // and `fit_cluster` build a struct here, and dropping the field
+      // in either would make the NEXT fit silently revert to drawing
+      // its own folds -- the estimate would still look plausible, which
+      // is what makes a surprise fold change easy to miss.
+      smpls: self.smpls,
       propensity_clip: self.propensity_clip,
       ml_g,
       ml_m,
@@ -810,6 +857,13 @@ fn DoubleMLIIVM::fit_cluster(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.109.0: carry the external splitting onto the returned model
+      // so a later re-fit keeps using the supplied folds. BOTH `fit`
+      // and `fit_cluster` build a struct here, and dropping the field
+      // in either would make the NEXT fit silently revert to drawing
+      // its own folds -- the estimate would still look plausible, which
+      // is what makes a surprise fold change easy to miss.
+      smpls: self.smpls,
       propensity_clip: self.propensity_clip,
       ml_g,
       ml_m,
@@ -1156,5 +1210,86 @@ pub fn DoubleMLIIVM::bias_corrected_coef(self : DoubleMLIIVM) -> Double {
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// Record a caller-supplied sample splitting and DERIVE the fold and
+/// repetition counts from it. Returns a new `DoubleMLIIVM`; the receiver
+/// is unchanged, as everywhere in this package.
+///
+/// `smpls` is one entry per repetition, each entry one `Fold` per fold
+/// -- the nested form is the only form, so a single repetition is
+/// `[f0, f1, f2]` wrapped once, i.e. `[[f0, f1, f2]]`.
+///
+/// The derivation is upstream's, and it is the part that surprises
+/// people: `set_sample_splitting`
+/// (`doubleml/double_ml_sampling_mixins.py:76`) sets `n_folds` and
+/// `n_rep` FROM the supplied partition, so handing a two-fold split to
+/// a model built with `n_folds=5` yields a two-fold model. On the
+/// returned model `n_folds` / `n_rep` are updated to match, and `fit`
+/// uses the supplied folds instead of drawing them.
+///
+/// Validation, via `check_sample_splitting`: every repetition carries
+/// the same number of folds, and within each repetition the test index
+/// sets are disjoint and cover exactly `[0, n_obs)`. A supplied
+/// partition that is not a partition aborts rather than quietly
+/// producing a cross-fit that leaks across folds.
+///
+/// Memoization: `fit` will not read or write the fit cache once an
+/// external splitting is recorded. The cache key is built from the data,
+/// learner and cluster hashes and has no term for the fold assignment,
+/// so two different supplied partitions would collide and the second fit
+/// would silently return the first one's predictions. The
+/// `memoize_enabled` flag is carried through unchanged; it is the
+/// `!external` term in `fit` that refuses the cache. The cache is also
+/// CLEARED here, so a re-fit under a new splitting cannot resurrect an
+/// entry written under the old one.
+///
+/// Cluster path: an externally supplied splitting applies to the
+/// ROW-level path only. `fit_cluster` draws UNIT-level folds over the
+/// unique cluster ids and expands them to rows, so a supplied row-level
+/// partition is not consulted there and a clustered fit keeps drawing
+/// its own unit-level folds. Making the cluster path honour external
+/// splits is a separate decision and out of scope here; the field is
+/// carried across so the row-level path resumes the supplied splitting
+/// on a later non-cluster fit.
+///
+/// The one-fold "no sample splitting" case needs no special handling: a
+/// single `Fold` whose train and test both cover everything is a valid
+/// partition with `folds = 1`, which is what upstream detects and
+/// reports.
+pub fn DoubleMLIIVM::set_sample_splitting(
+  self : DoubleMLIIVM,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLIIVM {
+  try {
+    let checked = check_sample_splitting(smpls, self.n_obs())
+    {
+      ..self,
+      n_folds: checked.folds,
+      n_rep: checked.reps,
+      smpls: checked.smpls,
+      // A re-fit under a new splitting must not reuse a cache entry
+      // written under the old one.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied and `fit` draws its own. `Some` carries the
+/// DERIVED counts next to the folds, so a caller can read back what the
+/// estimator actually used rather than inferring it from the constructor
+/// arguments it no longer has any say over.
+pub fn DoubleMLIIVM::sample_splitting(self : DoubleMLIIVM) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.n_rep, })
   }
 }

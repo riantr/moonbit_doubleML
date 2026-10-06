@@ -6,6 +6,18 @@ pub struct DoubleMLAPO {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". When non-empty, the IID `fit` path uses `smpls[r]` for
+  // repetition `r` INSTEAD of calling `kfold`.
+  // `set_sample_splitting` also DERIVES `n_folds` and `n_rep` from
+  // the supplied partition and writes both into the fields above, so
+  // those stay the source of truth for the repetition loop -- do not
+  // build `smpls` by hand, call the setter.
+  //
+  // These are ROW-level folds. `fit_cluster` draws UNIT-level folds
+  // (`kfold(n_units, ...)`) and does NOT read this field; see
+  // `set_sample_splitting`.
+  smpls : Array[Array[Fold]]
   propensity_clip : Double
   // v0.60.0+: injected nuisance learners. Defaults to
   // `LearnerDispatch::linear_regression()` so v0.59.0 callers
@@ -74,6 +86,9 @@ pub fn DoubleMLAPO::new(
       n_folds,
       n_rep,
       seed,
+      // v0.109.0: no external splitting unless `set_sample_splitting`
+      // is called, so every pre-existing caller keeps the drawn path.
+      smpls: [],
       propensity_clip,
       ml_g,
       ml_m,
@@ -257,6 +272,13 @@ pub fn DoubleMLAPO::fit(
     return self.fit_cluster(ml_g~, ml_m~)
   }
   let n = self.n_obs()
+  // v0.109.0: true when the caller supplied the split through
+  // `set_sample_splitting`. It gates the two places where behaviour
+  // genuinely differs -- the memoize decision and the fold draw --
+  // but NOT the repetition count, which the derivation already
+  // wrote into `self.n_rep`. Reached only on the IID path: the
+  // cluster dispatch above returns before this line.
+  let external = self.smpls.length() > 0
   let treated = indicator_level(self.data.d, self.treatment_level)
   // v0.84.0+: memoize check (mirrors the PLR / IRM / CVAR /
   // SSM / PLPR / LPLR pattern). The cache stores the LAST
@@ -267,7 +289,15 @@ pub fn DoubleMLAPO::fit(
   // When memoize_enabled is false (the default), the entire
   // cache code path is skipped so v0.83.0 callers see
   // byte-identical fit() output.
-  let memoize = self.memoize_enabled && self.n_rep == 1
+  //
+  // v0.109.0: external splits are EXCLUDED from the cache. The key
+  // is built from data + learner + cluster hashes and has no term
+  // for the fold assignment, so two different supplied partitions
+  // would collide and the second fit would silently return the
+  // first one's nuisances. The external path turns memoize off,
+  // which can only cost time; reusing a stale split cannot be made
+  // safe by ignoring it.
+  let memoize = self.memoize_enabled && self.n_rep == 1 && !external
   let data_hash : UInt64 = if memoize {
     hash_data(
       self.data.x,
@@ -319,7 +349,14 @@ pub fn DoubleMLAPO::fit(
       }
       (preds[0], preds[1])
     } else {
-      let folds = kfold(n, self.n_folds, self.seed + r)
+      // v0.109.0: the external splitting wins over the drawn one.
+      // `check_sample_splitting` already proved `self.smpls[r]` is a
+      // partition of `[0, n)`, so no re-validation here.
+      let folds = if external {
+        self.smpls[r]
+      } else {
+        kfold(n, self.n_folds, self.seed + r)
+      }
       // Build row->fold_id map for the LAST rep (used by the
       // cache writeback below).
       if r == self.n_rep - 1 {
@@ -392,6 +429,11 @@ pub fn DoubleMLAPO::fit(
     n_folds: self.n_folds,
     n_rep: self.n_rep,
     seed: self.seed,
+    // v0.109.0: carry the external splitting onto the returned model
+    // so a re-fit (including the one `tune` performs) keeps using
+    // it. Dropping it here would make the NEXT fit silently revert
+    // to drawing its own folds.
+    smpls: self.smpls,
     propensity_clip: self.propensity_clip,
     ml_g,
     ml_m,
@@ -537,6 +579,13 @@ fn DoubleMLAPO::fit_cluster(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.109.0: carried through the cluster path even though that
+      // path does not USE it (it draws unit-level folds). Carrying it
+      // keeps the field's meaning stable - a splitting survives a
+      // cluster fit and applies again if the same model is later fit
+      // on row-level data - and keeps the two `DoubleMLAPO` literals
+      // in agreement on the field.
+      smpls: self.smpls,
       propensity_clip: self.propensity_clip,
       ml_g,
       ml_m,
@@ -999,6 +1048,15 @@ pub struct DoubleMLAPOS {
   n_folds : Int
   n_rep : Int
   seed : Int
+  // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
+  // own". APOS does not draw folds itself -- it builds one child
+  // `DoubleMLAPO` per treatment level and calls `child.fit()` -- so
+  // this field is PROPAGATED down to each child rather than consulted
+  // here. `set_sample_splitting` also derives `n_folds` / `n_rep` from
+  // the supplied partition and writes both into the fields above.
+  // Set it through `DoubleMLAPOS::set_sample_splitting`; do not build
+  // it by hand.
+  smpls : Array[Array[Fold]]
   propensity_clip : Double
   // v0.60.0+: injected nuisance learners (forwarded to
   // each child `DoubleMLAPO` on fit). Same forward-compat
@@ -1114,6 +1172,9 @@ pub fn DoubleMLAPOS::new(
     n_folds,
     n_rep,
     seed,
+    // v0.109.0: no external splitting unless `set_sample_splitting` is
+    // called, so every pre-existing caller keeps the drawn path.
+    smpls: [],
     propensity_clip,
     ml_g,
     ml_m,
@@ -1165,7 +1226,15 @@ pub fn DoubleMLAPOS::fit(
     // own cache write). For the parent key we mix in a hash
     // of the treatment-levels vector so a reconfigure
     // invalidates correctly.
-    let memoize = self.memoize_enabled && self.n_rep == 1
+    // v0.109.0: an external splitting takes the parent cache out of
+    // the picture. The key is data + learner + treatment-levels and has
+    // no fold-assignment term, so an entry written under one partition
+    // would be served for another. `self.smpls.length() == 0` rather
+    // than a named `external` binding because APOS binds no `nrep`; the
+    // expression is the same test the other estimators make.
+    let memoize = self.memoize_enabled &&
+      self.n_rep == 1 &&
+      self.smpls.length() == 0
     let data_hash : UInt64 = if memoize {
       hash_data(
         self.data.x,
@@ -1267,7 +1336,26 @@ pub fn DoubleMLAPOS::fit(
         } else {
           child
         }
-        let z = child_memo.fit()
+        // v0.109.0: propagate an external splitting to every child.
+        // APOS draws no folds of its own -- the cross-fit happens inside
+        // the child's `fit` -- so recording the splitting on the parent
+        // without this would leave APOS exactly as inert as a setter
+        // that nothing reads. The child's setter is a pure builder, so
+        // the composition stays a value.
+        //
+        // A caveat that follows from the design rather than from this
+        // line: on CLUSTER data the child dispatches to its own
+        // `fit_cluster`, which draws UNIT-level folds and ignores these
+        // ROW-level ones. Every treatment level's child then re-uses the
+        // same row partition, which is the intended reading (one
+        // splitting for the whole model) but it is not a cluster-aware
+        // splitting.
+        let child_fit = if self.smpls.length() > 0 {
+          child_memo.set_sample_splitting(self.smpls)
+        } else {
+          child_memo
+        }
+        let z = child_fit.fit()
         c[j] = z.coef()
         s[j] = z.se()
         // v0.100.0: keep the child's `psi_b` row. `z.psi_a` is the
@@ -1312,6 +1400,10 @@ pub fn DoubleMLAPOS::fit(
       n_folds: self.n_folds,
       n_rep: self.n_rep,
       seed: self.seed,
+      // v0.109.0: carry the external splitting onto the fitted model so a
+      // re-fit keeps the same folds. `bootstrap` uses a `..self` spread
+      // and inherits it without an explicit field.
+      smpls: self.smpls,
       propensity_clip: self.propensity_clip,
       ml_g,
       ml_m,
@@ -2037,4 +2129,156 @@ pub fn DoubleMLAPOS::sensitivity_analysis_cluster(
       .sensitivity_analysis_cluster(cluster_ids~, cf_y~, cf_d~)
   }
   out
+}
+
+///|
+/// Record a caller-supplied sample splitting and DERIVE the fold and
+/// repetition counts from it. Returns a new `DoubleMLAPO`; the
+/// receiver is unchanged, as everywhere in this package.
+///
+/// `smpls` is one entry per repetition, each entry one `Fold` per fold
+/// -- the nested form is the only form, so a single repetition is
+/// `[f0, f1, f2]` wrapped once, i.e. `[[f0, f1, f2]]`.
+///
+/// The derivation is upstream's, and it is the part that surprises
+/// people: `set_sample_splitting`
+/// (`doubleml/double_ml_sampling_mixins.py:76`) sets `n_folds` and
+/// `n_rep` FROM the supplied partition, so handing a two-fold split to
+/// a model built with `n_folds=5` yields a two-fold model. On the
+/// returned model `n_folds` / `n_rep` are updated to match, and `fit`
+/// uses the supplied folds instead of drawing them.
+///
+/// Validation, via `check_sample_splitting`: every repetition carries
+/// the same number of folds, and within each repetition the test index
+/// sets are disjoint and cover exactly `[0, n_obs)`. A supplied
+/// partition that is not a partition aborts rather than quietly
+/// producing a cross-fit that leaks across folds.
+///
+/// # Applies to the IID path only
+///
+/// `fit` dispatches to `fit_cluster` when `cluster_vars` is non-empty,
+/// and that branch keeps drawing its own UNIT-level folds
+/// (`kfold(n_units, self.n_folds, ...)`, then expanded to rows). This
+/// method supplies ROW-level folds, so on the cluster path they are
+/// ignored: the splitting is recorded, reported by `sample_splitting`,
+/// and carried across the cluster fit, but it does not change the
+/// folds that path uses. That is a real asymmetry and is stated here
+/// rather than papered over. Wiring it up would mean a second,
+/// unit-indexed splitting and a unit-indexed validation, which
+/// `check_sample_splitting` does not provide; until that exists, use
+/// `fit` on row-level data when you need the split to be honoured.
+///
+/// Memoization is turned OFF on the returned model regardless of
+/// `memoize_enabled`. The fit cache is keyed on data + learner +
+/// cluster hashes with no term for the fold assignment, so caching an
+/// externally-split fit could return a DIFFERENT partition's
+/// predictions. The fit cache is also cleared here, for the same
+/// reason.
+///
+/// Note that a subsequent `fit()` on the returned model rebuilds
+/// `boot_t_stat` / `n_rep_boot` from scratch, so a bootstrap computed
+/// before `set_sample_splitting` is dropped by that fit. That is the
+/// package-wide convention, not something this method introduces; call
+/// `bootstrap(...)` again on the fitted model if you need it.
+pub fn DoubleMLAPO::set_sample_splitting(
+  self : DoubleMLAPO,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLAPO {
+  try {
+    let checked = check_sample_splitting(smpls, self.n_obs())
+    {
+      ..self,
+      n_folds: checked.folds,
+      n_rep: checked.reps,
+      smpls: checked.smpls,
+      // A re-fit under a new splitting must not reuse a cache entry
+      // written under the old one.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied and `fit` draws its own. `Some` carries the
+/// DERIVED counts next to the folds, so a caller can read back what
+/// the estimator actually used rather than inferring it from the
+/// constructor arguments it no longer has any say over.
+///
+/// A `Some` here does NOT mean the folds were used: on the cluster
+/// path `fit_cluster` draws unit-level folds and ignores them. See
+/// `set_sample_splitting`.
+pub fn DoubleMLAPO::sample_splitting(self : DoubleMLAPO) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.n_rep, })
+  }
+}
+
+///|
+/// `DoubleMLAPOS::set_sample_splitting` — the multi-treatment sibling of
+/// `DoubleMLAPO::set_sample_splitting`, with one structural difference
+/// worth stating up front.
+///
+/// APOS does not cross-fit anything itself. `fit` builds one child
+/// `DoubleMLAPO` per treatment level and calls `child.fit()`; the fold
+/// draw and the cross-fit both happen inside the child. So recording
+/// the splitting on the parent is not sufficient — it has to be
+/// PROPAGATED to every child, which `fit` does by composing the
+/// child's own setter (a pure builder, so the composition stays a
+/// value). Had this been written as "store it and return self", APOS
+/// would have looked like it had the feature and been exactly as inert
+/// as the v0.65.0 `tune` tests.
+///
+/// The counts are derived exactly as upstream's `set_sample_splitting`
+/// does (`doubleml/double_ml_sampling_mixins.py:76`): `n_folds` and
+/// `n_rep` come OUT of the supplied partition, so a three-fold split
+/// handed to a model built with `n_folds=9` yields a three-fold model.
+///
+/// The same partition reaches every treatment level's child. That is
+/// the intended reading — one splitting for the whole model, not one
+/// per level — and it matters numerically: independent splits per
+/// level would give each `coefs[j]` a different nuisance cross-fit.
+///
+/// The cluster caveat is inherited from the child and is real: on
+/// cluster data each child dispatches to its own `fit_cluster`, which
+/// draws UNIT-level folds and ignores these ROW-level ones.
+pub fn DoubleMLAPOS::set_sample_splitting(
+  self : DoubleMLAPOS,
+  smpls : Array[Array[Fold]],
+) -> DoubleMLAPOS {
+  try {
+    // No `n_obs()` accessor on APOS; the row count is `data.y.length()`.
+    let checked = check_sample_splitting(smpls, self.data.y.length())
+    {
+      ..self,
+      n_folds: checked.folds,
+      n_rep: checked.reps,
+      smpls: checked.smpls,
+      // Required: the parent cache is keyed on data + learners +
+      // treatment-levels with no fold term.
+      fit_cache: FitCache::empty(),
+    }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The sample splitting recorded by `set_sample_splitting`, or `None`
+/// when none was supplied. `Some` carries the DERIVED counts next to
+/// the folds. As with `DoubleMLAPO::sample_splitting`, a `Some` here
+/// does NOT by itself prove the folds were used on the cluster path —
+/// see `set_sample_splitting`.
+pub fn DoubleMLAPOS::sample_splitting(self : DoubleMLAPOS) -> SampleSplitting? {
+  if self.smpls.length() == 0 {
+    None
+  } else {
+    Some({ smpls: self.smpls, folds: self.n_folds, reps: self.n_rep, })
+  }
 }
