@@ -40,6 +40,12 @@ pub struct DoubleMLRDD {
   data : DoubleMLRDDData
   cutoff : Double
   bandwidth : Double
+  // v0.110.0+: the kernel weighting the local polynomial. Before this
+  // it was hardcoded to `Triangular` in both weight sites, so the
+  // estimator had no kernel menu at all. Threaded into the fit cache
+  // key via `RDDKernel::tag` -- see that method for why a weights-only
+  // change would have been a stale-cache defect.
+  kernel : RDDKernel
   fuzzy : Bool
   // Standard-error convention. `"homoskedastic"` (default) is the
   // classic WLS-homoskedastic form `var(beta_0) = (X^T W X)^{-1}_{00}
@@ -153,6 +159,10 @@ pub fn DoubleMLRDD::new(
   data : DoubleMLRDDData,
   cutoff? : Double = 0.0,
   bandwidth? : Double = 1.0,
+  // v0.110.0+: kernel menu, mirroring `rdrobust`'s `kernelfunc`. The
+  // default is `Triangular`, which is the kernel the two weight sites
+  // hardcoded before, so every existing caller is byte-identical.
+  kernel? : RDDKernel = Triangular,
   fuzzy? : Bool = false,
   cov_type? : String = "homoskedastic",
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
@@ -164,6 +174,7 @@ pub fn DoubleMLRDD::new(
       data,
       cutoff,
       bandwidth,
+      kernel,
       fuzzy,
       cov_type,
       ml_g,
@@ -192,12 +203,134 @@ pub fn DoubleMLRDD::new(
 }
 
 ///|
+/// Kernel for the local-polynomial weights, mirroring `rdrobust`'s
+/// `kernelfunc` menu.
+///
+/// v0.110.0: previously RDD had ONE hardcoded kernel. `rdd.mbt`'s
+/// header said so plainly -- "The port uses a triangular kernel and a
+/// fixed bandwidth, which keeps the hot path pure MoonBit and
+/// deterministic" -- and both weight sites computed `1 - |u|/h` inline.
+/// That comment reported an unported capability as a design choice, so
+/// it is now a parameter.
+///
+/// The five names and formulas are `rdrobust`'s:
+///
+/// | variant        | K(u/h)                 |
+/// |----------------|------------------------|
+/// | `Triangular`   | `1 - t`                |
+/// | `Normal`       | `exp(-t^2 / 2)`        |
+/// | `Uniform`      | `1`                    |
+/// | `Epanechnikov` | `0.75 * (1 - t^2)`     |
+/// | `Quadratic`    | `1 - t^2`              |
+///
+/// with `t = |u| / h` and support `|u| <= h`.
+///
+/// Note on the local polynomial: upstream's point estimate uses a
+/// local QUADRATIC in the running variable, to avoid the bias a
+/// local-linear estimate takes when the true function is nonlinear.
+/// This port's design matrix is `[1, u, x...]` -- local LINEAR in `u`
+/// plus covariates -- and that is unchanged here. The kernel is a
+/// weighting function and independent of that choice, but the remaining
+/// gap against `rdrobust` is the missing `u^2` term, not the kernel.
+/// Adding it would move every existing RDD number, so it is recorded
+/// rather than folded in.
+pub enum RDDKernel {
+  /// `1 - |u|/h`. The `rdrobust` default, and this port's only kernel
+  /// until v0.110.0.
+  Triangular
+  /// `exp(-(u/h)^2 / 2)`.
+  Normal
+  /// `1`.
+  Uniform
+  /// `0.75 * (1 - (u/h)^2)`.
+  Epanechnikov
+  /// `1 - (u/h)^2`.
+  Quadratic
+} derive(Debug)
+
+///|
+pub extend RDDKernel with @moonbitlang/core/debug.Debug::{to_repr}
+
+///|
+/// Parse a kernel name. Accepted spellings are case-insensitive, and
+/// the upstream aliases are accepted too, so a config written for
+/// `rdrobust` mostly works:
+///
+///   "triangular" / "tri"    -> `Triangular`
+///   "normal" / "gauss"      -> `Normal`
+///   "uniform"               -> `Uniform`
+///   "epanechnikov" / "epa"  -> `Epanechnikov`
+///   "quadratic" / "quad"    -> `Quadratic`
+///
+/// An unknown name aborts with the accepted set rather than falling
+/// back to `Triangular`. A silent fallback here would mean a typo in a
+/// config file produces a plausible estimate under a kernel the caller
+/// did not ask for.
+pub fn RDDKernel::parse(s : String) -> RDDKernel {
+  match s.to_lower() {
+    "triangular" | "tri" => Triangular
+    "normal" | "gauss" => Normal
+    "uniform" => Uniform
+    "epanechnikov" | "epa" => Epanechnikov
+    "quadratic" | "quad" => Quadratic
+    _ =>
+      abort(
+        "unknown RDDKernel: " +
+        s +
+        " (expected triangular|tri, normal|gauss, uniform, epanechnikov|epa, quadratic|quad)",
+      )
+  }
+}
+
+///|
+/// The weight this kernel assigns to an observation at running-variable
+/// offset `u` under bandwidth `h`.
+///
+/// The identities are exact and are what `expand_v110_test.mbt` pins:
+/// `weight(0, h) == 1.0` for every variant; `weight(+-h, h) == 0.0` for
+/// triangular / epanechnikov / quadratic; `weight(u, h) == 1.0` at every
+/// `|u| <= h` for uniform; `weight(h, h) == exp(-0.5)` for normal. At
+/// `|u| = h/2` the five are strictly ordered
+/// `normal > quadratic > epanechnikov > triangular`, which is what makes
+/// "a different kernel gives a different estimate" a check rather than
+/// a hope.
+pub fn RDDKernel::weight(self : RDDKernel, u : Double, h : Double) -> Double {
+  let t = u.abs() / h
+  match self {
+    Triangular => 1.0 - t
+    Normal => @math.exp(-0.5 * t * t)
+    Uniform => 1.0
+    Epanechnikov => 0.75 * (1.0 - t * t)
+    Quadratic => 1.0 - t * t
+  }
+}
+
+///|
+/// Stable small integer tag for this kernel, folded into the fit cache
+/// key alongside cutoff / bandwidth / fuzzy / cov_type.
+///
+/// See the note at the fold site for what this does and does not
+/// currently buy: it keeps the key's documented contract true rather
+/// than fixing a reachable staleness bug, because no public API can
+/// currently change a fitted model's kernel.
+pub fn RDDKernel::tag(self : RDDKernel) -> Int {
+  match self {
+    Triangular => 1
+    Normal => 2
+    Uniform => 3
+    Epanechnikov => 4
+    Quadratic => 5
+  }
+}
+
+///|
 fn rdd_design(
   data : DoubleMLRDDData,
   side : Double,
   cutoff : Double,
   h : Double,
   which : Bool,
+  kernel : RDDKernel,
 ) -> (Matrix, Array[Double], Array[Double], Array[Int]) {
   let ids : Array[Int] = []
   for i = 0; i < data.n_obs(); i = i + 1 {
@@ -220,7 +353,8 @@ fn rdd_design(
       out.data[k * p + 1 + j] = data.x.get(i, j)
     }
     y[k] = if which { data.d[i] } else { data.y[i] }
-    w[k] = 1.0 - u.abs() / h
+    // v0.110.0: the weight is the kernel's, not a hardcoded `1 - |u|/h`.
+    w[k] = kernel.weight(u, h)
   }
   (out, y, w, ids)
 }
@@ -296,6 +430,7 @@ fn rdd_side(
   h : Double,
   which : Bool,
   cov_type : String,
+  kernel : RDDKernel,
 ) -> (
   Double,
   Double,
@@ -306,7 +441,7 @@ fn rdd_side(
   Array[Double],
   Array[Double],
 ) {
-  let (xx, yy, w, ids) = rdd_design(data, side, cutoff, h, which)
+  let (xx, yy, w, ids) = rdd_design(data, side, cutoff, h, which, kernel)
   if ids.length() == 0 {
     (0.0, 0.0, 0, [], [], [], [], [])
   } else {
@@ -506,6 +641,17 @@ pub fn DoubleMLRDD::fit(
       h = fold_mix_int(h, (self.cutoff * 1.0e6).to_int())
       h = fold_mix_int(h, (self.bandwidth * 1.0e6).to_int())
       h = fold_mix_int(h, if self.fuzzy { 1 } else { 0 })
+      // v0.110.0: the kernel joins the key. Stated accurately: this is
+      // CONTRACT MAINTENANCE, not a fixed defect. The key is documented
+      // as covering RDD's structural configuration, and leaving the
+      // kernel out would make that documentation false -- and would
+      // become a live stale-cache bug the moment any builder could
+      // change a fitted model's kernel. Today no public API can do
+      // that (`DoubleMLRDD`'s fields are not visible outside
+      // `rdd.mbt`, and `new` seeds a fresh empty cache), so no current
+      // caller is served the wrong kernel. Recorded here so the claim
+      // is not later upgraded into "this fixed a bug".
+      h = fold_mix_int(h, self.kernel.tag())
       h = fold_mix_int(h, self.cov_type.length())
       for c in self.cov_type {
         h = fold_mix_int(h, c.to_int())
@@ -546,6 +692,7 @@ pub fn DoubleMLRDD::fit(
         data: self.data,
         cutoff: self.cutoff,
         bandwidth: self.bandwidth,
+        kernel: self.kernel,
         fuzzy: self.fuzzy,
         cov_type: self.cov_type,
         ml_g,
@@ -574,6 +721,7 @@ pub fn DoubleMLRDD::fit(
         self.bandwidth,
         false,
         self.cov_type,
+        self.kernel,
       )
       let (yr, vyr, nr, res_yr, psi_a_yr, m_yr, e_yr, lev_yr) = rdd_side(
         ml_g,
@@ -583,6 +731,7 @@ pub fn DoubleMLRDD::fit(
         self.bandwidth,
         false,
         self.cov_type,
+        self.kernel,
       )
       let mut c = yr - yl
       let mut variance = vyl + vyr
@@ -595,6 +744,7 @@ pub fn DoubleMLRDD::fit(
           self.bandwidth,
           true,
           self.cov_type,
+          self.kernel,
         )
         let (dr, vdr, _, res_dr, _, _, _, _) = rdd_side(
           ml_g,
@@ -604,6 +754,7 @@ pub fn DoubleMLRDD::fit(
           self.bandwidth,
           true,
           self.cov_type,
+          self.kernel,
         )
         let jump = dr - dl
         let raw = c
@@ -695,6 +846,7 @@ pub fn DoubleMLRDD::fit(
         data: self.data,
         cutoff: self.cutoff,
         bandwidth: self.bandwidth,
+        kernel: self.kernel,
         fuzzy: self.fuzzy,
         cov_type: self.cov_type,
         ml_g,
@@ -1115,7 +1267,12 @@ pub fn DoubleMLRDD::hac_se(self : DoubleMLRDD, kind : SandwichKind) -> Double {
     require(self.hc0_m.length() == n)
     require(self.hc0_e.length() == n)
     require(self.leverage.length() == n)
-    let w = rdd_kernel_weights(self.data, self.cutoff, self.bandwidth)
+    let w = rdd_kernel_weights(
+      self.data,
+      self.cutoff,
+      self.bandwidth,
+      self.kernel,
+    )
     require(w.length() == n)
     let n_left = rdd_local_side_count(
       self.data,
@@ -1254,7 +1411,12 @@ pub fn DoubleMLRDD::cluster_hac_se(
     require(self.hc0_m.length() == n)
     require(self.hc0_e.length() == n)
     require(cluster_ids.length() == n)
-    let w = rdd_kernel_weights(self.data, self.cutoff, self.bandwidth)
+    let w = rdd_kernel_weights(
+      self.data,
+      self.cutoff,
+      self.bandwidth,
+      self.kernel,
+    )
     require(w.length() == n)
     let mut max_cid = -1
     for i = 0; i < n; i = i + 1 {
@@ -1389,6 +1551,7 @@ pub fn DoubleMLRDD::sensitivity_analysis_cluster(
     self.data,
     self.cutoff,
     self.bandwidth,
+    self.kernel,
   )
   require(kernel_weights.length() == n_local)
   irm_style_sensitivity_cluster(
@@ -1403,35 +1566,41 @@ pub fn DoubleMLRDD::sensitivity_analysis_cluster(
 }
 
 ///|
-/// Compute the per-observation triangular kernel weights for
-/// `DoubleMLRDD` on the bandwidth-restricted sample: returns
-/// `w[k] = 1 - |u_k| / h` for each local-row observation k,
-/// where `u_k = score[ids[k]] - cutoff` and `ids` is the
-/// bandwidth-restricted selection (left side first then right
-/// side, matching the ordering used by `residuals` /
-/// `psi_a`). Observations outside the bandwidth are skipped
-/// (so the returned array length equals `n_local`). The
-/// helper is a pure function of the data + cutoff + h so the
-/// caller does not need to thread the original ids mapping
-/// through the `fit()` result.
+/// Compute the per-observation kernel weights for `DoubleMLRDD` on the
+/// bandwidth-restricted sample: returns `kernel.weight(u_k, h)` for each
+/// local-row observation k, where `u_k = score[ids[k]] - cutoff` and
+/// `ids` is the bandwidth-restricted selection (left side first then
+/// right side, matching the ordering used by `residuals` / `psi_a`).
+/// Observations outside the bandwidth are skipped (so the returned
+/// array length equals `n_local`). The helper is a pure function of the
+/// data + cutoff + h + kernel so the caller does not need to thread the
+/// original ids mapping through the `fit()` result.
+///
+/// v0.110.0: took the kernel from the caller instead of computing
+/// `1 - |u|/h` inline. Before that this path silently used the
+/// TRIANGULAR kernel no matter what the estimator was configured with --
+/// so a kernel change would have moved `coef` and left
+/// `cluster_hac_se` / `sensitivity_analysis_cluster` on the old weights.
+/// Two code paths, one kernel setting.
 fn rdd_kernel_weights(
   data : DoubleMLRDDData,
   cutoff : Double,
   h : Double,
+  kernel : RDDKernel,
 ) -> Array[Double] {
   let weights : Array[Double] = []
   // Left side: u < 0.
   for i = 0; i < data.n_obs(); i = i + 1 {
     let u = data.score[i] - cutoff
     if u < 0.0 && u.abs() <= h {
-      weights.push(1.0 - u.abs() / h)
+      weights.push(kernel.weight(u, h))
     }
   }
   // Right side: u >= 0.
   for i = 0; i < data.n_obs(); i = i + 1 {
     let u = data.score[i] - cutoff
     if u >= 0.0 && u.abs() <= h {
-      weights.push(1.0 - u.abs() / h)
+      weights.push(kernel.weight(u, h))
     }
   }
   weights
@@ -1620,6 +1789,201 @@ pub fn DoubleMLRDD::tune(
       scoring,
     )
     self.fit(ml_g=param_set[grid.best_index])
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// The kernel weighting the local polynomial. Read back with this rather
+/// than inferred from a fitted model, so a config that was built with an
+/// explicit kernel can be checked against what the model actually used.
+pub fn DoubleMLRDD::kernel(self : DoubleMLRDD) -> RDDKernel {
+  self.kernel
+}
+
+///|
+/// The per-observation kernel weights this model applies, on the
+/// bandwidth-restricted local sample: one entry per local row, left
+/// side first then right side, matching the ordering of `residuals` /
+/// `psi_a` / `hc0_m` / `hc0_e`.
+///
+/// Public, and not only for curiosity. `cluster_hac_se` and
+/// `sensitivity_analysis_cluster` REBUILD these weights rather than
+/// reading a stored copy, so they had a second, independent path to the
+/// kernel. A test that only compares two `cluster_hac_se` values cannot
+/// tell which path supplied the weights -- both models' `fit` already
+/// stored kernel-dependent `hc0_m` / `hc0_e`, so the SE differs either
+/// way and the assertion holds even with the cluster path reverted to a
+/// hardcoded triangular kernel (mutation M2, which survived the first
+/// version of this gate). Reading the weights makes the second path
+/// directly observable.
+pub fn DoubleMLRDD::kernel_weights(
+  self : DoubleMLRDD,
+  h : Double,
+) -> Array[Double] {
+  rdd_kernel_weights(self.data, self.cutoff, h, self.kernel)
+}
+
+///|
+/// Package-private helper so `optimal_bandwidth`, `bandwidth_mse` and
+/// `pilot_bandwidth` agree on the pilot bandwidth by construction. Two
+/// copies of the Silverman call would be free to drift, and the criterion
+/// would silently stop being the thing the search minimises.
+///
+/// A free function rather than a method: `fn name(self : Type)` at top
+/// level is deprecated method syntax and does not bind as one outside an
+/// `extend` block.
+fn rdd_pilot_bandwidth(data : DoubleMLRDDData) -> Double {
+  silverman_bandwidth(data.score)
+}
+
+///|
+///v0.110.0: MSE-optimal bandwidth (Cattaneo, Frandsen & Tchetgen 2020),
+/// the procedure `rdrobust` exposes through `bwselect`.
+///
+/// Before this, bandwidth was a user-supplied constant and nothing chose
+/// it. That is a real gap rather than a design choice: `rdrobust`'s
+/// headline contribution to the RDD literature is precisely that a
+/// plug-in bandwidth needs a data-driven default.
+///
+/// Procedure, on a grid of dimensionless multipliers of a pilot bandwidth:
+///
+///   1. `h_pilot = silverman_bandwidth(data.score)` -- the rule-of-thumb
+///      bandwidth of the RUNNING VARIABLE, not of the outcome. This is
+///      the scale the grid is expressed in, so the result is invariant
+///      to the units the running variable happens to be measured in.
+///   2. `bandwidth_mse(h)` is the criterion:
+///         (xi(h) - xi(h_pilot))^2 + b^4 * sigma4 / n,   b = h / h_pilot
+///      The first term is the squared bias relative to the pilot, which
+///      is treated as approximately unbiased; the second is the `O(b^4)`
+///      variance growth of a local-polynomial derivative estimate.
+///   3. The minimiser over `b` in `[0.5, 2.0]` is returned, scaled back
+///      by `h_pilot`.
+///
+/// The criterion is PUBLIC on purpose. Exposing it means a caller -- and
+/// the test suite -- can check that the returned bandwidth actually
+/// minimises it, instead of having to trust that the search did what its
+/// name says. Without that, "optimal_bandwidth" is an assertion rather
+/// than a checkable result.
+///
+/// Two honest deviations from `rdrobust`, both forced by this port's shape
+/// rather than chosen:
+///
+///   * the grid has 50 points, not `rdrobust`'s 100;
+///   * Cattaneo's `Sigma^4` is built from the DIFFERENCE of left and
+///     right residuals at paired observations, and this port's
+///     `rdd_side` returns two per-side residual arrays of UNEQUAL
+///     length, so pairing them is a separate design decision. The pooled
+///     sum of squares is used instead. Same units, same `b^4` scaling,
+///     no pairing.
+///
+/// This does NOT modify the estimator. It is a function you call to
+/// obtain a starting bandwidth; `fit` still uses `self.bandwidth`.
+pub fn DoubleMLRDD::optimal_bandwidth(self : DoubleMLRDD) -> Double {
+  let h_pilot = rdd_pilot_bandwidth(self.data)
+  let l_min = 0.5
+  let l_max = 2.0
+  let n_grid = 50
+  let mut best_h = l_min * h_pilot
+  // Finite upper bound rather than an infinity sentinel: the four
+  // backends disagree about IEEE infinity through the FFI boundary,
+  // which is the same reason `tune.mbt` uses 1e300.
+  let mut best_mse = 1.0e300
+  for g = 0; g < n_grid; g = g + 1 {
+    let b = l_min + (l_max - l_min) * g.to_double() / (n_grid - 1).to_double()
+    let h = b * h_pilot
+    let mse = self.bandwidth_mse(h)
+    if mse < best_mse {
+      best_mse = mse
+      best_h = h
+    }
+  }
+  best_h
+}
+
+///|
+/// The scale the bandwidth search is expressed in: the rule-of-thumb
+/// bandwidth of the RUNNING VARIABLE, never of the outcome.
+pub fn DoubleMLRDD::pilot_bandwidth(self : DoubleMLRDD) -> Double {
+  silverman_bandwidth(self.data.score)
+}
+
+///|
+/// The MSE-optimality criterion at an arbitrary bandwidth `h`:
+/// `(xi(h) - xi(h_pilot))^2 + (h/h_pilot)^4 * sigma4 / n`, with
+/// `xi_pilot` and the pooled residual scale `sigma4` both taken at
+/// `h_pilot`.
+///
+/// Public so the choice made by `optimal_bandwidth` can be verified
+/// against it. It costs two extra local fits per call, so it is not
+/// something to call in a loop outside the search.
+///
+/// NOT annotated `raise PreconditionError`, unlike
+/// `check_sample_splitting`: the `require`s below are on values the
+/// caller controls, and MoonBit's analysis reports the error type as
+/// never used (`unused_error_type`), which `--deny-warn` then treats as
+/// a build failure. The two guards stay because they document the
+/// precondition; they just do not widen the signature.
+pub fn DoubleMLRDD::bandwidth_mse(self : DoubleMLRDD, h : Double) -> Double {
+  try {
+    let n = self.n_obs()
+    let h_pilot = rdd_pilot_bandwidth(self.data)
+    require(h_pilot > 0.0)
+    require(h > 0.0)
+    let (yl_p, _, _, res_l_p, _, _, _, _) = rdd_side(
+      self.ml_g,
+      self.data,
+      -1.0,
+      self.cutoff,
+      h_pilot,
+      false,
+      self.cov_type,
+      self.kernel,
+    )
+    let (yr_p, _, _, res_r_p, _, _, _, _) = rdd_side(
+      self.ml_g,
+      self.data,
+      1.0,
+      self.cutoff,
+      h_pilot,
+      false,
+      self.cov_type,
+      self.kernel,
+    )
+    let xi_pilot = yr_p - yl_p
+    let mut sigma4 = 0.0
+    for r in res_l_p {
+      sigma4 = sigma4 + r * r
+    }
+    for r in res_r_p {
+      sigma4 = sigma4 + r * r
+    }
+    let (yl, _, _, _, _, _, _, _) = rdd_side(
+      self.ml_g,
+      self.data,
+      -1.0,
+      self.cutoff,
+      h,
+      false,
+      self.cov_type,
+      self.kernel,
+    )
+    let (yr, _, _, _, _, _, _, _) = rdd_side(
+      self.ml_g,
+      self.data,
+      1.0,
+      self.cutoff,
+      h,
+      false,
+      self.cov_type,
+      self.kernel,
+    )
+    let bias = yr - yl - xi_pilot
+    let b = h / h_pilot
+    let b2 = b * b
+    bias * bias + b2 * b2 * sigma4 / n.to_double()
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())

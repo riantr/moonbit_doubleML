@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.109.0** |
+| `moon.mod` version | **0.110.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 178 in the library (87 production + 91 test) |
+| `.mbt` file count | 179 in the library (87 production + 92 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **827 / 827** |
-| Tests (wasm-gc) | **833 / 833** (lib 827 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **833 / 833** |
+| Tests (wasm-gc) | **839 / 839** (lib 833 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
 | Cache read-path audit | 13 estimators have a hit-vs-fresh assertion; **5 of those 13 additionally carry a corruption probe** (IRM, PLR, CVAR, BLP, PQ) since v0.99.0. A corruption probe writes a known-wrong value into one cached slot and requires the reported estimate to move, so a dead cache-read path fails the suite. A hit-vs-fresh assertion alone does not: the fresh recompute is deterministic, so replaying nothing and replaying correctly are indistinguishable to it. |

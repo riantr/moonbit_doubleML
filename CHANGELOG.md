@@ -9,6 +9,156 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.110.0] -- RDD gets a kernel menu and an MSE-optimal bandwidth, and both claims are checked
+
+v0.109.0 closed the sample-splitting gap. This is the RDD item from the same
+coverage audit: `rdd.mbt`'s header said *"The port uses a triangular kernel and
+a fixed bandwidth, which keeps the hot path pure MoonBit and deterministic."*
+
+That reads as a design decision. It was an unported capability reported as one,
+and the header comment was the only place it was recorded -- the two weight
+sites just computed `1 - |u|/h` inline. Both halves are now parameters.
+
+### Added
+
+- **`RDDKernel`**, mirroring `rdrobust`'s `kernelfunc` menu, with
+  `parse` (case-insensitive, upstream aliases `tri` / `gauss` / `epa` / `quad`
+  accepted, unknown names ABORT rather than silently falling back to
+  triangular), `weight(u, h)`, and `tag`:
+
+  | variant | K(u/h) |
+  |---|---|
+  | `Triangular` (default) | `1 - t` |
+  | `Normal` | `exp(-t^2/2)` |
+  | `Uniform` | `1` |
+  | `Epanechnikov` | `0.75 * (1 - t^2)` |
+  | `Quadratic` | `1 - t^2` |
+
+  The default is `Triangular`, so **every pre-existing caller is
+  byte-identical**; `833/833` held with the kernel wired in and nothing else
+  touched.
+
+- **`DoubleMLRDD::optimal_bandwidth`**, the MSE-optimal procedure of Cattaneo,
+  Frandsen & Tchetgen (2020) -- the one `rdrobust` exposes through `bwselect`.
+  Pilot is `silverman_bandwidth(data.score)`, the rule-of-thumb bandwidth of the
+  **running variable** (not the outcome), so the grid is dimensionless and the
+  result is invariant to the units `x` happens to be measured in. The search
+  minimises `(xi(b) - xi(h_pilot))^2 + b^4 * sigma4 / n` over `b` in
+  `[0.5, 2.0]`.
+
+- **`bandwidth_mse` and `pilot_bandwidth`, both PUBLIC.** The criterion is
+  exposed on purpose: it lets a caller -- and the test suite -- check that the
+  returned bandwidth actually minimises it. Without that, "optimal_bandwidth"
+  is an assertion rather than a checkable result.
+
+- **`DoubleMLRDD::kernel(self)` and `::kernel_weights(self, h)`**, so the
+  configured kernel and the weights actually applied can be read back instead
+  of inferred.
+
+### Fixed, by not being introduced
+
+- **The kernel had to reach BOTH weight sites.** `cluster_hac_se` and
+  `sensitivity_analysis_cluster` REBUILD the weights through
+  `rdd_kernel_weights` rather than reading a stored copy, and that helper had
+  its own inline `1 - |u|/h`. Wiring only `rdd_design` would have left `coef`
+  and the cluster SE computed from **two different weight sets** under any
+  non-triangular kernel. Both sites now call `kernel.weight(u, h)`.
+
+### The local polynomial, stated rather than quietly changed
+
+Upstream's point estimate uses a local **quadratic** in the running variable,
+to avoid the bias a local-linear estimate takes when the true function is
+nonlinear. This port's design matrix is `[1, u, x...]` -- local **linear** in
+`u` plus covariates -- and that is unchanged. The kernel is a weighting
+function and is independent of that choice, but the remaining gap against
+`rdrobust` is the missing `u^2` term, not the kernel. Adding it would move
+every existing RDD number, so it is recorded rather than folded in.
+
+### Verification
+
+The kernel identities are EXACT, so they carry zero Monte-Carlo error and use
+`==`. Three of them were wrong on the first run and the test caught them:
+
+- Epanechnikov peaks at **0.75**, not 1.0. That constant is what makes `K`
+  integrate to 1 over its support, and it is part of the kernel rather than a
+  scale factor the caller supplies. The first version asserted 1.0 and went
+  red.
+- `cluster_hac_se` takes one cluster id per bandwidth-restricted **local
+  row**, not per observation; sizing the array to the full sample aborts.
+- The bandwidth search's sampled grid points have to lie ON the search grid.
+  The first version sampled `b` in `{0.5, 0.75, 1.0, 1.5, 2.0}`, and only the
+  endpoints are grid points -- the grid is `0.5 + 1.5*g/49`, so `b = 0.75`
+  needs `g = 8.1667`. Off-grid points can exceed the grid maximum, and
+  mutation M3 (argmin written as argmax) passed the whole suite because of it.
+
+The DGP is deliberately nonlinear (`+ 0.4*u^2`). Under the strictly linear DGP
+the existing RDD tests use, every kernel is unbiased and they agree, so "a
+different kernel gives a different estimate" would be a bet on
+floating-point noise.
+
+`_verify/mut_v110_rdd.ps1`:
+
+| mutation | verdict |
+|---|---|
+| M1 point-estimate weights ignore the kernel | **KILLED** |
+| M2 cluster-path weights ignore the kernel | **KILLED** |
+| M3 bandwidth search minimises the MAXIMUM | SURVIVED -- **equivalent mutant** |
+
+M3 is equivalent on this DGP, and the harness says so rather than calling the
+gate decorative. `best_mse` starts at `1e300`, so an argmax keeps the first
+grid point; and the criterion is monotone increasing in `b`, so the true argmin
+IS the first grid point. Both return the same bandwidth. The cause is
+mathematical rather than a coding slip: under smooth misspecification
+bias scales like `b^2` and variance like `b^4`, so the criterion is `~b^4` and
+its minimum is always at the grid boundary. Making M3 lethal needs a
+criterion whose bias grows faster than `b^2` -- a pilot that straddles a kink --
+which is a question about the criterion's shape, not about the search.
+
+The harness classifies survivors three ways -- KILLED / EXPECTED-EQUIVALENT /
+SURVIVED-non-equivalent -- and only the last one fails the run.
+
+### Known limitations of this gate
+
+- **`bandwidth_mse` is checked for INTERNAL consistency, not against the
+  paper.** The test verifies that the returned bandwidth minimises the
+  published criterion. It cannot verify that the criterion IS Cattaneo's:
+  deleting the `b^4` variance term leaves the search still minimising it, and
+  the test stays green. Pinning it would need `xi(b)` and `sigma4` recomputed
+  independently, which needs `rdd_side`'s per-side residual arrays -- unequal
+  lengths, so the pairing Cattaneo uses is a separate design decision.
+- **Cattaneo's `Sigma^4` uses PAIRED left/right residual differences**; this
+  port's `rdd_side` returns two arrays of unequal length, so the pooled sum of
+  squares is used instead. Same units, same `b^4` scaling, no pairing.
+- **The grid has 50 points**, not `rdrobust`'s 100.
+- **`optimal_bandwidth` does not modify the estimator.** It is a function you
+  call to obtain a starting bandwidth; `fit` still uses `self.bandwidth`.
+- **The kernel tag in the fit cache key is CONTRACT MAINTENANCE, not a fixed
+  defect.** The key is documented as covering RDD's structural configuration and
+  the kernel now joins it. But no public API can currently change a fitted
+  model's kernel, so no caller is served the wrong kernel today. Noted at the
+  fold site so the claim is not later upgraded into "this fixed a bug".
+- **`RDDKernel` does not implement `Eq`.** `derive(Eq)` trips
+  `implicit_impl_as_method` and an explicit `impl Eq` trips `unused_value` in
+  the non-test build; both are `--deny-warn` failures. Compare `tag()`.
+
+Tests: **827 -> 833**. native/wasm/js 833, wasm-gc 839.
+`moon check --target all --deny-warn` 0 error 0 warning; `moon fmt --check`
+clean.
+
+### The lesson this release repeats for the third time
+
+v0.106.0: a ratio could not see a missing `1/n`, because numerator and
+denominator were wrong by the same factor. v0.109.0: a fold-COUNT change could
+not see whether the folds were USED, because under a near-linear DGP the
+estimate is invariant to the count. v0.110.0: a `cluster_hac_se` difference
+could not see which path built the weights, because `hc0_m` / `hc0_e` stored by
+`fit` already carried the kernel into the formula.
+
+**A comparison that cannot see a change cannot testify about it.** In all three
+cases the fix was the same, and it was not a stronger assertion: expose the
+quantity being compared. Here that was `DoubleMLRDD::kernel_weights`, promoted
+from a private helper to public API, which is the only reason M2 is now killed.
+
 ## [0.109.0] -- `set_sample_splitting` had no door, and no estimator could take one
 
 v0.108.0 closed the `tune` coverage gap. This is the next item off the same
