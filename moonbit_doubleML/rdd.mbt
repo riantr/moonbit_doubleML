@@ -203,7 +203,7 @@ pub fn DoubleMLRDD::new(
 }
 
 ///|
-/// Kernel for the local-polynomial weights, mirroring `rdrobust`'s
+/// Kernel for the local-polynomial weights, following `rdrobust`'s
 /// `kernelfunc` menu.
 ///
 /// v0.110.0: previously RDD had ONE hardcoded kernel. `rdd.mbt`'s
@@ -213,27 +213,39 @@ pub fn DoubleMLRDD::new(
 /// That comment reported an unported capability as a design choice, so
 /// it is now a parameter.
 ///
-/// The five names and formulas are `rdrobust`'s:
+/// # CORRECTION (v0.115.0): only THREE of these are `rdrobust`'s
 ///
-/// | variant        | K(u/h)                 |
-/// |----------------|------------------------|
-/// | `Triangular`   | `1 - t`                |
-/// | `Normal`       | `exp(-t^2 / 2)`        |
-/// | `Uniform`      | `1`                    |
-/// | `Epanechnikov` | `0.75 * (1 - t^2)`     |
-/// | `Quadratic`    | `1 - t^2`              |
+/// v0.110.0's comment said "the five names and formulas are `rdrobust`'s".
+/// That was wrong. Checked against `rdrobust` 2.2's own documentation
+/// rather than recalled: both `rdrobust()` and `rdbwselect()` document
+/// `kernel` as "triangular (default option), epanechnikov and uniform".
+/// `Normal` and `Quadratic` are NOT in `rdrobust`'s menu.
+///
+/// They are kept rather than removed -- deleting public enum variants is a
+/// breaking API change and the extra kernels are harmless extensions --
+/// but the claim is corrected. What matters is that a reader no longer
+/// believes choosing `Normal` reproduces an `rdrobust` option, because it
+/// does not.
+///
+/// | variant        | K(u/h)                 | in `rdrobust`? |
+/// |----------------|------------------------|----------------|
+/// | `Triangular`   | `1 - t`                | yes (default)  |
+/// | `Uniform`      | `1`                    | yes            |
+/// | `Epanechnikov` | `0.75 * (1 - t^2)`     | yes            |
+/// | `Normal`       | `exp(-t^2 / 2)`        | **no**         |
+/// | `Quadratic`    | `1 - t^2`              | **no**         |
 ///
 /// with `t = |u| / h` and support `|u| <= h`.
 ///
-/// Note on the local polynomial: upstream's point estimate uses a
-/// local QUADRATIC in the running variable, to avoid the bias a
-/// local-linear estimate takes when the true function is nonlinear.
-/// This port's design matrix is `[1, u, x...]` -- local LINEAR in `u`
-/// plus covariates -- and that is unchanged here. The kernel is a
-/// weighting function and independent of that choice, but the remaining
-/// gap against `rdrobust` is the missing `u^2` term, not the kernel.
-/// Adding it would move every existing RDD number, so it is recorded
-/// rather than folded in.
+/// # The `u^2` gap this paragraph used to claim is CLOSED
+///
+/// v0.110.0 ended here by saying the design matrix is `[1, u, x...]` and
+/// that "the remaining gap against `rdrobust` is the missing `u^2` term,
+/// not the kernel". That was accurate then. As of v0.115.0 `rdd_design`
+/// takes an `order` and emits `[u, ..., u^order, x...]`, so the bias-
+/// correction fit carries the `u^2` column `q = 2` needs. The POINT
+/// estimator still defaults to `order = 1`, matching `rdrobust`'s
+/// `p = 1`, so the default numbers are unchanged.
 pub enum RDDKernel {
   /// `1 - |u|/h`. The `rdrobust` default, and this port's only kernel
   /// until v0.110.0.
@@ -324,6 +336,18 @@ pub fn RDDKernel::tag(self : RDDKernel) -> Int {
 }
 
 ///|
+
+///|
+/// v0.115.0: `order` is the degree in the RUNNING VARIABLE. `order = 1`
+/// is the local-linear design this file has always used, and is the
+/// default, so every existing number is unchanged. `order = 2` adds the
+/// `u^2` column that `rdrobust`'s bias-correction fit (`q = 2`, its
+/// default) needs -- see `DoubleMLRDD::tau_bc`.
+///
+/// The column layout is `[u, u^2, ..., u^order, x...]`; the leading
+/// constant is added later by `augment_with_intercept` inside
+/// `fit_weighted`, so `beta[0]` is the limit estimate at the cutoff for
+/// any order.
 fn rdd_design(
   data : DoubleMLRDDData,
   side : Double,
@@ -331,6 +355,7 @@ fn rdd_design(
   h : Double,
   which : Bool,
   kernel : RDDKernel,
+  order? : Int = 1,
 ) -> (Matrix, Array[Double], Array[Double], Array[Int]) {
   let ids : Array[Int] = []
   for i = 0; i < data.n_obs(); i = i + 1 {
@@ -341,16 +366,23 @@ fn rdd_design(
       }
     }
   }
-  let p = data.x.cols() + 1
+  let p = data.x.cols() + order
   let out = Matrix::zeros(ids.length(), p)
   let y = Array::make(ids.length(), 0.0)
   let w = Array::make(ids.length(), 0.0)
   for k = 0; k < ids.length(); k = k + 1 {
     let i = ids[k]
     let u = data.score[i] - cutoff
-    out.data[k * p] = u
+    // `pw` walks u^1, u^2, ... so the loop body is identical for every
+    // order and order = 1 writes exactly the single `u` column it did
+    // before v0.115.0.
+    let mut pw = u
+    for d = 0; d < order; d = d + 1 {
+      out.data[k * p + d] = pw
+      pw = pw * u
+    }
     for j = 0; j < data.x.cols(); j = j + 1 {
-      out.data[k * p + 1 + j] = data.x.get(i, j)
+      out.data[k * p + order + j] = data.x.get(i, j)
     }
     y[k] = if which { data.d[i] } else { data.y[i] }
     // v0.110.0: the weight is the kernel's, not a hardcoded `1 - |u|/h`.
@@ -431,6 +463,7 @@ fn rdd_side(
   which : Bool,
   cov_type : String,
   kernel : RDDKernel,
+  order? : Int = 1,
 ) -> (
   Double,
   Double,
@@ -441,7 +474,15 @@ fn rdd_side(
   Array[Double],
   Array[Double],
 ) {
-  let (xx, yy, w, ids) = rdd_design(data, side, cutoff, h, which, kernel)
+  let (xx, yy, w, ids) = rdd_design(
+    data,
+    side,
+    cutoff,
+    h,
+    which,
+    kernel,
+    order~,
+  )
   if ids.length() == 0 {
     (0.0, 0.0, 0, [], [], [], [], [])
   } else {
@@ -492,7 +533,19 @@ fn rdd_side(
     let mut v = 0.0
     let resid : Array[Double] = Array::make(ids.length(), 0.0)
     for k = 0; k < ids.length(); k = k + 1 {
-      let pred = beta[0] + beta[1] * (data.score[ids[k]] - cutoff)
+      // v0.115.0: evaluate the FULL polynomial, not just its first two
+      // terms. At `order = 1` the loop runs exactly once and this is the
+      // same `beta[0] + beta[1] * u` association as before; at higher
+      // order, a residual taken from a truncated prediction would not be
+      // a residual at all, and `Sigma^4` -- which is built from these --
+      // would be measuring the wrong noise.
+      let u = data.score[ids[k]] - cutoff
+      let mut pred = beta[0]
+      let mut pw = u
+      for d = 1; d <= order; d = d + 1 {
+        pred = pred + beta[d] * pw
+        pw = pw * u
+      }
       let target = if which { data.d[ids[k]] } else { data.y[ids[k]] }
       let e = target - pred
       resid[k] = e
@@ -1911,6 +1964,269 @@ pub fn DoubleMLRDD::pilot_bandwidth(self : DoubleMLRDD) -> Double {
 }
 
 ///|
+///v0.115.0: `rdrobust`'s SECOND bandwidth `b`, the one that drives bias
+/// correction. `bwselect = "CCT"` computes both `h` and `b` by default,
+/// and `b` is the one this port was missing: `optimal_bandwidth` picks
+/// the bandwidth of the point estimate, and nothing here had an opinion
+/// about the bandwidth at which to estimate the bias.
+///
+/// The rule is the same grid search as `optimal_bandwidth`, on the
+/// ORDER-`q` criterion. That order is the entire difference: a local
+/// polynomial of degree `j` has leading bias `O(h^(j+1))`, so the `j`-
+/// order MSE criterion has a `b^(2(j+1))` variance term and wants a
+/// different bandwidth than the `p`-order one.
+///
+///`q = 2` is `rdrobust`'s default and its `p`-order point estimate is
+///local LINEAR (`p = 1`), so the two criteria being minimised here are
+///genuinely different functions and `b` is not a rescaling of `h`.
+pub fn DoubleMLRDD::optimal_bias_bandwidth(
+  self : DoubleMLRDD,
+  nnmatch? : Int = 3,
+  q? : Int = 2,
+) -> Double {
+  let h_pilot = rdd_pilot_bandwidth(self.data)
+  let l_min = 0.5
+  let l_max = 2.0
+  let n_grid = 50
+  let mut best_b = l_min * h_pilot
+  let mut best_mse = 1.0e300
+  for g = 0; g < n_grid; g = g + 1 {
+    let mult = l_min +
+      (l_max - l_min) * g.to_double() / (n_grid - 1).to_double()
+    let cand = mult * h_pilot
+    let mse = self.bandwidth_mse(cand, nnmatch~, order=q)
+    if mse < best_mse {
+      best_mse = mse
+      best_b = cand
+    }
+  }
+  best_b
+}
+
+///|
+/// v0.115.0: the local limit estimate `xi(h)` on ONE side of the
+/// cutoff -- the intercept of the order-`order` local polynomial,
+/// which for any order is the fitted value AT the cutoff.
+///
+/// Package-private: `bias` and `tau_bc` are the public
+/// entry points, and exposing a bare one-sided limit estimate would
+/// invite a caller to difference two of them and assume it had an RD
+/// interpretation, which needs the kernel weights and both sides.
+fn rdd_limit(m : DoubleMLRDD, side : Double, h : Double, order : Int) -> Double {
+  let (xi, _, _, _, _, _, _, _) = rdd_side(
+    m.ml_g,
+    m.data,
+    side,
+    m.cutoff,
+    h,
+    false,
+    m.cov_type,
+    m.kernel,
+    order~,
+  )
+  xi
+}
+
+///|
+/// v0.115.0: the estimated bias on ONE side, `(bias_left, bias_right)`.
+///
+/// Following `rdrobust`: the bias is the difference between the order-`p`
+/// limit estimate at the POINT bandwidth `h` and the order-`q` limit
+/// estimate at the BIAS bandwidth `b`. `p = 1` and `q = 2` are
+/// `rdrobust`'s defaults.
+///
+/// # The `b = h` case, and the trap in it
+///
+/// `rdrobust` makes `rho = 1` the default when `h` is supplied without
+/// `b` (`b = h / rho`), so `b == h` is this port's DEFAULT, not an edge
+/// case. It is NOT a degenerate estimator: with `b == h` the bias is the
+/// difference between a local-LINEAR and a local-QUADRATIC fit at one
+/// bandwidth, which is a real, non-zero quantity.
+///
+/// What degenerates is the BANDWIDTH SEARCH. `b` is supposed to be
+/// chosen by minimising the order-`q` MSE criterion; if `b` is pinned to
+/// `h`, the estimator is still correct but the second bandwidth is no
+/// longer doing the job it was selected for, and `b := h` inside
+/// `optimal_bias_bandwidth` becomes an EQUIVALENT MUTATION that no
+/// downstream assertion can see -- `tau_bc` would return
+/// `xi_2(h)_r - xi_2(h)_l` either way.
+///
+/// `v115_bias_bandwidth_order1_equals_the_point_bandwidth` pins the
+/// mechanism (an order-1 bias bandwidth IS the point bandwidth), and
+/// `v115_bias_bandwidth_differs_from_the_point_bandwidth` pins that the
+/// default order-2 search does NOT return `h`, so the stage is actually
+/// being selected rather than defaulted.
+pub fn DoubleMLRDD::bias(
+  self : DoubleMLRDD,
+  b? : Double = 0.0,
+  rho? : Double = 1.0,
+  p? : Int = 1,
+  q? : Int = 2,
+) -> (Double, Double) {
+  try {
+    require(p >= 1)
+    require(q >= 1)
+    require(rho > 0.0)
+    let bias_b = if b > 0.0 { b } else { self.bandwidth / rho }
+    require(bias_b > 0.0)
+    let h = self.bandwidth
+    let left = rdd_limit(self, -1.0, h, p) - rdd_limit(self, -1.0, bias_b, q)
+    let right = rdd_limit(self, 1.0, h, p) - rdd_limit(self, 1.0, bias_b, q)
+    (left, right)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.115.0: the bias-CORRECTED point estimate -- procedure (ii) of the
+/// three `rdrobust(all = TRUE)` reports, and the headline estimator once
+/// the bias correction is on.
+///
+/// `tau_bc = (tau_cl_r - bias_r) - (tau_cl_l - bias_l)`, i.e. the
+/// conventional estimate minus the estimated bias, computed in
+/// `rdrobust`'s order.
+///
+/// # Why the method is named `tau_bc` and not `bias_corrected_coef`
+///
+/// `bias_corrected_coef` already exists on 15 other estimators in this
+/// package, where it means the SANDWICH bias correction (Wald / delta
+/// method) -- a completely different operation on a completely different
+/// scale. Naming this one the same would have put two unrelated meanings
+/// behind one method name across the same type.
+///
+/// `tau_bc` is `rdrobust`'s own field name for this quantity ("bias-
+/// corrected local-polynomial estimate to the left and to the right of
+/// the cutoff"), so the rename costs nothing in fidelity and removes the
+/// collision.
+///
+/// # It collapses to a single fit -- and that is checkable
+///
+/// Substituting the definition of the bias, the `tau_cl` terms cancel:
+///
+///     tau_bc_s = xi_p(h)_s - [xi_p(h)_s - xi_q(b)_s] = xi_q(b)_s
+///
+/// so the entire bias-correction apparatus is algebraically identical to
+/// fitting a local QUADRATIC at `b` and differencing its intercepts. The
+/// library computes it the long way because that is what `rdrobust`
+/// does, and the two are not guaranteed bit-identical: `a - (a - b)` is
+/// not exactly `b` in IEEE arithmetic in general.
+///
+/// MEASURED, not assumed: on every fixture in `expand_v115_test.mbt` the
+/// measured gap between the two routes is EXACTLY zero, and
+/// `v115_bias_corrected_is_the_q_order_estimate` asserts `==` rather
+/// than a tolerance. That is a property of these fixtures' magnitudes,
+/// NOT a theorem -- the cancellation is exact only when the rounding
+/// happens to land back on `xi_q(b)`. If a future fixture breaks it, the
+/// correct response is to relax THAT assertion to a tolerance, not to
+/// conclude the algebra is wrong: the algebra is independent of the
+/// fixture and the arithmetic is not.
+///
+/// # Coverage
+///
+/// This is the point estimate only. The default `coef()` / `se()` are
+/// UNCHANGED -- bias correction is opt-in, because procedure (ii) alone
+/// under-covers, which is the entire reason procedure (iii) exists. See
+/// `tau_bc_se` and the v0.115.0 CHANGELOG entry for what remains.
+pub fn DoubleMLRDD::tau_bc(
+  self : DoubleMLRDD,
+  b? : Double = 0.0,
+  rho? : Double = 1.0,
+  p? : Int = 1,
+  q? : Int = 2,
+) -> Double {
+  let (bias_l, bias_r) = self.bias(b~, rho~, p~, q~)
+  let tau_cl = rdd_limit(self, 1.0, self.bandwidth, p) -
+    rdd_limit(self, -1.0, self.bandwidth, p)
+  tau_cl - (bias_r - bias_l)
+}
+
+///|
+/// v0.115.0: the bias-corrected estimate expressed the way it collapses
+/// to -- `xi_q(b)_r - xi_q(b)_l`, one order-`q` fit per side at
+/// bandwidth `b`.
+///
+/// Public precisely because `tau_bc` is written the long
+/// way: without this, the identity in its docs could only be checked by
+/// re-deriving it inside a test, which is a weaker thing to pin than
+/// reading the two public numbers off the same object.
+pub fn DoubleMLRDD::tau_bc_collapsed(
+  self : DoubleMLRDD,
+  b? : Double = 0.0,
+  rho? : Double = 1.0,
+  q? : Int = 2,
+) -> Double {
+  try {
+    require(rho > 0.0)
+    let bias_b = if b > 0.0 { b } else { self.bandwidth / rho }
+    require(bias_b > 0.0)
+    rdd_limit(self, 1.0, bias_b, q) - rdd_limit(self, -1.0, bias_b, q)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// v0.115.0: standard error of the bias-corrected estimate, under this
+/// port's existing `cov_type` convention, applied to the order-`q`
+/// fits at `b`.
+///
+/// # What this is NOT
+///
+/// `rdrobust`'s procedure (iii) is "bias-corrected estimates with ROBUST
+/// standard errors", and its default robust estimator is `vce = "nn"`
+/// -- nearest-neighbour matched residuals, the SAME matching rule
+/// `bandwidth_sigma4` implements for the CRITERION. That variance
+/// estimator is not implemented here. This returns the homoskedastic or
+/// `HC0` variance the package already computes, on the `q`-order fits.
+///
+/// So the variance inflation that makes CCT intervals achieve nominal
+/// coverage is NOT fully reproduced yet: this is a standard error for
+/// the bias-corrected estimator, not `rdrobust`'s robust one. Shipping it
+/// as if it were procedure (iii) is the v0.113 mistake again -- a
+/// different estimator wearing the same name.
+pub fn DoubleMLRDD::tau_bc_se(
+  self : DoubleMLRDD,
+  b? : Double = 0.0,
+  rho? : Double = 1.0,
+  q? : Int = 2,
+) -> Double {
+  try {
+    require(rho > 0.0)
+    let bias_b = if b > 0.0 { b } else { self.bandwidth / rho }
+    require(bias_b > 0.0)
+    let (_, var_l, _, _, _, _, _, _) = rdd_side(
+      self.ml_g,
+      self.data,
+      -1.0,
+      self.cutoff,
+      bias_b,
+      false,
+      self.cov_type,
+      self.kernel,
+      order=q,
+    )
+    let (_, var_r, _, _, _, _, _, _) = rdd_side(
+      self.ml_g,
+      self.data,
+      1.0,
+      self.cutoff,
+      bias_b,
+      false,
+      self.cov_type,
+      self.kernel,
+      order=q,
+    )
+    (var_l + var_r).sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
 /// The MSE-optimality criterion at an arbitrary bandwidth `h`:
 /// `(xi(h) - xi(h_pilot))^2 + (h/h_pilot)^4 * sigma4 / n`, with
 /// `xi_pilot` and the pooled residual scale `sigma4` both taken at
@@ -1926,17 +2242,38 @@ pub fn DoubleMLRDD::pilot_bandwidth(self : DoubleMLRDD) -> Double {
 /// never used (`unused_error_type`), which `--deny-warn` then treats as
 /// a build failure. The two guards stay because they document the
 /// precondition; they just do not widen the signature.
+
+///|
+///v0.115.0: `order` selects the polynomial order the criterion is built
+///for. The variance term's exponent is `2 * (order + 1)` -- the leading
+///bias of a local polynomial of degree `j` is `O(h^(j+1))`, so its square
+///is `O(h^(2j+2))` -- and the pilot stage is refitted at the SAME order.
+///
+///`order = 1` is the default and reproduces v0.110.0-v0.113.0 exactly,
+///including the floating-point association: the power is built by
+///repeatedly squaring `b2 = b * b`, so `order = 1` still evaluates
+///`b2 * b2`, not `(b*b)*(b*b)` written a different way.
+///
+///`order = 2` is what `rdrobust` uses for the bias-correction fit (`q`,
+///its default), and is what `optimal_bias_bandwidth` minimises. The two
+///criteria differ ONLY in this exponent and in the order of the fits --
+///that is the whole reason `h` and `b` come out different numbers.
 pub fn DoubleMLRDD::bandwidth_mse(
   self : DoubleMLRDD,
   h : Double,
   nnmatch? : Int = 3,
+  order? : Int = 1,
 ) -> Double {
   try {
-    let n = self.n_obs()
     let h_pilot = rdd_pilot_bandwidth(self.data)
     require(h_pilot > 0.0)
     require(h > 0.0)
-    let (xi_pilot, sigma4) = rdd_pilot_stage(self, nnmatch)
+    // Only the pilot's limit estimate is used here; its `sigma4` goes
+    // through `bandwidth_variance_term`, which recomputes the SAME pilot
+    // stage. Recomputing rather than passing it keeps one definition of
+    // the variance half, and the stage is deterministic so the two
+    // `sigma4` values are bit-identical anyway.
+    let (xi_pilot, _) = rdd_pilot_stage(self, nnmatch, order)
     let (yl, _, _, _, _, _, _, _) = rdd_side(
       self.ml_g,
       self.data,
@@ -1946,6 +2283,7 @@ pub fn DoubleMLRDD::bandwidth_mse(
       false,
       self.cov_type,
       self.kernel,
+      order~,
     )
     let (yr, _, _, _, _, _, _, _) = rdd_side(
       self.ml_g,
@@ -1956,11 +2294,65 @@ pub fn DoubleMLRDD::bandwidth_mse(
       false,
       self.cov_type,
       self.kernel,
+      order~,
     )
     let bias = yr - yl - xi_pilot
+    bias * bias + self.bandwidth_variance_term(h, nnmatch~, order~)
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+///v0.115.0: the VARIANCE half of `bandwidth_mse`, split out so the
+/// bandwidth-scaling exponent is checkable from outside.
+///
+///    variance_term(h) = (h / h_pilot)^(2 * (order + 1)) * sigma4 / n
+///
+///`bandwidth_mse` calls THIS rather than computing it inline, so the
+///criterion and its decomposition cannot drift -- the same reason
+///`bandwidth_sigma4` and the internal pilot share one implementation.
+///
+/// # Why the exponent needs its own gate
+///
+/// `2 * (order + 1)` is the entire content of the difference between the
+/// `h` criterion and the `b` criterion: a local polynomial of degree `j`
+/// has leading bias `O(h^(j+1))`, so the `j`-order MSE carries a
+/// `b^(2(j+1))` variance term. Hardcoding it to `b^4` -- the order-1
+/// value, which is what the code did before this parameter existed --
+/// leaves every OTHER assertion in `expand_v115_test.mbt` green: the
+/// search still minimises whatever criterion it is given, the bias is
+/// still non-zero, `b` still differs from `h`, and the collapse identity
+/// still holds.
+///
+/// Mutation M3 in `_verify/mut_v115_rdd.ps1` is exactly that, and it
+/// SURVIVED before this function existed. Doubling the bandwidth must
+/// multiply the variance term by `2^(2(order+1))` -- 16 at order 1, 64 at
+/// order 2 -- and `v115_variance_term_doubles_by_the_order_exponent` is
+/// the assertion that says so.
+pub fn DoubleMLRDD::bandwidth_variance_term(
+  self : DoubleMLRDD,
+  h : Double,
+  nnmatch? : Int = 3,
+  order? : Int = 1,
+) -> Double {
+  try {
+    let n = self.n_obs()
+    let h_pilot = rdd_pilot_bandwidth(self.data)
+    require(h_pilot > 0.0)
+    require(h > 0.0)
+    let (_, sigma4) = rdd_pilot_stage(self, nnmatch, order)
     let b = h / h_pilot
     let b2 = b * b
-    bias * bias + b2 * b2 * sigma4 / n.to_double()
+    // Starting from `b2` and multiplying by `b2` exactly `order` times
+    // keeps `order = 1` on the literal `b2 * b2` that v0.110.0
+    // computed, so the default path is bit-identical to before.
+    let mut variance_term = b2
+    for step = 0; step < order; step = step + 1 {
+      variance_term = variance_term * b2
+    }
+    variance_term * sigma4 / n.to_double()
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
@@ -2013,8 +2405,9 @@ pub fn DoubleMLRDD::bandwidth_mse(
 pub fn DoubleMLRDD::bandwidth_sigma4(
   self : DoubleMLRDD,
   nnmatch? : Int = 3,
+  order? : Int = 1,
 ) -> Double {
-  let (_, sigma4) = rdd_pilot_stage(self, nnmatch)
+  let (_, sigma4) = rdd_pilot_stage(self, nnmatch, order)
   sigma4
 }
 
@@ -2031,9 +2424,14 @@ pub fn DoubleMLRDD::bandwidth_sigma4(
 /// A free function rather than a method, for the same reason as
 /// `rdd_pilot_bandwidth`: `fn name(self : Type)` at top level is
 /// deprecated method syntax and does not bind as one.
-fn rdd_pilot_stage(m : DoubleMLRDD, nnmatch : Int) -> (Double, Double) {
+fn rdd_pilot_stage(
+  m : DoubleMLRDD,
+  nnmatch : Int,
+  order : Int,
+) -> (Double, Double) {
   try {
     require(nnmatch >= 1)
+    require(order >= 1)
     let h_pilot = rdd_pilot_bandwidth(m.data)
     require(h_pilot > 0.0)
     let (yl, _, _, res_l, _, _, _, _) = rdd_side(
@@ -2045,6 +2443,7 @@ fn rdd_pilot_stage(m : DoubleMLRDD, nnmatch : Int) -> (Double, Double) {
       false,
       m.cov_type,
       m.kernel,
+      order~,
     )
     let (yr, _, _, res_r, _, _, _, _) = rdd_side(
       m.ml_g,
@@ -2055,6 +2454,7 @@ fn rdd_pilot_stage(m : DoubleMLRDD, nnmatch : Int) -> (Double, Double) {
       false,
       m.cov_type,
       m.kernel,
+      order~,
     )
     let u_l = rdd_side_offsets(m, -1.0, h_pilot)
     let u_r = rdd_side_offsets(m, 1.0, h_pilot)

@@ -9,6 +9,177 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.115.0] -- the CCT second bandwidth `b`, and the identity that collapses the whole bias-correction stage
+
+### What was missing
+
+v0.110.0 gave RDD an MSE-optimal bandwidth for the POINT estimate.
+`rdrobust`'s `bwselect = "CCT"` -- its DEFAULT, not an option -- computes
+BOTH an estimation bandwidth `h` and a bias-correction bandwidth `b`, then
+subtracts the estimated bias from the point estimate and inflates the
+standard error to pay for having done so.
+
+This package had `h` only. v0.113.0's CHANGELOG already called that "the
+largest remaining gap", and correctly noted it was a whole missing STAGE
+rather than a missing monomial. This release is that stage's point
+estimate.
+
+### Why `h` and `b` are different numbers, not a rescaling
+
+A local polynomial of degree `j` has leading bias `O(h^(j+1))`, so the
+`j`-order MSE criterion carries a `b^(2(j+1))` variance term. `rdrobust`
+estimates the point with `p = 1` (local linear) and the bias with
+`q = 2` (local quadratic), so the two criteria being minimised are
+genuinely different functions. Measured on the package's own nonlinear
+fixture: `b / h = 0.907`.
+
+### The identity the release is built on
+
+Substituting the definition of the bias, the conventional terms cancel:
+
+    tau_bc = tau_cl - bias
+           = [xi_p(h)_r - xi_p(h)_l] - [(xi_p(h)_r - xi_q(b)_r)
+                                        - (xi_p(h)_l - xi_q(b)_l)]
+           = xi_q(b)_r - xi_q(b)_l
+
+The entire bias-correction apparatus telescopes to one `q`-order fit per
+side. That is not a shortcut -- it is why no joint covariance across the
+two bandwidths is needed, and it is checkable from outside because
+`tau_bc_collapsed()` computes the right-hand side. On every fixture the
+two agree to the last bit (measured gap: exactly 0).
+
+### Three design claims the measurements falsified
+
+Every assertion in `expand_v115_test.mbt` was written AFTER probing the
+numbers. The probe overturned three things I had believed while designing
+this, and the source docs were corrected rather than the assertions
+adjusted to match my assumptions:
+
+1. **"The bias is zero when `b == h`."** Wrong. It is the difference
+   between a local-LINEAR and a local-QUADRATIC fit at one bandwidth --
+   a real, non-zero quantity. What degenerates is the SEARCH, not the
+   estimator.
+2. **"`tau_cl - bias` and `xi_q(b)` differ by ~1e-12."** The measured gap
+   is exactly 0, so the gate asserts `==` rather than a tolerance. That
+   is a property of these magnitudes, not a theorem, and the test says so.
+3. **`Sigma^4` at order 2 is exactly 0 when the fit is exact.** It is
+   3.18e-18 -- the design is a Vandermonde, so "exact" means "exact to
+   its conditioning". The first version of that gate asserted `< 1e-20`
+   and failed; the threshold is now measured, with 12 orders of margin to
+   the failure it has to catch.
+
+### A fixture that could not see what it was built to detect
+
+The first version of the structural `u^2` gate used a SYMMETRIC
+`0.4*u^2` and FAILED: the order-1 fit recovered the jump to 8e-11,
+*better* than the order-2 fit's 4e-10. That is not a bug, it is the
+algebra -- for a local linear fit of `c*s^2` evaluated at the window
+edge the intercept bias is exactly `-0.1*c*h^2` on BOTH sides, so the
+two biases cancel in `xi_r - xi_l` and the symmetric design is nearly
+unbiased under order 1.
+
+The symmetric fixture therefore could not distinguish order 1 from
+order 2 at all. With `c_left = 0.4` and `c_right = 0.9` the side biases
+differ and the two orders separate. The v0.110.0 lesson -- a comparison
+that cannot see the change cannot testify about it -- arriving one level
+down, in the design of the FIXTURE rather than of the assertion.
+
+### Added
+
+- **`optimal_bias_bandwidth(nnmatch?, q?)`** -- the second bandwidth, by
+  the same grid search on the ORDER-`q` criterion. `q = 2` is
+  `rdrobust`'s default.
+- **`bias(b?, rho?, p?, q?)`** -- the estimated bias PER SIDE, as
+  `rdrobust` reports it. `rho` gives `b = h / rho`, `rdrobust`'s
+  documented convention, whose default `rho = 1` makes `b == h`.
+- **`tau_bc(b?, rho?, p?, q?)`** -- the bias-corrected point estimate.
+- **`tau_bc_collapsed(b?, rho?, q?)`** -- the same quantity written the
+  way the identity says it collapses to. Public precisely so the identity
+  is externally checkable rather than a claim in a doc comment.
+- **`tau_bc_se(b?, rho?, q?)`** -- see "what is still not faithful".
+- **`bandwidth_variance_term(h, nnmatch?, order?)`** -- the variance half
+  of `bandwidth_mse`, split out so the bandwidth-scaling exponent is
+  checkable from outside.
+- **`order` on `rdd_design` / `rdd_side` / `bandwidth_mse` /
+  `bandwidth_sigma4`** -- default 1, so every existing number is
+  unchanged. `order = 2` is what emits the `u^2` column.
+
+### A name collision caught before release
+
+The first draft called the new method `bias_corrected_coef`. That name
+already exists on 15 other estimators in this package, where it means the
+SANDWICH bias correction (Wald / delta method) -- a different operation
+on a different scale. Renamed to `tau_bc`, which is `rdrobust`'s own
+field name for this quantity, so the rename costs nothing in fidelity.
+
+### Correction to a v0.110.0 claim
+
+`rdd.mbt` said "the five names and formulas are `rdrobust`'s". Checked
+against `rdrobust` 2.2's own documentation rather than recalled: both
+`rdrobust()` and `rdbwselect()` document `kernel` as "triangular (default
+option), epanechnikov and uniform". `Normal` and `Quadratic` are NOT in
+upstream's menu. They are kept -- deleting public enum variants is a
+breaking change and they are harmless extensions -- but the claim is
+corrected, because a reader should not believe choosing `Normal`
+reproduces an `rdrobust` option.
+
+### What is still NOT faithful to `rdrobust`, stated plainly
+
+- **No robust bias-corrected confidence intervals.** This is procedure
+  (ii) of the three `rdrobust(all = TRUE)` reports, not procedure (iii).
+  The default robust estimator is `vce = "nn"` -- the same
+  nearest-neighbour matching this port implements for the CRITERION
+  (`bandwidth_sigma4`) but NOT for the variance. `tau_bc_se()` returns
+  the homoskedastic / `HC0` variance the package already had, applied to
+  the `q`-order fits. **The variance inflation that makes CCT intervals
+  achieve nominal coverage is therefore not reproduced.** Shipping this
+  as procedure (iii) would be the v0.113.0 mistake again -- a different
+  estimator wearing the same name.
+- Consequently `coef()` / `se()` are UNCHANGED and bias correction is
+  opt-in: procedure (ii) alone under-covers, which is the entire reason
+  procedure (iii) exists.
+- The grid is 50 points, not 100.
+- No bias-correction pilot machinery; `h` and `b` share one Silverman
+  pilot of the running variable.
+
+### Verification
+
+`_verify/mut_v115_rdd.ps1`, five mutations. The first run did NOT pass:
+M3 and M5 survived, and the pass below is the result of adding the two
+gates that kill them, not of the tests having been right all along.
+
+| mutation | first run | after the two new gates |
+|---|---|---|
+| M1 bias bandwidth pinned to the point bandwidth | *inconclusive* | **KILLED** (4 tests) |
+| M2 bias subtracted in the wrong direction | KILLED | KILLED (2 tests) |
+| M3 criterion ignores `order` (exponent fixed at `b^4`) | **SURVIVED** | **KILLED** |
+| M4 the `u^2` column is dropped from the design | KILLED | KILLED (9 tests) |
+| M5 residuals from a truncated (linear) prediction | **SURVIVED** | **KILLED** |
+
+The two survivors are the interesting part. Both were invisible because
+each only touched a quantity that nothing else could observe:
+
+- **M3** leaves the search still minimising whatever criterion it is
+  handed, the bias still non-zero, `b` still different from `h`, and the
+  collapse identity still holding. The exponent only enters the
+  criterion's VARIANCE half, which was not separately observable. Fixed
+  by `bandwidth_variance_term` plus an assertion that doubling the
+  bandwidth multiplies it by 16 at order 1 and 64 at order 2.
+- **M5** only feeds `Sigma^4`, which only feeds the search, which still
+  returns a valid minimiser of a slightly different criterion. Fixed by
+  an assertion that `Sigma^4` collapses on an exactly-fitted quadratic
+  DGP.
+
+M1's first "inconclusive" was a harness defect, not a mutant: the anchor
+consumed the function's closing brace and the replacement did not put it
+back, so the suite never compiled. The harness now prints the last lines
+of output for any inconclusive run, because "did not compile" and "the
+test binary died" are different verdicts.
+
+Tests: **836 -> 849**. native/wasm/js 849, wasm-gc 855.
+`moon check --target all --deny-warn` 0 error 0 warning; `moon fmt --check`
+clean. The 836 pre-existing tests are byte-identical at `order = 1`.
+
 ## [0.114.0] -- releases are published by CI again, and this release is the first one that went that way
 
 ### Why this release exists

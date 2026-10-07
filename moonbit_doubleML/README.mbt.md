@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.114.0** |
+| `moon.mod` version | **0.115.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | 179 in the library (87 production + 92 test) |
+| `.mbt` file count | 180 in the library (87 production + 93 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` — all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **836 / 836** |
-| Tests (wasm-gc) | **842 / 842** (lib 836 + 6 doc tutorials) |
+| Tests (native / wasm / js) | **849 / 849** |
+| Tests (wasm-gc) | **855 / 855** (lib 849 + 6 doc tutorials) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | Memoize + vectorize coverage | **22 / 22 estimators** |
 | Cache read-path audit | 13 estimators have a hit-vs-fresh assertion; **5 of those 13 additionally carry a corruption probe** (IRM, PLR, CVAR, BLP, PQ) since v0.99.0. A corruption probe writes a known-wrong value into one cached slot and requires the reported estimate to move, so a dead cache-read path fails the suite. A hit-vs-fresh assertion alone does not: the fresh recompute is deterministic, so replaying nothing and replaying correctly are indistinguishable to it. |
@@ -427,11 +427,17 @@ unit-indexed validator, which `check_sample_splitting` is not.
 #RDD kernel and bandwidth
 
 `DoubleMLRDD` takes a kernel (`RDDKernel`: `Triangular` (default),
-`Normal`, `Uniform`, `Epanechnikov`, `Quadratic` -- upstream's
-`kernelfunc` names, accepted case-insensitively by
-`RDDKernel::parse`; an unknown name ABORTS rather than silently
-falling back). Before v0.110.0 the kernel was hardcoded to triangular in
-both weight sites and the bandwidth had to be supplied by the caller.
+`Normal`, `Uniform`, `Epanechnikov`, `Quadratic`; accepted
+case-insensitively by `RDDKernel::parse`, and an unknown name ABORTS
+rather than silently falling back). **Only three of the five are
+`rdrobust` kernels** -- `Triangular` (default), `Uniform` and
+`Epanechnikov`. `Normal` and `Quadratic` are extensions of this port, not
+upstream options; v0.110.0's comment claimed otherwise and v0.115.0
+corrected it against `rdrobust` 2.2's documentation. Before v0.110.0 the
+kernel was hardcoded to triangular in both weight sites and the bandwidth
+had to be supplied by the caller.
+
+## The two bandwidths
 
 `optimal_bandwidth()` implements the MSE-optimal procedure of Cattaneo,
 Calonico & Tchetgen (2020) -- the one `rdrobust` exposes through
@@ -439,23 +445,64 @@ Calonico & Tchetgen (2020) -- the one `rdrobust` exposes through
 (never of the outcome), so the search grid is dimensionless and the
 answer does not change with the units `x` is measured in.
 
-`bandwidth_mse(h)` and `bandwidth_sigma4(nnmatch?)` are PUBLIC on
-purpose. They make the search's claim checkable from outside: at
-`h = h_pilot` the bias term is identically zero, so
-`bandwidth_mse(h_pilot) == bandwidth_sigma4() / n` exactly. Without
-those two accessors a gate could only verify that the search minimised
-its own criterion, not the criterion itself -- deleting the `b^4`
-variance term left everything green. `Sigma^4` uses `rdrobust`'s
-nearest-neighbour matching (`vce = "nn"`, `nnmatch = 3`), pairing each
-left residual with its `nnmatch` nearest right neighbours by
-running-variable distance.
+`optimal_bias_bandwidth()` (v0.115.0) is the CCT **second** bandwidth
+`b`. It exists because `bwselect = "CCT"` -- `rdrobust`'s default --
+computes BOTH `h` and `b`, and this package had only the first. They are
+different numbers because they minimise different functions: a local
+polynomial of degree `j` has leading bias `O(h^(j+1))`, so the `j`-order
+MSE criterion carries a `b^(2(j+1))` variance term, and `rdrobust` uses
+`p = 1` for the point estimate and `q = 2` for the bias. Measured on the
+package's own nonlinear fixture, `b / h = 0.907`.
 
-What is NOT here, and is not implied: upstream's CCT selector also
-produces a second, bias-correction bandwidth `b` and reports robust
-bias-corrected confidence intervals. This package produces the
-estimation bandwidth only. It is also local-LINEAR in the running
-variable where `rdrobust` estimates with `q = 2`. Both are recorded in
-the v0.110.0 / v0.113.0 entries in `CHANGELOG.md`.
+## The bias-correction identity
+
+The correction is not a separate estimator. Substituting the definition
+of the bias into `tau_bc = tau_cl - bias`, the conventional terms cancel:
+
+    tau_bc_s = xi_p(h)_s - [xi_p(h)_s - xi_q(b)_s] = xi_q(b)_s
+
+so `tau_bc` is exactly the difference of the q-order limit estimates at
+`b`. That is why no joint covariance across the two bandwidths is needed,
+and it is checkable from outside: `tau_bc_collapsed()` computes the
+right-hand side and the two agree exactly.
+
+## What is checkable from outside, and why that matters
+
+`bandwidth_mse(h, nnmatch?, order?)`, `bandwidth_variance_term(h, ...)`
+and `bandwidth_sigma4(nnmatch?, order?)` are PUBLIC on purpose. At
+`h = h_pilot` the bias term is identically zero, so
+`bandwidth_mse(h_pilot) == bandwidth_sigma4() / n` exactly. Without those
+accessors a gate could only verify that the search minimised its own
+criterion, not the criterion itself -- deleting the variance term left
+everything green. `bandwidth_variance_term` exists because hardcoding the
+exponent to `b^4` also left everything green: the search still minimised
+whatever it was handed. Doubling the bandwidth must multiply it by 16 at
+order 1 and 64 at order 2.
+
+`Sigma^4` uses `rdrobust`'s nearest-neighbour matching (`vce = "nn"`,
+`nnmatch = 3`), pairing each left residual with its `nnmatch` nearest
+right neighbours by running-variable distance.
+
+## What is NOT here, and is not implied
+
+The bias-corrected POINT estimate is implemented; the bias-corrected
+ROBUST variance is **not**. `rdrobust`'s procedure (iii) is "bias-
+corrected estimates with robust standard errors", and its default robust
+estimator is `vce = "nn"` -- the same nearest-neighbour matching this port
+implements for the CRITERION but not for the VARIANCE. `tau_bc_se()`
+returns the homoskedastic / `HC0` variance the package already had,
+applied to the q-order fits. It is a standard error for the bias-corrected
+estimator, not `rdrobust`'s robust one.
+
+Consequently `coef()` / `se()` are UNCHANGED and bias correction is
+opt-in: procedure (ii) alone under-covers, which is the entire reason
+procedure (iii) exists.
+
+Also still open: the point estimate remains local-LINEAR in `u` (`p = 1`,
+matching `rdrobust`), while the bias-correction fit is local-QUADRATIC
+(`q = 2`, also matching). The bandwidth grid is 50 points, not
+`rdrobust`'s 100. Recorded in the v0.110.0 / v0.113.0 / v0.115.0 entries
+in `CHANGELOG.md`.
 
 #Sandwich variance
 
