@@ -9,6 +9,104 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.114.0] -- releases are published by CI again, and this release is the first one that went that way
+
+### Why this release exists
+
+v0.113.0 and everything before it were published by hand. The tag trigger in
+`.github/workflows/publish.yml` had been commented out since run 7186945, so
+pushing a tag did nothing and every version was cut with a local
+`moon publish`. That path works, but it is invisible: nothing in the repository
+records who published what, and `moon publish` against an existing version
+fails outright rather than updating it.
+
+This release is the CI path itself, restored and written down. **No library
+code changed.** The test count is unchanged at 836 (842 on wasm-gc) because
+there is nothing new to test -- that is the point of the release.
+
+### What was ACTUALLY blocking it
+
+The comment recorded at disablement time blamed the missing
+`MOONCAKES_RIANTR_TOKEN`. That token is set now, so cause 1 is gone. But it
+was never the only cause, and taking the comment at its word would have sent
+the next person to re-check a token that was already correct.
+
+Checking all 45 historical publish-package runs: the last one to reach the end
+(v0.92.0, 2026-10-05) failed at **`Check typos`**, not at the token guard. The
+recorded reason was incomplete, and incomplete here means actively misleading.
+
+Both findings were configuration, not code, so neither fix touched a `.mbt`:
+
+- `_verify/double_ml_score_mixins.py:117` says `agregate`. That file is a
+  VERBATIM copy of upstream `doubleml/double_ml_score_mixins.py`, kept as
+  evidence; correcting a typo inside a copy would make it stop matching what
+  was read, which is the only reason the copy exists. Excluded
+  `_verify/double_ml_*.py`.
+- `levl` in `expand_v096_test.mbt` (11 sites) is a deliberate variable name,
+  always written as the PAIR `levl`/`levr` for the left/right leverage
+  profiles. Spelling it out would break the symmetry that makes the pair
+  readable, and "level" is the wrong noun anyway -- these are leverage
+  vectors, not levels. Listed alongside the existing `iy` / `lik` entries,
+  which are there for the same reason.
+
+### The credential's SHAPE is part of the contract
+
+`moon publish` reads `$HOME/.moon/credentials.json`, so
+`MOONCAKES_RIANTR_TOKEN` has to hold the **JSON body of that file** --
+`{"token":<32-char>,"username":<6-char>}`, 73 bytes -- and not a bare token. A
+wrong-shaped secret fails at authentication, which reads like a permissions
+problem and is not one.
+
+The workflow checks only the "missing" case. A shape check was tried and
+**removed rather than shipped**: this repository has no bash or git-bash
+available locally, so no shell snippet could be verified before going into the
+release path, and an unverified guard risks a permanently red run -- the exact
+failure the 7186945 disablement was about. The requirement is instead stated
+in the error message and in the workflow comment, so the next person to hit an
+auth failure reads the shape first. **Unverifiable code does not enter the
+release path**; a guard that has never executed once is a guess with an exit
+status.
+
+### Added to the README
+
+Three sections covering public surface that accumulated across v0.108-v0.113
+and existed, working, without being written down anywhere a reader would look.
+The coverage lists were measured against the code, not recalled.
+
+- **#Tuning** -- `tune` reaches 19 of 22 estimators, with the structural reason
+  the three exceptions (BLP, LPQ, PolicyTree) are not simply "not done yet",
+  and a note that this is not an Optuna-style hyperparameter grid.
+- **#Sample splitting** -- `set_sample_splitting` reaches 12 of 22, the
+  per-family rationale for the DID / PLPR / RDD / BLP splits, and how far the
+  cluster path actually reaches (row level).
+- **#RDD kernel and bandwidth** -- the five kernels, `optimal_bandwidth`, and
+  why `bandwidth_sigma4()` had to be made public for the criterion to be
+  falsifiable from outside the package. The section also states what is NOT
+  implemented: no CCT second bandwidth `b`, no bias correction, no robust
+  bias-corrected confidence intervals, and a linear local polynomial where
+  `rdrobust` defaults to `q = 2`.
+
+### Verification
+
+| gate | verdict |
+|---|---|
+| `moon fmt --check` | exit 0 |
+| `moon check --target all --deny-warn` | 0 error, 0 warning |
+| native / wasm / js | 836 / 836 |
+| wasm-gc | 842 / 842 |
+| `moon info --target js` then `git diff --exit-code` on `pkg.generated.mbti` | exit 0, generated interface in sync |
+| `typos` v1.19.0 -- the version CI pins -- from the repository root | exit 0 |
+
+Tests unchanged at 836 / 842: no library code was touched.
+
+One further typos exclusion was added while preparing this release:
+`_verify/_commit_msg_*.txt`. Those files are verbatim records of committed
+messages, so `git log` is the ground truth and editing one to satisfy the spell
+check would make it stop matching the commit it documents.
+`_commit_msg_rel_ci.txt:16` quotes the `agregate` finding verbatim while
+explaining why it was NOT corrected -- in that paragraph the word is the
+subject.
+
 ## [0.113.0] -- `Sigma^4` becomes `rdrobust`'s nearest-neighbour matching, and a previously untestable mutation turns out to have been an artefact of the criterion
 
 v0.112.0 made the bandwidth criterion checkable from outside. This release

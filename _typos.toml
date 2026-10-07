@@ -14,12 +14,26 @@ extend-exclude = [
   "_verify/UPSTREAM_*.md",
   # CHANGELOG historical entries — preserve names as written
   "CHANGELOG.md",
+  # The same text one step earlier in its life: `_changelog_<ver>.md` is the
+  # entry staged for splicing into CHANGELOG.md by _splice_changelog_<ver>.py.
+  # Excluding the destination while scanning the source would spell-check a
+  # document out of the state it is destined for, so these are excluded for
+  # the same reason and with the same wording.
+  "_verify/_changelog_*.md",
   # Upstream `doubleml/double_ml_*.py` sources copied VERBATIM into
   # _verify/ for provenance. They are evidence, not our text: correcting
   # a typo inside a copy would make it stop matching what we read, which
   # is the only reason the copy exists. This is why `agregate` at
   # _verify/double_ml_score_mixins.py:117 is left as upstream has it.
   "_verify/double_ml_*.py",
+  # Commit-message records kept under _verify/ are verbatim copies of what
+  # was actually committed. Same reasoning as the copies above, with a
+  # stricter reference: `git log` is the ground truth, so editing the text
+  # to satisfy the spell check would make it stop matching the commit it
+  # documents. `_commit_msg_rel_ci.txt:16` quotes the `agregate` finding
+  # verbatim while explaining why it was NOT corrected -- the word is the
+  # subject of the paragraph.
+  "_verify/_commit_msg_*.txt",
 ]
 
 [default.extend-words]

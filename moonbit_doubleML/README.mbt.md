@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) — on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.113.0** |
+| `moon.mod` version | **0.114.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | 179 in the library (87 production + 92 test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -357,6 +357,105 @@ binary-outcome CS-DID:
 | `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(extra)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)* |
+
+#Tuning
+
+`tune(param_set~, ...)` scores a caller-supplied grid of
+nuisance-learner combinations by cross-fitting the FIRST slot against
+the outcome, keeps the winner, and re-fits with it. The scoring loop,
+the fold draw and the argmin/argmax selection live in one shared place
+(`tune_score_grid` in `tune.mbt`); the per-estimator method is a thin
+wrapper that extracts its own data fields and calls its own `fit`.
+
+**19 of the 22 estimators** expose `tune`:
+`DoubleMLPLR` · `DoubleMLPLIV` · `DoubleMLLPLR` · `DoubleMLPLPR` ·
+`DoubleMLDID` · `DoubleMLDIDCS` · `DoubleMLDIDCSBinary` ·
+`DoubleMLDIDCrossSection` · `DoubleMLDIDMulti` · `DoubleMLDIDBinary` ·
+`DoubleMLIRM` · `DoubleMLIIVM` · `DoubleMLAPO` · `DoubleMLAPOS` ·
+`DoubleMLSSM` · `DoubleMLCVAR` · `DoubleMLPQ` · `DoubleMLQTE` ·
+`DoubleMLRDD`
+
+The remaining 3 are structural, not pending. `DoubleMLLPQ` and
+`DoubleMLPolicyTree` take no learner at all -- their `fit` is
+`fit(self)` -- so there is nothing to tune. `DoubleMLBLP` fits demand
+characteristics rather than a nuisance, and upstream tunes it over a
+different quantity than a grid of learners describes.
+
+What the grid is NOT: upstream's is a per-learner HYPERPARAMETER grid
+(`param_grid_func` + `_create_study` + `DMLOptunaResult`, an Optuna
+study). This is a flat list of learner PAIRINGS. The coverage is
+comparable; the search spaces are not. See the v0.108.0 entry in
+`CHANGELOG.md`.
+
+#Sample splitting
+
+`set_sample_splitting(smpls)` records a caller-supplied partition and
+**derives** `n_folds` and `n_rep` from it, exactly as upstream's
+`SampleSplittingMixin.set_sample_splitting` does -- a two-fold split
+handed to a model built with `n_folds = 5` produces a two-fold model.
+`sample_splitting()` reads the derived counts back, or `None` when no
+splitting was supplied.
+
+**12 of the 22 estimators** expose it: `DoubleMLPLR` ·
+`DoubleMLPLIV` · `DoubleMLLPLR` · `DoubleMLDID` · `DoubleMLIRM` ·
+`DoubleMLIIVM` · `DoubleMLAPO` · `DoubleMLAPOS` · `DoubleMLSSM` ·
+`DoubleMLCVAR` · `DoubleMLPQ` · `DoubleMLQTE`
+
+The other 10 are not pending work, and two of the reasons are worth
+stating because they are easy to mistake for oversights:
+
+  * **The DID cell family** (`DIDCS`, `DIDCSBinary`, `DIDCrossSection`,
+    `DIDMulti`) and `DIDBinary` cross-fit nothing directly -- they build
+    per-cell child estimators. Propagating a partition there is a
+    different mechanism from the row-level one used here, and a
+    partition has to mean something coherent ACROSS cells.
+  * **`PLPR`** is unconditionally unit-clustered: its folds are
+    unit-level on a transformed cross-section, so a row-level
+    partition is the wrong shape. Upstream takes `all_smpls_cluster`
+    alongside `all_smpls` for exactly this case; porting the cluster
+    half is its own decision.
+  * **`RDD` and `BLP`** never call `kfold` at all -- RDD is a
+    local-polynomial estimator with no cross-fitting, and BLP fits
+    demand characteristics.
+
+On any estimator, an externally supplied splitting applies to the
+ROW-LEVEL path only. Every cluster path keeps drawing unit-level folds;
+this is documented per method rather than enforced, because honouring an
+external splitting there needs a unit-indexed splitting and a
+unit-indexed validator, which `check_sample_splitting` is not.
+
+#RDD kernel and bandwidth
+
+`DoubleMLRDD` takes a kernel (`RDDKernel`: `Triangular` (default),
+`Normal`, `Uniform`, `Epanechnikov`, `Quadratic` -- upstream's
+`kernelfunc` names, accepted case-insensitively by
+`RDDKernel::parse`; an unknown name ABORTS rather than silently
+falling back). Before v0.110.0 the kernel was hardcoded to triangular in
+both weight sites and the bandwidth had to be supplied by the caller.
+
+`optimal_bandwidth()` implements the MSE-optimal procedure of Cattaneo,
+Calonico & Tchetgen (2020) -- the one `rdrobust` exposes through
+`bwselect`. The pilot is `silverman_bandwidth` of the RUNNING VARIABLE
+(never of the outcome), so the search grid is dimensionless and the
+answer does not change with the units `x` is measured in.
+
+`bandwidth_mse(h)` and `bandwidth_sigma4(nnmatch?)` are PUBLIC on
+purpose. They make the search's claim checkable from outside: at
+`h = h_pilot` the bias term is identically zero, so
+`bandwidth_mse(h_pilot) == bandwidth_sigma4() / n` exactly. Without
+those two accessors a gate could only verify that the search minimised
+its own criterion, not the criterion itself -- deleting the `b^4`
+variance term left everything green. `Sigma^4` uses `rdrobust`'s
+nearest-neighbour matching (`vce = "nn"`, `nnmatch = 3`), pairing each
+left residual with its `nnmatch` nearest right neighbours by
+running-variable distance.
+
+What is NOT here, and is not implied: upstream's CCT selector also
+produces a second, bias-correction bandwidth `b` and reports robust
+bias-corrected confidence intervals. This package produces the
+estimation bandwidth only. It is also local-LINEAR in the running
+variable where `rdrobust` estimates with `q = 2`. Both are recorded in
+the v0.110.0 / v0.113.0 entries in `CHANGELOG.md`.
 
 #Sandwich variance
 
