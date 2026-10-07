@@ -123,11 +123,31 @@ jobs:
 
       - name: Publish to Mooncakes
         run: |
-          # Distinguish "secret not configured" from "publish rejected".
-          # moon publish exits 255 for both (and for a version conflict),
-          # so without this the annotation gives no way to tell them apart.
+          # moon publish exits 255 for "secret missing", "secret has the
+          # wrong shape", "publish rejected" and "version already exists",
+          # so without a guard the annotation names none of them.
+          #
+          # WHAT THE SECRET MUST CONTAIN: the JSON BODY of
+          # ~/.moon/credentials.json -- an object with non-empty "token"
+          # and "username" keys (73 bytes on this account) -- NOT a bare
+          # token string. The step below writes $SECRET straight to that
+          # path, so a bare token produces a file that does not parse
+          # and moon publish fails with an opaque auth error.
+          #
+          # That is not hypothetical. The workflow this replaced reported
+          # "MOONCAKES_RIANTR_TOKEN and MOONCAKES_RIANTR_USERNAME must
+          # both be set", which was the shape error in disguise: it needed
+          # BOTH values because it was writing the object.
+          #
+          # Only the "missing" case is checked here. A shape check was
+          # tried and REMOVED rather than shipped: this repository has no
+          # bash or git-bash available locally, so no shell snippet could
+          # be verified before going into the release path, and an
+          # unverified guard risks a permanently red run -- the exact
+          # failure the 7186945 disablement was about. If the next
+          # release dies at auth, check the secret's shape first.
           if [ -z "$SECRET" ]; then
-            echo "::error::MOONCAKES_RIANTR_TOKEN is not set on this repository; moon publish cannot authenticate"
+            echo "::error::MOONCAKES_RIANTR_TOKEN is not set on this repository; moon publish cannot authenticate. If it IS set, check its SHAPE: it must be the JSON body of ~/.moon/credentials.json, not a bare token."
             exit 1
           fi
           mkdir -p "$HOME/.moon"
