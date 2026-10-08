@@ -169,6 +169,25 @@ fn bootstrap_indices(n_obs : Int, seed : Int) -> Array[Int] {
 /// `mtry` features at each split. Passing a fresh RNG per
 /// tree keeps the bootstrap sequence and the tree-internal
 /// feature sequence independent.
+///
+/// v0.117.0: `clf` and `hess` generalise the kernel from the
+/// regression-only case to classification. Both default to the
+/// regression behaviour and the `clf = false` path is kept
+/// BYTE-IDENTICAL to the pre-v0.117.0 code -- this file has
+/// Python-parity tests pinning regression tree output, so the
+/// split arithmetic below is not refactored, only branched around.
+///
+///   - `clf = false` splits minimise weighted MSE and leaves hold
+///     the node mean. This is the v0.56.0 behaviour.
+///   - `clf = true` splits minimise weighted Gini impurity and a
+///     node whose labels are already pure is never split.
+///   - `hess` empty keeps the leaf value at the node mean.
+///     `hess` non-empty (length `y.length()`) makes the leaf
+///     `SUM(y[idx]) / SUM(hess[idx])` -- the Newton step that
+///     gradient-boosting classification needs. Splitting still
+///     uses MSE on `y`, because that is what upstream fits: a
+///     `DecisionTreeRegressor` on the negative gradient, with
+///     only the leaf value overridden.
 fn cart_fit(
   x : Matrix,
   y : Array[Double],
@@ -178,11 +197,32 @@ fn cart_fit(
   min_samples_leaf : Int,
   mtry : Int,
   feature_rng : @random.Rand,
+  clf : Bool,
+  hess : Array[Double],
 ) -> CART {
   let n = sample_idx.length()
   // Stop conditions: leaf.
   if n < 2 * min_samples_leaf || depth >= max_depth {
-    return CART::Leaf(cart_leaf_value(y, sample_idx))
+    return CART::Leaf(cart_leaf_value(y, sample_idx, hess))
+  }
+  // v0.117.0: a pure node has zero impurity gain at every
+  // threshold, so a Gini sweep would still "find" a split at
+  // score 0 and recurse for nothing. Regression does not need
+  // this guard -- its sentinel already treats a constant node as
+  // score 0 and splits harmlessly -- so the guard is confined to
+  // the classification branch to leave regression untouched.
+  if clf {
+    let first_y = y[sample_idx[0]]
+    let mut pure = true
+    for i = 1; i < n; i = i + 1 {
+      if y[sample_idx[i]] != first_y {
+        pure = false
+        break
+      }
+    }
+    if pure {
+      return CART::Leaf(cart_leaf_value(y, sample_idx, hess))
+    }
   }
   let n_features = x.ncols
   let mtry_eff = if mtry <= 0 || mtry > n_features {
@@ -237,27 +277,57 @@ fn cart_fit(
         last_val = cur_val
         continue
       }
-      // Compute weighted MSE of (y - left_mean)^2 on left +
-      // (y - right_mean)^2 on right.
-      let mut ss_left = 0.0
-      let mut sum_left = 0.0
-      for j = 0; j <= i; j = j + 1 {
-        let yj = y[sorted_idx[j]]
-        sum_left = sum_left + yj
-        ss_left = ss_left + yj * yj
+      // Compute the split score. The regression branch is the
+      // v0.56.0 arithmetic VERBATIM -- same association, same
+      // divide -- because Python-parity tests pin it and a
+      // "equivalent" rewrite would move the last bits.
+      let score = if !clf {
+        // Weighted MSE of (y - left_mean)^2 on left +
+        // (y - right_mean)^2 on right.
+        let mut ss_left = 0.0
+        let mut sum_left = 0.0
+        for j = 0; j <= i; j = j + 1 {
+          let yj = y[sorted_idx[j]]
+          sum_left = sum_left + yj
+          ss_left = ss_left + yj * yj
+        }
+        let mean_left = sum_left / left_count.to_double()
+        ss_left = ss_left - sum_left * mean_left
+        let mut ss_right = 0.0
+        let mut sum_right = 0.0
+        for j = i + 1; j < n; j = j + 1 {
+          let yj = y[sorted_idx[j]]
+          sum_right = sum_right + yj
+          ss_right = ss_right + yj * yj
+        }
+        let mean_right = sum_right / right_count.to_double()
+        ss_right = ss_right - sum_right * mean_right
+        (ss_left + ss_right) / n.to_double()
+      } else {
+        // v0.117.0: weighted Gini impurity, matching
+        // `sklearn.tree.DecisionTreeClassifier`'s default
+        // criterion. For binary labels, `gini = 1 - p^2 - (1-p)^2`
+        // with `p` the node's mean label, which is exactly
+        // `2 * p * (1 - p)`. The mean label doubles as the class
+        // proportion, so the same accumulation serves both.
+        let mut sum_left = 0.0
+        for j = 0; j <= i; j = j + 1 {
+          sum_left = sum_left + y[sorted_idx[j]]
+        }
+        let mut sum_right = 0.0
+        for j = i + 1; j < n; j = j + 1 {
+          sum_right = sum_right + y[sorted_idx[j]]
+        }
+        let p_left = sum_left / left_count.to_double()
+        let p_right = sum_right / right_count.to_double()
+        let gini_left = 2.0 * p_left * (1.0 - p_left)
+        let gini_right = 2.0 * p_right * (1.0 - p_right)
+        (
+          left_count.to_double() * gini_left +
+          right_count.to_double() * gini_right
+        ) /
+        n.to_double()
       }
-      let mean_left = sum_left / left_count.to_double()
-      ss_left = ss_left - sum_left * mean_left
-      let mut ss_right = 0.0
-      let mut sum_right = 0.0
-      for j = i + 1; j < n; j = j + 1 {
-        let yj = y[sorted_idx[j]]
-        sum_right = sum_right + yj
-        ss_right = ss_right + yj * yj
-      }
-      let mean_right = sum_right / right_count.to_double()
-      ss_right = ss_right - sum_right * mean_right
-      let score = (ss_left + ss_right) / n.to_double()
       if score < best_score {
         best_score = score
         best_feature = f
@@ -271,7 +341,7 @@ fn cart_fit(
   // If no valid split was found (all thresholds skipped),
   // this node is a leaf.
   if best_feature < 0 {
-    return CART::Leaf(cart_leaf_value(y, sample_idx))
+    return CART::Leaf(cart_leaf_value(y, sample_idx, hess))
   }
   let left_tree = cart_fit(
     x,
@@ -282,6 +352,8 @@ fn cart_fit(
     min_samples_leaf,
     mtry,
     feature_rng,
+    clf,
+    hess,
   )
   let right_tree = cart_fit(
     x,
@@ -292,16 +364,38 @@ fn cart_fit(
     min_samples_leaf,
     mtry,
     feature_rng,
+    clf,
+    hess,
   )
   CART::Split(best_feature, best_threshold, left_tree, right_tree)
 }
 
 ///|
-/// Per-leaf value: mean of `y` over the rows that landed in
-/// this node. Returns 0.0 for an empty sample (defensive;
-/// `cart_fit` should never produce an empty sample because
-/// we early-return on `n < 2 * min_samples_leaf`).
-fn cart_leaf_value(y : Array[Double], sample_idx : Array[Int]) -> Double {
+/// Per-leaf value. With `hess` empty this is the mean of `y` over
+/// the rows in this node -- the v0.56.0 behaviour, and the right
+/// leaf value for BOTH regression trees (constant predictor per
+/// leaf) and Gini classification trees (where `mean(y)` over
+/// binary labels IS the class proportion `P(y = 1 | node)`).
+///
+/// v0.117.0: when `hess` is non-empty the leaf becomes the Newton
+/// step `SUM(y[idx]) / SUM(hess[idx])`, which is what
+/// `GradientBoostingClassifier` uses in place of the mean. With
+/// `y` holding the negative gradient and `hess` the second
+/// derivative of the loss, that ratio maximises the local
+/// quadratic approximation -- and it is NOT the mean of the
+/// negative gradient, because the denominator varies by leaf.
+///
+/// Returns 0.0 for an empty sample (defensive; `cart_fit` should
+/// never produce an empty sample because we early-return on
+/// `n < 2 * min_samples_leaf`), and 0.0 rather than NaN when the
+/// Newton denominator sums to zero -- reachable on a degenerate
+/// leaf, which is exactly why the guard exists and not just
+/// `if h == 0.0 { 1.0 }` as some implementations do.
+fn cart_leaf_value(
+  y : Array[Double],
+  sample_idx : Array[Int],
+  hess : Array[Double],
+) -> Double {
   let n = sample_idx.length()
   if n == 0 {
     return 0.0
@@ -310,7 +404,17 @@ fn cart_leaf_value(y : Array[Double], sample_idx : Array[Int]) -> Double {
   for i = 0; i < n; i = i + 1 {
     s = s + y[sample_idx[i]]
   }
-  s / n.to_double()
+  if hess.length() == 0 {
+    return s / n.to_double()
+  }
+  let mut h = 0.0
+  for i = 0; i < n; i = i + 1 {
+    h = h + hess[sample_idx[i]]
+  }
+  if h == 0.0 {
+    return 0.0
+  }
+  s / h
 }
 
 ///|
@@ -395,6 +499,8 @@ impl Learner for RFLearner with fn fit(self, x, y) {
         self.min_samples_leaf,
         self.mtry,
         feature_rng,
+        false,
+        [],
       )
       trees.push(tree)
     }

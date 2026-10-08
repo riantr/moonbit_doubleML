@@ -1186,6 +1186,9 @@ fn cross_fit_predict_inner_dispatch(
     RandomForest(rf) => cross_fit_predict_inner(rf, x, targets, folds)
     GradientBoosting(gb) => cross_fit_predict_inner(gb, x, targets, folds)
     LogisticRegression(lr) => cross_fit_predict_inner(lr, x, targets, folds)
+    RandomForestClassifier(rf) => cross_fit_predict_inner(rf, x, targets, folds)
+    GradientBoostingClassifier(gb) =>
+      cross_fit_predict_inner(gb, x, targets, folds)
   }
 }
 

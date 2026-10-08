@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.116.0** |
+| `moon.mod` version | **0.117.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **181** `.mbt` files (**87** production + **94** test) |
+| `.mbt` file count | **184** `.mbt` files (**89** production + **95** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **865 / 865 / 865** |
-| Tests (wasm-gc) | **871 / 871** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **878 / 878 / 878** |
+| Tests (wasm-gc) | **884 / 884** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -196,7 +196,7 @@ internal assertion could ever have caught it. `_verify/mut_v116_rdd.ps1`
 records the equivalent.
 
 **Docs & demos** -- 6 `doc/<NNN_...>/` tutorials targeting `wasm-gc`,
-plus 14 `examples/<bin>/` driver binaries (all listed in
+plus 19 `examples/<bin>/` driver binaries (all listed in
 `moon.work`), of which `examples/api_server/` is an HTTP service
 built directly on `moonbitlang/async@0.20.3` -- no third-party HTTP
 framework is pulled in.
@@ -207,13 +207,34 @@ repo). Reproducible builds, minimal supply-chain surface.
 
 **Learner injection via `LearnerDispatch`** -- every estimator's
 `new()` / `fit()` accept `ml_g` / `ml_m` / `ml_l` / `ml_r` typed
-optionals. Default is `LearnerDispatch::linear_regression()` (OLS);
-v0.62.0+ also accepts `LearnerDispatch::logistic_regression(LR)` for
-LPLR's binary-classification slots. Built-in learners:
-`LinearRegression`, `ConstantLearner`, `NoopLearner`,
-`RFLearner` (Breiman 2001 regression), `GBLearner` (Friedman 2001
-regression). `RFLearner` and `GBLearner` now reach the 5 specialised
-internals -- `DoubleMLDIDCrossSection::crossfit_nuisance`,
+optionals. Default is `LearnerDispatch::linear_regression()` (OLS).
+Built-in learners:
+
+| learner | kind | note |
+|---|---|---|
+| `LinearRegression` | regression | OLS, the default |
+| `LogisticRegression` | **classification** | binary, IRLS Newton-Raphson |
+| `RFClassifier` | **classification** | v0.117.0+, Breiman 2001, Gini splits |
+| `GBClassifier` | **classification** | v0.117.0+, Friedman 2001, binary log loss |
+| `RFLearner` | regression | Breiman 2001, MSE splits |
+| `GBLearner` | regression | Friedman 2001, squared-error loss |
+| `ConstantLearner`, `NoopLearner` | either | constant / zero predictors |
+
+Upstream `doubleml` is learner-agnostic -- `ml_g` / `ml_m` are any
+object with `fit` / `predict` -- so it inherits scikit-learn's whole
+learner surface. This package ships eight. The four tree/logistic
+learners' `predict` returns `P(y = 1 | x)` for classification, never a
+hard label, because DML's AIPW correction divides by the fitted
+propensity.
+
+**Not yet ported on the learner side** (v0.117.0): `sample_weight` in
+`fit` (upstream's protocol is `fit(X, y, sample_weight)`; this package
+is `fit(x, y)`, so no weighted learner can be expressed), regularized
+linear learners (Lasso / ElasticNet / Ridge), and GLM families (Poisson,
+Gamma, negative binomial).
+
+`RFLearner`, `GBLearner`, `RFClassifier` and `GBClassifier` reach the 5
+specialised internals -- `DoubleMLDIDCrossSection::crossfit_nuisance`,
 `DoubleMLDIDCSBinary::cs_bin_crossfit_nuisance`,
 `DoubleMLPQ::solve_pq` / `DoubleMLQTE::solve_pq`,
 `DoubleMLCVAR::cvar_inner_crossfit`, and
@@ -256,12 +277,18 @@ fit()`, `@moonbit_doubleML.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
 
 ##Examples
 
-14 `examples/<bin>/` directories in `moon.work`. 13 run end-to-end on
-synthetic DGPs: 12 are CLI-style numeric demos (print true-vs-estimated
-theta and a 95 % CI); the 13th -- `examples/api_server/` -- is an HTTP
-service. The 14th -- `examples/consumer_demo/` -- is the library-user
+19 `examples/<bin>/` directories in `moon.work`. 18 run end-to-end on
+synthetic DGPs: 17 are CLI-style numeric demos (print true-vs-estimated
+theta and a 95 % CI); the 18th -- `examples/api_server/` -- is an HTTP
+service. The 19th -- `examples/consumer_demo/` -- is the library-user
 pattern that mirrors what an external `moon add riantr/moonbit_doubleML`
 consumer would write.
+
+`examples/apo/` and `examples/apos/` are the pair worth reading together:
+APO returns the potential outcome AT one treatment level, APOS returns
+those levels plus pairwise CONTRASTS, and a contrast is off by the
+reference level's entire outcome. `examples/apo/` prints both so the gap
+is visible rather than described.
 
 | Driver | Model | DGP | True theta |
 |--------|-------|-----|--------|
@@ -273,7 +300,12 @@ consumer would write.
 | `examples/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
 | `examples/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
 | `examples/plpr`, `examples/lplr` | `DoubleMLPLPR` / `DoubleMLLPLR` | Static-panel PLR / partially logistic regression | 1.0 |
-| `examples/apos`, `examples/cvar` | `DoubleMLAPOS` / `DoubleMLCVAR` | APO policy score / CVaR | 1.0 |
+| `examples/apo`, `examples/apos` | `DoubleMLAPO` / `DoubleMLAPOS` | 3-level discrete treatment: the LEVEL `E[Y(t)]` vs the CONTRAST | 1.0 / 2.5 |
+| `examples/cvar` | `DoubleMLCVAR` | CVaR | 1.0 |
+| `examples/ssm` | `DoubleMLSSM` | Sharp synthetic treatment | 1.0 |
+| `examples/cluster` | `DoubleMLPLIV` / `DoubleMLPLR` + `cluster_*` | Clustered data, cluster-robust SEs | 1.0 |
+| `examples/splitting` | `DoubleMLPLR` + `set_sample_splitting` | External sample splitting | 1.0 |
+| `examples/pava` | `pava` core | Isotonic regression, exact (no MC error) | 1.0 |
 | `examples/fuzz` | wrappers | Random-property fuzz harness across 12 surfaces | n/a |
 | `examples/consumer_demo` | library-user pattern | Minimal end-to-end PLR (no estimator-specific extras) | 1.0 |
 | `examples/api_server` | `DoubleMLPLR` + `DoubleMLIRM` | HTTP service -- see below | n/a |
@@ -404,7 +436,7 @@ doc/                     <- wasm-gc-targeted numbered tutorials
   ...
   006_python_check/
 
-examples/                <- 14 driver binaries (all listed in moon.work)
+examples/                <- 19 driver binaries (all listed in moon.work)
   main/                  <- 12 estimators, one perfect-DGP run each
   datasets/              <- 401(k)-style ATE / ATT recovery
   did_binary/            <- 2-period panel DID

@@ -183,6 +183,8 @@ impl Learner for GBLearner with fn fit(self, x, y) {
         self.min_samples_leaf,
         self.mtry,
         feature_rng,
+        false,
+        [],
       )
       trees.push(tree)
       // Update current_pred[i] += learning_rate * tree(x[i]).

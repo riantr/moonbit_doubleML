@@ -2,6 +2,7 @@ members = [
   "moonbit_doubleML",
   "doc",
   "examples/api_server",
+  "examples/apo",
   "examples/apos",
   "examples/cluster",
   "examples/consumer_demo",

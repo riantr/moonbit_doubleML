@@ -270,6 +270,14 @@ fn learner_dispatch_tag(l : LearnerDispatch) -> UInt64 {
     Noop(_) => "noop"
     RandomForest(_) => "random_forest"
     GradientBoosting(_) => "gradient_boosting"
+    // v0.117.0: the two classifiers get their own tags. This is not
+    // cosmetic -- the tag is half the memoize key, so a classifier
+    // that shared a tag with its regression sibling would read the
+    // regressor's cached fit back and return probabilities from a
+    // tree fitted with MSE splits. The classifier tags are
+    // deliberately NOT derived from the regressor strings above.
+    RandomForestClassifier(_) => "random_forest_classifier"
+    GradientBoostingClassifier(_) => "gradient_boosting_classifier"
   }
   let mut h : UInt64 = 0x9e3779b97f40b847UL
   for c in kind {

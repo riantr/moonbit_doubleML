@@ -764,5 +764,9 @@ pub fn double_cross_fit_predict_dispatch(
       double_cross_fit_predict(gb, x, y, outer, n_inner, seed)
     LogisticRegression(lr) =>
       double_cross_fit_predict(lr, x, y, outer, n_inner, seed)
+    RandomForestClassifier(rf) =>
+      double_cross_fit_predict(rf, x, y, outer, n_inner, seed)
+    GradientBoostingClassifier(gb) =>
+      double_cross_fit_predict(gb, x, y, outer, n_inner, seed)
   }
 }

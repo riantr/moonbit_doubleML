@@ -135,6 +135,15 @@ pub enum LearnerDispatch {
   /// IRLS Newton-Raphson). v0.62.0+: added for LPLR plumbing.
   /// `predict` returns P(y = 1 | x) for every row.
   LogisticRegression(LogisticRegression)
+  /// Pure-MoonBit random-forest CLASSIFICATION (Breiman 2001,
+  /// Gini splits). v0.117.0+: the first nonlinear classifier, added so
+  /// the binary-outcome estimators have a bagged option for `ml_m`
+  /// that is not logistic. `predict` returns P(y = 1 | x).
+  RandomForestClassifier(RFClassifier)
+  /// Pure-MoonBit gradient-boosting CLASSIFICATION (Friedman 2001,
+  /// binary log loss, Newton leaf values). v0.117.0+: the boosted
+  /// counterpart. `predict` returns P(y = 1 | x).
+  GradientBoostingClassifier(GBClassifier)
 } derive(Debug)
 
 ///|
@@ -189,6 +198,29 @@ pub fn LearnerDispatch::logistic_regression(
 }
 
 ///|
+/// Wrap an `RFClassifier` in a `LearnerDispatch`. v0.117.0+.
+///
+/// `predict` returns `P(y = 1 | x)`, so this is drop-in for the
+/// binary-classification nuisance slots (`ml_m`, `ml_M`, `ml_a`)
+/// alongside `logistic_regression`.
+pub fn LearnerDispatch::random_forest_classifier(
+  rf : RFClassifier,
+) -> LearnerDispatch {
+  RandomForestClassifier(rf)
+}
+
+///|
+/// Wrap a `GBClassifier` in a `LearnerDispatch`. v0.117.0+.
+///
+/// `predict` returns `P(y = 1 | x)` -- see
+/// `LearnerDispatch::random_forest_classifier`.
+pub fn LearnerDispatch::gradient_boosting_classifier(
+  gb : GBClassifier,
+) -> LearnerDispatch {
+  GradientBoostingClassifier(gb)
+}
+
+///|
 /// Cross-fit a `LearnerDispatch` over the given folds. This
 /// is the dispatch wrapper around `cross_fit_predict[T : Learner]`
 /// (which is generic in `T`); each match arm binds a concrete
@@ -209,6 +241,8 @@ pub fn cross_fit_predict_dispatch(
     RandomForest(rf) => cross_fit_predict(rf, x, y, folds)
     GradientBoosting(gb) => cross_fit_predict(gb, x, y, folds)
     LogisticRegression(lr) => cross_fit_predict(lr, x, y, folds)
+    RandomForestClassifier(rf) => cross_fit_predict(rf, x, y, folds)
+    GradientBoostingClassifier(gb) => cross_fit_predict(gb, x, y, folds)
   }
 }
 
@@ -236,5 +270,7 @@ pub fn fit_predict_one_dispatch(
     RandomForest(rf) => rf.fit(x_train, y_train).predict(x_test)
     GradientBoosting(gb) => gb.fit(x_train, y_train).predict(x_test)
     LogisticRegression(lr) => lr.fit(x_train, y_train).predict(x_test)
+    RandomForestClassifier(rf) => rf.fit(x_train, y_train).predict(x_test)
+    GradientBoostingClassifier(gb) => gb.fit(x_train, y_train).predict(x_test)
   }
 }

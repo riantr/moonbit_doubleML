@@ -9,6 +9,275 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.117.0] -- nonlinear classifiers: `ml_m` stops being logistic-only
+
+### What was missing
+
+Every DML estimator's propensity nuisance `ml_m` is a **classifier**
+whenever the treatment is binary. Upstream `doubleml` is
+learner-agnostic -- `ml_g` / `ml_m` are any object with
+`fit(X, y, sample_weight)` / `predict(X)` -- so it silently inherits
+scikit-learn's whole classifier surface.
+
+This port had exactly one classifier, `LogisticRegression`. Both tree
+learners were regression-only: `rfl.mbt` split on squared error and
+`gbl.mbt` used squared-error loss. So `DoubleMLLPLR`,
+`DoubleMLDIDBinary`, `DoubleMLDIDCSBinary`, RDD's fuzzy path and any
+binary-outcome IV problem had **no nonlinear option for `ml_m` at
+all**.
+
+The gap was found while auditing the learner menu for something else.
+v0.116.0's `examples/apo/` turned up that the default
+`propensity_clip = 1e-6` is not safe against a propensity model that
+can extrapolate -- and propensity handling turned out to be the package's
+systemic soft spot, showing up in three unrelated places.
+
+### The measurement that justifies it
+
+XOR, the textbook nonlinearly-separable problem, from
+`_verify/probe_v117.mbt`:
+
+| learner | accuracy |
+|---|---|
+| `RFClassifier` | **1.000** |
+| `GBClassifier` | **1.000** |
+| `LogisticRegression` | **0.500** (exactly chance) |
+
+A linear model scoring chance on XOR is not a defect, it is the
+definition of linear. The point is that the package had no way to reach
+the other number.
+
+### New public surface
+
+- **`RFClassifier`** (`rfclf.mbt`) -- Breiman 2001 random forest, Gini
+  splits, pure-node guard, leaf = class proportion.
+- **`GBClassifier`** (`gbclf.mbt`) -- Friedman 2001 gradient boosting
+  under **binary log loss**: `F_0` is the log-*odds* of the base rate,
+  the negative gradient is `y - p`, the Hessian is `p(1-p)`, and the
+  leaf is the **Newton step** `SUM(g)/SUM(h)`, not `mean(g)`.
+- Both added to `LearnerDispatch` plus all four dispatch sites
+  (`cross_fit_predict_dispatch`, `fit_predict_one_dispatch`,
+  `double_cross_fit_predict_dispatch`, LPLR's
+  `cross_fit_predict_inner`).
+
+`predict` returns `P(y = 1 | x)` for both, never a hard label: DML's
+AIPW correction divides by the fitted propensity, so a 0.5 threshold
+would make the denominator 0 or 1.
+
+### One kernel generalised, regression untouched
+
+`cart_fit` gained a `clf : Bool` and a `hess : Array[Double]`. The
+`clf = false` path is the v0.56.0 arithmetic **verbatim** -- same
+association, same divide -- because Python-parity tests pin regression
+tree output and an "equivalent" rewrite would move the last bits.
+`RFClassifier` gets Gini splits; `GBClassifier` gets **MSE** splits
+with Newton leaves, because scikit-learn fits a
+`DecisionTreeRegressor` to the negative gradient and overrides only the
+leaf values. Using Gini there would be a plausible-looking deviation.
+
+Regression was verified unchanged at **865/865** after the
+generalisation, before a single classifier existed.
+
+### Two things that were easy to get wrong
+
+1. **`F_0` is the log-odds, not the base rate.** Copying
+   `GBLearner`'s `initial = mean(y)` mis-calibrates every prediction.
+   Pinned by `v117_gb_initial_is_the_log_odds_not_the_base_rate`, which
+   asserts `initial == 0.0` exactly on a balanced fixture.
+2. **The leaf is the Newton step.** `mean(g)` ignores that the local
+   curvature `mean(h)` varies by leaf, so confident and unconfident
+   leaves get the same step. Enforced by mutation M2 rather than by a
+   gate, since distinguishing the two needs the alternative
+   implementation to compare against.
+
+### A gate I had to throw away, and why
+
+The first draft asserted the depth-1 stump scores `<= 0.30`, from a
+probe that had recorded 0.25. It failed. The investigation is the more
+useful part, so it is recorded in the test's header and here.
+
+MEASURED at three sample sizes on the same generator:
+
+| `n` | fraction of predictions below 0.5 | predicted range | accuracy |
+|---|---:|---|---:|
+| 200 | 200 / 200 | [0.4935, 0.4981] | 0.50 |
+| 400 | 100 / 400 | [0.4971, 0.5065] | 0.25 |
+| 800 | 0 / 800 | [0.5003, 0.5021] | 0.50 |
+
+With `mtry = 1` on two features, a stump draws one random feature per
+node, so every leaf's value is a bootstrap mean of a 50/50 mixture --
+0.5 plus sampling noise of about `+-0.005`. Whether a quadrant's average
+lands above or below the 0.5 threshold is arbitrary, and the whole
+prediction vector sits in a razor-thin band straddling 0.5. The
+accuracy swung between chance and *anti*-chance on nothing but sample
+size.
+
+**A gate on the `accuracy` of a model sitting on a decision boundary is
+a gate on floating-point noise.** The bound is now 0.75 -- the most a
+degenerate rule can score on a balanced binary fixture -- so it holds at
+every measured size, and it asserts the claim that is actually stable:
+depth 1 cannot separate XOR, depth 2 can.
+
+### Mutation harness
+
+`_verify/mut_v117_learner.ps1`, 10 mutations. **9 killed, 1 provably
+equivalent, 0 inconclusive.**
+
+M4 and M5 are the pair worth reading. They are the two halves of the
+Newton step, and either alone is a plausible implementation: a sign
+error still yields a monotone classifier that gets XOR right with
+flipped probabilities, and a constant Hessian yields correct-shaped
+probabilities that are badly calibrated. **Neither is caught by an
+accuracy assertion** -- both need the calibration gates.
+
+M8 changes no learner at all: it makes a classification fit read a
+cached **regression** fit, so every number stays finite and plausible.
+It dies only on `v117_classifier_cache_keys_differ_from_regression_siblings`,
+which asserts on `hash_hyperparams` because that is the observable
+contract.
+
+### The harness lied about all ten of them
+
+For two runs the harness reported **10/10 killed**, including M1 -- which
+contradicted the algebra below. The cause was a logic error I introduced
+when generalising the v0.116.0 harness:
+
+```powershell
+$diedInTest = ($null -ne $tLine) -or ($null -ne $activeLine)
+...
+} elseif ($diedInTest) {
+  Write-Output "  VERDICT KILLED"
+```
+
+`$diedInTest` is true whenever `$tLine` is non-null -- that is, whenever
+the suite ran **at all**, passing or failing. The `$testsRed` flag was
+computed one line above and then never read. So the `KILLED` branch fired
+unconditionally and the harness could not report a survivor at all. It
+looked like a perfect score because it was reporting nothing.
+
+The corrected condition is `$abortedInTest -or $testsRed`, where
+`$abortedInTest` requires the summary line to be **absent**.
+
+Two things worth generalising:
+
+- **A harness that cannot report SURVIVED will report KILLED forever.**
+  The v0.117.0 harness now declares one mutation expected-equivalent
+  precisely so it is a canary: if that one ever prints KILLED, the
+  verdict logic has broken again.
+- **"All killed" is only evidence if "killed" is reachable as a
+  non-default outcome.** Before this round the v0.115.0 and v0.116.0
+  harnesses had that property; this one had been quietly voided by a
+  refactor.
+
+### M1 is equivalent, and the doc comment that claimed otherwise is corrected
+
+M1 replaces the Gini split criterion with MSE. It survived -- and the
+gate I had written to catch it, whose docs claimed exactness would
+distinguish them, was **false**.
+
+For a node of binary labels with proportion `p`:
+
+    sum (y_i - p)^2  =  n * p * (1 - p)  =  (n / 2) * [2p(1-p)]
+                                    MSE              Gini
+
+The weighted MSE score is **exactly half** the weighted Gini score at
+every candidate split, in exact arithmetic. Verified numerically in
+`_verify/_m1_gini_vs_mse.py`: `2*MSE` matches Gini to **3.9e-16**
+relative over 3000 random binary nodes, the argmin agrees in **2999 of
+3000** (the one miss is a floating-point tie), and on **multi-class**
+labels -- where the identity breaks -- they differ in 32 of 3000.
+
+Applying M1 leaves the suite at **878/878**: same trees, same
+predictions, no gate moves. Since both classifiers refuse a non-binary
+`y`, the equivalence covers this API's entire surface -- there is no
+input on which the choice is observable.
+
+M1 is declared expected-equivalent with the proof, and the test's doc
+comment was corrected rather than the assertion bent to match it.
+Keeping `cart_fit`'s Gini branch is still right -- it is what
+scikit-learn does and what a future multi-class extension would need --
+but the package should not claim a gate protects it, because none can.
+
+### A malformed mutation, and what INCONCLUSIVE actually means
+
+M4 was first written `neg_grad[i] = p - y`, which **does not compile**:
+`p` is a `Double` and `y` is an `Array[Double]`. The harness reported
+INCONCLUSIVE, and that verdict was **correct** -- the question "do the
+assertions catch it" was never asked. The mutation was the thing that
+was broken; the fix was `p - y[i]`.
+
+The harness now separates three outcomes instead of two:
+
+| verdict | meaning |
+|---|---|
+| KILLED | suite ran and did not pass -- including when the test binary dies before printing anything |
+| SURVIVED | suite ran and passed |
+| INCONCLUSIVE | the mutation **does not compile** |
+
+The KILLED row used to be reserved for "red test count", which misses a
+binary that segfaults or aborts before the summary line.
+
+### A process note: don't touch the tree during a harness run
+
+While one harness was running I went to reproduce a mutation standalone,
+which read a source file mid-flight -- already mutated -- and wrote it
+back, leaving the marker in place for later mutations. That produced a
+bogus verdict and sent me down a false trail for two runs. The same
+shape has now cost time three times in this project (the v0.116.0
+wasm/js run showed it too).
+
+**Once a mutation harness starts, do not read, write, copy, or rebuild
+anything it targets until it reports.** The harness runs ~10 full
+suite passes; it is not worth parallelising against.
+
+### A malformed mutation, and what INCONCLUSIVE actually means
+
+M4 was first written `neg_grad[i] = p - y`, which **does not compile**:
+`p` is a `Double` and `y` is an `Array[Double]`. The harness reported
+INCONCLUSIVE, and that verdict was **correct** -- the question "do the
+assertions catch it" was never asked. The mutation was the thing that
+was broken; the fix was `p - y[i]`.
+
+The harness now separates three outcomes instead of two:
+
+| verdict | meaning |
+|---|---|
+| KILLED | suite ran and did not pass -- including when the test binary dies before printing anything |
+| SURVIVED | suite ran and passed |
+| INCONCLUSIVE | the mutation **does not compile** |
+
+The KILLED row used to be reserved for "red test count", which misses a
+binary that segfaults or aborts before the summary line. A mutation that
+compiles and then breaks the run has still broken the run.
+
+### Deliberate non-defaults, stated rather than inherited
+
+`min_samples_leaf = 5` for both learners, where scikit-learn's
+classifier default is 1. This matches the package's own regression
+siblings, and dropping a tree learner to one leaf in a DML nuisance fit
+is an overfitting trap on small cross-fit folds. Both are documented in
+the file headers and pinned in the tests so the choice is visible.
+
+### Still missing after this round
+
+The learner surface is not closed. Carried forward:
+
+- **`sample_weight` on the `Learner` trait.** `fit` is
+  `fit(self, x, y)`; upstream's protocol is
+  `fit(X, y, sample_weight)`. This is a protocol-level narrowing: *no*
+  weighted learner can currently be expressed.
+- **Regularized linear learners.** No Lasso / ElasticNet / Ridge in the
+  DML nuisance path. The only ridge in the package is inside
+  `blp_policy.mbt`, for BLP demand characteristics.
+- **GLM families.** Only Gaussian OLS and binary logistic; no Poisson
+  (count outcomes feeding `DoubleMLQTE`), Gamma, or negative binomial.
+- **The propensity-analysis subsystem.** Upstream's
+  `utils/propensity_score_processing.py` + `utils/_propensity_score.py`
+  (`ps_dm`, the DR-learner pseudo-outcome) have no counterpart here,
+  and `did_cs_binary.mbt` documents `ps_processor_config` collapsed to a
+  single `propensity_clip` with the `isotonic` and `cv_calibration`
+  paths not ported.
+
 ## [0.116.0] -- `vce = "nn"`: the robust variance, which also turned out to find a bug in v0.115.0
 
 ### What was missing
