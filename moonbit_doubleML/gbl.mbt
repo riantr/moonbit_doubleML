@@ -68,7 +68,7 @@ pub extend GBLearner with @moonbitlang/core/debug.Debug::{to_repr}
 /// `unused_value` under `--deny-warn`. Same pattern as the
 /// v0.54.0 `ConstantLearner` / `NoopLearner` and v0.56.0
 /// `RFLearner` setup.
-pub extend GBLearner with Learner::{fit, predict}
+pub extend GBLearner with Learner::{predict}
 
 ///|
 pub fn GBLearner::new(
@@ -115,7 +115,18 @@ pub fn GBLearner::initial(self : GBLearner) -> Double {
 /// Fit the gradient-boosting ensemble. Builds `n_trees` CART
 /// trees sequentially, each fitted to the negative gradient
 /// (residual) of the current ensemble.
-impl Learner for GBLearner with fn fit(self, x, y) {
+///
+/// v0.118.0: `w` carries per-row weights. The residual stays RAW
+/// (`y - F`) and the weights go to `cart_fit`, which makes the leaf
+/// the weighted mean `SUM(w*r)/SUM(w)`. Pre-multiplying the residual
+/// by `w` instead would SQUARE the weights in the leaf and is the
+/// mistake scikit-learn's `sample_weight` design exists to prevent.
+pub fn GBLearner::fit_weighted(
+  self : GBLearner,
+  x : Matrix,
+  y : Array[Double],
+  w : Array[Double],
+) -> GBLearner {
   try {
     require(x.nrows == y.length())
     require(self.n_trees >= 1)
@@ -123,6 +134,10 @@ impl Learner for GBLearner with fn fit(self, x, y) {
     require(self.min_samples_leaf >= 1)
     require(self.learning_rate > 0.0 && self.learning_rate <= 1.0)
     require(self.subsample > 0.0 && self.subsample <= 1.0)
+    require(w_is_unweighted(w) || w.length() == x.nrows)
+    for i = 0; i < w.length(); i = i + 1 {
+      require(w[i] >= 0.0)
+    }
     let n_obs = x.nrows
     // Initial F_0 = mean(y) (squared-error-optimal constant).
     let mut sum_y = 0.0
@@ -173,6 +188,13 @@ impl Learner for GBLearner with fn fit(self, x, y) {
       for j = 0; j < sample_idx.length(); j = j + 1 {
         y_sub[j] = residual[sample_idx[j]]
       }
+      // v0.118.0: the weights follow the SAME subsample remap as the
+      // rows, so `cart_fit` sees them aligned with `x_sub`/`y_sub`.
+      let w_sub : Array[Double] = Array::make(sample_idx.length(), 0.0)
+      for j = 0; j < sample_idx.length(); j = j + 1 {
+        w_sub[j] = if w_is_unweighted(w) { 0.0 } else { w[sample_idx[j]] }
+      }
+      let w_eff = if w_is_unweighted(w) { [] } else { w_sub }
       let feature_rng = chacha8_rng(self.bootstrap_seed + self.n_trees + r)
       let tree = cart_fit(
         x_sub,
@@ -185,6 +207,7 @@ impl Learner for GBLearner with fn fit(self, x, y) {
         feature_rng,
         false,
         [],
+        w_eff,
       )
       trees.push(tree)
       // Update current_pred[i] += learning_rate * tree(x[i]).
@@ -198,6 +221,23 @@ impl Learner for GBLearner with fn fit(self, x, y) {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Unweighted fit. v0.118.0 moved the body to it_weighted; this
+/// inherent method stays so every existing GBLearner::new(..).fit(x, y)`n/// call site -- including the wbtests -- is unchanged. An inherent
+/// method wins over the trait method of the same name.
+pub fn GBLearner::fit(
+  self : GBLearner,
+  x : Matrix,
+  y : Array[Double],
+) -> GBLearner {
+  self.fit_weighted(x, y, [])
+}
+
+///|
+impl Learner for GBLearner with fn fit(self, x, y, w) {
+  self.fit_weighted(x, y, w)
 }
 
 ///|

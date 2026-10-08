@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.117.0** |
+| `moon.mod` version | **0.118.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **184** `.mbt` files (**89** production + **95** test) |
+| `.mbt` file count | **185** `.mbt` files (**89** production + **96** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **878 / 878 / 878** |
-| Tests (wasm-gc) | **884 / 884** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **890 / 890 / 890** |
+| Tests (wasm-gc) | **896 / 896** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -210,15 +210,15 @@ repo). Reproducible builds, minimal supply-chain surface.
 optionals. Default is `LearnerDispatch::linear_regression()` (OLS).
 Built-in learners:
 
-| learner | kind | note |
+| learner | kind | `sample_weight` | note |
 |---|---|---|
-| `LinearRegression` | regression | OLS, the default |
-| `LogisticRegression` | **classification** | binary, IRLS Newton-Raphson |
-| `RFClassifier` | **classification** | v0.117.0+, Breiman 2001, Gini splits |
-| `GBClassifier` | **classification** | v0.117.0+, Friedman 2001, binary log loss |
-| `RFLearner` | regression | Breiman 2001, MSE splits |
-| `GBLearner` | regression | Friedman 2001, squared-error loss |
-| `ConstantLearner`, `NoopLearner` | either | constant / zero predictors |
+| `LinearRegression` | regression | WLS | OLS, the default |
+| `LogisticRegression` | **classification** | weighted IRLS | binary, IRLS Newton-Raphson |
+| `RFClassifier` | **classification** | weighted | v0.117.0+, Breiman 2001, Gini splits |
+| `GBClassifier` | **classification** | weighted Newton leaf | v0.117.0+, Friedman 2001, binary log loss |
+| `RFLearner` | regression | weighted splits/leaf | Breiman 2001, MSE splits |
+| `GBLearner` | regression | weighted leaf | Friedman 2001, squared-error loss |
+| `ConstantLearner`, `NoopLearner` | either | ignored | constant / zero predictors |
 
 Upstream `doubleml` is learner-agnostic -- `ml_g` / `ml_m` are any
 object with `fit` / `predict` -- so it inherits scikit-learn's whole
@@ -227,11 +227,11 @@ learners' `predict` returns `P(y = 1 | x)` for classification, never a
 hard label, because DML's AIPW correction divides by the fitted
 propensity.
 
-**Not yet ported on the learner side** (v0.117.0): `sample_weight` in
-`fit` (upstream's protocol is `fit(X, y, sample_weight)`; this package
-is `fit(x, y)`, so no weighted learner can be expressed), regularized
-linear learners (Lasso / ElasticNet / Ridge), and GLM families (Poisson,
-Gamma, negative binomial).
+**Not yet ported on the learner side** (v0.118.0): regularized linear
+learners (Lasso / ElasticNet / Ridge) and GLM families (Poisson, Gamma,
+negative binomial). `sample_weight` landed in v0.118.0 -- the trait
+is `fit(x, y, sample_weight)` with an empty array meaning unweighted,
+matching upstream's protocol and scikit-learn's `sample_weight=None`.
 
 `RFLearner`, `GBLearner`, `RFClassifier` and `GBClassifier` reach the 5
 specialised internals -- `DoubleMLDIDCrossSection::crossfit_nuisance`,

@@ -94,7 +94,7 @@ pub extend RFClassifier with @moonbitlang/core/debug.Debug::{to_repr}
 /// Promote the `Learner` trait methods as explicit methods so the
 /// trait impls below are not reported as `unused_value` under
 /// `--deny-warn`. Same pattern as `RFLearner`.
-pub extend RFClassifier with Learner::{fit, predict}
+pub extend RFClassifier with Learner::{predict}
 
 ///|
 pub fn RFClassifier::new(
@@ -138,14 +138,29 @@ pub fn RFClassifier::n_trees(self : RFClassifier) -> Int {
 /// plausible-looking probability. `LogisticRegression` is lenient for
 /// historical reasons; this learner is new, and there is no
 /// byte-compatibility to preserve.
-impl Learner for RFClassifier with fn fit(self, x, y) {
+///
+/// v0.118.0: `w` carries per-row weights into `cart_fit`, which turns
+/// both the leaf proportion and the Gini criterion into their WEIGHTED
+/// forms -- scikit-learn's semantics. An EMPTY `w` keeps every
+/// accumulation verbatim, so this is byte-identical to the v0.117.0
+/// unweighted fit.
+pub fn RFClassifier::fit_weighted(
+  self : RFClassifier,
+  x : Matrix,
+  y : Array[Double],
+  w : Array[Double],
+) -> RFClassifier {
   try {
     require(x.nrows == y.length())
     require(self.n_trees >= 1)
     require(self.max_depth >= 0)
     require(self.min_samples_leaf >= 1)
+    require(w_is_unweighted(w) || w.length() == x.nrows)
     for i = 0; i < y.length(); i = i + 1 {
       require(y[i] == 0.0 || y[i] == 1.0)
+    }
+    for i = 0; i < w.length(); i = i + 1 {
+      require(w[i] >= 0.0)
     }
     let n_obs = x.nrows
     let n_features = x.ncols
@@ -164,6 +179,7 @@ impl Learner for RFClassifier with fn fit(self, x, y) {
         feature_rng,
         true,
         [],
+        w,
       )
       trees.push(tree)
     }
@@ -172,6 +188,22 @@ impl Learner for RFClassifier with fn fit(self, x, y) {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Unweighted fit. v0.118.0 moved the body to `fit_weighted`; this
+/// inherent method keeps `RFClassifier::new(..).fit(x, y)` working.
+pub fn RFClassifier::fit(
+  self : RFClassifier,
+  x : Matrix,
+  y : Array[Double],
+) -> RFClassifier {
+  self.fit_weighted(x, y, [])
+}
+
+///|
+impl Learner for RFClassifier with fn fit(self, x, y, w) {
+  self.fit_weighted(x, y, w)
 }
 
 ///|

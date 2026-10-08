@@ -9,6 +9,152 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.118.0] -- `sample_weight` on the `Learner` trait
+
+### What was missing
+
+Upstream `doubleml` is learner-agnostic: `ml_g` / `ml_m` are objects
+with `fit(X, y, sample_weight)`, so `doubleml.utils.global_learner`'s
+`GlobalRegressor` can wrap any of scikit-learn's fitted estimators and
+drop `sample_weight` on the floor deliberately.
+
+This package's trait was:
+
+    pub trait Learner {
+      fn fit(Self, Matrix, Array[Double]) -> Self
+      fn predict(Self, Matrix) -> Array[Double]
+    }
+
+There was no weight parameter at all. That is a protocol-level
+narrowing, not a missing convenience: **no weighted learner could be
+expressed at all**, which also blocks the DR-learner (its nuisances are
+fitted with the treatment as the weight) and is the reason the estimator
+could not be a drop-in for anything upstream accepts.
+
+The trait now takes a third argument. An **empty array means
+unweighted**, mirroring scikit-learn's `sample_weight=None`.
+
+### MoonBit would not give us the easy version
+
+The obvious design is a defaulted trait method that falls back to the
+unweighted fit. MoonBit traits do **not** support a default method
+body -- adding one fails with `Missing type annotation for the
+parameter`, and the trait then reports *"no method predict in trait
+Learner"* for every existing impl. Measured, not assumed.
+
+So the signature changed and each of the eight `impl`s dispatches on
+emptiness itself, through one shared helper `w_is_unweighted(w)` so the
+convention cannot drift between learners.
+
+A second MoonBit-specific wrinkle: `pub extend X with
+Learner::{fit, predict}` -- the line that promotes trait methods so
+`--deny-warn` does not flag the impls as unused -- **collides** once a
+type has an inherent `fit` of the same name. Each of the four tree
+learners therefore gained a concrete two-argument `fit` (the inherent
+method wins at the call site) and the promotion list dropped to
+`Learner::{predict}`.
+
+### What each learner does with the weights
+
+| learner | mechanism | scikit-learn equivalent |
+|---|---|---|
+| `LinearRegression` | `fit_weighted` WLS, pre-existing | `LinearRegression.fit(sample_weight=)` |
+| `LogisticRegression` | IRLS working weight becomes `sw_i * p(1-p)` | `LogisticRegression.fit(sample_weight=)` |
+| `RFLearner`, `RFClassifier` | weighted leaf `SUM(w*y)/SUM(w)`, weighted variance / weighted Gini | `DecisionTree*.fit(sample_weight=)` |
+| `GBLearner`, `GBClassifier` | weights reach the tree, **not** the target; leaf becomes the weighted Newton step `SUM(w*g)/SUM(w*h)` | `GradientBoosting*.fit(sample_weight=)` |
+| `ConstantLearner`, `NoopLearner` | ignored, correctly | n/a |
+
+The boosting row is the one that is easy to get wrong, so it is called
+out: scikit-learn passes the **raw** negative gradient plus the weights
+to a `DecisionTreeRegressor`, and only the leaf value is overridden. A
+port that pre-multiplies the residual by `w` **squares the weights in
+the leaf**. `GBLearner`'s doc says so explicitly.
+
+One `cart_fit` serves all four tree learners: it already took `clf`
+and `hess` from v0.117.0, and `w` joins them. An empty `w` keeps every
+accumulation on the verbatim pre-v0.118.0 arithmetic.
+
+### The fixture that made the difference
+
+The first probe used two groups at `x = {-1, +1}` with a linear fit.
+That model **interpolates** -- two parameters, two points -- so it hits
+both group means exactly at any weighting. Measured: `predA = 2`,
+`predB = 10` at `k = 1`, `5` and `50` alike. **A gate on that fixture
+would have passed even if every learner ignored its weights.**
+
+The fixture shipped here uses a constant feature, so the only estimated
+quantity is the intercept and the fit is a genuine average. Group A
+(mean 1.93369) at weight `k`, group B (mean 10.14718) at weight 1:
+
+| `k` | exact | OLS | RF | GB |
+|---|---:|---:|---:|---:|
+| 1 | 6.04043 | 6.04043 | 5.96339 | 6.04043 |
+| 5 | 3.30260 | 3.30260 | 3.27176 | 3.34307 |
+| 50 | 2.09474 | 2.09474 | 2.08277 | 2.15306 |
+
+and for the classifiers (`P(y=1)` should be `k/(k+1)`):
+
+| `k` | exact | LR | RF | GB |
+|---|---:|---:|---:|---:|
+| 1 | 0.50000 | 0.50000 | 0.50850 | 0.50000 |
+| 5 | 0.83333 | 0.83333 | 0.83597 | 0.82825 |
+| 50 | 0.98039 | 0.98039 | 0.98063 | 0.97238 |
+
+### Backward compatibility is asserted, not claimed
+
+`v118_uniform_weights_are_exactly_a_no_op` compares an all-ones weight
+vector against no weights at all for all six weighted learners, on both
+the regression and the classification fixture. **Measured drift: 0.0**,
+everywhere -- asserted with `==`.
+
+That is the promise the whole design rests on: the default path for all
+22 estimators is byte-identical. If it ever fails, the claim in
+`Learner`'s docs is false and every estimator's default moved.
+
+### Cross-fit slicing
+
+Weights are sliced per fold alongside `x` and `y`; in
+`double_cross_fit_predict` they are sliced through the **double**
+indexing, because the inner folds index into the outer training slice
+(`train_idx[ifold.train_idx[k]]`, not `ifold.train_idx[k]`).
+
+An unsliced weight fails silently: the fit still runs, the weights still
+"reach" it, and only the per-fold values are wrong. The gate therefore
+computes the expected per-fold answer **by hand** rather than only
+asserting that the weighted run differs from the unweighted run.
+
+### Mutation harness
+
+`_verify/mut_v118_weight.ps1`, 10 mutations.
+
+Two of them kill a whole family through one line and are the reason the
+closed-form gates exist rather than monotonicity checks: **M2** (the
+leaf ignores the weights) and **M4** (the IRLS working weight ignores
+them) each leave a fit that is finite, still monotone in `k`, and still
+passes any accuracy assertion. Only comparing against `v118_exact`
+catches them.
+
+**M5** is the one with no analogue in earlier rounds: an unsliced weight
+produces a plausible, wrong number. That is why
+`v118_cross_fit_slices_the_weights_with_the_rows` checks per-fold
+values against a hand computation instead of only checking that the
+weighted and unweighted runs differ.
+
+### Still missing after this round
+
+- **Regularized linear learners.** No Lasso / ElasticNet / Ridge in the
+  DML nuisance path. `sample_weight` makes them *expressible*; it does
+  not make them exist. The only ridge in the package is inside
+  `blp_policy.mbt`, for BLP demand characteristics.
+- **GLM families.** Only Gaussian OLS and binary logistic; no Poisson
+  (count outcomes feeding `DoubleMLQTE`), Gamma, or negative binomial.
+- **The propensity-analysis subsystem.** Upstream's
+  `utils/propensity_score_processing.py` + `utils/_propensity_score.py`
+  (`ps_dm`, the DR-learner pseudo-outcome) still have no counterpart, and
+  `did_cs_binary.mbt` documents `ps_processor_config` collapsed to a
+  single `propensity_clip` with the `isotonic` / `cv_calibration` paths
+  not ported. This round removes one of that subsystem's two blockers.
+
 ## [0.117.0] -- nonlinear classifiers: `ml_m` stops being logistic-only
 
 ### What was missing

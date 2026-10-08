@@ -48,7 +48,7 @@ pub struct ConstantLearner {
 pub extend ConstantLearner with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
-pub extend ConstantLearner with Learner::{fit, predict}
+pub extend ConstantLearner with Learner::{predict}
 
 ///|
 pub fn ConstantLearner::new(value : Double) -> ConstantLearner {
@@ -56,7 +56,14 @@ pub fn ConstantLearner::new(value : Double) -> ConstantLearner {
 }
 
 ///|
-impl Learner for ConstantLearner with fn fit(self, x, y) {
+/// v0.118.0: the body became this inherent method so that
+/// `ConstantLearner::new(..).fit(x, y)` still resolves; the trait
+/// method (three-argument) delegates here.
+pub fn ConstantLearner::fit(
+  self : ConstantLearner,
+  x : Matrix,
+  y : Array[Double],
+) -> ConstantLearner {
   // "fit" for a constant predictor: stash the n_rows + n_targets
   // shape on `self` so subsequent `predict` calls can short-circuit
   // (no actual training occurs; the predictor is constant).
@@ -64,6 +71,11 @@ impl Learner for ConstantLearner with fn fit(self, x, y) {
   let _n : Int = x.rows() * y.length()
   let _ = _n
   self
+}
+
+///|
+impl Learner for ConstantLearner with fn fit(self, x, y, _w) {
+  self.fit(x, y)
 }
 
 ///|
@@ -86,7 +98,7 @@ pub struct NoopLearner {
 pub extend NoopLearner with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
-pub extend NoopLearner with Learner::{fit, predict}
+pub extend NoopLearner with Learner::{predict}
 
 ///|
 pub fn NoopLearner::new() -> NoopLearner {
@@ -94,13 +106,24 @@ pub fn NoopLearner::new() -> NoopLearner {
 }
 
 ///|
-impl Learner for NoopLearner with fn fit(self, x, y) {
+/// v0.118.0: same treatment as `ConstantLearner::fit` -- the body is
+/// an inherent method, the three-argument trait method delegates.
+pub fn NoopLearner::fit(
+  self : NoopLearner,
+  x : Matrix,
+  y : Array[Double],
+) -> NoopLearner {
   // Same as ConstantLearner::fit: touch the inputs so the
   // compiler doesn't flag the impl body as unused, then
   // return self.
   let _n : Int = x.rows() * y.length()
   let _ = _n
   self
+}
+
+///|
+impl Learner for NoopLearner with fn fit(self, x, y, _w) {
+  self.fit(x, y)
 }
 
 ///|
@@ -228,21 +251,27 @@ pub fn LearnerDispatch::gradient_boosting_classifier(
 ///
 /// Adding a new learner type: add the corresponding match arm
 /// here (and the enum variant in `LearnerDispatch`).
+///
+/// v0.118.0: `sample_weight?` is forwarded through every arm; empty
+/// means unweighted, which is the byte-identical pre-v0.118.0 path.
 pub fn cross_fit_predict_dispatch(
   learner : LearnerDispatch,
   x : Matrix,
   y : Array[Double],
   folds : Array[Fold],
+  sample_weight? : Array[Double] = [],
 ) -> Array[Double] {
   match learner {
-    LinearRegression(lr) => cross_fit_predict(lr, x, y, folds)
-    Constant(c) => cross_fit_predict(c, x, y, folds)
-    Noop(n) => cross_fit_predict(n, x, y, folds)
-    RandomForest(rf) => cross_fit_predict(rf, x, y, folds)
-    GradientBoosting(gb) => cross_fit_predict(gb, x, y, folds)
-    LogisticRegression(lr) => cross_fit_predict(lr, x, y, folds)
-    RandomForestClassifier(rf) => cross_fit_predict(rf, x, y, folds)
-    GradientBoostingClassifier(gb) => cross_fit_predict(gb, x, y, folds)
+    LinearRegression(lr) => cross_fit_predict(lr, x, y, folds, sample_weight~)
+    Constant(c) => cross_fit_predict(c, x, y, folds, sample_weight~)
+    Noop(n) => cross_fit_predict(n, x, y, folds, sample_weight~)
+    RandomForest(rf) => cross_fit_predict(rf, x, y, folds, sample_weight~)
+    GradientBoosting(gb) => cross_fit_predict(gb, x, y, folds, sample_weight~)
+    LogisticRegression(lr) => cross_fit_predict(lr, x, y, folds, sample_weight~)
+    RandomForestClassifier(rf) =>
+      cross_fit_predict(rf, x, y, folds, sample_weight~)
+    GradientBoostingClassifier(gb) =>
+      cross_fit_predict(gb, x, y, folds, sample_weight~)
   }
 }
 

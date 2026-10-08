@@ -1160,7 +1160,7 @@ fn[T : Learner] cross_fit_predict_inner(
   for fi = 0; fi < folds.length(); fi = fi + 1 {
     let fold = folds[fi]
     let xt = slice_matrix_rows(x, fold.train_idx)
-    let fitted = learner.fit(xt, targets[fi])
+    let fitted = learner.fit(xt, targets[fi], [])
     let p = fitted.predict(slice_matrix_rows(x, fold.test_idx))
     for k = 0; k < fold.test_idx.length(); k = k + 1 {
       preds[fold.test_idx[k]] = p[k]
@@ -1197,12 +1197,21 @@ fn cross_fit_predict_inner_dispatch(
 /// be passed to `cross_fit_predict` / `double_cross_fit_predict`.
 /// `fit` is the IRLS Newton-Raphson fit on the labelled slice;
 /// `predict` returns P(y = 1 | x) for every row of the design.
+
+///|
+/// v0.118.0: `w` is the per-row `sample_weight`, forwarded to
+/// `LogisticRegression::fit`. Empty means unweighted.
 impl Learner for LogisticRegression with fn fit(
   self : LogisticRegression,
   x : Matrix,
   y : Array[Double],
+  w : Array[Double],
 ) -> LogisticRegression {
-  self.fit(x, y)
+  if w_is_unweighted(w) {
+    self.fit(x, y)
+  } else {
+    self.fit(x, y, sample_weight=w)
+  }
 }
 
 ///|

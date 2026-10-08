@@ -96,7 +96,7 @@ pub extend RFLearner with @moonbitlang/core/debug.Debug::{to_repr}
 /// directly), and the `--deny-warn` build gate treats that
 /// as an error. Same pattern as the v0.54.0
 /// `ConstantLearner` / `NoopLearner` setup.
-pub extend RFLearner with Learner::{fit, predict}
+pub extend RFLearner with Learner::{predict}
 
 ///|
 pub fn RFLearner::new(
@@ -188,6 +188,15 @@ fn bootstrap_indices(n_obs : Int, seed : Int) -> Array[Int] {
 ///     uses MSE on `y`, because that is what upstream fits: a
 ///     `DecisionTreeRegressor` on the negative gradient, with
 ///     only the leaf value overridden.
+///   - v0.118.0: `w` empty is the unweighted case and is
+///     BYTE-IDENTICAL to the pre-v0.118.0 arithmetic. Non-empty
+///     `w` makes every accumulation weighted -- the leaf becomes
+///     `SUM(w*y) / SUM(w)`, or `SUM(w*g) / SUM(w*h)` when `hess`
+///     is also present, and the split score becomes the weighted
+///     variance / weighted Gini. That is scikit-learn's semantics:
+///     the tree is handed the RAW target plus the weights, and
+///     weights never pre-multiply the target, because that would
+///     square them in the leaf.
 fn cart_fit(
   x : Matrix,
   y : Array[Double],
@@ -199,11 +208,17 @@ fn cart_fit(
   feature_rng : @random.Rand,
   clf : Bool,
   hess : Array[Double],
+  w : Array[Double],
 ) -> CART {
   let n = sample_idx.length()
+  // v0.118.0: an empty `w` means unweighted and takes the verbatim
+  // pre-v0.118.0 arithmetic in both the leaf value and the split
+  // score. Hoisting the flag here keeps that condition testable
+  // rather than re-derived inside the loop.
+  let weighted = w.length() > 0
   // Stop conditions: leaf.
   if n < 2 * min_samples_leaf || depth >= max_depth {
-    return CART::Leaf(cart_leaf_value(y, sample_idx, hess))
+    return CART::Leaf(cart_leaf_value(y, sample_idx, hess, w))
   }
   // v0.117.0: a pure node has zero impurity gain at every
   // threshold, so a Gini sweep would still "find" a split at
@@ -215,13 +230,18 @@ fn cart_fit(
     let first_y = y[sample_idx[0]]
     let mut pure = true
     for i = 1; i < n; i = i + 1 {
+      // v0.118.0: a zero-weight row contributes nothing, so it must
+      // not make a node look impure.
+      if weighted && w[sample_idx[i]] == 0.0 {
+        continue
+      }
       if y[sample_idx[i]] != first_y {
         pure = false
         break
       }
     }
     if pure {
-      return CART::Leaf(cart_leaf_value(y, sample_idx, hess))
+      return CART::Leaf(cart_leaf_value(y, sample_idx, hess, w))
     }
   }
   let n_features = x.ncols
@@ -277,11 +297,12 @@ fn cart_fit(
         last_val = cur_val
         continue
       }
-      // Compute the split score. The regression branch is the
-      // v0.56.0 arithmetic VERBATIM -- same association, same
-      // divide -- because Python-parity tests pin it and a
-      // "equivalent" rewrite would move the last bits.
-      let score = if !clf {
+      // Compute the split score. Both existing branches are the
+      // pre-v0.118.0 arithmetic VERBATIM -- same association, same
+      // divide -- because Python-parity tests pin them and an
+      // "equivalent" rewrite would move the last bits. The weighted
+      // branches are ADDITIONAL, reached only when `w` is non-empty.
+      let score = if !clf && !weighted {
         // Weighted MSE of (y - left_mean)^2 on left +
         // (y - right_mean)^2 on right.
         let mut ss_left = 0.0
@@ -303,7 +324,53 @@ fn cart_fit(
         let mean_right = sum_right / right_count.to_double()
         ss_right = ss_right - sum_right * mean_right
         (ss_left + ss_right) / n.to_double()
-      } else {
+      } else if !clf {
+        // v0.118.0: WEIGHTED variance. `ss = SUM(w*(y-mean)^2)` is
+        // computed as `SUM(w*y^2) - mean*SUM(w*y)` with
+        // `mean = SUM(w*y)/SUM(w)`, the same algebraic form as the
+        // unweighted branch so the two agree when `w` is all ones up
+        // to rounding.
+        let mut sum_left = 0.0
+        let mut sum_left_sq = 0.0
+        let mut sw_left = 0.0
+        for j = 0; j <= i; j = j + 1 {
+          let row = sorted_idx[j]
+          let wi = w[row]
+          let yj = y[row]
+          sum_left = sum_left + wi * yj
+          sum_left_sq = sum_left_sq + wi * yj * yj
+          sw_left = sw_left + wi
+        }
+        let mut sum_right = 0.0
+        let mut sum_right_sq = 0.0
+        let mut sw_right = 0.0
+        for j = i + 1; j < n; j = j + 1 {
+          let row = sorted_idx[j]
+          let wi = w[row]
+          let yj = y[row]
+          sum_right = sum_right + wi * yj
+          sum_right_sq = sum_right_sq + wi * yj * yj
+          sw_right = sw_right + wi
+        }
+        let ss_left = if sw_left == 0.0 {
+          0.0
+        } else {
+          let mean_left = sum_left / sw_left
+          sum_left_sq - sum_left * mean_left
+        }
+        let ss_right = if sw_right == 0.0 {
+          0.0
+        } else {
+          let mean_right = sum_right / sw_right
+          sum_right_sq - sum_right * mean_right
+        }
+        let sw_total = sw_left + sw_right
+        if sw_total == 0.0 {
+          1.0e300
+        } else {
+          (ss_left + ss_right) / sw_total
+        }
+      } else if !weighted {
         // v0.117.0: weighted Gini impurity, matching
         // `sklearn.tree.DecisionTreeClassifier`'s default
         // criterion. For binary labels, `gini = 1 - p^2 - (1-p)^2`
@@ -327,6 +394,36 @@ fn cart_fit(
           right_count.to_double() * gini_right
         ) /
         n.to_double()
+      } else {
+        // v0.118.0: WEIGHTED Gini. `p` becomes the weighted class
+        // proportion `SUM(w*y)/SUM(w)` and the child masses become
+        // the weight sums rather than the row counts.
+        let mut sum_left = 0.0
+        let mut sw_left = 0.0
+        for j = 0; j <= i; j = j + 1 {
+          let row = sorted_idx[j]
+          let wi = w[row]
+          sum_left = sum_left + wi * y[row]
+          sw_left = sw_left + wi
+        }
+        let mut sum_right = 0.0
+        let mut sw_right = 0.0
+        for j = i + 1; j < n; j = j + 1 {
+          let row = sorted_idx[j]
+          let wi = w[row]
+          sum_right = sum_right + wi * y[row]
+          sw_right = sw_right + wi
+        }
+        let sw_total = sw_left + sw_right
+        if sw_total == 0.0 {
+          1.0e300
+        } else {
+          let p_left = if sw_left == 0.0 { 0.0 } else { sum_left / sw_left }
+          let p_right = if sw_right == 0.0 { 0.0 } else { sum_right / sw_right }
+          let gini_left = 2.0 * p_left * (1.0 - p_left)
+          let gini_right = 2.0 * p_right * (1.0 - p_right)
+          (sw_left * gini_left + sw_right * gini_right) / sw_total
+        }
       }
       if score < best_score {
         best_score = score
@@ -341,7 +438,7 @@ fn cart_fit(
   // If no valid split was found (all thresholds skipped),
   // this node is a leaf.
   if best_feature < 0 {
-    return CART::Leaf(cart_leaf_value(y, sample_idx, hess))
+    return CART::Leaf(cart_leaf_value(y, sample_idx, hess, w))
   }
   let left_tree = cart_fit(
     x,
@@ -354,6 +451,7 @@ fn cart_fit(
     feature_rng,
     clf,
     hess,
+    w,
   )
   let right_tree = cart_fit(
     x,
@@ -366,6 +464,7 @@ fn cart_fit(
     feature_rng,
     clf,
     hess,
+    w,
   )
   CART::Split(best_feature, best_threshold, left_tree, right_tree)
 }
@@ -395,17 +494,46 @@ fn cart_leaf_value(
   y : Array[Double],
   sample_idx : Array[Int],
   hess : Array[Double],
+  w : Array[Double],
 ) -> Double {
   let n = sample_idx.length()
   if n == 0 {
     return 0.0
   }
+  let weighted = w.length() > 0
   let mut s = 0.0
-  for i = 0; i < n; i = i + 1 {
-    s = s + y[sample_idx[i]]
-  }
-  if hess.length() == 0 {
-    return s / n.to_double()
+  if !weighted {
+    // Unweighted: the v0.56.0 accumulation, verbatim.
+    for i = 0; i < n; i = i + 1 {
+      s = s + y[sample_idx[i]]
+    }
+    if hess.length() == 0 {
+      return s / n.to_double()
+    }
+  } else {
+    // Weighted: the SAME accumulation with `w` folded in. `s` ends
+    // up as SUM(w*y) and the denominator as SUM(w).
+    let mut sw = 0.0
+    for i = 0; i < n; i = i + 1 {
+      let row = sample_idx[i]
+      let wi = w[row]
+      s = s + wi * y[row]
+      sw = sw + wi
+    }
+    if hess.length() == 0 {
+      if sw == 0.0 {
+        return 0.0
+      }
+      return s / sw
+    }
+    let mut h = 0.0
+    for i = 0; i < n; i = i + 1 {
+      h = h + w[sample_idx[i]] * hess[sample_idx[i]]
+    }
+    if h == 0.0 {
+      return 0.0
+    }
+    return s / h
   }
   let mut h = 0.0
   for i = 0; i < n; i = i + 1 {
@@ -471,17 +599,27 @@ fn cart_predict(tree : CART, x : Matrix, row : Int) -> Double {
 
 ///|
 /// Build the forest: `n_trees` bootstrap-sampled CART trees.
-/// Returns a new `RFLearner` with `trees` populated and
-/// `n_features` set. The `mtry` field is RESOLVED here
-/// (if -1, replaced with `floor(sqrt(n_features))`); the
-/// resolved value lives only in the constructed trees
-/// (each tree internally samples from `n_features`).
-impl Learner for RFLearner with fn fit(self, x, y) {
+///
+/// v0.118.0: the body moved to `fit_weighted`, which takes the
+/// per-row weights and hands them to `cart_fit`. An EMPTY `w` takes
+/// the verbatim unweighted arithmetic at every accumulation, so
+/// `fit_weighted(x, y, [])` is byte-identical to the pre-v0.118.0
+/// `fit`.
+pub fn RFLearner::fit_weighted(
+  self : RFLearner,
+  x : Matrix,
+  y : Array[Double],
+  w : Array[Double],
+) -> RFLearner {
   try {
     require(x.nrows == y.length())
     require(self.n_trees >= 1)
     require(self.max_depth >= 0)
     require(self.min_samples_leaf >= 1)
+    require(w_is_unweighted(w) || w.length() == x.nrows)
+    for i = 0; i < w.length(); i = i + 1 {
+      require(w[i] >= 0.0)
+    }
     let n_obs = x.nrows
     let n_features = x.ncols
     let trees : Array[CART] = []
@@ -501,6 +639,7 @@ impl Learner for RFLearner with fn fit(self, x, y) {
         feature_rng,
         false,
         [],
+        w,
       )
       trees.push(tree)
     }
@@ -509,6 +648,24 @@ impl Learner for RFLearner with fn fit(self, x, y) {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Unweighted forest fit. v0.118.0 moved the body to `fit_weighted`;
+/// this inherent method keeps every existing
+/// `RFLearner::new(..).fit(x, y)` call site working, since an inherent
+/// method wins over the trait method of the same name.
+pub fn RFLearner::fit(
+  self : RFLearner,
+  x : Matrix,
+  y : Array[Double],
+) -> RFLearner {
+  self.fit_weighted(x, y, [])
+}
+
+///|
+impl Learner for RFLearner with fn fit(self, x, y, w) {
+  self.fit_weighted(x, y, w)
 }
 
 ///|

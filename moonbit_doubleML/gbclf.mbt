@@ -92,7 +92,7 @@ pub extend GBClassifier with @moonbitlang/core/debug.Debug::{to_repr}
 /// Promote the `Learner` trait methods as explicit methods so the
 /// trait impl below is not reported as `unused_value` under
 /// `--deny-warn`. Same pattern as `GBLearner`.
-pub extend GBClassifier with Learner::{fit, predict}
+pub extend GBClassifier with Learner::{predict}
 
 ///|
 pub fn GBClassifier::new(
@@ -151,9 +151,20 @@ pub fn GBClassifier::base_rate(self : GBClassifier) -> Double {
 
 ///|
 /// Fit the boosting ensemble under binary log loss. `y` must be in
-/// `{0, 1}`; see `RFClassifier::fit` for why this learner refuses
-/// rather than silently accepts.
-impl Learner for GBClassifier with fn fit(self, x, y) {
+/// `{0, 1}`; see `RFClassifier::fit_weighted` for why this learner
+/// refuses rather than silently accepts.
+///
+/// v0.118.0: `w` carries per-row weights. The negative gradient `g`
+/// and the hessian `h` both stay RAW -- the tree receives them plus
+/// the weights, and `cart_leaf_value` forms the WEIGHTED Newton step
+/// `SUM(w*g) / SUM(w*h)`. Multiplying either by `w` beforehand would
+/// double-count the weights.
+pub fn GBClassifier::fit_weighted(
+  self : GBClassifier,
+  x : Matrix,
+  y : Array[Double],
+  w : Array[Double],
+) -> GBClassifier {
   try {
     require(x.nrows == y.length())
     require(self.n_trees >= 1)
@@ -161,8 +172,12 @@ impl Learner for GBClassifier with fn fit(self, x, y) {
     require(self.min_samples_leaf >= 1)
     require(self.learning_rate > 0.0 && self.learning_rate <= 1.0)
     require(self.subsample > 0.0 && self.subsample <= 1.0)
+    require(w_is_unweighted(w) || w.length() == x.nrows)
     for i = 0; i < y.length(); i = i + 1 {
       require(y[i] == 0.0 || y[i] == 1.0)
+    }
+    for i = 0; i < w.length(); i = i + 1 {
+      require(w[i] >= 0.0)
     }
     let n_obs = x.nrows
     // Base rate, clamped away from the open endpoints so the log-odds
@@ -228,6 +243,13 @@ impl Learner for GBClassifier with fn fit(self, x, y) {
       for j = 0; j < sample_idx.length(); j = j + 1 {
         hess_sub[j] = hess[sample_idx[j]]
       }
+      // v0.118.0: the weights take the same subsample remap, so the
+      // weighted Newton step `SUM(w*g)/SUM(w*h)` lines up row-for-row.
+      let w_sub : Array[Double] = Array::make(sample_idx.length(), 0.0)
+      for j = 0; j < sample_idx.length(); j = j + 1 {
+        w_sub[j] = if w_is_unweighted(w) { 0.0 } else { w[sample_idx[j]] }
+      }
+      let w_eff = if w_is_unweighted(w) { [] } else { w_sub }
       let feature_rng = chacha8_rng(self.bootstrap_seed + self.n_trees + r)
       // `clf = false`: splits use MSE on the negative gradient, which
       // is what scikit-learn fits (a DecisionTreeRegressor). Only the
@@ -243,6 +265,7 @@ impl Learner for GBClassifier with fn fit(self, x, y) {
         feature_rng,
         false,
         hess_sub,
+        w_eff,
       )
       trees.push(tree)
       for i = 0; i < n_obs; i = i + 1 {
@@ -255,6 +278,22 @@ impl Learner for GBClassifier with fn fit(self, x, y) {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// Unweighted fit. v0.118.0 moved the body to `fit_weighted`; this
+/// inherent method keeps `GBClassifier::new(..).fit(x, y)` working.
+pub fn GBClassifier::fit(
+  self : GBClassifier,
+  x : Matrix,
+  y : Array[Double],
+) -> GBClassifier {
+  self.fit_weighted(x, y, [])
+}
+
+///|
+impl Learner for GBClassifier with fn fit(self, x, y, w) {
+  self.fit_weighted(x, y, w)
 }
 
 ///|

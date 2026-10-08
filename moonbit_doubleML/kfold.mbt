@@ -664,18 +664,41 @@ pub fn cluster_causal_param_and_se(
 /// `x[test]`. The returned vector has length `n_obs` and contains
 /// the predictions in the original observation order. Assumes the
 /// folds together cover `[0, n_obs)`.
+///
+/// v0.118.0: `sample_weight?` defaults to `[]` (unweighted), which is
+/// the byte-identical pre-v0.118.0 path for every learner and every
+/// estimator. When non-empty it must be row-aligned with `x` and `y`,
+/// and it is SLICED per fold alongside them -- a weight must follow its
+/// own row into the training slice, or the fit is weighted on the wrong
+/// observations. Mirrors scikit-learn's `sample_weight=None`.
 pub fn[T : Learner] cross_fit_predict(
   learner : T,
   x : Matrix,
   y : Array[Double],
   folds : Array[Fold],
+  sample_weight? : Array[Double] = [],
 ) -> Array[Double] {
   let n_obs = x.nrows
   let preds : Array[Double] = Array::make(n_obs, 0.0)
+  let weighted = sample_weight.length() > 0
+  if weighted && sample_weight.length() != n_obs {
+    abort(
+      "cross_fit_predict: sample_weight has length " +
+      sample_weight.length().to_string() +
+      " but x has " +
+      n_obs.to_string() +
+      " rows",
+    )
+  }
   for fold in folds {
     let xt = slice_matrix_rows(x, fold.train_idx)
     let yt = slice_vector(y, fold.train_idx)
-    let fitted = learner.fit(xt, yt)
+    let wt = if weighted {
+      slice_vector(sample_weight, fold.train_idx)
+    } else {
+      []
+    }
+    let fitted = learner.fit(xt, yt, wt)
     let p = fitted.predict(slice_matrix_rows(x, fold.test_idx))
     for k = 0; k < fold.test_idx.length(); k = k + 1 {
       preds[fold.test_idx[k]] = p[k]
@@ -700,6 +723,10 @@ pub fn[T : Learner] cross_fit_predict(
 /// `inner_train_count` (the size of the outer fold's training
 /// slice); values are filled at the original training-row
 /// positions in the order the inner folds visit them.
+///
+/// v0.118.0: `sample_weight?` is sliced through the DOUBLE indexing --
+/// the inner folds index into the outer training slice, so a weight
+/// follows `train_idx[ifold.train_idx[k]]`, not `ifold.train_idx[k]`.
 pub fn[T : Learner] double_cross_fit_predict(
   learner : T,
   x : Matrix,
@@ -707,8 +734,19 @@ pub fn[T : Learner] double_cross_fit_predict(
   outer : Array[Fold],
   n_inner : Int,
   seed : Int,
+  sample_weight? : Array[Double] = [],
 ) -> Array[Array[Double]] {
   let mut rng_state : Int = seed
+  let weighted = sample_weight.length() > 0
+  if weighted && sample_weight.length() != x.nrows {
+    abort(
+      "double_cross_fit_predict: sample_weight has length " +
+      sample_weight.length().to_string() +
+      " but x has " +
+      x.nrows.to_string() +
+      " rows",
+    )
+  }
   let out : Array[Array[Double]] = []
   for fold in outer {
     let train_idx = fold.train_idx
@@ -726,7 +764,8 @@ pub fn[T : Learner] double_cross_fit_predict(
       })
       let xt = slice_matrix_rows(x, xt_rows)
       let yt = slice_vector(y, yt_rows)
-      let fitted = learner.fit(xt, yt)
+      let wt = if weighted { slice_vector(sample_weight, xt_rows) } else { [] }
+      let fitted = learner.fit(xt, yt, wt)
       let te_rows : Array[Int] = Array::makei(ifold.test_idx.length(), fn(k) {
         train_idx[ifold.test_idx[k]]
       })
@@ -753,20 +792,24 @@ pub fn double_cross_fit_predict_dispatch(
   outer : Array[Fold],
   n_inner : Int,
   seed : Int,
+  sample_weight? : Array[Double] = [],
 ) -> Array[Array[Double]] {
   match learner {
     LinearRegression(lr) =>
-      double_cross_fit_predict(lr, x, y, outer, n_inner, seed)
-    Constant(c) => double_cross_fit_predict(c, x, y, outer, n_inner, seed)
-    Noop(n) => double_cross_fit_predict(n, x, y, outer, n_inner, seed)
-    RandomForest(rf) => double_cross_fit_predict(rf, x, y, outer, n_inner, seed)
+      double_cross_fit_predict(lr, x, y, outer, n_inner, seed, sample_weight~)
+    Constant(c) =>
+      double_cross_fit_predict(c, x, y, outer, n_inner, seed, sample_weight~)
+    Noop(n) =>
+      double_cross_fit_predict(n, x, y, outer, n_inner, seed, sample_weight~)
+    RandomForest(rf) =>
+      double_cross_fit_predict(rf, x, y, outer, n_inner, seed, sample_weight~)
     GradientBoosting(gb) =>
-      double_cross_fit_predict(gb, x, y, outer, n_inner, seed)
+      double_cross_fit_predict(gb, x, y, outer, n_inner, seed, sample_weight~)
     LogisticRegression(lr) =>
-      double_cross_fit_predict(lr, x, y, outer, n_inner, seed)
+      double_cross_fit_predict(lr, x, y, outer, n_inner, seed, sample_weight~)
     RandomForestClassifier(rf) =>
-      double_cross_fit_predict(rf, x, y, outer, n_inner, seed)
+      double_cross_fit_predict(rf, x, y, outer, n_inner, seed, sample_weight~)
     GradientBoostingClassifier(gb) =>
-      double_cross_fit_predict(gb, x, y, outer, n_inner, seed)
+      double_cross_fit_predict(gb, x, y, outer, n_inner, seed, sample_weight~)
   }
 }

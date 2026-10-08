@@ -108,11 +108,22 @@ pub fn LogisticRegression::fit(
   max_iter? : Int = 25,
   tol? : Double = 1.0e-8,
   ridge? : Double = 1.0e-8,
+  sample_weight? : Array[Double] = [],
 ) -> LogisticRegression {
   try {
     ignore(self)
     require(x.nrows == y.length())
     require(x.nrows >= 2)
+    // v0.118.0: `sample_weight` must be non-negative and row-aligned.
+    // Negative weights would flip the sign of a residual and are not
+    // meaningful here, so they abort rather than producing a
+    // plausible-looking fit. An EMPTY array means unweighted, which
+    // keeps the pre-v0.118.0 arithmetic byte-identical.
+    require(w_is_unweighted(sample_weight) || sample_weight.length() == x.nrows)
+    for wi in sample_weight {
+      require(wi >= 0.0)
+    }
+    let weighted = !w_is_unweighted(sample_weight)
     // REVIEW L12 fix (0.7.0): validate `y ∈ {0, 1}`. The doc says
     // "Only binary outcomes (y in {0, 1}) are supported" but the
     // pre-fix code silently produced nonsense for out-of-range y
@@ -145,7 +156,14 @@ pub fn LogisticRegression::fit(
         }
         p[i] = pi_
         let wi = pi_ * (1.0 - pi_)
-        w[i] = wi
+        // v0.118.0: the IRLS working weight becomes
+        // `sample_weight_i * p_i (1 - p_i)`, which is Fisher scoring
+        // with the prior weights folded into the Hessian and gradient
+        // alike. The unweighted branch is the pre-v0.118.0 line
+        // VERBATIM -- multiplying by exactly 1.0 is exact in IEEE754,
+        // but the explicit branch documents the intent and keeps the
+        // shape visible for the mutation harness to attack.
+        w[i] = if weighted { wi * sample_weight[i] } else { wi }
         z[i] = eta[i] + (y[i] - pi_) / wi
       }
       // X^T W X = (sqrt(W) X)^T (sqrt(W) X).  Build sqrt(W) X by

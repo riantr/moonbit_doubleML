@@ -391,14 +391,46 @@ pub fn LinearRegression::sandwich_se(
 /// Trait for any learner that can be `fit` on `(x, y)` and `predict`
 /// on a feature matrix. Used by the DML cross-fit helpers and the PLR
 /// estimator.
+///
+/// v0.118.0: `fit` takes a THIRD argument, `sample_weight`, matching
+/// upstream `doubleml`'s protocol -- its `ml_g` / `ml_m` are objects
+/// with `fit(X, y, sample_weight)`, so a learner without that
+/// parameter could not be a drop-in replacement, and a library that
+/// cannot express a weighted fit cannot port the DR-learner.
+///
+/// **An EMPTY weight array means "unweighted".** That is the whole
+/// backward-compatibility story: every cross-fit helper in this package
+/// takes `sample_weight?` defaulting to `[]`, so all 22 estimators and
+/// every existing caller are byte-identical. It also mirrors
+/// scikit-learn's `sample_weight=None`.
+///
+/// MoonBit traits do NOT support a default method body (measured:
+/// adding one with parameters fails with `Missing type annotation for
+/// the parameter`), so a defaulted `fit_weighted` is not an option.
+/// Each `impl` dispatches on emptiness itself; the shared helper is
+/// `w_is_unweighted(w)` below rather than a trait default.
 pub trait Learner {
-  fn fit(Self, Matrix, Array[Double]) -> Self
+  fn fit(Self, Matrix, Array[Double], Array[Double]) -> Self
   fn predict(Self, Matrix) -> Array[Double]
 }
 
 ///|
-impl Learner for LinearRegression with fn fit(self, x, y) {
-  self.fit(x, y)
+/// The single definition of "these weights mean nothing". Every `impl
+/// Learner` routes through this so the convention cannot drift between
+/// the eight learners.
+pub fn w_is_unweighted(w : Array[Double]) -> Bool {
+  w.length() == 0
+}
+
+///|
+/// v0.118.0: `w` empty routes to the unweighted OLS, which is the
+/// byte-identical v0.54.0 path.
+impl Learner for LinearRegression with fn fit(self, x, y, w) {
+  if w_is_unweighted(w) {
+    self.fit(x, y)
+  } else {
+    self.fit_weighted(x, y, w)
+  }
 }
 
 ///|
