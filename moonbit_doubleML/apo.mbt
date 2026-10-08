@@ -19,6 +19,12 @@ pub struct DoubleMLAPO {
   // `set_sample_splitting`.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.119.0: when true the propensity entering the score is replaced by
+  // the IPW-normalized weight from `normalize_ipw`, matching upstream
+  // `DoubleMLAPO(normalize_ipw=...)` -> `_propensity_score_adjustment`.
+  // Default false, so merely adding the field changes nothing until a
+  // caller opts in.
+  normalize_ipw : Bool
   // v0.60.0+: injected nuisance learners. Defaults to
   // `LearnerDispatch::linear_regression()` so v0.59.0 callers
   // see byte-identical results. v0.61.0+ will plumb these
@@ -71,6 +77,7 @@ pub fn DoubleMLAPO::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  normalize_ipw? : Bool = false,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLAPO {
@@ -90,6 +97,9 @@ pub fn DoubleMLAPO::new(
       // is called, so every pre-existing caller keeps the drawn path.
       smpls: [],
       propensity_clip,
+      // v0.119.0: upstream `apo.py:97` defaults this to False, so the
+      // default path is byte-identical to v0.115.0-v0.118.0.
+      normalize_ipw,
       ml_g,
       ml_m,
       g_hat: Array::make(data.n_obs(), 0.0),
@@ -227,6 +237,7 @@ fn cross_fit_apo(
   treated : Array[Double],
   folds : Array[Fold],
   clip : Double,
+  normalize_ipw : Bool,
 ) -> (Array[Double], Array[Double]) {
   let n = x.rows()
   let g = Array::make(n, 0.0)
@@ -256,7 +267,17 @@ fn cross_fit_apo(
       m[te[k]] = p[k]
     }
   }
-  (g, clip_vec(m, clip, 1.0 - clip))
+  let m_clipped = clip_vec(m, clip, 1.0 - clip)
+  // v0.119.0: upstream applies `_propensity_score_adjustment` to the
+  // clipped propensity AFTER the cross-fit, i.e. the normalisation is
+  // computed over the full-sample cross-fitted propensity rather than
+  // per fold. Doing it here rather than inside the loop is what makes
+  // the `mean_treat1` / `mean_treat0` constants single numbers instead
+  // of one pair per fold.
+  (
+    g,
+    propensity_score_adjustment(m_clipped, treated, do_normalize=normalize_ipw),
+  )
 }
 
 ///|
@@ -374,6 +395,7 @@ pub fn DoubleMLAPO::fit(
         treated,
         folds,
         self.propensity_clip,
+        self.normalize_ipw,
       )
       (gr, mr)
     }
@@ -435,6 +457,7 @@ pub fn DoubleMLAPO::fit(
     // to drawing its own folds.
     smpls: self.smpls,
     propensity_clip: self.propensity_clip,
+    normalize_ipw: self.normalize_ipw,
     ml_g,
     ml_m,
     g_hat: g_scaled,
@@ -522,6 +545,7 @@ fn DoubleMLAPO::fit_cluster(
           treated,
           folds_row,
           self.propensity_clip,
+          self.normalize_ipw,
         )
         g = g_r
         m = m_r
@@ -587,6 +611,7 @@ fn DoubleMLAPO::fit_cluster(
       // in agreement on the field.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      normalize_ipw: self.normalize_ipw,
       ml_g,
       ml_m,
       g_hat: g,
@@ -1058,6 +1083,10 @@ pub struct DoubleMLAPOS {
   // it by hand.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.119.0: propagated to every child DoubleMLAPO, matching
+  // the upstream apos.py normalize_ipw constructor flag. Default
+  // false, so existing APOS numbers are unchanged.
+  normalize_ipw : Bool
   // v0.60.0+: injected nuisance learners (forwarded to
   // each child `DoubleMLAPO` on fit). Same forward-compat
   // story as the rest of the v0.60.0 estimator set.
@@ -1119,6 +1148,7 @@ pub fn DoubleMLAPOS::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  normalize_ipw? : Bool = false,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLAPOS {
@@ -1176,6 +1206,8 @@ pub fn DoubleMLAPOS::new(
     // called, so every pre-existing caller keeps the drawn path.
     smpls: [],
     propensity_clip,
+    // v0.119.0: forwarded to each child `DoubleMLAPO`.
+    normalize_ipw,
     ml_g,
     ml_m,
     coefs: Array::make(treatment_levels.length(), 0.0),
@@ -1330,6 +1362,7 @@ pub fn DoubleMLAPOS::fit(
           n_rep=self.n_rep,
           seed=self.seed,
           propensity_clip=self.propensity_clip,
+          normalize_ipw=self.normalize_ipw,
         )
         let child_memo = if self.memoize_enabled {
           child.enable_memoize()
@@ -1405,6 +1438,7 @@ pub fn DoubleMLAPOS::fit(
       // and inherits it without an explicit field.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      normalize_ipw: self.normalize_ipw,
       ml_g,
       ml_m,
       coefs: c,
@@ -1854,6 +1888,7 @@ pub fn DoubleMLAPOS::bootstrap(
         n_rep=self.n_rep,
         seed=self.seed,
         propensity_clip=self.propensity_clip,
+        normalize_ipw=self.normalize_ipw,
         ml_g=self.ml_g,
         ml_m=self.ml_m,
       )
@@ -2074,6 +2109,7 @@ pub fn DoubleMLAPOS::sensitivity_analysis(
       n_rep=self.n_rep,
       seed=self.seed,
       propensity_clip=self.propensity_clip,
+      normalize_ipw=self.normalize_ipw,
       ml_g=self.ml_g,
       ml_m=self.ml_m,
     )
@@ -2121,6 +2157,7 @@ pub fn DoubleMLAPOS::sensitivity_analysis_cluster(
       n_rep=self.n_rep,
       seed=self.seed,
       propensity_clip=self.propensity_clip,
+      normalize_ipw=self.normalize_ipw,
       ml_g=self.ml_g,
       ml_m=self.ml_m,
     )

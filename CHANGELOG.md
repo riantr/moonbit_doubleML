@@ -9,6 +9,158 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.119.0] -- the propensity subsystem on APO/APOS, and a bug the oracle caught in it
+
+### Two corrections to what this round set out to do
+
+The Loop that produced this release was scoped as "the
+propensity-analysis subsystem (`ps_dm` / DR-learner)". **Both halves of
+that were wrong**, and reading the published sdist
+(`_verify/doubleml-0.11.4.tar.gz`) is what showed it:
+
+1. **There is no `ps_dm` in doubleml 0.11.4.** The name is carried over
+   from a memory of an older release. The real subsystem is
+   `utils/_propensity_score.py` (`_normalize_ipw`,
+   `_propensity_score_adjustment`, `_trimm`) plus
+   `utils/propensity_score_processing.py` (`PSProcessor` /
+   `PSProcessorConfig`).
+2. **`PSProcessor` was already ported.** Config, `[c, 1-c]` clipping,
+   isotonic calibration via PAVA, and cross-validated calibration all
+   exist here and are exported. The claim that it "has no counterpart"
+   was wrong too.
+
+What is genuinely missing is narrower, and it is what this release ports:
+
+- `normalize_ipw` / `propensity_score_adjustment` / `trim_predictions`
+  as **public, shared** functions. `cvar.mbt` had carried a **private
+  copy** of `_normalize_ipw` since its own `normalize_ipw` option landed,
+  so the formula existed twice in one package and neither copy could be
+  cross-checked against upstream.
+- The **`normalize_ipw` constructor flag on `DoubleMLAPO` and
+  `DoubleMLAPOS`**, which upstream has (`apo.py:97`) and this port did
+  not. `E[Y(t)]` here could not be computed with normalized
+  inverse-probability weights at all.
+
+### The bug the oracle caught, which is the point of the release
+
+Consolidating the two private copies into one public function is a
+one-line-looking refactor. It introduced a real defect:
+
+```moonbit
+let om_clip = clip_vec(m_clip, 1.0e-12, 1.0)   // WRONG: clips p to p
+```
+
+The CONTROL denominator is `1 - p`, not `p`. The second `clip_vec` clips
+the propensity to itself and leaves the control weights un-normalised.
+
+MEASURED against the upstream oracle: on the fixture's row 18
+(`p ~ 0.09`) the port returned **+0.9019** where upstream returns
+**-0.0136** -- a sign flip, and 67 relative error against a gate bound
+of 1e-12.
+
+Two things make that worth writing a release about.
+
+**It survived all 890 pre-existing tests**, `cvar_test.mbt` included,
+which exercises the same formula. That is because `cvar.mbt` had just
+been switched to delegate to the new shared function, so the bug was
+live in CVAR's `normalize_ipw` path. One external oracle bought more
+than the entire internal suite.
+
+**It was found by measurement, not by inspection.** The gate compares
+against upstream's own function called on the same arrays. After the
+fix the worst relative gap is **2.3e-16** -- one ULP, the residue of
+MoonBit and NumPy summing in different orders.
+
+M1 in `_verify/mut_v119_propensity.ps1` is that exact mutation, kept as
+the canary: the harness's header says so, and the bound is four orders
+above the measurement and sixteen below the bug.
+
+### What was ported
+
+```moonbit
+pub fn normalize_ipw(propensity, treatment) -> Array[Double]
+pub fn propensity_score_adjustment(propensity, treatment, do_normalize? = false)
+pub fn trim_predictions(preds, rule, threshold) -> Array[Double]
+```
+
+`normalize_ipw` reproduces upstream's `_normalize_ipw`:
+
+    mean_treat1 = mean(treatment / propensity)
+    mean_treat0 = mean((1 - treatment) / (1 - propensity))
+    normalized  = treatment * propensity * mean_treat1
+                + (1 - treatment) * (1 - (1 - propensity) * mean_treat0)
+
+`cvar.mbt`'s private copy now delegates. Two copies of an
+upstream-tracked formula in one package is how they drift; the single
+public definition is what an oracle cross-check can import at all.
+
+### One documented deviation
+
+Upstream divides by `propensity` with **no guard**. This clamps both
+denominators at `1e-12`, so a propensity of exactly 0 yields a bounded
+number rather than `inf` and a `NaN`-propagating estimator.
+
+The two agree bit-for-bit on any propensity bounded away from zero --
+which is what the oracle fixture checks, since its propensity stays
+inside (0.24, 0.75) where the clamp is inert. The deviation only bites
+on a degenerate propensity, and it is pinned by
+`v119_normalized_ipw_survives_a_degenerate_propensity` rather than left
+in a comment.
+
+### Wiring, and what did NOT move
+
+`DoubleMLAPO::new` and `DoubleMLAPOS::new` gain
+`normalize_ipw? : Bool = false`, matching upstream's default. `APOS`
+propagates it to every child `DoubleMLAPO`.
+
+Two placement decisions worth recording:
+
+- The normalisation is applied to the **finished** cross-fitted
+  propensity, not inside the fold loop. Upstream's
+  `_propensity_score_adjustment` sits after `cross_fit_predict`, so its
+  two `mean_treat*` constants are single numbers over the whole sample.
+  Per-fold would have made them fold-local and quietly changed the
+  estimator -- a mutation for it is M7.
+- `propensity_clip` keeps its `1e-6` default. Upstream's equivalent is
+  `PSProcessorConfig.clipping_threshold`, default `1e-2`; changing the
+  port's default would move every existing APO result, which is a
+  behavioural release rather than a feature one.
+
+The default path is unchanged: **900/900**, and
+`v119_normalize_ipw_defaults_to_off` asserts the implicit and explicit
+`false` agree on both coefficient and SE with `==`.
+
+### The oracle
+
+`_verify/gen_v119_oracle.py` imports upstream's own functions from the
+published sdist and calls them. Every constant in
+`expand_v119_test.mbt` is copied from `_v119_golden.json`; the fixture
+arrays (`fixture_ps`, `fixture_d`) are emitted BY the oracle rather than
+regenerated, because reproducing NumPy's PCG64 in MoonBit would be a
+guess dressed as a port.
+
+MEASURED on that fixture: `mean_treat1 = 0.8813990350530895`,
+`mean_treat0 = 1.114904578741986`, and upstream's
+`normalize_ipw=False` branch is the identity at exactly `0.0`.
+
+### Harness
+
+`_verify/mut_v119_propensity.ps1`, 9 mutations: 8 killed, 1
+declared-equivalent, 0 inconclusive. M9 is equivalent because it is
+declared `equivalent` in the mutation table itself -- APOS dropping the
+flag at construction cannot be observed through `DoubleMLAPO`, which is
+the only estimator any gate drives.
+
+### Still missing
+
+- **Regularized linear learners** (Lasso / ElasticNet / Ridge) and
+  **GLM families** (Poisson, Gamma, negative binomial).
+- `DoubleMLDIDCSBinary` still collapses `ps_processor_config` to a
+  single `propensity_clip`; the `isotonic` / `cv_calibration` paths are
+  now implemented in `ps_processor.mbt` but that estimator's
+  constructor does not expose them.
+- Fuzzy-RDD CCT delta-method terms remain unported.
+
 ## [0.118.0] -- `sample_weight` on the `Learner` trait
 
 ### What was missing

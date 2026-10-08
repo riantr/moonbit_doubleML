@@ -580,12 +580,19 @@ fn solve_ipw_root(
 
 ///|
 /// Normalize inverse probability weights so that the mean
-/// weight within each treatment group equals 1. Matches the
-/// upstream `doubleml.utils._propensity_score._normalize_ipw`:
-///   `mean_treat1 = mean(treatment / propensity)`
-///   `mean_treat0 = mean((1 - treatment) / (1 - propensity))`
-///   `normalized = treatment * propensity * mean_treat1
-///               + (1 - treatment) * (1 - (1 - propensity) * mean_treat0)`
+/// weight within each treatment group equals 1.
+///
+/// v0.119.0: this file carried a private copy of the upstream
+/// `doubleml.utils._propensity_score._normalize_ipw` formula. It now
+/// delegates to the single public definition in `ps_processor.mbt`,
+/// because two private copies of an upstream-tracked formula is how
+/// they drift apart -- and because an oracle cross-check cannot import
+/// a file-private function.
+///
+///   mean_treat1 = mean(treatment / propensity)
+///   mean_treat0 = mean((1 - treatment) / (1 - propensity))
+///   normalized = treatment * propensity * mean_treat1
+///               + (1 - treatment) * (1 - (1 - propensity) * mean_treat0)
 ///
 /// Intuition: the raw IPW weight `treatment / propensity` is
 /// unbiased for the treated fraction; multiplying by
@@ -597,30 +604,7 @@ fn normalize_ipw_weights(
   propensity : Array[Double],
   treatment : Array[Double],
 ) -> Array[Double] {
-  let n = propensity.length()
-  let mut sum_t1 = 0.0
-  let mut sum_t0 = 0.0
-  for i = 0; i < n; i = i + 1 {
-    let m = propensity[i]
-    let m_clip = if m < 1.0e-12 { 1.0e-12 } else { m }
-    let om = 1.0 - m_clip
-    let om_clip = if om < 1.0e-12 { 1.0e-12 } else { om }
-    sum_t1 = sum_t1 + treatment[i] / m_clip
-    sum_t0 = sum_t0 + (1.0 - treatment[i]) / om_clip
-  }
-  let mean_t1 = sum_t1 / n.to_double()
-  let mean_t0 = sum_t0 / n.to_double()
-  let out = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    let m = propensity[i]
-    let m_clip = if m < 1.0e-12 { 1.0e-12 } else { m }
-    let om = 1.0 - m_clip
-    let om_clip = if om < 1.0e-12 { 1.0e-12 } else { om }
-    let w1 = treatment[i] * m_clip * mean_t1
-    let w0 = (1.0 - treatment[i]) * (1.0 - om_clip * mean_t0)
-    out[i] = w1 + w0
-  }
-  out
+  normalize_ipw(propensity, treatment)
 }
 
 ///|

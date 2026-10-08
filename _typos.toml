@@ -26,6 +26,15 @@ extend-exclude = [
   # is the only reason the copy exists. This is why `agregate` at
   # _verify/double_ml_score_mixins.py:117 is left as upstream has it.
   "_verify/double_ml_*.py",
+  # The `doubleml-0.11.4` sdist unpacked VERBATIM into
+  # _verify/_upstream_ps/ so v0.119.0 could call upstream's own
+  # `_normalize_ipw` / `PSProcessor` as an oracle. Same reasoning as the
+  # `double_ml_*.py` copies above and the same reference: this tree is
+  # evidence about what upstream says, and correcting a typo inside it
+  # would change what the oracle computes while leaving its name in the
+  # log. `blp.py`'s "cofidence" and `test_framework.py`'s "substract"
+  # are upstream's typos and are left as they are.
+  "_verify/_upstream_ps/**",
   # The upstream `rdpackages/rdrobust` PYTHON PORT, downloaded VERBATIM into
   # _verify/_upstream_rdrobust_py/ and copied again into _verify/_oracle/ so it
   # is importable as a package. Same reasoning as `double_ml_*.py` above, and

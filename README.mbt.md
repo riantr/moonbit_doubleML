@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.118.0** |
+| `moon.mod` version | **0.119.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **185** `.mbt` files (**89** production + **96** test) |
+| `.mbt` file count | **186** `.mbt` files (**89** production + **97** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **890 / 890 / 890** |
-| Tests (wasm-gc) | **896 / 896** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **900 / 900 / 900** |
+| Tests (wasm-gc) | **906 / 906** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
