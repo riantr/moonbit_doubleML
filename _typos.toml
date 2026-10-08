@@ -26,6 +26,17 @@ extend-exclude = [
   # is the only reason the copy exists. This is why `agregate` at
   # _verify/double_ml_score_mixins.py:117 is left as upstream has it.
   "_verify/double_ml_*.py",
+  # The upstream `rdpackages/rdrobust` PYTHON PORT, downloaded VERBATIM into
+  # _verify/_upstream_rdrobust_py/ and copied again into _verify/_oracle/ so it
+  # is importable as a package. Same reasoning as `double_ml_*.py` above, and
+  # the same reference: these files exist because they are what v0.116.0's
+  # `nn_residual` and procedure (iii) sandwich were read from. Editing a typo
+  # inside them would not make them more correct -- it would make them stop
+  # being the thing that was read.
+  #
+  # `_verify/gen_v116_oracle.py` is deliberately NOT excluded: that one is ours.
+  "_verify/_upstream_rdrobust_py/*.py",
+  "_verify/_oracle/**/*.py",
   # Commit-message records kept under _verify/ are verbatim copies of what
   # was actually committed. Same reasoning as the copies above, with a
   # stricter reference: `git log` is the ground truth, so editing the text

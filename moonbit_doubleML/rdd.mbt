@@ -2028,12 +2028,31 @@ fn rdd_limit(m : DoubleMLRDD, side : Double, h : Double, order : Int) -> Double 
 }
 
 ///|
-/// v0.115.0: the estimated bias on ONE side, `(bias_left, bias_right)`.
+/// v0.116.0 CORRECTION: this is `rdrobust`'s bias,
+/// `xi_p(h)_s - xi_bc_s`, where `xi_bc_s` is the BIAS-CORRECTED limit from
+/// the `Q` sandwich -- NOT `xi_q(b)_s`.
 ///
-/// Following `rdrobust`: the bias is the difference between the order-`p`
-/// limit estimate at the POINT bandwidth `h` and the order-`q` limit
-/// estimate at the BIAS bandwidth `b`. `p = 1` and `q = 2` are
-/// `rdrobust`'s defaults.
+/// v0.115.0 shipped this as `xi_p(h)_s - xi_q(b)_s` and documented the
+/// difference as "`rdrobust`'s bias". Cross-checking against the upstream
+/// Python port (`_verify/gen_v116_oracle.py`) shows the two agree to ~1e-15
+/// when `b == h` and DIVERGE when `b != h` -- on the v0.116.0 oracle
+/// fixture, `h = 0.30`, `b = 0.42`, left side:
+///
+/// | quantity                  | value     |
+/// |---------------------------|-----------|
+/// | `xi_p(h)`                 | 0.1327887 |
+/// | `xi_bc` (`rdrobust`)      | 0.0561884 |
+/// | `xi_q(b)` (was shipped)   | 0.0681351 |
+///
+/// The default `rho = 1` gives `b == h`, so the shipped default path is
+/// unchanged to 15 digits; the fix repairs the `rho != 1` path, which is
+/// exactly where the second bandwidth is supposed to be doing work.
+///
+/// The wrong version was not detectable by any v0.115.0 gate, because
+/// v0.115.0's own identity (`tau_bc == tau_bc_collapsed`) was only ever
+/// checked INTERNALLY -- both sides of it computed the same wrong number.
+/// An external oracle was required. That is now pinned by
+/// `v116_tau_bc_matches_the_oracle_at_a_separate_bias_bandwidth`.
 ///
 /// # The `b = h` case, and the trap in it
 ///
@@ -2067,16 +2086,58 @@ pub fn DoubleMLRDD::bias(
     require(p >= 1)
     require(q >= 1)
     require(rho > 0.0)
+    require(q >= p + 1)
     let bias_b = if b > 0.0 { b } else { self.bandwidth / rho }
     require(bias_b > 0.0)
     let h = self.bandwidth
-    let left = rdd_limit(self, -1.0, h, p) - rdd_limit(self, -1.0, bias_b, q)
-    let right = rdd_limit(self, 1.0, h, p) - rdd_limit(self, 1.0, bias_b, q)
-    (left, right)
+    let (xi_l, xi_r) = rdd_xi_bc_pair(self, bias_b, p, q)
+    (rdd_limit(self, -1.0, h, p) - xi_l, rdd_limit(self, 1.0, h, p) - xi_r)
   } catch {
     PreconditionError::Violated(loc) =>
       abort("precondition failed at " + loc.to_string())
   }
+}
+
+///|
+/// v0.116.0: the per-side bias-corrected limits `(xi_bc_left, xi_bc_right)`
+/// at bias bandwidth `b`, from the `Q` sandwich.
+///
+/// Shared by `bias` and `tau_bc` so the two can never disagree about which
+/// `xi_bc` they mean, and it is the only caller of `rdd_rb_side` with
+/// `need_residual = false` -- the point estimate has no use for residuals.
+fn rdd_xi_bc_pair(
+  m : DoubleMLRDD,
+  b : Double,
+  p : Int,
+  q : Int,
+) -> (Double, Double) raise PreconditionError {
+  let (_, xi_l) = rdd_rb_side(
+    m.data,
+    -1.0,
+    m.cutoff,
+    m.bandwidth,
+    b,
+    p,
+    q,
+    m.kernel,
+    3,
+    false,
+    false,
+  )
+  let (_, xi_r) = rdd_rb_side(
+    m.data,
+    1.0,
+    m.cutoff,
+    m.bandwidth,
+    b,
+    p,
+    q,
+    m.kernel,
+    3,
+    false,
+    false,
+  )
+  (xi_l, xi_r)
 }
 
 ///|
@@ -2101,34 +2162,55 @@ pub fn DoubleMLRDD::bias(
 /// the cutoff"), so the rename costs nothing in fidelity and removes the
 /// collision.
 ///
-/// # It collapses to a single fit -- and that is checkable
+/// # It does NOT collapse to a single fit -- v0.116.0 CORRECTION
 ///
-/// Substituting the definition of the bias, the `tau_cl` terms cancel:
+/// v0.115.0's docs claimed, and two v0.115.0 gates asserted, that
 ///
 ///     tau_bc_s = xi_p(h)_s - [xi_p(h)_s - xi_q(b)_s] = xi_q(b)_s
 ///
-/// so the entire bias-correction apparatus is algebraically identical to
-/// fitting a local QUADRATIC at `b` and differencing its intercepts. The
-/// library computes it the long way because that is what `rdrobust`
-/// does, and the two are not guaranteed bit-identical: `a - (a - b)` is
-/// not exactly `b` in IEEE arithmetic in general.
+/// so that `tau_bc` and `tau_bc_collapsed` are the same number. The
+/// substitution is arithmetically valid, but the SECOND equality rests on
+/// `bias` being `xi_p(h)_s - xi_q(b)_s`, and that is `rdrobust`'s bias
+/// only when `b == h`. Checked against the upstream Python port at
+/// `h = 0.30`, `b = 0.42`:
 ///
-/// MEASURED, not assumed: on every fixture in `expand_v115_test.mbt` the
-/// measured gap between the two routes is EXACTLY zero, and
-/// `v115_bias_corrected_is_the_q_order_estimate` asserts `==` rather
-/// than a tolerance. That is a property of these fixtures' magnitudes,
-/// NOT a theorem -- the cancellation is exact only when the rounding
-/// happens to land back on `xi_q(b)`. If a future fixture breaks it, the
-/// correct response is to relax THAT assertion to a tolerance, not to
-/// conclude the algebra is wrong: the algebra is independent of the
-/// fixture and the arithmetic is not.
+/// | quantity                | upstream `rdrobust` | this port (v0.115.0) |
+/// |-------------------------|--------------------|-----------------------|
+/// | `xi_bc`, left            | 0.0561884317       | 0.0681350859          |
+/// | `tau_bc`                | 0.7092313868       | 0.6910832334          |
+///
+/// v0.115.0 could not catch this on its own: its identity gate compared
+/// two internal routes to the SAME wrong number, so it was green by
+/// construction. See `bias` for the correction and
+/// `v116_tau_bc_matches_the_oracle_at_a_separate_bias_bandwidth` for the
+/// gate that does catch it.
+///
+/// `tau_bc_collapsed` (`xi_q(b)_r - xi_q(b)_l`) is still a real and useful
+/// quantity -- it is the order-`q` fit at the bias bandwidth, and it is
+/// what `rdrobust`'s bias-corrected limit equals when `b == h` -- so it
+/// stays, with its own docs corrected.
+///
+/// # How it is evaluated, and why not "the long way"
+///
+/// `tau_bc = xi_bc_r - xi_bc_l`, with `xi_bc_s` the per-side
+/// bias-corrected limit -- `rdrobust.py:907`'s own
+/// `beta_bc = beta_bc_r - beta_bc_l`.
+///
+/// The algebraically equivalent `tau_cl - (bias_r - bias_l)` is what
+/// v0.115.0 computed, and it is what this port used to describe itself as
+/// doing. Both are the same number in exact arithmetic, but the long way
+/// subtracts two `xi_p(h)` terms that then cancel, so it carries the
+/// relative error of `xi_p(h)` into a difference of limits. Measured on
+/// the `expand_v115_test.mbt` fixture at `b == h`, the long way sits
+/// 8.5e-8 (relative) away from the direct difference; the direct one has
+/// no such amplification. The long way is kept out for the same reason
+/// upstream never writes it that way.
 ///
 /// # Coverage
 ///
 /// This is the point estimate only. The default `coef()` / `se()` are
-/// UNCHANGED -- bias correction is opt-in, because procedure (ii) alone
-/// under-covers, which is the entire reason procedure (iii) exists. See
-/// `tau_bc_se` and the v0.115.0 CHANGELOG entry for what remains.
+/// UNCHANGED -- bias correction is opt-in. For the procedure (iii)
+/// standard error see `tau_bc_se_rb`.
 pub fn DoubleMLRDD::tau_bc(
   self : DoubleMLRDD,
   b? : Double = 0.0,
@@ -2136,21 +2218,40 @@ pub fn DoubleMLRDD::tau_bc(
   p? : Int = 1,
   q? : Int = 2,
 ) -> Double {
-  let (bias_l, bias_r) = self.bias(b~, rho~, p~, q~)
-  let tau_cl = rdd_limit(self, 1.0, self.bandwidth, p) -
-    rdd_limit(self, -1.0, self.bandwidth, p)
-  tau_cl - (bias_r - bias_l)
+  try {
+    require(p >= 1)
+    require(q >= 1)
+    require(rho > 0.0)
+    require(q >= p + 1)
+    let bias_b = if b > 0.0 { b } else { self.bandwidth / rho }
+    require(bias_b > 0.0)
+    let (xi_l, xi_r) = rdd_xi_bc_pair(self, bias_b, p, q)
+    xi_r - xi_l
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
-/// v0.115.0: the bias-corrected estimate expressed the way it collapses
-/// to -- `xi_q(b)_r - xi_q(b)_l`, one order-`q` fit per side at
-/// bandwidth `b`.
+/// v0.115.0: the bias-corrected estimate expressed as one order-`q` fit
+/// per side at bandwidth `b` -- `xi_q(b)_r - xi_q(b)_l`.
 ///
-/// Public precisely because `tau_bc` is written the long
-/// way: without this, the identity in its docs could only be checked by
-/// re-deriving it inside a test, which is a weaker thing to pin than
-/// reading the two public numbers off the same object.
+/// # v0.116.0: this is NOT always `tau_bc`
+///
+/// v0.115.0's docs claimed this and `tau_bc` were the same number. They
+/// agree to ~1e-15 when `b == h` and DIVERGE otherwise: `xi_q(b)` is the
+/// order-`q` fit at `b`, whereas `tau_bc` uses `rdrobust`'s `Q`-sandwich
+/// limit, and the two coincide only when the point and bias bandwidths
+/// are the same number. Read `tau_bc`'s docs for the measured
+/// discrepancy.
+///
+/// Kept because the quantity is meaningful in its own right and because
+/// the identity at `b == h` is a genuine, checkable structural fact that
+/// `v116_tau_bc_equals_the_collapsed_form_when_b_equals_h` pins.
+///
+/// Public so the comparison can be made from outside the file rather
+/// than re-derived inside a test.
 pub fn DoubleMLRDD::tau_bc_collapsed(
   self : DoubleMLRDD,
   b? : Double = 0.0,
@@ -2187,6 +2288,23 @@ pub fn DoubleMLRDD::tau_bc_collapsed(
 /// the bias-corrected estimator, not `rdrobust`'s robust one. Shipping it
 /// as if it were procedure (iii) is the v0.113 mistake again -- a
 /// different estimator wearing the same name.
+/// # v0.116.0: superseded for procedure (iii) -- kept for procedure (ii)
+///
+/// `tau_bc_se_rb` is `rdrobust`'s procedure (iii) standard error, and it
+/// pairs with `tau_bc`. This function does not: it is the homoskedastic
+/// / `HC0` variance of the order-`q` fits at `b` treated as independent
+/// regressions, which is a standard error for the ORDER-`q` ESTIMATOR --
+/// i.e. for `tau_bc_collapsed` -- rather than for `tau_bc`.
+///
+/// v0.115.0 shipped this next to `tau_bc` and said in these docs that
+/// `rdrobust`'s robust variance "is not implemented here". That was
+/// true then and is false now; the reason the function is kept rather
+/// than deleted is that the order-`q` fit still needs an honest standard
+/// error, and there was no name for it before.
+///
+/// Its numbers are unchanged. What changed is that `tau_bc` moved -- see
+/// that method's v0.116.0 correction -- so the pairing documented in
+/// v0.115.0 no longer holds.
 pub fn DoubleMLRDD::tau_bc_se(
   self : DoubleMLRDD,
   b? : Double = 0.0,
@@ -2583,4 +2701,515 @@ fn rdd_nn_matched_sigma4(
     acc = acc + sum / taken.to_double()
   }
   acc / n_l.to_double()
+}
+
+///|
+/// v0.116.0: the nearest-neighbour matched residual -- the residual behind
+/// `rdrobust`'s `vce = "nn"`. Ported from
+/// `rdrobust/src/rdrobust/funs.py::_nn_residuals_jit`, read line by line
+/// rather than reconstructed from the `vce` documentation (which states
+/// the parameter exists and says nothing about how it is built).
+///
+/// # What the quantity IS
+///
+/// For each observation `pos`, take the `nnmatch` observations whose
+/// running value is nearest to `x[pos]` -- expanding alternately to the
+/// left and to the right, always taking whichever side has the smaller
+/// running-variable gap -- and write
+///
+/// ```
+/// res[pos] = sqrt(Ji / (Ji + 1)) * (y[pos] - mean(y over those neighbours))
+/// ```
+///
+/// where `Ji` counts the neighbours EXCLUDING `pos` itself. The
+/// `sqrt(Ji/(Ji+1))` factor is the finite-sample correction that keeps
+/// `res` on the scale of a regression residual; it pays for that with a
+/// variance roughly `Ji + 1` times the plug-in residual's.
+///
+/// The crucial structural fact, and the reason `vce = "nn"` is cheap:
+/// **the residual is a function of `y` and `x` only.** No fit, no
+/// bandwidth, no kernel. `rdrobust` exploits this at rdrobust.py:1055 --
+/// when `vce == "nn"` it assigns `res_b_l = res_h_l`, reusing the
+/// CONVENTIONAL estimator's residuals for the BIAS-CORRECTED variance
+/// instead of refitting. A test pins that invariance directly.
+///
+/// # Tie handling and mass points
+///
+/// Two equal-`x` observations at distance `dleft == dright` are taken
+/// together (both sides advance one step), unless the two gaps differ by
+/// more than `max(dleft, dright) * sqrt(eps)` on the side that is being
+/// expanded -- that tolerance is what keeps the expansion from comparing
+/// distances that differ only by rounding. It is the MAXIMUM, not the
+/// minimum (upstream's `dleft if dleft > dright else dright`, funs.py:114)
+/// and this file originally wrote the minimum. The two agree on every
+/// fixture in `expand_v116_test.mbt`: the window in which they can differ
+/// is `|dleft - dright|` landing between `min * sqrt(eps)` and
+/// `max * sqrt(eps)`, roughly 1e-16 wide relative, and no double-precision
+/// running variable lands there by accident. So this is a fidelity fix
+/// that the gates CANNOT see -- recorded here, and flagged in
+/// `_verify/mut_v116_rdd.ps1` as a mutation expected to survive.
+///
+/// Equal-`x` groups are walked as whole blocks, so an observation is never
+/// split from its own duplicate when the boundary falls inside a group.
+///
+/// # This is NOT the criterion's `sigma4`
+///
+/// The private `rdd_nn_matched_sigma4` matches a LEFT residual to a
+/// RIGHT residual to build the bandwidth criterion's `Sigma^4`. This
+/// matches each observation to its own local neighbourhood inside ONE
+/// side. They share a name fragment and nothing else; see that function
+/// for its own doc.
+///
+/// # Preconditions
+///
+/// `x` must be sorted ascending -- the neighbourhood walk assumes it --
+/// and needs at least two entries, since a residual is defined against
+/// at least one other observation. `nnmatch >= 1` for the same reason:
+/// `cap = min(nnmatch, n - 1)` and `Ji` would otherwise be zero.
+///
+/// Ports `funs.py:92-143`.
+pub fn nn_residual(
+  x : Array[Double],
+  y : Array[Double],
+  nnmatch? : Int = 3,
+) -> Array[Double] {
+  try {
+    let n = x.length()
+    require(y.length() == n)
+    require(n >= 2)
+    require(nnmatch >= 1)
+    // Equal-`x` groups, walked whole. `dupsid[k]` is k's 1-based offset
+    // WITHIN its group and `dups[k]` the group's length, so the
+    // expansion starts with `lpos` steps to the group start and
+    // `rpos` steps to the group end.
+    let dups = Array::make(n, 0)
+    let dupsid = Array::make(n, 0)
+    let mut i0 = 0
+    while i0 < n {
+      let s = i0
+      let mut e = i0
+      while e + 1 < n && x[e + 1] == x[s] {
+        e = e + 1
+      }
+      let m = e - s + 1
+      for k = s; k <= e; k = k + 1 {
+        dups[k] = m
+        dupsid[k] = k - s + 1
+      }
+      i0 = e + 1
+    }
+    let cap = if nnmatch < n - 1 { nnmatch } else { n - 1 }
+    // sqrt(eps) for float64; the distance tie-tolerance scale.
+    let nn_tol_eps = 1.4901161193847656e-8
+    let res = Array::make(n, 0.0)
+    for pos = 0; pos < n; pos = pos + 1 {
+      let mut rpos = dups[pos] - dupsid[pos]
+      let mut lpos = dupsid[pos] - 1
+      while lpos + rpos < cap {
+        if pos - lpos - 1 < 0 {
+          rpos += dups[pos + rpos + 1]
+        } else if pos + rpos + 1 >= n {
+          lpos += dups[pos - lpos - 1]
+        } else {
+          let dleft = x[pos] - x[pos - lpos - 1]
+          let dright = x[pos + rpos + 1] - x[pos]
+          let largest = if dleft > dright { dleft } else { dright }
+          let nn_tol = largest * nn_tol_eps
+          if dleft - dright > nn_tol {
+            rpos += dups[pos + rpos + 1]
+          } else if dright - dleft > nn_tol {
+            lpos += dups[pos - lpos - 1]
+          } else {
+            rpos += dups[pos + rpos + 1]
+            lpos += dups[pos - lpos - 1]
+          }
+        }
+      }
+      let lo = pos - lpos
+      let hi = pos + rpos + 1
+      let ji = hi - lo - 1
+      let sf = (ji.to_double() / (ji + 1).to_double()).sqrt()
+      let mut s_y = 0.0
+      for j = lo; j < hi; j = j + 1 {
+        s_y += y[j]
+      }
+      s_y -= y[pos]
+      res[pos] = sf * (y[pos] - s_y / ji.to_double())
+    }
+    res
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
+}
+
+///|
+/// `kernel.weight(u, h)` with `rdrobust`'s support mask applied.
+///
+/// # Why the mask is not optional
+///
+/// Three of the five kernels -- `Triangular`, `Epanechnikov`,
+/// `Quadratic` -- are NEGATIVE outside `|u| <= h` (`1 - t` and `1 - t^2`
+/// have the wrong sign past `t = 1`). Upstream multiplies every weight by
+/// `(|u| <= 1)` (`rdrobust_kweight`, funs.py:668-677) for exactly that
+/// reason, and the port's `RDDKernel::weight` deliberately does NOT,
+/// because every pre-v0.116.0 caller selects rows with `u.abs() <= h`
+/// first and so never evaluates the negative branch.
+///
+/// v0.116.0 is the first caller that builds a fit on a window WIDER than
+/// the bandwidth -- the CCT `max(h, b)` union -- and needs `W_h` to fall
+/// to exactly zero outside the h-sub-window rather than to go negative.
+/// Without this, `b > h` produces a Gram matrix with a non-positive pivot
+/// and `solve_spd` aborts. The first oracle cross-check at `h = b`
+/// passed precisely because `max(h, b) == h` there, so the negative
+/// branch was never evaluated; the `h != b` cross-check is what found it.
+fn rdd_weight_at(kernel : RDDKernel, u : Double, h : Double) -> Double {
+  if u.abs() <= h {
+    kernel.weight(u, h)
+  } else {
+    0.0
+  }
+}
+
+///|
+/// v0.116.0: the two per-side pieces of `rdrobust`'s procedure (iii),
+/// built from one shared construction.
+///
+/// Returns `(v00, xibc)`:
+///
+///  - `v00 = e_0' V_rb e_0` where `V_rb = Gp^-1 Q' diag(res^2) Q Gp^-1`
+///    -- the side's contribution to the bias-corrected VARIANCE.
+///  - `xibc = e_0' Gp^-1 Q' y` -- the side's bias-CORRECTED limit, the
+///    quantity procedure (ii) and (iii) report and this port's `tau_bc`
+///    differences. It is `rdrobust`'s `xi_bc`, NOT `xi_q(b)`; see
+///    `tau_bc` for why those two coincide only when `b == h`.
+///
+/// `need_residual = false` skips the residual construction entirely,
+/// which the point-estimate callers want: it is the only part of this
+/// function that costs O(n * nnmatch).
+///
+/// This is a direct port of the `else` branch at rdrobust.py:1092-1097,
+/// which is the branch every sharp, unclustered, non-CRV call takes --
+/// including the `h == b` case, because the two earlier `hb_match`
+/// branches (1077, 1084) are both gated on cluster / CRV2 / CRV3.
+///
+/// The meat matrix needs `Q` as a whole (n x (p+1)) but only ONE entry
+/// of the result, so the sandwich is never formed: with
+/// `a = Gp^-1 e_0` and `M = Q' diag(res^2) Q`,
+///
+/// ```
+/// e_0' Gp^-1 M Gp^-1 e_0 = a' M a = SUM_i res[i]^2 * (Q_i . a)^2
+/// ```
+///
+/// which is one pass and one Cholesky solve. Forming `Gp^-1 M Gp^-1`
+/// explicitly would cost two more matrix products for the same number.
+///
+/// # The rank-1 correction
+///
+/// Upstream writes `Q = RW_p - h^(p+1) * m * L'`, where `m` is an
+/// (n x 1) column and `L[a] = SUM_k R_p[k][a] * W_h[k] * ((x_k - c)/h)^(p+1)`.
+/// The `h^(p+1)` in front of `L` cancels the `1/h^(p+1)` inside it, so
+/// this file carries `L` pre-multiplied:
+///
+/// ```
+/// Ls[a] = SUM_k R_p[k][a] * W_h[k] * (x_k - c)^(p+1)
+/// Q[i][a] = R_p[i][a] * W_h[i] - m[i] * Ls[a]
+/// ```
+///
+/// `m` is itself `(R_q . gamma) .* W_b` with `gamma` the `(p+1)`-th ROW
+/// of `Gq^-1`, obtained here as the solution of `Gq gamma = e_{p+1}`
+/// (rdrobust.py:860) -- one solve instead of a matrix inverse.
+///
+/// # Kernel weights omit the `1/h`
+///
+/// `rdrobust_kweight` returns `K(u)/h`; this file's `RDDKernel::weight`
+/// returns `K(u)`. The factor cancels exactly -- `Q` scales by it and
+/// `Gp^-1` by its inverse -- so no constant is lost. Verified against the
+/// oracle rather than argued: `expand_v116_test.mbt` compares the two
+/// variances to 12 significant figures.
+///
+/// # Window
+///
+/// Upstream fits on the union window `max(h, b)` (rdrobust.py:795-797)
+/// and lets `W_h` fall to zero outside the h-sub-window. Reproduced
+/// here, because using the b-window with h-weights would silently refit
+/// the `p`-order stage at `b` and make `h` inert.
+///
+/// # `res` sources
+///
+/// `nn_res` selects the residual entering the meat:
+///   - `true`  -- `vce = "nn"`: the fit-free neighbour residual of
+///     `nn_residual`, which upstream feeds to BOTH stages.
+///   - `false` -- `vce = "hc0"`: the plug-in residual `y - R_q . beta_q`
+///     of the q-order fit at `b`, which upstream uses for the b stage only.
+///
+/// Ports rdrobust.py:850-863 (Q, m, invG_p) and 1092-1097 (the meat).
+fn rdd_rb_side(
+  data : DoubleMLRDDData,
+  side : Double,
+  cutoff : Double,
+  h : Double,
+  b : Double,
+  p : Int,
+  q : Int,
+  kernel : RDDKernel,
+  nnmatch : Int,
+  nn_res : Bool,
+  need_residual : Bool,
+) -> (Double, Double) raise PreconditionError {
+  require(q >= p + 1)
+  // Upstream's row selection is `w > 0` on the weight built with the
+  // governing bandwidth `max(h, b)` (rdrobust.py:795-797), which for a
+  // compact kernel is a strict inequality in `|u|`. Selecting with
+  // `u.abs() <= win` instead would admit the zero-weight boundary row,
+  // where the kernel is 0 but the observation is still a live neighbour
+  // for `nn_residual`.
+  let gov = if b > h { b } else { h }
+  let ids : Array[Int] = []
+  for i = 0; i < data.n_obs(); i = i + 1 {
+    let u = data.score[i] - cutoff
+    if (side < 0.0 && u < 0.0) || (side > 0.0 && u >= 0.0) {
+      if rdd_weight_at(kernel, u, gov) > 0.0 {
+        ids.push(i)
+      }
+    }
+  }
+  let n = ids.length()
+  // One degree of freedom beyond the q-order fit, so `Gq` is not merely
+  // invertible in principle.
+  require(n >= q + 2)
+  // Upstream sorts the running variable once, globally, before splitting
+  // into sides; `nn_residual` walks neighbourhoods in x order, so the
+  // window rows must be in x order too.
+  let score_ref = data.score
+  ids.sort_by(fn(a : Int, c : Int) {
+    let ka = score_ref[a]
+    let kc = score_ref[c]
+    if ka < kc {
+      -1
+    } else if ka > kc {
+      1
+    } else {
+      0
+    }
+  })
+  let kq = q + 1
+  let kp = p + 1
+  let uu = Array::make(n, 0.0)
+  let yy = Array::make(n, 0.0)
+  let wh = Array::make(n, 0.0)
+  let wb = Array::make(n, 0.0)
+  let xp = Array::make(n * kq, 0.0)
+  for k = 0; k < n; k = k + 1 {
+    let u = score_ref[ids[k]] - cutoff
+    uu[k] = u
+    yy[k] = data.y[ids[k]]
+    wh[k] = rdd_weight_at(kernel, u, h)
+    wb[k] = rdd_weight_at(kernel, u, b)
+    // Vandermonde by successive multiplication, matching `_vander`
+    // (funs.py:597): column 0 is the constant 1.0, column j is column
+    // j-1 times u.
+    xp[k * kq] = 1.0
+    let mut pw = 1.0
+    for j = 1; j <= q; j = j + 1 {
+      pw = pw * uu[k]
+      xp[k * kq + j] = pw
+    }
+  }
+  let gq = Matrix::zeros(kq, kq)
+  for k = 0; k < n; k = k + 1 {
+    let wk = wb[k]
+    for a = 0; a < kq; a = a + 1 {
+      let xa = wk * xp[k * kq + a]
+      for c = a; c < kq; c = c + 1 {
+        let val = gq.get(a, c) + xa * xp[k * kq + c]
+        gq.set(a, c, val)
+        if c != a {
+          gq.set(c, a, val)
+        }
+      }
+    }
+  }
+  // gamma = row p+1 of Gq^-1, obtained as the solution of Gq g = e_{p+1}.
+  let rhs_q = Array::make(kq, 0.0)
+  rhs_q[p + 1] = 1.0
+  let gamma = solve_spd(gq, rhs_q)
+  let m = Array::make(n, 0.0)
+  for k = 0; k < n; k = k + 1 {
+    let mut s = 0.0
+    for a = 0; a < kq; a = a + 1 {
+      s += xp[k * kq + a] * gamma[a]
+    }
+    m[k] = wb[k] * s
+  }
+  let gp = Matrix::zeros(kp, kp)
+  for k = 0; k < n; k = k + 1 {
+    let wk = wh[k]
+    for a = 0; a < kp; a = a + 1 {
+      let xa = wk * xp[k * kq + a]
+      for c = a; c < kp; c = c + 1 {
+        let val = gp.get(a, c) + xa * xp[k * kq + c]
+        gp.set(a, c, val)
+        if c != a {
+          gp.set(c, a, val)
+        }
+      }
+    }
+  }
+  // avec = first column of Gp^-1 = Gp^-1 e_0.
+  let rhs_p = Array::make(kp, 0.0)
+  rhs_p[0] = 1.0
+  let avec = solve_spd(gp, rhs_p)
+  // Ls[a], with upstream's h^(p+1) already absorbed.
+  let ls = Array::make(kp, 0.0)
+  for k = 0; k < n; k = k + 1 {
+    let pw = xp[k * kq + p + 1]
+    let wk = wh[k] * pw
+    for a = 0; a < kp; a = a + 1 {
+      ls[a] += xp[k * kq + a] * wk
+    }
+  }
+  let mut ls_a = 0.0
+  for a = 0; a < kp; a = a + 1 {
+    ls_a += ls[a] * avec[a]
+  }
+  let res = if !need_residual {
+    []
+  } else if nn_res {
+    nn_residual(uu, yy, nnmatch~)
+  } else {
+    let rhs_y = Array::make(kq, 0.0)
+    for k = 0; k < n; k = k + 1 {
+      for a = 0; a < kq; a = a + 1 {
+        rhs_y[a] += wb[k] * xp[k * kq + a] * yy[k]
+      }
+    }
+    let bq = solve_spd(gq, rhs_y)
+    let out = Array::make(n, 0.0)
+    for k = 0; k < n; k = k + 1 {
+      let mut fit = 0.0
+      for a = 0; a < kq; a = a + 1 {
+        fit += xp[k * kq + a] * bq[a]
+      }
+      out[k] = yy[k] - fit
+    }
+    out
+  }
+  // v_i = (Q_i . avec), and the two reductions that need it.
+  //   v00  = e_0' invG_p Q' diag(res^2) Q invG_p e_0 = SUM res_i^2 v_i^2
+  //   xibc = e_0' invG_p Q' y                       = SUM y_i v_i
+  let mut v00 = 0.0
+  let mut xibc = 0.0
+  for k = 0; k < n; k = k + 1 {
+    let mut ai = 0.0
+    for a = 0; a < kp; a = a + 1 {
+      ai += xp[k * kq + a] * avec[a]
+    }
+    let vi = wh[k] * ai - m[k] * ls_a
+    if need_residual {
+      v00 += res[k] * res[k] * vi * vi
+    }
+    xibc += yy[k] * vi
+  }
+  (v00, xibc)
+}
+
+///|
+/// v0.116.0: `rdrobust`'s PROCEDURE (iii) standard error -- the
+/// bias-corrected point estimate `tau_bc` with the robust variance.
+///
+/// This is the round that completes CCT inference on this port.
+/// `tau_bc` shipped in v0.115.0 with `tau_bc_se` alongside it, and that
+/// `tau_bc_se` is NOT this: it is the homoskedastic / HC0 variance of the
+/// order-`q` fits at `b` treated as independent regressions. Upstream's
+/// procedure (iii) is a different sandwich, and under `vce = "nn"` a
+/// different residual again. Two changes are needed, not one:
+///
+///  1. **The meat matrix.** Upstream does not sandwich the q-order fit.
+///     It sandwiches `Q`, the p-order fit MINUS its estimated bias term
+///     (rdrobust.py:856-863). The bread is `Gp^-1` at bandwidth `h`
+///     even though the estimate is a q-order quantity at bandwidth `b`.
+///  2. **The residual.** For `vce = "nn"` this is the fit-free
+///     nearest-neighbour residual, not a fitted residual at all.
+///
+/// # Point estimate
+///
+/// `tau_bc(b, rho, q)` -- the argument of this function -- is the one
+/// whose standard error is returned. `rho` gives `b = h / rho`, matching
+/// `rdrobust`'s convention, so the default `rho = 1` means `b == h`.
+///
+/// # `vce`
+///
+///   - `"nn"` (default) -- nearest-neighbour matched residuals. This is
+///     `rdrobust`'s own default and the estimator CCT inference is built
+///     on: it is the only one that needs no homoskedasticity assumption,
+///     which is why the coverage it delivers is the one the literature
+///     reports.
+///   - `"hc0"` -- plug-in residuals of the q-order fit at `b`. Exposed
+///     because it shares this function's entire `Q` construction, so it
+///     turns the oracle cross-check into two independent ones: a fault in
+///     `Q` would have to reproduce itself in both to survive.
+///
+/// An unrecognised `vce` aborts with the accepted set rather than
+/// silently falling back, for the reason `RDDKernel::parse` does.
+///
+/// # Sharp designs only
+///
+/// As with `tau_bc`, a fuzzy first stage is not threaded through here;
+/// upstream's `s_Y` delta-method terms (rdrobust.py:923-939) are a
+/// separate block.
+///
+/// Ports rdrobust.py:1055-1060 (residual source), 850-863 (`Q`, `m`,
+/// `invG_p`) and 1092-1097 (the meat and bread).
+pub fn DoubleMLRDD::tau_bc_se_rb(
+  self : DoubleMLRDD,
+  b? : Double = 0.0,
+  rho? : Double = 1.0,
+  q? : Int = 2,
+  vce? : String = "nn",
+  nnmatch? : Int = 3,
+) -> Double {
+  try {
+    require(rho > 0.0)
+    let bias_b = if b > 0.0 { b } else { self.bandwidth / rho }
+    require(bias_b > 0.0)
+    let nn_res = match vce {
+      "nn" => true
+      "hc0" => false
+      _ => abort("unknown vce: " + vce + " (accepted: \"nn\", \"hc0\")")
+    }
+    // The point estimator is local-linear (rdrobust's p = 1) and has no
+    // order knob, so p is fixed here rather than a parameter that could
+    // silently disagree with `coef()`.
+    let (v_l, _) = rdd_rb_side(
+      self.data,
+      -1.0,
+      self.cutoff,
+      self.bandwidth,
+      bias_b,
+      1,
+      q,
+      self.kernel,
+      nnmatch,
+      nn_res,
+      true,
+    )
+    let (v_r, _) = rdd_rb_side(
+      self.data,
+      1.0,
+      self.cutoff,
+      self.bandwidth,
+      bias_b,
+      1,
+      q,
+      self.kernel,
+      nnmatch,
+      nn_res,
+      true,
+    )
+    (v_l + v_r).sqrt()
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }

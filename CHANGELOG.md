@@ -9,6 +9,187 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.116.0] -- `vce = "nn"`: the robust variance, which also turned out to find a bug in v0.115.0
+
+### What was missing
+
+v0.115.0 shipped the CCT bias-corrected POINT estimate (`tau_bc`) and, next
+to it, a standard error whose docs said plainly that it was *not*
+`rdrobust`'s robust one. That was procedure (ii). `rdrobust`'s procedure
+(iii) is "bias-corrected with ROBUST standard errors", and its default
+robust estimator is `vce = "nn"`: nearest-neighbour matched residuals.
+
+This release implements procedure (iii).
+
+### There is no oracle here, so one was built
+
+There is no R on this machine and no `rdrobust` install, and the
+`vce = "nn"` documentation gives the parameter surface without a single
+formula. So the oracle is the **Python port shipped in the upstream
+repository `rdpackages/rdrobust`** (`Python/rdrobust/src/rdrobust/`),
+pinned under `_verify/_upstream_rdrobust_py/`, runnable via
+`_verify/_oracle/`, with `numpy` / `numba` / `scipy` present.
+
+`_verify/gen_v116_oracle.py` calls `rdrobust.rdrobust.rdrobust(...)` and
+dumps `_v116_golden.json`. Every constant in `expand_v116_test.mbt` is
+copied from that file, and the DGP is regenerated from the index on both
+sides (same LCG, same floating-point association) so the two languages
+see bit-identical inputs without sharing a data file.
+
+This is not a formality. See below.
+
+### Procedure (iii) needs TWO changes, not one
+
+The obvious reading -- "swap the residual for a nearest-neighbour one" --
+is wrong, and reading `rdrobust.py:850-863` and `1092-1097` line by line
+is what showed it:
+
+1. **The meat matrix.** Upstream does not sandwich the q-order fit. It
+   sandwiches `Q`, the p-order fit MINUS its estimated bias term:
+   `Q = R_p .* W_h - m * Ls'`, with `m` built from row `p+1` of
+   `Gq^-1` and `Ls[a] = SUM_k R_p[k][a] * W_h[k] * (x_k - c)^(p+1)`. The
+   bread is the **p-order Gram at `h`** even though the estimate is a
+   q-order quantity at `b`.
+2. **The residual.** Under `vce = "nn"` this is the fit-free neighbour
+   residual, not a fitted residual at all.
+
+A consequence worth naming, because it is the cheap part: because the nn
+residual is a function of `x` and `y` alone, upstream can REUSE the
+conventional estimator's residuals for the bias-corrected variance
+(`rdrobust.py:1055-1057`, `res_b_l = res_h_l` when `vce == "nn"`) instead
+of refitting.
+
+Only `(1, 0)` of the sandwich entry is ever needed, so no matrix inverse
+is formed: with `a = Gp^-1 e_0` and `M = Q' diag(res^2) Q`,
+`e_0' Gp^-1 M Gp^-1 e_0 = SUM_i res[i]^2 (Q_i . a)^2` -- one Cholesky
+solve and one pass.
+
+### Public surface
+
+- **`nn_residual(x, y, nnmatch?) -> Array[Double]`** (new, `pub`). The
+  fit-free nearest-neighbour residual, transliterated from
+  `funs.py::_nn_residuals_jit`, mass-point aware. Matches the oracle
+  **byte for byte** at `nnmatch` 1, 2, 3, 5 on a 50-point window and on
+  a hand-built mass-point slice.
+- **`DoubleMLRDD::tau_bc_se_rb(b?, rho?, q?, vce?, nnmatch?) -> Double`**
+  (new, `pub`). Procedure (iii)'s standard error. `vce` is `"nn"`
+  (default) or `"hc0"`; anything else aborts with the accepted set rather
+  than falling back, for the reason `RDDKernel::parse` gives.
+- `tau_bc_se` is unchanged. It still returns the homoskedastic / `HC0`
+  variance of the order-`q` fits at `b`, and still says so.
+
+`hc0` is exposed although the round is about `nn` because it shares this
+function's entire `Q` construction, which makes it a CONTROL: a fault in
+`Q`, `m`, `Ls` or `invG_p` has to reproduce itself identically in both to
+survive. Both are pinned to their own oracle constant.
+
+### The v0.115.0 DEFECT this release found and fixed
+
+`bias` was defined as `xi_p(h)_s - xi_q(b)_s`, and `tau_bc` as
+`tau_cl - (bias_r - bias_l)`. The `tau_cl` terms cancel, so the whole
+apparatus telescopes to `xi_q(b)_r - xi_q(b)_l` -- which v0.115.0's docs
+stated as a theorem and two v0.115.0 gates asserted.
+
+The substitution is arithmetically valid. The SECOND equality is not a
+theorem: it needs `bias` to be `rdrobust`'s bias, and that expression is
+`rdrobust`'s bias only when `b == h`. Upstream's bias-corrected limit is
+the `Q`-sandwich limit, which is a different quantity.
+
+Measured, at `h = 0.30` and `b = 0.42`:
+
+| quantity | upstream `rdrobust` | v0.115.0 |
+|---|---|---|
+| `xi_bc`, left side | 0.0561884317 | 0.0681350859 |
+| `tau_bc` | 0.7092313868 | 0.6910832334 |
+
+After the fix, `tau_bc` agrees with the oracle to **2.3e-15** relative.
+
+**Why v0.115.0 could not have caught this.** Its identity gate compared
+two internal routes to the same wrong number -- green by construction. An
+external oracle was required, and none existed. That is the round's real
+lesson and it is now a standing argument for keeping
+`_verify/_upstream_rdrobust_py/`.
+
+The default `rho = 1` gives `b == h`, so the shipped default path is
+unchanged to 15 digits; the fix repairs the `rho != 1` path, which is
+exactly where the second bandwidth is supposed to be doing work.
+
+The two v0.115.0 gates that encoded the false claim are restated to
+assert what is actually true -- the identity HOLDS at `b == h` and FAILS
+at `b != h` -- which is a sharper statement than the one it replaces.
+
+`tau_bc` is now also evaluated the way upstream evaluates it
+(`beta_bc_r - beta_bc_l`, `rdrobust.py:907`) rather than the long way.
+Same number in exact arithmetic; the long way carries the relative error
+of `xi_p(h)` into a difference of limits, measured at 8.5e-8 on the
+v0.115.0 fixture.
+
+### A second bug: negative kernel weights outside the support
+
+`RDDKernel::weight` returns `1 - |u|/h` for the triangular kernel, which
+is **negative** for `|u| > h`. Upstream multiplies by `(|u| <= 1)`
+(`rdrobust_kweight`, funs.py:668-677) for exactly that reason; this port
+does not, because every pre-v0.116.0 caller selects rows with
+`u.abs() <= h` first and never evaluated the negative branch.
+
+The CCT `max(h, b)` union window is the first caller that does. With
+`b > h` the Gram matrix stops being positive definite and `solve_spd`
+aborts. New private `rdd_weight_at` applies the mask.
+
+Note how nearly this shipped: the `h == b` oracle cross-check passed
+first, precisely because `max(h, b) == h` there, so the negative branch
+was never evaluated. **The `b != h` cross-check is the only thing that
+found it.** Running both is not belt-and-braces; one of them was
+load-bearing and the other could not have been.
+
+### The mutation harness, and two harness bugs
+
+`_verify/mut_v116_rdd.ps1`, 10 mutations. Result: **8 KILLED, 2 survived
+as declared-equivalent, 0 inconclusive.**
+
+First run reported 3 INCONCLUSIVE. Two of them (M1, M9) were harness
+bugs, not results: MoonBit's driver ABORTS on the first red assertion, so
+a gate that fires takes the whole run down and never prints the summary
+line -- indistinguishable, from the summary alone, from a compile refusal.
+The discriminator is `Active test at executable exit`. Both had in fact
+already killed their gate by aborting inside it. This is the same harness
+bug v0.115.0 hit (M1), so the rule is now written into the harness rather
+than rediscovered.
+
+M3 is the mutation worth reading. Dropping the rank-1 term from `Q` makes
+`Q` the plain p-order design, the sandwich silently becomes procedure
+(ii)'s -- and the POINT ESTIMATE still matches the oracle, because
+`xi_bc` and `xi_q(b)` differ only through that term's effect on `m`. So a
+mutation that destroys the headline feature survives every point-estimate
+gate and is killed only by the variance gates. That is the argument for
+having variance gates.
+
+### Known gaps, stated rather than hidden
+
+- **`h` and `b` still share one Silverman pilot** of the running
+  variable. `rdrobust` refits a separate pilot at each bandwidth. This is
+  the largest remaining CCT gap.
+- The bandwidth grid is **50 points, not 100**, so `optimal_bandwidth` and
+  `optimal_bias_bandwidth` return this port's argmin, not `rdrobust`'s.
+- **Mass points are not adjusted.** Upstream's default
+  `masspoints = "adjust"` perturbs tied `x` before anything else runs;
+  this port does not. `nn_residual` walks equal-`x` groups as whole blocks
+  and is byte-exact against the oracle on a fixture with no mass points,
+  so the two agree only where the adjustment is a no-op.
+- The `w > 0` vs `w >= 0` window-edge rule is **not gated**: it needs a
+  running variable landing exactly on a bandwidth edge, and neither
+  fixture has one. Recorded as mutation M8.
+- The tie tolerance `max(dleft, dright) * sqrt(eps)` was originally
+  written as `min` and corrected on fidelity grounds; the two cannot be
+  told apart by any fixture here (recorded as mutation M2).
+- **Fuzzy RDD CCT is not covered.** As with `tau_bc`, upstream's delta
+  method terms (`rdrobust.py:923-939`) are a separate block.
+- `rdd_limit` / `fit_weighted` solves Vandermonde normal equations by a
+  different route than `rdd_rb_side`'s Kahan-compensated Cholesky and
+  lands ~1e-8 relative away on the wide-bandwidth fixtures. Not addressed
+  here: it is a package-wide property, not an RDD one, and `tau_bc` does
+  not go through `rdd_limit` at all.
+
 ## [0.115.0] -- the CCT second bandwidth `b`, and the identity that collapses the whole bias-correction stage
 
 ### What was missing

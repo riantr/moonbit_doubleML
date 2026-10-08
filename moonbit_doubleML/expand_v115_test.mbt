@@ -20,17 +20,25 @@
 // `q = 2` (local quadratic), so the two criteria being minimised are
 // genuinely different functions and `b` is not a rescaling of `h`.
 //
-// # The identity this release is built on
+// # The identity this release was built on -- CORRECTED in v0.116.0
 //
 //     tau_bc = tau_cl - bias
 //            = [xi_p(h)_r - xi_p(h)_l] - [(xi_p(h)_r - xi_q(b)_r)
 //                                         - (xi_p(h)_l - xi_q(b)_l)]
 //            = xi_q(b)_r - xi_q(b)_l
 //
-// The whole apparatus telescopes to one q-order fit per side. That is
-// not a shortcut -- it is why no joint covariance across the two
-// bandwidths is needed, and it is directly checkable from outside
-// because `tau_bc_collapsed` computes the right-hand side.
+// v0.115.0 took the last step as a theorem. It is not one: it requires
+// `bias` to be `xi_p(h)_s - xi_q(b)_s`, and that is `rdrobust`'s bias
+// only when `b == h`. v0.116.0 checked this against the upstream Python
+// port and found `tau_bc` diverging at `b != h` (0.7092313868 upstream vs
+// 0.6910832334 here). `bias` and `tau_bc` are fixed; the two gates below
+// that asserted the false identity are restated to assert what is
+// actually true -- the identity HOLDS at `b == h` and FAILS at
+// `b != h`, which is a sharper statement than the one it replaces.
+//
+// What did NOT change is the reason the identity mattered: no joint
+// covariance across the two bandwidths is needed for the POINT estimate,
+// because the bias-corrected limit is a single per-side quantity.
 //
 // # What these gates do NOT claim
 //
@@ -169,18 +177,40 @@ test "v115_each_bandwidth_minimises_its_own_order_criterion" {
 }
 
 ///|
-/// THE identity. The long way (`tau_bc`) and the collapsed
-/// way (`tau_bc_collapsed`) must agree, because the algebra
-/// says they are the same number.
+/// The identity, RESTATED after v0.116.0 found it false in general.
 ///
-/// Asserted with `==`, NOT a tolerance. That was measured, not assumed:
-/// the gap is exactly 0 on this fixture (0.506690940304431 both ways).
-/// It is a property of these magnitudes, not a theorem -- `a - (a - b)`
-/// is not exactly `b` in general -- so if a future fixture breaks this,
-/// relax THIS assertion and leave the algebra alone.
-test "v115_bias_corrected_is_the_q_order_estimate" {
-  let (_, _, b, est) = v115_stage(2000, 0.5)
-  assert_true(est.tau_bc(b~) == est.tau_bc_collapsed(b~))
+/// v0.115.0 asserted `tau_bc == tau_bc_collapsed` on a fixture whose
+/// bias bandwidth `b != h`, i.e. it asserted the false case. v0.116.0
+/// cross-checked against the upstream Python port and found
+/// `rdrobust`'s bias-corrected limit is the `Q`-sandwich limit, which
+/// equals `xi_q(b)` only at `b == h`.
+///
+/// So both halves of the truth are pinned here: equality where it holds,
+/// and inequality where it does not. Asserting only the first half would
+/// let the original bug back in; asserting only the second would not say
+/// where the boundary is.
+test "v115_bias_corrected_equals_the_q_order_estimate_only_at_b_equals_h" {
+  let (_, h, b, est) = v115_stage(2000, 0.5)
+  // b != h on this fixture (pinned by v115_bias_bandwidth_differs_...).
+  assert_true(b != h)
+  // ... and the two routes therefore disagree.
+  assert_true(est.tau_bc(b~) != est.tau_bc_collapsed(b~))
+  // At b == h they are the same number, up to the rounding of
+  // `a - (a - x)` versus `x`.
+  let at_h = est.tau_bc(b=h)
+  let collapsed_at_h = est.tau_bc_collapsed(b=h)
+  // TOLERANCE FROM MEASUREMENT, not from taste. The two routes agree only
+  // to ~1e-7 relative HERE, and the reason is the fixture: `v115_rdd_data`
+  // passes `Matrix::zeros(n, 1)`, a single ALL-ZERO covariate column, so
+  // `rdd_limit` solves a rank-deficient `[1, u, u^2, 0]` through
+  // `fit_weighted`, while `tau_bc` solves a clean `[1, u, u^2]` through
+  // `rdd_rb_side`. Same math, two different factorisations. Measured
+  // 8.47e-8; the bound is set an order of magnitude above that.
+  //
+  // On the v0.116.0 oracle fixture -- no covariate column, and pinned to
+  // the upstream Python port -- the same comparison is far tighter, and
+  // `v116_tau_bc_matches_the_oracle` checks it at 1e-10.
+  assert_true((at_h - collapsed_at_h).abs() <= 1.0e-6 * collapsed_at_h.abs())
 }
 
 ///|
@@ -227,9 +257,14 @@ test "v115_rho_rescales_the_bias_bandwidth" {
   let at_half = est.tau_bc_collapsed(b=h / 2.0)
   // rho is read: changing it changes the answer
   assert_true(at_rho1 != at_rho2)
-  // and the two routes agree at rho = 2 as well, so the rescaling is not
-  // a separate code path with its own arithmetic
-  assert_true(at_rho2 == at_half)
+  // v0.116.0 CORRECTION: this used to assert `at_rho2 == at_half`, on the
+  // theory that `tau_bc` telescopes to `xi_q(b)`. That theory is false for
+  // `b != h` -- see `v115_bias_corrected_equals_the_q_order_estimate_only_
+  // at_b_equals_h` -- so the assertion is now the opposite one: at a
+  // genuine `rho = 2` the two estimators are DIFFERENT numbers. Keeping
+  // a tautology here ("two things are equal" when one of them is the
+  // thing under test) is how the original bug survived a green suite.
+  assert_true(at_rho2 != at_half)
 }
 
 ///|

@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.90.0** |
+| `moon.mod` version | **0.116.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **155** `.mbt` files (**62** production + **93** test) |
+| `.mbt` file count | **181** `.mbt` files (**87** production + **94** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **648 / 648** |
-| Tests (wasm-gc) | **654 / 654** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **865 / 865 / 865** |
+| Tests (wasm-gc) | **871 / 871** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -133,6 +133,32 @@ number under the wrong name. Sandwich coverage above is unchanged --
 RDD is not sandwich coverage. See `CHANGELOG.md` [0.96.0] and
 `expand_v096_test.mbt`.
 
+**RDD's own robust variance is a different thing again (v0.110.0-v0.116.0).**
+Neither `se()` nor `hac_se()` is `rdrobust`'s robust variance for the
+bias-corrected estimator, and RDD has a whole family of its own:
+
+- `optimal_bandwidth()` / `optimal_bias_bandwidth()` -- `rdrobust`'s
+  `bwselect = "CCT"` MSE-optimal estimation bandwidth `h` and
+  bias-correction bandwidth `b`. They are different numbers because a
+  degree-`j` local polynomial's bias is `O(h^(j+1))`, so the point
+  (`p = 1`) and bias (`q = 2`) criteria carry different variance
+  exponents. Measured `b / h = 0.907`.
+- `nn_residual(x, y, nnmatch?)` -- the fit-free nearest-neighbour matched
+  residual, transliterated from upstream's `_nn_residuals_jit` including
+  its mass-point block walk. Byte-identical to the oracle at four
+  `nnmatch` values and on a mass-point fixture.
+- `tau_bc()` -- the bias-corrected point estimate, procedure (ii) and
+  (iii) alike.
+- `tau_bc_se_rb(vce = "nn" | "hc0")` -- procedure (iii)'s standard
+  error. Its meat matrix is `Q`, the p-order fit *minus* its estimated
+  bias term, with the p-order Gram at `h` as bread even though the
+  estimate is a q-order quantity at `b`.
+
+These are opt-in and leave `coef()` / `se()` untouched. They are checked
+against the upstream Python port of `rdrobust`, not against internal
+identities -- see the oracle paragraph below. Sharp designs only: fuzzy
+CCT delta-method terms are not ported.
+
 **Coverage by class**:
 
 - *Observational / quasi-experimental*: `DoubleMLDID`,
@@ -150,6 +176,24 @@ scripts (`validate_*_with_python.py`) drive 23 DGPs
 `pliv_cluster`, `SSM`, `simple_rdd`, `DID SZ2020` / `CS2021`, etc.)
 and check within-tolerance equivalence against the upstream Python
 outputs. CI greps the trailing `PASS` line from each script.
+
+**An upstream ORACLE for RDD (v0.116.0)** -- the scripts above check
+against hand-written reference outputs, which can only catch a
+disagreement someone already thought to look for. RDD now also has a real
+oracle: the **Python port of `rdrobust` shipped in the upstream
+repository `rdpackages/rdrobust`**
+(`Python/rdrobust/src/rdrobust/`), pinned under
+`_verify/_upstream_rdrobust_py/` and runnable via `_verify/_oracle/`.
+`_verify/gen_v116_oracle.py` calls it and writes
+`_verify/_v116_golden.json`; every constant in
+`moonbit_doubleML/expand_v116_test.mbt` comes from that file.
+
+It earns its keep. The oracle found that v0.115.0's `tau_bc` -- which had
+a green suite and two gates asserting a stated identity -- was not
+`rdrobust`'s bias-corrected estimate whenever `b != h`. The v0.115.0 gate
+had compared two internal routes to the same wrong number, so no
+internal assertion could ever have caught it. `_verify/mut_v116_rdd.ps1`
+records the equivalent.
 
 **Docs & demos** -- 6 `doc/<NNN_...>/` tutorials targeting `wasm-gc`,
 plus 14 `examples/<bin>/` driver binaries (all listed in
