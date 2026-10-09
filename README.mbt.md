@@ -25,9 +25,9 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.125.0** |
+| `moon.mod` version | **0.126.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **186** `.mbt` files (**89** production + **97** test) |
+| `.mbt` file count | **195** `.mbt` files (**91** production + **104** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
 | Tests (native / wasm / js) | **900 / 900 / 900** |
@@ -78,9 +78,9 @@ calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 `DoubleMLDID` and the rest of the IPW-based models.
 
 **`ps_processor_config` is reachable (v0.121.0+, IRM v0.122.0, IIVM and SSM
-v0.123.0, PQ v0.124.0, LPQ v0.125.0).** `DoubleMLAPO`, `DoubleMLAPOS`,
-`DoubleMLIRM`, `DoubleMLIIVM`, `DoubleMLSSM`, `DoubleMLPQ` and
-`DoubleMLLPQ` now take a `PSProcessorConfig`, which is how the isotonic
+v0.123.0, PQ v0.124.0, LPQ v0.125.0, CVaR v0.126.0).** `DoubleMLAPO`,
+`DoubleMLAPOS`, `DoubleMLIRM`, `DoubleMLIIVM`, `DoubleMLSSM`, `DoubleMLPQ`,
+`DoubleMLLPQ` and `DoubleMLCVAR` now take a `PSProcessorConfig`, which is how the isotonic
 and CV-calibration paths become callable from an estimator at all --
 until v0.121.0 they were implemented and reachable from nowhere.
 Resolution follows upstream's `init_ps_processor`: **the config wins
@@ -88,8 +88,14 @@ outright** and the deprecated scalar `propensity_clip` is read into it
 only when no config is supplied. Measured against upstream 0.11.4, the
 calibration is not cosmetic -- isotonic moves the propensity by up to
 0.53 on the test fixture, the APO coefficient moves from
-2.9641677613312316 to 2.9602088935501736, and the IRM coefficient from
-1.9609911300451515 to 1.9603016544875.
+2.9641677613312316 to 2.9602088935501736, the IRM coefficient from
+1.9609911300451515 to 1.9603016544875, and the CVaR coefficient runs
+3.664307496539196 -> 3.3179262532001292 across the clip sweep (isotonic
+lands at 3.471229424883473). CVaR is worth singling out because it is the
+first estimator here whose estimate is *genuinely* a weighted quantile:
+LPQ's root is pinned by its bisection bracket, so no threshold could move
+it, while CVaR solves `mean(treated/m * 1{y <= theta}) = quantile` and
+therefore does move.
 
 Four details worth knowing before wiring it yourself. First, which array
 is the calibration target differs by estimator, and upstream is not
@@ -102,7 +108,20 @@ is clipped but **never calibrated**, matching upstream (`ssm.py:407` vs
 **not** overwrite `propensity_clip` with the config threshold the way
 upstream does (`lpq.py:166`), because that scalar also floors the
 estimated complier share here; upstream has no such floor, and where it
-bites the two diverge by 4.2x. Fourth, `adjust_ps` requires a **binary**
+bites the two diverge by 4.2x. On `DoubleMLCVAR` the *opposite* choice is
+made and is correct: upstream redirects the scalar to the config's
+threshold (`cvar.py:156`) and so does this port, because all three of its
+uses -- the preliminary clip, the final clip, and the re-clip inside
+`sensitivity_analysis` -- are that same threshold and there is no second
+job for it to disturb. Note also that CVaR's two `adjust_ps` sites take
+*different* second arguments: the preliminary one is `d_train_1`
+(`cvar.py:293`), the final one is the full `d` (`cvar.py:343`), and
+swapping them aborts on `adjust_ps`'s length precondition. The third use is
+worth a caveat -- `irm_style_sensitivity` has no `psi_b` parameter, so the
+`psi_b` CVaR computes there is discarded and `propensity_clip` cannot reach
+the returned `SensitivityResult` by any route. That is pre-existing, and
+`v126_sensitivity_reclip_is_structurally_inert` pins it. Fourth,
+`adjust_ps` requires a **binary**
 treatment; `treatment_is_binary` is public if you want to check first.
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in

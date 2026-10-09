@@ -42,6 +42,19 @@ pub struct DoubleMLCVAR {
   // `set_sample_splitting`.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.126.0: the RESOLVED CONCRETE propensity config, from upstream's
+  // `init_ps_processor` (`cvar.py:153`). Stored concrete so it survives
+  // every rebuild of this struct. `propensity_clip` stays as the
+  // deprecated scalar and IS overwritten with the config's own
+  // `clipping_threshold`, exactly as upstream does (`cvar.py:156`).
+  //
+  // That overwrite is correct here and was NOT correct on LPQ
+  // (v0.125.0): on CVaR, `propensity_clip` is purely the propensity
+  // clipping threshold and does no second job, so it is safe to
+  // redirect. All three of its uses here -- the preliminary clip in
+  // `cvar_inner_crossfit`, the final clip in `fit`, and the idempotent
+  // re-clip in `sensitivity_analysis` -- are that same threshold.
+  ps_processor_config : PSProcessorConfig
   normalize_ipw : Bool
   // v0.60.0+: injected nuisance learners. Defaults to
   // `LearnerDispatch::linear_regression()` so v0.59.0 callers
@@ -119,10 +132,18 @@ pub fn DoubleMLCVAR::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor_config? : PSProcessorConfig? = None,
   normalize_ipw? : Bool = true,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLCVAR {
+  // v0.126.0: upstream `init_ps_processor` (`cvar.py:153`) -- the config
+  // wins outright, the deprecated scalar is read into it only when no
+  // config is supplied.
+  let ps_processor_config = resolve_ps_processor_config(
+    ps_processor_config~,
+    trimming_threshold=propensity_clip,
+  )
   try {
     require(treatment == 0.0 || treatment == 1.0)
     require(quantile > 0.0)
@@ -146,7 +167,8 @@ pub fn DoubleMLCVAR::new(
     // v0.109.0: no external splitting unless `set_sample_splitting`
     // is called, so every pre-existing caller keeps the drawn path.
     smpls: [],
-    propensity_clip,
+    propensity_clip: ps_processor_config.clipping_threshold,
+    ps_processor_config,
     normalize_ipw,
     ml_g,
     ml_m,
@@ -638,7 +660,7 @@ fn cvar_inner_crossfit(
   seed : Int,
   quantile : Double,
   treatment : Double,
-  propensity_clip : Double,
+  ps_processor_config : PSProcessorConfig,
   normalize_ipw : Bool,
 ) -> (Array[Double], Array[Double], Double) {
   // 1) stratified 50/50 split of `train`.
@@ -685,12 +707,18 @@ fn cvar_inner_crossfit(
     }
   }
   // 3) clip the preliminary propensity and (optionally)
-  //    normalize the IPW weights. `clip_vec` returns a new
+  //    normalize the IPW weights. `adjust_ps` returns a new
   //    array, so we don't mutate `m_prelim`.
-  let m_prelim_clipped = clip_vec(
+  //
+  // v0.126.0: this routes through `PSProcessor::adjust_ps`, matching
+  // upstream `cvar.py:293` -- and with it the same SECOND argument:
+  // `d_train_1`, the treatment values restricted to the preliminary
+  // sample split. `m_prelim` has one entry per `train_1` row, so `d`
+  // has to be subset the same way or `adjust_ps`'s length precondition
+  // and its binary check would be reading the wrong rows.
+  let m_prelim_clipped = PSProcessor::from_config(ps_processor_config).adjust_ps(
     m_prelim,
-    propensity_clip,
-    1.0 - propensity_clip,
+    slice_vector(d, train_1),
   )
   // `m_prelim_for_score` is the preliminary propensity used
   // in the IPW score (post-clip, post-normalize, post-treat=0
@@ -863,7 +891,13 @@ pub fn DoubleMLCVAR::fit(
       0UL
     }
     let hparams_hash : UInt64 = if memoize {
-      hash_hyperparams("cvar", ml_g, ml_m, self.propensity_clip)
+      hash_hyperparams(
+        "cvar",
+        ml_g,
+        ml_m,
+        self.propensity_clip,
+        ps_processor_config=Some(self.ps_processor_config),
+      )
     } else {
       0UL
     }
@@ -932,7 +966,7 @@ pub fn DoubleMLCVAR::fit(
             inner_seed,
             self.quantile,
             self.treatment,
-            self.propensity_clip,
+            self.ps_processor_config,
             self.normalize_ipw,
           )
           for k = 0; k < eval_set.length(); k = k + 1 {
@@ -946,10 +980,14 @@ pub fn DoubleMLCVAR::fit(
         // `m_hat["preds"] = ps_processor.adjust_ps(m_hat["preds"],
         // d, cv=smpls); if normalize: m_hat_adj = _normalize_ipw(
         // ...); if treatment==0: m_hat_adj = 1 - m_hat_adj`.
-        let m_clipped = clip_vec(
+        //
+        // v0.126.0: this comment described the INTENT; the call is now
+        // literally upstream's `adjust_ps`, including the second
+        // argument being the full treatment vector `d`
+        // (`cvar.py:343`).
+        let m_clipped = PSProcessor::from_config(self.ps_processor_config).adjust_ps(
           m_hat,
-          self.propensity_clip,
-          1.0 - self.propensity_clip,
+          self.data.d,
         )
         let m_adj = if self.normalize_ipw {
           normalize_ipw_weights(m_clipped, self.data.d)
@@ -1078,6 +1116,7 @@ pub fn DoubleMLCVAR::fit(
       // revert to drawing its own folds.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       normalize_ipw: self.normalize_ipw,
       ml_g,
       ml_m,

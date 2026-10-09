@@ -9,6 +9,223 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.126.0] -- `ps_processor_config` reaches `DoubleMLCVAR`
+
+### What this release changes
+
+`ps_processor_config?` added to `DoubleMLCVAR` and threaded into **both** of
+its propensity-transform sites, with the deprecated `propensity_clip`
+redirected to the config's threshold exactly as upstream does
+(`cvar.py:156`).
+
+The upstream oracle for this estimator, from the vendored
+`doubleml-0.11.4`:
+
+    cvar.py:152-154  init_ps_processor(config, trimming_rule, trimming_threshold)
+    cvar.py:156      _trimming_threshold = _ps_processor.clipping_threshold
+    cvar.py:293      adjust_ps(m_hat_prelim, d_train_1, cv=smpls_prelim)
+    cvar.py:343      adjust_ps(m_hat["preds"], d, cv=smpls)
+    cvar.py:474-475  _sensitivity_element_est -> `pass`   (no oracle)
+
+### Two sites, two different second arguments
+
+The preliminary clip takes `d_train_1` -- the treatment values restricted to
+the inner 50/50 split -- and the final clip takes the full `d`. `m_prelim`
+has one entry per `train_1` row, so passing the full `d` there reads the
+wrong rows; `adjust_ps`'s length precondition catches it and the harness
+mutation is **KILLED**. Swapping the two arguments is caught the same way
+(**KILLED**), which is the wrong-canary probe that proves the argument order
+is load-bearing.
+
+### Why CVaR does the *opposite* of LPQ on the scalar
+
+v0.125.0 deliberately declined upstream's `self._trimming_threshold =
+self._ps_processor.clipping_threshold` on LPQ, because there
+`propensity_clip` has a **second job** -- it floors the estimated complier
+share -- and copying the overwrite would silently drag that floor along
+(measured 4.2x divergence from upstream above `propensity_clip ~ 1e-2`).
+
+CVaR has no such second job. All three of its uses are the same threshold:
+
+1. the preliminary clip in `cvar_inner_crossfit`,
+2. the final clip in `fit`,
+3. the lower-only re-clip inside `sensitivity_analysis`.
+
+So upstream's overwrite is copied here, and dropping it is **KILLED** by
+`v126_config_wins_and_redirects_the_scalar`. The reasoning is recorded in the
+struct-field comment in `cvar.mbt` so the next reader does not "fix" the
+inconsistency with LPQ.
+
+### CVaR's estimate is a genuinely weighted quantile -- unlike LPQ's
+
+This is the round's substantive finding, and it is why CVaR got real
+coefficient gates when LPQ could not.
+
+LPQ solves its root by bisection against a fixed bracket, so the quantile is
+**bracket-pinned**: in v0.125.0 the default, isotonic, `scalar=0.05` and
+`config=0.05` constructions were all bit-identical at `coef=5.130825735051371`,
+and no "calibration moves the estimate" gate could honestly be written.
+
+CVaR solves `mean(treated/m * 1{y <= theta}) = quantile`, a genuinely
+**weighted** quantile, so `m` really does move the root. Measured on the
+v0.122.0 saturated-propensity DGP (n=600, `pi = clamp(0.5 + 1.2*x0, 0.02,
+0.98)`, quantile=0.5, n_folds=2, seed=3141):
+
+    clip 1e-6 -> 3.664307496539196  se 0.1877474007626309
+    clip 0.02 -> 3.4277310424288583 se 0.13286634163676272
+    clip 0.05 -> 3.3554623566845554 se 0.06384235128810226
+    clip 0.10 -> 3.3270905378194593 se 0.03980232114861463
+    clip 0.20 -> 3.3179262532001292 se 0.030291158270456118
+    isotonic -> 3.471229424883473  se 0.15549447634451058
+
+A spread of **0.346** across the sweep, strictly monotone decreasing: more
+aggressive trimming moves less weight onto the units with extreme fitted
+propensity.
+
+Both clip sites were measured independently, because a single-site gate
+cannot see a single-site break -- freezing either one leaves the other still
+moving the coefficient:
+
+    prelim site frozen to 1e-6 (cvar.py:293):
+      3.664307496539196 / 3.64462711215576 / 3.6409745892010417 /
+      3.6401130431711732 / 3.6431144358643284
+    final site frozen to 1e-6 (cvar.py:343):
+      3.664307496539196 / 3.9589090122807122 / 3.9761158569596606 /
+      3.9656198245812257 / 3.9678982615979637
+
+`v126_both_clip_sites_follow_the_config` is written against the span between
+two **non-default** thresholds for exactly that reason: 0.1098 here, 0.0015
+once the preliminary site stops following the config, and **negative**
+(-0.0090) once the final site does.
+
+### The clip provably bites, at the configured bound
+
+Exact-bound counts with `normalize_ipw=false` so the rescaling does not move
+values off the bound:
+
+    clip 1e-6 -> 76 at the lower bound, 81 at the upper
+    clip 0.05 -> 101 / 108
+    clip 0.20 -> 173 / 184
+
+A fitted propensity lands *exactly* on `c` or `1 - c` only because a clip put
+it there. Counting equality rather than proximity makes the gate immune to
+numerical drift, and counting at the **configured** bound is what makes it a
+config gate: with the config ignored, the number of entries exactly equal to
+0.05 or 0.2 would be ~0.
+
+### A structural finding: CVaR's `sensitivity_analysis` re-clip is dead code
+
+This is the round's second real result, and the harness found it.
+
+`sensitivity_analysis` computes
+
+    psi_b[i] = treated_i * (g_target[i] - g_hat[i]) / m_clip + g_hat[i]
+
+with `m_clip` a lower-only re-clip of `m_hat` at the redirected
+`propensity_clip`. That *looks* live, so the harness was aimed at it (M9:
+hardcode the threshold to `1.0e-12`). **It SURVIVED** -- and not by a hair:
+under the mutation `rv`, `sigma2`, `nu2` and `max_bias` came back
+**bit-identical** to the baseline.
+
+The cause is structural, not incidental. `irm_style_sensitivity` is declared
+as
+
+    irm_style_sensitivity(theta, residuals, psi_a, cf_y, cf_d) -> SensitivityResult
+
+There is no `psi_b` parameter. The body computes `sigma2 = mean(residuals^2)`
+and `nu2 = mean(psi_a^2)` and derives `max_bias` and `rv` from those. **Every
+call site in the package passes those same five arguments and none passes
+`psi_b`** -- CVaR is the only estimator that computes one at all.
+
+So on CVaR, `psi_b`, `m_clip`, `treated_i` and `g_target` are computed and
+discarded, and `propensity_clip` cannot reach the returned
+`SensitivityResult` by any route. `nu2` is consequently always exactly `1`,
+because `psi_a` is the constant `-1` vector.
+
+That is pre-existing, not introduced by v0.126.0, and repairing it would
+change numerical results -- a behavioural release of its own.
+`v126_sensitivity_reclip_is_structurally_inert` now asserts the negative
+result rather than a gate that would have quietly stopped meaning anything,
+and it additionally pins the premise: at the default clip **all 282**
+below-threshold stored entries are CONTROL units (measured, 0 treated), and
+`psi_b` multiplies those by `treated_i = 0`, so the re-clip would be inert
+there even if `psi_b` were passed.
+
+For scale, this is the fourth time in this series that a gate has been found
+asserting nothing -- v0.122.0 (a clip that never bound), v0.123.0 (a clip
+that never bound), v0.124.0 (a parameter no test passed), and now v0.126.0
+(a computed array the helper does not accept). The harness is what caught all
+four; none was visible from reading the code.
+
+One measured oddity, recorded rather than "fixed": isotonic moves all
+600/600 `predictions_m()` entries with a max per-entry delta of
+**6668.662793013355**. That is not a bug. `_normalize_ipw` is byte-identical
+to upstream's and maps a control unit to `1 - (1-m) * E[1/(1-m) | d=0]`;
+isotonic can plateau a propensity at ~1, which makes that expectation huge.
+It is harmless because `psi_b` multiplies by `1{d == treatment}`, zeroing
+exactly those rows.
+
+### Default construction is byte-identical
+
+Verified by running the same scalar-only probe against v0.125.0's `cvar.mbt`
+restored from git HEAD and against this one. **Every number matched exactly**
+-- the whole clip sweep, the sensitivity `rv`, and the canonical covariate-free
+DGP (`coef=1.7417212460064047`, `se=0.019633851063058223`).
+
+### Verification
+
+- Tests **979/979** native / wasm / js, **985/985** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- typos (CI-pinned v1.19.0) clean
+- Mutation harness: **8 KILLED / 4 SURVIVED / 0 inconclusive**, every verdict
+  matching its declaration, no residue
+
+Bookkeeping correction carried into this release: v0.125.0 published
+**970/970**, but the true library baseline is **969**. The extra test was a
+temporary probe (`moonbit_doubleML/zz_probe_v125b.mbt`) that was still in the
+package when the final gates ran, so the published count measured the tree
+rather than the library. That probe and a v0.126.0 probe of mine both leaked
+into a later count (981) before being removed. The v0.126.0 numbers above
+are measured with no probe file present in the package; the baseline was
+re-confirmed by stashing the round and running HEAD at 969/969.
+
+The four survivors are the two canaries, the estimator-level memoize folding,
+and the dead `sensitivity_analysis` re-clip described above.
+
+The memoize folding is documented-equivalent today by the same construction
+argued in v0.123.0 / v0.124.0 / v0.125.0: `fit_cache` is per-instance,
+`DoubleMLCVAR::fit` takes no config override, and the only public setter is
+`set_sample_splitting`, so two fits of one instance cannot differ in
+calibration.
+
+The harness's first run **aborted on its own canaries** and said so rather
+than printing a table -- which is the entire point of having them. Both causes
+were harness bugs, not code bugs:
+
+- `moonbit_doubleML/*.mbt` is **LF-only** (verified: 1516 LF, 0 CRLF), and
+  every multi-line anchor was joined with CRLF, so none of them could match;
+- the second canary renamed `m_prelim_clipped` at its single declaration,
+  which looked harmless and is not -- the name has seven other uses, so the
+  canary broke the build. Both canaries are now purely syntactic.
+
+A third harness bug, found in the second run: `M7` mutated the rebuild to
+`PSProcessorConfig::new()`, which is a `raise`ing constructor, and `fit` is
+not a `raise`ing function -- so the mutation was NO-COMPILE and reported no
+verdict at all. That is the "a compile failure is not a kill" rule doing its
+job, but the mutation had to be rewritten (`resolve_ps_processor_config(...)`)
+before it could test anything.
+
+### Still not wired
+
+`did_binary` and `did_cs_binary` (both still take the scalar;
+`did_cs_binary` additionally **clips twice with two different thresholds** --
+`propensity_clip` 1e-6, then the processor's default `1e-2` -- which is a
+behavioural release of its own). `qte` and `did_multi` are **inert upstream**:
+`init_ps_processor` is called but `adjust_ps` never is, and
+`_trimming_threshold` is assigned once and exposed through a deprecated
+property but used in no computation. Propagating the config to them would
+invent behaviour rather than port it.
+
 ## [0.125.0] -- `ps_processor_config` reaches `DoubleMLLPQ`, and the complier-share overload is measured
 
 ### What this release changes
