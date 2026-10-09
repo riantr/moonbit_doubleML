@@ -9,6 +9,133 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.125.0] -- `ps_processor_config` reaches `DoubleMLLPQ`, and the complier-share overload is measured
+
+### What this release changes
+
+`ps_processor_config?` added to `DoubleMLLPQ`, threaded into the shared
+`fit_propensity` exactly as PQ in v0.124.0.
+
+The design decision below is the substance of the release; the wiring
+itself is a two-line change.
+
+### Measuring the overload before touching it
+
+v0.124.0 flagged that LPQ overloads `propensity_clip`: it is the
+propensity clipping threshold **and** a floor on the estimated complier
+share. Measured, floor present vs disabled (n=500, quantile=0.5,
+n_folds=2, seed=3141):
+
+    clip=1e-6  floor ON  coef=1.123984742821626  se=156.07090279138626
+                floor OFF coef=1.123984742821626  se=156.07090279138626
+    clip=1e-2  floor ON  coef=1.123984742821626  se= 0.14203520008944565
+                floor OFF coef=1.123984742821626  se= 0.14203520008944565
+    clip=0.05  floor ON  coef=4.739060249576877  se= 4.140929971656726
+                floor OFF coef=1.123984742821626  se= 0.04049475763990414
+    clip=0.2   floor ON  coef=4.739060249576877  se= 2.4472021260225816
+                floor OFF coef=1.1055582239973947  se= 0.030997902259302088
+
+Three things fall out of that table.
+
+**The floor is EXACTLY inert at 1e-6 and at 1e-2** -- identical
+coefficient *and* identical standard error. At 0.05 it takes over
+completely (4.739 vs 1.124, a **4.2x divergence**) and then freezes,
+because a floor of 0.05 saturates the bisection.
+
+**Upstream has no floor at all.** `comp_prob_hat` is a plain mean
+(`lpq.py:550-555`), used directly as a divisor in `_compute_ipw_score`.
+And upstream's own default `trimming_threshold` is **1e-2**
+(`lpq.py:121`) -- exactly the largest value at which this port's floor is
+measured inert.
+
+**So the divergence from upstream is confined to
+`propensity_clip > ~1e-2`, and it is driven entirely by a guard upstream
+does not have.**
+
+### The deliberate departure from upstream
+
+Upstream, after building the processor, does
+`self._trimming_threshold = self._ps_processor.clipping_threshold`
+(`lpq.py:166`) -- it **overwrites** the deprecated scalar with the
+config's threshold.
+
+This port does **not**, and the reason is the table above. Overwriting
+would drag the complier floor up with it, so raising a *calibration*
+threshold to 0.05 would silently switch LPQ into the regime where it
+diverges 4.2x from upstream. Instead `propensity_clip` stays as the
+caller's scalar, the floor keeps exactly the input it has always had,
+and the config affects only the propensity transform.
+
+`v125_lpq_config_does_not_reach_the_complier_floor` pins this: the
+config-0.05 construction (floor at 1e-6) and the scalar-0.05
+construction (floor at 0.05) must give **different** answers, 1.124 vs
+4.739. The harness mutation that performs upstream's overwrite is
+**KILLED**.
+
+Giving the floor its own parameter is the correct fix, but it is a
+behavioural change and belongs in its own round. The harness keeps the
+floor gated (`v125-control-the-complier-floor-is-still-wired`,
+**KILLED**) so that round inherits a working gate instead of needing a
+new one.
+
+### Two negative results, recorded rather than papered over
+
+**1. LPQ's coefficient does not respond to the propensity transform at
+all.** On a strongly nonlinear, deeply saturated DGP (n=600, three
+covariates, instrument propensity driven through
+`1.6*x1^2 + 1.2*x2^3 + 0.6*x0` and saturated at 0.01/0.99), the
+following four constructions are **bit-identical at
+coef=5.130825735051371**: default, isotonic, `scalar=0.05`, and
+`config=0.05`. The quantile is pinned by the bisection bracket rather
+than by the IPW weights.
+
+So a "calibration moves the estimate" gate -- the shape used for APO,
+IRM, IIVM, SSM and PQ in this series -- **cannot be written for LPQ**,
+and asserting one would be asserting a fiction. What was tried first, and
+why it failed, is worth recording:
+
+- the v0.124.0 LPQ fixture clamps the TRUE propensity to exactly
+  [0.05, 0.95], so a 0.05 clip can never bind (0 of 600 fitted values at
+  the bound);
+- isotonic was also inert there, because a LINEAR propensity is exactly
+  what OLS fits, so there is no miscalibration to correct.
+
+**2. The clipping threshold is not observable on LPQ at all.** Even with
+the true propensity saturated at 0.01, OLS shrinks fitted propensities
+away from the tails and nothing reaches the 0.05 bound. The config's
+threshold is therefore carried but, on these fixtures, cannot change
+LPQ's output. There is deliberately no gate claiming otherwise.
+
+What *is* observable is the nuisance. Under isotonic, **600/600** entries
+of `predictions_m()` differ, max delta **0.2501072828284096**. That is
+what `v125_lpq_calibration_reaches_the_propensity` asserts -- the same
+shape as the SSM `m`/`pi` gate from v0.123.0.
+
+### Verification
+
+- Tests **970/970** native / wasm / js, **976/976** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- typos (CI-pinned v1.19.0) clean
+- Mutation harness: **5 KILLED / 3 SURVIVED / 0 inconclusive**, every
+  verdict matching its declaration, no residue
+
+The three survivors are two canaries plus the estimator-level memoize
+folding, which is documented-equivalent today by the same construction
+argued in v0.123.0 and v0.124.0: `fit_cache` is per-instance,
+`DoubleMLLPQ::fit` takes no config override, and the only public setter
+is `set_sample_splitting`, so two fits of one instance cannot differ in
+calibration.
+
+### Still not wired
+
+`cvar` (two adjust sites, its own clip-path shape), `did_binary` and
+`did_cs_binary`. `did_cs_binary` additionally **clips twice with two
+different thresholds** -- `propensity_clip` (1e-6) and then the
+processor's default `1e-2` -- which is a real inconsistency that moves
+results, so it wants a behavioural release of its own. `qte` and
+`did_multi` remain inert upstream (`init_ps_processor` is called,
+`adjust_ps` never is) and stay documented rather than wired.
+
 ## [0.124.0] -- `ps_processor_config` reaches `DoubleMLPQ`
 
 ### What this release changes

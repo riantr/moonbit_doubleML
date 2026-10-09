@@ -95,6 +95,43 @@ pub struct DoubleMLLPQ {
   n_folds : Int
   seed : Int
   propensity_clip : Double
+  // v0.125.0: the RESOLVED CONCRETE propensity config, from upstream's
+  // `init_ps_processor` (`lpq.py:163`). Stored concrete so it survives
+  // every rebuild of this struct.
+  //
+  // DELIBERATE DEPARTURE FROM UPSTREAM. Upstream then does
+  // `self._trimming_threshold = self._ps_processor.clipping_threshold`
+  // (`lpq.py:166`), i.e. it OVERWRITES the deprecated scalar with the
+  // config's threshold. This port does NOT, and the reason is measured:
+  // `propensity_clip` does a SECOND job here, flooring the estimated
+  // complier share below. Overwriting it would silently change that
+  // second job too, and the divergence is large where it bites.
+  //
+  // MEASURED on the v0.125.0 fixture (n=500, quantile=0.5, n_folds=2,
+  // seed=3141), complier floor present vs disabled:
+  //
+  //   clip=1e-6  floor ON  coef=1.123984742821626  se=156.07090279138626
+  //               floor OFF coef=1.123984742821626  se=156.07090279138626
+  //   clip=1e-2  floor ON  coef=1.123984742821626  se= 0.14203520008944565
+  //               floor OFF coef=1.123984742821626  se= 0.14203520008944565
+  //   clip=0.05  floor ON  coef=4.739060249576877  se= 4.140929971656726
+  //               floor OFF coef=1.123984742821626  se= 0.04049475763990414
+  //   clip=0.2   floor ON  coef=4.739060249576877  se= 2.4472021260225816
+  //               floor OFF coef=1.1055582239973947  se= 0.030997902259302088
+  //
+  // So the floor is EXACTLY INERT at 1e-6 and at 1e-2 -- and 1e-2 is
+  // upstream's own default (`lpq.py:121`), which the port does not use.
+  // Above ~1e-2 it dominates the coefficient (4.739 vs 1.124, a 4.2x
+  // divergence) and freezes it, since the floor saturates the
+  // bisection. Upstream has no floor at all: `comp_prob_hat` is a plain
+  // mean (`lpq.py:550-555`) used directly as a divisor.
+  //
+  // Keeping `propensity_clip` as the CALLER'S SCALAR means the floor
+  // keeps exactly the input it has always had, and the config affects
+  // only the propensity transform. Resolving the floor to its own
+  // parameter is the right fix but is a behavioural change and is left
+  // for its own round.
+  ps_processor_config : PSProcessorConfig
   coef : Double
   se : Double
   fitted : Bool
@@ -143,12 +180,25 @@ pub fn DoubleMLLPQ::new(
   n_folds? : Int = 2,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor_config? : PSProcessorConfig? = None,
 ) -> DoubleMLLPQ {
   try {
     require(n_folds >= 2)
     require(seed >= 0)
     require(quantile > 0.0 && quantile < 1.0)
     require(propensity_clip > 0.0)
+    // v0.125.0: upstream `init_ps_processor` (`lpq.py:163`) -- the config
+    // wins outright for the PROPENSITY TRANSFORM, and the deprecated
+    // scalar is read into it only when no config is supplied.
+    //
+    // NOTE `propensity_clip` below is deliberately NOT overwritten with
+    // the config's threshold. See the `ps_processor_config` field
+    // comment: it also floors the complier share here, and upstream's
+    // overwrite would silently change that second job.
+    let ps_processor_config = resolve_ps_processor_config(
+      ps_processor_config~,
+      trimming_threshold=propensity_clip,
+    )
     {
       data,
       treatment,
@@ -156,6 +206,7 @@ pub fn DoubleMLLPQ::new(
       n_folds,
       seed,
       propensity_clip,
+      ps_processor_config,
       coef: 0.0,
       se: 0.0,
       fitted: false,
@@ -202,6 +253,7 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
         LearnerDispatch::linear_regression(),
         LearnerDispatch::linear_regression(),
         self.propensity_clip,
+        ps_processor_config=Some(self.ps_processor_config),
       )
     } else {
       0UL
@@ -244,6 +296,7 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
         self.data.z,
         folds,
         self.propensity_clip,
+        ps_processor_config=Some(self.ps_processor_config),
       )
     }
     let z0 = Array::make(n, 0.0)
@@ -439,6 +492,7 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
       n_folds: self.n_folds,
       seed: self.seed,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       coef: theta,
       se,
       fitted: true,
