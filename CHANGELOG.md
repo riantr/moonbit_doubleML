@@ -9,6 +9,155 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.124.0] -- `ps_processor_config` reaches `DoubleMLPQ`
+
+### What this release changes
+
+`DoubleMLPQ` now takes `ps_processor_config?`, carried through every
+rebuild of the struct and into the memoize key.
+
+The interesting part is not the estimator but the helper underneath it.
+`fit_propensity` is **shared**: `DoubleMLPQ` reaches it through
+`solve_pq`, and `DoubleMLLPQ` calls it directly. So the transform was
+routed once, in the helper:
+
+```moonbit
+let cfg = resolve_ps_processor_config(
+  ps_processor_config~,
+  trimming_threshold=clip,
+)
+PSProcessor::from_config(cfg).adjust_ps(m, treated)
+```
+
+`solve_pq` gained a matching optional parameter. It is `pub`
+(`quantile.mbt:173`) and is called by PQ, QTE and `quantile_test.mbt`,
+so the parameter defaults to `None` and **no caller had to change**.
+`DoubleMLLPQ` and `DoubleMLQTE` still pass only the deprecated scalar,
+and under the default config `adjust_ps` is exactly
+`clip_vec(ps, eps, 1-eps)` -- measured at `max |diff| = 0.0` on the
+v0.121.0 oracle fixture. They are byte-identical.
+
+### The calibration target is `treated`, not `data.d`
+
+`m` is fitted by regressing `treated` on X, so it is the propensity of
+the indicator being estimated. Upstream `pq.py:410` passes `d`, because
+upstream's `m` is `P(d = 1 | x)`. Here `m` is `P(d == treatment | x)`
+and `treated` is `indicator_level(d, treatment)` -- the 0/1 indicator of
+exactly that. Both are binary, so `adjust_ps`'s treatment precondition
+holds either way.
+
+### One site here, two upstream -- recorded, not papered over
+
+Upstream `pq.py` adjusts twice: `m_hat_prelim` on the first sample
+split's training rows (`pq.py:365`) and `m_hat["preds"]` on the full
+data (`pq.py:410`). This port's `solve_pq` performs exactly **one**
+propensity cross-fit on the full data (`quantile.mbt:190`), so there is
+one site to route and no preliminary stage. That is a genuine
+structural difference from upstream, not a wiring omission, and it is
+recorded here rather than quietly papered over.
+
+### Measured sensitivity, before the gates were written
+
+v0.122.0 shipped a completely load-free gate and v0.123.0 shipped a
+second one, both because the fixture could not see what it claimed to
+test. Measured first, on the saturated-propensity DGPs in the new gates.
+
+**`DoubleMLPQ`** (n=500, treatment=1.0, quantile=0.5, n_folds=2,
+seed=3141):
+
+    clip=1e-6 (default)  coef=4.210358504497275   se=0.04926765806453813
+    clip=0.05            coef=5.056132161845584   se=0.03231994217636388
+    clip=0.2             coef=5.271971071407467   se=0.03656532151121419
+    isotonic             coef=5.050725021104142   se=0.03277386482502175
+
+The default's propensity-weighted quantile is biased low (4.210) because
+the saturated tails carry tiny `m`; forcing the clip to 0.2 moves it to
+5.272 and isotonic to 5.051. Both difference gates key on gaps of ~1.0
+with a threshold of 0.1 -- a 10x margin, and the isotonic gap is ~20
+standard errors.
+
+### BUG 5 -- `DoubleMLLPQ` / `DoubleMLQTE` never tested a non-default clip
+
+**Found by the harness, and the third instance of the same mistake.**
+
+The mutation `trimming_threshold=clip` -> `1.0e-6` -- freezing the
+shared helper's default branch -- **survived 961/961**. The cause was
+not a weak gate. No test anywhere passes a non-default
+`propensity_clip` to `DoubleMLLPQ` or `DoubleMLQTE`; every one of their
+tests runs at the default, so ignoring the argument was literally
+indistinguishable from honouring it.
+
+`propensity_clip` is a user-facing parameter on both estimators, so
+this is a real coverage gap. It is live on both:
+
+    LPQ clip=1e-6 (default)  coef=1.123984742821626  se=156.07090279138626
+    LPQ clip=0.05            coef=4.739060249576877  se=  4.140929971656726
+    LPQ clip=0.2             coef=4.739060249576877  se=  2.4472021260225816
+
+    QTE clip=1e-6 (default)  c0  =2.2283675671949696 se0=0.12339938991061847
+    QTE clip=0.05            c0  =3.129274728439124  se0=0.0359513925519582
+    QTE clip=0.2             c0  =3.271472429652198  se0=0.024227336475237504
+
+Gaps of 3.615 and 0.901, so the new gates use a threshold of 0.1 --
+36x and 9x margins. With them present the mutation is **KILLED**, and
+"LPQ and QTE are byte-identical" finally rests on something
+observable rather than on the fact that nobody looked.
+
+### Flagged for its own round: LPQ overloads `propensity_clip`
+
+LPQ's `clip=0.05` and `clip=0.2` rows above produce an **identical
+coefficient** (4.739060249576877) with different standard errors. The
+reason is that `propensity_clip` does a second job on LPQ: it also
+floors the estimated complier share
+
+```moonbit
+if comp.abs() < self.propensity_clip {
+  comp = self.propensity_clip
+}
+```
+
+Once that floor stops binding, the bisection saturates and the
+coefficient stops responding. This is pre-existing behaviour and is
+**not** touched by this release. It is flagged because a single scalar
+silently controlling both a propensity clip and a complier-share floor
+is exactly the kind of thing that makes a later "why doesn't this knob
+do anything" bug report, and because it will interact with any future
+`ps_processor_config` on LPQ.
+
+### Verification
+
+- Tests **963/963** native / wasm / js, **969/969** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- typos (CI-pinned v1.19.0) clean
+- Mutation harness: **7 KILLED / 2 SURVIVED / 1 NO-COMPILE**, every
+  verdict matching its declaration, no residue
+
+The one `NO-COMPILE` is a deliberate probe, not a defect: it confirms
+the engine reports a build failure as `NO-COMPILE` rather than silently
+counting it as a kill.
+
+Two survivors, both structural and both verified before declaring:
+
+- **the estimator-level memoize folding** -- `fit_cache` is a
+  per-instance field, `fit()` accepts no `ps_processor` override, and
+  the only public setter is `set_sample_splitting`, so two fits of one
+  `DoubleMLPQ` cannot differ in calibration and no key can collide. The
+  folding itself is gated directly, by mutating `hash_hyperparams`
+  internals.
+- **a trailing comment**, the second canary.
+
+### Still not wired
+
+`lpq` (same shared helper, one site away -- but see the complier-share
+overload above), `cvar` (two sites, its own clip-path shape), and
+`did_binary` / `did_cs_binary` / `did_multi`. `did_cs_binary` additionally
+**clips twice with two different thresholds** -- `propensity_clip`
+(1e-6) and then the processor's default `1e-2` -- a real inconsistency
+that moves results, so it wants a behavioural release of its own rather
+than a wiring follow-up. `qte` and `did_multi` remain inert upstream
+(`init_ps_processor` is called, `adjust_ps` never is) and are documented
+rather than wired.
+
 ## [0.123.0] -- IIVM and SSM, and a correction to v0.122.0's diagnosis
 
 ### The headline: v0.122.0's BUG 1 was mis-diagnosed

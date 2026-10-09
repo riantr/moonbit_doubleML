@@ -130,12 +130,31 @@ pub fn pq_score_ipw(
 }
 
 ///|
+/// Cross-fit the propensity score and apply the propensity transform.
+///
+/// v0.124.0: the transform routes through `PSProcessor::adjust_ps`
+/// instead of an inline `clip_vec`, which is what makes isotonic / CV
+/// calibration reachable for `DoubleMLPQ` and `DoubleMLLPQ`.
+/// `ps_processor_config = None` resolves to a default config built from
+/// `clip`, and MEASURED under the default config `adjust_ps` is exactly
+/// `clip_vec` (max |diff| = 0.0 on the v0.121.0 oracle fixture), so the
+/// `DoubleMLLPQ` and `DoubleMLQTE` callers -- which still pass the
+/// deprecated scalar -- are byte-identical.
+///
+/// The calibration target is `treated`, not `data.d`. `m` is the
+/// propensity of the indicator being estimated (it is fitted by
+/// regressing `treated` on X), so `treated` is the coherent target.
+/// Upstream `pq.py:410` passes `d` because upstream's `m` is
+/// `P(d = 1 | x)`; here `m` is `P(d == treatment | x)`, and `treated`
+/// is the 0/1 indicator of exactly that. Both are binary, so
+/// `adjust_ps`'s treatment precondition holds.
 fn fit_propensity(
   learner : LearnerDispatch,
   x : Matrix,
   treated : Array[Double],
   folds : Array[Fold],
   clip : Double,
+  ps_processor_config? : PSProcessorConfig? = None,
 ) -> Array[Double] {
   let m = Array::make(x.rows(), 0.0)
   for fold in folds {
@@ -151,7 +170,11 @@ fn fit_propensity(
       m[te[k]] = p[k]
     }
   }
-  clip_vec(m, clip, 1.0 - clip)
+  let cfg = resolve_ps_processor_config(
+    ps_processor_config~,
+    trimming_threshold=clip,
+  )
+  PSProcessor::from_config(cfg).adjust_ps(m, treated)
 }
 
 ///|
@@ -180,6 +203,7 @@ pub fn solve_pq(
   seed : Int,
   clip : Double,
   folds? : Array[Fold] = [],
+  ps_processor_config? : PSProcessorConfig? = None,
 ) -> (Double, Array[Double], Double) raise BracketSignError {
   let treated = indicator_level(data.d, treatment)
   let folds = if folds.length() == 0 {
@@ -187,7 +211,14 @@ pub fn solve_pq(
   } else {
     folds
   }
-  let m = fit_propensity(ml_m, data.x, treated, folds, clip)
+  let m = fit_propensity(
+    ml_m,
+    data.x,
+    treated,
+    folds,
+    clip,
+    ps_processor_config~,
+  )
   // Widen the bracket slightly beyond [min(y), max(y)] so the
   // IPW score is provably sign-changed at both endpoints:
   //   - at very low theta,  1{y <= theta} = 0  => score = -q < 0
@@ -289,6 +320,12 @@ pub struct DoubleMLPQ {
   // partition and derives the fold count -- do not build it by hand.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.124.0: the RESOLVED CONCRETE propensity config, from upstream's
+  // `init_ps_processor` (`pq.py:169`). Stored concrete so it survives
+  // every rebuild of this struct. `propensity_clip` stays as the
+  // deprecated scalar and is overwritten with the config's own
+  // `clipping_threshold`, exactly as upstream does (`pq.py:172`).
+  ps_processor_config : PSProcessorConfig
   // v0.60.0+: injected nuisance learners (replaces the
   // v0.59.0 hardcoded `LinearRegression` used internally by
   // `solve_pq`). Defaults to OLS so v0.59.0 callers see
@@ -350,12 +387,20 @@ pub fn DoubleMLPQ::new(
   n_folds? : Int = 2,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor_config? : PSProcessorConfig? = None,
   ml_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLPQ {
   try {
     require(quantile > 0.0)
     require(quantile < 1.0)
+    // v0.124.0: upstream `init_ps_processor` (`pq.py:169`) -- the config
+    // wins outright, the deprecated scalar is read into it only when no
+    // config is supplied.
+    let ps_processor_config = resolve_ps_processor_config(
+      ps_processor_config~,
+      trimming_threshold=propensity_clip,
+    )
     {
       data,
       treatment,
@@ -365,7 +410,8 @@ pub fn DoubleMLPQ::new(
       // v0.109.0: no external splitting unless `set_sample_splitting`
       // is called, so every pre-existing caller keeps the drawn path.
       smpls: [],
-      propensity_clip,
+      propensity_clip: ps_processor_config.clipping_threshold,
+      ps_processor_config,
       ml_l,
       ml_m,
       coef: 0.0,
@@ -435,7 +481,13 @@ pub fn DoubleMLPQ::fit(
     0UL
   }
   let hparams_hash : UInt64 = if memoize {
-    hash_hyperparams("pq", ml_l, ml_m, self.propensity_clip)
+    hash_hyperparams(
+      "pq",
+      ml_l,
+      ml_m,
+      self.propensity_clip,
+      ps_processor_config=Some(self.ps_processor_config),
+    )
   } else {
     0UL
   }
@@ -490,6 +542,7 @@ pub fn DoubleMLPQ::fit(
       self.seed,
       self.propensity_clip,
       folds~,
+      ps_processor_config=Some(self.ps_processor_config),
     ) catch {
       BracketSignError::UpperSignFailed =>
         abort(
@@ -578,6 +631,7 @@ pub fn DoubleMLPQ::fit(
     // the next fit to drawing its own folds.
     smpls: self.smpls,
     propensity_clip: self.propensity_clip,
+    ps_processor_config: self.ps_processor_config,
     ml_l,
     ml_m,
     coef: theta,
@@ -651,6 +705,7 @@ fn DoubleMLPQ::fit_cluster(
       rep_seed,
       self.propensity_clip,
       folds=folds_row,
+      ps_processor_config=Some(self.ps_processor_config),
     ) catch {
       BracketSignError::UpperSignFailed =>
         abort(
@@ -704,6 +759,7 @@ fn DoubleMLPQ::fit_cluster(
       // revert to drawing its own folds.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       ml_l,
       ml_m,
       coef,
