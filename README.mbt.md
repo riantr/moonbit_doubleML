@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.119.0** |
+| `moon.mod` version | **0.120.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **186** `.mbt` files (**89** production + **97** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -211,8 +211,11 @@ optionals. Default is `LearnerDispatch::linear_regression()` (OLS).
 Built-in learners:
 
 | learner | kind | `sample_weight` | note |
-|---|---|---|
+|---|---|---|---|
 | `LinearRegression` | regression | WLS | OLS, the default |
+| `Ridge` | regression | weighted | **v0.120.0+**, L2 penalty, unpenalised intercept |
+| `Lasso` | regression | weighted | **v0.120.0+**, L1 penalty, coordinate descent |
+| `ElasticNet` | regression | weighted | **v0.120.0+**, the convex L1/L2 blend |
 | `LogisticRegression` | **classification** | weighted IRLS | binary, IRLS Newton-Raphson |
 | `RFClassifier` | **classification** | weighted | v0.117.0+, Breiman 2001, Gini splits |
 | `GBClassifier` | **classification** | weighted Newton leaf | v0.117.0+, Friedman 2001, binary log loss |
@@ -222,14 +225,29 @@ Built-in learners:
 
 Upstream `doubleml` is learner-agnostic -- `ml_g` / `ml_m` are any
 object with `fit` / `predict` -- so it inherits scikit-learn's whole
-learner surface. This package ships eight. The four tree/logistic
+learner surface. This package ships eleven. The four tree/logistic
 learners' `predict` returns `P(y = 1 | x)` for classification, never a
 hard label, because DML's AIPW correction divides by the fitted
 propensity.
 
-**Not yet ported on the learner side** (v0.118.0): regularized linear
-learners (Lasso / ElasticNet / Ridge) and GLM families (Poisson, Gamma,
-negative binomial). `sample_weight` landed in v0.118.0 -- the trait
+**The regularised learners penalise the slopes, not the intercept.**
+All three centre the design, solve for the slopes, and recover the
+intercept as `y_mean - x_mean . beta`; scikit-learn does the same.
+Folding the intercept into `X` as a column of ones -- which is what
+`LinearRegression` does -- and penalising it is a *different estimator*,
+and the two intercepts differ by 2.7e-2 at `alpha = 0.7`.
+
+**`alpha` means two different things across the two families.** `Ridge`
+minimises `||y - Xw||^2 + alpha*||w||^2`; `Lasso` / `ElasticNet`
+minimise `(1/2n)||y - Xw||^2 + alpha*(...)`. Equal numeric `alpha`
+therefore shrinks far harder for Lasso. The identity that pins it:
+`ElasticNet(l1_ratio = 0, alpha = a) == Ridge(alpha = a*sum(sample_weight))`
+-- note `sum(sample_weight)`, which reduces to `n` unweighted.
+
+**Not yet ported on the learner side** (v0.120.0): GLM families
+(Poisson, Gamma, negative binomial). A GLM is what a count or strictly
+positive outcome needs; the learners above are all squared-error.
+`sample_weight` landed in v0.118.0 -- the trait
 is `fit(x, y, sample_weight)` with an empty array meaning unweighted,
 matching upstream's protocol and scikit-learn's `sample_weight=None`.
 

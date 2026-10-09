@@ -811,5 +811,11 @@ pub fn double_cross_fit_predict_dispatch(
       double_cross_fit_predict(rf, x, y, outer, n_inner, seed, sample_weight~)
     GradientBoostingClassifier(gb) =>
       double_cross_fit_predict(gb, x, y, outer, n_inner, seed, sample_weight~)
+    Ridge(r) =>
+      double_cross_fit_predict(r, x, y, outer, n_inner, seed, sample_weight~)
+    Lasso(l) =>
+      double_cross_fit_predict(l, x, y, outer, n_inner, seed, sample_weight~)
+    ElasticNet(e) =>
+      double_cross_fit_predict(e, x, y, outer, n_inner, seed, sample_weight~)
   }
 }

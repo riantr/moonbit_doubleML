@@ -278,10 +278,38 @@ fn learner_dispatch_tag(l : LearnerDispatch) -> UInt64 {
     // deliberately NOT derived from the regressor strings above.
     RandomForestClassifier(_) => "random_forest_classifier"
     GradientBoostingClassifier(_) => "gradient_boosting_classifier"
+    // v0.120.0: three more regularised learners. As with the
+    // classifiers above these tags must not be derived from a sibling's
+    // string -- `Lasso(1.0)` and `ElasticNet(1.0, 0.0)` are different
+    // models at the same numeric alpha (the 1/(2n) normalisation), so
+    // sharing a tag would cross-wire two caches.
+    Ridge(_) => "ridge"
+    Lasso(_) => "lasso"
+    ElasticNet(_) => "elastic_net"
   }
   let mut h : UInt64 = 0x9e3779b97f40b847UL
   for c in kind {
     h = fold_mix_int(h, c.to_int())
+  }
+  // v0.120.0: unlike the tree learners above, the REGULARISATION
+  // STRENGTH is folded in here. For `RFLearner` / `GBLearner` the
+  // untagged tunables (n_trees, max_depth, ...) were left out of the
+  // key because those learners are constructed once per estimator and
+  // never varied within a run. That reasoning does NOT hold for the
+  // regularised learners: `alpha` is not a tuning knob, it DEFINES
+  // the model, and varying it between two estimators in one process
+  // (a natural thing to do when sweeping alpha) would otherwise make
+  // the second estimator read the first one's cached nuisance
+  // predictions and report a silently wrong coefficient. A gate in
+  // `expand_v120_test.mbt` pins that two alphas give two tags.
+  match l {
+    Ridge(r) => h = fold_mix_double(h, r.alpha)
+    Lasso(ls) => h = fold_mix_double(h, ls.alpha)
+    ElasticNet(e) => {
+      h = fold_mix_double(h, e.alpha)
+      h = fold_mix_double(h, e.l1_ratio)
+    }
+    _ => ()
   }
   h
 }

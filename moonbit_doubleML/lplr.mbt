@@ -1189,6 +1189,9 @@ fn cross_fit_predict_inner_dispatch(
     RandomForestClassifier(rf) => cross_fit_predict_inner(rf, x, targets, folds)
     GradientBoostingClassifier(gb) =>
       cross_fit_predict_inner(gb, x, targets, folds)
+    Ridge(r) => cross_fit_predict_inner(r, x, targets, folds)
+    Lasso(l) => cross_fit_predict_inner(l, x, targets, folds)
+    ElasticNet(e) => cross_fit_predict_inner(e, x, targets, folds)
   }
 }
 

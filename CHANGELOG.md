@@ -9,6 +9,183 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.120.0] -- regularised linear learners, and a harness bug the canary caught
+
+### What this closes
+
+Three CHANGELOG entries across this package's history carried the
+standing gap "**Regularized linear learners (Lasso / ElasticNet /
+Ridge)**: not in the DML nuisance path. v0.118.0 gave the `Learner` trait
+a `sample_weight`, which made them *expressible* -- they still did not
+exist." This release adds all three as first-class `Learner`s.
+
+```moonbit
+pub fn Ridge::new(alpha? : Double = 1.0)
+pub fn Lasso::new(alpha? = 1.0, tol? = 1e-4, max_iter? = 1000)
+pub fn ElasticNet::new(alpha? = 1.0, l1_ratio? = 0.5, tol? = 1e-4, max_iter? = 1000)
+```
+
+All three are reachable from `LearnerDispatch::ridge` / `::lasso` /
+`::elastic_net`, so they work as `ml_l` / `ml_m` in every estimator that
+takes a learner -- `DoubleMLPLR`, `DoubleMLAPO`, `DoubleMLPLIV`,
+`DoubleMLIRV`, and the rest.
+
+### Four conventions that are not obvious, and three of them are wrong if you guess
+
+Every one below was measured against scikit-learn 1.9.0 rather than read
+off its documentation. Each has a gate.
+
+**1. The intercept is not penalised, and is not a column of `X`.**
+`LinearRegression` folds the intercept into the design as a leading
+column of ones. Doing the same here *penalises* it and gives a different
+estimator: the two intercepts differ by **2.7e-2** at `alpha = 0.7` on the
+oracle fixture. sklearn centres instead and recovers the intercept as
+`y_mean - x_mean . beta`, verified against `sklearn.intercept_` at
+**3.3e-16**.
+
+**2. The centroid is the WEIGHTED mean**, for all three learners, when
+`sample_weight` is given.
+
+This one produced a wrong intermediate conclusion here, and the way it
+was caught is the useful part. A solver-to-solver comparison reported
+that `Lasso` centred on the *plain* mean (the plain version was 1.6e-2
+off, the weighted version 1.3e-6 off) -- because the plain-mean
+*prototype* was itself unconverged. The intercept identity
+`intercept == y_mean - x_mean . beta` needs no solver at all and settled
+it the other way, at 3.3e-16. **A solver-free identity beat a
+solver-to-solver comparison.** That will recur; prefer the identity.
+
+**3. `alpha` means two different things in the two families, and they
+differ by `n`.**
+
+    Ridge        minimises  ||y - Xw||^2 + alpha * ||w||^2      (raw)
+    Lasso / EN   minimise   (1 / 2n) ||y - Xw||^2 + alpha * (...)   (1/(2n))
+
+so the same numeric `alpha` is ~`n` times stronger for Lasso. The
+identity that pins it is
+
+    ElasticNet(l1_ratio = 0, alpha = a) == Ridge(alpha = a * sum(sample_weight))
+
+and the `sum(sample_weight)` is load-bearing. The unweighted-only form
+`a * n` is **wrong by 2.1e-1** on a weighted fixture; `a * sum(w)` agrees
+to **1.1e-11**. This was caught by the oracle, not by inspection -- see
+"the bug the gate found" below.
+
+**4. The two families disagree about `sample_weight` scale, on purpose.**
+`Lasso` / `ElasticNet` renormalise the weights to mean 1, so multiplying
+every weight by 17 changes the answer by exactly **0.0**; `Ridge` does
+not, because its `alpha` is absolute, and `w = 0.01 * 1` moves the
+coefficients by 1.21. Do not "fix" one family to match the other.
+
+### Why the iterative learners are gated on the objective, not the coefficients
+
+`Ridge` is closed form and is gated coefficient-wise. `Lasso` /
+`ElasticNet` are iterative, and **two correct iterative solvers stopped
+by different criteria land at different points** on a
+linear-convergence design. Measured at `tol = 1e-10`:
+
+| | worst coefficient gap | worst objective gap |
+|---|---|---|
+| vs scikit-learn | **8.8e-4** | **4.4e-9** abs / **1.2e-7** rel |
+
+The objective is flat at the optimum and the active set is not, so
+`|F(this) - F(sklearn)|` is the statement that does not depend on which
+solver stopped first. The support (`nnz` and the zero/nonzero pattern)
+is gated **exactly**, because it is discrete and does not wobble.
+
+A gate that would have proved nothing: comparing coefficients at
+scikit-learn's default `tol = 1e-4`. Measured gaps reach **5.06e-1**
+there, so such a gate is either vacuous or so loose it catches nothing.
+
+### The bug the gate found, on its first run
+
+`enet_objective` shipped the solver's *unnormalised* objective
+(`0.5 * sum wt_i r_i^2`) while its documentation promised the `1/(2n)`
+one. The gate reported `rel = 12.34` on the very first fixture, which is
+a factor-of-`n` error, not a tolerance problem. Arithmetic confirmed it:
+`0.5*rss/30 + 0.5*||w||_1 = 0.594` reproduces scikit-learn's `0.595`
+exactly.
+
+The two normalisations are both *correct* in their own place -- inside
+`enet_coordinate_descent` the unnormalised form is what makes the
+coordinate update `soft(rho, l1_reg) / (norm_sq + l2_reg)` come out
+right, with `l1_reg = alpha * l1_ratio * n`. Conflating them was the
+defect, and the distinction is now stated at both sites.
+
+### Wiring
+
+Three new `LearnerDispatch` variants across **five** sites:
+`cross_fit_predict_dispatch`, `fit_predict_one_dispatch`,
+`double_cross_fit_predict_dispatch`, the LPLR inner
+`cross_fit_predict_inner`, and `learner_dispatch_tag`.
+
+`learner_dispatch_tag` deliberately omits the tree learners' tunables
+(`n_trees`, `max_depth`, ...) because those learners are constructed
+once per estimator and never varied within a run. **That reasoning does
+not hold for the regularised learners**: `alpha` is not a tuning knob,
+it *defines* the model, and sweeping it between two estimators in one
+process is an ordinary thing to do. Two alphas sharing a cache key would
+make the second estimator read the first one's cached nuisance
+predictions and report a silently wrong coefficient. So `alpha` (and
+`l1_ratio`) **are** folded into the tag for these three, and
+`v120_regularisation_strength_is_part_of_the_fit_cache_key` pins it.
+
+`Lasso::fit_weighted` delegates to `ElasticNet` with `l1_ratio = 1.0`
+rather than keeping a second copy of the solver. That is not tidiness:
+v0.119.0 shipped a one-character formula error that lived in a duplicated
+copy and survived 890 tests. `v120_lasso_is_exactly_elastic_net_with_l1_ratio_one`
+asserts **bit-equality** (0.0), not closeness, so a second copy fails.
+
+### The mutation harness, and the bug its canary caught
+
+`_verify/mut_v120_regularized.ps1`, 12 mutations, three-way verdicts
+(KILLED / SURVIVED / NO-COMPILE / INCONCLUSIVE), file-based output
+capture, SHA256 restore verification.
+
+Its **canary** is `enet-objective-reassociate-multiply`, which rewrites
+`0.5 * rss` as `rss * 0.5`. Those are the same float64 -- `0.5` is a
+power of two -- so it is declared EXPECTED SURVIVED.
+
+On the first run the canary reported **KILLED**, and it was right:
+
+    enet-objective-reassociate-multiply  expect=SURVIVED  got=KILLED
+      Total tests: 917, passed: 917, failed: 0.
+
+The verdict regex was written without capture groups, so
+`$summary.Groups[3].Value` was `$null`, `$null -ne '0'` was always true,
+and the KILLED branch fired unconditionally. **The harness was reporting
+a perfect kill rate while proving nothing** -- the same failure mode as
+the v0.117.0 harness, reproduced inside the harness written to catch it.
+One deliberately-equivalent mutation was the only thing that surfaced it,
+and it surfaced it on mutation 1 of 12.
+
+That is the entire argument for keeping a canary. A harness that cannot
+report SURVIVED is not a harness.
+
+### Verification
+
+- Tests **917/917** native / wasm / js, **923/923** wasm-gc (was 900 / 906)
+- `moon fmt --check` clean; `moon check --deny-warn` clean on `native`,
+  `wasm`, `wasm-gc`, `js`
+- Oracle: **Ridge worst coefficient gap 1.28e-12** (gate 1e-9),
+  **ElasticNet worst relative objective gap 1.21e-7** (gate 1e-6),
+  **support exact on all 35 ElasticNet cases**
+- Fixtures emitted by `_verify/gen_v120_oracle.py` (scikit-learn 1.9.0)
+  and rendered by `_verify/_emit_v120_test.py`, which generates the
+  whole gate file so the arrays cannot drift from the oracle they are
+  compared against
+
+### Still missing (unchanged)
+
+- **GLM families** -- Poisson, Gamma, negative binomial. `Lasso` /
+  `Ridge` here are ordinary squared-error learners; a GLM in the DML
+  nuisance path is what a count or positive outcome needs.
+- `DoubleMLDIDCSBinary` still collapses `ps_processor_config` to a
+  single `propensity_clip`; the `isotonic` / `cv_calibration` paths exist
+  in `ps_processor.mbt` but that constructor does not expose them.
+- Fuzzy-RDD CCT delta-method terms; RDD's per-bandwidth `h`/`b` pilots;
+  mass-point adjustment; plotting; real dataset fetchers.
+
 ## [0.119.0] -- the propensity subsystem on APO/APOS, and a bug the oracle caught in it
 
 ### Two corrections to what this round set out to do

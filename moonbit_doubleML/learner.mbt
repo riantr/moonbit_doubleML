@@ -167,6 +167,16 @@ pub enum LearnerDispatch {
   /// binary log loss, Newton leaf values). v0.117.0+: the boosted
   /// counterpart. `predict` returns P(y = 1 | x).
   GradientBoostingClassifier(GBClassifier)
+  /// Pure-MoonBit ridge regression. v0.120.0+: the first REGULARISED
+  /// learner. `alpha` is on the raw `||y-Xw||^2 + alpha||w||^2` scale
+  /// and the intercept is unpenalised (centred, not folded into X).
+  Ridge(Ridge)
+  /// Pure-MoonBit lasso. v0.120.0+: `alpha` on the `1/(2n)`-normalised
+  /// scale, so at equal `n` it shrinks far harder than `Ridge(alpha)`.
+  Lasso(Lasso)
+  /// Pure-MoonBit elastic net, the convex Lasso/Ridge blend.
+  /// v0.120.0+.
+  ElasticNet(ElasticNet)
 } derive(Debug)
 
 ///|
@@ -244,6 +254,26 @@ pub fn LearnerDispatch::gradient_boosting_classifier(
 }
 
 ///|
+/// Wrap a `Ridge` in a `LearnerDispatch`. v0.120.0+.
+///
+/// `alpha` is part of the memoize key -- see `learner_dispatch_tag`.
+pub fn LearnerDispatch::ridge(r : Ridge) -> LearnerDispatch {
+  Ridge(r)
+}
+
+///|
+/// Wrap a `Lasso` in a `LearnerDispatch`. v0.120.0+.
+pub fn LearnerDispatch::lasso(l : Lasso) -> LearnerDispatch {
+  Lasso(l)
+}
+
+///|
+/// Wrap an `ElasticNet` in a `LearnerDispatch`. v0.120.0+.
+pub fn LearnerDispatch::elastic_net(e : ElasticNet) -> LearnerDispatch {
+  ElasticNet(e)
+}
+
+///|
 /// Cross-fit a `LearnerDispatch` over the given folds. This
 /// is the dispatch wrapper around `cross_fit_predict[T : Learner]`
 /// (which is generic in `T`); each match arm binds a concrete
@@ -272,6 +302,9 @@ pub fn cross_fit_predict_dispatch(
       cross_fit_predict(rf, x, y, folds, sample_weight~)
     GradientBoostingClassifier(gb) =>
       cross_fit_predict(gb, x, y, folds, sample_weight~)
+    Ridge(r) => cross_fit_predict(r, x, y, folds, sample_weight~)
+    Lasso(l) => cross_fit_predict(l, x, y, folds, sample_weight~)
+    ElasticNet(e) => cross_fit_predict(e, x, y, folds, sample_weight~)
   }
 }
 
@@ -301,5 +334,8 @@ pub fn fit_predict_one_dispatch(
     LogisticRegression(lr) => lr.fit(x_train, y_train).predict(x_test)
     RandomForestClassifier(rf) => rf.fit(x_train, y_train).predict(x_test)
     GradientBoostingClassifier(gb) => gb.fit(x_train, y_train).predict(x_test)
+    Ridge(r) => r.fit_weighted(x_train, y_train, []).predict(x_test)
+    Lasso(l) => l.fit_weighted(x_train, y_train, []).predict(x_test)
+    ElasticNet(e) => e.fit_weighted(x_train, y_train, []).predict(x_test)
   }
 }
