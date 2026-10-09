@@ -50,6 +50,13 @@ pub struct DoubleMLIRM {
   // build it by hand.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.122.0: the RESOLVED CONCRETE propensity config, from upstream's
+  // `init_ps_processor` (`irm.py:178`). Stored concrete so it survives
+  // every rebuild of this struct. `propensity_clip` stays as the
+  // deprecated scalar and is overwritten with the config's own
+  // `clipping_threshold`, exactly as upstream does
+  // (`self._trimming_threshold = self._ps_processor.clipping_threshold`).
+  ps_processor_config : PSProcessorConfig
   // v0.59.0+: injected nuisance learners (replaces the
   // v0.57.0 hardcoded `LinearRegression`). Defaults to a
   // fresh `LinearRegression` so v0.57.0 callers see
@@ -104,6 +111,7 @@ pub fn DoubleMLIRM::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLIRM {
@@ -113,6 +121,13 @@ pub fn DoubleMLIRM::new(
     require(n_rep >= 1)
     require(propensity_clip > 0.0)
     require(propensity_clip < 0.5)
+    // v0.122.0: upstream `init_ps_processor` -- the config wins
+    // outright, the deprecated scalar is read into it only when no
+    // config is supplied.
+    let ps_processor_config = resolve_ps_processor_config(
+      ps_processor_config~,
+      trimming_threshold=propensity_clip,
+    )
     {
       data,
       n_folds,
@@ -122,7 +137,8 @@ pub fn DoubleMLIRM::new(
       // `set_sample_splitting` is called, so every pre-existing caller
       // keeps the drawn path.
       smpls: [],
-      propensity_clip,
+      propensity_clip: ps_processor_config.clipping_threshold,
+      ps_processor_config,
       ml_g,
       ml_m,
       g0_hat: Array::make(data.n_obs(), 0.0),
@@ -337,7 +353,7 @@ fn cross_fit_irm(
   y : Array[Double],
   d : Array[Double],
   folds : Array[Fold],
-  propensity_clip : Double,
+  ps_processor_config : PSProcessorConfig,
 ) -> (Array[Double], Array[Double], Array[Double], Array[Double]) {
   try {
     let n_obs = x.rows()
@@ -391,7 +407,14 @@ fn cross_fit_irm(
       }
     }
     // m must be clipped
-    let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
+    // v0.122.0: this was `clip_vec(m, propensity_clip, 1 - clip)`,
+    // inlined. Under the default config `PSProcessor::adjust_ps` is
+    // exactly that (the calibration is the identity when no method is
+    // set), so routing through it is behaviour-preserving -- and it is
+    // what makes isotonic / CV calibration reachable here at all.
+    let m_clipped = PSProcessor::from_config(ps_processor_config).adjust_ps(
+      m, d,
+    )
     (g0, g1, m_clipped, m)
   } catch {
     PreconditionError::Violated(loc) =>
@@ -479,7 +502,13 @@ pub fn DoubleMLIRM::fit(
       0UL
     }
     let hparams_hash : UInt64 = if memoize {
-      hash_hyperparams("irm", ml_g, ml_m, self.propensity_clip)
+      hash_hyperparams(
+        "irm",
+        ml_g,
+        ml_m,
+        self.propensity_clip,
+        ps_processor_config=Some(self.ps_processor_config),
+      )
     } else {
       0UL
     }
@@ -549,7 +578,7 @@ pub fn DoubleMLIRM::fit(
           self.data.y,
           self.data.d,
           folds,
-          self.propensity_clip,
+          self.ps_processor_config,
         )
       }
       g0 = g0_r
@@ -641,6 +670,7 @@ pub fn DoubleMLIRM::fit(
       // is exactly what makes a surprise fold change easy to miss.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       // v0.59.0+: persist the per-fit learner overrides onto
       // the returned struct. Defaults preserve v0.57.0 surface
       // when callers don't override.
@@ -741,7 +771,7 @@ fn DoubleMLIRM::fit_cluster(
           self.data.y,
           self.data.d,
           folds_row,
-          self.propensity_clip,
+          self.ps_processor_config,
         )
         g0 = g0_r
         g1 = g1_r
@@ -827,6 +857,7 @@ fn DoubleMLIRM::fit_cluster(
       // the NEXT fit silently revert to drawing its own folds.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       // v0.59.0+: persist per-fit learner overrides on the
       // cluster-path return struct too. Defaults preserve
       // v0.57.0 surface for plain `fit_cluster` callers.

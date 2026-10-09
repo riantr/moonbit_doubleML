@@ -242,6 +242,7 @@ pub fn hash_hyperparams(
   ml_g : LearnerDispatch,
   ml_m : LearnerDispatch,
   propensity_clip : Double,
+  ps_processor_config? : PSProcessorConfig? = None,
 ) -> UInt64 {
   let mut h : UInt64 = 0x84222325cbf29ce4UL
   h = fold_mix_int(h, estimator_kind.length())
@@ -254,6 +255,29 @@ pub fn hash_hyperparams(
   h = fold_mix(h, learner_dispatch_tag(ml_g))
   h = fold_mix(h, learner_dispatch_tag(ml_m))
   h = fold_mix_double(h, propensity_clip)
+  // v0.122.0: `propensity_clip` alone no longer identifies the
+  // propensity transform. Since `ps_processor_config` became
+  // reachable (v0.121.0 on APO/APOS, this release on the rest), two
+  // estimators can share a clipping threshold and differ in
+  // `calibration_method` / `cv_calibration` -- and a memoize key that
+  // ignored that would make the second one read the first one's
+  // cached nuisances and report a silently wrong coefficient.
+  //
+  // `clipping_threshold` is folded twice on purpose: it is already in
+  // the key through `propensity_clip`, which upstream sets FROM the
+  // resolved config, and folding it again is free.
+  match ps_processor_config {
+    Some(cfg) => {
+      h = fold_mix_double(h, cfg.clipping_threshold)
+      h = fold_mix_double(h, cfg.extreme_threshold)
+      h = fold_mix_int(h, cfg.calibration_method.length())
+      for c in cfg.calibration_method {
+        h = fold_mix_int(h, c.to_int())
+      }
+      h = fold_mix_int(h, if cfg.cv_calibration { 1 } else { 0 })
+    }
+    None => ()
+  }
   h
 }
 

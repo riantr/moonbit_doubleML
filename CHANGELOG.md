@@ -9,6 +9,160 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.122.0] -- `ps_processor_config` reaches IRM, and two bugs the suite found on the way
+
+### What this release extends
+
+v0.121.0 made `ps_processor_config` reachable on `DoubleMLAPO` /
+`DoubleMLAPOS` and retracted a false GLM claim. This release takes it to
+the next estimator upstream wires, and fixes two bugs that only became
+visible once the code paths were actually exercised.
+
+`DoubleMLIRM` now takes `ps_processor_config?`, carried through every
+rebuild of the struct and into the memoize key.
+
+### BUG 1 -- `adjust_ps` validated a binary treatment when it did not need to
+
+`PSProcessor::adjust_ps` called `validate_treatment` unconditionally,
+requiring every entry to be exactly `0.0` or `1.0`. Upstream does the
+same -- and upstream has no continuous-treatment estimator, so it never
+notices.
+
+**This port does.** `DoubleMLIIVM`'s cluster DGP
+(`pliv_cluster_test.mbt::build_iv_clustered_dgp`) builds a
+**continuous** `d`:
+
+    d[row] = 0.6 * x1 + 0.3 * x2 + 0.5 * alpha / 2.0 + (rng.double() - 0.5)
+
+The binary variable in that DGP is the **instrument `z`**, not the
+treatment. Routing IIVM's clip site through `adjust_ps` -- a rewiring
+that is otherwise behaviour-preserving -- aborted on
+`iivm_cluster_deterministic`:
+
+    PanicError: precondition failed at ps_processor.mbt:336
+
+That is the test suite catching a rewiring defect, which is exactly what
+it is for. The fix is not "relax the validation": the requirement is
+checked **only when a calibration actually runs**, which is the only
+case where it means anything. With `calibration_method = "none"` the
+isotonic fit never executes and the transform is a pure clip, valid for
+any treatment. With a calibration method the target really is the
+treatment indicator, so the check applies and matches upstream.
+
+The rule is now a public total predicate, `treatment_is_binary`, which
+`validate_treatment` delegates to. That is not refactoring for its own
+sake -- see the harness note below for why the abort alone was not
+enough to pin.
+
+### BUG 2 -- the memoize key no longer identified the propensity transform
+
+`hash_hyperparams` folded `propensity_clip`. Since the config became
+reachable, two estimators can share a clipping threshold and differ in
+`calibration_method` / `cv_calibration` -- and the key would have let
+the second read the first one's cached nuisance predictions and report
+a silently wrong coefficient.
+
+This is the same shape as the v0.120.0 `alpha` issue, and it was
+predictable from the same reasoning: the tag must identify the model,
+not just one of its knobs. The config is now folded in (threshold,
+extreme threshold, method string, cv flag); the four-argument call
+still works unchanged.
+
+### BUG 3 (found by the harness) -- the deprecated `propensity_clip` was unobservable
+
+`ps_processor_config` is now the only consumer of `propensity_clip` on
+`DoubleMLIRM`. The mutation that hardcodes the default --
+
+    trimming_threshold=propensity_clip   ->   trimming_threshold=1.0e-6
+
+-- so that a caller's scalar is silently discarded, left the entire test
+suite green.
+
+The cause was the **fixture**, not a missing assertion. The release's
+`v122_irm_data()` has OLS-fitted propensities sitting well inside
+(0.05, 0.95), so clipping is a no-op on it: every threshold produces the
+same number. The config-wins gate that does pass `propensity_clip=0.05`
+would have passed even if clipping did nothing at all.
+
+The fix is a fixture with propensities that actually reach the clip
+range. On a saturated DGP (n=300, n_folds=2, seed=3141):
+
+    clip=1e-6 (default)  coef= -184.45233863898693   se=387.07267205533924
+    clip=0.02            coef=    2.0052723853508585  se=  0.024890439804802558
+    clip=0.05            coef=    2.007669306031133   se=  0.015078536080260638
+    clip=0.1             coef=    2.004486580247429   se=  0.010109627432972187
+    clip=0.2             coef=    2.004176528941727   se=  0.008546373310148224
+
+The default does not merely differ, it diverges -- 92x, and the sign of
+the estimate goes with it. That is also the clearest demonstration yet of
+what clipping is for: without it, violated overlap in the tails sends
+the coefficient to -184.
+
+Worth stating as a rule: **an assertion on an insensitive fixture is
+not a gate.** G2 was a real, passing, and completely load-free test.
+
+### The calibration is not cosmetic, again
+
+    DoubleMLIRM coef   plain = 1.9609911300451515
+    DoubleMLIRM coef   isotonic = 1.9603016544875
+
+### Backward compatibility
+
+With no config supplied, resolution is
+`clipping_threshold = propensity_clip` and `calibration_method = "none"`,
+so `adjust_ps` is the old inline clip exactly.
+`v122_irm_default_construction_is_unchanged` asserts the coefficient
+**and** the standard error are bit-identical between the four-argument
+call and an explicit default config.
+
+### Verification
+
+- Tests **941/941** native / wasm / js, **947/947** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- Mutation harness: **7 KILLED / 3 SURVIVED / 0 inconclusive**, no residue.
+  The 3 survivors are 2 declared canaries plus 1 documented below.
+
+#### One mutation is SURVIVED, and it is undetectable in principle
+
+`v122-adjust-ps-never-validates` -- deleting the `validate_treatment`
+call from `adjust_ps` -- leaves 941/941 green, and no assertion could
+catch it. MoonBit's `panic_` prefix tells the framework that an abort is
+*expected*, which means a `panic_` test that does **not** abort still
+passes. A missing abort is, by construction, unassertable.
+
+So the coverage was restructured around what *is* assertable. The
+meaningful part of the edit is the rule, not the call, and the rule is
+now a public predicate with direct assertions
+(`v122_treatment_is_binary_accepts_only_zero_and_one`); inverting it is
+KILLED. The guarded-vs-unconditional axis is covered from the other
+side -- making the check unconditional aborts
+`iivm_cluster_deterministic`, a real kill. Declaring this mutation
+SURVIVED is a statement about the test convention, not about the code.
+
+### Still missing -- and this is now the honest accounting
+
+`ps_processor_config` is wired on **APO, APOS and IRM**. The remaining
+upstream `init_ps_processor` call sites are **not** done:
+
+| upstream call site | port | status |
+|---|---|---|
+| `apo`, `apos`, `irm` | done (v0.121.0, v0.122.0) | wired + gated |
+| `iivm` | `iivm.mbt` | **not** -- continuous-treatment DGP, see BUG 1 |
+| `cvar`, `lpq`, `pq`, `qte`, `ssm` | `cvar.mbt`, `lpq.mbt`, `quantile.mbt`, `ssm.mbt` | **not** -- clip site shape differs from the IRM/APO one |
+| `did_binary`, `did_cs_binary`, `did_multi` | `did_binary.mbt`, `did_cs_binary.mbt`, `did_multi.mbt` | **not** -- `did_multi` has no scalar at all; `did_cs_binary` already threads a `PSProcessor` and **clips twice** with two different thresholds, which is a separate defect worth measuring before touching |
+
+`did_cs_binary` in particular deserves its own round: it calls
+`clip_vec(..., propensity_clip, ...)` and then
+`ps_processor.adjust_ps(...)`, whose default `PSProcessorConfig` has
+`clipping_threshold = 1e-2` while the estimator's scalar is `1e-6`. Two
+different thresholds in one clip path is a real inconsistency, but
+changing it moves results, so it is a behavioural release of its own
+rather than a wiring follow-up.
+
+Also unchanged: fuzzy-RDD CCT delta-method terms; RDD's per-bandwidth
+`h` / `b` pilots; mass-point adjustment; plotting; real dataset
+fetchers.
+
 ## [0.121.0] -- the propensity calibration finally becomes reachable, and a wrong claim retracted
 
 ### The retraction first

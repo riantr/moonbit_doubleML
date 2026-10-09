@@ -90,6 +90,11 @@ _verify/_fix_*.py
 _verify/_fix_*.py.archived
 # Mut/cluster/dedup scratch files used during iterative fix cycles;
 # all are renamed to .archived so git sees them but ignores them.
+# The per-mutation `moon test` logs written by the mutation harnesses
+# (`mut_v1NN_*.ps1`) live in one directory per round under the same
+# name; they are raw compiler output (truncated words like `ue`,
+# `exten`) and must never be spell-checked or committed.
+_verify/_mut*/
 _verify/_mut*.py
 _verify/_mut*.py.archived
 _verify/_add_*.py

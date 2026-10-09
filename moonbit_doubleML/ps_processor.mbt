@@ -250,7 +250,26 @@ pub fn PSProcessor::adjust_ps(
   cv? : Array[(Array[Int], Array[Int])]? = None,
 ) -> Array[Double] {
   try {
-    validate_treatment(treatment)
+    // v0.122.0: the binary-treatment requirement is checked ONLY when a
+    // calibration actually runs, because that is the only case where it
+    // means anything.
+    //
+    // Upstream `_validate_treatment` runs unconditionally, and upstream
+    // has no continuous-treatment estimator so it never notices. This
+    // port DOES: `DoubleMLIIVM`'s cluster DGP
+    // (`pliv_cluster_test.mbt::build_iv_clustered_dgp`) builds a
+    // CONTINUOUS `d` (the binary variable there is the instrument `z`,
+    // not the treatment). Validating unconditionally made a
+    // behaviour-preserving rewiring abort there -- caught by
+    // `iivm_cluster_deterministic`, not by inspection.
+    //
+    // With `calibration_method = "none"` the isotonic fit would not run
+    // at all and the transform is a pure clip, which is valid for any
+    // treatment. With a calibration method the target really is the
+    // treatment indicator, so the check applies and matches upstream.
+    if self.config.calibration_method == "isotonic" {
+      validate_treatment(treatment)
+    }
     require(ps.length() == treatment.length())
     let n = ps.length()
     require(n > 0)
@@ -330,14 +349,32 @@ pub fn apply_calibration(
 // ---------------------------------------------------------------------------
 
 ///|
-fn validate_treatment(treatment : Array[Double]) -> Unit {
-  try {
-    for t in treatment {
-      require(t == 0.0 || t == 1.0)
+/// The rule `validate_treatment` enforces, as a total predicate.
+///
+/// Extracted in v0.122.0 so the rule itself is testable. The abort is not:
+/// MoonBit's `panic_`-prefixed test convention cannot detect a MISSING abort
+/// (a non-aborting `panic_` test still passes), so `validate_treatment`
+/// alone had no load-bearing gate -- the mutation harness confirmed it
+/// (`v122-adjust-ps-never-validates` SURVIVES). This predicate is the part
+/// that carries meaning, and it can be asserted on directly.
+///
+/// Public so a caller can check its own treatment before handing it to
+/// `adjust_ps` with a calibration configured. `true` for an empty array:
+/// "no offending element" is vacuously binary, and `adjust_ps` separately
+/// rejects `n == 0`.
+pub fn treatment_is_binary(treatment : Array[Double]) -> Bool {
+  for t in treatment {
+    if !(t == 0.0 || t == 1.0) {
+      return false
     }
-  } catch {
-    PreconditionError::Violated(loc) =>
-      abort("precondition failed at " + loc.to_string())
+  }
+  true
+}
+
+///|
+fn validate_treatment(treatment : Array[Double]) -> Unit {
+  if !treatment_is_binary(treatment) {
+    abort("precondition failed: treatment must be binary")
   }
 }
 
