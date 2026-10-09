@@ -151,6 +151,80 @@ pub fn PSProcessor::cv_calibration(self : PSProcessor) -> Bool {
 }
 
 ///|
+/// Port of upstream `init_ps_processor`
+/// (`utils/propensity_score_processing.py:60`), the function twelve
+/// upstream estimators call: `apo`, `apos`, `cvar`, `iivm`, `irm`,
+/// `lpq`, `pq`, `qte`, `ssm`, `did_binary`, `did_cs_binary`,
+/// `did_multi`.
+///
+/// Its whole body is a precedence rule, and it is worth stating
+/// exactly because it is not the obvious one:
+///
+///     if ps_processor_config is not None:
+///         config = ps_processor_config          # config wins outright
+///     else:
+///         config = PSProcessorConfig(clipping_threshold=trimming_threshold)
+///
+/// MEASURED against upstream 0.11.4 (`_probe_v121_psconfig.py`):
+///
+///   init_ps_processor(None, "truncate", None) -> clip=0.01
+///   init_ps_processor(None, "truncate", 0.05) -> clip=0.05
+///   init_ps_processor(cfg(0.3), "truncate", 0.05) -> clip=0.3   <- the
+///       deprecated scalar is IGNORED once a config is present, not
+///       merged with it and not used as a fallback for a missing field.
+///
+/// Upstream then derives the legacy attribute from the processor
+/// (`self._trimming_threshold = self._ps_processor.clipping_threshold`),
+/// so a caller reading `propensity_clip` back sees the CONFIG's value.
+/// This port's estimators keep the same relationship.
+///
+/// Upstream's default when neither argument is given is
+/// `clipping_threshold = 1e-2`. This port's estimators have historically
+/// defaulted `propensity_clip` to `1e-6`, so the default lives at the
+/// CALL SITE, not here: `trimming_threshold` is the value the caller
+/// wants, and changing it would silently move every existing result.
+///
+/// Note the upstream validator rejects `cv_calibration=True` without a
+/// calibration method ("cv_calibration=True requires a
+/// calibration_method."). That check already lives in
+/// `PSProcessorConfig::new`, so it fires on the `Some` arm before this
+/// function ever sees it.
+pub fn resolve_ps_processor(
+  ps_processor_config? : PSProcessorConfig? = None,
+  trimming_threshold? : Double = 1.0e-2,
+) -> PSProcessor {
+  PSProcessor::from_config(
+    resolve_ps_processor_config(ps_processor_config~, trimming_threshold~),
+  )
+}
+
+///|
+/// The same resolution as `resolve_ps_processor`, returning the CONFIG
+/// rather than the processor. An estimator stores the config (never
+/// `None`) so it can hand `Some(this)` to a child and get a
+/// byte-identical processor; building the processor from a stored
+/// config is a struct wrap, so this is the natural thing to keep.
+///
+/// The single definition of the precedence rule lives here.
+pub fn resolve_ps_processor_config(
+  ps_processor_config? : PSProcessorConfig? = None,
+  trimming_threshold? : Double = 1.0e-2,
+) -> PSProcessorConfig {
+  match ps_processor_config {
+    Some(cfg) => cfg
+    None =>
+      PSProcessorConfig::new(clipping_threshold=trimming_threshold) catch {
+        PSConfigError::InconsistentCVCalibration =>
+          abort(
+            "resolve_ps_processor: unreachable -- the fallback config " +
+            "sets calibration_method = \"none\" and cv_calibration = " +
+            "false, which cannot be inconsistent",
+          )
+      }
+  }
+}
+
+///|
 /// Apply the configured calibration followed by the
 /// `[clipping_threshold, 1 - clipping_threshold]` clip. Returns a
 /// new array; the caller's `ps` and `treatment` are not mutated.
@@ -162,6 +236,13 @@ pub fn PSProcessor::cv_calibration(self : PSProcessor) -> Bool {
 /// used. With `cv_calibration = false`, `cv` is ignored and the
 /// isotonic fit uses the full `(ps, treatment)` (matches upstream
 /// `IsotonicRegression` default: no CV).
+///
+/// With the default config this is exactly `clip_vec(ps, eps, 1-eps)`,
+/// which is what all twelve estimators were doing inline before
+/// `ps_processor_config` became reachable. MEASURED: on the
+/// v0.121.0 oracle fixture `max |adjust_ps(ps, d) - ps| = 0.0` for
+/// `calibration_method = "none"`, so routing the existing clip site
+/// through here is behaviour-preserving and is asserted as such.
 pub fn PSProcessor::adjust_ps(
   self : PSProcessor,
   ps : Array[Double],
@@ -575,14 +656,58 @@ pub fn isotonic_calibrate_cv(
 }
 
 ///|
-/// Default 5-fold partition with `seed=3141`. Matches the
-/// upstream `cross_val_predict(cv=5)` default.
+/// Default 5-fold partition for cross-validated calibration.
+///
+/// v0.121.0 FIX. This used to call `kfold(n, 5, 3141)`, and its comment
+/// claimed it "matches the upstream `cross_val_predict(cv=5)` default".
+/// **That was false and the oracle proved it.** Upstream
+/// `_apply_calibration` calls
+///
+///     cross_val_predict(estimator, X, y, cv=cv, method="predict")
+///
+/// with `cv=None`, which `check_cv` resolves to `KFold(n_splits=5,
+/// shuffle=False)` -- contiguous and NOT shuffled. `kfold` shuffles, so
+/// the two partitions differ, and on a miscalibrated propensity the
+/// resulting isotonic fits differ materially: MEASURED 0.24 against
+/// upstream on the v0.121.0 oracle fixture (and 0.14 between sklearn's
+/// own `cv=None` and its shuffled equivalent on the same arrays, so the
+/// effect is entirely the partition, not the estimator).
+///
+/// The rule below is sklearn's, verified against `KFold(shuffle=False)`
+/// for n in {5,6,7,8,13,200,201} and k in {3,4,5}: contiguous blocks of
+/// `base = n / k` rows, with the FIRST `rem = n % k` folds one row
+/// longer. Feeding that partition back to `cross_val_predict` reproduces
+/// `cv=None` at max diff 0.0.
+///
+/// Callers who want a different partition still pass `cv` explicitly;
+/// that path is unchanged.
 fn default_5fold(n : Int) -> Array[(Array[Int], Array[Int])] {
-  let folds = kfold(n, 5, 3141)
+  let k = 5
+  let base = n / k
+  let rem = n % k
   let out : Array[(Array[Int], Array[Int])] = []
   let mut out_acc = out
-  for f = 0; f < folds.length(); f = f + 1 {
-    out_acc = out_acc + [(folds[f].train_idx, folds[f].test_idx)]
+  let mut start = 0
+  for f = 0; f < k; f = f + 1 {
+    let size = base + (if f < rem { 1 } else { 0 })
+    let test_idx : Array[Int] = []
+    let mut test_acc = test_idx
+    let mut i = start
+    while i < start + size {
+      test_acc = test_acc + [i]
+      i = i + 1
+    }
+    let train_idx : Array[Int] = []
+    let mut train_acc = train_idx
+    let mut j = 0
+    while j < n {
+      if j < start || j >= start + size {
+        train_acc = train_acc + [j]
+      }
+      j = j + 1
+    }
+    out_acc = out_acc + [(train_acc, test_acc)]
+    start = start + size
   }
   out_acc
 }

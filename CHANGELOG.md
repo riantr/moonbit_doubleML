@@ -9,6 +9,194 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.121.0] -- the propensity calibration finally becomes reachable, and a wrong claim retracted
+
+### The retraction first
+
+v0.120.0 shipped a README line naming the next gap as "**GLM families
+(Poisson, Gamma, negative binomial): not yet ported**". **That was
+false for doubleml 0.11.4**, and it is the same error the v0.119.0
+release caught with `ps_dm`: a name carried over from memory.
+
+Measured against the unpacked sdist:
+
+- There is no `DoubleMLPoisson`, `DoubleMLGamma` or
+  `DoubleMLNegativeBinomial` anywhere in `doubleml 0.11.4`.
+- There is no `QuantileRegressor`, `PoissonRegressor`,
+  `GammaRegressor` or `TweedieRegressor` anywhere in it either.
+- `DoubleMLPQ` fits its outcome model as a **classifier on the
+  indicator `1{y <= theta}`** (`pq.py:253`, `pq.py:390`), and this
+  port already has that.
+
+The estimator surface was, and remains, complete: all 25 upstream
+`DoubleML*` names have counterparts here (the three that do not --
+`DoubleMLCore`, `DoubleMLFramework`, `DoubleMLClusterData` -- are
+internal plumbing, not estimators). GLMs would be an extension beyond
+upstream, not a parity gap.
+
+### What the gap survey actually found
+
+**Twelve upstream estimators call `init_ps_processor`**: `apo`, `apos`,
+`cvar`, `iivm`, `irm`, `lpq`, `pq`, `qte`, `ssm`, `did_binary`,
+`did_cs_binary`, `did_multi`. It is a three-line precedence rule.
+
+**This port's `PSProcessorConfig` has carried `calibration_method`
+(`"none"` / `"isotonic"`) and `cv_calibration` since v0.48.0 -- and no
+estimator accepted a `PSProcessorConfig` at all.** All thirteen took a
+scalar `propensity_clip` and inlined `clip_vec(m, clip, 1 - clip)`
+themselves, in twelve separate places. The isotonic and
+cross-validated calibration paths were, to a user, **unreachable dead
+code**: implemented, tested in isolation, and callable from nowhere.
+
+That is what this release ports and wires.
+
+### The precedence rule, which is not the obvious one
+
+```python
+if ps_processor_config is not None:
+    config = ps_processor_config        # the config wins OUTRIGHT
+else:
+    config = PSProcessorConfig(clipping_threshold=trimming_threshold)
+```
+
+MEASURED against upstream 0.11.4:
+
+    init_ps_processor(None, "truncate", 0.05)               -> clip 0.05
+    init_ps_processor(cfg(0.3), "truncate", 0.05)           -> clip 0.3
+
+The deprecated scalar is read into the config **only** when no config is
+present. It is not merged, and not used as a per-field fallback. An
+implementation that "combines both arguments" gets this wrong.
+
+Upstream then derives the legacy attribute from the processor
+(`self._trimming_threshold = self._ps_processor.clipping_threshold`),
+so `DoubleMLAPO::propensity_clip` now reports the config's value too.
+
+```moonbit
+pub fn resolve_ps_processor_config(
+  ps_processor_config? : PSProcessorConfig? = None,
+  trimming_threshold? : Double = 1.0e-2,
+) -> PSProcessorConfig
+
+pub fn resolve_ps_processor(..) -> PSProcessor
+pub fn DoubleMLAPO::new(..., ps_processor_config? : PSProcessorConfig? = None, ..)
+pub fn DoubleMLAPOS::new(..., ps_processor_config? : PSProcessorConfig? = None, ..)
+```
+
+`APOS` stores the resolved CONCRETE config (never `None`) and hands
+each child `Some(this)`, which is byte-identical to re-resolving.
+
+### The calibration is not cosmetic, which is why this was worth doing
+
+MEASURED on the v0.121.0 oracle fixture (upstream's own
+`adjust_ps`, 200 rows, propensity from a logistic score):
+
+| configuration | `max abs(adjusted - raw)` |
+|---|---|
+| `calibration_method = None` | **0.000000** |
+| `isotonic` | **0.422869** |
+| `isotonic` + `cv_calibration` | **0.378237** |
+
+No-calibration is the exact identity, then a pure clip. Isotonic moves
+the propensity by up to 0.53 on the extreme fixture. And the end-to-end
+APO coefficient moves with it:
+
+    plain     2.9641677613312316
+    isotonic  2.9602088935501736
+
+### The bug the oracle caught: `default_5fold` was the wrong partition
+
+`isotonic_calibrate_cv`'s default partition is `KFold(5)` in sklearn
+terms. This port implemented it as `kfold(n, 5, 3141)` -- this package's
+own `kfold`, which **shuffles** -- with a comment claiming it "matches
+the upstream `cross_val_predict(cv=5)` default". **The comment was
+false**, and the cross-validated isotonic path was off by **0.24**
+against upstream.
+
+Upstream's `_apply_calibration` calls `cross_val_predict(..., cv=None)`,
+which `check_cv` resolves to `KFold(n_splits=5, shuffle=False)` --
+contiguous, not shuffled. Inside sklearn alone, `cv=None` and a
+shuffled `KFold(5, random_state=3141)` differ by **0.14** on this
+fixture, so the effect is entirely the partition.
+
+`default_5fold` now implements sklearn's rule -- contiguous blocks of
+`n / k`, with the first `n % k` folds one row longer -- verified
+against `KFold(shuffle=False)` for n in {5, 6, 7, 8, 13, 200, 201} and
+k in {3, 4, 5}, and confirmed to reproduce `cross_val_predict(cv=None)`
+at max diff **0.0**. The port-vs-upstream gap dropped **0.24 -> 0.1056**.
+
+### A known gap, recorded rather than absorbed
+
+The cross-validated isotonic path still does not match upstream: the
+residual is **0.1056**. What has been ruled out by measurement:
+
+- **not** the step-vs-linear prediction rule -- sklearn's
+  `IsotonicRegression` interpolates linearly between knots and this
+  port's `predict_isotonic` is a step function, but the two agree at
+  **0.0** on the full fit and **0.0** on fold 0, where 39 of 40 test
+  points fall between knots;
+- **not** the partition, which is now sklearn's own rule;
+- **not** the fitting arithmetic -- the **full-sample** isotonic path
+  matches upstream at **exactly 0**.
+
+The residual is inside sklearn's cross-validation machinery and is not
+yet explained. `v121_cv_calibration_parity_is_a_known_gap` pins it from
+above (> 1e-3 present, < 0.2 not regressed) so a future change that
+made it worse would still fail. A gate at 0.1 would catch nothing, and
+claiming parity here would be false.
+
+Everything else agrees with upstream at **exactly 0**: no-calibration
+(two thresholds), full-sample isotonic (two thresholds).
+
+### The coverage gap the harness found
+
+`DoubleMLAPO::fit`, `DoubleMLAPO::fit_cluster` and `DoubleMLAPOS::fit`
+each rebuild the model at their tail, carrying `ps_processor_config`
+forward. A mutation replacing those three fields with a
+re-resolution from the scalar **SURVIVED** the isotonic end-to-end
+gate -- because `fit` had already used `self.ps_processor_config` to
+compute the coefficient before rebuilding. The damage only appears on a
+*second* fit of the returned model, which is what `tune` and
+`set_sample_splitting` do.
+
+`v121_the_config_survives_a_refit_of_the_returned_model` closes it. The
+harness found this, not a reading of the code.
+
+### Behaviour preservation
+
+Routing the pre-existing clip site through
+`PSProcessor::adjust_ps` is a no-op under the default configuration,
+because the calibration step is the identity when there is no method.
+That is asserted, not assumed: the v0.120.0 `APOS100` /
+`APOS100M` numbers are byte-identical after the change, and
+`v121_no_calibration_is_exact_identity` checks it on the oracle
+fixture.
+
+### Verification
+
+- Tests **930/930** native / wasm / js, **936/936** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- Oracle: `adjust_ps` worst gap vs upstream **0.0** over four
+  configurations; isotonic movement 0.516; CV-vs-full-sample 0.212
+- Mutation harness: **5 KILLED / 2 SURVIVED (both canaries) /
+  0 inconclusive / 0 no-compile**, every verdict matching its declared
+  expectation
+- Fixtures emitted by `gen_v121_oracle.py` calling upstream's own
+  `init_ps_processor` / `adjust_ps`; the gate file is RENDERED from the
+  golden by `_emit_v121_test.py`
+
+### Still missing
+
+`ps_processor_config` is wired through **APO / APOS** in this release.
+The other ten upstream call sites -- `cvar`, `iivm`, `irm`, `lpq`,
+`pq`, `qte`, `ssm`, `did_binary`, `did_cs_binary`, `did_multi` -- still
+take the scalar. The resolution helper is shared and public, so those
+are mechanical follow-ups; they are not done here.
+
+Also unchanged: fuzzy-RDD CCT delta-method terms; RDD's per-bandwidth
+`h` / `b` pilots; mass-point adjustment; plotting; real dataset
+fetchers.
+
 ## [0.120.0] -- regularised linear learners, and a harness bug the canary caught
 
 ### What this closes

@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.120.0** |
+| `moon.mod` version | **0.121.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **186** `.mbt` files (**89** production + **97** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -76,6 +76,18 @@ a BLAS-style library) without breaking callers.
 clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)
 calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 `DoubleMLDID` and the rest of the IPW-based models.
+
+**`ps_processor_config` is reachable (v0.121.0+).** `DoubleMLAPO` and
+`DoubleMLAPOS` now take a `PSProcessorConfig`, which is how the
+isotonic and CV-calibration paths become callable from an estimator at
+all -- until v0.121.0 they were implemented and reachable from nowhere.
+Resolution follows upstream's `init_ps_processor`: **the config wins
+outright** and the deprecated scalar `propensity_clip` is read into it
+only when no config is supplied. Measured against upstream 0.11.4, the
+calibration is not cosmetic -- isotonic moves the propensity by up to
+0.53 on the test fixture, and the APO coefficient moves from
+2.9641677613312316 to 2.9602088935501736. The other ten upstream call
+sites still take the scalar.
 
 **Robust variance & inference** -- heteroskedasticity-consistent (HC)
 standard errors, cluster-robust variance, multiplier bootstrap
@@ -244,9 +256,17 @@ therefore shrinks far harder for Lasso. The identity that pins it:
 `ElasticNet(l1_ratio = 0, alpha = a) == Ridge(alpha = a*sum(sample_weight))`
 -- note `sum(sample_weight)`, which reduces to `n` unweighted.
 
-**Not yet ported on the learner side** (v0.120.0): GLM families
-(Poisson, Gamma, negative binomial). A GLM is what a count or strictly
-positive outcome needs; the learners above are all squared-error.
+**Learner surface is at parity with doubleml 0.11.4.** An earlier
+version of this README listed "GLM families (Poisson, Gamma, negative
+binomial)" as a gap. **That was wrong**, in the same way an earlier
+release claimed a `ps_dm` the sdist does not contain: doubleml 0.11.4
+has no `DoubleMLPoisson` / `DoubleMLGamma` / `DoubleMLNegativeBinomial`,
+and no `PoissonRegressor` / `GammaRegressor` / `QuantileRegressor`
+anywhere in it. `DoubleMLPQ` fits its outcome model as a *classifier on
+the indicator `1{y <= theta}`* (`pq.py:253`, `pq.py:390`), which this
+port already has. GLMs would be an extension beyond upstream, not a
+parity gap.
+
 `sample_weight` landed in v0.118.0 -- the trait
 is `fit(x, y, sample_weight)` with an empty array meaning unweighted,
 matching upstream's protocol and scikit-learn's `sample_weight=None`.

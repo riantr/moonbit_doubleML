@@ -19,6 +19,23 @@ pub struct DoubleMLAPO {
   // `set_sample_splitting`.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.121.0: the RESOLVED CONCRETE propensity config, from upstream's
+  // `init_ps_processor` (which `apo.py:141` calls). It is what the clip
+  // site actually uses, so the isotonic and cross-validated calibration
+  // paths -- which `PSProcessorConfig` has carried since v0.48.0 but no
+  // estimator could reach -- finally become reachable.
+  //
+  // Stored concrete (never `None`) so `DoubleMLAPOS` can hand each child
+  // `Some(this)` and get a byte-identical processor:
+  // `resolve_ps_processor(Some(c), _)` IS `PSProcessor::from_config(c)`.
+  //
+  // `propensity_clip` is kept alongside as the deprecated scalar and is
+  // overwritten with the config's own `clipping_threshold`, exactly as
+  // upstream does
+  // (`self._trimming_threshold = self._ps_processor.clipping_threshold`).
+  // With no config supplied the two are equal by construction, so every
+  // pre-existing caller is unaffected.
+  ps_processor_config : PSProcessorConfig
   // v0.119.0: when true the propensity entering the score is replaced by
   // the IPW-normalized weight from `normalize_ipw`, matching upstream
   // `DoubleMLAPO(normalize_ipw=...)` -> `_propensity_score_adjustment`.
@@ -78,6 +95,7 @@ pub fn DoubleMLAPO::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   normalize_ipw? : Bool = false,
+  ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLAPO {
@@ -87,6 +105,15 @@ pub fn DoubleMLAPO::new(
     require(n_rep >= 1)
     require(propensity_clip > 0.0)
     require(propensity_clip < 0.5)
+    // v0.121.0: upstream `init_ps_processor` resolves the config
+    // against the deprecated scalar with "the config wins outright".
+    // MEASURED against 0.11.4: `init_ps_processor(cfg(clip=0.3),
+    // "truncate", 0.05)` yields clip = 0.3 -- the 0.05 is IGNORED, not
+    // merged and not used as a per-field fallback.
+    let ps_processor_config = resolve_ps_processor_config(
+      ps_processor_config~,
+      trimming_threshold=propensity_clip,
+    )
     {
       data,
       treatment_level,
@@ -96,7 +123,10 @@ pub fn DoubleMLAPO::new(
       // v0.109.0: no external splitting unless `set_sample_splitting`
       // is called, so every pre-existing caller keeps the drawn path.
       smpls: [],
-      propensity_clip,
+      // v0.121.0: report the CONFIG's threshold back through the
+      // deprecated scalar, as upstream does.
+      propensity_clip: ps_processor_config.clipping_threshold,
+      ps_processor_config,
       // v0.119.0: upstream `apo.py:97` defaults this to False, so the
       // default path is byte-identical to v0.115.0-v0.118.0.
       normalize_ipw,
@@ -236,7 +266,7 @@ fn cross_fit_apo(
   y : Array[Double],
   treated : Array[Double],
   folds : Array[Fold],
-  clip : Double,
+  ps_processor_config : PSProcessorConfig,
   normalize_ipw : Bool,
 ) -> (Array[Double], Array[Double]) {
   let n = x.rows()
@@ -267,7 +297,17 @@ fn cross_fit_apo(
       m[te[k]] = p[k]
     }
   }
-  let m_clipped = clip_vec(m, clip, 1.0 - clip)
+  // v0.121.0: this used to be `clip_vec(m, clip, 1 - clip)`, inlined in
+  // every estimator. `PSProcessor::adjust_ps` under the default config
+  // is EXACTLY that -- the calibration step is the identity for
+  // `calibration_method = "none"` -- so routing the clip site through it
+  // is behaviour-preserving, and is what makes the isotonic and
+  // cross-validated calibration paths reachable at all. The gate
+  // `v121_default_processor_reproduces_the_old_inline_clip` pins the
+  // equivalence rather than asserting it.
+  let m_clipped = PSProcessor::from_config(ps_processor_config).adjust_ps(
+    m, treated,
+  )
   // v0.119.0: upstream applies `_propensity_score_adjustment` to the
   // clipped propensity AFTER the cross-fit, i.e. the normalisation is
   // computed over the full-sample cross-fitted propensity rather than
@@ -394,7 +434,7 @@ pub fn DoubleMLAPO::fit(
         self.data.y,
         treated,
         folds,
-        self.propensity_clip,
+        self.ps_processor_config,
         self.normalize_ipw,
       )
       (gr, mr)
@@ -457,6 +497,7 @@ pub fn DoubleMLAPO::fit(
     // to drawing its own folds.
     smpls: self.smpls,
     propensity_clip: self.propensity_clip,
+    ps_processor_config: self.ps_processor_config,
     normalize_ipw: self.normalize_ipw,
     ml_g,
     ml_m,
@@ -544,7 +585,7 @@ fn DoubleMLAPO::fit_cluster(
           self.data.y,
           treated,
           folds_row,
-          self.propensity_clip,
+          self.ps_processor_config,
           self.normalize_ipw,
         )
         g = g_r
@@ -611,6 +652,7 @@ fn DoubleMLAPO::fit_cluster(
       // in agreement on the field.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       normalize_ipw: self.normalize_ipw,
       ml_g,
       ml_m,
@@ -1083,6 +1125,10 @@ pub struct DoubleMLAPOS {
   // it by hand.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.121.0: propagated to every child `DoubleMLAPO`, mirroring
+  // upstream `apos.py:129`. See the note on the same field in
+  // `DoubleMLAPO`.
+  ps_processor_config : PSProcessorConfig
   // v0.119.0: propagated to every child DoubleMLAPO, matching
   // the upstream apos.py normalize_ipw constructor flag. Default
   // false, so existing APOS numbers are unchanged.
@@ -1149,9 +1195,17 @@ pub fn DoubleMLAPOS::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   normalize_ipw? : Bool = false,
+  ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLAPOS {
+  // v0.121.0: resolved BEFORE the try block so the concrete config is in
+  // scope for the struct literal below (a `let` inside `try` is scoped to
+  // it). Same `init_ps_processor` precedence as `DoubleMLAPO`.
+  let ps_processor_config = resolve_ps_processor_config(
+    ps_processor_config~,
+    trimming_threshold=propensity_clip,
+  )
   try {
     require(treatment_levels.length() >= 1)
     require(n_folds >= 2)
@@ -1206,6 +1260,7 @@ pub fn DoubleMLAPOS::new(
     // called, so every pre-existing caller keeps the drawn path.
     smpls: [],
     propensity_clip,
+    ps_processor_config,
     // v0.119.0: forwarded to each child `DoubleMLAPO`.
     normalize_ipw,
     ml_g,
@@ -1362,6 +1417,7 @@ pub fn DoubleMLAPOS::fit(
           n_rep=self.n_rep,
           seed=self.seed,
           propensity_clip=self.propensity_clip,
+          ps_processor_config=Some(self.ps_processor_config),
           normalize_ipw=self.normalize_ipw,
         )
         let child_memo = if self.memoize_enabled {
@@ -1438,6 +1494,7 @@ pub fn DoubleMLAPOS::fit(
       // and inherits it without an explicit field.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       normalize_ipw: self.normalize_ipw,
       ml_g,
       ml_m,
@@ -1888,6 +1945,7 @@ pub fn DoubleMLAPOS::bootstrap(
         n_rep=self.n_rep,
         seed=self.seed,
         propensity_clip=self.propensity_clip,
+        ps_processor_config=Some(self.ps_processor_config),
         normalize_ipw=self.normalize_ipw,
         ml_g=self.ml_g,
         ml_m=self.ml_m,
@@ -2109,6 +2167,7 @@ pub fn DoubleMLAPOS::sensitivity_analysis(
       n_rep=self.n_rep,
       seed=self.seed,
       propensity_clip=self.propensity_clip,
+      ps_processor_config=Some(self.ps_processor_config),
       normalize_ipw=self.normalize_ipw,
       ml_g=self.ml_g,
       ml_m=self.ml_m,
@@ -2157,6 +2216,7 @@ pub fn DoubleMLAPOS::sensitivity_analysis_cluster(
       n_rep=self.n_rep,
       seed=self.seed,
       propensity_clip=self.propensity_clip,
+      ps_processor_config=Some(self.ps_processor_config),
       normalize_ipw=self.normalize_ipw,
       ml_g=self.ml_g,
       ml_m=self.ml_m,
