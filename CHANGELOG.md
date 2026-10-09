@@ -9,6 +9,183 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.123.0] -- IIVM and SSM, and a correction to v0.122.0's diagnosis
+
+### The headline: v0.122.0's BUG 1 was mis-diagnosed
+
+v0.122.0 shipped this account: routing IIVM's clip site through
+`PSProcessor::adjust_ps` aborted on `iivm_cluster_deterministic`,
+because upstream "has no continuous-treatment estimator so it never
+notices, but this port does". The fix recorded there was to **relax the
+validation** -- check the binary treatment only when a calibration is
+actually configured.
+
+**That was papering over a port defect, and the relaxation had to be
+reverted.** Upstream `DoubleMLIIVM` does not pass the treatment to
+`adjust_ps` at all. `iivm.py:371` reads:
+
+    m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], z, cv=smpls)
+
+`z` is the **instrument**, not `d`. That is not a typo to be emulated --
+`m` is the propensity *of the instrument*: `ml_m` is trained on
+`(x, z)` (`iivm.mbt` doc block, line ~352). So `z` is both the correct
+calibration target and, unlike `d`, genuinely binary. Upstream's
+unconditional `_validate_treatment` was right at all twelve of its call
+sites; this port was passing `d`.
+
+With the port bug fixed, the unconditional requirement is restored to
+match upstream.
+
+### Why the relaxation had to go, beyond tidiness
+
+Restoring the check is what makes the fix **verifiable**. Under the
+v0.122.0 scoping, the binary check was skipped whenever
+`calibration_method == "none"` -- which is every test in the package.
+Passing `d` instead of `z` would therefore have been **undetectable**,
+and `iivm_cluster_deterministic` would have passed either way.
+
+Restored, the continuous-`d` fixture becomes a real gate, and it does:
+`v123-iivm-passes-the-treatment-not-the-instrument` is KILLED.
+
+### The SSM asymmetry
+
+Upstream adjusts `m` and only `m`:
+
+    m_hat["preds"] = self._ps_processor.adjust_ps(m_hat["preds"], d, cv=smpls)   # ssm.py:407
+    ...
+    self._score_elements(dtreat, dcontrol, g_hat_d1, g_hat_d0, pi_hat["preds"], m_hat["preds"], s, y)
+
+`pi_hat["preds"]` goes into `_score_elements` **raw** (`ssm.py:414`).
+This port has always clipped `pi` as well -- there is no upstream
+counterpart to match against -- and this release keeps that clip while
+routing only `m` through `adjust_ps`.
+
+Routing `pi` through the processor too would have "worked" and produced
+plausible numbers while silently **calibrating the selection propensity
+against the treatment**, which upstream never does.
+`v123_ssm_calibrates_m_but_never_pi` pins the asymmetry directly on the
+nuisance predictions: under isotonic, `predictions_m()` must move and
+`predictions_pi()` must be bit-identical.
+
+### What this release changes
+
+- `ps_processor_config?` added to `DoubleMLIIVM` and `DoubleMLSSM`,
+  carried through every struct rebuild and into the memoize key.
+- IIVM's clip site passes `z`, not `d`.
+- SSM's `m` goes through `adjust_ps`; `pi` keeps a plain clip.
+- `adjust_ps`'s binary-treatment requirement is unconditional again.
+- One v0.122.0 gate is **retracted**:
+  `v122_adjust_ps_accepts_a_continuous_treatment_when_uncalibrated`
+  asserted the deviation itself, so it asserted the opposite of
+  upstream semantics. Replaced by a positive test of the rule and by
+  G12, which pins the IIVM site to the instrument.
+
+### Measured sensitivity, before the gates were written
+
+v0.122.0 shipped a gate that was entirely load-free because its fixture
+could not see what it claimed to test. So sensitivity was measured
+first, on saturated-propensity DGPs (n=400, n_folds=2, seed=3141):
+
+    IIVM  clip=1e-6 (default)  coef=  2.066549039129563  se=0.09876035703345087
+    IIVM  clip=0.02            coef=  4.753714107957456  se=1.5191055684317063
+    IIVM  clip=0.05            coef=  7.14609566376223   se=2.453942581591049
+    IIVM  clip=0.2             coef= 11.433861766061282  se=4.182861483160994
+    IIVM  isotonic             coef=  7.827732496888789  se=3.6147767813676905
+
+    SSM   clip=1e-6 (default)  coef= 30.374462673565066  se=28.32749988062885
+    SSM   clip=0.02            coef=  2.012861251839158  se=0.008075997019551364
+    SSM   clip=0.2             coef=  2.0114767519674253 se=0.008368287329930852
+    SSM   isotonic             coef=  2.0132836573878383 se=0.009026133183748673
+
+SSM's default threshold is **15x** its clipped value; IIVM moves 5.5x
+across the sweep. Every difference gate has an observed gap of at least
+0.36 and most exceed 2.7.
+
+### BUG 4 -- the selection propensity clip was ungated
+
+`v123-ssm-drops-the-pi-clip-entirely` survived 953/953. Same failure
+mode as v0.122.0's BUG 3: the fixture, not the assertion. The release
+DGP sets `s` ~ Bernoulli(0.6) independently of X, so the fitted `pi_hat`
+is a near-constant 0.6 that never approaches the bound.
+
+The replacement DGP makes selection nearly deterministic given X, so
+the fitted pi saturates onto the bound:
+
+    clip=1e-6  min_pi=1e-6  max_pi=0.999999  45 at the lower bound,
+              44 at the upper, coef=-525.7603444463953
+    clip=0.2   min_pi=0.2   max_pi=0.8       106 at 0.2, 139 at 0.8
+
+The gate asserts that some element equals the bound **exactly**, which
+only a clip can manufacture. The default row is also the clearest
+statement of what the selection clip is worth: unclipped, the IPW score
+divides by ~0 and the coefficient runs to -526.
+
+### Two mutations declared SURVIVED for structural reasons
+
+- **`v123-adjust-ps-never-validates-again`** -- the same MoonBit
+  `panic_` convention limit recorded in v0.122.0: a `panic_` test
+  passes when it does *not* abort, so a missing abort cannot be
+  asserted. The rule is pinned positively by
+  `treatment_is_binary`; the call is pinned from the other side by the
+  IIVM z-vs-d mutation, which aborts precisely because this validation
+  runs.
+
+- **`v123-{iivm,ssm}-cache-key-drops-the-config`** -- verified
+  documented-equivalent *today*, by construction rather than by
+  assertion: `fit_cache` is a per-instance field, `fit()` accepts only
+  `ml_g`/`ml_m`/`ml_r`/`max_attempts` overrides, the only public setter
+  is `set_sample_splitting`, and `ps_processor_config` has no setter.
+  So two fits of one instance cannot differ in calibration, and two
+  instances never share a cache. The folding is defence-in-depth; the
+  folding itself is gated by mutating `hash_hyperparams` internals.
+
+### The upstream map, measured across all twelve call sites
+
+Reading `doubleml` 0.11.4 rather than assuming produced this table, and
+it changes the remaining plan:
+
+| estimator | `adjust_ps` calls | array | treatment arg | config |
+|---|---|---|---|---|
+| `apo`, `apos` | 1 | `m_hat` | `treated` | active (v0.121.0) |
+| `irm` | 1 | `m_hat` | `d` | active (v0.122.0) |
+| `iivm` | 1 | `m_hat` | **`z`** | active (this release) |
+| `ssm` | 1 | `m_hat` only | `d` | active (this release) |
+| `cvar`, `pq`, `lpq` | **2 each** | prelim + final | `d` / `z` | **not** wired |
+| `did_binary`, `did_cs_binary` | 1 | `m_hat` | `d` | **not** wired |
+| `qte` | **0** | -- | -- | **inert upstream** |
+| `did_multi` | **0** | -- | -- | **inert upstream** |
+
+`qte` and `did_multi` call `init_ps_processor` but never call
+`adjust_ps`. Their `_trimming_threshold` is assigned once and exposed
+through a deprecated property, and is **never used in any computation**
+(verified by grepping both files for `clip` and `_trimming_threshold`).
+So accepting a `ps_processor_config` on those two changes nothing --
+faithfully ported, it is a configuration knob with no consumer.
+Propagating it there would be inventing behaviour.
+
+`cvar`, `pq` and `lpq` each have **two** adjust sites (a preliminary
+one on the first sample split and a final one on the full sample), so
+they are a larger job than the single-site estimators and are left for
+their own round.
+
+### Verification
+
+- Tests **954/954** native / wasm / js, **960/960** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- typos (CI-pinned v1.19.0) clean
+- Mutation harness: **9 KILLED / 5 SURVIVED / 0 inconclusive**, every
+  verdict matching its declaration, no residue. The 5 survivors are 2
+  canaries plus the 3 documented above.
+
+### Still not wired
+
+`cvar`, `pq`, `lpq` (two adjust sites each), `did_binary`,
+`did_cs_binary`, `did_multi`. `did_cs_binary` additionally **clips
+twice with two different thresholds** -- `propensity_clip` (1e-6) and
+then the processor's default `1e-2` -- which is a real inconsistency
+worth resolving, but changing it moves results, so it is a behavioural
+release of its own rather than a wiring follow-up.
+
 ## [0.122.0] -- `ps_processor_config` reaches IRM, and two bugs the suite found on the way
 
 ### What this release extends

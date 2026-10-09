@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.122.0** |
+| `moon.mod` version | **0.123.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **186** `.mbt` files (**89** production + **97** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -77,29 +77,33 @@ clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)
 calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 `DoubleMLDID` and the rest of the IPW-based models.
 
-**`ps_processor_config` is reachable (v0.121.0+, IRM added in v0.122.0).**
-`DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLIRM` now take a
-`PSProcessorConfig`, which is how the isotonic and CV-calibration paths
-become callable from an estimator at all -- until v0.121.0 they were
-implemented and reachable from nowhere.
+**`ps_processor_config` is reachable (v0.121.0+, IRM in v0.122.0, IIVM and
+SSM in v0.123.0).** `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLIRM`,
+`DoubleMLIIVM` and `DoubleMLSSM` now take a `PSProcessorConfig`, which
+is how the isotonic and CV-calibration paths become callable from an
+estimator at all -- until v0.121.0 they were implemented and reachable
+from nowhere.
 Resolution follows upstream's `init_ps_processor`: **the config wins
 outright** and the deprecated scalar `propensity_clip` is read into it
 only when no config is supplied. Measured against upstream 0.11.4, the
 calibration is not cosmetic -- isotonic moves the propensity by up to
 0.53 on the test fixture, the APO coefficient moves from
 2.9641677613312316 to 2.9602088935501736, and the IRM coefficient from
-1.9609911300451515 to 1.9603016544875. The remaining upstream call sites
-still take the scalar.
+1.9609911300451515 to 1.9603016544875.
 
-Two caveats worth knowing before wiring it yourself. First, a binary
-treatment is required **only when a calibration actually runs**: with
-`calibration_method = "none"` the transform is a pure clip and is valid
-for any treatment, which is what lets continuous-treatment estimators like
-`DoubleMLIIVM` share this code path. `treatment_is_binary` is public, so
-you can check before handing a treatment over. Second, the config is
-folded into the memoize key, not just its threshold -- two estimators
-sharing a `clipping_threshold` but differing in calibration are kept
-apart.
+Two details worth knowing before wiring it yourself. First, which array
+is the calibration target differs by estimator, and upstream is not
+uniform: `DoubleMLIIVM` passes the **instrument `z`**, not the
+treatment `d` (`iivm.py:371`), because `m` is the propensity *of the
+instrument*. Second, `DoubleMLSSM` adjusts `m` only -- its selection
+propensity `pi` is clipped but **never calibrated**, matching upstream
+(`ssm.py:407` vs `ssm.py:414`), so the IPW score's selection denominator
+keeps its plain clip. `adjust_ps` requires a **binary** treatment, so
+continuous-treatment paths should not route through it.
+`treatment_is_binary` is public if you want to check first. The config
+is also folded into the memoize key, not just its threshold, so two
+estimators sharing a `clipping_threshold` but differing in calibration
+are kept apart.
 
 **Robust variance & inference** -- heteroskedasticity-consistent (HC)
 standard errors, cluster-robust variance, multiplier bootstrap

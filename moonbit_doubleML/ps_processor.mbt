@@ -250,26 +250,24 @@ pub fn PSProcessor::adjust_ps(
   cv? : Array[(Array[Int], Array[Int])]? = None,
 ) -> Array[Double] {
   try {
-    // v0.122.0: the binary-treatment requirement is checked ONLY when a
-    // calibration actually runs, because that is the only case where it
-    // means anything.
+    // The binary-treatment requirement, UNCONDITIONALLY, matching
+    // upstream `PSProcessor.adjust_ps`.
     //
-    // Upstream `_validate_treatment` runs unconditionally, and upstream
-    // has no continuous-treatment estimator so it never notices. This
-    // port DOES: `DoubleMLIIVM`'s cluster DGP
-    // (`pliv_cluster_test.mbt::build_iv_clustered_dgp`) builds a
-    // CONTINUOUS `d` (the binary variable there is the instrument `z`,
-    // not the treatment). Validating unconditionally made a
-    // behaviour-preserving rewiring abort there -- caught by
-    // `iivm_cluster_deterministic`, not by inspection.
+    // HISTORY, because the reason changed. v0.122.0 scoped this to
+    // `calibration_method == "isotonic"`, on the stated grounds that
+    // "upstream has no continuous-treatment estimator so it never
+    // notices, but this port does". That diagnosis was WRONG about the
+    // cause. Upstream `DoubleMLIIVM` does not pass the treatment here --
+    // `iivm.py:371` passes the INSTRUMENT `z`, which is binary even when
+    // `d` is not. The v0.122.0 abort came from THIS PORT passing `d` at
+    // the IIVM clip site, which is the bug v0.123.0 fixed.
     //
-    // With `calibration_method = "none"` the isotonic fit would not run
-    // at all and the transform is a pure clip, which is valid for any
-    // treatment. With a calibration method the target really is the
-    // treatment indicator, so the check applies and matches upstream.
-    if self.config.calibration_method == "isotonic" {
-      validate_treatment(treatment)
-    }
+    // So the scoping was papering over a port defect, and it had to go:
+    // with the check skipped under the default config, passing `d`
+    // instead of `z` would have been UNDETECTABLE -- the continuous-`d`
+    // cluster fixture would still have passed. Restoring the
+    // unconditional check is what turns that fixture into a real gate.
+    validate_treatment(treatment)
     require(ps.length() == treatment.length())
     let n = ps.length()
     require(n > 0)

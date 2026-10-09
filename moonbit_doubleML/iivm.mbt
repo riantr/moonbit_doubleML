@@ -111,6 +111,21 @@ pub struct DoubleMLIIVM {
   // build it by hand.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.123.0: the RESOLVED CONCRETE propensity config, from upstream's
+  // `init_ps_processor` (`iivm.py:186`). Stored concrete so it survives
+  // every rebuild of this struct. `propensity_clip` stays as the
+  // deprecated scalar and is overwritten with the config's own
+  // `clipping_threshold`, exactly as upstream does
+  // (`iivm.py:189`).
+  //
+  // NOTE the upstream detail that this field exists to make explicit:
+  // upstream calls `adjust_ps(m_hat["preds"], z, cv=smpls)` at
+  // `iivm.py:371` -- the treatment argument is the **instrument** `z`,
+  // NOT `d`. `m` is the propensity of the instrument (`ml_m` is fit on
+  // `(x, z)`), so `z` is both the right calibration target and, unlike
+  // `d`, genuinely binary. An earlier round mis-read this and passed
+  // `d`, which aborted on the continuous-treatment cluster fixture.
+  ps_processor_config : PSProcessorConfig
   // v0.59.0+: injected nuisance learners (replaces the v0.57.0
   // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
   // callers see byte-identical results.
@@ -164,6 +179,7 @@ pub fn DoubleMLIIVM::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_r? : LearnerDispatch = LearnerDispatch::linear_regression(),
@@ -174,6 +190,13 @@ pub fn DoubleMLIIVM::new(
     require(n_rep >= 1)
     require(propensity_clip > 0.0)
     require(propensity_clip < 0.5)
+    // v0.123.0: upstream `init_ps_processor` (`iivm.py:186`) -- the config
+    // wins outright, the deprecated scalar is read into it only when no
+    // config is supplied.
+    let ps_processor_config = resolve_ps_processor_config(
+      ps_processor_config~,
+      trimming_threshold=propensity_clip,
+    )
     {
       data,
       n_folds,
@@ -183,7 +206,8 @@ pub fn DoubleMLIIVM::new(
       // `set_sample_splitting` is called, so every pre-existing caller
       // keeps the drawn path.
       smpls: [],
-      propensity_clip,
+      propensity_clip: ps_processor_config.clipping_threshold,
+      ps_processor_config,
       ml_g,
       ml_m,
       ml_r,
@@ -370,7 +394,7 @@ fn cross_fit_iivm(
   d : Array[Double],
   z : Array[Double],
   folds : Array[Fold],
-  propensity_clip : Double,
+  ps_processor_config : PSProcessorConfig,
 ) -> (Array[Double], Array[Double], Array[Double], Array[Double], Array[Double]) {
   try {
     let n_obs = x.rows()
@@ -427,7 +451,24 @@ fn cross_fit_iivm(
         r1[row] = pr1[row]
       }
     }
-    let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
+    // m must be clipped
+    // v0.123.0: this was `clip_vec(m, propensity_clip, 1 - clip)`,
+    // inlined. Under the default config `PSProcessor::adjust_ps` is
+    // exactly that (the calibration is the identity when no method is
+    // set), so routing through it is behaviour-preserving -- and it is
+    // what makes isotonic / CV calibration reachable here at all.
+    //
+    // The SECOND argument is `z`, not `d`, matching upstream
+    // `iivm.py:371` (`adjust_ps(m_hat["preds"], z, cv=smpls)`). `m` is
+    // the propensity of the INSTRUMENT -- `ml_m` is trained on `(x, z)`
+    // above -- so `z` is the calibration target, and `z` is binary even
+    // when `d` is not. That distinction is load-bearing: the
+    // continuous-treatment cluster fixture (`pliv_cluster_test.mbt::
+    // build_iv_clustered_dgp`) builds a continuous `d`, and passing it
+    // here is what aborted v0.122.0's attempt to wire this site.
+    let m_clipped = PSProcessor::from_config(ps_processor_config).adjust_ps(
+      m, z,
+    )
     (g0, g1, m_clipped, r0, r1)
   } catch {
     PreconditionError::Violated(loc) =>
@@ -501,7 +542,13 @@ pub fn DoubleMLIIVM::fit(
       0UL
     }
     let hparams_hash : UInt64 = if memoize {
-      hash_hyperparams("iivm", ml_g, ml_m, self.propensity_clip)
+      hash_hyperparams(
+        "iivm",
+        ml_g,
+        ml_m,
+        self.propensity_clip,
+        ps_processor_config=Some(self.ps_processor_config),
+      )
     } else {
       0UL
     }
@@ -554,7 +601,7 @@ pub fn DoubleMLIIVM::fit(
           self.data.d,
           self.data.z,
           folds,
-          self.propensity_clip,
+          self.ps_processor_config,
         )
         if r == nrep - 1 {
           // Build the row -> fold_id map for the cache write below.
@@ -665,6 +712,7 @@ pub fn DoubleMLIIVM::fit(
       // is what makes a surprise fold change easy to miss.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       ml_g,
       ml_m,
       ml_r,
@@ -767,7 +815,7 @@ fn DoubleMLIIVM::fit_cluster(
           self.data.d,
           self.data.z,
           folds_row,
-          self.propensity_clip,
+          self.ps_processor_config,
         )
         g0 = g0_r
         g1 = g1_r
@@ -865,6 +913,7 @@ fn DoubleMLIIVM::fit_cluster(
       // is what makes a surprise fold change easy to miss.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       ml_g,
       ml_m,
       ml_r,

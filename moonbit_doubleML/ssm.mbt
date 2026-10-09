@@ -97,6 +97,12 @@ pub struct DoubleMLSSM {
   // repetition loop -- do not build `smpls` by hand, call the setter.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
+  // v0.123.0: the RESOLVED CONCRETE propensity config, from upstream's
+  // `init_ps_processor` (`ssm.py:131`). Stored concrete so it survives
+  // every rebuild of this struct. `propensity_clip` stays as the
+  // deprecated scalar and is overwritten with the config's own
+  // `clipping_threshold`, exactly as upstream does (`ssm.py:134`).
+  ps_processor_config : PSProcessorConfig
   // v0.59.0+: injected nuisance learners (replaces the v0.57.0
   // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
   // callers see byte-identical results.
@@ -147,6 +153,7 @@ pub fn DoubleMLSSM::new(
   n_rep? : Int = 1,
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
+  ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLSSM {
@@ -156,6 +163,13 @@ pub fn DoubleMLSSM::new(
     require(n_rep >= 1)
     require(propensity_clip > 0.0)
     require(propensity_clip < 0.5)
+    // v0.123.0: upstream `init_ps_processor` (`ssm.py:131`) -- the config
+    // wins outright, the deprecated scalar is read into it only when no
+    // config is supplied.
+    let ps_processor_config = resolve_ps_processor_config(
+      ps_processor_config~,
+      trimming_threshold=propensity_clip,
+    )
     {
       data,
       n_folds,
@@ -164,7 +178,8 @@ pub fn DoubleMLSSM::new(
       // v0.109.0: no external splitting unless `set_sample_splitting`
       // is called, so every pre-existing caller keeps the drawn path.
       smpls: [],
-      propensity_clip,
+      propensity_clip: ps_processor_config.clipping_threshold,
+      ps_processor_config,
       ml_g,
       ml_m,
       pi_hat: Array::make(data.n_obs(), 0.0),
@@ -571,7 +586,7 @@ fn cross_fit_ssm(
   d : Array[Double],
   s : Array[Double],
   folds : Array[Fold],
-  propensity_clip : Double,
+  ps_processor_config : PSProcessorConfig,
 ) -> (Array[Double], Array[Double], Array[Double], Array[Double]) {
   let n_obs = x.rows()
   let pi = Array::make(n_obs, 0.0)
@@ -631,8 +646,24 @@ fn cross_fit_ssm(
       }
     }
   }
-  let m_clipped = clip_vec(m, propensity_clip, 1.0 - propensity_clip)
-  let pi_clipped = clip_vec(pi, propensity_clip, 1.0 - propensity_clip)
+  // v0.123.0: `m` goes through `PSProcessor::adjust_ps`, matching
+  // upstream `ssm.py:407` (`adjust_ps(m_hat["preds"], d, cv=smpls)`).
+  // Under the default config that is exactly the old inline clip, so
+  // this is behaviour-preserving.
+  let m_clipped = PSProcessor::from_config(ps_processor_config).adjust_ps(m, d)
+  // `pi` keeps a PLAIN clip, and that asymmetry is deliberate and
+  // measured. Upstream adjusts ONLY `m_hat`; `pi_hat["preds"]` is
+  // passed raw into `_score_elements` (`ssm.py:414`). This port has
+  // always clipped `pi` as well -- there is no upstream counterpart
+  // to match against -- so routing it through `adjust_ps` would
+  // invent behaviour AND would calibrate the selection propensity
+  // against the treatment, which upstream never does. The clip stays;
+  // the calibration does not reach `pi`.
+  let pi_clipped = clip_vec(
+    pi,
+    ps_processor_config.clipping_threshold,
+    1.0 - ps_processor_config.clipping_threshold,
+  )
   (pi_clipped, m_clipped, gd1, gd0)
 }
 
@@ -680,7 +711,13 @@ pub fn DoubleMLSSM::fit(
       0UL
     }
     let hparams_hash : UInt64 = if memoize {
-      hash_hyperparams("ssm", ml_g, ml_m, self.propensity_clip)
+      hash_hyperparams(
+        "ssm",
+        ml_g,
+        ml_m,
+        self.propensity_clip,
+        ps_processor_config=Some(self.ps_processor_config),
+      )
     } else {
       0UL
     }
@@ -744,7 +781,7 @@ pub fn DoubleMLSSM::fit(
           self.data.d,
           self.data.s,
           folds,
-          self.propensity_clip,
+          self.ps_processor_config,
         )
         for i = 0; i < n; i = i + 1 {
           pi_acc[i] = pi_acc[i] + pi[i]
@@ -838,6 +875,7 @@ pub fn DoubleMLSSM::fit(
       // revert to drawing its own folds.
       smpls: self.smpls,
       propensity_clip: self.propensity_clip,
+      ps_processor_config: self.ps_processor_config,
       ml_g,
       ml_m,
       pi_hat,

@@ -180,20 +180,38 @@ test "v122_irm_config_survives_a_refit" {
 }
 
 // ---------------------------------------------------------------------------
-// G5 -- BUG 1 fix. An UNCALIBRATED processor must accept a continuous
-// treatment, because then it is a pure clip.
+// G5 -- RETRACTED IN v0.123.0, and this comment is the retraction.
+//
+// This gate originally asserted: "an UNCALIBRATED processor must accept
+// a continuous treatment, because then it is a pure clip." That
+// asserted a DEVIATION from upstream, on the stated grounds that
+// "upstream has no continuous-treatment estimator".
+//
+// That grounds were wrong. Upstream `DoubleMLIIVM` passes the
+// INSTRUMENT `z` to `adjust_ps` (`iivm.py:371`), not the treatment `d`,
+// and `z` is binary regardless of `d`. So upstream's unconditional
+// `_validate_treatment` was correct at every one of its twelve call
+// sites; this port's IIVM aborting was a port defect (passing `d`),
+// not an upstream limitation.
+//
+// With the defect fixed in v0.123.0, the unconditional requirement is
+// restored to match upstream, and this test would have asserted the
+// opposite of upstream semantics. Replaced by the two below: the rule
+// is pinned positively (`treatment_is_binary`), and the IIVM site is
+// pinned to pass `z` rather than `d`.
 // ---------------------------------------------------------------------------
 
 ///|
-test "v122_adjust_ps_accepts_a_continuous_treatment_when_uncalibrated" {
+test "v122_adjust_ps_still_clips_with_a_binary_treatment" {
   let ps = [0.05, 0.2, 0.5, 0.8, 0.95]
-  let d = [0.3, -1.2, 0.7, 2.5, 0.1]
+  let d = [1.0, 0.0, 1.0, 0.0, 1.0]
   let out = PSProcessor::from_config(
     PSProcessorConfig::new(clipping_threshold=0.01),
   ).adjust_ps(ps, d)
-  // exactly the old inline clip: [clip, 1-clip], treatment ignored
+  // the transform is a pure clip under the default config
   assert_true(out[0] == 0.05)
   assert_true(out[4] == 0.95)
+  assert_true(out[2] == 0.5)
   let flat = PSProcessor::from_config(
     PSProcessorConfig::new(clipping_threshold=0.1),
   ).adjust_ps(ps, d)
