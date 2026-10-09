@@ -25,9 +25,9 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.126.0** |
+| `moon.mod` version | **0.127.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **195** `.mbt` files (**91** production + **104** test) |
+| `.mbt` file count | **195** `.mbt` files (**90** production + **105** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
 | Tests (native / wasm / js) | **900 / 900 / 900** |
@@ -78,7 +78,7 @@ calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 `DoubleMLDID` and the rest of the IPW-based models.
 
 **`ps_processor_config` is reachable (v0.121.0+, IRM v0.122.0, IIVM and SSM
-v0.123.0, PQ v0.124.0, LPQ v0.125.0, CVaR v0.126.0).** `DoubleMLAPO`,
+v0.123.0, PQ v0.124.0, LPQ v0.125.0, CVaR v0.126.0, DID v0.127.0).** `DoubleMLAPO`,
 `DoubleMLAPOS`, `DoubleMLIRM`, `DoubleMLIIVM`, `DoubleMLSSM`, `DoubleMLPQ`,
 `DoubleMLLPQ` and `DoubleMLCVAR` now take a `PSProcessorConfig`, which is how the isotonic
 and CV-calibration paths become callable from an estimator at all --
@@ -97,7 +97,7 @@ LPQ's root is pinned by its bisection bracket, so no threshold could move
 it, while CVaR solves `mean(treated/m * 1{y <= theta}) = quantile` and
 therefore does move.
 
-Four details worth knowing before wiring it yourself. First, which array
+Five details worth knowing before wiring it yourself. First, which array
 is the calibration target differs by estimator, and upstream is not
 uniform: `DoubleMLIIVM` passes the **instrument `z`**, not the treatment
 `d` (`iivm.py:371`), because `m` is the propensity *of the instrument*;
@@ -120,9 +120,23 @@ swapping them aborts on `adjust_ps`'s length precondition. The third use is
 worth a caveat -- `irm_style_sensitivity` has no `psi_b` parameter, so the
 `psi_b` CVaR computes there is discarded and `propensity_clip` cannot reach
 the returned `SensitivityResult` by any route. That is pre-existing, and
-`v126_sensitivity_reclip_is_structurally_inert` pins it. Fourth,
-`adjust_ps` requires a **binary**
-treatment; `treatment_is_binary` is public if you want to check first.
+`v126_sensitivity_reclip_is_structurally_inert` pins it. Fourth, `adjust_ps`
+requires a **binary**
+treatment; `treatment_is_binary` is public if you want to check first. Fifth,
+on `DoubleMLDID` / `DoubleMLDIDBinary` the resolution deliberately does **not**
+read `propensity_clip`. Upstream's deprecated scalar there is
+`trimming_threshold`, defaulted at `1e-2` (`did_binary.py:123`), and this
+port's `PSProcessor::new()` also defaults to `1e-2` -- but this port's
+`propensity_clip` defaults to `1e-6` and is read **only** by the inner
+`cross_fit_did`'s `clip_vec`, a numerical-safety clip with a genuinely
+different job. Redirecting it would silently turn the default public clip
+from 1e-2 into 1e-6. So with no config supplied the stored threshold stays
+`1e-2` whatever `propensity_clip` says, and the two knobs stay independent.
+That family also has just **one** `adjust_ps` site (`did_binary.py:537`), and
+that ATT responds much more strongly on the raw `DoubleMLDID` (spread 2.25e-2
+across the clip sweep) than through the panel wrapper (1.8e-3, a 12x
+damping), so the wrapper's gate is written as an exact inequality rather than
+a threshold.
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in
 calibration are kept apart.

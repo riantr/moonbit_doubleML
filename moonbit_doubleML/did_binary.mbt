@@ -270,12 +270,13 @@ fn preprocess_did_binary(
 ///
 /// **v0.10.0 additions** (corresponds to upstream
 /// `DoubleMLDIDCSBinary`):
-///   - `ps_processor` field replaces the bare `propensity_clip`
-///     argument. The processor's `clipping_threshold` is used to
-///     bound the propensity scores inside the score denominator;
-///     the field-level `propensity_clip` is retained for backward
-///     compat but `fit` reads the clip threshold from
-///     `ps_processor.clipping_threshold` instead.
+///   - the propensity processor was split out of the bare `propensity_clip`
+///     argument, so the clipping threshold applied inside the score
+///     denominator is configurable independently of the inner cross-fit's
+///     numerical-safety clip. v0.127.0 promotes it to a full
+///     `ps_processor_config` (upstream's shape), stored concrete and
+///     forwarded verbatim to the inner `DoubleMLDID`, which applies it at
+///     upstream's single `adjust_ps` site (`did_binary.py:537`).
 ///   - `fit` builds the wide-format strata
 ///     `G_indicator + 2 * t_indicator` (matching upstream
 ///     `self._strata`) and passes it to `DoubleMLDID::new(strata=
@@ -299,7 +300,15 @@ pub struct DoubleMLDIDBinary {
   n_rep : Int
   seed : Int
   propensity_clip : Double
-  ps_processor : PSProcessor
+  // v0.127.0: the RESOLVED CONCRETE propensity config, forwarded verbatim to
+  // the inner `DoubleMLDID`, which applies it at upstream's single
+  // `adjust_ps` site (`did_binary.py:537`). Same rule as `DoubleMLDID`:
+  // the config wins outright, and with no config the fallback is the
+  // `ps_processor` parameter's own config, NOT `propensity_clip` -- upstream's
+  // deprecated scalar is `trimming_threshold=1e-2`
+  // (`did_binary.py:123`), while this port's `propensity_clip` defaults to
+  // 1e-6 and is the inner `cross_fit_did` numerical-safety clip.
+  ps_processor_config : PSProcessorConfig
   score : String
   in_sample_normalization : Bool
   // v0.15.0+: long-format row indices for each wide-format
@@ -343,9 +352,18 @@ pub fn DoubleMLDIDBinary::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   ps_processor? : PSProcessor = PSProcessor::new(),
+  // v0.127.0: upstream's `ps_processor_config` (`did_binary.py:124`).
+  // Wins outright over `ps_processor`; see the struct-field comment.
+  ps_processor_config? : PSProcessorConfig? = None,
   score? : String = "observational",
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDBinary {
+  // v0.127.0: config wins outright; `ps_processor` supplies the config only
+  // when none is given.
+  let ps_processor_config = match ps_processor_config {
+    Some(cfg) => cfg
+    None => ps_processor.config
+  }
   try {
     require(n_folds >= 2)
     require(n_rep >= 1)
@@ -367,7 +385,7 @@ pub fn DoubleMLDIDBinary::new(
       n_rep,
       seed,
       propensity_clip,
-      ps_processor,
+      ps_processor_config,
       score,
       in_sample_normalization,
       // v0.15.0+: long-format row indices. Populated by `fit`.
@@ -400,6 +418,9 @@ pub fn DoubleMLDIDBinary::new(
         n_rep~,
         seed~,
         propensity_clip~,
+        // v0.127.0: the dummy is never fitted, but it carries the resolved
+        // config so it cannot disagree with the real inner model on `fit()`.
+        ps_processor_config=Some(ps_processor_config),
         score~,
         in_sample_normalization~,
       ),
@@ -810,7 +831,10 @@ pub fn DoubleMLDIDBinary::fit(
       n_rep=self.n_rep,
       seed=self.seed,
       propensity_clip=self.propensity_clip,
-      ps_processor=self.ps_processor,
+      // v0.127.0: forward the RESOLVED config, not the deprecated
+      // processor -- that is what makes `ps_processor_config` reach
+      // upstream's single `adjust_ps` site.
+      ps_processor_config=Some(self.ps_processor_config),
       score=self.score,
       in_sample_normalization=self.in_sample_normalization,
       strata=strata_acc,

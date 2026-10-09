@@ -9,6 +9,151 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.127.0] -- `ps_processor_config` reaches `DoubleMLDID` and `DoubleMLDIDBinary`
+
+### What this release changes
+
+`ps_processor_config?` added to both `DoubleMLDID` and
+`DoubleMLDIDBinary`, and forwarded verbatim to upstream's **single**
+`adjust_ps` site. The stored field changes from `ps_processor : PSProcessor`
+to `ps_processor_config : PSProcessorConfig`; the `ps_processor` parameter is
+kept for backward compatibility and is read only when no config is supplied.
+
+Upstream oracle, from the vendored `doubleml-0.11.4`:
+
+    did_binary.py:123     trimming_threshold=1e-2      (the deprecated scalar)
+    did_binary.py:124     ps_processor_config=None
+    did_binary.py:241     init_ps_processor(config, trimming_rule, threshold)
+    did_binary.py:245     _trimming_threshold = _ps_processor.clipping_threshold
+    did_binary.py:537     adjust_ps(m_hat["preds"], d, cv=smpls)    <- ONE site
+
+### The call site was already right; the caller could not express a calibration
+
+Unlike the estimators in v0.121.0-v0.126.0, this family has only one
+`adjust_ps` and the port has had it in the correct place since v0.10.0
+(`did.mbt`, applied to the cross-fitted `m_hat` with the full `d` as the
+second argument, exactly `did_binary.py:537`). What was missing was the
+*caller's* ability to name a calibration method: the estimator stored a bare
+`PSProcessor`, so isotonic was reachable only by hand-building a processor
+and there was no config route at all.
+
+### Why `propensity_clip` does NOT feed the config here
+
+Every other estimator in this series resolves with
+`resolve_ps_processor_config(cfg, trimming_threshold=propensity_clip)`.
+**This one must not**, and that is the substantive decision of the round.
+
+Upstream's deprecated scalar on the DID family is `trimming_threshold`,
+defaulted at `1e-2` (`did_binary.py:123`), and the port's
+`PSProcessor::new()` also defaults to `1e-2` -- those two agree. But this
+port's `propensity_clip` defaults to `1e-6` and is read **only** by the
+inner `cross_fit_did`'s `clip_vec`, a numerical-safety clip on the per-rep
+cross-fit. That is a different job from upstream's `trimming_threshold`.
+Redirecting it would silently turn the default public clip from `1e-2` into
+`1e-6` and change every default result.
+
+So the fallback for "no config supplied" is `ps_processor.config`, and with
+no config the stored threshold stays `1e-2` whatever `propensity_clip` says.
+`v127_propensity_clip_does_not_feed_the_config` pins this exactly, including
+the companion fact that `propensity_clip` still does its own job -- two
+constructions differing only in that scalar give **different** estimates.
+
+This is now three distinct rules across three estimators, all measured
+rather than assumed: CVaR copies upstream's redirect (the scalar has no
+second job there), LPQ declines it (the scalar also floors the complier
+share), and DID cannot use it (the scalar is a different clip entirely).
+
+### The ATT is far less sensitive than the raw estimator
+
+Measured on saturated, heterogeneous fixtures:
+
+    raw DoubleMLDID (n=800)
+      clip 0.01 -> 2.0192176788033085
+      clip 0.10 -> 1.9981702250910853
+      clip 0.30 -> 1.9966860307321121        spread 2.25e-2
+
+    panel DoubleMLDIDBinary (n=2000 units)
+      clip 0.01 -> 0.5927768888493324
+      clip 0.05 -> 0.5912569749999694
+      clip 0.10 -> 0.5910660619333195
+      clip 0.20 -> 0.5909443948537486
+      clip 0.30 -> 0.5909340605719968        spread 1.8e-3
+      isotonic  -> 0.5940946095597328
+
+A **12x damping** through the wide-format wrapper: it averages the
+propensity over reps, and the clipped units largely cancel.
+
+A 1.8e-3 response does not support a threshold gate, so
+`v127_panel_transform_is_not_inert` is written as an **exact inequality**
+(`coef(config 0.3) != coef(default)`) -- the strongest form available, with
+no tolerance to tune, and a frozen-config mutation yields exactly 0.0. This
+is also precisely the test LPQ needed in v0.125.0 and could not pass: there
+the two numbers came out EQUAL, and equal is the signature of an inert
+transform rather than a small response.
+
+Scaling `n` does not help (the effect is bias, not variance: spread 1.84e-3
+at n=2000 and 6.3e-4 at n=6000). The raw estimator carries the threshold
+gate instead, where 0.0225 against a 0.01 threshold is comfortable.
+
+### The nuisance is strongly sensitive, and that is where the gates bite
+
+Exact-bound counts (a fitted propensity lands *exactly* on `c` or `1 - c`
+only because a clip put it there), panel n=2000:
+
+    clip 0.01 -> 335 at the lower bound, 298 at the upper
+    clip 0.10 -> 463 / 421
+    clip 0.30 -> 712 / 712
+
+Isotonic moves **1367 of 2000** panel entries (max delta
+**0.32036907052833014**) and 550 of 800 on the raw estimator (max delta
+0.3043291193344892).
+
+### A negative result, recorded rather than papered over
+
+On a FLAT treatment-assignment DGP (slope 0, n=600) the panel ATT is
+**bit-identical** at clip 0.01, 0.05, 0.1, 0.2 and 0.3 -- every row reads
+`coef = 1.2225927742754341`. Nothing reaches the clip, because with treatment
+independent of the covariates the fitted propensity sits near `mean(d)` in
+the interior.
+
+The saturated *and heterogeneous* fixture is therefore not decoration: it is
+the only reason gates 1-4 mean anything. Isotonic still moves that fixture
+(so "inert" means "the CLIP cannot bite here", not "the processor is
+ignored"), and `v127_flat_fixture_is_inert_by_construction` asserts all of it
+so the next reader does not re-derive the wrong fixture.
+
+The existing suite already anticipated this:
+`did_binary_test.mbt::did_binary_att_invariant_under_ps_processor` asserts
+the ATT stays close to the true theta as the processor changes. That claim
+holds; this round adds the missing half -- that the transform is *not*
+inert once the fixture can actually bite.
+
+### Default construction is byte-identical
+
+Verified by running the same `ps_processor=`-only probe against v0.126.0's
+`did.mbt` and `did_binary.mbt` restored from git HEAD and against this one.
+**Every number matched exactly** -- all five clip rows on the panel, all
+three on the raw estimator, and both default constructions.
+
+### Verification
+
+- Tests **988/988** native / wasm / js, **994/994** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- typos (CI-pinned v1.19.0) clean
+- Mutation harness: **7 KILLED / 4 SURVIVED / 0 inconclusive**, every verdict
+  matching its declaration, no residue
+
+Two files are mutated this round (`did.mbt` and `did_binary.mbt`), each
+restored by SHA256 with a residue check at the end.
+
+### Still not wired
+
+`did_cs_binary` (its own `ps_processor` parameter, plus a double clip), and
+`did_cross_section`, `did_cs`, `did_multi`, which still take the bare
+`PSProcessor`. Note that `did_cs` builds inner `DoubleMLDID` children and so
+already benefits indirectly, but its own aggregate-level transform is not yet
+config-driven.
+
 ## [0.126.0] -- `ps_processor_config` reaches `DoubleMLCVAR`
 
 ### What this release changes

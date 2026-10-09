@@ -134,16 +134,24 @@ pub struct DoubleMLDID {
   // build `smpls` by hand, call the setter.
   smpls : Array[Array[Fold]]
   propensity_clip : Double
-  // Propensity-score processor. v0.10.0+ replacement for the
-  // bare `propensity_clip` scalar: `fit` now applies
-  // `ps_processor.adjust_ps(m, d)` to the cross-fitted propensity
-  // vector instead of the hard-coded `clip_vec(m, eps, 1-eps)`.
-  // The default `PSProcessor::new()` clips to `[1e-2, 1 - 1e-2]`
-  // (matches upstream's `clipping_threshold=1e-2`). The legacy
-  // `propensity_clip` field is retained for backward compat and
-  // is read only by the inner `cross_fit_did`; the public API
-  // is `ps_processor` (or `ps_processor_config` in the wrappers).
-  ps_processor : PSProcessor
+  // v0.127.0: the RESOLVED CONCRETE propensity config. Upstream's
+  // `init_ps_processor` (`did_binary.py:241`) builds one, and `fit` applies
+  // `self._ps_processor.adjust_ps(m_hat["preds"], d, cv=smpls)`
+  // (`did_binary.py:537`) -- exactly the call at the bottom of `fit`.
+  //
+  // NOTE the deliberate difference from most other estimators in this series:
+  // the fallback for "no config supplied" is the `ps_processor`
+  // PARAMETER's own config, NOT `propensity_clip`.
+  //
+  // Upstream's deprecated scalar here is `trimming_threshold`, defaulted at
+  // `1e-2` (`did_binary.py:123`), and the port's `PSProcessor::new()` also
+  // defaults to `1e-2`, so those two agree. This port's `propensity_clip`,
+  // however, defaults to `1e-6` and is read ONLY by the inner
+  // `cross_fit_did`'s `clip_vec` -- a numerical-safety clip on the per-rep
+  // cross-fit. That is a different job from upstream's `trimming_threshold`,
+  // so redirecting it here would silently change the default construction
+  // from a 1e-2 public clip to a 1e-6 one.
+  ps_processor_config : PSProcessorConfig
   // Score function. `"observational"` (default) is the ATT-style
   // IPW score used by Sant'Anna & Zhao (2020) §4.1. `"experimental"`
   // uses the A/B-test-style score where treatment is independent of
@@ -215,12 +223,23 @@ pub fn DoubleMLDID::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   ps_processor? : PSProcessor = PSProcessor::new(),
+  // v0.127.0: upstream's `ps_processor_config` (`did_binary.py:124`).
+  // The CONFIG WINS OUTRIGHT (`init_ps_processor`); `ps_processor` is read
+  // only when no config is supplied. See the struct-field comment for why the
+  // fallback is `ps_processor.config` and not `propensity_clip`.
+  ps_processor_config? : PSProcessorConfig? = None,
   score? : String = "observational",
   in_sample_normalization? : Bool = false,
   strata? : Array[Int] = [],
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDID {
+  // v0.127.0: the config wins outright; the deprecated `ps_processor`
+  // parameter supplies the config only when none is given.
+  let ps_processor_config = match ps_processor_config {
+    Some(cfg) => cfg
+    None => ps_processor.config
+  }
   try {
     require(n_folds >= 2)
     require(n_folds <= data.n_obs())
@@ -239,7 +258,7 @@ pub fn DoubleMLDID::new(
       // is called, so every pre-existing caller keeps the drawn path.
       smpls: [],
       propensity_clip,
-      ps_processor,
+      ps_processor_config,
       score,
       in_sample_normalization,
       ml_g,
@@ -451,7 +470,13 @@ pub fn DoubleMLDID::fit(
     0UL
   }
   let hparams_hash : UInt64 = if memoize {
-    hash_hyperparams("did", ml_g, ml_m, self.propensity_clip)
+    hash_hyperparams(
+      "did",
+      ml_g,
+      ml_m,
+      self.propensity_clip,
+      ps_processor_config=Some(self.ps_processor_config),
+    )
   } else {
     0UL
   }
@@ -540,12 +565,19 @@ pub fn DoubleMLDID::fit(
     m_hat[i] = m_acc[i] * inv
   }
   // v0.10.0+: re-clip the averaged propensity through the
-  // `ps_processor` so the public-facing `m_hat` (and downstream
+  // `ps_processor_config` so the public-facing `m_hat` (and downstream
   // score computation) honours the processor's
   // `clipping_threshold` (default 1e-2) rather than the inner
   // `cross_fit_did` 1e-6 clip. The inner `clip_vec` is kept for
   // numerical safety in the per-rep cross-fit.
-  let m_clipped = self.ps_processor.adjust_ps(m_hat, self.data.d)
+  //
+  // v0.127.0: the processor is now built from the stored CONFIG, and the
+  // second argument is the full `d`, matching upstream `did_binary.py:537`
+  // (`adjust_ps(m_hat["preds"], d, cv=smpls, learner_name="ml_m")`).
+  let m_clipped = PSProcessor::from_config(self.ps_processor_config).adjust_ps(
+    m_hat,
+    self.data.d,
+  )
   // DID score (observational or experimental), following
   // Sant'Anna & Zhao (2020) §4. The two scores share the same
   // structure: `psi_a = -weight_psi_a`, `psi_b = psi_b_1 +
@@ -662,7 +694,7 @@ pub fn DoubleMLDID::fit(
     // to drawing its own folds.
     smpls: self.smpls,
     propensity_clip: self.propensity_clip,
-    ps_processor: self.ps_processor,
+    ps_processor_config: self.ps_processor_config,
     score: self.score,
     ml_g,
     ml_m,
