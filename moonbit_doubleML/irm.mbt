@@ -1039,6 +1039,65 @@ pub fn DoubleMLIRM::tune(
 /// helper short-circuits when `nu2 == 1`). Routes through
 /// the shared `irm_style_sensitivity` helper (see
 /// sensitivity.mbt).
+
+///|
+/// v0.131.7: the `nu2` score element and the Riesz representer for the IRM
+/// ATE score, transcribed from upstream `irm/irm.py:412-423`.
+///
+/// Upstream computes it through two layers that both COLLAPSE here:
+///
+///   * `weights, weights_bar = self._get_weights(m_hat=m_hat_adj)`.
+///     `self._weights["weights"]` defaults to `np.ones(n_obs)`
+///     (`irm.py:249`) and this port exposes no user-supplied weights, so
+///     `weights == weights_bar == 1` on both the ATE branch (`irm.py:258-263`)
+///     and -- via the absent `weights_bar` key -- identically. The ATTE branch
+///     (`irm.py:265-272`) does not apply: the port is ATE-only (`irm.mbt:588`,
+///     "Score (ATE, weights=1, weights_bar=1)").
+///
+///   * `m_hat_adj = _propensity_score_adjustment(m_hat, d, normalize_ipw)`
+///     returns `m_hat` unchanged when `normalize_ipw` is False. That is
+///     upstream's default (`irm.py:138`) and it is exactly why this port's
+///     `DoubleMLIRM` carries no `normalize_ipw` field. So `m_hat_adj == m_hat`.
+///
+/// What is left, with both weight factors equal to 1:
+///
+/// ```text
+///   m_alpha = 1/m_hat + 1/(1 - m_hat)
+///   rr      = d/m_hat - (1 - d)/(1 - m_hat)
+///   nu2     = mean( 2*m_alpha - rr^2 )
+/// ```
+///
+/// The default path previously computed `mean(psi_a^2)`, which is upstream's
+/// documented FALLBACK (`double_ml.py:1634-1641`) applied to the wrong
+/// variable. Note `psi_a` here is `-1/mean(weights) == -1`, a CONSTANT
+/// (`irm.py:392`), so the fallback reduced `nu2` to exactly `1`.
+pub fn DoubleMLIRM::sensitivity_nu2_elements(
+  self : DoubleMLIRM,
+) -> (Array[Double], Array[Double]) raise {
+  require(self.fitted)
+  let d = self.data.d
+  let m = self.predictions_m()
+  let n = d.length()
+  require(m.length() == n)
+  let m_alpha = Array::make(n, 0.0)
+  let rr = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let mi = m[i]
+    let di = d[i]
+    let one_minus_m = 1.0 - mi
+    let inv_m = if mi > 1.0e-12 { 1.0 / mi } else { 0.0 }
+    let inv_d0 = if one_minus_m > 1.0e-12 { 1.0 / one_minus_m } else { 0.0 }
+    m_alpha[i] = inv_m + inv_d0
+    rr[i] = di * inv_m - (1.0 - di) * inv_d0
+  }
+  let nu2_score_element = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    nu2_score_element[i] = 2.0 * m_alpha[i] - rr[i] * rr[i]
+  }
+  (nu2_score_element, rr)
+}
+
+///|
 pub fn DoubleMLIRM::sensitivity_analysis(
   self : DoubleMLIRM,
   cf_y? : Double = 0.05,
@@ -1059,7 +1118,15 @@ pub fn DoubleMLIRM::sensitivity_analysis(
   for i = 0; i < n; i = i + 1 {
     residuals[i] = y_minus_g0[i] - g1_minus_g0[i] * d[i]
   }
-  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+  let (nu2_score_element, rr) = self.sensitivity_nu2_elements()
+  irm_style_sensitivity_from_elements(
+    self.coef,
+    residuals,
+    nu2_score_element,
+    rr,
+    cf_y,
+    cf_d,
+  )
 }
 
 ///|
@@ -1089,10 +1156,12 @@ pub fn DoubleMLIRM::sensitivity_analysis_cluster(
   for i = 0; i < n; i = i + 1 {
     residuals[i] = y_minus_g0[i] - g1_minus_g0[i] * d[i]
   }
-  irm_style_sensitivity_cluster(
+  let (nu2_score_element, rr) = self.sensitivity_nu2_elements()
+  irm_style_sensitivity_cluster_from_elements(
     self.coef,
     residuals,
-    self.psi_a,
+    nu2_score_element,
+    rr,
     cluster_ids,
     cf_y,
     cf_d,

@@ -1043,6 +1043,72 @@ pub fn DoubleMLAPOS::tune(
 /// variance is `mean(psi_a^2) = 1` for the APO score
 /// (`psi_a = -1` constant). Routes through the shared
 /// `irm_style_sensitivity` helper.
+
+///|
+/// v0.131.7: the `nu2` score element and the Riesz representer for the APO
+/// policy score, transcribed from upstream `irm/apo.py:371-382`.
+///
+/// Upstream's two layers collapse here as they do for IRM:
+///
+///   * `weights, weights_bar = self._get_weights()`. `_initialize_weights`
+///     defaults to `np.ones(n_obs)` (`apo.py` inherits it from `irm.py:249`)
+///     and there is no `weights_bar` key, so `weights == weights_bar == 1`
+///     (`apo.py:234-242`). Note APO's `_get_weights` takes NO `m_hat`
+///     argument -- only IRM's does, and only for ATTE.
+///   * `m_hat_adj = _propensity_score_adjustment(m_hat, treated, normalize_ipw)`
+///     (`apo.py:365-367`), which returns `m_hat` unchanged when
+///     `normalize_ipw` is False. This port HAS the flag (`apo.mbt:44`) and
+///     calls the same helper at `apo.mbt:319`, so the adjusted propensity is
+///     available directly rather than needing a new implementation.
+///
+/// With both weight factors equal to 1:
+///
+/// ```text
+///   m_alpha = 1 / m_hat_adj
+///   rr      = treated / m_hat_adj
+///   nu2     = mean( 2*m_alpha - rr^2 )
+/// ```
+///
+/// `treated[i] = 1{d[i] == treatment_level}` (`apo.mbt:62`), matching
+/// upstream's `self.treated`.
+///
+/// The default path previously computed `mean(psi_a^2)`, upstream's documented
+/// FALLBACK (`double_ml.py:1634-1641`) applied to the wrong variable. APO's
+/// `psi_a` is the constant `-1`, so the fallback collapsed `nu2` to exactly
+/// `1`.
+pub fn DoubleMLAPO::sensitivity_nu2_elements(
+  self : DoubleMLAPO,
+) -> (Array[Double], Array[Double]) raise {
+  require(self.fitted)
+  let m = self.predictions_m()
+  let n = m.length()
+  let treated : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    if self.data.d[i] == self.treatment_level {
+      treated[i] = 1.0
+    }
+  }
+  let m_adj = propensity_score_adjustment(
+    m,
+    treated,
+    do_normalize=self.normalize_ipw,
+  )
+  let m_alpha = Array::make(n, 0.0)
+  let rr = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let mi = m_adj[i]
+    let inv_m = if mi > 1.0e-12 { 1.0 / mi } else { 0.0 }
+    m_alpha[i] = inv_m
+    rr[i] = treated[i] * inv_m
+  }
+  let nu2_score_element = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    nu2_score_element[i] = 2.0 * m_alpha[i] - rr[i] * rr[i]
+  }
+  (nu2_score_element, rr)
+}
+
+///|
 pub fn DoubleMLAPO::sensitivity_analysis(
   self : DoubleMLAPO,
   cf_y? : Double = 0.05,
@@ -1055,7 +1121,15 @@ pub fn DoubleMLAPO::sensitivity_analysis(
   for i = 0; i < n; i = i + 1 {
     residuals[i] = self.data.y[i] - g_hat[i]
   }
-  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+  let (nu2_score_element, rr) = self.sensitivity_nu2_elements()
+  irm_style_sensitivity_from_elements(
+    self.coef,
+    residuals,
+    nu2_score_element,
+    rr,
+    cf_y,
+    cf_d,
+  )
 }
 
 ///|
@@ -1079,10 +1153,12 @@ pub fn DoubleMLAPO::sensitivity_analysis_cluster(
   for i = 0; i < n; i = i + 1 {
     residuals[i] = self.data.y[i] - g_hat[i]
   }
-  irm_style_sensitivity_cluster(
+  let (nu2_score_element, rr) = self.sensitivity_nu2_elements()
+  irm_style_sensitivity_cluster_from_elements(
     self.coef,
     residuals,
-    self.psi_a,
+    nu2_score_element,
+    rr,
     cluster_ids,
     cf_y,
     cf_d,

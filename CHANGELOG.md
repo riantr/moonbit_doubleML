@@ -9,6 +9,100 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.7] -- IRM and APO `nu2` was exactly `1.0`, making `rv` up to 23x too optimistic
+
+**Behavioural.** `DoubleMLIRM` and `DoubleMLAPO` sensitivity `nu2` now use
+upstream's primary/fallback pair instead of `mean(psi_a^2)`.
+Tests 1009 -> 1012 native/wasm/js, 1015 -> 1018 wasm-gc.
+
+### Family 2 of 4
+
+v0.131.6 classified the remaining `mean(psi_a^2)` estimators into four formula
+families. This is family 2, `irm` + `apo`, which share upstream's
+`_propensity_score_adjustment` and `_get_weights`.
+
+Both of upstream's indirection layers **collapse** for this port:
+
+- `weights = weights_bar = 1`. `_initialize_weights` defaults to
+  `np.ones(n_obs)` (`irm.py:249`) and there is no `weights_bar` key, so
+  `weights_bar` falls back to `weights` (`irm.py:261`). This port exposes no
+  user-supplied weights. IRM's ATTE branch (`irm.py:265-272`) does not apply --
+  the port is ATE-only (`irm.mbt:588`).
+- `m_hat_adj = m_hat`. `_propensity_score_adjustment` returns the propensity
+  unchanged when `normalize_ipw` is False, which is upstream's default
+  (`irm.py:138`) and exactly why `DoubleMLIRM` has no such field. APO *does*
+  carry the flag (`apo.mbt:44`) and already calls the same helper
+  (`apo.mbt:319`).
+
+What is left (`irm.py:419-423`, `apo.py:378-382`):
+
+```
+IRM:  m_alpha = 1/m + 1/(1-m)      rr = d/m - (1-d)/(1-m)
+APO:  m_alpha = 1/m                rr = treated/m          treated = 1{d == level}
+nu2  = mean(2*m_alpha - rr^2)
+```
+
+### Measured
+
+`coef` and `sigma2` unchanged; only the `nu2` path moved.
+
+| | `nu2` before | `nu2` after | `rv` before | `rv` after |
+|---|---|---|---|---|
+| IRM | **1.0** (exactly) | 540.5547419191752 | **19.575828907299147** | **0.8419771777915093** |
+| APO | **1.0** (exactly) | 290.2904525219809 | **1.320251627397268** | **0.0774890497743649** |
+
+The old value was *exactly* 1, not approximately: both estimators have
+`psi_a = -1`, a constant (`irm.py:392`), so `mean(psi_a^2) == 1` identically.
+Since `rv = |coef| / max_bias` and `max_bias = sqrt(sigma2 * nu2)`, a `nu2`
+pinned at 1 shrank `max_bias` and inflated `rv` -- IRM claimed a robustness
+value of 19.6, i.e. "robust to enormous confounding", where the correct value
+is 0.84. Wrong direction for a fragility diagnostic, and silent.
+
+### The fallback is the NORMAL path here, not a rare branch
+
+`mean(2*m_alpha - rr^2)` comes out **negative** on this fixture
+(`-488.8297898618956`). For a `d == 0` row with `m` near 1, `rr = -1/(1-m)`
+squares to something like `1/(1-m)^2`, which swamps `2*m_alpha = 2/m +
+2/(1-m)`. So upstream's documented fallback (`double_ml.py:1634-1641`,
+`nu2 = mean(rr^2)`) engages and supplies the reported 540.55.
+
+That branch already existed in this port from v0.131.0. What this release
+changes is that it is now reached with an upstream-shaped `rr` instead of being
+bypassed. The gates assert whichever branch the fixture exercises rather than
+assuming the primary.
+
+### Gates
+
+Three in `expand_v131_test.mbt`, all mutation-verified (routing either scalar
+entry point back to `irm_style_sensitivity` fails 3/3):
+
+- `v1317_irm_nu2_is_upstreams_primary_formula_not_a_constant_one`
+- `v1317_apo_nu2_uses_its_own_formula_not_the_irm_one` -- also asserts the two
+  families disagree on identical data, so one cannot be migrated with the
+  other's formula
+- `v1317_irm_and_apo_rv_are_no_longer_inflated_by_the_degenerate_nu2`
+
+### Fixtures must use a CLASSIFIER for `ml_m`
+
+The port's default is `ml_m = LearnerDispatch::linear_regression()`, which
+returns values outside `[0,1]`; `1/m_hat` then explodes. The first
+measurement run gave `coef = -225` on a DGP whose true ATE is `1.5`, and
+`nu2 ~ 5e9`. Upstream requires a classifier with `predict_proba` for the same
+reason. The gates pass `LearnerDispatch::logistic_regression(
+LogisticRegression::new())` explicitly. **This is a live footgun in the public
+API and is not fixed here** -- it is recorded for a separate decision.
+
+### NOT verified: the external oracle
+
+v0.131.6 proved its transcription against real upstream 0.11.4 at relative
+difference `0.000e+00`. **This release has no such oracle.** The formulas are
+transcribed from `irm.py:419-423` / `apo.py:378-382` and the gates re-derive
+them independently from `(d, m_hat)`, but nothing here has run upstream's own
+`DoubleMLIRM` / `DoubleMLAPO` on this fixture. Given the fallback discovery
+above -- where the reported number comes from a branch, not the primary --
+confirming that upstream takes the same branch is the obvious next check, and
+it is not optional before this is considered fully settled.
+
 ## [0.131.6] -- DID `nu2`: `mean(psi_a^2)` was upstream's FALLBACK, and it made rv 27x too optimistic
 
 **Behavioural.** `DoubleMLDID` and `DoubleMLDIDBinary` sensitivity `nu2` now use
