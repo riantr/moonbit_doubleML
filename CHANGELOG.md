@@ -9,6 +9,136 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.130.0] -- `did_cs_binary` sensitivity analysis read the wrong rows AND the wrong variable
+
+### The defect
+
+`DoubleMLDIDCSBinary::sensitivity_analysis` (and its `_cluster` twin) built its
+residual vector like this:
+
+```moonbit
+let d = self.data.d
+residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
+```
+
+That single line is wrong twice over, and both halves were load-bearing.
+
+**1. Wrong rows.** `self.data` is the **full panel**; the loop runs over
+**subset** positions. The subset keeps `t in {t_value_pre, t_value_eval}`, so
+it is strided, not a prefix — the first 720 *raw* rows are not the subset rows.
+MEASURED on the staggered fixture: **240 of the 720 rows read had `t == 1`**,
+a period the subset never contains — and exactly the period in which `y`
+carries the treatment effect.
+
+**2. Wrong variable.** `self.data.d` is the per-period **treatment**. Every
+other "d" in this estimator — the propensity target, the conditional-g split,
+`psi_a` — is **G**, and upstream says so on the very line that names it
+(`did_cs_binary.py:472`, `# (d is the G_indicator)`). Upstream's sensitivity
+reads `d = self._g_data_subset` (`:847`).
+
+**3. Wrong form.** Upstream mixes the four `(G, T)` cells
+(`did_cs_binary.py:856-866`):
+
+```python
+d0t0 = (1-d)(1-t);  d0t1 = (1-d)t;  d1t0 = d(1-t);  d1t1 = d*t
+g_hat = d0t0*g_d0_t0 + d0t1*g_d0_t1 + d1t0*g_d1_t0 + d1t1*g_d1_t1
+sigma2_score_element = np.square(y - g_hat)
+```
+
+The port's `y - g00 - (g10 - g00) * d` always used the `T = 0` cell, i.e.
+`E[y | G, T=0]`, even for `T = 1` rows.
+
+### Why it survived
+
+`irm_style_sensitivity` requires `residuals` to be element-wise aligned with
+`psi_a`. Its guard is `require(n == psi_a.length())` — and both arrays were
+length 720, so the check passed while the content was misaligned. **No test in
+the package exercised `did_cs_binary::sensitivity_analysis` at all.**
+
+### The measured damage, decomposed
+
+`sigma2` on the staggered fixture (720 subset rows):
+
+    1.14726368007027        old: full-panel rows, treatment column, 2-way form
+    0.15150335799261383     correct rows + correct variable, still the 2-way form
+    0.0019663436427471525   the fix: subset rows, G, 4-way cell mixture
+
+so the **cell mixture alone is worth ~77x** and the wrong-rows /
+wrong-variable bug the remaining **~7.6x** — 583.5x overall. Downstream:
+
+    rv        0.509088766725795  ->  12.296893946098622
+    max_bias  1.9465681983148717  ->  0.0805875050863701
+    nu2       3.30275229357797    ->  unchanged
+
+`nu2` moving would have meant `psi_a` changed. It did not, which is the
+internal consistency check that the fix touched only the residual.
+
+### Cross-checked against the real package
+
+`_verify/_oracle_1300.py`, three ways:
+
+1. **Transcription.** Applying upstream's formula literally to the **port's
+   own** inputs (its subset `y`/`G`/`T` and its four cross-fitted
+   g-functions) reproduces the MoonBit's `sigma2` **bit for bit**:
+   `0.0019663436427471525`.
+2. **The old bug, independently rebuilt** from the dumped arrays gives
+   `1.1472636800702702` against the recorded `1.14726368007027`.
+3. **The vendored upstream 0.11.4**, fitted on the same fixture, reports its
+   own `sigma2 = 0.001944928671712235` — within **1.1%** of the new port
+   value. Exact equality is not expected: upstream stratifies folds on `d` and
+   `t` via `StratifiedKFold` and the port uses its own `kfold_stratified`. The
+   discriminating fact is the order of magnitude: the old expression was
+   **590x** off.
+
+### What changed in code
+
+`fit` now keeps the subset's own `y` / `G` / `T_indicator`
+(`subset_y`, `subset_g`, `subset_t`, length `n_obs_subset`) — the direct
+counterpart of upstream's `_y_data_subset` / `_g_data_subset` /
+`_t_data_subset` (`did_cs_binary.py:179-180`). One private builder,
+`DoubleMLDIDCSBinary::cs_bin_sensitivity_residuals`, now constructs the
+residual, and **both** entry points call it. They previously duplicated the
+line, which is why the bug had to be found twice.
+
+### New gates
+
+| Gate | What it pins |
+|------|--------------|
+| `v130_cs_binary_sensitivity_ignores_rows_outside_the_subset` | corrupting `y` at the 240 out-of-subset `t == 1` rows must move nothing |
+| `v130_cs_binary_sensitivity_never_reads_the_treatment_column` | inverting `data.d` on all 1080 rows must move nothing |
+| `v130_cs_binary_sensitivity_matches_the_upstream_cell_mixture` | the pinned numbers, plus that the 2-way form is a genuinely different and 77x larger `sigma2` |
+| `v130_cs_binary_sensitivity_cluster_shares_the_residual_vector` | singleton clusters reproduce the IID result exactly; one cluster is pinned separately |
+| `v130_cs_binary_subset_arrays_are_populated_and_aligned` | the struct plumbing the fix depends on |
+
+**Discriminating power was verified, not assumed.** Re-applying the old
+residual expression and re-running the suite:
+
+    v130_..._ignores_rows_outside_the_subset ....... FAILED
+    v130_..._never_reads_the_treatment_column ...... FAILED
+    v130_..._matches_the_upstream_cell_mixture ..... FAILED
+    v130_..._cluster_shares_the_residual_vector .... FAILED
+    Total tests: 1004, passed: 1000, failed: 4.
+
+GATE 5 correctly still passes: it is about the arrays existing, not about how
+they are combined.
+
+### Known remaining difference, deliberately NOT changed
+
+Upstream's `nu2` is `mean(2*m_alpha - rr^2)` (`did_cs_binary.py:932`); this
+port's is `mean(psi_a^2)`. Upstream also scales its centred elements by
+`n_obs / n_obs_subset` (`:943`). Both are properties of the **shared**
+`irm_style_sensitivity` helper used by every estimator in the port (IRM, DID,
+PLR, ...), not of `did_cs_binary`. Changing them would move every estimator's
+sensitivity output, which is a separate release with its own measurement pass.
+Recorded here so the next round inherits the fact rather than re-deriving it.
+
+### Verification
+
+    native 1004/1004    wasm 1004/1004    js 1004/1004    wasm-gc 1010/1010
+    (v0.129.0 was 999/999/999 and 1005 -- +5 tests)
+    moon check --deny-warn clean on all four targets
+    mutation harness: 6 KILLED / 3 SURVIVED / 0 inconclusive, residue clean
+
 ## [0.129.0] -- RETRACTION: v0.128.0's `did_cs_binary` "nuisance divergence" was wrong
 
 ### The retraction, first

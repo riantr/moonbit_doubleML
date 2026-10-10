@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.129.0** |
+| `moon.mod` version | **0.130.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **196** `.mbt` files (**90** production + **106** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **999 / 999 / 999** |
-| Tests (wasm-gc) | **1005 / 1005** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1004 / 1004 / 1004** |
+| Tests (wasm-gc) | **1010 / 1010** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -157,6 +157,22 @@ column must leave the estimate bit-identical --
 fixture premise. `DoubleMLDID` (panel) and `DoubleMLDIDCrossSection` do use
 the real `D`, because upstream's counterparts there do
 (`did.py:197` reads `self._dml_data.d`).
+Seventh, and fixed in **v0.130.0**: `DoubleMLDIDCSBinary::sensitivity_analysis`
+used to read `self.data.y[i]` and `self.data.d[i]` — the **full 1080-row
+panel**, indexed at **subset** positions, with the per-period treatment rather
+than `G`, and with a 2-way `y - g00 - (g10 - g00)*d` form that always used the
+`T = 0` g-function. Upstream uses the subset's own `y`/`G`/`T_indicator`
+(`did_cs_binary.py:846-867`) and mixes the four `(G, T)` cells. Measured, **240
+of the 720 rows read had `t == 1`** — a period the subset never contains, and
+the one in which `y` carries the treatment effect. `sigma2` came out **583x**
+too large (1.1473 vs 0.00197), and **no test in the package exercised the
+function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
+guard passed throughout, because both arrays were length 720 while describing
+different observations. Fixed, and both entry points now share one builder
+(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. The **shared**
+`nu2 = mean(psi_a^2)` convention still differs from upstream's
+`mean(2*m_alpha - rr^2)` (`did_cs_binary.py:932`) across every estimator in
+this port; that is a separate, deliberately deferred change.
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in
 calibration are kept apart.

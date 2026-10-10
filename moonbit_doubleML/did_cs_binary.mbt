@@ -640,6 +640,26 @@ pub struct DoubleMLDIDCSBinary {
   g_d1_t0 : Array[Double]
   g_d1_t1 : Array[Double]
   m_hat : Array[Double]
+  // v0.130.0: the SUBSET's own y / G / T, length `n_obs_subset`.
+  //
+  // These exist because upstream keeps exactly the same three arrays
+  // (`did_cs_binary.py:179-180`, `:846-848`):
+  //
+  //   self._y_data_subset = data_subset.loc[:, y_col]
+  //   self._g_data_subset = data_subset["G_indicator"]
+  //   self._t_data_subset = data_subset["t_indicator"]
+  //
+  // and its sensitivity elements are built from THEM, not from the full
+  // panel. Before v0.130.0 `sensitivity_analysis` reached back into
+  // `self.data.y` / `self.data.d` -- the FULL 1080-row panel -- and indexed it
+  // with SUBSET positions. That is two bugs in one line: the wrong variable
+  // (`data.d` is the per-period treatment; everything else in this estimator
+  // uses G) and the wrong rows (240 of the 720 rows read had `t == 1`, a
+  // period the subset never contains -- and exactly the period where `y`
+  // carries the treatment effect).
+  subset_y : Array[Double]
+  subset_g : Array[Double]
+  subset_t : Array[Double]
   // Effective sample size after panel subsetting.
   n_obs_subset : Int
   // Number of treated (G_indicator=1) rows in the
@@ -732,6 +752,9 @@ pub fn DoubleMLDIDCSBinary::new(
       g_d1_t0: [],
       g_d1_t1: [],
       m_hat: [],
+      subset_y: [],
+      subset_g: [],
+      subset_t: [],
       n_obs_subset: 0,
       n_g_subset: 0,
       n_c_subset: 0,
@@ -1080,6 +1103,12 @@ pub fn DoubleMLDIDCSBinary::fit(
     g_d1_t0: g10,
     g_d1_t1: g11,
     m_hat: m,
+    // v0.130.0: keep the subset's own y / G / T so the sensitivity elements
+    // are built from the same observations as `psi_a`. `d` here is G, exactly
+    // as in `cs_bin_score_obs` above.
+    subset_y: y,
+    subset_g: d,
+    subset_t: t_arr,
     n_obs_subset: n_sub,
     n_g_subset: n_g,
     n_c_subset: n_c,
@@ -1148,70 +1177,114 @@ pub fn DoubleMLDIDCSBinary::bootstrap(
 }
 
 ///|
+/// v0.130.0: the residual vector the C&H (2020) sensitivity elements are built
+/// from, transcribed from upstream `did_cs_binary.py:845-869`:
+///
+///     y = self._y_data_subset          # the SUBSET's y
+///     d = self._g_data_subset          # the SUBSET's G_indicator
+///     t = self._t_data_subset          # the SUBSET's t_indicator
+///
+///     d0t0 = (1-d)(1-t);  d0t1 = (1-d)t;  d1t0 = d(1-t);  d1t1 = d*t
+///     g_hat = d0t0*g_d0_t0 + d0t1*g_d0_t1 + d1t0*g_d1_t0 + d1t1*g_d1_t1
+///     sigma2 = mean( (y - g_hat)^2 )
+///
+/// so the per-observation residual handed to `irm_style_sensitivity` is
+/// `y - g_hat`. (That helper then squares it itself when it forms
+/// `sigma2 = mean(residuals^2)`, so passing the UNsQUARED residual is the
+/// faithful mapping, not a shortcut.)
+///
+/// The 4-way cell mixture is not cosmetic: `(d, t)` is a partition of unity,
+/// so `g_hat` picks the g-function fitted for that observation's own cell.
+/// The old `y - g00 - (g10 - g00) * d` form always used the `t = 0` cell, i.e.
+/// `E[y | G, T=0]`, for `t = 1` rows too -- and `t = 1` is the post-treatment
+/// period where `y` actually moves.
+///
+/// BOTH sensitivity entry points share this one function on purpose: they used
+/// to duplicate the residual line, and the pre-v0.130.0 bug had to be fixed in
+/// two places by hand.
+fn DoubleMLDIDCSBinary::cs_bin_sensitivity_residuals(
+  self : DoubleMLDIDCSBinary,
+) -> Array[Double] raise {
+  require(self.fitted)
+  let y = self.subset_y
+  let d = self.subset_g
+  let t = self.subset_t
+  let g00 = self.predictions_g_d0_t0()
+  let g01 = self.predictions_g_d0_t1()
+  let g10 = self.predictions_g_d1_t0()
+  let g11 = self.predictions_g_d1_t1()
+  let n = g00.length()
+  // Every one of these is indexed by SUBSET position. They must all have the
+  // same length or the cell mixture would silently read past its end.
+  require(y.length() == n)
+  require(d.length() == n)
+  require(t.length() == n)
+  require(g01.length() == n)
+  require(g10.length() == n)
+  require(g11.length() == n)
+  let residuals : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let d0t0 = (1.0 - d[i]) * (1.0 - t[i])
+    let d0t1 = (1.0 - d[i]) * t[i]
+    let d1t0 = d[i] * (1.0 - t[i])
+    let d1t1 = d[i] * t[i]
+    let g_hat = d0t0 * g00[i] + d0t1 * g01[i] + d1t0 * g10[i] + d1t1 * g11[i]
+    residuals[i] = y[i] - g_hat
+  }
+  residuals
+}
+
+///|
 /// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
-/// analysis. Outcome residual is
-/// `y - g_d0_t0 - (g_d1_t0 - g_d0_t0) * d` on the
-/// post-subset panel; the Riesz-representer variance is
-/// `mean(psi_a^2)`. Routes through the shared
-/// `irm_style_sensitivity` helper.
-/// v0.129.0 OPEN DEFECT, recorded not fixed. Two things are wrong here, and
-/// they are independent of each other:
-///   1. `self.data.d` is the per-period TREATMENT. Upstream's equivalent,
-///      `did_cs_binary.py:847`, reads `d = self._g_data_subset`, i.e. G --
-///      the same variable the fit path uses (see the `adjust_ps` block in
-///      `cs_bin_panel_fold`). So this residual form uses a variable upstream
-///      never uses here.
-///   2. `self.data` is the FULL panel (n=1080 on the v0.128 fixture) but the
-///      loop runs to `g00.length()` == `n_obs_subset()` (720). Rows are indexed
-///      by SUBSET position over the FULL array, so the first 720 RAW rows are
-///      used rather than the subset rows. Those are different rows: the subset
-///      keeps `t in {t_value_pre, t_value_eval}`, so it is strided, not a
-///      prefix.
-/// Fixing (1) and (2) changes every `sensitivity_analysis` number, so it needs
-/// its own measurement pass; it is NOT bundled into the v0.129.0 retraction.
+/// analysis. Routes through the shared `irm_style_sensitivity`
+/// helper with upstream's residual vector (see
+/// `cs_bin_sensitivity_residuals`).
+///
+/// v0.130.0 FIXES the defect v0.129.0 recorded. The old body was
+///
+///     let d = self.data.d
+///     residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
+///
+/// which is wrong twice over, and both halves were load-bearing:
+///   1. WRONG VARIABLE. `self.data.d` is the per-period treatment. Every
+///      other use of "d" in this estimator -- `psi_a`, the propensity, the
+///      conditional-g split -- is G (`did_cs_binary.py:472`), and upstream's
+///      sensitivity reads `d = self._g_data_subset` (`:847`).
+///   2. WRONG ROWS. `self.data` is the full panel; the loop runs over subset
+///      positions. MEASURED on the staggered fixture: **240 of the 720 rows
+///      read had `t == 1`** -- a period the subset never contains, and the
+///      period in which `y` carries the treatment effect. So `sigma2` was
+///      inflated by construction.
+///
+/// `irm_style_sensitivity` requires `residuals` to be element-wise aligned
+/// with `psi_a`; its `require(n == psi_a.length())` passed only because both
+/// happened to be length 720, which is exactly how the misalignment hid.
 pub fn DoubleMLDIDCSBinary::sensitivity_analysis(
   self : DoubleMLDIDCSBinary,
   cf_y? : Double = 0.05,
   cf_d? : Double = 0.05,
 ) -> SensitivityResult raise {
-  require(self.fitted)
-  let g00 = self.predictions_g_d0_t0()
-  let g10 = self.predictions_g_d1_t0()
-  let d = self.data.d
-  let n = g00.length()
-  let residuals : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
-  }
+  let residuals = self.cs_bin_sensitivity_residuals()
   irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
 }
 
 ///|
 /// v0.72.0+: cluster-robust analogue of
-/// `DoubleMLDIDCSBinary::sensitivity_analysis`. Same
-/// residual form
-/// (`y - g_d0_t0 - (g_d1_t0 - g_d0_t0) * d`) and the
-/// same `psi_a` as the IID path; only the variance / bias
-/// computation is cluster-aware. `DoubleMLDIDCSData` has
-/// no `cluster_vars` field, so `cluster_ids` must be
-/// passed explicitly with length matching `self.n_obs()`
-/// (the post-subset count).
+/// `DoubleMLDIDCSBinary::sensitivity_analysis`. Same residual
+/// vector and the same `psi_a` as the IID path (both come from
+/// `cs_bin_sensitivity_residuals`, so the two cannot drift
+/// apart); only the variance / bias computation is cluster-aware.
+/// `DoubleMLDIDCSData` has no `cluster_vars` field, so
+/// `cluster_ids` must be passed explicitly with length matching
+/// `self.n_obs()` (the post-subset count).
 pub fn DoubleMLDIDCSBinary::sensitivity_analysis_cluster(
   self : DoubleMLDIDCSBinary,
   cluster_ids : Array[Int],
   cf_y? : Double = 0.05,
   cf_d? : Double = 0.05,
 ) -> SensitivityResult raise {
-  require(self.fitted)
-  let g00 = self.predictions_g_d0_t0()
-  let g10 = self.predictions_g_d1_t0()
-  let d = self.data.d
-  let n = g00.length()
-  require(cluster_ids.length() == n)
-  let residuals : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    residuals[i] = self.data.y[i] - g00[i] - (g10[i] - g00[i]) * d[i]
-  }
+  let residuals = self.cs_bin_sensitivity_residuals()
+  require(cluster_ids.length() == residuals.length())
   irm_style_sensitivity_cluster(
     self.coef,
     residuals,
