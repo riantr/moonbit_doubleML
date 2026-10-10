@@ -25,14 +25,14 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.131.0** |
+| `moon.mod` version | **0.131.1** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **196** `.mbt` files (**90** production + **106** test) |
+| `.mbt` file count | **197** `.mbt` files (**90** production + **107** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
 | Tests (native / wasm / js) | **1005 / 1005 / 1005** |
 | Tests (wasm-gc) | **1011 / 1011** (lib + 6 doc tutorials) |
-| Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
+| Sandwich-variance coverage | **19 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (introduced v0.89.0; the 3 without are `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree`) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -45,7 +45,7 @@ estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,
 `DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
 `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
 `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
-in 17 source files. The 19 marked *(upstream)* mirror the upstream
+in 19 source files. The 19 marked *(upstream)* mirror the upstream
 `doubleml-for-py` API; the 3 marked *(extra)* are MoonBit-specific
 additions for static-panel PLR, partially-logistic regression, and
 binary-outcome CS-DID.

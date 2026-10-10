@@ -9,6 +9,43 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.1] -- README bookkeeping: three stale counts, measured and corrected
+
+Docs-only. **No code change, no behavioural change, no test change.**
+
+v0.131.0 updated the README's version row and test counts but not every count
+in the status table. Three claims had drifted, each verified directly against
+the tree before being corrected:
+
+| Claim | Was | Now | How it was checked |
+|-------|-----|-----|--------------------|
+| `.mbt` file count | 196 (90 prod + 106 test) | **197** (90 + **107**) | `Get-ChildItem moonbit_doubleML -Filter *.mbt`, split on the `_test.mbt` suffix. v0.130.0 added `expand_v130_test.mbt` and the count was never bumped. |
+| Sandwich-variance coverage | 12 / 22 | **19 / 22** | grep `pub fn DoubleML*::sandwich_se`, `::cluster_sandwich_se` and `::bias_corrected_coef` against all 22 estimator types. All three methods sit on the same 19; the 3 without are `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree`. The "(v0.89.0)" annotation was the version that introduced the feature, and coverage has grown since. |
+| Source files holding the 22 estimators | 17 | **19** | resolve each estimator's defining `pub struct DoubleML*` to its file and count distinct paths. `did_multi.mbt` and `quantile.mbt` joined after the "17" was written. |
+
+### Why this is a patch release and not an amend
+
+v0.131.0 is already tagged on GitHub, published to mooncakes and carries a
+GitHub Release. Moving that tag or re-publishing the version would rewrite
+history that consumers may already have fetched, so the correction ships as
+`0.131.1` instead. `moon publish` also refuses a version that already exists.
+
+### Note on the standing rule
+
+The rule "update the README before publishing" was applied to the *version* and
+the *test counts* in v0.130.0 and v0.131.0 but not to the other numbers in the
+same table. The failure mode is that a checklist derived from the last release
+remembers what that release happened to touch, so the rows nobody edited go
+stale indefinitely. The fix is mechanical: re-derive every number in the
+status table from the tree at release time rather than editing only the ones
+that were already known to move.
+
+### Verification
+
+    native 1005/1005    wasm 1005/1005    js 1005/1005    wasm-gc 1011/1011
+    unchanged from v0.131.0 -- the diff is README.mbt.md, CHANGELOG.md and
+    moon.mod's version string only.
+
 ## [0.131.0] -- the shared `nu2 = mean(psi_a^2)` was upstream's FALLBACK, not its formula
 
 ### Scope, established before changing anything
