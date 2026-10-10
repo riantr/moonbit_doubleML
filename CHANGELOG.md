@@ -9,6 +9,96 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.4] -- `in_sample_normalization` was never an open bug, and I had sized it wrong
+
+Docs-only. **No code change, no behavioural change, no test change.**
+
+### What I had claimed
+
+v0.131.0 left a carry-over note saying:
+
+> Upstream defaults it to `True` (`did_cs_binary.py:118`); this port defaults
+> it to `false` (`did_cs_binary.mbt:712`). It moves `coef` and `se`, not just
+> sensitivity, so it is a behavioural release of its own.
+
+Three things in that are wrong or imprecise, and I only found out by measuring
+instead of reading.
+
+### 1. The line number was wrong
+
+`did_cs_binary.py:118` is `n_folds=5,`. The flag is at **`:121`**. This was
+copied into the README and from there back into the v0.131.0 changelog, so a
+single unchecked citation propagated across two published documents.
+
+### 2. It was scoped to one estimator when it is six
+
+I had been carrying this as a `did_cs_binary` item. It is not:
+
+| | count | default |
+|---|---|---|
+| Port DID estimators with the flag | **6** -- `did`, `did_binary`, `did_cross_section`, `did_cs`, `did_cs_binary`, `did_multi` | all `false` |
+| Upstream 0.11.4 DID classes with the flag | **5** -- no `did_cross_section.py` exists upstream | all `True` |
+
+The port is *internally uniform* and uniformly opposed to upstream. It reads
+like a deliberate, repo-wide decision rather than one estimator's bug, which is
+what prompted me to check the history -- and v0.8.0 says exactly that:
+
+> `in_sample_normalization : Bool` (default `false`) ... The default
+> `(observational, false)` is byte-equal to the pre-0.8.0 port.
+
+So the port deliberately diverged from upstream at v0.8.0 to avoid breaking
+every number it had already published. **This was a backward-compatibility
+decision, not a transcription error, and it should never have been filed as an
+open bug.** Both branches are implemented and were verified faithful in
+v0.131.0, so the two libraries agree on the formula and differ only on the
+default.
+
+### 3. I had mis-sized it by two orders of magnitude
+
+Measured on two independent staggered DGPs (a single DGP cannot size a default
+change; the v0.131.0 figures came from one panel):
+
+| Fixture | `coef` | `se` | `nu2` | `sigma2` |
+|---|---|---|---|---|
+| `(120, 2, 5)` -- the v0.130.0/v0.131.0 panel | **+0.027%** | **-3.01%** | **+0.56%** | **bit-identical** |
+| `(80, 3, 7)` -- different panel shape | **-0.026%** | **-4.19%** | **+1.18%** | **bit-identical** |
+
+`coef` -- the headline ATT estimate -- moves by about 0.03%. Not "moves `coef`
+and `se`" in any meaningful sense; 0.03% is numerical dust on an ATT of ~1.0.
+`sigma2` does not move at all, which is exactly what upstream's code predicts:
+`sigma2_score_element = np.square(y - g_hat)` (`did_cs_binary.py:867`) is
+**unweighted**, so `in_sample_normalization` cannot touch it. The flag only
+reweights `psi_a` and the residual terms.
+
+The figure I had repeated from v0.131.0 -- upstream's own `nu2` "23.18 vs
+25.38", a 9.5% gap -- does **not** reproduce in the port on these fixtures,
+where the move is 0.6-1.2%. Those were different fixtures and I carried the
+number across without checking it, which is the same move this release is
+about: quoting a measurement from somewhere other than where it was taken.
+
+### What this changes
+
+Nothing in the code. The README now states all of the above and tells users
+that passing `in_sample_normalization=true` is how to get upstream-identical
+numbers, with the measured magnitude of that change attached so the choice is
+informed. The v0.131.0 note is corrected in place.
+
+### One question this deliberately does NOT answer
+
+`v0.131.0` also recorded, from `_verify/_oracle_1310.py` on the port's fixture,
+upstream `nu2` = **23.179** (flag `False`) against the port's **26.719** -- a
+15.3% gap, while `sigma2` agrees to 1.1%. That is a much larger discrepancy
+than anything measured above and I have **not** verified it.
+
+I am deliberately not claiming it. The oracle fitted its own `ml_m`, and `nu2`
+depends on `m_hat` through `propensity_weight_d0`, so unless the oracle and the
+port use identical nuisance predictions the two `nu2` values are not comparable
+-- and `sigma2`, which does not depend on `m_hat`, agreeing to 1.1% is exactly
+what you would expect if only the `m_hat`-dependent term differs. This is the
+v0.129.0 trap verbatim: a large, plausible, well-measured number whose
+reference frame was never established. It needs its own pass with the learner
+pinned, and until then it is recorded here as an open question, not a finding.
+
 ## [0.131.3] -- the self-check's own advertised check count was wrong
 
 Docs-only. **No code change, no behavioural change, no test change.**
@@ -343,11 +433,20 @@ share one residual builder) and pins the cluster values explicitly.
 ### Deliberately NOT changed
 
 **`in_sample_normalization` default.** Upstream defaults it to `True`
-(`did_cs_binary.py:118`); this port defaults it to `false`
-(`did_cs_binary.mbt:712`). It moves `coef` and `se`, not just sensitivity, so
-it is a behavioural release of its own with its own measurement pass. Recorded
-here because it dominated this round's verification -- upstream's own `nu2`
-moves between the two branches (23.18 vs 25.38).
+(`did_cs_binary.py:121`; this note previously said `:118`, which is
+`n_folds=5`); this port defaults it to `false` (`did_cs_binary.mbt:712`) --
+**uniformly across all six DID estimators**, upstream being `True` in all five
+of its own. This is a deliberate backward-compatibility choice rather than a
+transcription slip: v0.8.0 picked `false` so the default would stay
+"byte-equal to the pre-0.8.0 port". Both branches are implemented, so the
+formulas agree; only the *default* differs.
+
+> **CORRECTED in [0.131.4](#01314----in_sample_normalization-was-never-an-open-bug).**
+> The claim below that flipping the default "moves `coef` and `se`" is true but
+> badly imprecise. Measured on two independent staggered DGPs: `coef` moves
+> **0.03%**, `se` **3-4%**, sensitivity `nu2` **0.6-1.2%**, and `sigma2` is
+> **bit-identical** (it is unweighted upstream, `did_cs_binary.py:867`). The
+> original text also described this as scoped to one estimator.
 
 **The other six upstream-faithful estimators** -- `did`, `did_binary`,
 `did_cs`, `apo`, `irm`, `plr` -- still use `mean(psi_a^2)` via the shared

@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.131.3** |
+| `moon.mod` version | **0.131.4** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **197** `.mbt` files (**90** production + **107** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -187,9 +187,18 @@ caller discards — so the whole reported result is a function of `sigma2` and
 `nu2` alone. `DoubleMLDIDCSBinary` was migrated to
 `irm_style_sensitivity_from_elements`; `did`, `did_binary`, `did_cs`, `apo`,
 `irm` and `plr` still use the old convention and each needs its own
-`m_alpha`/`rr` plumbing. Also still open: upstream defaults
-`in_sample_normalization` to `True` (`did_cs_binary.py:118`) and this port to
-`false` (`did_cs_binary.mbt:712`), which moves `coef` and `se`.
+`m_alpha`/`rr` plumbing. Separately, upstream defaults
+`in_sample_normalization` to `True` (`did_cs_binary.py:121`) and this port to
+`false` (`did_cs_binary.mbt:712`) -- **uniformly across all six DID
+estimators**, upstream being `True` in all five of its own. This is a
+deliberate backward-compatibility choice, not a transcription slip: v0.8.0
+picked `false` so the default stayed "byte-equal to the pre-0.8.0 port". Both
+branches are implemented and were verified faithful in v0.131.0, so the formulas
+agree; only the *default* differs. Measured on two independent staggered DGPs,
+flipping it moves `coef` by 0.03%, `se` by 3-4% and sensitivity `nu2` by
+0.6-1.2%, and leaves `sigma2` bit-identical (`sigma2` is unweighted upstream,
+`did_cs_binary.py:867`). To match upstream exactly, pass
+`in_sample_normalization=true` explicitly.
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in
 calibration are kept apart.
