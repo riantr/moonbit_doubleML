@@ -9,6 +9,80 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.8] -- family 2 oracle: bit-identical on BOTH estimators, across BOTH nu2 branches
+
+Docs-only. **No code change, no behavioural change, no test change.**
+Tests unchanged at 1012 / 1018.
+
+### Closes the one gap v0.131.7 left open
+
+v0.131.7 shipped the IRM + APO `nu2` migration with an explicit "NOT
+verified: no external oracle" note, because the numbers it produced came from
+upstream's **fallback** branch (`double_ml.py:1630-1641`) rather than the
+primary. If real upstream took the primary branch instead, the port would have
+been reporting a number upstream never produces -- worse than the bug it
+replaced.
+
+That question is now answered against real upstream 0.11.4, seeded
+(`np.random.seed(3141)`), by `_verify/_oracle_1318.py`.
+
+### Method
+
+Do not compare two estimates. Feed each side its OWN inputs through the port's
+transcription and require it to reproduce that side's own reported number.
+`m_hat` is captured at the call site by wrapping
+`_sensitivity_element_est`, the point where upstream reads
+`preds["predictions"]["ml_m"]` -- the same discipline as `_oracle_1290.py`,
+`_oracle_1315.py` and `_oracle_1316.py`.
+
+### Result: `0.000e+00` on both, in both branches
+
+| | upstream's branch | upstream's reported `nu2` | transcription on upstream's own `m_hat` | rel. diff |
+|---|---|---|---|---|
+| IRM | **FALLBACK** (primary `-2.09943636959292`) | `31.073882116436327` | `31.073882116436327` | **`0.000e+00`** |
+| APO | **PRIMARY** (`3.5567208214971116`) | `3.5567208214971116` | `3.5567208214971116` | **`0.000e+00`** |
+
+Upstream emits the real warning -- `"The estimated nu2 for d is not positive.
+Re-estimation based on riesz representer (non-orthogonal)."` -- confirming the
+fallback is genuinely exercised upstream, not simulated here.
+
+### The branch is nuisance-driven, and that is the interesting part
+
+On the SAME data, upstream's IRM takes the **fallback** branch while upstream's
+APO takes the **primary** branch. The test is `np.any(nu2 <= 0)`
+(`double_ml.py:1630`), so which branch fires is a property of the fitted
+`m_hat`, not of the estimator class. The two classes differ because APO's
+`rr = treated/m` is zero on the control rows, which removes the `1/(1-m)^2`
+blow-up that drives IRM's primary negative.
+
+The port takes the fallback for **both** on this fixture, purely because its
+`m_hat` is not upstream's (`mean 0.441436941` vs `0.443102162`). That is the
+expected consequence of a different nuisance model -- the same situation
+v0.131.5 and v0.131.6 established, and the reason comparing the port's 540.55
+to upstream's 31.07 would have been meaningless.
+
+What the oracle actually establishes is stronger than a matching number: **both
+sides apply upstream's branch rule correctly to their own inputs**, in a case
+where the rule fires on one side and does not on the other. A transcription
+that hard-coded the fallback -- the obvious way to "fix" a bug report about
+`nu2 <= 0` -- would fail the APO row here.
+
+### The v0.131.7 gate correction
+
+v0.131.7's first gate assumed the reported `nu2` was the primary and FAILED
+against correct code. The diagnosis was that the primary is negative on this
+fixture and the helper legitimately takes the fallback; the gate now asserts
+whichever branch the fixture exercises. That correction is confirmed correct by
+this oracle rather than merely left plausible.
+
+### Reproduce
+
+    python _verify/_oracle_1318.py
+
+Reads `_verify/_dump_fam2_1318.txt` (the port's own `x`, `y`, `d`, `m_hat` for
+both estimators), fits upstream `DoubleMLIRM` and `DoubleMLAPO` on it, and
+prints the control and decisive blocks.
+
 ## [0.131.7] -- IRM and APO `nu2` was exactly `1.0`, making `rv` up to 23x too optimistic
 
 **Behavioural.** `DoubleMLIRM` and `DoubleMLAPO` sensitivity `nu2` now use
@@ -93,6 +167,14 @@ LogisticRegression::new())` explicitly. **This is a live footgun in the public
 API and is not fixed here** -- it is recorded for a separate decision.
 
 ### NOT verified: the external oracle
+
+> **RESOLVED in [0.131.8](#01318----family-2-oracle-bit-identical-on-both-estimators-across-both-nu2-branches).**
+> The oracle exists and passes at relative difference `0.000e+00` on **both**
+> estimators. Upstream does emit its real "nu2 is not positive" warning for IRM,
+> confirming the fallback is genuinely exercised there, and upstream's APO
+> takes the *primary* branch on the same data. Both sides therefore apply
+> upstream's branch rule correctly to their own inputs. The text below is kept
+> as the record of what was unverified at the time.
 
 v0.131.6 proved its transcription against real upstream 0.11.4 at relative
 difference `0.000e+00`. **This release has no such oracle.** The formulas are
