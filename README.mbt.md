@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.132.0** |
+| `moon.mod` version | **0.133.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **199** `.mbt` files (**65** production + **109** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **200** `.mbt` files (**65** production + **110** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1014 / 1014 / 1014** |
-| Tests (wasm-gc) | **1020 / 1020** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1016 / 1016 / 1016** |
+| Tests (wasm-gc) | **1022 / 1022** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -109,6 +109,16 @@ ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
 `LearnerDispatch::GradientBoostingClassifier` are the nonlinear options.
 Migration proceeds one estimator at a time, each with its own measurement and
 mutation-verified gates.
+
+**`DoubleMLAPOS` honoured a configured `ml_m` everywhere except where it
+counted (fixed in v0.133.0).** Its `fit` path built each child
+`DoubleMLAPO` without forwarding `ml_g` / `ml_m`, while `bootstrap` and both
+sensitivity paths did. Passing `LogisticRegression` to `DoubleMLAPOS` returned
+`coefs()[0] = -201.32` on a fixture whose true ATE was `1.2` -- bit-identical
+to ignoring the argument, and 203 points from the same learner applied
+directly. Nothing raised. The defaults listed above are unchanged; this was a
+plumbing fix, and the two are deliberately separate so a failing test can be
+attributed to one or the other.
 
 **Propensity-score processor (`PSProcessor`)** -- `clipping_threshold`
 clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)

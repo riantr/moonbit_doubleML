@@ -9,6 +9,93 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.133.0] -- `DoubleMLAPOS::fit` forwards `ml_g` / `ml_m` to its children
+
+Bug fix. Tests 1014 -> 1016 (native / wasm / js), 1020 -> 1022 (wasm-gc).
+
+### The bug
+
+`DoubleMLAPOS` accepts `ml_g` / `ml_m`, stores them, and exposes them. Three
+of its four child-construction sites forwarded them to the child
+`DoubleMLAPO`. The fourth did not:
+
+| Site | Forwards `ml_g`/`ml_m`? |
+|---|---|
+| `apo.mbt:1489` -- `DoubleMLAPOS::fit` | **NO (until v0.133.0)** |
+| `apo.mbt:2017` -- `DoubleMLAPOS::bootstrap` | yes |
+| `apo.mbt:2239` -- sensitivity path A | yes |
+| `apo.mbt:2288` -- sensitivity path B | yes |
+
+So a caller who configured learners on `DoubleMLAPOS` had them honoured by
+the bootstrap and by both sensitivity analyses, and **silently discarded on
+the coefficient path** -- the one number they actually asked for.
+
+### Measured damage
+
+`n=400`, `p=2`, true `ATE = 1.2`, `ml_m = LogisticRegression`, all three in
+one run:
+
+| quantity | value |
+|---|---|
+| `APOS.coefs()[0]` with `ml_m = LogisticRegression` | **-201.3232415863109** |
+| `APO.coef()` with the same `LogisticRegression` | 1.6791519869991263 |
+| `APO.coef()` with the **default** `ml_m` (OLS) | **-201.3232415863109** |
+| \|APOS - APO(default)\| | **0** (exactly) |
+
+A 203-point error from an argument that was accepted and ignored. Nothing
+raised: the child fell back to the OLS propensity default, `propensity_clip`
+(1e-6) kept `1 / m_hat` finite, and the estimator returned a plausible-looking
+number. Same silent-clipping failure mode as the OLS `ml_m` default recorded
+in v0.131.9 -- which is why the fix had to land **before** any default flip,
+not after: flipping `DoubleMLAPO`'s default alone would have left the
+coefficient path and the bootstrap path using *different* learners.
+
+### Why it survived
+
+Of **19** `DoubleMLAPOS::new` call sites in the package, **0** pass `ml_m`.
+The parameter was reachable, documented, and never used, so no existing test
+could observe it. A parameter that no caller exercises is a parameter no test
+covers -- hence new gates rather than a tweak to an existing one.
+
+### Gates (both mutation-verified)
+
+`expand_v133_test.mbt`:
+
+1. **`v1330_apos_fit_forwards_ml_m_to_the_child_apo`** -- asserts APOS equals
+   APO under the *same* `ml_m`, **and** that APOS differs from APO with the
+   default. The second assertion is load-bearing: the first alone is vacuous,
+   because if the learner were ignored on both sides the equality would still
+   hold. A gate that can pass without the learner doing anything is not a gate.
+2. **`v1330_apos_forwards_ml_m_at_every_treatment_level`** -- same across two
+   treatment levels, since the per-level loop is APOS's actual contract.
+   GATE 1 uses a single level, where a bug leaking the right learner to
+   exactly one level would pass.
+
+Mutation: deleting `ml_m=self.ml_m` from the child constructor at
+`apo.mbt:1489` fails both gates, at `:83` and `:113` respectively.
+
+### Scope note -- defaults unchanged
+
+This release changes **no** default. `DoubleMLAPO` and `DoubleMLAPOS` still
+default `ml_m` to `LearnerDispatch::linear_regression()`, and all **14**
+structs listed in the v0.132.0 changelog are untouched. The fix is
+deliberately separable from the default question so that a failing test can
+be attributed to one or the other.
+
+Behaviour is unchanged for every existing caller, precisely because none of
+them passes `ml_m` to `DoubleMLAPOS`. The 1014 -> 1016 delta is the two new
+gates; no pre-existing test needed a constant re-derived.
+
+### What this suggests
+
+The bug was found by reading `ml_m` plumbing, not by any failing test, and it
+is a structural property of the parent/child delegation pattern rather than a
+one-off. The same shape exists in `DIDBinary` -> `DID`,
+`DIDCS` -> `DIDBinary`, and `QTE` -> `PQ`. A `ml_m` reachability audit across
+those delegators is queued ahead of the remaining default flips, on the
+grounds that a silently discarded argument is worse than a documented
+suboptimal default: the default is at least warned about in the README.
+
 ## [0.132.0] -- `DoubleMLIRM`'s default `ml_m` is a classifier
 
 The first estimator migrated off the OLS propensity default documented in

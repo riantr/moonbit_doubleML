@@ -1486,6 +1486,25 @@ pub fn DoubleMLAPOS::fit(
         // v0.84.0+: when `memoize_enabled` is on, route
         // `.enable_memoize()` through to the child so the
         // child's own cache is honored on subsequent fits.
+        //
+        // v0.133.0: forward `ml_g` / `ml_m` to the child. This call
+        // previously omitted both, so the child fell back to
+        // `DoubleMLAPO`'s own defaults and a caller who configured
+        // learners on `DoubleMLAPOS` got them silently DISCARDED on the
+        // coefficient path -- while `bootstrap` (:2017) and BOTH sensitivity
+        // paths (:2239, :2288) did forward them, so the parent's `ml_m`
+        // reached those and not this one.
+        //
+        // Measured before the fix (n=400, p=2, true ATE=1.2, `ml_m`
+        // = LogisticRegression): APOS `coefs()[0]` = -201.3232415863109,
+        // identical to `DoubleMLAPO` with the DEFAULT learner
+        // (|difference| = 0 exactly), while `DoubleMLAPO` with the SAME
+        // LogisticRegression gives 1.6791519869991263. A 203-point error
+        // from an argument that was accepted and ignored.
+        //
+        // Nothing in the suite caught it because no call site passes
+        // `ml_m` to `DoubleMLAPOS` (19 sites, 0 of them) -- hence the
+        // dedicated gate in `expand_v133_test.mbt`.
         let child = DoubleMLAPO::new(
           self.data,
           treatment_level=self.treatment_levels[j],
@@ -1495,6 +1514,8 @@ pub fn DoubleMLAPOS::fit(
           propensity_clip=self.propensity_clip,
           ps_processor_config=Some(self.ps_processor_config),
           normalize_ipw=self.normalize_ipw,
+          ml_g=self.ml_g,
+          ml_m=self.ml_m,
         )
         let child_memo = if self.memoize_enabled {
           child.enable_memoize()
