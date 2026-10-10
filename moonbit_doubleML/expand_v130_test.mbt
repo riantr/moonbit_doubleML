@@ -211,10 +211,13 @@ test "v130_cs_binary_sensitivity_never_reads_the_treatment_column" {
 test "v130_cs_binary_sensitivity_matches_the_upstream_cell_mixture" {
   let base = v130_fit(v130_cs_data(120, 2, 5))
   let r = base.sensitivity_analysis()
+  // sigma2 is what this gate is about and v0.131.0 did not touch it.
+  // `nu2`, `rv` and `max_bias` were REPINNED by v0.131.0 when the `nu2`
+  // convention was corrected; see `v131_...` below and the changelog.
   assert_true(r.sigma2 == 0.0019663436427471525)
-  assert_true(r.nu2 == 3.30275229357797)
-  assert_true(r.rv == 12.296893946098622)
-  assert_true(r.max_bias == 0.0805875050863701)
+  assert_true(r.nu2 == 26.718919562055802)
+  assert_true(r.rv == 4.323385709026423)
+  assert_true(r.max_bias == 0.22921295256141525)
   // and the 2-way form it replaced is NOT the same number -- if these ever
   // agree, the mixture has stopped discriminating.
   let g00 = base.predictions_g_d0_t0()
@@ -284,16 +287,124 @@ test "v130_cs_binary_sensitivity_cluster_shares_the_residual_vector" {
     singletons[i] = i
   }
   let cl = base.sensitivity_analysis_cluster(singletons)
+  // `sigma2` is the real invariant: the cluster helper takes cluster sums of
+  // the SQUARED residuals, which for singleton clusters collapses to
+  // `mean(residuals^2)` -- the IID definition. Both entry points share one
+  // residual builder, so this equality is the thing that proves it.
   assert_true(cl.sigma2 == iid.sigma2)
-  assert_true(cl.nu2 == iid.nu2)
-  assert_true(cl.rv == iid.rv)
-  assert_true(cl.max_bias == iid.max_bias)
-  // one cluster is a different computation, and it is pinned so a regression
-  // in the cluster path cannot hide behind the IID gate
+  // `nu2` is NOT equal to the IID value, and until v0.131.0 this gate asserted
+  // that it was. It held only because both sides computed the same quantity.
+  // The cluster helper's own convention is "cluster sums of the per-observation
+  // scalar, squared", so with singleton clusters it is `mean(elem^2)` where the
+  // IID path is `mean(elem)`. For the residuals the two coincide (the
+  // per-observation scalar is `residuals[i]` and the IID path squares it too);
+  // for `nu2` the per-observation scalar is already the nu2 SCORE ELEMENT, so
+  // they legitimately differ. Upstream has no cluster sensitivity path at all,
+  // so this is the port's own definition, now pinned rather than papered over.
+  assert_true(cl.nu2 == 10491.077140831747)
+  assert_true(cl.nu2 != iid.nu2)
+  assert_true(cl.rv == 0.21818424578653337)
+  assert_true(cl.max_bias == 4.5419228132415395)
+  // one cluster is a different computation again, and it is pinned so a
+  // regression in the cluster path cannot hide behind the IID gate
   let one_cluster = Array::make(n, 0)
   let c1 = base.sensitivity_analysis_cluster(one_cluster)
   assert_true(c1.sigma2 == 0.03206982758951298)
+  assert_true(c1.nu2 == 370086103.4729745)
   assert_true(c1.sigma2 != iid.sigma2)
+}
+
+///|
+/// GATE 6 (v0.131.0) -- the `nu2` CONVENTION, pinned from the outside.
+///
+/// v0.130.0 fixed the residual. It did not fix `nu2`, which was still
+/// `mean(psi_a^2)` -- upstream's *fallback* formula (`double_ml.py:1634-1641`
+/// uses it only when the primary `nu2 <= 0`), and applied to the wrong object
+/// besides: upstream's primary is
+///
+///     nu2 = mean( 2 * m_alpha - rr^2 )      (did_cs_binary.py:932)
+///
+/// with `rr` the RIESZ REPRESENTER, while this port's `psi_a` is the score's
+/// base element. Upstream keeps those apart on purpose: `_score_elements`
+/// returns `psi_a`/`psi_b`, `_sensitivity_element_est` returns `riesz_rep`.
+///
+/// This gate recomputes `m_alpha` and `rr` from the PUBLIC accessors using
+/// upstream's `in_sample_normalization = false` branch -- which is the branch
+/// this estimator's default selects (`did_cs_binary.mbt:712`) -- and asserts
+/// the reported `nu2` is exactly their mean.
+///
+/// MEASURED, staggered fixture (720 subset rows):
+///     nu2       3.30275229357797    -> 26.718919562055802     (8.1x)
+///     max_bias  0.0805875050863701  -> 0.22921295256141525
+///     rv        12.296893946098622  -> 4.323385709026423
+///
+/// and against the vendored upstream 0.11.4 fitted on the same fixture with
+/// the SAME flag, nu2 = 23.179137007778895 -- 15% away, versus 7x away before.
+test "v131_cs_binary_nu2_is_upstreams_score_element_not_mean_psi_a_squared" {
+  let base = v130_fit(v130_cs_data(120, 2, 5))
+  let r = base.sensitivity_analysis()
+  let d = base.subset_g
+  let t = base.subset_t
+  let m = base.predictions_m()
+  let n = base.n_obs()
+  let n_d = n.to_double()
+  assert_true(d.length() == n)
+  assert_true(t.length() == n)
+  assert_true(m.length() == n)
+  // Pass 1: the means upstream divides by.
+  let mut sum_d = 0.0
+  let mut sum_t = 0.0
+  for i = 0; i < n; i = i + 1 {
+    sum_d = sum_d + d[i]
+    sum_t = sum_t + t[i]
+  }
+  let p_hat = sum_d / n_d
+  let lambda_hat = sum_t / n_d
+  assert_true(p_hat == 0.30277777777777776)
+  assert_true(lambda_hat == 0.5)
+  // Pass 2: the in_sample_normalization = false branch
+  // (did_cs_binary.py:896-902).
+  let m_alpha_1 = 1.0 / lambda_hat + 1.0 / (1.0 - lambda_hat)
+  let mut sum_elem = 0.0
+  let mut sum_elem_sq = 0.0
+  let mut sum_psi_a_sq = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let di = d[i]
+    let ti = t[i]
+    let one_minus_m = 1.0 - m[i]
+    let pw = if one_minus_m > 1.0e-12 { m[i] / one_minus_m } else { 0.0 }
+    let m_alpha = di / (p_hat * p_hat) * (m_alpha_1 * (1.0 + pw))
+    let rr_1 = ti / (p_hat * lambda_hat) +
+      (1.0 - ti) / (p_hat * (1.0 - lambda_hat))
+    let rr = rr_1 * (di + (1.0 - di) * pw)
+    let elem = 2.0 * m_alpha - rr * rr
+    sum_elem = sum_elem + elem
+    sum_elem_sq = sum_elem_sq + elem * elem
+    sum_psi_a_sq = sum_psi_a_sq + base.psi_a[i] * base.psi_a[i]
+  }
+  let nu2_expected = sum_elem / n_d
+  assert_true(r.nu2 == nu2_expected)
+  assert_true(r.nu2 == 26.718919562055802)
+  // ... and it is emphatically NOT either of the two things it replaced:
+  // not `mean(psi_a^2)` (upstream's fallback, applied to the wrong object),
+  // not `mean(elem^2)` (the cluster path's convention).
+  assert_true(r.nu2 != sum_psi_a_sq / n_d)
+  assert_true(r.nu2 != sum_elem_sq / n_d)
+  assert_true(sum_psi_a_sq / n_d == 3.30275229357797)
+  // the reported robustness value follows from sigma2 and nu2 alone:
+  // rv = |theta| / sqrt(sigma2 * nu2).
+  //
+  // NOT bit-equal, and the reason is worth writing down: the helper
+  // broadcasts the scalar to a length-n array and then averages it
+  // (`mb_sum / n`), and summing n copies of a scalar back up is not exactly
+  // that scalar in IEEE754. MEASURED relative difference here: 6e-15. The
+  // first version of this gate asserted bit equality and failed -- correctly.
+  let max_bias_from_parts = (r.sigma2 * r.nu2).sqrt()
+  let rel_bias = (r.max_bias - max_bias_from_parts).abs() / max_bias_from_parts
+  assert_true(rel_bias < 1.0e-12)
+  let rv_from_parts = base.coef().abs() / max_bias_from_parts
+  let rel_rv = (rv_from_parts - r.rv).abs() / r.rv
+  assert_true(rel_rv < 1.0e-12)
 }
 
 ///|

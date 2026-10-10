@@ -1177,6 +1177,130 @@ pub fn DoubleMLDIDCSBinary::bootstrap(
 }
 
 ///|
+/// v0.131.0: the per-observation `nu2` score element and the Riesz
+/// representer, transcribed from upstream `_sensitivity_element_est`
+/// (`did_cs_binary.py:872-934`, observational score).
+///
+/// Returns `(nu2_score_element, riesz_rep)` where
+/// `nu2_score_element[i] = 2 * m_alpha[i] - rr[i]^2`.
+///
+///     propensity_weight_d0 = m_hat / (1 - m_hat)
+///     weight_d0t1 = d0t1 * propensity_weight_d0     (and d0t0 likewise)
+///     p_hat = mean(d);  lambda_hat = mean(t)
+///
+///     in_sample_normalization = true:
+///         m_alpha = (d / p_hat) * (1/mean(d1t1) + 1/mean(d1t0)
+///                                 + pw/mean_weight_d0t1 + pw/mean_weight_d0t0)
+///         rr = d1t1/mean(d1t1) - d1t0/mean(d1t0)
+///              - weight_d0t1/mean_weight_d0t1 + weight_d0t0/mean_weight_d0t0
+///     in_sample_normalization = false:
+///         m_alpha = (d / p_hat^2) * ((1/lambda + 1/(1-lambda)) * (1 + pw))
+///         rr = (t/(p*lambda) + (1-t)/(p*(1-lambda))) * (d + (1-d)*pw)
+///
+/// WHY THIS EXISTS. Upstream's `nu2` is `mean(2*m_alpha - rr^2)`, where `rr`
+/// is the RIESZ REPRESENTER. The shared `irm_style_sensitivity` helper instead
+/// used `mean(psi_a^2)`, and `psi_a` is the score's base element -- a DIFFERENT
+/// object (upstream keeps them apart: `_score_elements` returns `psi_a`/`psi_b`,
+/// `_sensitivity_element_est` returns `riesz_rep`). `mean(rr^2)` is upstream's
+/// *fallback*, used only when `nu2 <= 0` (`double_ml.py:1634-1641`), so the
+/// port was applying the fallback formula permanently and on the wrong
+/// variable. MEASURED on the staggered fixture: the convention gap is 8.1x
+/// (26.869 upstream vs 3.303), and because `rv = |theta| / sqrt(sigma2*nu2)`
+/// it propagates straight into the reported robustness value.
+fn DoubleMLDIDCSBinary::cs_bin_sensitivity_nu2_elements(
+  self : DoubleMLDIDCSBinary,
+) -> (Array[Double], Array[Double]) raise {
+  require(self.fitted)
+  let d = self.subset_g
+  let t = self.subset_t
+  let m = self.predictions_m()
+  let n = d.length()
+  require(t.length() == n)
+  require(m.length() == n)
+  let n_d = n.to_double()
+  // Cell indicators and their means.
+  let mut sum_d = 0.0
+  let mut sum_t = 0.0
+  let mut sum_d1t1 = 0.0
+  let mut sum_d1t0 = 0.0
+  let mut sum_w_d0t1 = 0.0
+  let mut sum_w_d0t0 = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let di = d[i]
+    let ti = t[i]
+    let m_i = m[i]
+    let one_minus_m = 1.0 - m_i
+    // Upstream divides by `1 - m_hat` unguarded; the `where` convention used
+    // elsewhere in this file maps the degenerate ratio to 0.
+    let pw = if one_minus_m > 1.0e-12 { m_i / one_minus_m } else { 0.0 }
+    sum_d = sum_d + di
+    sum_t = sum_t + ti
+    sum_d1t1 = sum_d1t1 + di * ti
+    sum_d1t0 = sum_d1t0 + di * (1.0 - ti)
+    sum_w_d0t1 = sum_w_d0t1 + (1.0 - di) * ti * pw
+    sum_w_d0t0 = sum_w_d0t0 + (1.0 - di) * (1.0 - ti) * pw
+  }
+  let p_hat = sum_d / n_d
+  let lambda_hat = sum_t / n_d
+  let mean_d1t1 = sum_d1t1 / n_d
+  let mean_d1t0 = sum_d1t0 / n_d
+  let mean_w_d0t1 = sum_w_d0t1 / n_d
+  let mean_w_d0t0 = sum_w_d0t0 / n_d
+  let m_alpha : Array[Double] = Array::make(n, 0.0)
+  let rr : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let di = d[i]
+    let ti = t[i]
+    let m_i = m[i]
+    let one_minus_m = 1.0 - m_i
+    let pw = if one_minus_m > 1.0e-12 { m_i / one_minus_m } else { 0.0 }
+    if self.in_sample_normalization {
+      let d_over_p = if p_hat > 0.0 { di / p_hat } else { 0.0 }
+      let inv1 = if mean_d1t1 > 0.0 { 1.0 / mean_d1t1 } else { 0.0 }
+      let inv2 = if mean_d1t0 > 0.0 { 1.0 / mean_d1t0 } else { 0.0 }
+      let inv3 = if mean_w_d0t1 > 0.0 { pw / mean_w_d0t1 } else { 0.0 }
+      let inv4 = if mean_w_d0t0 > 0.0 { pw / mean_w_d0t0 } else { 0.0 }
+      m_alpha[i] = d_over_p * (inv1 + inv2 + inv3 + inv4)
+      let a = if mean_d1t1 > 0.0 { di * ti / mean_d1t1 } else { 0.0 }
+      let b = if mean_d1t0 > 0.0 { di * (1.0 - ti) / mean_d1t0 } else { 0.0 }
+      let c = if mean_w_d0t1 > 0.0 {
+        (1.0 - di) * ti * pw / mean_w_d0t1
+      } else {
+        0.0
+      }
+      let e = if mean_w_d0t0 > 0.0 {
+        (1.0 - di) * (1.0 - ti) * pw / mean_w_d0t0
+      } else {
+        0.0
+      }
+      rr[i] = a - b - c + e
+    } else {
+      let m_alpha_1 = if lambda_hat > 1.0e-12 && lambda_hat < 1.0 - 1.0e-12 {
+        1.0 / lambda_hat + 1.0 / (1.0 - lambda_hat)
+      } else {
+        0.0
+      }
+      let d_over_p2 = if p_hat > 0.0 { di / (p_hat * p_hat) } else { 0.0 }
+      m_alpha[i] = d_over_p2 * (m_alpha_1 * (1.0 + pw))
+      let rr_1 = if p_hat > 1.0e-12 &&
+        lambda_hat > 1.0e-12 &&
+        lambda_hat < 1.0 - 1.0e-12 {
+        ti / (p_hat * lambda_hat) + (1.0 - ti) / (p_hat * (1.0 - lambda_hat))
+      } else {
+        0.0
+      }
+      let rr_2 = di + (1.0 - di) * pw
+      rr[i] = rr_1 * rr_2
+    }
+  }
+  let nu2_score_element : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    nu2_score_element[i] = 2.0 * m_alpha[i] - rr[i] * rr[i]
+  }
+  (nu2_score_element, rr)
+}
+
+///|
 /// v0.130.0: the residual vector the C&H (2020) sensitivity elements are built
 /// from, transcribed from upstream `did_cs_binary.py:845-869`:
 ///
@@ -1265,7 +1389,15 @@ pub fn DoubleMLDIDCSBinary::sensitivity_analysis(
   cf_d? : Double = 0.05,
 ) -> SensitivityResult raise {
   let residuals = self.cs_bin_sensitivity_residuals()
-  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+  let (nu2_elem, rr) = self.cs_bin_sensitivity_nu2_elements()
+  irm_style_sensitivity_from_elements(
+    self.coef,
+    residuals,
+    nu2_elem,
+    rr,
+    cf_y,
+    cf_d,
+  )
 }
 
 ///|
@@ -1284,11 +1416,13 @@ pub fn DoubleMLDIDCSBinary::sensitivity_analysis_cluster(
   cf_d? : Double = 0.05,
 ) -> SensitivityResult raise {
   let residuals = self.cs_bin_sensitivity_residuals()
+  let (nu2_elem, rr) = self.cs_bin_sensitivity_nu2_elements()
   require(cluster_ids.length() == residuals.length())
-  irm_style_sensitivity_cluster(
+  irm_style_sensitivity_cluster_from_elements(
     self.coef,
     residuals,
-    self.psi_a,
+    nu2_elem,
+    rr,
     cluster_ids,
     cf_y,
     cf_d,

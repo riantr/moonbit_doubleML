@@ -6,27 +6,28 @@
 /// (`residuals[i] = y[i] - l_hat[i]`, where `l_hat` is the
 /// outcome nuisance prediction) and the per-observation
 /// influence-function denominator `psi_a` (already
-/// persisted by v0.64.0). Returns a `SensitivityResult`
-/// with `rv`, `sigma2`, `nu2`, `cf_y`, `cf_d`, `max_bias`.
+/// persisted by v0.64.0).
 ///
-/// The underlying formula follows Cinelli & Hazlett (2020):
+/// v0.131.0: this is now exactly
+/// `irm_style_sensitivity_from_elements(..., psi_a^2, psi_a, ...)` --
+/// i.e. `nu2_score_element = psi_a^2` and `riesz_rep = psi_a`. The C&H
+/// core lives in that function, which additionally implements upstream's
+/// `nu2 <= 0` fallback (`double_ml.py:1634-1641`) from the Riesz
+/// representer.
 ///
-///   sigma2 = mean(residuals^2)
-///   nu2    = mean(psi_a^2)
-///   psi_sigma2[i] = residuals[i]^2 - sigma2  (centered)
-///   psi_nu2[i]    = psi_a[i]^2 - nu2         (centered)
-///   (max_bias, _) = compute_sensitivity_bias(sigma2, nu2,
-///                                          psi_sigma2,
-///                                          psi_nu2)
-///   max_bias_scalar = mean(max_bias)
-///   rv = |theta| / max_bias_scalar  (degenerates to 1e300
-///                                    when either is 0).
+/// IMPORTANT SCOPE NOTE: `nu2 = mean(psi_a^2)` is upstream's *fallback*
+/// formula, not its primary one. Upstream's primary is
+/// `mean(2 * m_alpha - rr^2)` with `rr` the RIESZ REPRESENTER, a different
+/// object from this port's `psi_a` (`irm.py:422`, `did_cs_binary.py:932`).
+/// So for the seven estimators whose upstream sets
+/// `_sensitivity_implemented = True` (did, did_binary, did_cs,
+/// did_cs_binary, apo, irm, plr) this convention is a known divergence.
+/// `DoubleMLDIDCSBinary` was migrated in v0.131.0; the rest still need
+/// their own per-estimator `m_alpha` / `rr` plumbing, each with its own
+/// measurement pass.
 ///
 /// `cf_y` / `cf_d` are user-supplied benchmarking upper
-/// bounds (defaults 0.05). They are passed through
-/// unmodified — the actual robustness analysis is unchanged
-/// for either choice; they are documented in the result for
-/// upstream parity.
+/// bounds (defaults 0.05), passed through unmodified.
 pub fn irm_style_sensitivity(
   theta : Double,
   residuals : Array[Double],
@@ -34,23 +35,84 @@ pub fn irm_style_sensitivity(
   cf_y : Double,
   cf_d : Double,
 ) -> SensitivityResult raise {
+  let n = psi_a.length()
+  require(n == residuals.length())
+  let squares : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    squares[i] = psi_a[i] * psi_a[i]
+  }
+  irm_style_sensitivity_from_elements(
+    theta, residuals, squares, psi_a, cf_y, cf_d,
+  )
+}
+
+///|
+/// v0.131.0: the Cinelli & Hazlett core, parameterised by the per-observation
+/// `nu2` SCORE ELEMENT rather than by `psi_a`.
+///
+/// WHY THIS EXISTS. `irm_style_sensitivity` below hard-codes
+/// `nu2 = mean(psi_a^2)`. That happens to coincide with upstream's formula for
+/// some estimators and emphatically not for others. Upstream's own primary
+/// definition (`irm.py:422`, `did_cs_binary.py:932`) is
+///
+///     nu2_score_element = 2 * m_alpha - rr^2
+///     nu2               = mean(nu2_score_element)
+///
+/// where `m_alpha` is the C&H sensitivity weight and `rr` the **Riesz
+/// representer** -- NOT the score's `psi_a`, which is a different object.
+/// `mean(rr^2)` is upstream's *fallback*, used only when `nu2 <= 0`
+/// (`double_ml.py:1634-1641`).
+///
+/// So an estimator whose upstream implements sensitivity must pass its own
+/// `nu2_score_element` and `riesz_rep` here. `irm_style_sensitivity` is now
+/// exactly this function with `nu2_score_element = psi_a^2`.
+///
+/// DEAD-CODE NOTE, measured while adding this: `psi_sigma2` and `psi_nu2` are
+/// computed here and then feed only `psi_max_bias`, which every caller
+/// discards (`let (max_bias_arr, _) = ...`). The returned `max_bias` is
+/// `sqrt(sigma2 * nu2)` and `rv` is `|theta| / sqrt(sigma2 * nu2)`, neither of
+/// which depends on them. So the ENTIRE reported sensitivity result is a
+/// function of `sigma2` and `nu2` alone. That is why getting `nu2` right is
+/// the whole job, and it is the same "computed and handed to a callee that
+/// never uses it" shape found in CVaR's sensitivity path in v0.126.0.
+pub fn irm_style_sensitivity_from_elements(
+  theta : Double,
+  residuals : Array[Double],
+  nu2_score_element : Array[Double],
+  riesz_rep : Array[Double],
+  cf_y : Double,
+  cf_d : Double,
+) -> SensitivityResult raise {
   let n = residuals.length()
-  require(n == psi_a.length())
+  require(n == nu2_score_element.length())
+  require(n == riesz_rep.length())
   require(n > 0)
   let n_d = n.to_double()
   let mut ss_resid = 0.0
-  let mut ss_psi_a = 0.0
+  let mut ss_nu2 = 0.0
   for i = 0; i < n; i = i + 1 {
     ss_resid = ss_resid + residuals[i] * residuals[i]
-    ss_psi_a = ss_psi_a + psi_a[i] * psi_a[i]
+    ss_nu2 = ss_nu2 + nu2_score_element[i]
   }
   let sigma2 = ss_resid / n_d
-  let nu2 = ss_psi_a / n_d
+  let mut nu2 = ss_nu2 / n_d
   let psi_sigma2 : Array[Double] = Array::make(n, 0.0)
   let psi_nu2 : Array[Double] = Array::make(n, 0.0)
-  for i = 0; i < n; i = i + 1 {
-    psi_sigma2[i] = residuals[i] * residuals[i] - sigma2
-    psi_nu2[i] = psi_a[i] * psi_a[i] - nu2
+  if nu2 > 0.0 {
+    for i = 0; i < n; i = i + 1 {
+      psi_sigma2[i] = residuals[i] * residuals[i] - sigma2
+      psi_nu2[i] = nu2_score_element[i] - nu2
+    }
+  } else {
+    // Upstream's documented fallback (`double_ml.py:1634-1641`): warn, then
+    // re-estimate from the (non-orthogonal) Riesz representer. Note upstream
+    // sets `psi_nu2 = rr^2` UNCENTRED in this branch; transcribe that rather
+    // than "fixing" it.
+    for i = 0; i < n; i = i + 1 {
+      psi_sigma2[i] = residuals[i] * residuals[i] - sigma2
+      psi_nu2[i] = riesz_rep[i] * riesz_rep[i]
+    }
+    nu2 = mean(riesz_rep.map(fn(x) { x * x }))
   }
   let (max_bias_arr, _) = compute_sensitivity_bias(
     sigma2, nu2, psi_sigma2, psi_nu2,
@@ -112,6 +174,103 @@ pub fn irm_style_sensitivity(
 /// Output shape matches `irm_style_sensitivity` (same
 /// `SensitivityResult` struct) so callers can swap IID for
 /// cluster-aware without changing the return contract.
+
+///|
+/// v0.131.0: cluster-robust counterpart of `irm_style_sensitivity_from_elements`.
+///
+/// Same migration as the IID variant: the cluster sums are taken over the
+/// per-observation `nu2` score element `2 * m_alpha - rr^2` rather than over
+/// `psi_a`. Everything else -- the cluster baselines, the per-observation
+/// centring, the bias expression -- is unchanged and already faithful
+/// (`max_bias = sqrt(sigma2 * nu2)` matches upstream
+/// `_compute_sensitivity_bias`, `utils/_sensitivity.py:5`).
+///
+/// The `nu2 <= 0` fallback mirrors the IID variant's, so the two entry points
+/// cannot disagree on a degenerate fit.
+pub fn irm_style_sensitivity_cluster_from_elements(
+  theta : Double,
+  residuals : Array[Double],
+  nu2_score_element : Array[Double],
+  riesz_rep : Array[Double],
+  cluster_ids : Array[Int],
+  cf_y : Double,
+  cf_d : Double,
+  kernel_weights? : Array[Double] = [],
+) -> SensitivityResult raise {
+  let n = residuals.length()
+  require(n == nu2_score_element.length())
+  require(n == riesz_rep.length())
+  require(n > 0)
+  let use_weights = kernel_weights.length() > 0
+  if use_weights {
+    require(kernel_weights.length() == n)
+  }
+  let mut max_cid = -1
+  for i = 0; i < n; i = i + 1 {
+    if cluster_ids[i] > max_cid {
+      max_cid = cluster_ids[i]
+    }
+  }
+  require(max_cid >= 0)
+  let n_clusters = max_cid + 1
+  let n_clusters_d = n_clusters.to_double()
+  let cluster_sum_resid : Array[Double] = Array::make(n_clusters, 0.0)
+  let cluster_sum_nu2 : Array[Double] = Array::make(n_clusters, 0.0)
+  let cluster_sum_rr : Array[Double] = Array::make(n_clusters, 0.0)
+  if use_weights {
+    for i = 0; i < n; i = i + 1 {
+      let cid = cluster_ids[i]
+      let w = kernel_weights[i]
+      cluster_sum_resid[cid] = cluster_sum_resid[cid] + w * residuals[i]
+      cluster_sum_nu2[cid] = cluster_sum_nu2[cid] + w * nu2_score_element[i]
+      cluster_sum_rr[cid] = cluster_sum_rr[cid] + w * riesz_rep[i]
+    }
+  } else {
+    for i = 0; i < n; i = i + 1 {
+      let cid = cluster_ids[i]
+      cluster_sum_resid[cid] = cluster_sum_resid[cid] + residuals[i]
+      cluster_sum_nu2[cid] = cluster_sum_nu2[cid] + nu2_score_element[i]
+      cluster_sum_rr[cid] = cluster_sum_rr[cid] + riesz_rep[i]
+    }
+  }
+  let mut ss_resid = 0.0
+  let mut ss_nu2 = 0.0
+  let mut ss_rr = 0.0
+  for c = 0; c < n_clusters; c = c + 1 {
+    ss_resid = ss_resid + cluster_sum_resid[c] * cluster_sum_resid[c]
+    ss_nu2 = ss_nu2 + cluster_sum_nu2[c] * cluster_sum_nu2[c]
+    ss_rr = ss_rr + cluster_sum_rr[c] * cluster_sum_rr[c]
+  }
+  let sigma2 = ss_resid / n_clusters_d
+  let mut nu2 = ss_nu2 / n_clusters_d
+  let nu2_fallback = ss_rr / n_clusters_d
+  let psi_sigma2 : Array[Double] = Array::make(n, 0.0)
+  let psi_nu2 : Array[Double] = Array::make(n, 0.0)
+  if nu2 > 0.0 {
+    for i = 0; i < n; i = i + 1 {
+      psi_sigma2[i] = residuals[i] * residuals[i] - sigma2
+      psi_nu2[i] = nu2_score_element[i] - nu2
+    }
+  } else {
+    for i = 0; i < n; i = i + 1 {
+      psi_sigma2[i] = residuals[i] * residuals[i] - sigma2
+      psi_nu2[i] = riesz_rep[i] * riesz_rep[i]
+    }
+    nu2 = nu2_fallback
+  }
+  let (max_bias_arr, _) = compute_sensitivity_bias(
+    sigma2, nu2, psi_sigma2, psi_nu2,
+  )
+  let mut mb_sum = 0.0
+  for v in max_bias_arr {
+    mb_sum = mb_sum + v
+  }
+  let max_bias = mb_sum / n.to_double()
+  let rv = robustness_value(theta, max_bias_arr)
+  { rv, sigma2, nu2, cf_y, cf_d, max_bias, }
+}
+
+///|
 pub fn irm_style_sensitivity_cluster(
   theta : Double,
   residuals : Array[Double],

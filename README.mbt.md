@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.130.0** |
+| `moon.mod` version | **0.131.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **196** `.mbt` files (**90** production + **106** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1004 / 1004 / 1004** |
-| Tests (wasm-gc) | **1010 / 1010** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1005 / 1005 / 1005** |
+| Tests (wasm-gc) | **1011 / 1011** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -169,10 +169,27 @@ too large (1.1473 vs 0.00197), and **no test in the package exercised the
 function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
 guard passed throughout, because both arrays were length 720 while describing
 different observations. Fixed, and both entry points now share one builder
-(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. The **shared**
-`nu2 = mean(psi_a^2)` convention still differs from upstream's
-`mean(2*m_alpha - rr^2)` (`did_cs_binary.py:932`) across every estimator in
-this port; that is a separate, deliberately deferred change.
+(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. `DoubleMLLPLR`, `DoubleMLRDD` and friends have **no upstream sensitivity
+implementation at all** — upstream sets `_sensitivity_implemented = True` for
+only seven classes (`did`, `did_binary`, `did_cs`, `did_cs_binary`, `apo`,
+`irm`, `plr`), LPQ's `_sensitivity_element_est` is a bare `pass`, and
+`ssm`/`lplr`/`plpr` explicitly disable it. So the port's extra sensitivity
+entry points are **extensions, not divergences**. Eighth, fixed in
+**v0.131.0**: for the seven that *are* upstream-faithful, the shared `nu2` was
+`mean(psi_a^2)` — which is upstream's *fallback* formula, used only when the
+primary comes out non-positive (`double_ml.py:1634-1641`) — and it was applied
+to `psi_a`, the score's base element, rather than to `rr`, the **Riesz
+representer**, which upstream keeps deliberately separate. The primary is
+`nu2 = mean(2*m_alpha - rr^2)` (`did_cs_binary.py:932`). Measured: `nu2`
+3.3028 → 26.7189 (8.1×), `rv` 12.2969 → 4.3234. `psi_sigma2`/`psi_nu2` turn
+out to be **dead** on this path — they feed only `psi_max_bias`, which every
+caller discards — so the whole reported result is a function of `sigma2` and
+`nu2` alone. `DoubleMLDIDCSBinary` was migrated to
+`irm_style_sensitivity_from_elements`; `did`, `did_binary`, `did_cs`, `apo`,
+`irm` and `plr` still use the old convention and each needs its own
+`m_alpha`/`rr` plumbing. Also still open: upstream defaults
+`in_sample_normalization` to `True` (`did_cs_binary.py:118`) and this port to
+`false` (`did_cs_binary.mbt:712`), which moves `coef` and `se`.
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in
 calibration are kept apart.
