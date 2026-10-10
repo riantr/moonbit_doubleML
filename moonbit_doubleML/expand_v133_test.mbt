@@ -62,8 +62,17 @@ fn v1330_data(n : Int, p : Int, seed : Int) -> DoubleMLData {
 ///
 /// The two halves are both load-bearing:
 ///   `apos == apo_logit`  the argument is forwarded (this is the fix)
-///   `apos != apo_default` the learner actually changes the estimate (so the
+///   `apos != apo_ols`    the learner actually changes the estimate (so the
 ///                         first assertion is not a tautology)
+///
+/// v0.134.0: the contrast arm was `DoubleMLAPO` with its DEFAULT `ml_m`, and
+/// this gate began failing the moment that default became LogisticRegression
+/// -- the "default" arm turned into the very learner under test, so
+/// `apos != default` stopped discriminating. The contrast is now an EXPLICIT
+/// `linear_regression()`: the gate now pins "was the argument forwarded?" and
+/// is independent of whatever the default is in any later release. A gate
+/// whose subject silently changes when an unrelated default moves is testing
+/// two things at once.
 ///
 /// Mutation: deleting `ml_m=self.ml_m` from the child constructor at
 /// apo.mbt:1489 fails BOTH -- the first by 203.0, the second by 0.0.
@@ -71,6 +80,7 @@ fn v1330_data(n : Int, p : Int, seed : Int) -> DoubleMLData {
 test "v1330_apos_fit_forwards_ml_m_to_the_child_apo" {
   let data = v1330_data(400, 2, 3141)
   let logit = LearnerDispatch::logistic_regression(LogisticRegression::new())
+  let ols = LearnerDispatch::linear_regression()
   let apos = DoubleMLAPOS::new(data, [1.0], n_folds=2, seed=3141, ml_m=logit).fit()
   let apo_logit = DoubleMLAPO::new(
     data,
@@ -79,15 +89,16 @@ test "v1330_apos_fit_forwards_ml_m_to_the_child_apo" {
     seed=3141,
     ml_m=logit,
   ).fit()
-  let apo_default = DoubleMLAPO::new(
+  let apo_ols = DoubleMLAPO::new(
     data,
     treatment_level=1.0,
     n_folds=2,
     seed=3141,
+    ml_m=ols,
   ).fit()
   let a = apos.coefs()[0]
   assert_true((a - apo_logit.coef()).abs() < 1.0e-12)
-  assert_true((a - apo_default.coef()).abs() > 1.0)
+  assert_true((a - apo_ols.coef()).abs() > 1.0)
 }
 
 ///|

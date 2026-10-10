@@ -42,12 +42,22 @@ pub struct DoubleMLAPO {
   // Default false, so merely adding the field changes nothing until a
   // caller opts in.
   normalize_ipw : Bool
-  // v0.60.0+: injected nuisance learners. Defaults to
-  // `LearnerDispatch::linear_regression()` so v0.59.0 callers
-  // see byte-identical results. v0.61.0+ will plumb these
-  // through `cross_fit_predict` for `g_hat` and `m_hat`; for
-  // v0.60.0 they're stored on the struct and returned via the
-  // accessors but not yet consumed internally.
+  // v0.60.0+: injected nuisance learners.
+  //
+  // The old "not yet consumed internally" note was STALE and is removed:
+  // since v0.61.0 both reach the cross-fit through `cross_fit_apo`
+  // (apo.mbt:290-295) -- `ml_g` fits the conditional outcome on the TREATED
+  // subset, `ml_m` fits the propensity on the FULL training fold.
+  //
+  // v0.134.0: the two defaults now DIVERGE, deliberately.
+  //   `ml_g` models `E[Y | X]`        -> stays OLS
+  //   `ml_m` models `P(D = lvl | X)`  -> LogisticRegression
+  // APO's `ml_m` is fitted against `treated` -- the
+  // `indicator_level(d, treatment_level)` 0/1 VECTOR (apo.mbt:343, :1087),
+  // NOT raw `d` -- so the target is binary by construction for ANY
+  // treatment level, and a classifier is structurally the right learner.
+  // Upstream agrees: `regressor=False, classifier=True` plus
+  // `predict_proba`.
   ml_g : LearnerDispatch
   ml_m : LearnerDispatch
   g_hat : Array[Double]
@@ -97,7 +107,9 @@ pub fn DoubleMLAPO::new(
   normalize_ipw? : Bool = false,
   ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+    LogisticRegression::new(),
+  ),
 ) -> DoubleMLAPO {
   try {
     require(n_folds >= 2)

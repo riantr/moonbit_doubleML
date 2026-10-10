@@ -273,6 +273,8 @@ test "v109_apos_propagates_the_splitting_to_every_child" {
   let n = 300
   let (data, _s) = v109_plr_data(n, 2, 51)
   let levels = [1.0]
+  // v0.134.0: pinned on BOTH sides. See the note at the (a) comparison below.
+  let fixed_ml_m = @moonbit_doubleML.LearnerDispatch::linear_regression()
   let part_a = [@moonbit_doubleML.kfold(n, 4, 51)]
   let part_b = [@moonbit_doubleML.kfold(n, 4, 52)]
   let aos_a = @moonbit_doubleML.DoubleMLAPOS::new(
@@ -281,6 +283,7 @@ test "v109_apos_propagates_the_splitting_to_every_child" {
       n_folds=9,
       n_rep=3,
       seed=51,
+      ml_m=fixed_ml_m,
     )
     .set_sample_splitting(part_a)
     .fit()
@@ -290,6 +293,7 @@ test "v109_apos_propagates_the_splitting_to_every_child" {
       n_folds=9,
       n_rep=3,
       seed=51,
+      ml_m=fixed_ml_m,
     )
     .set_sample_splitting(part_b)
     .fit()
@@ -297,7 +301,16 @@ test "v109_apos_propagates_the_splitting_to_every_child" {
   // must move the estimate. With the propagation dropped, both fits
   // would draw the same 9-fold/3-rep partition and coincide.
   assert_true(aos_a.coefs()[0] != aos_b.coefs()[0])
-  // (a) and each level matches a standalone fit on the same splitting
+  // (a) and each level matches a standalone fit on the same splitting.
+  //
+  // v0.134.0: `ml_m` is now PINNED EXPLICITLY on both sides. This
+  // comparison only held because APOS and APO shared a default
+  // `ml_m`; once `DoubleMLAPO`'s default became LogisticRegression
+  // while `DoubleMLAPOS`'s stayed OLS, the two sides silently became
+  // different estimators. The subject here is SAMPLE-SPLITTING
+  // propagation, not the default learner, so the learner is held
+  // constant and the test asserts only what it claims. Explicit OLS
+  // keeps this test's numerics byte-identical to before the flip.
   for j = 0; j < levels.length(); j = j + 1 {
     let single = @moonbit_doubleML.DoubleMLAPO::new(
         data,
@@ -305,6 +318,7 @@ test "v109_apos_propagates_the_splitting_to_every_child" {
         n_folds=9,
         n_rep=3,
         seed=51,
+        ml_m=fixed_ml_m,
       )
       .set_sample_splitting(part_a)
       .fit()

@@ -9,6 +9,119 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.134.0] -- `DoubleMLAPO`'s default `ml_m` is a classifier
+
+The second estimator migrated off the OLS propensity default (v0.132.0 did
+`DoubleMLIRM`). Tests 1016 -> 1019 (native / wasm / js), 1022 -> 1025 (wasm-gc).
+
+### The change
+
+`DoubleMLAPO::new`'s `ml_m` default moves from
+`LearnerDispatch::linear_regression()` to
+`LearnerDispatch::logistic_regression(LogisticRegression::new())`.
+
+`ml_g` **deliberately stays OLS** -- it models `E[Y | X]` on the treated
+subset, not `P(y = 1 | x)`. The two defaults now diverge on purpose, and
+GATE 1 pins both halves.
+
+`DoubleMLAPOS` is **not** touched by this release; its own default is still
+OLS and is queued separately.
+
+### Why APO is the structurally easier half
+
+Worth recording, because it is what makes this estimator safe to migrate in
+isolation. APO's `ml_m` is fitted against `treated` -- the
+`indicator_level(d, treatment_level)` **0/1 vector** (`apo.mbt:343`, `:1087`,
+`:293`) -- **not** raw `d`. The target is therefore binary for *any*
+treatment level, so a classifier is correct by construction rather than by
+convention.
+
+Contrast `DoubleMLDID`, whose treatment can be continuous and whose `ml_g`
+aborts against the `logistic.mbt:134` binary precondition if a classifier is
+substituted. APO has no such hazard.
+
+### Measured, both arms in one run
+
+Three DGP seeds, saturated-but-legitimate propensity, true `E[Y | D=1] = 1.2`
+(`_verify/probe_v1340.mbt`):
+
+| seed | default coef | \|bias\| | default SE | OLS coef | \|bias\| | OLS SE |
+|---|---|---|---|---|---|---|
+| 3141 | 1.697814 | 0.4978 | 0.035119 | −112.7738 | 113.97 | 86.278 |
+| 2718 | 1.730684 | 0.5307 | 0.087709 | 6.4464 | **5.246** | 320.414 |
+| 1618 | 1.459053 | 0.2591 | 0.269581 | −246.9455 | 248.15 | 248.460 |
+
+### The gates are shaped by what the measurement actually shows
+
+**APO's coefficient separation is ~10x, not IRM's 366x.** The smallest OLS
+`|bias|` here is **5.246** (seed 2718) against a worst default `|bias|` of
+**0.531**. A gate of the v0.132.0 IRM shape -- "default bias < X, OLS bias >
+100X" -- would either fail here or need a threshold so loose it stops
+discriminating.
+
+So the **standard error carries the load**, and it is also the mechanism: an
+OLS propensity is unbounded, `1 / m_hat` explodes, and the variance goes with
+it. The measured SE ratio (default/OLS) is at worst
+`0.2696 / 86.28 = 0.0031` -- a 300x separation versus 10x on the
+coefficient. GATE 2 asserts the coefficient only as a calibration sanity
+bound and lets the SE separate.
+
+Thresholds, with margin: worst default `|bias|` 0.531 vs guard 1.0 (1.9x);
+worst default SE 0.270 vs guard 1.0 (3.7x); smallest OLS SE 86.28 vs guard
+20.0 (4.3x); SE-ratio guard 0.1 against a measured 0.0031 (320x).
+
+### Three gates, all mutation-verified
+
+`expand_v134_test.mbt`:
+
+1. **`v1340_apo_default_ml_m_is_a_classifier_and_ml_g_is_not`** -- structural.
+2. **`v1340_apo_default_is_calibrated_where_ols_propensity_is_not`** --
+   behavioural, three seeds.
+3. **`v1340_apo_classifier_default_holds_at_treatment_level_zero`** --
+   control. At level `0.0` the modelled propensity is `P(D = 0 | X)`, not
+   `P(D = 1 | X)`. This is the case that would expose an `ml_m` fitted on raw
+   `d`, or a level-1 assumption baked in anywhere. Measured at level 0.0
+   (true 0.5): default `0.5564` (bias 0.0564) vs OLS `225.297` (bias 224.80).
+
+Mutation: reverting the default to `linear_regression()` fails **all three**
+at `:79`, `:123`, `:157`.
+
+### Two pre-existing gates re-pinned, not re-tuned
+
+Both failed the moment APO's default moved, and both had the same root cause:
+they compared an APOS result against an APO result and relied on the two
+estimators *sharing* a default learner. The moment those defaults diverged,
+the comparison silently became a comparison of two different estimators.
+
+- **`expand_v133_test.mbt:90`** -- the v0.133.0 forwarding gate. Its contrast
+  arm was "APO with its default `ml_m`", which became the same learner as the
+  one under test. Now an explicit `linear_regression()`.
+- **`expand_v109_test.mbt:311`** -- `v109_apos_propagates_the_splitting_to_every_child`
+  asserted `APOS(level j) == APO(level j)` on the same splitting. Now pins
+  `ml_m` explicitly on **both** sides, which keeps its numerics
+  byte-identical to before the flip.
+
+Both are worth stating plainly: **a gate phrased against "the default"
+silently changes subject when the default moves.** Phrasing the contrast arm
+as an explicit learner makes a gate immune to that, and is what the new gates
+above do.
+
+### Stale comment corrected
+
+The `DoubleMLAPO` struct comment claimed its learners were "stored on the
+struct and returned via the accessors but **not yet consumed internally**".
+That has been false since v0.61.0, when `cross_fit_apo` began routing both
+through `LearnerDispatch`. Replaced with the current contract.
+
+### Still on the OLS default -- 13 structs
+
+`DoubleMLAPOS` plus the twelve listed in v0.132.0 that are not `DoubleMLIRM`.
+Until each is migrated, pass a classifier explicitly:
+
+```moonbit
+ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
+```
+
 ## [0.133.0] -- `DoubleMLAPOS::fit` forwards `ml_g` / `ml_m` to its children
 
 Bug fix. Tests 1014 -> 1016 (native / wasm / js), 1020 -> 1022 (wasm-gc).
