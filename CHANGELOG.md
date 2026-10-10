@@ -9,7 +9,95 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.2] -- the self-check caught v0.131.1's own "correction" being wrong
+
+Docs-only. **No code change, no behavioural change, no test change.**
+
+### What happened
+
+v0.131.1 corrected three stale README counts and shipped them. The first of
+those corrections -- sandwich-variance coverage `12 / 22` -> `19 / 22` -- was
+**wrong**, and `_verify/_selfcheck.py` found it.
+
+The check re-derives every number in the README status table from the tree
+rather than trusting the file. It reported 15/22, not 19/22, and named seven
+estimators without a scalar `sandwich_se` where the README named three.
+
+### Root cause: a prefix match
+
+v0.131.1 counted with
+
+```
+Select-String -Pattern "pub fn DoubleMLQTE::sandwich_se"
+```
+
+which is a **prefix** match, and the four multi-theta estimators define
+
+```
+DoubleMLQTE::sandwich_se_at(          quantile.mbt:2435
+DoubleMLAPOS::sandwich_se_at(         apo.mbt:1800
+DoubleMLDIDCS::sandwich_se_at(        did_cs.mbt:724
+DoubleMLDIDMulti::sandwich_se_at_idx( did_multi.mbt:455
+```
+
+so `sandwich_se` also matched `sandwich_se_at`. That inflated 15 to exactly
+those four estimators, i.e. 15 -> 19.
+
+The Python self-check uses `pub fn X::sandwich_se\s*\(` -- anchored on the
+opening parenthesis -- and gets 15.
+
+Note what this means for the history: the **original** `12 / 22` was stale, and
+the v0.131.1 replacement was wrong in a different way. Both were wrong; only
+the re-derived number is defensible.
+
+### The real answer is three tiers, not two
+
+```
+15 / 22   scalar  sandwich_se / cluster_sandwich_se / bias_corrected_coef
+ 4 / 22   per-cell sandwich_se_at / cluster_sandwich_se_at / ..._at_idx
+          (DoubleMLAPOS, DoubleMLDIDCS, DoubleMLDIDMulti, DoubleMLQTE)
+ 3 / 22   none at all (DoubleMLBLP, DoubleMLPolicyTree, DoubleMLRDD)
+```
+
+The README row now says all three, because collapsing the middle tier into the
+first is what produced the wrong count in the first place.
+
+### The transferable lesson
+
+A count is not a fact until the matching rule that produced it is written
+down. `Select-String -Pattern "...::sandwich_se"` and a reader's mental model of
+"does this estimator expose sandwich variance" are different questions, and
+only one of them was being asked. When a "correction" is itself derived by a
+script, **the script's rule is part of the claim** and has to be audited
+alongside the number.
+
+This is the same shape as v0.129.0, where a variable NAME was compared instead
+of its binding, and v0.131.0, where a numerical gap was hand-waved instead of
+chased. The common thread is that a plausible-looking measurement with an
+unwritten matching rule will eventually disagree with a stricter one, and the
+disagreement is the signal.
+
+### `python _verify/_selfcheck.py`
+
+Added this release. It runs 36 checks: repository state (tree clean, HEAD on a
+tag, tag == moon.mod == README version, both remotes at HEAD with the tag
+published), every number in the README status table re-derived from the tree,
+`typos` 1.19.0, `moon fmt --check`, `moon check --deny-warn` on all four
+targets, `moon test` on all four targets, and the release pipeline state (CI
+publish run per-step, master CI, GitHub Release). Exits non-zero on any
+failure; `--quick` skips the four-target test sweep.
+
+It found this release's defect on its first run, which is the argument for
+having it.
+
 ## [0.131.1] -- README bookkeeping: three stale counts, measured and corrected
+
+> **PARTIALLY RETRACTED in [0.131.2].** The sandwich-variance row below
+> (**19 / 22**) is **wrong** and is preserved only as an audit trail. The correct
+> figure is **15 / 22** scalar. The other two rows in the table (.mbt file count,
+> source-file count) were re-derived in v0.131.2 and stand. Do not reuse the
+> `19 / 22` figure or the grep that produced it. See
+> [0.131.2](#01312----the-self-check-caught-v01311s-own-correction-being-wrong).
 
 Docs-only. **No code change, no behavioural change, no test change.**
 
@@ -20,7 +108,7 @@ the tree before being corrected:
 | Claim | Was | Now | How it was checked |
 |-------|-----|-----|--------------------|
 | `.mbt` file count | 196 (90 prod + 106 test) | **197** (90 + **107**) | `Get-ChildItem moonbit_doubleML -Filter *.mbt`, split on the `_test.mbt` suffix. v0.130.0 added `expand_v130_test.mbt` and the count was never bumped. |
-| Sandwich-variance coverage | 12 / 22 | **19 / 22** | grep `pub fn DoubleML*::sandwich_se`, `::cluster_sandwich_se` and `::bias_corrected_coef` against all 22 estimator types. All three methods sit on the same 19; the 3 without are `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPolicyTree`. The "(v0.89.0)" annotation was the version that introduced the feature, and coverage has grown since. |
+| Sandwich-variance coverage | 12 / 22 | ~~**19 / 22**~~ **RETRACTED -- the true figure is 15 / 22** | **[0.131.2]**: the grep below matched `sandwich_se_at(` as well as `sandwich_se(`. |
 | Source files holding the 22 estimators | 17 | **19** | resolve each estimator's defining `pub struct DoubleML*` to its file and count distinct paths. `did_multi.mbt` and `quantile.mbt` joined after the "17" was written. |
 
 ### Why this is a patch release and not an amend
