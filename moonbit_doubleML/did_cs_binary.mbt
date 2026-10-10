@@ -26,10 +26,11 @@
 ///     `score = "observational"`. Experimental support
 ///     (which has no `ml_m`) can be added in v0.52.0+
 ///     if needed.
-///   - `ps_processor_config` is collapsed to a single
-///     `propensity_clip` field (default `1e-6`); the
-///     `isotonic` / `cv_calibration` paths are not
-///     ported (they require `CalibratedClassifierCV`).
+///   - `ps_processor_config` (v0.128.0) is now reachable and
+///     stored concrete, matching upstream
+///     `did_cs_binary.py:230`. The `isotonic` / `cv_calibration`
+///     paths work: they are implemented in `PSProcessor` (v0.14.0),
+///     it is the estimator that could not reach them before.
 ///   - `anticipation_periods` is stored but not applied
 ///     to the score (the upstream uses it to extend the
 ///     post-treatment window; that's a v0.52.0+ target).
@@ -306,9 +307,35 @@ fn cs_bin_crossfit_nuisance(
     g11_acc[i] = g11_acc[i] / n_rep_d
     m_acc[i] = m_acc[i] / n_rep_d
   }
-  // Clip + apply ps_processor. The `treatment` arg of
-  // `adjust_ps` is the G_indicator (the propensity
-  // condition is `E[D=1 | X]`).
+  // Clip + apply ps_processor.
+  //
+  // v0.128.0 CORRECTION OF A MISLEADING COMMENT. The old text here read:
+  // "The `treatment` arg of `adjust_ps` is the G_indicator (the propensity
+  // condition is `E[D=1 | X]`)." -- which contradicts itself, because the
+  // propensity condition is on D, and this port does NOT model it.
+  //
+  // THE FACTS, checked against upstream `did_cs_binary.py`:
+  //   - `cs_bin_panel_subset` pushes `g_indicator`, not `data.d`, into
+  //     `CSBinPanelRow` (and names the field `g_indicator`, so the
+  //     substitution is at least visible);
+  //   - `ml_m` is therefore REGRESSED on G, not on D;
+  //   - upstream regresses `ml_m` on `d` (`did_cs_binary.py:504-513`) and
+  //     adjusts with `d` (`:516`).
+  // So this port estimates `P(G=1|X)` where upstream estimates
+  // `P(D=1|X)`. The two agree internally -- it fits and calibrates on the
+  // same variable -- but they are DIFFERENT nuisance definitions, and the
+  // difference is visible on any staggered design where a unit is treated
+  // in some periods and not others.
+  //
+  // `DoubleMLDID` (panel DID) and `DoubleMLDIDCrossSection` both use the
+  // real `d` and are upstream-faithful; this estimator is the outlier.
+  //
+  // NOT fixed here: correcting it changes every `did_cs_binary` result and,
+  // through `did_cs`, every `did_cs` result. That is a behavioural release
+  // of its own and needs its own measurement. It is recorded in the
+  // v0.128.0 changelog and pinned by
+  // `v128_did_cs_binary_nuisance_is_a_group_propensity` so the divergence
+  // cannot be forgotten.
   let m_clipped = clip_vec(m_acc, propensity_clip, 1.0 - propensity_clip)
   let d_arr : Array[Double] = []
   for row in rows {
@@ -565,7 +592,20 @@ pub struct DoubleMLDIDCSBinary {
   n_rep : Int
   seed : Int
   propensity_clip : Double
-  ps_processor : PSProcessor
+  // v0.128.0: the RESOLVED CONCRETE propensity config, matching upstream
+  // `init_ps_processor` (`did_cs_binary.py:230`). Same DID rule as
+  // `DoubleMLDID`: the config wins outright, and with no config the
+  // fallback is the `ps_processor` parameter's own config, NOT
+  // `propensity_clip` -- upstream's deprecated scalar is
+  // `trimming_threshold=1e-2` (`did_cs_binary.py:123`) while this port's
+  // `propensity_clip` defaults to 1e-6 and is the inner `clip_vec`
+  // numerical-safety clip.
+  //
+  // NOTE this estimator clips TWICE, at two different thresholds:
+  // `propensity_clip` (1e-6) inside the cross-fit, then this config's
+  // `clipping_threshold` (1e-2) in `adjust_ps`. That double clip predates
+  // v0.128.0 and is preserved deliberately; see `cs_bin_crossfit_nuisance`.
+  ps_processor_config : PSProcessorConfig
   score : String
   in_sample_normalization : Bool
   // Post-fit outputs.
@@ -629,9 +669,18 @@ pub fn DoubleMLDIDCSBinary::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   ps_processor? : PSProcessor = PSProcessor::new(),
+  // v0.128.0: upstream's `ps_processor_config` (`did_cs_binary.py:124`).
+  // Wins outright over `ps_processor`; see the struct-field comment.
+  ps_processor_config? : PSProcessorConfig? = None,
   score? : String = "observational",
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDCSBinary {
+  // v0.128.0: the config wins outright; `ps_processor` supplies the config
+  // only when none is given.
+  let ps_processor_config = match ps_processor_config {
+    Some(cfg) => cfg
+    None => ps_processor.config
+  }
   try {
     require(t_value_pre != t_value_eval)
     require(g_value > 0)
@@ -655,7 +704,7 @@ pub fn DoubleMLDIDCSBinary::new(
       n_rep,
       seed,
       propensity_clip,
-      ps_processor,
+      ps_processor_config,
       score,
       in_sample_normalization,
       coef: 0.0,
@@ -976,7 +1025,9 @@ pub fn DoubleMLDIDCSBinary::fit(
     self.n_rep,
     self.seed,
     self.propensity_clip,
-    self.ps_processor,
+    // v0.128.0: forward the RESOLVED config, so the calibration route
+    // reaches upstream's `adjust_ps` site (`did_cs_binary.py:516`).
+    PSProcessor::from_config(self.ps_processor_config),
     ml_g,
     ml_m,
   )

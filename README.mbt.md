@@ -25,9 +25,9 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.127.0** |
+| `moon.mod` version | **0.128.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **195** `.mbt` files (**90** production + **105** test) |
+| `.mbt` file count | **196** `.mbt` files (**90** production + **106** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
 | Tests (native / wasm / js) | **900 / 900 / 900** |
@@ -78,9 +78,11 @@ calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 `DoubleMLDID` and the rest of the IPW-based models.
 
 **`ps_processor_config` is reachable (v0.121.0+, IRM v0.122.0, IIVM and SSM
-v0.123.0, PQ v0.124.0, LPQ v0.125.0, CVaR v0.126.0, DID v0.127.0).** `DoubleMLAPO`,
-`DoubleMLAPOS`, `DoubleMLIRM`, `DoubleMLIIVM`, `DoubleMLSSM`, `DoubleMLPQ`,
-`DoubleMLLPQ` and `DoubleMLCVAR` now take a `PSProcessorConfig`, which is how the isotonic
+v0.123.0, PQ v0.124.0, LPQ v0.125.0, CVaR v0.126.0, DID v0.127.0, CS-DID
+v0.128.0).** `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLIRM`, `DoubleMLIIVM`,
+`DoubleMLSSM`, `DoubleMLPQ`, `DoubleMLLPQ`, `DoubleMLCVAR`, `DoubleMLDID`,
+`DoubleMLDIDBinary`, `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection` and
+`DoubleMLDIDCS` now take a `PSProcessorConfig`, which is how the isotonic
 and CV-calibration paths become callable from an estimator at all --
 until v0.121.0 they were implemented and reachable from nowhere.
 Resolution follows upstream's `init_ps_processor`: **the config wins
@@ -97,7 +99,7 @@ LPQ's root is pinned by its bisection bracket, so no threshold could move
 it, while CVaR solves `mean(treated/m * 1{y <= theta}) = quantile` and
 therefore does move.
 
-Five details worth knowing before wiring it yourself. First, which array
+Six details worth knowing before wiring it yourself. First, which array
 is the calibration target differs by estimator, and upstream is not
 uniform: `DoubleMLIIVM` passes the **instrument `z`**, not the treatment
 `d` (`iivm.py:371`), because `m` is the propensity *of the instrument*;
@@ -136,7 +138,15 @@ That family also has just **one** `adjust_ps` site (`did_binary.py:537`), and
 that ATT responds much more strongly on the raw `DoubleMLDID` (spread 2.25e-2
 across the clip sweep) than through the panel wrapper (1.8e-3, a 12x
 damping), so the wrapper's gate is written as an exact inequality rather than
-a threshold.
+a threshold. Sixth, a **known divergence** you should know about before
+using the CS-DID estimators: `DoubleMLDIDCSBinary` substitutes the group
+indicator `G` for the treatment `D` throughout, so it models `P(G=1|X)`
+where upstream models `P(D=1|X)` (`did_cs_binary.py:504-516`). Measured on a
+staggered fixture: 109 of 720 evaluated rows have `d != G`, and the two
+fitted nuisances differ by up to **0.365**. `DoubleMLDID` and
+`DoubleMLDIDCrossSection` use the real `D` and are upstream-faithful.
+`v128_did_cs_binary_nuisance_is_a_group_propensity` pins the premise; the
+fix is a behavioural release of its own and has not been made.
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in
 calibration are kept apart.

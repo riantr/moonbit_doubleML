@@ -9,6 +9,152 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.128.0] -- `ps_processor_config` on the CS-DID family, and a nuisance divergence found on the way
+
+### What this release changes
+
+`ps_processor_config?` added to `DoubleMLDIDCSBinary`,
+`DoubleMLDIDCrossSection` and `DoubleMLDIDCS`, all following the same
+resolution rule established in v0.127.0. Upstream oracle:
+
+    did_cs_binary.py:123   trimming_threshold=1e-2      (deprecated scalar)
+    did_cs_binary.py:230   init_ps_processor(config, trimming_rule, threshold)
+    did_cs_binary.py:516   adjust_ps(m_hat["preds"], d, cv=smpls)   <- ONE site
+    did_cs.py              NO adjust_ps call at all -- a pure delegator
+
+`DoubleMLDIDCS` has no transform of its own upstream, so its wiring is
+purely propagation: it builds inner `DoubleMLDIDCSBinary` children, and
+forwarding the config is what makes the knob reachable end-to-end.
+
+### The round's real finding: `did_cs_binary` models P(G=1|X), not P(D=1|X)
+
+`cs_bin_panel_subset` pushes **`g_indicator`** into `CSBinPanelRow`
+(`did_cs_binary.mbt:145`) rather than the raw `data.d`. Because that
+substituted value is what the row struct carries, `ml_m` is regressed on
+**G** (`did_cs_binary.mbt:251/286`) and `adjust_ps` calibrates against
+**G** (`:315`).
+
+Upstream does neither: `did_cs_binary.py:504-513` regresses `ml_m` on `d`,
+and `:516` adjusts with `d`.
+
+So this port is *internally consistent* -- it fits and calibrates on the same
+variable -- but the two are **different nuisance definitions**, and the
+comment that sat at that call site actively obscured it:
+
+    // Clip + apply ps_processor. The `treatment` arg of
+    // `adjust_ps` is the G_indicator (the propensity
+    // condition is `E[D=1 | X]`).
+
+which contradicts itself in one sentence: it states the propensity condition
+is on D, then passes G.
+
+**MEASURED, it is not a cosmetic difference.** On a staggered fixture
+(3 cohorts x 3 periods, saturated assignment propensity), restricted to the
+estimator's own `(g == 1) x (t in {0, 2})` subset of 720 rows:
+
+    rows where d != g_indicator ............ 109 of 720
+    max |P(G=1|X) - P(D=1|X)| ............... 0.365
+
+That is more than a third of the propensity range, on 15% of the rows.
+
+`DoubleMLDID` (panel DID) and `DoubleMLDIDCrossSection` both use the real
+`data.d` and are upstream-faithful. `did_cs_binary` is the outlier, and the
+divergence is **documented nowhere** in the changelog history.
+
+**NOT FIXED HERE.** Correcting it means changing the `ml_m` regression
+target as well as the calibration target, which changes every
+`did_cs_binary` result and, through `did_cs`, every `did_cs` result. That is
+a behavioural release of its own and needs its own measurement and its own
+external cross-check. What this release does instead:
+
+- replaces the self-contradicting comment with the facts and the oracle
+  line numbers, so the next reader cannot rediscover this from scratch;
+- pins the premise with
+  `v128_did_cs_binary_nuisance_is_a_group_propensity`, which asserts the
+  subset size (720) and the `d != g` row count (> 100), so the fixture the
+  next round needs already exists and cannot drift out from under it.
+
+### The stale doc block, also fixed
+
+The class-level comment still claimed `ps_processor_config` "is collapsed to
+a single `propensity_clip` field ... the `isotonic` / `cv_calibration` paths
+are not ported". Both halves were false: `PSProcessor` implemented isotonic
+in v0.14.0, it was the *estimator* that could not reach it.
+
+### Measured response
+
+On the staggered fixture (720 evaluated rows):
+
+    clip 0.01 -> coef 0.9909760034277681  se 0.009213124332475526  exact-bound 100 / 0
+    clip 0.10 -> coef 0.9909907550255894  se 0.009230978187907052  exact-bound 184 / 0
+    clip 0.30 -> coef 0.9912225682002018  se 0.009379007817934814  exact-bound 373 / 20
+    isotonic  -> coef 0.9931792566957861  se 0.009218482493823203
+
+The **coefficient** barely moves (1.2e-3 across the sweep), so its gate is an
+exact inequality -- the same reasoning as `v127_panel_transform_is_not_inert`.
+The **exact-bound counts** are the strong signal (100 -> 184 -> 373): a
+fitted propensity lands exactly on `c` only because a clip put it there.
+
+The lower bound bites hard and the upper one barely at all (20 of 720 at
+0.7). That asymmetry is recorded in the gate comment so a future reader does
+not read the small upper count as a broken assertion.
+
+### The harness caught a real gap in this very round
+
+The first v0.128.0 harness run reported **three expected kills SURVIVING**:
+
+    M2-cross-section-forward-frozen ....... SURVIVED (expected KILLED)
+    M3-did-cs-forward-drops-the-config .... SURVIVED (expected KILLED)
+    M5-cross-section-config-loses-to-proc . SURVIVED (expected KILLED)
+
+The reason was not a weak gate: **three estimators had been wired and only
+one had been gated.** `did_cross_section` and `did_cs` had no behavioural
+coverage at all, so every mutation of their wiring passed silently.
+
+Four gates were added. `DoubleMLDIDCrossSection` turns out to have the
+**strongest response in the whole DID family** -- both clip bounds bite hard,
+unlike the CS-DID panel where the upper bound barely moves:
+
+    clip 0.01 -> coef 2.0352954866073563  exact-bound 127 / 125 of 900
+    clip 0.10 -> coef 2.028302438259842   exact-bound 188 / 199
+    clip 0.30 -> coef 2.0310372325770096  exact-bound 316 / 335
+    isotonic  -> coef 2.007602866977095   648 of 900 nuisance entries moved
+                                          max delta 0.2558919925694387
+
+`DoubleMLDIDCS` exposes no `coef`/`se`; it has `coef_at(group_idx,
+period_idx)`, and `n_groups` counts only **treated** cohorts (measured 1 on
+the staggered fixture, not 2 -- a trap worth writing down).
+
+This is the same failure mode as v0.125.0's LPQ round and v0.126.0's
+`sensitivity_analysis`: a claim that reads as covered and is not.
+
+### Default construction is byte-identical
+
+Verified by running the same `ps_processor=`-only probe against v0.127.0's
+`did_cs_binary.mbt` / `did_cross_section.mbt` / `did_cs.mbt` restored from
+git HEAD and against this one. **Every number matched exactly**, all four
+rows including the isotonic one.
+
+### Verification
+
+- Tests **997/997** native / wasm / js, **1003/1003** wasm-gc
+- `moon fmt --check` clean; `moon check --deny-warn` clean on all four
+- typos (CI-pinned v1.19.0) clean
+- Mutation harness: **5 KILLED / 4 SURVIVED / 0 inconclusive**, every verdict
+  matching its declaration, no residue
+
+### Still not wired, and why
+
+`did_multi` and `qte` remain **inert upstream**: `init_ps_processor` is
+called (`did_multi.py:226`) but `adjust_ps` never is, and
+`_trimming_threshold` is assigned once and exposed through a deprecated
+property while being used in no computation. Propagating a config to them
+would invent behaviour rather than port it.
+
+The `did_cs_binary` G-vs-D nuisance divergence is the one substantive item
+left in this subsystem, and it is deliberately a behavioural release of its
+own rather than a drive-by change.
+
 ## [0.127.0] -- `ps_processor_config` reaches `DoubleMLDID` and `DoubleMLDIDBinary`
 
 ### What this release changes

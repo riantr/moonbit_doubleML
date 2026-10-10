@@ -162,7 +162,11 @@ pub struct DoubleMLDIDCS {
   // v0.10.0+: propensity-score processor. Propagated through to
   // each per-cell `DoubleMLDIDBinary` fit; controls the
   // `clipping_threshold` applied to the averaged propensity.
-  ps_processor : PSProcessor
+  // v0.128.0: the RESOLVED CONCRETE propensity config, forwarded to every
+  // inner child. `DoubleMLDIDCS` has no `adjust_ps` of its own upstream
+  // (`did_cs.py` never calls one), so this is purely propagation: it makes
+  // the knob reachable end-to-end. Same DID resolution rule as `DoubleMLDID`.
+  ps_processor_config : PSProcessorConfig
   in_sample_normalization : Bool
   // Per-(g, t) ATT estimates, indexed row-major as
   // `coef[i * n_periods + t]` for group `i`, time `t`. `length`
@@ -269,8 +273,16 @@ pub fn DoubleMLDIDCS::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   ps_processor? : PSProcessor = PSProcessor::new(),
+  // v0.128.0: upstream ps_processor_config; wins outright over ps_processor.
+  ps_processor_config? : PSProcessorConfig? = None,
   in_sample_normalization? : Bool = false,
 ) -> DoubleMLDIDCS {
+  // v0.128.0: config wins outright; `ps_processor` supplies the config only
+  // when none is given. Same DID rule as `DoubleMLDID`.
+  let ps_processor_config = match ps_processor_config {
+    Some(cfg) => cfg
+    None => ps_processor.config
+  }
   try {
     require(n_folds >= 2)
     require(n_rep >= 1)
@@ -290,7 +302,7 @@ pub fn DoubleMLDIDCS::new(
       n_rep,
       seed,
       propensity_clip,
-      ps_processor,
+      ps_processor_config,
       in_sample_normalization,
       coef_matrix: Array::make(n_groups * n_periods, 0.0),
       se_matrix: Array::make(n_groups * n_periods, 0.0),
@@ -991,7 +1003,9 @@ pub fn DoubleMLDIDCS::fit(
           n_rep=self.n_rep,
           seed=self.seed,
           propensity_clip=self.propensity_clip,
-          ps_processor=self.ps_processor,
+          // v0.128.0: forward the RESOLVED config to the child, so the
+          // calibration route is reachable through `DoubleMLDIDCS`.
+          ps_processor_config=Some(self.ps_processor_config),
           score="observational",
           in_sample_normalization=self.in_sample_normalization,
         )

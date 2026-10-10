@@ -122,7 +122,14 @@ pub struct DoubleMLDIDCrossSection {
   score : String
   in_sample_normalization : Bool
   propensity_clip : Double
-  ps_processor : PSProcessor
+  // v0.128.0: the RESOLVED CONCRETE propensity config. Same DID rule as
+  // `DoubleMLDID`: the config wins outright, and with no config the
+  // fallback is the `ps_processor` parameter config, NOT `propensity_clip`
+  // (upstream deprecated scalar `trimming_threshold=1e-2`; this port scalar
+  // defaults to 1e-6 and is the inner clip_vec safety clip). Unlike
+  // `did_cs_binary`, this estimator regresses `ml_m` on the real `data.d`
+  // and adjusts with the full `data.d`, which matches upstream.
+  ps_processor_config : PSProcessorConfig
   // v0.60.0+: injected nuisance learners. Defaults to
   // `LearnerDispatch::linear_regression()` so v0.59.0 callers
   // see byte-identical results. v0.61.0+ will plumb these
@@ -185,9 +192,16 @@ pub fn DoubleMLDIDCrossSection::new(
   in_sample_normalization? : Bool = false,
   propensity_clip? : Double = 1.0e-6,
   ps_processor? : PSProcessor = PSProcessor::new(),
+  // v0.128.0: upstream ps_processor_config; wins outright over ps_processor.
+  ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCrossSection {
+  // v0.128.0: config wins outright; ps_processor supplies it only when none given.
+  let ps_processor_config = match ps_processor_config {
+    Some(cfg) => cfg
+    None => ps_processor.config
+  }
   try {
     require(n_folds >= 2)
     require(n_rep >= 1)
@@ -203,7 +217,7 @@ pub fn DoubleMLDIDCrossSection::new(
       score,
       in_sample_normalization,
       propensity_clip,
-      ps_processor,
+      ps_processor_config,
       ml_g,
       ml_m,
       coef: 0.0,
@@ -1001,7 +1015,8 @@ pub fn DoubleMLDIDCrossSection::fit(
     self.n_rep,
     self.seed,
     self.propensity_clip,
-    self.ps_processor,
+    // v0.128.0: forward the RESOLVED config, not the deprecated processor.
+    PSProcessor::from_config(self.ps_processor_config),
     ml_g,
     ml_m,
   )
