@@ -9,6 +9,76 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.3] -- the self-check's own advertised check count was wrong
+
+Docs-only. **No code change, no behavioural change, no test change.**
+
+### What happened
+
+v0.131.2 announced `_verify/_selfcheck.py` as running **"36 checks"**. The
+first full run of that script printed:
+
+```
+SELF-CHECK: 32/33 passed, 1 failed
+```
+
+33, not 36. The number was written before the script had ever been executed
+end to end, and it was never re-derived afterwards -- which is the exact
+failure mode v0.131.2 had just been released to correct.
+
+The release's whole subject is that *a count is not a fact until the matching
+rule that produced it is written down and re-derived*. Shipping an unmeasured
+count inside the release that argues for measured counts would have made the
+argument self-undermining, so it is corrected here rather than left.
+
+### The real numbers
+
+| Mode | Checks |
+|------|--------|
+| `python _verify/_selfcheck.py` | **33** |
+| `python _verify/_selfcheck.py --quick` | **27** |
+
+The difference is section D, the four-target test sweep plus the two README
+test-count assertions. `--quick` prints those as skipped rather than as six
+passed checks, so the two totals are genuinely different and the earlier
+single "36" described neither.
+
+Breakdown of the 33: 8 repository-state, 9 README-numbers-re-derived, 6
+toolchain (`typos`, `fmt`, `check` x4), 6 test, 4 release-pipeline.
+
+### A second defect, found by the same run
+
+The full v0.131.2 run reported
+
+```
+FAIL  CI (master) succeeded  -- None
+```
+
+`None` was GitHub's `conclusion` field for a run that was **still executing**.
+The script scored `conclusion == "success"` as a plain failure, so a pipeline
+that had not finished yet was reported exactly like a pipeline that had broken.
+
+That is the distinction this tool exists to preserve. A release check that
+cries wolf gets ignored, and then it stops being a check. `_verify/_selfcheck.py`
+now reports `PENDING` for an in-flight run: it counts as neither pass nor
+failure, it is listed separately in the summary, and it still forces a
+non-zero exit so a half-finished pipeline can never be mistaken for a verified
+one. Re-run against the same commit, the master CI check reads `PASS` because
+the run had by then completed successfully -- confirmed against the API
+independently (`CI | sha=745e5ba | status=completed | conclusion=success`).
+
+### The transferable lesson
+
+v0.131.1 counted with a rule that was never written down. v0.131.2 counted its
+own tooling before running it. Both are the same defect wearing different
+clothes: **a number asserted about a tool that has not been executed is a
+guess**, however well-founded it looks at the time.
+
+The generalisation that actually holds: *run the thing, print its own output,
+and quote what it said.* The script already prints `N/M passed` on every run;
+the changelog should have been written from a run, not from an estimate of what
+the script contained.
+
 ## [0.131.2] -- the self-check caught v0.131.1's own "correction" being wrong
 
 Docs-only. **No code change, no behavioural change, no test change.**
@@ -79,7 +149,10 @@ disagreement is the signal.
 
 ### `python _verify/_selfcheck.py`
 
-Added this release. It runs 36 checks: repository state (tree clean, HEAD on a
+Added this release. It runs ~~36~~ **33** checks (**27** with `--quick`) —
+the advertised 36 was wrong; see
+[0.131.3](#01313----the-self-checks-own-advertised-check-count-was-wrong).
+It covers: repository state (tree clean, HEAD on a
 tag, tag == moon.mod == README version, both remotes at HEAD with the tag
 published), every number in the README status table re-derived from the tree,
 `typos` 1.19.0, `moon fmt --check`, `moon check --deny-warn` on all four
