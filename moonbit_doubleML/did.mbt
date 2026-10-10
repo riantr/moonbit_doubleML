@@ -777,12 +777,113 @@ pub fn DoubleMLDID::bootstrap(
 }
 
 ///|
+/// v0.131.6: the `nu2` score element and the Riesz representer for the DID
+/// ATT score, transcribed from upstream `did/did.py:332-353`.
+///
+/// ```text
+/// p_hat = mean(d)
+/// propensity_weight_d0 = m_hat / (1 - m_hat)
+///
+/// score == "observational", in_sample_normalization:
+///     weight_d0 = (1 - d) * propensity_weight_d0
+///     m_alpha   = (d / p_hat) * (1/p_hat + propensity_weight_d0 / mean(weight_d0))
+///     rr        = d / p_hat - weight_d0 / mean(weight_d0)
+///
+/// score == "observational", not in_sample_normalization:
+///     m_alpha   = (d / p_hat^2) * (1 + propensity_weight_d0)
+///     rr        = d / p_hat - ((1 - d) / p_hat) * propensity_weight_d0
+/// score == "experimental":       (identical with and without the flag)
+///     m_alpha   = 1/p_hat + 1/(1 - p_hat)          -- a CONSTANT array
+///     rr        = d / p_hat - (1 - d)/(1 - p_hat)
+///
+/// nu2_score_element = 2 * m_alpha - rr^2
+/// nu2              = mean(nu2_score_element)
+/// ```
+///
+/// The default `(observational, in_sample_normalization = false)` branch is the
+/// one this port's default arguments select, and it is the branch that used to
+/// be wrong here: the shared `irm_style_sensitivity` helper computes
+/// `nu2 = mean(psi_a^2)`, which is upstream's documented FALLBACK
+/// (`double_ml.py:1634-1641`), applied to the wrong variable on top of that.
+///
+/// `DoubleMLDIDBinary` shares this method deliberately. Upstream's
+/// `did/did_binary.py:764-777` is the SAME formula; the two implementations
+/// differ only in the array sources (the subset's `y`/`d` and id-aligned
+/// predictions) and in a `n_ids / n_obs_subset` scaling applied to
+/// `psi_sigma2` / `psi_nu2` / `riesz_rep` -- but NOT to `sigma2` / `nu2`
+/// themselves. Those three scaled arrays feed only `psi_max_bias`, which every
+/// caller in this port discards via `_`, so the single shared path reproduces
+/// both estimators' reported `sigma2` and `nu2` exactly.
+///
+/// Guarded denominators follow the convention used elsewhere in this package:
+/// the degenerate case maps to 0 rather than propagating a non-finite value.
+pub fn DoubleMLDID::sensitivity_nu2_elements(
+  self : DoubleMLDID,
+) -> (Array[Double], Array[Double]) raise {
+  require(self.fitted)
+  let d = self.data.d
+  let m = self.predictions_m()
+  let n = d.length()
+  require(m.length() == n)
+  let n_d = n.to_double()
+  let mut sum_d = 0.0
+  let mut sum_w_d0 = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let di = d[i]
+    let one_minus_m = 1.0 - m[i]
+    let pw = if one_minus_m > 1.0e-12 { m[i] / one_minus_m } else { 0.0 }
+    sum_d = sum_d + di
+    sum_w_d0 = sum_w_d0 + (1.0 - di) * pw
+  }
+  let p_hat = sum_d / n_d
+  let mean_w_d0 = sum_w_d0 / n_d
+  let m_alpha = Array::make(n, 0.0)
+  let rr = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let di = d[i]
+    let one_minus_m = 1.0 - m[i]
+    let pw = if one_minus_m > 1.0e-12 { m[i] / one_minus_m } else { 0.0 }
+    let d_over_p = if p_hat > 1.0e-12 { di / p_hat } else { 0.0 }
+    let inv_p = if p_hat > 1.0e-12 { 1.0 / p_hat } else { 0.0 }
+    if self.score == "observational" {
+      if self.in_sample_normalization {
+        let pw_over_w = if mean_w_d0 > 1.0e-12 { pw / mean_w_d0 } else { 0.0 }
+        m_alpha[i] = d_over_p * (inv_p + pw_over_w)
+        rr[i] = d_over_p - (1.0 - di) * pw_over_w
+      } else {
+        let d_over_p2 = if p_hat > 1.0e-12 { di / (p_hat * p_hat) } else { 0.0 }
+        m_alpha[i] = d_over_p2 * (1.0 + pw)
+        // upstream `did.py:345`:
+        //   rr = d/p_hat - ((1 - d)/p_hat) * propensity_weight_d0
+        // The propensity weight multiplies the (1 - d) term ONLY.
+        rr[i] = d_over_p - (1.0 - di) * inv_p * pw
+      }
+    } else {
+      let inv_d0 = if p_hat > 1.0e-12 && p_hat < 1.0 - 1.0e-12 {
+        1.0 / (1.0 - p_hat)
+      } else {
+        0.0
+      }
+      m_alpha[i] = inv_p + inv_d0
+      rr[i] = d_over_p - (1.0 - di) * inv_d0
+    }
+  }
+  let nu2_score_element = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    nu2_score_element[i] = 2.0 * m_alpha[i] - rr[i] * rr[i]
+  }
+  (nu2_score_element, rr)
+}
+
+///|
 /// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
 /// analysis. Outcome residual is
-/// `y - g0_hat - (g1_hat - g0_hat) * d`; the
-/// Riesz-representer variance is `mean(psi_a^2)` for the
-/// DID ATT score. Routes through the shared
-/// `irm_style_sensitivity` helper.
+/// `y - g0_hat - (g1_hat - g0_hat) * d`;
+/// the
+/// Riesz-representer variance follows upstream's PRIMARY formula
+/// `nu2 = mean(2 * m_alpha - rr^2)` (`did/did.py:352`) rather
+/// than its fallback; see
+/// `DoubleMLDID::sensitivity_nu2_elements`.
 pub fn DoubleMLDID::sensitivity_analysis(
   self : DoubleMLDID,
   cf_y? : Double = 0.05,
@@ -797,7 +898,15 @@ pub fn DoubleMLDID::sensitivity_analysis(
   for i = 0; i < n; i = i + 1 {
     residuals[i] = self.data.y[i] - g0[i] - (g1[i] - g0[i]) * d[i]
   }
-  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+  let (nu2_score_element, rr) = self.sensitivity_nu2_elements()
+  irm_style_sensitivity_from_elements(
+    self.coef,
+    residuals,
+    nu2_score_element,
+    rr,
+    cf_y,
+    cf_d,
+  )
 }
 
 ///|
@@ -826,10 +935,12 @@ pub fn DoubleMLDID::sensitivity_analysis_cluster(
   for i = 0; i < n; i = i + 1 {
     residuals[i] = self.data.y[i] - g0[i] - (g1[i] - g0[i]) * d[i]
   }
-  irm_style_sensitivity_cluster(
+  let (nu2_score_element, rr) = self.sensitivity_nu2_elements()
+  irm_style_sensitivity_cluster_from_elements(
     self.coef,
     residuals,
-    self.psi_a,
+    nu2_score_element,
+    rr,
     cluster_ids,
     cf_y,
     cf_d,

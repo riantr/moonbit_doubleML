@@ -9,6 +9,116 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.6] -- DID `nu2`: `mean(psi_a^2)` was upstream's FALLBACK, and it made rv 27x too optimistic
+
+**Behavioural.** `DoubleMLDID` and `DoubleMLDIDBinary` sensitivity `nu2` now use
+upstream's PRIMARY formula `mean(2 * m_alpha - rr^2)`. Tests 1006 -> 1009.
+
+### Scope: the "six" are really five paths in four formula families
+
+v0.131.0 left a carry-over naming six upstream-faithful estimators still on
+`mean(psi_a^2)`: `did`, `did_binary`, `did_cs`, `apo`, `irm`, `plr`. Reading
+the code before touching it changed the shape of the work:
+
+| Family | Estimators | Upstream formula | Status |
+|---|---|---|---|
+| 1 | `did` + `did_binary` | `m_alpha` / `rr` from `d`, `p_hat`, `m_hat` | **this release** |
+| 2 | `irm`, `apo` | `_propensity_score_adjustment` + `_get_weights` | staged |
+| 3 | `did_cs` | `(d,t)` cell weights, panel-wide (no subset) | staged |
+| 4 | `plr` | `nu2 = 1/mean((d - m_hat)^2)` -- **not this family at all** | staged |
+
+Six nominal estimators are **five** port paths: `DoubleMLDIDBinary` builds a
+wide table and delegates to an inner `DoubleMLDID`
+(`did_binary.mbt:828`, `:919`), and its `sensitivity_analysis` is
+`self.inner.sensitivity_analysis(...)`. Upstream likewise gives them the same
+formula -- `did.py:339-353` and `did_binary.py:764-777` are identical
+expressions -- differing only in array sources and a `n_ids / n_obs_subset`
+scaling applied to `psi_sigma2` / `psi_nu2` / `riesz_rep` but **not** to
+`sigma2` / `nu2`. Those three scaled arrays feed only `psi_max_bias`, which
+every caller here discards, so one shared path reproduces both.
+
+`plr` is a genuinely different formula (`1 / mean((d - m_hat)^2)`, a scalar),
+so it is not a member of the `mean(2*m_alpha - rr^2)` family and must not be
+"migrated" with the others.
+
+Upstream has 16 `_sensitivity_element_est` definitions but exactly **seven**
+with `_sensitivity_implemented = True`; `lpq`'s is a bare `pass` (`lpq.py:819`).
+The rest of this port's ~9 other sensitivity entry points remain extensions.
+
+### What was wrong
+
+`DoubleMLDID` routed through the shared `irm_style_sensitivity` helper, which
+computes `nu2 = mean(psi_a^2)`. That is upstream's documented **fallback**
+(`double_ml.py:1634-1641`), used only when the primary is non-positive, applied
+unconditionally and to the wrong variable. Same defect v0.131.0 fixed for
+`did_cs_binary`; these five had never been migrated.
+
+### Measured, on two fixtures and both `score` settings
+
+`coef` and `sigma2` are **unchanged** -- only the `nu2` path moved.
+
+| Fixture / config | `nu2` before | `nu2` after | `rv` before | `rv` after |
+|---|---|---|---|---|
+| n=600 observational isn=false | 2.3715415019762798 | **47.70752003810404** | 7.7728179933915875 | **1.7330075006517753** |
+| n=600 observational isn=true | 2.3715415019762798 | **54.452951164428164** | 7.7785831981663485 | **1.6233237954653417** |
+| n=600 experimental | 1.0 | **4.1006481302183575** | 12.176842989949625 | **6.013238838221581** |
+| n=900 observational isn=false | 2.4590163934426066 | **81.04609810066657** | 7.024184081159059 | **1.2235185018248307** |
+| n=900 observational isn=true | 2.4590163934426066 | **49.911365357954175** | 7.080237068355447 | **1.5715521107480066** |
+
+Two things the numbers make obvious:
+
+**The flag was completely inert before.** `isn=false` and `isn=true` returned a
+**bit-identical** `nu2` (2.3715415019762798 both ways), because `mean(psi_a^2)`
+never consulted it. They now differ.
+
+**`rv` was ~4.5x too optimistic.** `rv = |coef| / max_bias` and `max_bias =
+sqrt(sigma2 * nu2)`, so the fallback's depressed `nu2` shrank `max_bias` and
+inflated the robustness value -- a DID ATT of 1.02 scored `rv = 7.77` (visibly
+robust) when the correct value is `1.73` (fragile). That is the wrong direction
+for a robustness diagnostic, and it was silent.
+
+### External oracle
+
+`_verify/_oracle_1316.py`, **seeded** (`np.random.seed(3141)`) -- the v0.131.0
+oracle was not, and its own `nu2` drifted 22.71 -> 24.60 across four runs.
+
+It fits upstream 0.11.4 `DoubleMLDID` on the port's own fixture, captures
+`m_hat` **at the call site** by wrapping `_sensitivity_element_est` (the point
+where `did.py:322` reads `preds["predictions"]["ml_m"]`), and feeds it back
+through the port's transcription:
+
+| config | upstream's own `nu2` | transcription on its inputs | rel. diff |
+|---|---|---|---|
+| observational isn=false | `20.77547037076913` | `20.77547037076913` | **`0.000e+00`** |
+| observational isn=true | `22.763900396973526` | `22.763900396973526` | **`0.000e+00`** |
+| experimental | `4.100648130218358` | `4.100648130218358` | **`0.000e+00`** |
+
+Bit-identical in all three. The port's absolute values differ from upstream's
+observational ones (47.71 vs 20.78) solely because of the nuisance -- upstream
+`LogisticRegression` `mean(m_hat) = 0.4225` vs the port's OLS propensity
+`0.4293` -- exactly the situation v0.131.5 proved for `did_cs_binary`. The
+`experimental` branch, which ignores `m_hat` entirely, agrees to the last bit.
+
+### Gates
+
+Three, in `expand_v131_test.mbt`, each mutation-verified to kill the old code
+(3/3 failed when the scalar entry point was routed back to `irm_style_sensitivity`):
+
+- `v1316_did_nu2_is_upstreams_primary_formula_not_mean_psi_a_squared`
+- `v1316_did_in_sample_normalization_reaches_nu2` -- the discriminating one
+- `v1316_did_experimental_score_nu2_ignores_the_propensity`
+
+### A transcription bug I introduced and caught
+
+The first version of `rr` carried a spurious `- d * pw / p` term that upstream
+does not have (`did.py:345` multiplies the propensity weight into the
+**`(1 - d)` term only**). It produced `nu2 = 1767.14` and a *sign* flip against
+the control. The control caught it immediately: the transcription and MoonBit
+disagreed by 197%. Corrected to `rr = d/p - ((1-d)/p) * pw`, giving 47.71 and
+agreement to 1 ULP. Had I compared only the two ESTIMATES against upstream --
+the thing v0.129.0 retracted -- this would have looked like a large upstream
+discrepancy rather than a local typo.
+
 ## [0.131.5] -- the 15.3% `nu2` gap was not a defect, and its own baseline was not reproducible
 
 **Verdict: the port's `nu2` is upstream's `nu2`, proven bit-for-bit.** The open
@@ -554,6 +664,15 @@ helper. Each needs its own `m_alpha` / `rr` plumbing (upstream's
 `m_hat_adj`, DID-CS uses the `(d,t)` cell weights) and its own measurement
 pass. `irm_style_sensitivity` keeps its current behaviour for them, so nothing
 moves until each is migrated deliberately.
+
+> **PARTIALLY DONE.** [0.131.6](#01316----did-nu2-meanpsia2-was-upstreams-fallback-and-it-made-rv-27x-too-optimistic)
+> migrated family 1 of 4: `did` + `did_binary` (one shared path, since
+> upstream gives them the same formula). That reduces the list from six to
+> five estimators in three families: `irm` / `apo` (shared
+> `_propensity_score_adjustment` + `_get_weights`), `did_cs` (`(d,t)` cell
+> weights, panel-wide rather than subset), and `plr` -- which turns out NOT to
+> be in this family at all: its `nu2` is the scalar `1/mean((d - m_hat)^2)`
+> (`plm/plr.py:291`), not `mean(2*m_alpha - rr^2)`.
 
 ### Verification
 
