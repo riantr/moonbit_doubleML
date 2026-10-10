@@ -454,3 +454,63 @@ test "v130_cs_binary_subset_arrays_are_populated_and_aligned" {
   assert_true(base.enable_memoize().subset_y.length() == n)
   assert_true(base.disable_memoize().subset_y.length() == n)
 }
+
+///|
+/// v0.131.5 GATE -- `nu2` is a function of `(d, t, m_hat)` ONLY, and `m_hat`
+/// never sees `y`.
+///
+/// The external oracle `_verify/_oracle_1315.py` proved the port's nu2
+/// transcription is upstream's nu2 transcription bit-for-bit (relative
+/// difference `0.000e+00` when fed upstream's own `d`, `t` and captured
+/// `m_hat`). That proof lived only in Python, so this gate pins the property
+/// that made it possible -- in MoonBit, on every future run, for free.
+///
+///     nu2 = mean( 2*m_alpha - rr^2 )
+///     m_alpha, rr  <-  d, t, m_hat
+///     m_hat        <-  fitted from (X, d), never from y
+///
+/// So two datasets that share x/d/t/id/g and differ ONLY in y must produce an
+/// IDENTICAL nu2, while `coef` and `sigma2` -- which depend on `g_hat`, hence
+/// on y -- must move. The asymmetry is the point: an assertion that only checked
+/// "nu2 changed" or "nu2 stayed put" would pass for the wrong reasons, but
+/// requiring invariance in nu2 *simultaneously with* movement in coef/sigma2
+/// pins which half of the formula may see the outcome.
+///
+/// Measured on the (120, 2, 5) fixture: nu2 = 26.718919562055802 both ways;
+/// sigma2 0.0019663 -> 0.0122896; coef 0.99098 -> -2.47744.
+fn zz_gate_y_variant(
+  data : DoubleMLDIDCSData,
+  scale : Double,
+) -> DoubleMLDIDCSData {
+  let y = data.y
+  let n = y.length()
+  let y2 = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    // Scale AND shift, so a pure rescaling cannot accidentally cancel.
+    y2[i] = y[i] * scale + 3.0
+  }
+  DoubleMLDIDCSData::new(data.x, y2, data.d, data.t, data.id, data.g)
+}
+
+///|
+test "v1315_nu2_depends_on_d_t_and_m_hat_but_never_on_y" {
+  let data = v130_cs_data(120, 2, 5)
+  let base = v130_fit(data)
+  let other = v130_fit(zz_gate_y_variant(data, -2.5))
+  let rb = base.sensitivity_analysis()
+  let ro = other.sensitivity_analysis()
+  // Premise: the propensity nuisance is outcome-blind, so m_hat is unchanged.
+  let mb = base.predictions_m()
+  let mo = other.predictions_m()
+  assert_true(mb.length() == mo.length())
+  for i = 0; i < mb.length(); i = i + 1 {
+    assert_true(mb[i] == mo[i])
+  }
+  // The invariant: nu2 does not move.
+  assert_true(rb.nu2 == ro.nu2)
+  assert_true(rb.nu2 == 26.718919562055802)
+  // The contrast: everything downstream of g_hat DOES move. Without this half
+  // the test would pass on a trivially constant nu2 and prove nothing.
+  assert_true(rb.sigma2 != ro.sigma2)
+  assert_true(base.coef() != other.coef())
+}

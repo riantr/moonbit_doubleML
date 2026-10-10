@@ -9,6 +9,97 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.5] -- the 15.3% `nu2` gap was not a defect, and its own baseline was not reproducible
+
+**Verdict: the port's `nu2` is upstream's `nu2`, proven bit-for-bit.** The open
+question left by v0.131.4 is closed. One test gate added (1005 -> 1006).
+
+### The decisive test
+
+`nu2` is a pure function of `(d, t, m_hat)` and the flag:
+
+```
+m_alpha = d/p^2 * (1/lambda + 1/(1-lambda)) * (1 + m/(1-m))
+rr      = ( t/(p*lambda) + (1-t)/(p*(1-lambda)) ) * ( d + (1-d)*m/(1-m) )
+nu2     = mean( 2*m_alpha - rr^2 )
+```
+
+So rather than compare two *estimates*, feed **each side's own inputs** into the
+port's transcription and see whether each reproduces its own number. If the
+transcription is faithful, both sides reproduce exactly.
+
+`_verify/_oracle_1315.py`, on the v0.130.0/v0.131.0 fixture (720 subset rows):
+
+| Side | `nu2` reproduced | own reported `nu2` | relative difference |
+|---|---|---|---|
+| port's transcription fed **upstream's** `d,t,m_hat` | `20.377809457449615` | `20.377809457449615` | **`0.000e+00`** |
+| port's transcription fed the **port's** `d,t,m_hat` | `26.718919562055778` | `26.718919562055802` | `-9.308e-16` (one ULP) |
+
+Both reproduce. **The port's `nu2` formula is upstream's `nu2` formula.**
+
+Upstream's `m_hat` is not exposed as an attribute, so it was captured **at the
+call site** by wrapping `PSProcessor.adjust_ps`, whose return value *is*
+`m_hat` (`did_cs_binary.py:516`) -- the same technique as `_oracle_1290.py`, and
+the reason v0.129.0's false positive never recurred.
+
+The two `m_hat`s are genuinely different objects: mean `0.304796878` (upstream,
+`LogisticRegression`) vs `0.310449520` (port, OLS propensity), L2 distance
+`1.518250098`. `nu2` is sensitive to `m_hat` through `m/(1-m)`, so it moves;
+the formula does not.
+
+### The second finding: the baseline was not reproducible
+
+The v0.131.0 oracle fitted upstream **without a seed**, so its cross-fitting
+folds were redrawn every run. Four consecutive runs:
+
+```
+nu2 = 22.71006317444171
+nu2 = 23.096778003122246
+nu2 = 24.106436640180963
+nu2 = 24.601964422256646
+```
+
+a spread of ~8% on the very number a "15.3% gap" was computed against. So the
+v0.131.0 figure of 15.3% was not just the wrong *cause* -- the *magnitude* was
+measured against a moving baseline and could not be reproduced at all. The
+oracle now pins `np.random.seed(3141)`; three subsequent runs return
+`20.377809457449615` identically.
+
+**This is the fifth appearance of the same defect.** v0.129.0 compared a name
+instead of a binding; v0.131.0 hand-waved a 0.5% gap; v0.131.1 counted with an
+unwritten matching rule; v0.131.2 quoted a tool's output before running it;
+v0.131.0's oracle compared against an unseeded baseline. The common root is
+**an assertion whose comparison was never pinned down**, so the first stricter
+look disagrees.
+
+### Gate
+
+`v1315_nu2_depends_on_d_t_and_m_hat_but_never_on_y` asserts the structural
+property the oracle proved: two datasets sharing `x/d/t/id/g` and differing
+only in `y` must produce an **identical** `nu2`, because `m_hat` is fitted from
+`(X, d)` and never sees the outcome. Measured: `nu2` = `26.718919562055802` both
+ways, while `sigma2` moves `0.0019663 -> 0.0122896` and `coef` swings
+`0.99098 -> -2.47744`.
+
+The contrast half matters. An assertion that only checked "`nu2` did not move"
+would pass on a trivially constant `nu2` and prove nothing; requiring invariance
+in `nu2` *simultaneously with* movement in `coef`/`sigma2` is what pins which
+half of the formula may see the outcome.
+
+Mutation-verified: leaking `y` into the `nu2` score element
+(`+ self.subset_y[i] * 0.01`) makes the new gate fail at its `nu2 ==` line.
+
+**Stated honestly: this gate is complementary, not additive.** The existing
+v0.131.0 gate (`v131_cs_binary_nu2_is_upstreams_score_element_...`) already
+kills the same mutation, via its pinned constant at line 386. The new gate adds
+the *reason* the constant is what it is, and a fixture-independent statement of
+the property -- not extra kill-power for this mutation class.
+
+### Also corrected
+
+`did_cs_binary.mbt` was **not** changed by this release; the mutation used to
+verify the gate was reverted in full (verified by an empty `git diff`).
+
 ## [0.131.4] -- `in_sample_normalization` was never an open bug, and I had sized it wrong
 
 Docs-only. **No code change, no behavioural change, no test change.**
@@ -84,6 +175,14 @@ numbers, with the measured magnitude of that change attached so the choice is
 informed. The v0.131.0 note is corrected in place.
 
 ### One question this deliberately does NOT answer
+
+> **RESOLVED in [0.131.5](#01315----the-153-nu2-gap-was-not-a-defect-and-its-own-baseline-was-not-reproducible).**
+> There is no gap. The port's `nu2` transcription reproduces upstream's `nu2`
+> **bit-for-bit** (relative difference `0.000e+00`) when fed upstream's own
+> `d`, `t` and captured `m_hat`. The 15.3% was the nuisance model, not the
+> formula -- and the v0.131.0 oracle never seeded its folds, so its own `nu2`
+> varied 22.71 / 23.10 / 24.11 / 24.60 across four runs. The original text
+> below is kept as the record of what was unverified at the time.
 
 `v0.131.0` also recorded, from `_verify/_oracle_1310.py` on the port's fixture,
 upstream `nu2` = **23.179** (flag `False`) against the port's **26.719** -- a
