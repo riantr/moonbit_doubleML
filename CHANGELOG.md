@@ -9,6 +9,110 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.131.9] -- the `ml_m` default is a documented hazard; the fix is staged, not shipped
+
+Docs-only. **No code change, no behavioural change, no test change.**
+Tests unchanged at 1012 / 1018.
+
+### The hazard
+
+Six estimators default `ml_m` to `LearnerDispatch::linear_regression()`:
+
+| Estimator | default |
+|---|---|
+| `DoubleMLIRM` | `irm.mbt:116` |
+| `DoubleMLAPO` | `apo.mbt:100` |
+| `DoubleMLDID` | `did.mbt:235` |
+| `DoubleMLDIDCS` | `did_cs.mbt:879` |
+| `DoubleMLDIDBinary` | `did_binary.mbt:751` |
+| `DoubleMLDIDCSBinary` | `did_cs_binary.mbt:1039` |
+
+Upstream makes no such default. `ml_m` is a **required positional argument**,
+validated `_check_learner(ml_m, "ml_m", regressor=False, classifier=True)`
+(`irm.py:157`), and read back with `predict_proba` (`irm.py:161`). A regressor
+has no `predict_proba` at all, so upstream makes the mistake impossible rather
+than merely unlikely.
+
+The port has **no learner-type validation anywhere**.
+
+### Measured damage
+
+A propensity enters `nu2` as `1 / m_hat` (`irm.py:419`, `apo.py:378`) and the
+ATT/DID scores divide by `m_hat`. On the (800, 3, 31) fixture with true
+`ATE = 1.5`:
+
+| `ml_m` | `coef` | `nu2` | `rv` |
+|---|---|---|---|
+| `linear_regression` (the default) | **-225.86204067169143** | 5000000003.227359 | 0.043343170315623715 |
+| `logistic_regression` | **1.4426392091401607** | 540.5547419191752 | 0.8419771777915093 |
+
+Nothing raises. `DoubleMLIRM` clips the propensity into
+`[propensity_clip, 1 - propensity_clip]` before use, so `1/m_hat` is bounded at
+`1e6` -- **finite, not `Inf`**. The estimator simply returns a coefficient
+~150x too large, silently. Clipping converts a crash into wrong numbers, which
+is worse, not better.
+
+### Why it is not simply "a bug"
+
+Unlike `in_sample_normalization = false` (a documented v0.8.0 backward-
+compatibility decision), this default has **no design rationale**. v0.59.0's
+`LearnerDispatch` injection was mechanical: it replaced a hardcoded
+`LinearRegression::new()` with an injectable parameter whose default preserved
+the previous behaviour. The pre-v0.59.0 OLS propensity was never an
+upstream-faithful choice.
+
+### Why the fix is staged rather than shipped
+
+The validator was written, wired into `new()` **and** `fit()` for all six
+estimators (so a learner override cannot bypass it), and confirmed to abort
+correctly with an actionable message. It was then reverted, because the blast
+radius is far larger than the change:
+
+| Estimator | call sites with no explicit `ml_m` |
+|---|---|
+| `DoubleMLIRM` | **54** |
+| `DoubleMLAPO` | 20 |
+| `DoubleMLDIDBinary` | 16 |
+| `DoubleMLDIDCSBinary` | 15 |
+| `DoubleMLDIDCS` | 14 |
+| `DoubleMLDID` | 11 |
+| **tests** | **130** |
+
+plus ~40 more in production, wbtest and example files. Many of those tests
+**pin numeric constants** that a different propensity learner moves, so this is
+not 130 mechanical edits -- it is re-deriving pinned constants suite-wide.
+
+Note that **"flip the default" breaks exactly the same 130 sites**, because both
+options change which learner feeds the propensity. The decision is therefore not
+"validate vs. flip default"; it is whether to re-baseline the suite at all.
+
+### Staged plan
+
+1. **Now** -- document the hazard (this release). Zero test churn.
+2. **Per estimator**, starting with `DoubleMLIRM` (54 sites): add
+   `LearnerDispatch::is_classifier` + `require_classifier_learner`, wire into
+   that estimator's `new()` and `fit()`, update its tests to pass a classifier,
+   and re-derive any pinned constant the change moves -- proved against a
+   seeded oracle **before** the constant is updated, per the v0.131.2 lesson
+   about quoting numbers from memory rather than from a run.
+3. Open question to measure before starting: how many of the 130 sites are
+   learner-INDEPENDENT (property assertions such as vectorization identity,
+   sandwich identity, array alignment -- these need only the parameter added)
+   versus pinned-CONSTANT tests (these need re-derivation). That ratio decides
+   whether this is days or weeks.
+
+The working implementation is preserved verbatim in
+`_verify/_staged_ml_m_validator.mbt`, with the wiring steps in its header, so
+the next stage starts from tested code.
+
+### Unchanged
+
+This release changes no behaviour. `DoubleMLIRM` and friends still default to
+OLS. **Callers who rely on the default should pass a classifier explicitly
+today** -- `ml_m = LearnerDispatch::logistic_regression(
+LogisticRegression::new())` -- which is already the correct usage and works on
+every version to date.
+
 ## [0.131.8] -- family 2 oracle: bit-identical on BOTH estimators, across BOTH nu2 branches
 
 Docs-only. **No code change, no behavioural change, no test change.**

@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.131.8** |
+| `moon.mod` version | **0.131.9** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **197** `.mbt` files (**90** production + **107** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -71,6 +71,36 @@ subtract. The helpers are pure element-wise loop wrappers
 today -- the public API is fixed so a v0.82+ release can swap
 the bodies to a SIMD-vectorised backend (or external call to
 a BLAS-style library) without breaking callers.
+
+**`ml_m` must be a classifier -- pass one explicitly.**
+Six estimators (`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLDID`,
+`DoubleMLDIDCS`, `DoubleMLDIDBinary`, `DoubleMLDIDCSBinary`) default `ml_m`
+to `LearnerDispatch::linear_regression()`. Upstream makes no such default:
+`ml_m` is a required argument, validated as `regressor=False,
+classifier=True` (`irm.py:157`) and read back with `predict_proba`
+(`irm.py:161`). A propensity enters the score as `1 / m_hat`, and an OLS
+propensity is unbounded. Clipping (`propensity_clip`, default `1e-6`) keeps the
+result finite, so nothing raises -- it just returns wrong numbers. Measured on a
+fixture with true `ATE = 1.5`:
+
+| `ml_m` | `coef` | `rv` |
+|---|---|---|
+| `linear_regression` (the default) | **-225.86** | 0.043 |
+| `logistic_regression` | **1.44** | 0.842 |
+
+So pass a classifier explicitly today:
+
+```moonbit
+ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
+```
+
+`LearnerDispatch::RandomForestClassifier` and
+`LearnerDispatch::GradientBoostingClassifier` are the nonlinear options
+(`LearnerDispatch::is_classifier()` reports which constructors qualify).
+A default change is **not** scheduled for an imminent patch: it would move
+pinned constants across ~130 call sites, so it is being staged one estimator
+at a time. See `_verify/_staged_ml_m_validator.mbt` for the validated check
+and the wiring steps. Until it ships, the default is unchanged.
 
 **Propensity-score processor (`PSProcessor`)** -- `clipping_threshold`
 clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)
