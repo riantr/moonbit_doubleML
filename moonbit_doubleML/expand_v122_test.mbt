@@ -456,9 +456,32 @@ test "v122_irm_scalar_clip_reaches_the_estimator" {
     seed=3141,
     propensity_clip=0.05,
   ).fit()
-  // the deprecated scalar is LIVE: hardcoding the default breaks this
-  assert_true((default.coef() - clipped.coef()).abs() > 1.0)
-  assert_true((default.se() - clipped.se()).abs() > 1.0)
+  // the deprecated scalar is LIVE: hardcoding the default breaks this.
+  //
+  // v0.132.0 RE-DERIVED these thresholds against a measurement rather than
+  // re-tuning them until green. Under the old OLS `ml_m` default the numbers
+  // were d_coef = 186.46 / d_se = 387.06: the assertion held only because an
+  // OLS propensity is unbounded and the 1e-6 clip turned it into
+  // coef = -184.45 (true ATE for this DGP is 2.0). Under the corrected
+  // default (LogisticRegression) the propensity is already in [0,1] and
+  // rarely touches the bound, so d_coef falls to 0.0279 -- but d_se still
+  // moves 0.1313, with the SE dropping 9.2x from 0.1473 to 0.0160.
+  //
+  // The property under test is unchanged: the threshold is a live knob.
+  // What changed is the magnitude, and it is now asserted SCALE-FREE,
+  // because an absolute bound only held while the propensity model was
+  // pathological.
+  assert_true((default.coef() - clipped.coef()).abs() > 0.0)
+  assert_true((default.se() - clipped.se()).abs() > 0.0)
+  // The clip's actual job is variance control: tightening 1e-6 -> 0.05 must
+  // cut the SE by at least 2x (measured 9.2x). If someone hardcoded the
+  // default threshold, d_se collapses to 0 and this fails first.
+  assert_true(clipped.se() * 2.0 < default.se())
+  // And with a correct propensity learner BOTH thresholds recover the true
+  // ATE of 2.0 to within 0.05 (measured 1.9807 and 2.0086). The OLS default
+  // could not do this at the tight threshold: it was off by 186.45.
+  assert_true((default.coef() - 2.0).abs() < 0.05)
+  assert_true((clipped.coef() - 2.0).abs() < 0.05)
   // and the config route agrees with the scalar route for the same
   // threshold -- one threshold, two doors, one value
   let via_cfg = DoubleMLIRM::new(

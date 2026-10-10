@@ -183,6 +183,35 @@ pub enum LearnerDispatch {
 pub extend LearnerDispatch with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
+/// v0.132.0: is this learner a CLASSIFIER (predicts `P(y = 1 | x)`) rather
+/// than a regressor (predicts `E[y | x]`)?
+///
+/// The port's counterpart of upstream's type check: upstream does
+/// `_check_learner(ml_m, "ml_m", regressor=False, classifier=True)`
+/// (`irm/irm.py:157`) and sets `_predict_method["ml_m"] = "predict_proba"`
+/// (`irm.py:161`). A regressor has no `predict_proba` at all, so upstream
+/// makes the mistake impossible rather than merely unlikely.
+///
+/// Here the distinction is decidable from the variant, because the classifier
+/// and regressor learners are separate constructors rather than one class
+/// with a flag.
+pub fn LearnerDispatch::is_classifier(self : LearnerDispatch) -> Bool {
+  match self {
+    LogisticRegression(_) => true
+    RandomForestClassifier(_) => true
+    GradientBoostingClassifier(_) => true
+    LinearRegression(_) => false
+    Constant(_) => false
+    Noop(_) => false
+    RandomForest(_) => false
+    GradientBoosting(_) => false
+    Ridge(_) => false
+    Lasso(_) => false
+    ElasticNet(_) => false
+  }
+}
+
+///|
 /// Default `LearnerDispatch` (a fresh `LinearRegression`).
 /// Used as the default value for the `learner_l` /
 /// `learner_m` labeled params on `DoubleMLPLR::new`.

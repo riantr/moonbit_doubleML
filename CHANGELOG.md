@@ -9,6 +9,151 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.132.0] -- `DoubleMLIRM`'s default `ml_m` is a classifier
+
+The first estimator migrated off the OLS propensity default documented in
+v0.131.9. Tests 1012 -> 1014 (native / wasm / js), 1018 -> 1020 (wasm-gc).
+
+### The change
+
+`DoubleMLIRM::new`'s `ml_m` default moves from
+`LearnerDispatch::linear_regression()` to
+`LearnerDispatch::logistic_regression(LogisticRegression::new())`.
+
+`ml_g` **deliberately stays OLS** -- it models `E[y | x]`, not `P(y = 1 | x)`.
+The two defaults now diverge on purpose, and a gate pins both halves.
+
+Upstream has no such default to be wrong about: `ml_m` is a mandatory
+positional argument, validated `_check_learner(ml_m, "ml_m", regressor=False,
+classifier=True)` (`irm/irm.py:157`) and read back through `predict_proba`
+(`irm.py:161`). A regressor has no `predict_proba` at all, so upstream makes
+the mistake impossible rather than merely unlikely.
+
+This is **not** like `in_sample_normalization = false`. v0.8.0 chose that one
+on purpose, to stay byte-equal to the pre-0.8.0 port. The OLS `ml_m` default
+was inherited mechanically by v0.59.0's `LearnerDispatch` injection, which
+preserved a hardcoded learner and carried **no design rationale**.
+
+### Measured, not asserted
+
+New `LearnerDispatch::is_classifier()` reports which constructors are
+classifiers, mirroring the property upstream gets from `predict_proba`.
+
+Both arms measured in one run, three DGP seeds, saturated propensity, true
+`ATE = 1.5` (`_verify/probe_v1320_dgp.mbt`):
+
+| seed | default (`LogisticRegression`) | \\|bias\\| | `LinearRegression` | \\|bias\\| |
+|---|---|---|---|---|
+| 3141 | 1.3017 | **0.198** | -153.31 | 154.81 |
+| 2718 | 1.5078 | **0.0078** | -71.30 | 72.80 |
+| 1618 | 1.6167 | **0.117** | -229.40 | 230.90 |
+
+Worst default bias **0.198** vs best OLS bias **72.80** -- a 366x separation,
+which is what lets one threshold hold across all three seeds instead of a
+threshold fitted to a single draw.
+
+### Gates (both mutation-verified)
+
+`expand_v132_test.mbt`:
+
+1. **`v1320_irm_default_ml_m_is_a_classifier_and_ml_g_is_not`** -- structural.
+   Asserts the default `ml_m` is a classifier *and* the default `ml_g` is
+   not. Asserting only the first would leave open "make everything a
+   classifier", which is equally wrong in the other direction.
+2. **`v1320_irm_default_recovers_true_ate_where_ols_does_not`** -- behavioural.
+   Same data through both learners: the default must land within `0.5` of the
+   true ATE while the OLS arm must miss by more than `20.0`, with the pairwise
+   `d_bias < o_bias / 100` as the load-bearing check. This fails just as loudly
+   if someone re-breaks the default by routing through a regressor without
+   touching the `LearnerDispatch` variant.
+
+Mutation evidence: reverting the `ml_m` default to `linear_regression()` fails
+**both** gates (`:73` classifier, `:109` bias). Flipping `ml_g` to logistic is
+caught earlier, by the `logistic.mbt:134` precondition that rejects continuous
+treatment -- so gate 1's `ml_g` half is documented intent rather than the sole
+detector for that mutation.
+
+### One existing gate re-derived, not re-tuned
+
+`v122_irm_scalar_clip_reaches_the_estimator` (`expand_v122_test.mbt`) asserted
+`(coef(clip=1e-6) - coef(clip=0.05)).abs() > 1.0`. It failed after the flip,
+and it should have: the threshold was calibrated against the **pathological**
+OLS path, where the 1e-6 clip turned an unbounded propensity into
+`coef = -184.45` on a fixture whose true ATE is `2.0`.
+
+Both arms measured in one run:
+
+| learner | coef @1e-6 | coef @0.05 | Δcoef | Δse | se ratio |
+|---|---|---|---|---|---|
+| OLS (pre-flip) | **-184.45** | 2.0077 | 186.46 | 387.06 | 0.00004 |
+| Logistic (post-flip) | 1.9807 | 2.0086 | **0.0279** | 0.1313 | **0.108** |
+
+The property under test -- *the clip threshold is a live knob* -- is unchanged
+and still holds: the SE drops **9.2x** (0.1473 -> 0.0160). What changed is the
+magnitude, because a correct propensity model barely touches the bound. So the
+assertion is now **scale-free** (`d > 0`, plus "tightening 1e-6 -> 0.05 cuts the
+SE by at least 2x"), rather than an absolute that only held while the
+propensity model was broken. Added: both thresholds now recover the true ATE
+`2.0` to within `0.05`, which the OLS default could not do.
+
+### Blast radius: the stage-2a estimate was ~an order of magnitude too high
+
+Stage 2a classified the IRM test bodies **statically** and estimated
+"hours-to-days". The actual migration needed **three** test edits: two
+meta-assertions pinning the default's identity (`irm_wbtest.mbt`) and the one
+magnitude threshold above.
+
+`_verify/_census_mlm_1320.py` explains the gap. It scans **balanced-paren call
+blocks**, so an `ml_m=` passed four lines below the constructor is attributed
+correctly -- which a line-based grep cannot do. `DoubleMLIRM` has 63
+construction sites, **59** of which take the default `ml_m`.
+
+59 behaviour-changing sites needed 3 edits, because the suite is dominated by
+**property** assertions (finite coefficient, positive SE, ordering,
+invariance) and a classifier propensity makes those hold *more* readily than a
+regressor did. Only assertions pinned to the pathological OLS numbers moved.
+
+**This is a measurement, not a projection**: it covers `DoubleMLIRM` only.
+The remaining estimators have more pinned constants (PLR: 70 sites, DID family:
+60), so their cost is genuinely unknown until each is migrated. Expect the
+per-estimator cost to be *small but non-zero*, not the days stage 2a implied.
+
+### Documentation defect found and fixed
+
+The README's `.mbt` file count read `**90** production + **107** test`. The
+convention was counting `*wbtest.mbt` files as **production** because they do
+not end in `_test.mbt` -- so **25 whitebox test files** were inflating
+production and deflating the test count. This has been wrong since at least
+v0.127.0, which is why "production" sat frozen at `90` while real production
+code stood at `65`. Now stated as three explicit buckets, all measured:
+
+| `.mbt` file count | **199** `.mbt` files (**65** production + **109** blackbox test + **25** whitebox test) |
+|---|---|
+
+### Still on the OLS default -- 14 structs
+
+The v0.131.9 hazard note listed **six** estimators. The real list is **14**
+structs (verified by grepping every `ml_m?` default in the package):
+
+| Struct | Site | | Struct | Site |
+|---|---|---|---|---|
+| `DoubleMLAPO` | `apo.mbt:100` | | `DoubleMLDIDCS` | `did_cs.mbt:879` |
+| `DoubleMLAPOS` | `apo.mbt:1276` | | `DoubleMLDIDCSBinary` | `did_cs_binary.mbt:1039` |
+| `DoubleMLCVAR` | `cvar.mbt:138` | | `DoubleMLDIDMulti` | `did_multi.mbt:94` |
+| `DoubleMLDID` | `did.mbt:235` | | `DoubleMLIIVM` | `iivm.mbt:184` |
+| `DoubleMLDIDBinary` | `did_binary.mbt:751` | | `DoubleMLLPLR` | `lplr.mbt:351` |
+| `DoubleMLDIDCrossSection` | `did_cross_section.mbt:198` | | `DoubleMLPQ` | `quantile.mbt:392` |
+| `DoubleMLSSM` | `ssm.mbt:158` | | `DoubleMLQTE` | `quantile.mbt:1442` |
+
+Until each is migrated, pass a classifier explicitly:
+
+```moonbit
+ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
+```
+
+Migration continues one estimator at a time, each with its own measurement and
+mutation-verified gates.
+
 ## [0.131.9] -- the `ml_m` default is a documented hazard; the fix is staged, not shipped
 
 Docs-only. **No code change, no behavioural change, no test change.**

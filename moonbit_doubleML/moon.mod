@@ -15,7 +15,7 @@ import {
 
 name = "riantr/moonbit_doubleML"
 
-version = "0.131.9"
+version = "0.132.0"
 
 readme = "README.mbt.md"
 

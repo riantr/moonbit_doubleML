@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.131.9** |
+| `moon.mod` version | **0.132.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **197** `.mbt` files (**90** production + **107** test) |
+| `.mbt` file count | **199** `.mbt` files (**65** production + **109** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1012 / 1012 / 1012** |
-| Tests (wasm-gc) | **1018 / 1018** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1014 / 1014 / 1014** |
+| Tests (wasm-gc) | **1020 / 1020** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -72,10 +72,7 @@ today -- the public API is fixed so a v0.82+ release can swap
 the bodies to a SIMD-vectorised backend (or external call to
 a BLAS-style library) without breaking callers.
 
-**`ml_m` must be a classifier -- pass one explicitly.**
-Six estimators (`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLDID`,
-`DoubleMLDIDCS`, `DoubleMLDIDBinary`, `DoubleMLDIDCSBinary`) default `ml_m`
-to `LearnerDispatch::linear_regression()`. Upstream makes no such default:
+**`ml_m` must be a classifier.** Upstream makes no such default:
 `ml_m` is a required argument, validated as `regressor=False,
 classifier=True` (`irm.py:157`) and read back with `predict_proba`
 (`irm.py:161`). A propensity enters the score as `1 / m_hat`, and an OLS
@@ -85,22 +82,33 @@ fixture with true `ATE = 1.5`:
 
 | `ml_m` | `coef` | `rv` |
 |---|---|---|
-| `linear_regression` (the default) | **-225.86** | 0.043 |
+| `linear_regression` | **-225.86** | 0.043 |
 | `logistic_regression` | **1.44** | 0.842 |
 
-So pass a classifier explicitly today:
+The port used to default `ml_m` to `LearnerDispatch::linear_regression()`
+everywhere. **`DoubleMLIRM` was migrated in v0.132.0**: its `ml_m` default is
+now `LearnerDispatch::logistic_regression(LogisticRegression::new())`, while
+`ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x]`), so the
+two defaults now diverge on purpose. On a saturated-propensity fixture with true
+`ATE = 1.5`, across three seeds the default recovers the ATE to within `0.198`,
+where an OLS propensity misses by at least `72.8` -- a 366x separation.
+`LearnerDispatch::is_classifier()` reports which constructors qualify.
+
+**The other 14 structs still default `ml_m` to `linear_regression()`**:
+`DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLCVAR`, `DoubleMLDID`,
+`DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDCS`,
+`DoubleMLDIDCSBinary`, `DoubleMLDIDMulti`, `DoubleMLIIVM`, `DoubleMLLPLR`,
+`DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLSSM`. Until each is migrated, pass a
+classifier explicitly:
 
 ```moonbit
 ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
 ```
 
 `LearnerDispatch::RandomForestClassifier` and
-`LearnerDispatch::GradientBoostingClassifier` are the nonlinear options
-(`LearnerDispatch::is_classifier()` reports which constructors qualify).
-A default change is **not** scheduled for an imminent patch: it would move
-pinned constants across ~130 call sites, so it is being staged one estimator
-at a time. See `_verify/_staged_ml_m_validator.mbt` for the validated check
-and the wiring steps. Until it ships, the default is unchanged.
+`LearnerDispatch::GradientBoostingClassifier` are the nonlinear options.
+Migration proceeds one estimator at a time, each with its own measurement and
+mutation-verified gates.
 
 **Propensity-score processor (`PSProcessor`)** -- `clipping_threshold`
 clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)

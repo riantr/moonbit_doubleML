@@ -1,9 +1,19 @@
 ///|
 test "irm_learner_g_accessor_returns_default" {
   // v0.59.0+: a default IRM (no learner override) must report
-  // its constructor-time `ml_g` via `learner_g()`. The default
-  // is `LearnerDispatch::linear_regression()` (matches v0.57.0
-  // behavior where the learner was hardcoded to OLS).
+  // its constructor-time `ml_g` / `ml_m` via the accessors.
+  //
+  // v0.132.0: the DEFAULTS DIVERGE, deliberately. `ml_g` is the OUTCOME
+  // nuisance, so it stays OLS. `ml_m` is the PROPENSITY, and upstream
+  // requires a classifier there: `DoubleMLIRM`'s `ml_m` is a mandatory
+  // positional arg validated `_check_learner(ml_m, "ml_m", regressor=False,
+  // classifier=True)` (irm.py:157) and read back with `predict_proba`
+  // (irm.py:161). A regressor has no `predict_proba` at all.
+  //
+  // This is not cosmetic. A propensity enters the score as `1 / m_hat`;
+  // with the old OLS default, `propensity_clip = 1e-6` kept that finite
+  // but the estimator returned `coef = -225.86` where the true ATE was
+  // `1.5`, silently. Clipping converted a crash into wrong numbers.
   let n = 60
   let p = 2
   let x = Matrix::zeros(n, p)
@@ -21,17 +31,20 @@ test "irm_learner_g_accessor_returns_default" {
   }
   let data = DoubleMLData::new(x, y, d)
   let m = DoubleMLIRM::new(data, n_folds=2, seed=3141)
-  // Accessor must be callable pre-fit: returns the
-  // constructor-set default (LinearRegression). Match on the
-  // enum to verify.
+  // Accessors must be callable pre-fit: they return the
+  // constructor-set defaults.
   match m.learner_g() {
     LinearRegression(_) => ()
-    _ => abort("expected default LearnerDispatch::LinearRegression")
+    _ => abort("expected ml_g default LearnerDispatch::LinearRegression")
   }
   match m.learner_m() {
-    LinearRegression(_) => ()
-    _ => abort("expected default LearnerDispatch::LinearRegression")
+    LogisticRegression(_) => ()
+    _ => abort("expected ml_m default LearnerDispatch::LogisticRegression")
   }
+  // The default `ml_m` must be a CLASSIFIER -- the property upstream
+  // enforces structurally via `predict_proba`.
+  assert_true(m.learner_m().is_classifier())
+  assert_true(!m.learner_g().is_classifier())
   let _ = p
 }
 
@@ -109,9 +122,12 @@ test "irm_constructor_learner_param_persists_pre_fit" {
     GradientBoosting(_) => ()
     _ => abort("expected constructor-set GradientBoosting learner_g")
   }
-  // ml_m defaults to LinearRegression
+  // v0.132.0: `ml_m` was NOT set by the constructor here, so it is the
+  // DEFAULT -- and the default is a classifier (LogisticRegression), not
+  // OLS. See `irm_learner_g_accessor_returns_default` for why.
   match m.learner_m() {
-    LinearRegression(_) => ()
-    _ => abort("expected default LinearRegression learner_m")
+    LogisticRegression(_) => ()
+    _ => abort("expected default LogisticRegression learner_m")
   }
+  assert_true(m.learner_m().is_classifier())
 }

@@ -113,7 +113,9 @@ pub fn DoubleMLIRM::new(
   propensity_clip? : Double = 1.0e-6,
   ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+    LogisticRegression::new(),
+  ),
 ) -> DoubleMLIRM {
   try {
     require(n_folds >= 2)
