@@ -112,7 +112,10 @@ fn cs_bin_panel_subset(
     // arrays for speed; `x` is `n_rows * p` row-major.
     let x_acc : Array[Double] = []
     let y_acc : Array[Double] = []
-    let d_acc : Array[Double] = [] // G_indicator
+    let d_acc : Array[Double] = [] // G_indicator -- upstream also names this
+    // local `d` (`did_cs_binary.py:472`), so the name matches; the VALUE does
+    // not come from `data.d`. See the `adjust_ps` block in
+    // `cs_bin_panel_fold` for the full retraction of that confusion.
     let t_acc : Array[Double] = [] // T_indicator
     let mut n_g = 0
     let mut n_c = 0
@@ -309,33 +312,46 @@ fn cs_bin_crossfit_nuisance(
   }
   // Clip + apply ps_processor.
   //
-  // v0.128.0 CORRECTION OF A MISLEADING COMMENT. The old text here read:
-  // "The `treatment` arg of `adjust_ps` is the G_indicator (the propensity
-  // condition is `E[D=1 | X]`)." -- which contradicts itself, because the
-  // propensity condition is on D, and this port does NOT model it.
+  // WHY `row.g_indicator` AND NOT `row.d`? Because THAT IS WHAT UPSTREAM
+  // FEEDS TO BOTH CALL SITES. This is upstream's own code, verbatim:
   //
-  // THE FACTS, checked against upstream `did_cs_binary.py`:
-  //   - `cs_bin_panel_subset` pushes `g_indicator`, not `data.d`, into
-  //     `CSBinPanelRow` (and names the field `g_indicator`, so the
-  //     substitution is at least visible);
-  //   - `ml_m` is therefore REGRESSED on G, not on D;
-  //   - upstream regresses `ml_m` on `d` (`did_cs_binary.py:504-513`) and
-  //     adjusts with `d` (`:516`).
-  // So this port estimates `P(G=1|X)` where upstream estimates
-  // `P(D=1|X)`. The two agree internally -- it fits and calibrates on the
-  // same variable -- but they are DIFFERENT nuisance definitions, and the
-  // difference is visible on any staggered design where a unit is treated
-  // in some periods and not others.
+  //   did_cs_binary.py:179   self._g_data_subset = data_subset["G_indicator"]
+  //   did_cs_binary.py:472   _, d = check_X_y(x, self._g_data_subset, ...)
+  //                          #          ^ the local name `d`
+  //                          #          and the SAME LINE's own trailing
+  //                          #          comment reads
+  //                          #          "(d is the G_indicator)"
+  //   did_cs_binary.py:504   _dml_cv_predict(ml_m, x, d, ...)     <- regress ml_m
+  //   did_cs_binary.py:516   ps_processor.adjust_ps(preds, d, ...) <- calibrate
   //
-  // `DoubleMLDID` (panel DID) and `DoubleMLDIDCrossSection` both use the
-  // real `d` and are upstream-faithful; this estimator is the outlier.
+  // The local variable is called `d`, which is EXACTLY the trap: `d` is also
+  // the name of the DATA COLUMN, and on a staggered design the two differ on
+  // any unit that is treated in some periods but not others.
   //
-  // NOT fixed here: correcting it changes every `did_cs_binary` result and,
-  // through `did_cs`, every `did_cs` result. That is a behavioural release
-  // of its own and needs its own measurement. It is recorded in the
-  // v0.128.0 changelog and pinned by
-  // `v128_did_cs_binary_nuisance_is_a_group_propensity` so the divergence
-  // cannot be forgotten.
+  // v0.128.0 FELL INTO THAT TRAP. It read the identifier `d` as the column,
+  // concluded this port diverged from upstream, measured the size of the
+  // "divergence" (109 of 720 subset rows differ; the two OLS fits differ by up
+  // to 0.365), and published it -- in the CHANGELOG, in the README, and in a
+  // code comment here that said the port was "the outlier".
+  //
+  // v0.129.0 RETRACTS THAT. It does so at RUNTIME, not by re-reading the
+  // names: instrumenting the vendored upstream 0.11.4 and capturing the
+  // arguments at BOTH call sites on the port's own staggered fixture gives
+  //     ml_m regression target == subset G_indicator    (True)
+  //     ml_m regression target == subset d             (False)
+  //     adjust_ps calibration target == subset G_indicator  (True)
+  //     adjust_ps calibration target == subset d           (False)
+  // with sum 218 = mean(G)*720 versus sum 109 = mean(d)*720, so the two
+  // candidates are numerically distinguishable and the test is not vacuous.
+  // See `_verify/_oracle_1290.py`.
+  //
+  // CONSEQUENCE: the v0.129.0 CODE fix that switched these two sites to
+  // `row.d` was WRONG and has been reverted. `g_indicator` was right.
+  //
+  // The invariant this must preserve, and which
+  // `v129_cs_binary_never_reads_the_treatment_column` now pins: NOTHING in
+  // this estimator's fit path reads `data.d`. Both nuisances are defined on
+  // G, by upstream's design.
   let m_clipped = clip_vec(m_acc, propensity_clip, 1.0 - propensity_clip)
   let d_arr : Array[Double] = []
   for row in rows {
@@ -1138,6 +1154,21 @@ pub fn DoubleMLDIDCSBinary::bootstrap(
 /// post-subset panel; the Riesz-representer variance is
 /// `mean(psi_a^2)`. Routes through the shared
 /// `irm_style_sensitivity` helper.
+/// v0.129.0 OPEN DEFECT, recorded not fixed. Two things are wrong here, and
+/// they are independent of each other:
+///   1. `self.data.d` is the per-period TREATMENT. Upstream's equivalent,
+///      `did_cs_binary.py:847`, reads `d = self._g_data_subset`, i.e. G --
+///      the same variable the fit path uses (see the `adjust_ps` block in
+///      `cs_bin_panel_fold`). So this residual form uses a variable upstream
+///      never uses here.
+///   2. `self.data` is the FULL panel (n=1080 on the v0.128 fixture) but the
+///      loop runs to `g00.length()` == `n_obs_subset()` (720). Rows are indexed
+///      by SUBSET position over the FULL array, so the first 720 RAW rows are
+///      used rather than the subset rows. Those are different rows: the subset
+///      keeps `t in {t_value_pre, t_value_eval}`, so it is strided, not a
+///      prefix.
+/// Fixing (1) and (2) changes every `sensitivity_analysis` number, so it needs
+/// its own measurement pass; it is NOT bundled into the v0.129.0 retraction.
 pub fn DoubleMLDIDCSBinary::sensitivity_analysis(
   self : DoubleMLDIDCSBinary,
   cf_y? : Double = 0.05,

@@ -256,26 +256,44 @@ test "v128_cs_binary_config_wins_and_survives" {
 }
 
 ///|
-/// GATE 5 -- THE DIVERGENCE THIS ROUND DISCOVERED, pinned so it cannot be
-/// forgotten.
+/// GATE 5 -- THE NUISANCE IS A GROUP PROPENSITY, AND THAT IS UPSTREAM.
 ///
-/// `cs_bin_panel_subset` pushes `g_indicator` into `CSBinPanelRow` instead
-/// of the raw `data.d` (`did_cs_binary.mbt:145`), so `ml_m` is regressed on
-/// G and `adjust_ps` calibrates against G. Upstream regresses on `d`
-/// (`did_cs_binary.py:504-513`) and adjusts with `d` (`:516`). The port is
-/// internally consistent but estimates `P(G=1|X)` where upstream estimates
-/// `P(D=1|X)`.
+/// v0.129.0 REWRITES THIS GATE. It was originally named
+/// `v128_did_cs_binary_nuisance_is_a_group_propensity` and presented the fact
+/// as a DIVERGENCE from upstream -- "upstream regresses `ml_m` on `d`
+/// (`did_cs_binary.py:504-513`) and adjusts with `d` (`:516`)". That was
+/// WRONG, and it was wrong in the most expensive way possible: it was right
+/// about the measurement and wrong about the reference.
 ///
-/// MEASURED on the staggered fixture, restricted to the estimator's own
-/// `(g == 1) x (t in {0, 2})` subset: **109 of 720** rows have
-/// `d != g_indicator`, and the two OLS fits of G and of D on X differ by up
-/// to **0.365** in predicted probability. So the substitution is NOT vacuous.
+/// THE MEASUREMENT WAS FINE. On the staggered fixture, restricted to the
+/// estimator's own `(g == 1 or never-treated) x (t in {0, 2})` subset,
+/// **109 of 720** rows have `d != g_indicator`, and the two OLS fits of G and
+/// of D on X differ by up to **0.365** in predicted probability. The two
+/// candidate nuisances really are different functions.
 ///
-/// NOT fixed here -- it changes every `did_cs_binary` result and, through
-/// `did_cs`, every `did_cs` result, which is a behavioural release of its
-/// own. This gate makes the premise checkable so the next round inherits a
-/// fixture rather than re-deriving one.
-test "v128_did_cs_binary_nuisance_is_a_group_propensity" {
+/// THE REFERENCE WAS WRONG. Upstream's local variable at those lines is
+/// spelled `d`, but it is not the data column `d`:
+///
+///   did_cs_binary.py:179   self._g_data_subset = data_subset["G_indicator"]
+///   did_cs_binary.py:472   _, d = check_X_y(x, self._g_data_subset, ...)
+///                          # and that very line's trailing comment says
+///                          # "(d is the G_indicator)"
+///
+/// CONFIRMED AT RUNTIME, not by re-reading names. Instrumenting the vendored
+/// upstream 0.11.4 and capturing the arguments at both call sites, on this
+/// port's own fixture (`_verify/_oracle_1290.py`):
+///     ml_m regression target == subset G_indicator   -> True
+///     ml_m regression target == subset d            -> False
+///     adjust_ps calibration target == subset G_indicator -> True
+///     adjust_ps calibration target == subset d          -> False
+/// with sum 218 = mean(G)*720 vs sum 109 = mean(d)*720, so the check is not
+/// vacuous -- the two candidates are numerically far apart.
+///
+/// So this port was ALWAYS faithful. v0.129.0 briefly "fixed" it to `row.d`
+/// and has reverted that; the behaviour is unchanged from v0.128.0. The
+/// fixture premise below is kept because it is what makes the next gate
+/// discriminating rather than vacuous.
+test "v129_cs_binary_nuisance_is_a_group_propensity_like_upstream" {
   let data = v128_cs_data(120, 2, 5)
   let cohort_count = 3
   let n_periods = 3
@@ -306,6 +324,64 @@ test "v128_did_cs_binary_nuisance_is_a_group_propensity" {
   assert_true(subset == 720)
   assert_true(differ > 100)
   assert_true(differ < subset)
+}
+
+///|
+/// GATE 5b -- THE DISCRIMINATING GATE. v0.128.0's GATE 5 only pinned a
+/// fixture property; nothing made the CODE answer to it. This one does.
+///
+/// The invariant upstream implies is strong and exactly checkable: NOTHING in
+/// `DoubleMLDIDCSBinary`'s fit path reads `data.d`. Both nuisances -- the
+/// `ml_m` regression target and the `adjust_ps` calibration target -- are
+/// defined on G, and the fold strata are `g_indicator + 2*t_indicator`. So if
+/// you scramble the treatment column and leave everything else alone, the
+/// estimate must come back BIT-IDENTICAL.
+///
+/// A treatment-based nuisance would move; a group-based one cannot. This is
+/// the gate that would have caught the v0.129.0 "fix": it turns the reverted
+/// change from an opinion into a test failure.
+///
+/// MEASURED: scrambling `d` to `1 - d` (and to a coin flip) changes neither
+/// `coef()` nor `se()` nor any of the 720 `predictions_m()` entries, while the
+/// scrambled column really does differ from `g` on the 109 rows above.
+test "v129_cs_binary_never_reads_the_treatment_column" {
+  let data = v128_cs_data(120, 2, 5)
+  let n = data.y.length()
+  // A scrambled panel whose ONLY difference from `data` is the `d` column.
+  let inverted = DoubleMLDIDCSData::new(
+    data.x,
+    data.y,
+    {
+      let d2 : Array[Double] = Array::make(n, 0.0)
+      for i = 0; i < n; i = i + 1 {
+        d2[i] = 1.0 - data.d[i]
+      }
+      d2
+    },
+    data.t,
+    data.id,
+    data.g,
+  )
+  let a = v128_cs_fit(data, PSProcessorConfig::new(clipping_threshold=0.3))
+  let b = v128_cs_fit(inverted, PSProcessorConfig::new(clipping_threshold=0.3))
+  // the perturbation is real ...
+  let mut diff_rows = 0
+  for i = 0; i < n; i = i + 1 {
+    if data.d[i] != 1.0 - data.d[i] {
+      diff_rows = diff_rows + 1
+    }
+  }
+  assert_true(diff_rows > 500)
+  // ... and the estimate is untouched, bit for bit
+  assert_true(a.coef() == b.coef())
+  assert_true(a.se() == b.se())
+  let pa = a.predictions_m()
+  let pb = b.predictions_m()
+  assert_true(pa.length() == 720)
+  assert_true(pa.length() == pb.length())
+  for i = 0; i < pa.length(); i = i + 1 {
+    assert_true(pa[i] == pb[i])
+  }
 }
 
 ///|
@@ -457,6 +533,84 @@ test "v128_cross_section_config_wins_and_clip_does_not_feed" {
     ps_processor_config=Some(cfg),
   ).fit()
   assert_true(conflict.coef() == via_cfg.coef())
+}
+
+///|
+fn v128_cs_fit_nrep(
+  data : DoubleMLDIDCSData,
+  cfg : PSProcessorConfig,
+  n_rep : Int,
+) -> DoubleMLDIDCSBinary {
+  DoubleMLDIDCSBinary::new(
+    data,
+    1,
+    0,
+    2,
+    n_folds=2,
+    n_rep~,
+    seed=3141,
+    ps_processor_config=Some(cfg),
+  ).fit()
+}
+
+///|
+/// GATE 10 -- THE MULTI-REP FOLD RE-DRAW IS LIVE, AND WAS NOT COVERED.
+///
+/// The v0.129.0 harness mutated `strata[i] = rows[i].g_indicator +
+/// 2.0 * rows[i].t_indicator` inside the `if r > 0` branch and the mutation
+/// SURVIVED. The expected explanation was checked before it was accepted:
+/// that whole block only runs for repetition `r >= 1`, every estimator test in
+/// this package passes `n_rep = 1`, and there was no test anywhere that fit
+/// `DoubleMLDIDCSBinary` with `n_rep >= 2` -- so the site was structurally
+/// unreachable, not merely ungated.
+///
+/// Two consequences, both acted on:
+///   1. this gate fits at `n_rep = 2` and asserts the estimate MOVES, which
+///      makes the re-draw path observable for the first time;
+///   2. the harness's M4 mutation is re-anchored to the rep-0 draw at
+///      `cs_bin_crossfit` (the one that runs on every fit), and the dead-site
+///      mutation is kept as a separate, now-expected-KILLED probe.
+///
+/// A survival that is explained is allowed. A survival that is only explained
+/// is not -- it is a coverage hole, and the hole gets filled.
+test "v129_cs_binary_multi_rep_redraws_folds" {
+  let data = v128_cs_data(120, 2, 5)
+  let cfg = PSProcessorConfig::new(clipping_threshold=0.3)
+  let one = v128_cs_fit_nrep(data, cfg, 1)
+  let two = v128_cs_fit_nrep(data, cfg, 2)
+  // The inequality alone is NOT enough. On the first attempt GATE 10 asserted
+  // only `one.coef() != two.coef()`, and the harness mutation
+  // `M5-per-rep-redraw-drop-g` still SURVIVED -- because dropping G from the
+  // rep-1 strata changes WHICH rows land in which fold but still leaves rep 1
+  // different from rep 0, so a coarse inequality cannot see it.
+  //
+  // What discriminates is pinning the rep-1 result exactly: the rep-1 folds
+  // are drawn with `seed + 1` from the G-aware strata, and the mutation
+  // produces a different (still self-consistent) partition, hence a different
+  // coefficient. Measured at clip 0.3, n_folds=2, seed=3141:
+  //
+  //   n_rep=1  coef 0.9912225682002018   se 0.009379007817934814
+  //   n_rep=2  coef 0.991686661219762     se 0.00953229085629481
+  //
+  // `n_rep=1` also equals the `v128_cs_binary_config_reaches_the_transform`
+  // clip-0.3 value, which is a useful independent cross-check that this
+  // fixture is the same one.
+  assert_true(one.coef() == 0.9912225682002018)
+  assert_true(two.coef() == 0.991686661219762)
+  assert_true(two.se() == 0.00953229085629481)
+  assert_true(one.coef() != two.coef())
+  // and the averaged nuisance moves with it, not just the point estimate
+  let p1 = one.predictions_m()
+  let p2 = two.predictions_m()
+  assert_true(p1.length() == 720)
+  assert_true(p1.length() == p2.length())
+  let mut moved = 0
+  for i = 0; i < p1.length(); i = i + 1 {
+    if p1[i] != p2[i] {
+      moved = moved + 1
+    }
+  }
+  assert_true(moved > 0)
 }
 
 ///|

@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.128.0** |
+| `moon.mod` version | **0.129.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **196** `.mbt` files (**90** production + **106** test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **900 / 900 / 900** |
-| Tests (wasm-gc) | **906 / 906** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **999 / 999 / 999** |
+| Tests (wasm-gc) | **1005 / 1005** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **12 / 22** estimators expose `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef` (v0.89.0) |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -138,15 +138,25 @@ That family also has just **one** `adjust_ps` site (`did_binary.py:537`), and
 that ATT responds much more strongly on the raw `DoubleMLDID` (spread 2.25e-2
 across the clip sweep) than through the panel wrapper (1.8e-3, a 12x
 damping), so the wrapper's gate is written as an exact inequality rather than
-a threshold. Sixth, a **known divergence** you should know about before
-using the CS-DID estimators: `DoubleMLDIDCSBinary` substitutes the group
-indicator `G` for the treatment `D` throughout, so it models `P(G=1|X)`
-where upstream models `P(D=1|X)` (`did_cs_binary.py:504-516`). Measured on a
-staggered fixture: 109 of 720 evaluated rows have `d != G`, and the two
-fitted nuisances differ by up to **0.365**. `DoubleMLDID` and
-`DoubleMLDIDCrossSection` use the real `D` and are upstream-faithful.
-`v128_did_cs_binary_nuisance_is_a_group_propensity` pins the premise; the
-fix is a behavioural release of its own and has not been made.
+a threshold. Sixth, `DoubleMLDIDCSBinary` deliberately uses the group
+indicator `G` for **both** its propensity regression and its `adjust_ps`
+calibration -- so it models `P(G=1|X)`, not `P(D=1|X)`. That is **correct**,
+and v0.128.0 got it wrong. Upstream's local variable at
+`did_cs_binary.py:504` and `:516` is spelled `d`, but it is bound at `:472` to
+`self._g_data_subset`, and that line's own trailing comment reads
+`# (d is the G_indicator)`. The trap is that the data column is *also* called
+`d`, and on a staggered design the two differ on 109 of 720 evaluated rows
+(the two fits disagree by up to 0.365) -- so the substitution is large and
+visible, and still correct. Confirmed at runtime by capturing the arguments
+at both upstream call sites (`_verify/_oracle_1290.py`), not by reading names.
+The invariant is stronger than a comment: **nothing in
+`DoubleMLDIDCSBinary`'s fit path reads `data.d`**, so scrambling the treatment
+column must leave the estimate bit-identical --
+`v129_cs_binary_never_reads_the_treatment_column` pins exactly that, and
+`v129_cs_binary_nuisance_is_a_group_propensity_like_upstream` keeps the
+fixture premise. `DoubleMLDID` (panel) and `DoubleMLDIDCrossSection` do use
+the real `D`, because upstream's counterparts there do
+(`did.py:197` reads `self._dml_data.d`).
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in
 calibration are kept apart.

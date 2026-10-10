@@ -9,7 +9,197 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-## [0.128.0] -- `ps_processor_config` on the CS-DID family, and a nuisance divergence found on the way
+## [0.129.0] -- RETRACTION: v0.128.0's `did_cs_binary` "nuisance divergence" was wrong
+
+### The retraction, first
+
+v0.128.0 shipped a headline finding:
+
+> `DoubleMLDIDCSBinary` substitutes the group indicator `G` for the
+> treatment `D` throughout, so it models `P(G=1|X)` where upstream models
+> `P(D=1|X)` (`did_cs_binary.py:504-516`).
+
+**That is false. This port was upstream-faithful the whole time, and no code
+change was required.** v0.128.0's own recommendation -- that the substitution
+be corrected -- would have introduced the divergence it claimed to remove.
+
+### How the mistake was made
+
+Upstream's nuisance code at those exact lines reads:
+
+    did_cs_binary.py:179   self._g_data_subset = data_subset["G_indicator"]
+    did_cs_binary.py:472   _, d = check_X_y(x, self._g_data_subset, ...)
+                            # and that same line's own trailing comment says
+                            # "(d is the G_indicator)"
+    did_cs_binary.py:504   _dml_cv_predict(ml_m, x, d, ...)      <- regress ml_m
+    did_cs_binary.py:516   ps_processor.adjust_ps(preds, d, ...) <- calibrate
+
+The **local variable is named `d`**. So is the **data column**. The v0.128.0
+comparison read the identifier and treated it as the column.
+
+Every measurement in the v0.128.0 finding was correct; only the reference
+frame was wrong. Restated exactly:
+
+    rows where d != g_indicator ............ 109 of 720   (still true)
+    max |P(G=1|X) - P(D=1|X)| ............... 0.365       (still true)
+
+Those two numbers are real and they are why the confusion looked plausible --
+the substitution is visible, it is large, and it is easy to believe it must be
+a bug. It is upstream's design.
+
+### Confirmed at runtime, not by re-reading names
+
+Re-reading a variable name is what produced the error, so the check captures
+the **arguments at both call sites**. `_verify/_oracle_1290.py` instruments
+the vendored upstream 0.11.4 (`sys.path.insert` to the 0.11.4 tree, not the
+0.11.3 that happens to be installed) and wraps `_dml_cv_predict` and
+`PSProcessor.adjust_ps`, then fits `DoubleMLDIDCSBinary` on **this port's own
+staggered fixture**:
+
+    ml_m regression target  == subset G_indicator ....... True
+    ml_m regression target  == subset d ................ False
+    adjust_ps calib target  == subset G_indicator ....... True
+    adjust_ps calib target  == subset d ................ False
+
+with `sum = 218 = mean(G)*720` against `sum = 109 = mean(d)*720`, so the two
+candidates are numerically far apart and the check is not vacuous.
+
+Two traps cost time here and are worth writing down:
+
+- `DoubleMLDIDCSBinary` requires `ml_m` to be a **classifier** with
+  `predict_proba` (`did_cs_binary.py:201`). A `LinearRegression` is rejected.
+- `_get_never_treated_value` returns `inf` for a **floating** `g` column
+  (`did_utils.py:34-35`), and `_is_never_treated` then evaluates
+  `np.isinf(g)` -- all `False`, and the fit dies with "No observations in the
+  control group". `g`/`t`/`id` must be integer dtype.
+
+### The near-miss: the wrong fix was written, measured and reverted
+
+Work began by applying the v0.129.0 "correction" -- splitting the conflated
+accumulator into `g_acc` and `d_acc`, adding a `d` field to `CSBinPanelRow`,
+and switching both the `ml_m` target and the `adjust_ps` target to it. It
+compiled, it passed `moon check --deny-warn`, and it changed the coefficients
+in a way that looked like a plausible fix (0.9912225682002018 -> 0.9961609416055153
+at clip 0.3, exact-bound 373/20 -> 613/0).
+
+Then the oracle was run, and the change was reverted in full. `git diff` for
+`did_cs_binary.mbt` in this release contains **comments only**.
+
+Three of v0.128.0's own hardcoded gates failed under the "fix"
+(`v128_cs_binary_config_reaches_the_transform`,
+`v128_cs_binary_isotonic_reaches_the_transform`,
+`v128_cs_binary_config_wins_and_survives`). **Those gates were right and the
+change was wrong.** A gate failing does not mean the gate is stale; the first
+instinct should have been to check the premise, not to re-measure and update
+the constants.
+
+### The gate that would have caught it
+
+v0.128.0 pinned a *fixture property* and left the *code* ungated. v0.129.0
+adds `v129_cs_binary_never_reads_the_treatment_column`, which asserts the
+invariant upstream actually implies:
+
+> Nothing in `DoubleMLDIDCSBinary`'s fit path reads `data.d`.
+
+Both nuisances are defined on G and the fold strata are
+`g_indicator + 2*t_indicator`, so scrambling the treatment column must leave
+the estimate **bit-identical**. Measured: inverting `d` changes 1080 of 1080
+rows of the column and changes **not one bit** of `coef()`, `se()`, or any of
+the 720 `predictions_m()` entries.
+
+Discriminating power was verified the hard way -- the reverted D-based patch
+was re-applied and this gate **failed**, along with the three v0.128.0 gates:
+
+    v129_cs_binary_never_reads_the_treatment_column ..... FAILED
+    Total tests: 998, passed: 994, failed: 4.
+
+A gate that has only ever been seen passing proves nothing.
+
+### The harness found a coverage hole, and it got closed
+
+The first v0.129.0 harness run anchored its strata mutation on
+`strata[i] = rows[i].g_indicator + 2.0 * rows[i].t_indicator` -- a line that
+occurs **twice** in `did_cs_binary.mbt` -- and the mutation **SURVIVED**.
+
+The instinct was to accept it, because the explanation was available and
+plausible: the second occurrence sits inside `if r > 0`, so it only runs for
+repetition `r >= 1`, and every estimator test in the package passes
+`n_rep = 1`. But "explained" is not "covered". Checking rather than assuming
+showed that **no test anywhere in this package had ever fit
+`DoubleMLDIDCSBinary` with `n_rep >= 2`**, so the per-rep fold re-draw had
+never executed under test at all.
+
+    GATE 10 v129_cs_binary_multi_rep_redraws_folds
+      - fits at n_rep = 2 and pins the result exactly, which makes the
+        re-draw observable for the first time;
+    the harness then splits its strata mutation in two:
+      M4-live-strata-drop-g ....... the rep-0 draw in cs_bin_crossfit
+      M5-per-rep-redraw-drop-g .... the `if r > 0` re-draw
+
+M4 went KILLED immediately. **M5 did not** -- because the first version of
+GATE 10 asserted only `coef(n_rep=1) != coef(n_rep=2)`, and dropping G from
+the rep-1 strata changes *which* rows land in *which* fold while still leaving
+rep 1 different from rep 0. A coarse inequality is blind to that by
+construction. Pinning the rep-1 result exactly closes it:
+
+    n_rep=1  coef 0.9912225682002018   se 0.009379007817934814
+    n_rep=2  coef 0.991686661219762     se 0.00953229085629481
+
+Both are now KILLED. Two lessons, and the second is the project's recurring
+one: *a survival that is explained may be allowed; a survival that is only
+explained is a hole* -- and *an inequality you wrote to prove "it ran" is not
+the same assertion you need to prove "it ran correctly".*
+
+### A real defect found on the way, deliberately NOT fixed here
+
+`DoubleMLDIDCSBinary::sensitivity_analysis` (and its `_cluster` twin) is wrong
+in **two independent ways**, both recorded in the code:
+
+1. it builds residuals from `self.data.d`, the per-period treatment, while
+   upstream's equivalent (`did_cs_binary.py:847`) reads
+   `d = self._g_data_subset` -- the same G the fit path uses;
+2. it indexes the **full** panel (`n = 1080`) by **subset** position
+   (`n_obs_subset() = 720`). The subset keeps `t in {t_value_pre,
+   t_value_eval}`, so it is strided, not a prefix: the first 720 *raw* rows
+   are not the subset rows.
+
+Fixing either changes every `sensitivity_analysis` number, so it needs its own
+measurement pass. It is not bundled into a retraction release.
+
+### Verification
+
+    native 999/999    wasm 999/999    js 999/999    wasm-gc 1005/1005
+    (v0.128.0 was 997/997/997 and 1003 -- +2 tests, no behaviour change)
+    moon check --deny-warn clean on all four targets
+    mutation harness 5 KILLED / 3 SURVIVED / 0 inconclusive, residue clean
+      the 3 SURVIVED are the 2 canaries plus 1 declared no-op control
+
+**No estimator's behaviour changes in this release.** The `did_cs_binary.mbt`
+diff is comments; the `expand_v128_test.mbt` diff is one renamed test, two
+new tests, and a rewritten comment block.
+
+### Method note
+
+This is the project's fifth "the gate passed and the gate discriminated are
+different things" case, and its first "a *passing* gate proved the code wrong".
+The ordering that worked: **write the change, then go find the external
+oracle, and only then update any number that moved.** Re-measuring first and
+consulting the oracle second is what turns a wrong premise into a wrong
+release -- v0.128.0 measured correctly and still shipped a false conclusion
+because it never asked the real package.
+
+## [0.128.0] -- `ps_processor_config` on the CS-DID family, and a nuisance divergence found on the way (**the divergence claim is RETRACTED in [0.129.0]**)
+
+> **RETRACTED BY [0.129.0].** The `did_cs_binary` finding below -- that this
+> port models `P(G=1|X)` where upstream models `P(D=1|X)` -- is **false**.
+> Upstream's local `d` at `did_cs_binary.py:504`/`:516` is bound at `:472` to
+> `self._g_data_subset`, and that line's own comment reads
+> `# (d is the G_indicator)`. This port was faithful throughout. The
+> measurements below are all correct; the comparison they were made against
+> was not. **Do not act on the "NOT FIXED HERE" note or on the
+> `v128_did_cs_binary_nuisance_is_a_group_propensity` gate name** -- that
+> test is renamed in [0.129.0] and now asserts the opposite conclusion.
+> The text below is kept as-is so the history stays auditable.
 
 ### What this release changes
 
