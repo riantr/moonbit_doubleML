@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.144.0** |
+| `moon.mod` version | **0.145.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **205** `.mbt` files (**65** production + **115** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **206** `.mbt` files (**65** production + **116** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1040 / 1040 / 1040** |
-| Tests (wasm-gc) | **1046 / 1046** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1046 / 1046 / 1046** |
+| Tests (wasm-gc) | **1052 / 1052** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -491,6 +491,39 @@ flipping it moves `coef` by 0.03%, `se` by 3-4% and sensitivity `nu2` by
 The config is also folded into the memoize key, not just its threshold,
 so two estimators sharing a `clipping_threshold` but differing in
 calibration are kept apart.
+
+**Solver diagnostics** -- v0.145.0 gives `DoubleMLLPLR` a
+`warnings()` accessor, the first diagnostic channel in the package. Until now
+it had none by design (no `println`, no stderr: a numerical library that writes
+to the console makes its own test output unreadable), and that same silence is
+why `fit` could end its damped-Newton loop with `let _ = converged` and then
+report a coefficient and standard error computed at a **non-solution** without
+saying so. Warnings are **returned, never printed** -- the caller decides:
+
+```moonbit
+let model = DoubleMLLPLR::new(data, alpha=1.5).fit()
+for w in model.warnings() { println(w) }
+```
+
+The failure is easy to miss because it does not look like one. `se` is
+`sqrt(gamma / (j^2 * n))` with `j = mean(psi_deriv)`, so leaving the root makes
+the reported standard error *smaller*. On the package's own
+`make_lplr_LZZ2020` (n = 800, seed 17):
+
+| alpha | warns | `se` | `coef` |
+|---|---|---|---|
+| 0.25 / 0.50 / 0.75 | no | `0.285` / `0.465` / `1.507` | `0.703` / `1.204` / `2.351` |
+| **1.00** | **yes** | `1.7e-06` | `-10.367` |
+| 1.25 / 1.50 / 2.00 | yes | `2.6e-06` / `3.8e-06` / `2.1e-05` | `-10.001` / `-9.702` / `-8.370` |
+
+The boundary lands at **alpha = 1.00**, reproducing the cliff v0.140.0 located
+indirectly from the SE and CI -- the same edge, found from a different
+observable. The reason is `exhausted_step_budget` and the reported `theta` is
+about `-10.7`: the damped step is clamped to `0.25`, so 50 steps walk the
+iterate ~12 units out and simply run out of budget. Three distinct exits are
+named, since they are different faults: `degenerate_derivative`, `diverged`,
+`exhausted_step_budget`. This is unrelated to the v0.144.0 sensitivity work --
+one is about the sensitivity API surface, the other about an estimate.
 
 **Robust variance & inference** -- heteroskedasticity-consistent (HC)
 standard errors, cluster-robust variance, multiplier bootstrap

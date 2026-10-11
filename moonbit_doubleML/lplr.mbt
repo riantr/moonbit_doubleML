@@ -306,6 +306,11 @@ pub struct DoubleMLLPLR {
   m_hat : Array[Double]
   a_hat : Array[Double]
   fitted : Bool
+  // v0.145.0: diagnostics from the most recent `fit(...)`, one entry per
+  // repetition whose Newton solver failed to reach a solution. Empty array when
+  // every repetition converged. Never printed -- read via
+  // `DoubleMLLPLR::warnings`, which documents why.
+  fit_warnings : Array[String]
   // v0.75.0+: per-observation influence function components
   // for the multiplier bootstrap. Populated by `fit(...)` from
   // the LAST rep's cross-fitted nuisances on the
@@ -374,6 +379,7 @@ pub fn DoubleMLLPLR::new(
       m_hat: [],
       a_hat: [],
       fitted: false,
+      fit_warnings: [],
       psi_a: [],
       psi_b: [],
       boot_t_stat: [],
@@ -404,6 +410,50 @@ pub fn DoubleMLLPLR::learner_g(self : DoubleMLLPLR) -> LearnerDispatch {
 /// recent `fit(...)` call. v0.60.0+.
 pub fn DoubleMLLPLR::learner_m(self : DoubleMLLPLR) -> LearnerDispatch {
   self.ml_m
+}
+
+///|
+/// Diagnostics from the most recent `fit(...)` call. v0.145.0+.
+///
+/// THE WARNING CONVENTION, since this package has none.
+///
+/// Until this release the package had no output channel of any kind -- no
+/// `println`, no stderr -- and that is deliberate: a numerical library that
+/// writes to the console makes its test output unreadable and its behaviour
+/// untestable. It also meant that when the LPLR Newton solver failed to reach
+/// a solution, `fit` discarded the flag (`let _ = converged`) and returned a
+/// coefficient and standard error computed at a non-solution anyway. Upstream
+/// warns here; this port had nowhere to.
+///
+/// So warnings are RETURNED, not emitted. The caller asks:
+///
+/// ```moonbit nocheck
+/// let model = DoubleMLLPLR::new(data, alpha=1.5).fit()
+/// for w in model.warnings() {
+///   println(w)          // the CALLER decides whether to print
+/// }
+/// ```
+///
+/// That keeps the library silent, keeps the condition observable, and keeps it
+/// testable -- a gate can assert that a degenerate design produces a warning
+/// and a healthy one does not.
+///
+/// ONE ENTRY PER FAILED REPETITION, and the text names WHICH failure, because
+/// the three are different problems:
+///
+/// | `stop_reason` | meaning |
+/// |---|---|
+/// | `degenerate_derivative` | `|d psi / d theta| < 1e-300` -- the Jacobian vanished, so the Newton direction is undefined |
+/// | `diverged` | the iterate passed `1e6` and was abandoned |
+/// | `exhausted_step_budget` | all 50 damped-Newton steps were used without meeting the `1e-9` step tolerance |
+///
+/// A non-empty result means `coef()` and `se()` are not an estimate and its
+/// standard error. Note that `se()` is computed as `sqrt(gamma / (j^2 * n))`
+/// with `j = mean(psi_deriv)`, so a non-solution point can yield a
+/// deceptively SMALL standard error rather than a conspicuously large one --
+/// the failure does not look like a failure.
+pub fn DoubleMLLPLR::warnings(self : DoubleMLLPLR) -> Array[String] {
+  self.fit_warnings
 }
 
 ///|
@@ -678,6 +728,10 @@ pub fn DoubleMLLPLR::fit(
     // Until this existed the field was validated and stored but
     // never read, so both score names ran the nuisance_space path.
     let kind = lplr_score_kind(self.score)
+    // v0.145.0: diagnostics accumulated across reps. See the warning-convention
+    // note on `DoubleMLLPLR::warnings` for why these are RETURNED rather than
+    // printed -- the package deliberately has no output channel.
+    let warnings : Array[String] = []
     for r = 0; r < nrep; r = r + 1 {
       let beta_start : Double = if cache_hit && r == nrep - 1 {
         // Reuse the cached LAST-rep nuisances + beta_start;
@@ -824,6 +878,13 @@ pub fn DoubleMLLPLR::fit(
       let (theta0, _) = lplr_initial_theta(beta_start, d, y, t_pred, a_pred)
       let mut theta = theta0
       let mut converged = false
+      // v0.145.0: WHY the solver stopped, not merely whether. There are three
+      // distinct non-convergence exits below and they mean different things to
+      // a caller staring at a collapsed standard error: a vanishing Jacobian,
+      // a diverging iterate, and an exhausted step budget. Before this, all
+      // three reached the caller as one silently discarded `let _ = converged`
+      // and a coefficient computed at a non-solution.
+      let mut stop_reason = "exhausted_step_budget"
       for _step = 0; _step < 50; _step = _step + 1 {
         let sc = lplr_score_at(
           theta, d, y, t_pred, a_pred, m_pred, beta_start, kind,
@@ -838,6 +899,7 @@ pub fn DoubleMLLPLR::fit(
         s = s / n_obs
         sd = sd / n_obs
         if sd.abs() < 1.0e-300 {
+          stop_reason = "degenerate_derivative"
           break
         }
         // Pure Newton step is too aggressive on this DGP (the
@@ -856,14 +918,36 @@ pub fn DoubleMLLPLR::fit(
         if (theta_new - theta).abs() < 1.0e-9 {
           theta = theta_new
           converged = true
+          stop_reason = "converged"
           break
         }
         if theta_new.abs() > 1.0e6 {
+          stop_reason = "diverged"
           break
         }
         theta = theta_new
       }
-      let _ = converged
+      // v0.145.0: the discarded flag becomes a returned warning. This line used
+      // to read `let _ = converged`, which is why a coefficient and standard
+      // error computed at a point that is not a solution shipped silently:
+      // measured at alpha >= 1.25 the SE collapses to ~4.6e-5 because it is a
+      // Jacobian evaluated away from the root.
+      //
+      // Upstream WARNS here too (`double_ml_score_mixins.py:143-162`, via
+      // `error_on_convergence_failure=False` by default). The difference is
+      // only the channel: upstream writes to a warnings list, and so does this
+      // -- see the convention documented on `DoubleMLLPLR::warnings`.
+      if !converged {
+        warnings.push(
+          "rep " +
+          r.to_string() +
+          ": LPLR Newton solver did not converge (" +
+          stop_reason +
+          "); coef and se were computed at theta = " +
+          theta.to_string() +
+          ", which is not a solution of the estimating equation",
+        )
+      }
       // 7) Variance at the converged theta. For the linear
       // var_est path, we use psi_deriv(theta) as the linear slope
       // and psi(theta) - theta * psi_deriv(theta) as the constant
@@ -940,6 +1024,7 @@ pub fn DoubleMLLPLR::fit(
       m_hat: m_pred,
       a_hat: a_pred,
       fitted: true,
+      fit_warnings: warnings,
       psi_a: last_psi_a,
       psi_b: last_psi_b,
       boot_t_stat: [],

@@ -9,6 +9,93 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.145.0] — LPLR no longer discards its solver's convergence flag
+
+`DoubleMLLPLR::fit` ended its damped-Newton loop with `let _ = converged` and
+then computed a coefficient and a standard error at whatever iterate the solver
+happened to stop on. Upstream warns here; this port had nowhere to, so it said
+nothing. This release gives the package its first warning convention and uses it.
+
+### The failure, and why it looked like success
+
+`converged` is set only at the step-tolerance exit. The three non-convergence
+exits were:
+
+| `stop_reason` | where | meaning |
+|---|---|---|
+| `degenerate_derivative` | `\|d psi / d theta\| < 1e-300` | Jacobian vanished; Newton direction undefined |
+| `diverged` | iterate past `1e6` | abandoned |
+| `exhausted_step_budget` | 50 steps used | step tolerance `1e-9` never met |
+
+None of them produced an error, and none of them produced a *conspicuous* number
+either. `se = sqrt(gamma / (j^2 * n))` with `j = mean(psi_deriv)`, so leaving
+the root can make the reported standard error **smaller**, not larger. Measured
+on the package's own `make_lplr_LZZ2020` (n = 800, seed 17):
+
+| alpha | warns | `se` | `coef` |
+|---|---|---|---|
+| 0.25 | no | `0.2854707779998293` | `0.7034247725158195` |
+| 0.50 | no | `0.4649849046379285` | `1.203809950801717` |
+| 0.75 | no | `1.5067368183403387` | `2.351198777053456` |
+| **1.00** | **yes** | `0.0000017187094443024176` | `-10.366647301069682` |
+| 1.25 | yes | `0.000002634451906662675` | `-10.000737691439351` |
+| 1.50 | yes | `0.000003768413938503186` | `-9.702218987584223` |
+| 2.00 | yes | `0.00002056294459585136` | `-8.370247531054465` |
+
+The boundary lands at **alpha = 1.00**, reproducing the cliff v0.140.0 located
+indirectly from the standard error and the confidence interval — independent
+confirmation from a different observable. The reason there is
+`exhausted_step_budget`, and `theta` in the warning message is about `-10.7`:
+the damped step is clamped to `0.25`, so 50 steps walk the iterate about 12
+units away from the start and run out of budget. The solver parks at the edge
+of its budget, not at a solution.
+
+### The convention
+
+**Warnings are returned, never printed.** The package deliberately has no output
+channel — no `println`, no stderr — because a numerical library that writes to
+the console makes its own test output unreadable and its behaviour untestable.
+That same silence is why this defect shipped. So the caller asks:
+
+```moonbit
+let model = DoubleMLLPLR::new(data, alpha=1.5).fit()
+for w in model.warnings() { println(w) }   // the CALLER decides
+```
+
+`warnings()` is empty when every repetition converged, and carries one entry per
+failed repetition so a caller running `n_rep > 1` can tell which draw produced
+the bad coefficient.
+
+### Gates
+
+Six in `expand_v145_test.mbt`, on the package's own reference DGP rather than a
+hand-built one (v0.140.0's lesson: a self-made fixture reported LPLR
+coefficients of `-51451` and `+128068`, and "both learners fail on a bad
+fixture" is normal rather than a finding).
+
+GATE 1 is a **benign control** and is declared as such: it asserts the
+diagnostic stays *silent* on a healthy design, and is meant to survive the
+regressions the other gates guard. GATE 6 sweeps six alphas and asserts the
+warning set is a **suffix** — once the objective is rootless, going further out
+must not return to silence — and that the degenerate end actually fires, so it
+cannot pass vacuously on a channel that never triggers.
+
+Mutation evidence (`_verify/mut_v1450_lplr_warn.py`):
+
+| mutation | killed by |
+|---|---|
+| warning removed entirely (the pre-fix behaviour) | all four "must warn" gates |
+| stop reason dropped (constant message) | `..._names_a_documented_stop_reason`, `..._states_the_numbers_are_not_a_solution` |
+| "not a solution" dropped | `..._states_the_numbers_are_not_a_solution` |
+
+GATE 1 and GATE 5 survive all three, by design. Baseline and restored states
+both 6/6.
+
+### Verification
+
+`moon check --deny-warn` and `moon test` on all four backends; typos 1.19.0
+clean.
+
 ## [0.144.0] — fix: PLR's sensitivity reported the fourth moment of the treatment residual
 
 **This is a correctness fix, and it changes numbers.** `DoubleMLPLR::sensitivity_analysis`
