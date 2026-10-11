@@ -70,6 +70,29 @@ fn v107_ssm_fit(n : Int, p : Int, seed : Int) -> DoubleMLSSM {
 }
 
 ///|
+/// v0.138.0 -- same fit with an EXPLICIT propensity learner.
+///
+/// Added because the SE-fragility gate below can no longer be phrased against
+/// the default: v0.138.0 made that default a classifier, and a bounded
+/// propensity is exactly what removes the fragility. `v107_ssm_fit` above is
+/// kept and still used by the other tests in this file, so the default path
+/// stays under test -- it just is not the arm the fragility claim is about.
+fn v107_ssm_fit_ml(
+  n : Int,
+  p : Int,
+  seed : Int,
+  ml_m : LearnerDispatch,
+) -> DoubleMLSSM {
+  DoubleMLSSM::new(
+    v107_ssm_dgp(chacha8_rng(seed), n, p, 1.0),
+    n_folds=2,
+    n_rep=1,
+    seed~,
+    ml_m~,
+  ).fit()
+}
+
+///|
 /// `sandwich_se(HC0)` and `se()` compute the same quantity for a
 /// `var_est`-shaped estimator, so they must agree to the last bit.
 ///
@@ -157,17 +180,40 @@ test "v107_ssm_se_scales_like_inverse_sqrt_n" {
 /// seed, THIS test fails and the cross-check's `SE_RATIO` band can be
 /// re-derived from the new measurements. That is the intended
 /// direction of travel.
+///
+/// v0.138.0: that change arrived -- `DoubleMLSSM`'s default `ml_m`
+/// became a classifier, and a bounded propensity is precisely what
+/// removes the fragility. The table above is therefore retained as a
+/// measurement of the REGRESSOR arm, and the test now asserts it there,
+/// explicitly, via `v107_ssm_fit_ml`. Re-derived values are
+/// bit-for-bit identical to the table (n=500 0.95431/0.15431, n=2000
+/// 0.98914/0.01959, ratio 0.12697); the classifier arm measures
+/// 1.06593/0.06713 and 0.98935/0.02006, ratio 0.29895.
 test "v107_ssm_se_is_fragile_to_the_split" {
-  let small = v107_ssm_fit(500, 5, 3141)
-  let big = v107_ssm_fit(2000, 5, 3141)
-  // Well off the 1/sqrt(n) law, and ~4x the other seeds at n=500.
+  let ols = LearnerDispatch::linear_regression()
+  let logit = LearnerDispatch::logistic_regression(LogisticRegression::new())
+  // (a) The regressor arm still shows the documented fragility: well off the
+  //     1/sqrt(n) law of 0.5, and ~4x the other seeds at n=500.
+  let small = v107_ssm_fit_ml(500, 5, 3141, ols)
+  let big = v107_ssm_fit_ml(2000, 5, 3141, ols)
   let ratio = big.se() / small.se()
   assert_true(ratio < 0.20)
   assert_true(small.se() > 0.10)
-  // But the identity is unaffected.
+  // (b) The classifier arm is out of that band, with margin: measured 0.29895
+  //     against the regressor's 0.12697, a 2.36x separation.
+  let csmall = v107_ssm_fit_ml(500, 5, 3141, logit)
+  let cbig = v107_ssm_fit_ml(2000, 5, 3141, logit)
+  let cratio = cbig.se() / csmall.se()
+  assert_true(cratio > 2.0 * ratio)
+  assert_true(cratio < 0.40)
+  assert_true(csmall.se() < 0.7 * small.se())
+  // (c) But the identity is unaffected in EITHER arm.
   let rel = (small.sandwich_se(SandwichKind::hc0()) - small.se()).abs() /
     small.se()
   assert_true(rel < 1.0e-15)
+  let crel = (csmall.sandwich_se(SandwichKind::hc0()) - csmall.se()).abs() /
+    csmall.se()
+  assert_true(crel < 1.0e-15)
 }
 
 ///|

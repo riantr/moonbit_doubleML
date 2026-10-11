@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.137.0** |
+| `moon.mod` version | **0.138.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **202** `.mbt` files (**65** production + **112** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **203** `.mbt` files (**65** production + **113** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1023 / 1023 / 1023** |
-| Tests (wasm-gc) | **1029 / 1029** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1029 / 1029 / 1029** |
+| Tests (wasm-gc) | **1035 / 1035** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -88,14 +88,15 @@ fixture with true `ATE = 1.5`:
 
 The port used to default `ml_m` to `LearnerDispatch::linear_regression()`
 everywhere. **`DoubleMLIRM` was migrated in v0.132.0**,
-**`DoubleMLAPO` in v0.134.0** and **`DoubleMLAPOS` in v0.135.0**:
+**`DoubleMLAPO` in v0.134.0**, **`DoubleMLAPOS` in v0.135.0** and
+**`DoubleMLSSM` in v0.138.0**:
 their `ml_m` default is now
 `LearnerDispatch::logistic_regression(LogisticRegression::new())`, while
 `ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x]`), so the
 two defaults diverge on purpose. `LearnerDispatch::is_classifier()` reports
 which constructors qualify.
 
-The two migrations do NOT have the same margin, and the gates are shaped
+The four migrations do NOT have the same margin, and the gates are shaped
 accordingly. `DoubleMLIRM` on a saturated-propensity fixture (true `ATE = 1.5`)
 across three seeds: default recovers within `0.198`, an OLS propensity misses
 by at least `72.8` -- a 366x separation on the coefficient. `DoubleMLAPO`
@@ -104,12 +105,27 @@ by at least `72.8` -- a 366x separation on the coefficient. `DoubleMLAPO`
 (`0.270` vs `86.28`, a 300x separation), because the mechanism is that an
 unbounded propensity makes `1 / m_hat` explode and takes the variance with it.
 
-**The other 12 structs still default `ml_m` to `linear_regression()`**:
+`DoubleMLSSM` has the largest margin of the four, because its score carries
+**two** reciprocals, one per direction (`ssm.mbt:73-74`): the treatment
+propensity `m` and the selection propensity `pi`, so an unbounded regressor
+breaks both denominators independently. On a saturated fixture with true
+`theta = 1.0`, the OLS arm returns `242.116` with SE `185.45` where the
+classifier returns `1.177` with SE `0.0982` -- roughly **200x** on the point
+estimate and **1900x** on the standard error. Across three seeds the OLS
+coefficient also **changes sign** (`+242`, `+106`, `-452`); the classifier's
+spread over the same three seeds is `0.761`.
+
+One caveat worth stating plainly: on a *mild* fixture, where the true
+propensity never reaches the `0.02`/`0.98` clamp, the two learners agree to
+three decimals and OLS is marginally better. The hazard is a property of the
+clamp, not of the estimator in general, and the gate suite pins both regimes so
+a future change cannot be scored on the flattering fixture alone.
+
+**Eleven structs still default `ml_m` to `linear_regression()`**:
 `DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`,
 `DoubleMLDIDCrossSection`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
 `DoubleMLDIDMulti`, `DoubleMLIIVM`, `DoubleMLLPLR`, `DoubleMLPQ`,
-`DoubleMLQTE`, `DoubleMLSSM`. Until each is migrated, pass a
-classifier explicitly:
+`DoubleMLQTE`. Until each is migrated, pass a classifier explicitly:
 
 ```moonbit
 ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
@@ -136,7 +152,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLAPO` | hazardous | bias `5.246` vs `0.531`; SE `86.28` vs `0.270` |
 | `DoubleMLAPOS` | hazardous | per-level bias to `436.11` |
 | `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~1e-4 |
-| `DoubleMLSSM` | **hazardous** | coef `242.116` vs `1.177` |
+| `DoubleMLSSM` | **hazardous -- fixed in v0.138.0** | coef `242.116` vs `1.177` |
 | `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
 | `DoubleMLQTE` | not demonstrated | `0.249` vs `0.162` |
 | `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` (16x *smaller* SE) |

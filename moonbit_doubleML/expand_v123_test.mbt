@@ -269,20 +269,74 @@ test "v123_iivm_scalar_clip_reaches_the_estimator" {
 }
 
 ///|
+/// v0.138.0 RE-PIN. The gate is UNCHANGED in substance -- the deprecated
+/// scalar is still live, and hardcoding it still fails -- but it now names the
+/// learner it is about instead of relying on the default.
+///
+/// It broke on the v0.138.0 flip, and the premise was fine: what died was the
+/// MECHANISM. A regressor propensity runs past [0,1], so `propensity_clip`
+/// bites; a classifier's cannot, so the clip is nearly inert. Measured on this
+/// fixture, both arms explicit (`_verify/probe_v1380_repin.mbt`):
+///
+///   learner            coef @1e-6    coef @0.2     |gap|      SE
+///   linear_regression   30.37446267   2.01147675   28.36299   28.32750
+///   logistic_regression   2.10734689   2.01074584    0.09660    0.09870
+///
+/// The regressor's 28.363 is bit-for-bit the gap this gate's header recorded
+/// in v0.123.0, so the plumbing is provably untouched. The classifier's gap
+/// is 293x smaller and sits just under its own standard error -- the clip can
+/// still move the estimate, but only within noise. GATE SPLIT below keeps the
+/// original threshold on the arm where the clip is load-bearing, and turns the
+/// near-inertness into its own assertion rather than deleting it.
 test "v123_ssm_scalar_clip_reaches_the_estimator" {
+  let ols = LearnerDispatch::linear_regression()
   let dflt = DoubleMLSSM::new(
     v123_ssm_data(),
     n_folds=2,
     seed=3141,
     propensity_clip=1.0e-6,
+    ml_m=ols,
   ).fit()
   let clipped = DoubleMLSSM::new(
     v123_ssm_data(),
     n_folds=2,
     seed=3141,
     propensity_clip=0.2,
+    ml_m=ols,
   ).fit()
   assert_true((dflt.coef() - clipped.coef()).abs() > 1.0)
+}
+
+///|
+/// v0.138.0 -- the complement of the gate above, on the learner the default
+/// now IS.
+///
+/// The point of keeping this is that "the clip is nearly inert" is a claim
+/// about a BOUNDED propensity, and it deserves a test: if `propensity_clip`
+/// were ever hardcoded, or the classifier's predictions were clipped in a way
+/// that made the threshold load-bearing again, this fails. Measured gap
+/// 0.09660 against the regressor's 28.36299 -- a ratio of 0.0034, so the 1/100
+/// band has 29x of margin and a hardcode (ratio 1.0) fails by 2900x.
+test "v123_ssm_scalar_clip_is_nearly_inert_under_a_classifier_propensity" {
+  let logit = LearnerDispatch::logistic_regression(LogisticRegression::new())
+  let lo = DoubleMLSSM::new(
+    v123_ssm_data(),
+    n_folds=2,
+    seed=3141,
+    propensity_clip=1.0e-6,
+    ml_m=logit,
+  ).fit()
+  let hi = DoubleMLSSM::new(
+    v123_ssm_data(),
+    n_folds=2,
+    seed=3141,
+    propensity_clip=0.2,
+    ml_m=logit,
+  ).fit()
+  let gap = (lo.coef() - hi.coef()).abs()
+  assert_true(gap > 0.0)
+  assert_true(gap < 0.28) // 0.09660 measured, ~2.9x margin
+  assert_true(gap < 2.0 * lo.se()) // and within two standard errors
 }
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,154 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.138.0] — `DoubleMLSSM`'s default `ml_m` is a classifier, not a regressor
+
+Tests 1029 / 1029 -> 1035 / 1035. One behavioural change (a default value),
+five new gates, two re-pinned.
+
+### The change
+
+`DoubleMLSSM::new`'s `ml_m` default moves from
+`LearnerDispatch::linear_regression()` to
+`LearnerDispatch::logistic_regression(LogisticRegression::new())`.
+`ml_g` deliberately stays OLS — it models `E[y | x]`, not `P(y = 1 | x)`, so the
+two defaults diverge on purpose.
+
+This is the fifth and last estimator to be migrated: `DoubleMLIRM` (v0.132.0),
+`DoubleMLAPO` (v0.134.0), `DoubleMLAPOS` (v0.135.0), and now `DoubleMLSSM`.
+`DoubleMLDIDBinary` was attempted and **abandoned on measurement** (v0.136.0);
+v0.137.0 then measured all eleven remaining defaults one by one and recorded a
+per-estimator verdict. **SSM was the single measured hazard.** This release acts
+on that verdict and on nothing else.
+
+### Why SSM is the worst case in the package
+
+The SSM score carries **two** reciprocals, one per direction
+(`ssm.mbt:73-74`):
+
+```
+psi_b1 = (D==1)*S*(Y-g_d1)/(m*pi)      + g_d1
+psi_b0 = (D==0)*S*(Y-g_d0)/((1-m)*pi)  + g_d0
+```
+
+`m` is the treatment propensity and `pi` the selection propensity, so an
+unbounded regressor breaks **both denominators independently**. IRM and APO
+carry `1/m` alone and were bad by ~200x in the point estimate; SSM is bad by
+~200x in the point estimate and ~1900x in the standard error.
+
+### The control the earlier probes lacked
+
+The measurement ran **three** arms in one pass, and the third is the one that
+matters:
+
+| arm | `coef` | `se` |
+|---|---|---|
+| **shipped (no `ml_m` argument)** | `242.1162443137717` | `185.4454546371585` |
+| `linear_regression` | `242.1162443137717` | `185.4454546371585` |
+| `logistic_regression` | `1.177284305063409` | `0.09819960252026207` |
+
+`shipped - ols` is **exactly `0`**, to the last digit of both the coefficient and
+the standard error. That is not a formality: the v0.136.0 mechanism probe
+compared against the estimator default, printed bit-identical numbers in all six
+cases because the default *was* OLS, and measured a value with itself. Without
+this arm the flip would rest on a number no user ever receives.
+
+### The hazard is the clamp, not the estimator
+
+Two fixtures x three seeds, identical `n`/`p`/folds/seed, true `theta = 1.0`:
+
+| fixture | seed | OLS `coef` | OLS `se` | logit `coef` | logit `se` |
+|---|---|---|---|---|---|
+| steep | 13 | `242.116` | `185.45` | `1.1773` | `0.0982` |
+| steep | 29 | `105.641` | `208.34` | `0.9511` | `0.1187` |
+| steep | 41 | `-451.770` | `209.58` | `0.4160` | `0.2997` |
+| mild | 13 | `1.00493` | `0.005153` | `1.0056` | `0.005463` |
+| mild | 29 | `0.998388` | `0.005810` | `0.9994` | `0.005983` |
+| mild | 41 | `0.999559` | `0.005151` | `1.0000` | `0.005478` |
+
+"Steep" is slope `2.0`, so the true propensity reaches the `0.02`/`0.98` clamp
+and an unbounded fit runs past `[0, 1]`; "mild" is slope `0.4`, so it never does.
+
+1. On the steep fixture the OLS arm **changes sign across seeds**
+   (`+242`, `+106`, `-452`) while the classifier arm stays positive and `O(0.1)`
+   from the truth. Spread `693.9` against `0.761`.
+2. On the mild fixture the two agree to three decimals and OLS is marginally
+   **better** (`0.999559` vs `1.000044` at seed 41, SE `0.005151` vs `0.005478`).
+   Nothing is given up where OLS was already fine — which is why the benign
+   fixture is gated separately. A default flip measured only on its failing
+   fixture cannot tell "the classifier is better" from "that fixture was bad".
+
+**Not claimed:** that the classifier is unbiased. At steep/41 it carries a
+`0.584` bias. The claim is comparative — the regressor is wrong by 100x to 450x
+and unstable in sign; the classifier is stable and within one standard error of
+the truth on all three seeds.
+
+### Two gates from earlier releases broke, and why that was not a reason to relax them
+
+Both asserted on the **default path**, and both broke for the same reason: their
+*mechanism* depended on an unbounded propensity, which is exactly what the flip
+removed. In each case the premise was sound and only the mechanism died, so each
+was re-pinned to name its learners and the complementary arm was added rather
+than deleted.
+
+| gate | broke because | re-pinned to |
+|---|---|---|
+| `v123_ssm_scalar_clip_reaches_the_estimator` | a classifier's propensity stays in `[0,1]`, so `propensity_clip` is nearly inert | an explicit `linear_regression` arm; a new complement asserts the near-inertness under the classifier |
+| `v107_ssm_se_is_fragile_to_the_split` | its own header predicted this: "if a future change makes the SE well-behaved, THIS test fails and the band can be re-derived" | an explicit `linear_regression` arm, plus the complementary comparison, plus the `HC0 == se()` identity in **both** arms |
+
+Re-derived on both arms, explicit learners:
+
+| learner | clip gap (`1e-6` vs `0.2`) | `se@1e-6` | `n=500` SE | ratio `se(2000)/se(500)` | `hc0_rel` |
+|---|---|---|---|---|---|
+| `linear_regression` | `28.36299` | `28.32750` | `0.15431` | `0.12697` | `0` |
+| `logistic_regression` | `0.09660` | `0.09870` | `0.06713` | `0.29895` | `0` |
+
+The regressor column is **bit-for-bit** the number each gate's header had
+recorded (`28.363` for the clip, `0.95431`/`0.15431` and `0.98914`/`0.01959` for
+the SE), which is the check that matters: the flip did not touch the regressor
+arm, so the historical measurements stay attributable and both gates keep
+testing what they were written to test. The classifier's clip gap is 293x
+smaller and sits just under its own standard error.
+
+### Mutations
+
+`_verify/_mutate_1380_ssm.py revert` restores the OLS default and changes
+nothing else:
+
+| gate | revert | hardcode `trimming_threshold` |
+|---|---|---|
+| `v1380_..._default_ml_m_is_the_classifier_not_the_regressor` | **FAIL** | — |
+| `v1380_..._default_point_estimate_beats_the_regressor` | **FAIL** | — |
+| `v1380_..._default_se_is_orders_of_magnitude_tighter` | **FAIL** | — |
+| `v1380_..._default_agrees_with_the_regressor_when_...` | PASS *(by design)* | — |
+| `v1380_..._default_is_stable_across_seeds_and_the_...` | **FAIL** | — |
+| `v123_ssm_scalar_clip_reaches_the_estimator` | unaffected *(explicit learners)* | **FAIL** |
+| `v123_ssm_scalar_clip_is_nearly_inert_under_a_classifier_propensity` | unaffected *(explicit learners)* | **FAIL** |
+
+GATE 4 surviving the revert is **intended**: it is the benign-regime control,
+and a control that fails when you undo the thing it controls is not a control.
+
+### A gate that was decoration, caught by its own mutation
+
+GATE 5 **passed** its first mutation run. Its first draft used explicit learners
+on **both** sides, so reverting the default left every one of its inputs
+unchanged and it reported success having observed nothing. The prediction printed
+in the gate header said it would fail; the run disagreed, and the run was right.
+
+This is now the fifth distinct shape of the same recurring defect in this repo
+(comparing variable names rather than bindings, hand-waving an unmeasured
+magnitude, citing output from a tool that was never run, measuring against an
+unseeded oracle) — and the sharpest one, because the gate was syntactically
+asserting real properties and was still invisible to the change it claimed to
+guard. GATE 5 now asserts the **shipped** arm directly and keeps the explicit
+regressor assertions alongside it, so the defect stays recorded while the default
+stays observable.
+
+**The rule:** a gate whose every input is spelled out explicitly cannot see the
+default. When the default is what the release is about, such a gate is
+decoration.
+
+
 ## [0.137.0] — all eleven remaining `ml_m` defaults measured; the hazard is real in one of them
 
 Docs-only. **No code change, no behavioural change, no test change.**
