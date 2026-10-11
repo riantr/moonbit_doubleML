@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.139.0** |
+| `moon.mod` version | **0.140.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **204** `.mbt` files (**65** production + **114** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -158,7 +158,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau 0.50-0.90 |
 | `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` (16x *smaller* SE) |
 | `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
-| `DoubleMLLPLR` | not demonstrated | OLS SE collapses to `4.6e-5` |
+| `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0** | not an `ml_m` hazard; see below |
 | `DoubleMLPQ` | **hazardous -- fixed in v0.139.0** | ignored its `quantile` entirely |
 
 All eleven remaining defaults were measured in v0.137.0. **Three showed a
@@ -166,7 +166,9 @@ defect: `DoubleMLSSM`** (`242.116` vs `1.177` -- its score divides by `m*pi`
 AND `(1-m)*pi`, two reciprocals in both directions, `ssm.mbt:73-74`), **and
 `DoubleMLPQ` / `DoubleMLQTE`**, which ignored their `quantile` outright.
 SSM was fixed in v0.138.0 and the quantile pair in v0.139.0. The other eight
-keep their OLS default **on measured evidence**.
+keep their OLS default **on measured evidence**. `DoubleMLLPLR`'s degenerate
+standard error is real and was root-caused in v0.140.0, but it is **not** an
+`ml_m` defect -- see the note below.
 
 A static classifier (read the score: does it carry `1/m`? is it doubly robust?)
 was used to prioritise the probes, and it reproduces all four earlier outcomes
@@ -209,6 +211,46 @@ more.
 When you pass a classifier explicitly, name it on BOTH sides of any comparison: a
 gate phrased against "the default" silently changes subject when the default
 moves (hit four times across v0.134.0-v0.136.0).
+
+> **`DoubleMLLPLR` can return a degenerate standard error -- and it is NOT an
+> `ml_m` default problem.** Root-caused in v0.140.0. On the reference
+> Liu-Zhang-Zhou 2021 design (`make_lplr_LZZ2020`, `dgp_lplr.mbt:37`) with a
+> large true coefficient, both learners collapse to coef `~ -10` with SE `~ 1e-6`
+> and a five-decimal confidence interval that EXCLUDES the truth:
+>
+> | true alpha | `ml_m = linear_regression` | `ml_m = logistic_regression` |
+> |---|---|---|
+> | 0.50 | `0.6636` / SE `0.1954` | `0.6293` / SE `0.1684` |
+> | 0.75 | `1.3573` / SE `0.3861` | `1.2161` / SE `0.2993` |
+> | 1.00 | **`-10.1863` / `1.39e-6`** | `2.9981` / SE `1.8142` |
+> | 1.25 | **`-10.0567` / `1.62e-6`** | **`-10.4075` / `1.03e-6`** |
+> | 2.00 | **`-9.0852` / `5.22e-6`** | **`-9.9926` / `1.93e-6`** |
+>
+> Across three seeds per cell, the regressor arm is degenerate at 3/3 for
+> `alpha >= 1.0` and the classifier arm at 3/3 for `alpha >= 1.25`. The
+> classifier **delays** the failure by roughly one step and then fails
+> identically, so passing it explicitly is not a workaround.
+>
+> Cause, read from the source and confirmed by measurement:
+>
+> 1. `prelim_beta_per_fold` (`lplr.mbt:71-95`) returns `beta` built from
+>    `w = ln(m / (1 - m))` -- the logit of the fitted propensity. As the effect
+>    grows, `w` grows and `exp(r)` in the score (`lplr.mbt:200-204`) reaches
+>    `O(1e3)`. Measured at `alpha = 1.25`: `mean(psi) = 1097.07` and
+>    `mean(psi_deriv) = -1097.07` -- the same order on BOTH arms, cancelling.
+> 2. The Newton convergence flag is computed and **discarded** --
+>    `let _ = converged` at `lplr.mbt:866`. With the step clamped to `0.25`
+>    (`:853-854`), 50 iterations cannot span an arbitrary distance, so the loop
+>    can stop away from the root, and `fit` computes a coefficient and a
+>    variance there with no error raised.
+> 3. `se = sqrt(gamma / (j*j*n))` with `j = mean(psi_deriv)`
+>    (`var_est.mbt:52`). A huge `j` from step 1 makes the variance collapse.
+>
+> So the default keeps its regressor -- changing it would be the v0.136.0
+> mistake again, trading a working default for a rationale that measurement
+> does not support while leaving the cause untouched. Fixing it means
+> propagating the discarded flag into an error and bounding `exp(r)`; that is
+> tracked as follow-up, not folded into a default change.
 
 **`DoubleMLAPOS` honoured a configured `ml_m` everywhere except where it
 counted (fixed in v0.133.0).** Its `fit` path built each child

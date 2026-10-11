@@ -9,6 +9,127 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.140.0] — `DoubleMLLPLR`'s degenerate SE: root-caused, and it is not a `ml_m` default
+
+Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).
+
+### What this closes
+
+v0.137.0 measured all eleven remaining `ml_m` defaults and recorded LPLR as
+"not demonstrated — OLS SE collapses to `4.6e-5`". That was a **measurement
+without a mechanism**. This release supplies the mechanism, and the mechanism
+turns out to say the default is not the problem.
+
+### The mechanism, read from the source before measuring
+
+```
+lplr.mbt:71-95    prelim_beta_per_fold returns
+                  beta = sum(dt * w) / sum(dt^2),   w = ln(m / (1 - m))
+lplr.mbt:104-106  r(theta) = D*theta + t_hat - beta*a_hat
+lplr.mbt:200-204  psi / psi_deriv carry exp(r)          (nuisance_space)
+lplr.mbt:849-855  an unstable Newton step is CLAMPED to 0.25
+lplr.mbt:856-859  convergence is declared on |theta_new - theta| < 1e-9
+lplr.mbt:866      let _ = converged        <-- THE FLAG IS DISCARDED
+var_est.mbt:52    se = sqrt(gamma / (j*j*n)),  j = mean(psi_deriv)
+```
+
+Two independent ingredients, and neither is the propensity *learner*:
+
+1. **`w = ln(m/(1-m))` is the logit of the fitted propensity.** As the effect
+   size grows, the propensity stage's fitted values drive `w` large, so
+   `exp(r)` in the score reaches `O(1e3)`.
+2. **The Newton convergence flag is computed and then dropped** (`let _ =
+   converged`). With the step clamped to `0.25`, 50 iterations can move `theta`
+   by at most `12.5`, so it can fail to reach the root — and `fit` computes a
+   coefficient and a variance there anyway, with no error and no signal.
+
+At that point `mean(psi)` and `mean(psi_deriv)` are both `O(1e3)` and cancel, so
+`j = mean(psi_deriv)` is huge and `se = sqrt(gamma / (j^2 n))` collapses.
+
+### Measured signature
+
+At `alpha = 1.25`, `n = 2000`, `nuisance_space`, evaluated with
+`lplr_score_at` at the fitted coefficient:
+
+| arm | `mean(psi)` | `mean(psi_deriv)` | reported coef | reported se |
+|---|---|---|---|---|
+| `linear_regression` | `1097.07` | `-1097.07` | `-10.0567` | `1.62e-6` |
+| `logistic_regression` | `1692.38` | `-1692.38` | `-10.4075` | `1.03e-6` |
+
+Both quantities reach `~1e3` on **both** arms and cancel. That is the whole
+defect: a variance computed from a Jacobian evaluated at a point that is not a
+solution.
+
+### The decision grid — why NO default is flipped
+
+"Degenerate" is defined by the defect itself, not by a threshold tuned to one
+cell: `se < 1e-4` **and** a confidence interval that excludes the true
+coefficient. Three seeds per cell, `n = 2000`, `nuisance_space`.
+
+| alpha | `ml_m = linear_regression` | `ml_m = logistic_regression` |
+|---|---|---|
+| 0.25 | healthy | healthy |
+| 0.50 | healthy | healthy |
+| 0.75 | **1 / 3** | 0 / 3 |
+| 1.00 | **3 / 3** | 1 / 3 |
+| 1.25 | **3 / 3** | **3 / 3** |
+| 1.50 | **3 / 3** | **3 / 3** |
+
+The classifier **delays** the cliff by roughly one alpha step and then fails
+identically. Both arms are healthy below it (`alpha = 0.25`: OLS coef `0.2246`
+SE `0.1296`, logit `0.2381` SE `0.1186`, both intervals covering the truth).
+
+An alpha sweep makes the shape explicit — this is a cliff, not a slope:
+
+| alpha | OLS coef / SE | logit coef / SE |
+|---|---|---|
+| 0.25 | `0.2246` / `0.1296` | `0.2381` / `0.1186` |
+| 0.50 | `0.6636` / `0.1954` | `0.6293` / `0.1684` |
+| 0.75 | `1.3573` / `0.3861` | `1.2161` / `0.2993` |
+| 1.00 | **`-10.1863` / `1.39e-6`** | `2.9981` / `1.8142` |
+| 1.25 | **`-10.0567` / `1.62e-6`** | **`-10.4075` / `1.03e-6`** |
+| 1.50 | `-9.8204` / `2.14e-6` | `-10.2902` / `1.21e-6` |
+| 2.00 | `-9.0852` / `5.22e-6` | `-9.9926` / `1.93e-6` |
+
+At `alpha >= 1.25` **both** arms collapse to coef `~ -10` with SE `~ 1e-6`, and
+the confidence interval becomes a five-decimal interval that excludes the truth
+(`alpha = 1.0`: CI `[-10.186334, -10.186329]`, true `1.0`).
+
+### Decision: no default flip
+
+**`DoubleMLLPLR` keeps its OLS `ml_m` default, and the default is not the
+defect.** Flipping it would be the v0.136.0 mistake repeated — changing a
+default for a rationale measurement does not support, while leaving the real
+cause untouched. A caller who passes a classifier explicitly gets a slightly
+later cliff, not safety.
+
+The actual fix is out of scope for a docs-only release and is recorded as
+follow-up work: propagate the discarded `converged` flag into an error (or at
+minimum a diagnostic), and bound or reparameterise `exp(r)` so a large fitted
+logit propensity cannot overflow the score.
+
+### Probe design notes, recorded because two of them were wrong
+
+1. **The first probe used a hand-built binary panel** (`p = 2`, linear
+   treatment index) and produced `instrument` coefficients of `-51451` and
+   `+128068`. That fixture was the wrong yardstick: LPLR partially lines out a
+   nonlinear `r(x)`, and with `p = 2` there is not enough structure for the
+   stages to do anything. Re-run on the package's own reference design
+   (`make_lplr_LZZ2020`, `dgp_lplr.mbt:37`, `p = 6`, nonlinear `r`, true
+   coefficient exactly known), the picture is completely different and
+   interpretable. **Both learners failing "everywhere" on a badly-chosen fixture
+   would have been reported as a finding, and it would have been an artefact.**
+2. **The first hypothesis was refuted by its own measurement.** It predicted `j =
+   mean(psi_deriv)` *explodes* via `exp(-theta*d)`. The theta sweep showed the
+   opposite — `j` shrinks with distance from zero (`2.31e-18` at `theta = -40`,
+   `-0.0082` at `theta = 0`). The real mechanism runs through `beta`'s
+   logit-propensity term, not through `theta` directly.
+
+Probes preserved under `_verify/`: `probe_v1400_lplr.mbt` (hand-built panel),
+`probe_v1400_ref.mbt` (reference DGP, 16 cells), `probe_v1400_alpha.mbt` (alpha
+sweep + seed sweep), `probe_v1400_root.mbt` (root condition at fitted theta),
+`probe_v1400_grid.mbt` (decision grid).
+
 ## [0.139.0] — `DoubleMLPQ` / `DoubleMLQTE` stop ignoring their `quantile`
 
 Tests 1035 / 1035 -> 1040 / 1040. One behavioural change (two default values),
