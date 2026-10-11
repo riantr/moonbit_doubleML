@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.135.0** |
+| `moon.mod` version | **0.136.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **202** `.mbt` files (**65** production + **112** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -72,12 +72,13 @@ today -- the public API is fixed so a v0.82+ release can swap
 the bodies to a SIMD-vectorised backend (or external call to
 a BLAS-style library) without breaking callers.
 
-**`ml_m` must be a classifier.** Upstream makes no such default:
-`ml_m` is a required argument, validated as `regressor=False,
-classifier=True` (`irm.py:157`) and read back with `predict_proba`
-(`irm.py:161`). A propensity enters the score as `1 / m_hat`, and an OLS
-propensity is unbounded. Clipping (`propensity_clip`, default `1e-6`) keeps the
-result finite, so nothing raises -- it just returns wrong numbers. Measured on a
+**`ml_m` is a classifier where the propensity carries identification --
+and that is NOT everywhere.** Upstream makes no OLS default: `ml_m` is a
+required argument, validated as `regressor=False, classifier=True`
+(`irm.py:157`) and read back with `predict_proba` (`irm.py:161`). Where
+`m_hat` is first-order in the score, an OLS propensity is unbounded, enters
+as `1 / m_hat`, and `propensity_clip` (default `1e-6`) merely caps that at
+`1e6` -- so nothing raises, it just returns wrong numbers. Measured on a
 fixture with true `ATE = 1.5`:
 
 | `ml_m` | `coef` | `rv` |
@@ -116,8 +117,33 @@ ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
 
 `LearnerDispatch::RandomForestClassifier` and
 `LearnerDispatch::GradientBoostingClassifier` are the nonlinear options.
-Migration proceeds one estimator at a time, each with its own measurement and
-mutation-verified gates.
+
+**The hazard is NOT uniform, and was measured per-estimator** (v0.136.0).
+Migrating `DoubleMLDIDBinary` was attempted and abandoned on the evidence:
+across four probe designs and ~14 configurations its OLS default matched a
+logistic one to within ~1e-4, and where they differed the OLS default was the
+BETTER of the pair. The reason is structural. In the observational DID score
+(`did.mbt:655-660`) `w_d = d_i / m_i`, so `1 / m` enters **only for treated
+rows** (controls get `w_d = 0`), and the score is **doubly robust** -- a
+correct `g` carries identification, leaving `m` second-order. IRM and APO need
+`m` for the estimand itself, which is why they showed a ~200-point error and
+DID shows ~0.001. The sharpest DID case: at n=200 the CLASSIFIER default is
+worse on both bias (0.0776 vs 0.00050) and SE.
+
+| Estimator | OLS default | Evidence |
+|---|---|---|
+| `DoubleMLIRM` | hazardous | coef `-225.86` vs `1.44` |
+| `DoubleMLAPO` | hazardous | bias `5.246` vs `0.531`; SE `86.28` vs `0.270` |
+| `DoubleMLAPOS` | hazardous | per-level bias to `436.11` |
+| `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~1e-4 |
+
+The DID family therefore **keeps** its OLS default. The remaining eleven are
+**unmeasured** -- neither safe nor unsafe, simply untested -- and each must be
+measured before it is migrated. An estimator that does not show the hazard
+keeps its default and documents why. When you pass a classifier explicitly,
+name it on BOTH sides of any comparison: a gate phrased against "the default"
+silently changes subject when the default moves (hit four times across
+v0.134.0-v0.136.0).
 
 **`DoubleMLAPOS` honoured a configured `ml_m` everywhere except where it
 counted (fixed in v0.133.0).** Its `fit` path built each child

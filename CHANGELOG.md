@@ -9,6 +9,130 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.136.0] — scoping the `ml_m` hazard claim to where it was measured
+
+Docs-only. **No code change, no behavioural change, no test change.**
+Tests unchanged at 1023 / 1029.
+
+### The claim being corrected
+
+v0.131.9 introduced the `ml_m` default hazard and listed **six** estimators;
+v0.132.0 corrected the count to **fourteen**. Both framed the OLS propensity
+default as a hazard *across the board*.
+
+That framing does not survive measurement. Migrating `DoubleMLDIDBinary` was
+attempted in this round and **abandoned on the evidence**: across four probe
+designs and fourteen configurations, the OLS propensity default produced the
+same answer as a logistic one to within ~1e-4, and where the two disagreed at
+all, OLS was the *better* of the pair.
+
+### What is actually measured
+
+| Estimator | OLS `ml_m` default | Evidence |
+|---|---|---|
+| `DoubleMLIRM` | **hazardous** | coef `-225.86` vs `1.44`, true ATE 1.5 |
+| `DoubleMLAPO` | **hazardous** | bias `5.246` vs `0.531` at worst seed; SE `86.28` vs `0.270` |
+| `DoubleMLAPOS` | **hazardous** | per-level bias up to `436.11`; contrast bias `339.27` |
+| `DoubleMLDIDBinary` | **not demonstrated** | 4 designs x ~14 configs; learners agree to ~1e-4 |
+
+Three migrated (v0.132.0 / v0.134.0 / v0.135.0). The remaining eleven are
+**unmeasured** — not "safe", not "unsafe", simply untested.
+
+### Why the hazard does not transfer to DID
+
+Reading the score explains it. In the observational DID score
+(`did.mbt:655-660`):
+
+```
+w_d     = d_i / m_i
+psi_b_1 = (w_d - 1) * g0 + (1 - w_d) * g1
+```
+
+`1 / m_i` enters **only for treated rows** (`d = 1`); controls get `w_d = 0`
+exactly. And the observational DID score is **doubly robust**: when `g` is
+correctly specified it carries identification, so `m` is a *second-order*
+term.
+
+IRM and APO need `m` for the estimand itself — it is *first-order* there,
+which is why an unbounded OLS propensity enters the score as `1 / m_hat`,
+`propensity_clip` caps that at `1e6`, and the estimator silently returns a
+200-point error instead of raising.
+
+So the hazard is a property of **which nuisance carries identification**,
+not a universal property of the propensity slot.
+
+### `DoubleMLDIDBinary`: what was tried
+
+Four probe designs, each targeting the mechanism (the explosion needs OLS to
+predict a *near-zero propensity for a treated unit*, which requires a
+propensity a linear model fits badly — a merely saturated propensity is fitted
+well by both models):
+
+1. **Saturated propensity**, sweeping `n_units` 200-2000, `p` 2-12, slope 2-4.
+2. **Deliberately misspecified outcome model** (quadratic `y`, so the default
+   linear `ml_g` cannot fit it in either arm), to remove the doubly-robust
+   safety net deliberately.
+3. **Latent confounding** — treatment driven by a `z` absent from `X`.
+4. **U-shaped nonlinear propensity** (`|x0| > 0.6 -> 0.9`, else `0.1`),
+   symmetric so a linear fit is forced to average opposite slopes.
+
+None produced harm. Representative rows (true theta = 1.0):
+
+| design | classifier \|bias\| | OLS \|bias\| |
+|---|---|---|
+| n=2000, p=2, slope 2 | 0.00072 | 0.00223 |
+| n=200, p=12, slope 4 | **0.0776** | **0.00050** |
+| quadratic `y`, n=600 | 0.00661 | **0.00042** |
+| U-shaped propensity, n=1500 | 0.00105 | 0.00105 |
+
+The n=200 and quadratic-`y` rows are the sharpest: the classifier default is
+**worse** — higher bias *and* higher SE — and the degradation grows as the
+sample shrinks (n=2000 bias 0.0007 -> n=200 bias 0.0776, a 100x increase).
+
+### A limitation of probe 3, stated plainly
+
+In the latent-confounding design the `z` that drove treatment assignment did
+**not** also shift the outcome, so it produced noise in assignment rather than
+confounding. That design is weaker than intended. The conclusion does not rest
+on it — the U-shaped propensity probe (4) and the misspecified-outcome probe
+(2) are the load-bearing ones, and both are valid.
+
+### A probe that measured nothing, recorded because it is a trap
+
+The first run of the mechanism probe compared against the estimator **default**
+and printed bit-identical numbers for both arms in all six cases. That was
+because the flip had already been reverted, so "default" *was* OLS — the probe
+compared a value with itself. Both arms must be **explicit** learners, and
+this is the same lesson as the v0.134.0 / v0.135.0 gates: never phrase a
+comparison against "the default".
+
+### Decision
+
+**The DID family keeps its OLS `ml_m` default**, on the evidence above.
+Contract fidelity with upstream (no OLS default; a regressor has no
+`predict_proba`) still argues for changing it, but that is a
+**non-measured** argument, and the measurement currently points the other
+way. Changing a default that measurably works, to align with upstream, on a
+rationale that cannot be demonstrated, is the wrong trade.
+
+Each remaining estimator must be **measured before it is migrated**, and an
+estimator that does not show the hazard keeps its default and says why.
+
+### Process note
+
+The flip was reverted and `did_binary.mbt` / `expand_v127_test.mbt` returned
+to their released state rather than left half-done. The reverted edits had
+also re-pinned five v0.127.0 gates whose hard constants were measured on the
+OLS path; those pins were dropped with the flip, and are noted here because
+the same trap will recur when an estimator *is* migrated:
+
+| release | site | contrast arm was |
+|---|---|---|
+| v0.134.0 | `expand_v133_test.mbt:90` | APO with its default |
+| v0.135.0 | `expand_v133_test.mbt:131` | APOS with its default |
+| v0.134.0 | `expand_v109_test.mbt:311` | APO with its default |
+| (reverted) | `expand_v127_test.mbt` x5 gates | DIDBinary with its default |
+
 ## [0.135.0] -- `DoubleMLAPOS`'s default `ml_m` is a classifier
 
 Completes the APO family: v0.132.0 migrated `DoubleMLIRM`, v0.134.0 migrated
