@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.145.0** |
+| `moon.mod` version | **0.146.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **206** `.mbt` files (**65** production + **116** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **207** `.mbt` files (**65** production + **117** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1046 / 1046 / 1046** |
-| Tests (wasm-gc) | **1052 / 1052** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1053 / 1053 / 1053** |
+| Tests (wasm-gc) | **1059 / 1059** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -439,7 +439,38 @@ too large (1.1473 vs 0.00197), and **no test in the package exercised the
 function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
 guard passed throughout, because both arrays were length 720 while describing
 different observations. Fixed, and both entry points now share one builder
-(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. `DoubleMLLPLR`, `DoubleMLRDD` and friends have **no upstream sensitivity
+(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. **did_cs sensitivity, stage 1 of 4** -- v0.146.0 adds
+`DoubleMLDIDCS::predictions_m()`, the cross-fitted group propensity
+`m_hat = E[D | X]` on the LONG panel, plus `sensitivity_folds()` exposing the
+panel-wide folds behind it. Upstream's did_cs decomposition needs exactly this
+(`did_cs.py:470`, `propensity_weight_d0 = m_hat / (1 - m_hat)`), and the port
+could not produce it for two independent reasons: each `(g, t)` cell delegates
+to a child `DoubleMLDIDBinary` restricted to that cell's two cohorts and two
+periods, so its propensity is a different object; and `DoubleMLDIDCS` exposed
+no prediction accessor at all. Strata mirror upstream's `d + 2*t`.
+
+**Purely additive -- no reported number moves**, and that is asserted rather
+than asserted-to: GATE 5 of `expand_v146_test.mbt` pins three `coef`/`se` pairs
+against values recorded before this change existed. Its first draft pinned them
+bit-for-bit and failed on three of four backends -- chasing that showed the
+did_cs estimates differ by about 1.5e-15 relative across backends, which is
+pre-existing and unrelated to this additive change. The gate now uses a 1e-12
+relative tolerance drawn from that measurement, while GATE 5b pins the NEW
+nuisance exactly, since it has no inherited spread: `mean(m_hat) =
+0.5627032315060088` on all four backends.
+
+**Stage 1b blocker, recorded so it is not rediscovered.** Upstream's `sigma2`
+needs `g_hat` from **four** `(d, t)` outcome nuisances (`did_cs.py:445-449`);
+the port has **two**, split by `d` only, taken from each cell's child, and they
+cannot be recovered -- only refit on the full panel. Separately,
+`DoubleMLDIDCS::new` has no `score` parameter while the sub-DID hardcodes
+`score="observational"`, so upstream's two `experimental` branches are
+unreachable. Upstream's did_cs numbers are therefore an architectural change to
+the estimator, not a formula swap; until stage 1b lands, `nu2` is still
+`mean(psi_a^2)` on the DML score element and NOT upstream's
+`mean(2*m_alpha - rr^2)`.
+
+`DoubleMLLPLR`, `DoubleMLRDD` and friends have **no upstream sensitivity
 implementation at all** — upstream sets `_sensitivity_implemented = True` for
 only seven classes (`did`, `did_binary`, `did_cs`, `did_cs_binary`, `apo`,
 `irm`, `plr`), LPQ's `_sensitivity_element_est` is a bare `pass`, and

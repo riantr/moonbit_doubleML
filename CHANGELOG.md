@@ -9,6 +9,110 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+﻿## [0.146.0] 鈥?did_cs: persist the panel-wide group propensity (stage 1a of 4)
+
+Purely additive. **No reported number changes in this release**, and that is
+asserted rather than asserted-to.
+
+### What lands
+
+`DoubleMLDIDCS` now computes and exposes the cross-fitted group propensity
+`m_hat = E[D | X]` on the **long-format panel**, via `predictions_m()`, plus the
+panel-wide folds backing it via `sensitivity_folds()`.
+
+### Why
+
+Upstream's did_cs sensitivity decomposition needs this on the full panel 鈥?`propensity_weight_d0 = m_hat / (1 - m_hat)` (`did_cs.py:470`), which feeds
+`m_alpha` and hence `nu2 = mean(2*m_alpha - rr^2)` (`did_cs.py:527-528`).
+
+Nothing in the port could supply it:
+
+1. every `(g, t)` cell delegates to a child `DoubleMLDIDBinary` whose panel is
+   restricted to that cell's **two cohorts and two periods**, so its propensity
+   is a different object;
+2. `DoubleMLDIDCS` exposed **no prediction accessor at all** (only `coef_at`,
+   `se_at`, the sandwich variants and `bias_corrected_coef_at`), so the value
+   could not be recovered after the fact either.
+
+Strata mirror upstream `did_cs.py:110` (`self._strata = d + 2 * t`), so both
+treatment and period are spread across folds.
+
+### NOT YET CONSUMED
+
+`sensitivity_analysis` still routes through the legacy `irm_style_sensitivity`.
+`nu2` is still `mean(psi_a^2)` on the DML score element, not upstream's
+`mean(2*m_alpha - rr^2)`. The stage that consumes this nuisance additionally
+needs the four `(d, t)` outcome nuisances, which this release does not build 鈥?see the blocker recorded below.
+
+### Blocker recorded for stage 1b
+
+Upstream's `sigma2` needs `g_hat` built from **four** `(d, t)` outcome
+nuisances (`did_cs.py:445-449`). The port has **two**, split by `d` only, taken
+from each cell's child (`did_cs.mbt:1045-1046`) 鈥?they cannot be recovered,
+only refit on the full panel. And `DoubleMLDIDCS::new` has no `score` parameter
+while the sub-DID hardcodes `score="observational"` (`did_cs.mbt:1009`), so
+upstream's two `experimental` branches are unreachable. Getting upstream's
+numbers is therefore an architectural change, not a formula swap.
+
+### Measured before writing any gate
+
+| | |
+|---|---|
+| `m_hat` length | `1600` (the long panel: 400 units 脳 4 periods) |
+| `m_hat` range | `0.46749202888133645` 鈥?`0.6551214919179011` |
+| `mean(m_hat)` | `0.5627032315060088` vs `mean(D) = 0.5625` |
+| folds | 2, 800 test rows each 鈥?exact, non-overlapping cover |
+
+`mean(m_hat)` tracking `mean(D)` to within `2e-4` is the calibration check that
+the cross-fit is wired to the right target.
+
+### Gates
+
+Seven in `expand_v146_test.mbt`. **GATE 5 is the one that matters**: it pins
+three `coef`/`se` pairs against values recorded *before* this change existed 鈥?
+```
+(g=1,t=2) 0.719493089978081    se 1.436337096130982
+(g=1,t=3) 0.35566148636473893  se 1.2174113759994636
+(g=2,t=3) 0.15902160278807542  se 1.4409600613450697
+```
+
+so "I only added a field" is a measurement rather than a claim.
+
+**GATE 5's first draft pinned these bit-for-bit, and failed on wasm, wasm-gc
+and js.** Chasing that rather than loosening blindly is what made it
+informative: the did_cs estimates are **not** bit-identical across backends.
+Measured spread on `coef(0,2)` 鈥?native `0.719493089978081`, wasm/wasm-gc
+`...806`, js `...821` 鈥?is about **1.5e-15 relative**, two ULP, and it is
+pre-existing: stage 1a does not touch the estimation path. The gate now uses a
+1e-12 *relative* tolerance, set from that measurement 鈥?~700脳 above the observed
+platform noise and still ten orders of magnitude below the smallest change a
+real regression of this estimator could produce. The weakness is declared:
+a perturbation below the platform noise floor is not distinguishable from the
+platform on this target set.
+
+**GATE 5b restores exactness where it is actually available.** The new nuisance
+has no inherited spread, and measurably it does not:
+`mean(m_hat) = 0.5627032315060088` on all four backends, bit for bit. So that is
+pinned exactly.
+
+GATE 6 pins that an unfitted model returns an **empty** nuisance, not zeros 鈥?the
+"absent vs zero" distinction `sensitivity_analysis` itself currently gets wrong
+for skipped cells.
+
+Mutation evidence (`_verify/mut_v1460_didcs_mhat.py`):
+
+| mutation | killed by |
+|---|---|
+| `m_hat` 鈫?raw treatment indicator | `didcs_panel_mhat_is_a_valid_propensity` |
+| `m_hat` 鈫?constant | `didcs_panel_mhat_is_fitted_and_calibrated` |
+| fold count inflated by one | `didcs_panel_folds_partition_every_row_exactly_once` |
+| computed but never propagated to the struct | `..._is_indexed_by_long_panel_rows`, `..._is_fitted_and_calibrated`, `..._folds_partition_every_row_exactly_once` |
+
+GATE 5 survives **all four**, and the harness declares that up front rather
+than leaving it as a puzzling survivor: stage 1a is additive, so corrupting the
+new nuisance cannot move an old estimate. GATE 1 likewise survives the first
+three, which all preserve array length.
+
 ## [0.145.0] — LPLR no longer discards its solver's convergence flag
 
 `DoubleMLLPLR::fit` ended its damped-Newton loop with `let _ = converged` and

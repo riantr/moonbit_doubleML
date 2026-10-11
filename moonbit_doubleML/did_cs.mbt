@@ -241,6 +241,17 @@ pub struct DoubleMLDIDCS {
   // reporting a misleading `0.0` the way `se_at` does.
   cell_psi_a : Array[Array[Double]]
   cell_psi_b : Array[Array[Double]]
+  // v0.146.0+: cross-fitted group propensity `m_hat = E[D | X]` on the
+  // LONG-format panel, fitted over the WHOLE panel rather than inside any
+  // per-cell child. Upstream's did_cs sensitivity needs it as
+  // `propensity_weight_d0 = m_hat / (1 - m_hat)` (`did_cs.py:470`), and no
+  // per-cell `DoubleMLDIDBinary` child can supply it: each child sees a
+  // 2-cohort x 2-period restriction, not the full panel. Empty until `fit`.
+  m_hat_long : Array[Double]
+  // v0.146.0+: the panel-wide cross-fitting folds used for `m_hat_long`,
+  // kept so the nuisance is reproducible and its stratified scheme is
+  // inspectable. Empty until `fit`.
+  panel_folds : Array[Fold]
   n_groups : Int
   n_periods : Int
   fitted : Bool
@@ -315,6 +326,9 @@ pub fn DoubleMLDIDCS::new(
       // mutation, so the shared `[]` default is never aliased).
       cell_psi_a: Array::make(n_groups * n_periods, []),
       cell_psi_b: Array::make(n_groups * n_periods, []),
+      // v0.146.0+: panel-wide nuisance state, populated by `fit`.
+      m_hat_long: [],
+      panel_folds: [],
       n_groups,
       n_periods,
       fitted: false,
@@ -405,6 +419,39 @@ pub fn DoubleMLDIDCS::n_groups(self : DoubleMLDIDCS) -> Int {
 /// Number of distinct time periods.
 pub fn DoubleMLDIDCS::n_periods(self : DoubleMLDIDCS) -> Int {
   self.n_periods
+}
+
+///|
+/// Cross-fitted group propensity `m_hat = E[D | X]` on the LONG-format
+/// panel. v0.146.0+ (stage 1a of the did_cs sensitivity migration).
+///
+/// Empty until `fit`. Length `n_obs` -- the LONG panel, i.e. one entry per
+/// unit-period row, not per unit.
+///
+/// WHY IT EXISTS. Upstream's did_cs sensitivity decomposition needs this on
+/// the full panel: `propensity_weight_d0 = m_hat / (1 - m_hat)`
+/// (`did_cs.py:470`), which feeds `m_alpha` and hence `nu2 = mean(2*m_alpha -
+/// rr^2)` (`did_cs.py:527-528`). Until now the port could not produce it:
+/// each `(g, t)` cell delegates to a child `DoubleMLDIDBinary` restricted to
+/// that cell's two cohorts and two periods, so its propensity is a different
+/// object, and `DoubleMLDIDCS` exposed no prediction accessor either.
+///
+/// NOT YET CONSUMED. This release only persists and exposes the nuisance.
+/// `sensitivity_analysis` still routes through the legacy
+/// `irm_style_sensitivity`, so no reported number changes in v0.146.0 --
+/// which is asserted by GATE 5 in `expand_v146_test.mbt`. The nu2 formula
+/// port that consumes it is a later stage, and it additionally needs the four
+/// `(d, t)` outcome nuisances that this stage does not build.
+pub fn DoubleMLDIDCS::predictions_m(self : DoubleMLDIDCS) -> Array[Double] {
+  self.m_hat_long
+}
+
+///|
+/// The panel-wide cross-fitting folds backing `predictions_m`. v0.146.0+.
+/// Exposed so the nuisance is reproducible and its stratification is
+/// inspectable rather than a hidden detail of `fit`.
+pub fn DoubleMLDIDCS::sensitivity_folds(self : DoubleMLDIDCS) -> Array[Fold] {
+  self.panel_folds
 }
 
 ///|
@@ -879,7 +926,11 @@ pub fn DoubleMLDIDCS::fit(
   ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCS {
   ignore(ml_g)
-  ignore(ml_m)
+  // v0.146.0: `ml_m` is no longer ignored -- it drives the panel-wide
+  // cross-fitted `m_hat` below. It was ignored because every cell used to
+  // delegate its propensity to a child `DoubleMLDIDBinary`, which takes
+  // `ml_m` as its own argument; that delegation still happens for the
+  // estimates, but the panel-wide nuisance needs it here too.
   try {
     require(self.n_groups >= 1 && self.n_periods >= 1)
     let n = self.data.y.length()
@@ -891,6 +942,38 @@ pub fn DoubleMLDIDCS::fit(
         never_treated_value = self.data.g[i]
       }
     }
+    // ---------------------------------------------------------------------
+    // v0.146.0, STAGE 1a -- panel-wide cross-fitted group propensity.
+    //
+    // Upstream's did_cs sensitivity decomposition needs `m_hat` over the full
+    // panel (`did_cs.py:470`, `propensity_weight_d0 = m_hat / (1 - m_hat)`).
+    // Nothing in this file can supply it today: every `(g, t)` cell delegates
+    // to a child `DoubleMLDIDBinary` whose panel is restricted to that cell's
+    // two cohorts and two periods, so its propensity is a different object.
+    // `DoubleMLDIDCS` also exposes no prediction accessor, so the value could
+    // not be recovered after the fact either.
+    //
+    // This computes it directly on the long-format panel. STRATA mirror
+    // upstream `did_cs.py:110`, `self._strata = d + 2 * t`, which stratifies on
+    // the treatment/period pair so both are spread across folds.
+    //
+    // DELIBERATELY ADDITIVE. This is a SEPARATE cross-fit from the children's;
+    // it feeds nothing that already exists, so every `coef_at` / `se_at` /
+    // sandwich number is unchanged by this release. The nu2 migration that
+    // consumes it is a later stage. Gate GATE 5 in `expand_v146_test.mbt`
+    // pins that no-estimate-changes property.
+    // ---------------------------------------------------------------------
+    let panel_strata : Array[Double] = Array::make(n, 0.0)
+    for i = 0; i < n; i = i + 1 {
+      panel_strata[i] = self.data.d[i] + 2.0 * self.data.t[i].to_double()
+    }
+    let panel_folds = kfold_stratified(n, panel_strata, self.n_folds, self.seed)
+    let m_hat_long = cross_fit_predict_dispatch(
+      ml_m,
+      self.data.x,
+      self.data.d,
+      panel_folds,
+    )
     let coef_values : Array[Double] = []
     let se_values : Array[Double] = []
     let mut coef_values_acc = coef_values
@@ -1194,6 +1277,9 @@ pub fn DoubleMLDIDCS::fit(
       // `m_inv_1x1_at` for the cache-hit argument.
       cell_psi_a: final_cell_psi_a,
       cell_psi_b: final_cell_psi_b,
+      // v0.146.0: panel-wide nuisance state (stage 1a).
+      m_hat_long,
+      panel_folds,
       fitted: true,
       boot_t_stat: [],
       boot_method: "",
