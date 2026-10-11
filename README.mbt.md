@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.142.0** |
+| `moon.mod` version | **0.143.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **204** `.mbt` files (**65** production + **114** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -202,11 +202,38 @@ more.
 > two fixtures, counting changed steps with *exact* inequality -- the defect is
 > an exact tie, and a tolerance would hide it.
 >
-> **Not fully fixed on QTE:** it still ties at tau 0.75 and 0.90 on the measured
-> fixture. The flip cut the frozen tail from three taus to one. The cause is not
-> a convergence budget (the bisection runs 60 iterations, `quantile.mbt:267-275`)
-> and is most likely a gap in the IPW-weighted outcome distribution at the upper
-> tail. That is an open item, not a finding.
+> **The residual tie at tau 0.75 / 0.90 is a PLATEAU COLLISION, not a freeze**
+> (root-caused in v0.143.0). The score is a **step function** of theta:
+> `iy = if y[i] <= theta { 1.0 } else { 0.0 }` (`quantile.mbt:126`), so
+> `mean(psi)` is constant between observed outcomes. Two taus whose crossings land
+> on the same step get the same root. Measured in a 0.05-wide window around the
+> tied value: **25 distinct plateaus**, longest flat run **62 of 400** grid steps.
+>
+> Two explanations were tested and **both refuted**:
+>
+> 1. *A gap in the weighted distribution* -- no. At seed 17 the treated outcomes
+>    are **1033 of 1033 distinct**, 0.75-quantile `3.2723` vs 0.90-quantile
+>    `3.8917`, about 155 observations apart.
+> 2. *QTE ties where PQ does not* -- no. Across four seeds, **both** tie at seed
+>    17 (`1.275328016249802` each) and **neither** ties at seeds 23, 29 or 41. The
+>    v0.139.0 contrast was reading one fixture as an estimator difference.
+>
+> And it resolves as the sample grows, which is what a plateau collision must do:
+>
+> | n | coef @ 0.75 | coef @ 0.9 | tied |
+> |---|---|---|---|
+> | 1000 | `1.4491898789269633` | `1.4491898789269633` | **yes** |
+> | 2000 | `1.275328016249802` | `1.275328016249802` | **yes** |
+> | 4000 | `0.9570929867084059` | `1.3732758716025382` | no |
+> | 8000 | `1.4356301994178935` | `1.7559108756022739` | no |
+>
+> More distinct outcomes means more steps, so two taus are less likely to share
+> one. A solver defect would not behave this way. **Nothing is patched**: removing
+> it would mean smoothing the indicator, which changes results in the healthy
+> region to suppress correct behaviour.
+>
+> This is NOT the v0.137.0 defect, which froze the coefficient at **every** tau
+> (`0 of 4` distinct steps) and is fixed.
 
 When you pass a classifier explicitly, name it on BOTH sides of any comparison: a
 gate phrased against "the default" silently changes subject when the default

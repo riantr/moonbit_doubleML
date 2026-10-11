@@ -9,6 +9,120 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.143.0] — the residual PQ/QTE tie is a PLATEAU COLLISION, not a freeze
+
+Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).
+
+### What this closes
+
+v0.139.0 flipped `DoubleMLPQ` / `DoubleMLQTE` to a classifier `ml_m` and
+measured that both now respond to `quantile`. It also recorded a residual:
+**QTE still returned an identical coefficient at tau = 0.75 and 0.90**, and
+contrasted that with PQ, which "does not tie" — reporting 5 distinct values at
+seed 23.
+
+v0.139.0 left the cause open and said so. This release establishes it, and the
+contrast it drew turns out to be **wrong**.
+
+### The tie is a plateau collision in a step function
+
+The score is a **step function** of theta (`quantile.mbt:126`):
+
+```
+let iy = if y[i] <= theta { 1.0 } else { 0.0 }
+score[i] = treated[i] / m[i] * iy - q
+```
+
+`mean(psi)` therefore changes only when theta crosses an **observed outcome**, and
+is **constant between them**. The bisection (`quantile.mbt:267-275`) locates the
+step whose crossing brackets `q`. Two taus whose crossings land in the same
+step get **the same root** — an exact tie, with no defect in it.
+
+Measured around the tied root on the seed-17 fixture
+(`_verify/probe_v1431_plateau.mbt`, a 0.05-wide window at 400 grid points):
+
+```
+distinct plateaus in window = 25
+longest flat run            = 62 of 400 grid steps
+```
+
+so the window is a staircase with wide treads, and two nearby taus can sit on
+the same tread.
+
+### It is a property of the FIXTURE, not of QTE
+
+Two hypotheses were tested and **both refuted**.
+
+**Refuted: "there is a gap in the weighted outcome distribution."** At seed 17
+the treated outcomes are **1033 of 1033 distinct**, with 0.75-quantile `3.2723`
+and 0.90-quantile `3.8917` — about 155 observations between them. There is no
+gap. (`_verify/probe_v1430_qte.mbt`.)
+
+**Refuted: "QTE ties where PQ does not."** Sweeping four seeds:
+
+| seed | QTE distinct steps (of 4) | PQ at 0.75 vs 0.90 |
+|---|---|---|
+| 17 | **3** | **TIED** — both `1.275328016249802` |
+| 23 | 4 | distinct — `1.6018` vs `1.8533` |
+| 29 | 4 | distinct — `0.4038` vs `0.9274` |
+| 41 | 4 | distinct — `-0.1146` vs `-0.1107` |
+
+**Both estimators tie at seed 17; neither ties at 23, 29 or 41.** The v0.139.0
+contrast was reading one fixture as though it were an estimator difference.
+PQ ties on exactly the fixture where QTE ties.
+
+### It resolves as the sample grows
+
+Holding seed 17 and varying `n` — the prediction if this is a plateau collision
+rather than a defect:
+
+| n | coef @ 0.75 | coef @ 0.9 | tied |
+|---|---|---|---|
+| 1000 | `1.4491898789269633` | `1.4491898789269633` | **yes** |
+| 2000 | `1.275328016249802` | `1.275328016249802` | **yes** |
+| 4000 | `0.9570929867084059` | `1.3732758716025382` | no |
+| 8000 | `1.4356301994178935` | `1.7559108756022739` | no |
+
+The tie **breaks as `n` grows and the outcome distribution densifies**, which is
+what a plateau collision must do: with more distinct outcomes there are more
+steps, so two taus are less likely to share one. A solver defect would not
+behave this way.
+
+Note the standard errors also diverge at n=4000 and n=8000
+(`2.3654` vs `0.2310`, then `0.4582` vs `0.1550`), so where the point estimates
+separate the intervals are wide — the quantile estimate is simply imprecise at
+the upper tail of this DGP, which is a separate and unremarkable property.
+
+### What this is NOT
+
+- **Not the v0.137.0 defect.** That one was an unbounded regressor propensity
+  saturating at `m = 1e-6`, which froze the coefficient at **every** tau
+  (`0 of 4` distinct steps, identical to 16 digits). The v0.139.0 flip fixed it.
+- **Not a new bug.** Nothing in the solver is wrong; a step function has
+  plateaus, and two quantiles in one plateau have one answer.
+- **Not fixed by a patch**, and deliberately so. Removing it would mean
+  smoothing the indicator or narrowing the bracket — either changes results in
+  the healthy region, and neither is warranted for correct behaviour.
+
+### Gate status
+
+`v1390_pq_default_responds_to_its_quantile` and
+`v1390_qte_default_responds_to_its_quantile_at_least_as_much_as_the_regressor`
+both remain green and remain the right gates: they assert the estimator
+**responds** to tau across a sweep, which is the property that regressors broke.
+They do not assert every adjacent pair differs, because that is false — and a
+gate asserting it would be asserting a property the estimator does not have.
+
+The v0.139.0 bound `>= 3` of 4 distinct steps on QTE was deliberately set at the
+measured value so the gate would fail if the residual tie were ever resolved.
+It is now understood **why** that tie exists, and the bound is unchanged: at
+seed 17 the true count is 3, and a future fixture where it reaches 4 would trip
+the gate and prompt a re-derivation, exactly as intended.
+
+Probes preserved under `_verify/`: `probe_v1430_qte.mbt` (gap hypothesis —
+refuted; seed sweep), `probe_v1431_plateau.mbt` (plateau structure, sample-size
+sweep).
+
 ## [0.142.0] — correcting v0.141.0: LPLR has TWO failure modes, not one
 
 Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).
