@@ -9,6 +9,126 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.142.0] — correcting v0.141.0: LPLR has TWO failure modes, not one
+
+Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).
+
+### A correction to a published claim
+
+v0.141.0 shipped this:
+
+> **`mean(psi)` never changes sign.** [...] **The objective has no root.**
+
+That is **too strong**, and this release corrects it. Measured over the same
+theta range with the fitted predictions in hand, counting sign changes:
+
+| true alpha | sign changes | what actually happens |
+|---|---|---|
+| 0.50 | **1** | healthy — a root exists |
+| 1.00 | **1** | **degenerate anyway** — the solve misses a root that exists |
+| 1.25 | **0** | degenerate — no root anywhere in range |
+
+So the accurate statement is narrower: the objective is **rootless for
+`alpha >= 1.25`** — exactly the degenerate region found in v0.140.0 — while at
+`alpha = 1.0` a root **does** exist and the solver still fails to find it.
+
+**These are two distinct failure modes**, and v0.141.0 conflated them:
+
+- **`alpha = 1.0` — solver quality.** A root is available; damped Newton with a
+  0.25 step cap over 50 iterations does not reach it. Better iteration settings
+  could help.
+- **`alpha >= 1.25` — no root exists.** Iteration budget, damping, start value
+  and clipping are all inert. Only reparameterising the objective helps, and
+  that moves every LPLR result.
+
+The overstrong version implied no solver change could help anywhere, which is
+false, and it wrongly implied the healthy region was broken.
+
+### The port-vs-upstream beta hypothesis: real divergence, refuted as the cause
+
+Upstream keeps `beta` **row-wise** (`lplr.py:314-345`):
+
+```python
+beta = np.zeros(d.shape)                       # a vector
+for i, (train, test) in enumerate(smpls):
+    beta[test] = sum(d_tilde * w) / sum(d_tilde**2)
+r_hat = t_hat["preds"] - beta * a_hat["preds"] # row-wise product
+```
+
+This port folds it to a **single scalar** (`lplr.mbt:782-801`,
+`beta_acc = beta_acc + b_f`). That is a genuine divergence from upstream.
+
+**It is not the cause.** Measured, adopting upstream's per-row shape:
+
+| true alpha | scalar beta (shipped) | per-row beta (upstream shape) |
+|---|---|---|
+| 0.50 | 1 sign change | 1 |
+| 1.00 | 1 sign change | **0** |
+| 1.25 | 0 | 0 |
+
+The per-row parametrisation makes the root **worse** at `alpha = 1.0` (1 → 0).
+So this must **not** be changed on contract-fidelity grounds — it is exactly the
+v0.136.0 mistake in a new place. Recorded here so the next reader does not
+"restore fidelity" and make the solver worse.
+
+### What the upstream comparison does establish
+
+**The score formula is byte-identical to upstream.** `lplr.mbt:194-204` versus
+`lplr.py:401-418`: same `psi_hat = expit(-r_hat)`, same
+`score_const = d_tilde*(1-y)*exp(r_hat)`, same `exp(-coef*d)` term. The
+degenerate SE is **not** a port transcription error in the score.
+
+**The failure path is missing entirely.** Upstream solves in
+`double_ml_score_mixins.py:143-162`:
+
+```python
+if not bounded:
+    root_res = root_scalar(score, x0=self._coef_start_val,
+                           fprime=score_deriv, method="newton")
+    theta_hat = root_res.root
+    if not root_res.converged:
+        msg = "Could not find a root of the score function..."
+        if self._error_on_convergence_failure:
+            raise ValueError(msg)
+        else:
+            warnings.warn(msg)
+else:
+    signs_different, bracket_guess = _get_bracket_guess(score, start, bounds)
+    if signs_different:
+        theta_hat = root_scalar(score, bracket=bracket_guess, method="brentq").root
+    else:
+        # minimise score^2 to find an alternative start, then re-bracket
+```
+
+Three safeguards upstream has and this port lacks:
+
+1. **`_error_on_convergence_failure`** — on non-convergence it warns, or raises
+   if configured. Default is `False`, so **upstream's default behaviour is a
+   warning, not an exception**. This port has neither: `let _ = converged`
+   (`lplr.mbt:866`).
+2. **`_coef_bounds` + brentq** on a verified sign change — a bracketed solver
+   path that does not exist here.
+3. **`_get_bracket_guess`** — explicitly verifies a sign change before solving.
+
+Note that upstream sets neither `_coef_bounds` nor a strict flag for LPLR
+(`lplr.py:120`, `double_ml_score_mixins.py:88`), so upstream's LPLR takes the
+same unbounded-Newton branch this port does. The divergence is in **what happens
+when the solve fails**, not in the solving.
+
+### Decision
+
+No code changed. The correct fix set is now evidence-backed and split in two:
+
+- **Low risk, available now:** port upstream's failure handling so a non-solved
+  LPLR fit reports instead of silently returning `-10`. Upstream's default is a
+  warning; matching that is the faithful behaviour and does not require making
+  `fit` fallible.
+- **Out of scope:** reparameterising the objective for `alpha >= 1.25`, and
+  adopting the per-row beta (measured harmful).
+
+Probes preserved under `_verify/`: `probe_v1420_beta.mbt` (scalar vs per-row
+beta, sign-change counts).
+
 ## [0.141.0] — `DoubleMLLPLR`: the objective has no root, so the solver cannot be fixed
 
 Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).

@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.141.0** |
+| `moon.mod` version | **0.142.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **204** `.mbt` files (**65** production + **114** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -158,7 +158,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau 0.50-0.90 |
 | `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` (16x *smaller* SE) |
 | `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
-| `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0/0.141.0** | not an `ml_m` hazard; objective has no root; see below |
+| `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0-v0.142.0** | not an `ml_m` hazard; two failure modes; see below |
 | `DoubleMLPQ` | **hazardous -- fixed in v0.139.0** | ignored its `quantile` entirely |
 
 All eleven remaining defaults were measured in v0.137.0. **Three showed a
@@ -250,13 +250,24 @@ moves (hit four times across v0.134.0-v0.136.0).
 > mistake again, trading a working default for a rationale that measurement
 > does not support while leaving the cause untouched.
 >
-> **v0.141.0: the objective has NO ROOT, so this is not a solver bug.**
-> Sweeping `mean(psi)` over `theta` in `[-20, 20]` gives **zero sign changes** --
-> it falls monotonically from `2.33e7` to a small positive asymptote
-> (`0.000166`) and never crosses zero. Newton is chasing a solution that does not
-> exist. Every degenerate cell therefore lands at `-8.3` to `-10.5` (mean
-> `-9.85`) **while the true effect ranges 0.75 to 2.0** -- an output that does
-> not move when the estimand moves by 2.7x.
+> **v0.141.0 / v0.142.0: in the degenerate region the objective is ROOTLESS.**
+> Sweeping `mean(psi)` over `theta` in `[-30, 30]` and counting sign changes:
+>
+> | true alpha | sign changes | result |
+> |---|---|---|
+> | 0.50 | 1 | healthy -- a root exists |
+> | 1.00 | 1 | degenerate anyway (the solve misses the root it has) |
+> | 1.25 | **0** | degenerate -- **no root anywhere in range** |
+>
+> v0.141.0 said "the objective has no root" without qualifying the region; that
+> was too strong and is corrected here. The accurate statement is that it is
+> **rootless for `alpha >= 1.25`**, which is exactly the degenerate region. At
+> `alpha = 1.0` a root does exist and the solver still fails to reach it -- so
+> there are two distinct failure modes, not one.
+>
+> Every degenerate cell lands at `-8.3` to `-10.5` (mean `-9.85`) **while the true
+> effect ranges 0.75 to 2.0** -- an output that does not move when the estimand
+> moves by 2.7x.
 >
 > Three candidate fixes were measured and **all three were refuted**:
 >
@@ -271,13 +282,28 @@ moves (hit four times across v0.134.0-v0.136.0).
 >    because that stage regresses on `w_inner = ln(m/(1-m))`, a continuous
 >    unbounded logit propensity, not a 0/1 label.
 >
-> With no root in range, iteration budget, damping, start value and clipping are
-> all inert. Making this score root-bearing requires reparameterising the
+> Where the objective is rootless (`alpha >= 1.25`), iteration budget, damping,
+> start value and clipping are all inert; that case needs reparameterising the
 > **objective** (a bounded link such as `expit`), which moves every LPLR result
-> and is therefore a model rewrite rather than a bug fix.
+> and is a model rewrite rather than a bug fix. Where a root exists but is missed
+> (`alpha = 1.0`), solver quality genuinely is the issue.
 >
-> The diagnostic that settles it is cheap and general: **count sign changes of the
-> objective over a wide parameter range before touching the solver.**
+> The diagnostic that settles which case you are in is cheap and general:
+> **count sign changes of the objective over a wide parameter range before
+> touching the solver.**
+>
+> **Port-vs-upstream (v0.142.0), recorded because fidelity alone would mislead:**
+> the score formula is byte-identical to upstream (`lplr.mbt:194-204` vs
+> `lplr.py:401-418`, including `exp(-coef*d)`), but two things differ.
+> Upstream keeps `beta` **row-wise** (`lplr.py:314-345`) while this port folds it
+> to one scalar (`lplr.mbt:782-801`). That is a real divergence -- but adopting
+> upstream's per-row shape makes the root **worse** (1 -> 0 sign changes at
+> `alpha = 1.0`), so it is not the cause and must not be changed on fidelity
+> grounds. Upstream also handles solve failure in
+> `double_ml_score_mixins.py:143-162` (brentq fallback on bounds; a warning or
+> `ValueError` on non-convergence). This port omits that path entirely --
+> `let _ = converged` at `lplr.mbt:866` -- which is the one clear, low-risk
+> divergence available to fix.
 
 **`DoubleMLAPOS` honoured a configured `ml_m` everywhere except where it
 counted (fixed in v0.133.0).** Its `fit` path built each child
