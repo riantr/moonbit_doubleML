@@ -114,9 +114,15 @@ test "v1330_apos_fit_forwards_ml_m_to_the_child_apo" {
 test "v1330_apos_forwards_ml_m_at_every_treatment_level" {
   let data = v1330_data(400, 2, 3141)
   let logit = LearnerDispatch::logistic_regression(LogisticRegression::new())
+  // v0.135.0: the contrast arm was "APOS with its DEFAULT ml_m", and it began
+  // failing the moment `DoubleMLAPOS`'s default became LogisticRegression --
+  // same trap that hit GATE 1 in v0.134.0. `apos_def` is now an EXPLICIT OLS
+  // APOS, so this gate pins "was the learner forwarded to EVERY level?" and
+  // is immune to where the default sits.
+  let ols = LearnerDispatch::linear_regression()
   let levels = [0.0, 1.0]
   let apos = DoubleMLAPOS::new(data, levels, n_folds=2, seed=3141, ml_m=logit).fit()
-  let apos_def = DoubleMLAPOS::new(data, levels, n_folds=2, seed=3141).fit()
+  let apos_ols = DoubleMLAPOS::new(data, levels, n_folds=2, seed=3141, ml_m=ols).fit()
   for j in 0..<2 {
     let child = DoubleMLAPO::new(
       data,
@@ -127,7 +133,7 @@ test "v1330_apos_forwards_ml_m_at_every_treatment_level" {
     ).fit()
     // forwarded: matches the same learner applied directly at this level
     assert_true((apos.coefs()[j] - child.coef()).abs() < 1.0e-12)
-    // and not vacuous: differs from the default-learner APOS
-    assert_true((apos.coefs()[j] - apos_def.coefs()[j]).abs() > 1.0e-9)
+    // and not vacuous: differs from an APOS that really used OLS
+    assert_true((apos.coefs()[j] - apos_ols.coefs()[j]).abs() > 1.0e-9)
   }
 }

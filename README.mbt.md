@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.134.0** |
+| `moon.mod` version | **0.135.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **201** `.mbt` files (**65** production + **111** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **202** `.mbt` files (**65** production + **112** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1019 / 1019 / 1019** |
-| Tests (wasm-gc) | **1025 / 1025** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1023 / 1023 / 1023** |
+| Tests (wasm-gc) | **1029 / 1029** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -86,8 +86,9 @@ fixture with true `ATE = 1.5`:
 | `logistic_regression` | **1.44** | 0.842 |
 
 The port used to default `ml_m` to `LearnerDispatch::linear_regression()`
-everywhere. **`DoubleMLIRM` was migrated in v0.132.0** and
-**`DoubleMLAPO` in v0.134.0**: their `ml_m` default is now
+everywhere. **`DoubleMLIRM` was migrated in v0.132.0**,
+**`DoubleMLAPO` in v0.134.0** and **`DoubleMLAPOS` in v0.135.0**:
+their `ml_m` default is now
 `LearnerDispatch::logistic_regression(LogisticRegression::new())`, while
 `ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x]`), so the
 two defaults diverge on purpose. `LearnerDispatch::is_classifier()` reports
@@ -102,8 +103,8 @@ by at least `72.8` -- a 366x separation on the coefficient. `DoubleMLAPO`
 (`0.270` vs `86.28`, a 300x separation), because the mechanism is that an
 unbounded propensity makes `1 / m_hat` explode and takes the variance with it.
 
-**The other 13 structs still default `ml_m` to `linear_regression()`**:
-`DoubleMLAPOS`, `DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`,
+**The other 12 structs still default `ml_m` to `linear_regression()`**:
+`DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`,
 `DoubleMLDIDCrossSection`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
 `DoubleMLDIDMulti`, `DoubleMLIIVM`, `DoubleMLLPLR`, `DoubleMLPQ`,
 `DoubleMLQTE`, `DoubleMLSSM`. Until each is migrated, pass a

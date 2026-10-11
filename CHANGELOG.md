@@ -9,6 +9,113 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.135.0] -- `DoubleMLAPOS`'s default `ml_m` is a classifier
+
+Completes the APO family: v0.132.0 migrated `DoubleMLIRM`, v0.134.0 migrated
+`DoubleMLAPO`, and this migrates `DoubleMLAPOS`. Tests 1019 -> 1023
+(native / wasm / js), 1025 -> 1029 (wasm-gc).
+
+### The change
+
+`DoubleMLAPOS::new`'s `ml_m` default moves from
+`LearnerDispatch::linear_regression()` to
+`LearnerDispatch::logistic_regression(LogisticRegression::new())`.
+
+`ml_g` stays OLS -- it models `E[Y | X]`, not `P(y = 1 | x)` -- so the two
+defaults diverge on purpose, and GATE 1 pins both halves.
+
+This release is the safest of the three, and that is worth recording: v0.133.0
+had already **proved by measurement** that APOS forwards its `ml_g` / `ml_m`
+to its per-level children. Flipping the default therefore could not split the
+coefficient path from the bootstrap path -- the failure mode that a default
+flip would otherwise have introduced.
+
+### Measured, both arms in one run
+
+Two levels, three seeds, saturated propensity, true `E[Y | D=0] = 0.5` and
+`E[Y | D=1] = 1.7` (`_verify/probe_v1350.mbt`):
+
+| seed | default lvl0 | \|bias\| | default lvl1 | \|bias\| | default SE (worst) |
+|---|---|---|---|---|---|
+| 3141 | 0.5564 | 0.0564 | 1.6978 | 0.0022 | 0.0568 |
+| 2718 | 0.3889 | 0.1111 | 1.7307 | 0.0307 | 0.0877 |
+| 1618 | −0.3244 | 0.8244 | 1.4591 | 0.2409 | 0.6561 |
+
+| seed | OLS lvl0 | \|bias\| | OLS lvl1 | \|bias\| | OLS SE (smallest) |
+|---|---|---|---|---|---|
+| 3141 | 225.297 | 224.80 | −112.774 | 114.47 | 86.28 |
+| 2718 | −435.612 | 436.11 | 6.446 | **4.75** | 320.41 |
+| 1618 | −139.951 | 140.45 | −246.946 | 248.65 | 248.46 |
+
+### A consistency check that came out clean
+
+The level-1 numbers here are **bit-identical** to the v0.134.0 APO
+measurement on the same DGP: `1.6978140074095915`, SE
+`0.035118700076864975`. They should be -- APOS's level-1.0 child *is* a
+`DoubleMLAPO` on that data, and v0.133.0 proved the forwarding correct.
+
+Worth stating because it is evidence, not coincidence: had these drifted, the
+delegation would have been suspect again, and identical numbers are the
+cheapest available confirmation that it is not. A drift here would have been
+the signal to re-open the v0.133.0 investigation.
+
+### Four gates, all mutation-verified
+
+`expand_v135_test.mbt`:
+
+1. **`v1350_apos_default_ml_m_is_a_classifier_and_ml_g_is_not`** -- structural.
+2. **`v1350_apos_default_is_calibrated_at_every_level_across_seeds`** --
+   behavioural, 3 seeds x 2 levels. Worst default `|bias|` 0.8244 vs guard
+   1.5 (1.8x); worst default SE 0.6561 vs guard 1.5 (2.3x); smallest OLS SE
+   86.28 vs guard 20.0 (4.3x).
+3. **`v1350_apos_classifier_default_holds_at_treatment_level_zero`** --
+   control. At level 0.0 the modelled propensity is `P(D = 0 | X)`.
+4. **`v1350_apos_causal_contrast_recovers_the_true_difference`** -- the
+   APOS-only property.
+
+**GATE 4 is not redundant with GATE 2, and the relationship is the point.**
+With `E[Y | D=1] - E[Y | D=0] = 1.2` exactly, a propensity that biased *both*
+levels in the same direction would still produce the right contrast -- so a
+contrast-only test can pass while both levels are individually broken. That
+is why GATE 2 asserts each level separately and GATE 4 asserts the
+difference, rather than either replacing the other.
+
+Mutation: reverting the default fails **all four**, at `:76`, `:118`,
+`:148`, `:177`.
+
+### One pre-existing gate re-pinned (third occurrence of the same trap)
+
+`expand_v133_test.mbt:131` began failing the moment APOS's default changed.
+Its contrast arm was an APOS built on its **default** `ml_m`, which had by
+then become the same learner under test. Now an explicit
+`linear_regression()`.
+
+This is the **third** instance of one failure mode across the migration:
+
+| release | site | contrast arm was |
+|---|---|---|
+| v0.134.0 | `expand_v133_test.mbt:90` | APO with its default |
+| v0.135.0 | `expand_v133_test.mbt:131` | APOS with its default |
+| v0.134.0 | `expand_v109_test.mbt:311` | APO with its default |
+
+**A gate phrased against "the default" silently changes subject when the
+default moves.** The remedy is now uniform across the suite: every gate in
+this migration names the learner on both sides of the comparison, which makes
+each one immune to wherever the default sits in any later release. Worth
+carrying into the remaining twelve estimators.
+
+### Still on the OLS default -- 12 structs
+
+`DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`,
+`DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, `DoubleMLDIDMulti`, `DoubleMLIIVM`,
+`DoubleMLLPLR`, `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLSSM`.
+
+Until each is migrated, pass a classifier explicitly:
+
+```moonbit
+ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
+```
+
 ## [0.134.0] -- `DoubleMLAPO`'s default `ml_m` is a classifier
 
 The second estimator migrated off the OLS propensity default (v0.132.0 did

@@ -1285,7 +1285,9 @@ pub fn DoubleMLAPOS::new(
   normalize_ipw? : Bool = false,
   ps_processor_config? : PSProcessorConfig? = None,
   ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+    LogisticRegression::new(),
+  ),
 ) -> DoubleMLAPOS {
   // v0.121.0: resolved BEFORE the try block so the concrete config is in
   // scope for the struct literal below (a `let` inside `try` is scoped to
