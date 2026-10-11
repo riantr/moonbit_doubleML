@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.138.0** |
+| `moon.mod` version | **0.139.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **203** `.mbt` files (**65** production + **113** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **204** `.mbt` files (**65** production + **114** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1029 / 1029 / 1029** |
-| Tests (wasm-gc) | **1035 / 1035** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1034 / 1034 / 1034** |
+| Tests (wasm-gc) | **1040 / 1040** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -88,15 +88,16 @@ fixture with true `ATE = 1.5`:
 
 The port used to default `ml_m` to `LearnerDispatch::linear_regression()`
 everywhere. **`DoubleMLIRM` was migrated in v0.132.0**,
-**`DoubleMLAPO` in v0.134.0**, **`DoubleMLAPOS` in v0.135.0** and
-**`DoubleMLSSM` in v0.138.0**:
+**`DoubleMLAPO` in v0.134.0**, **`DoubleMLAPOS` in v0.135.0**,
+**`DoubleMLSSM` in v0.138.0** and **`DoubleMLPQ` / `DoubleMLQTE` in
+v0.139.0**:
 their `ml_m` default is now
 `LearnerDispatch::logistic_regression(LogisticRegression::new())`, while
 `ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x]`), so the
 two defaults diverge on purpose. `LearnerDispatch::is_classifier()` reports
 which constructors qualify.
 
-The four migrations do NOT have the same margin, and the gates are shaped
+The migrations do NOT all have the same margin, and the gates are shaped
 accordingly. `DoubleMLIRM` on a saturated-propensity fixture (true `ATE = 1.5`)
 across three seeds: default recovers within `0.198`, an OLS propensity misses
 by at least `72.8` -- a 366x separation on the coefficient. `DoubleMLAPO`
@@ -121,11 +122,11 @@ three decimals and OLS is marginally better. The hazard is a property of the
 clamp, not of the estimator in general, and the gate suite pins both regimes so
 a future change cannot be scored on the flattering fixture alone.
 
-**Eleven structs still default `ml_m` to `linear_regression()`**:
+**Nine structs still default `ml_m` to `linear_regression()`**:
 `DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`,
 `DoubleMLDIDCrossSection`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
-`DoubleMLDIDMulti`, `DoubleMLIIVM`, `DoubleMLLPLR`, `DoubleMLPQ`,
-`DoubleMLQTE`. Until each is migrated, pass a classifier explicitly:
+`DoubleMLDIDMulti`, `DoubleMLIIVM`, `DoubleMLLPLR`. Until each is
+migrated, pass a classifier explicitly:
 
 ```moonbit
 ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
@@ -154,16 +155,18 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~1e-4 |
 | `DoubleMLSSM` | **hazardous -- fixed in v0.138.0** | coef `242.116` vs `1.177` |
 | `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
-| `DoubleMLQTE` | not demonstrated | `0.249` vs `0.162` |
+| `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau 0.50-0.90 |
 | `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` (16x *smaller* SE) |
 | `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
 | `DoubleMLLPLR` | not demonstrated | OLS SE collapses to `4.6e-5` |
-| `DoubleMLPQ` | **see below -- defect** | ignores its `quantile` |
+| `DoubleMLPQ` | **hazardous -- fixed in v0.139.0** | ignored its `quantile` entirely |
 
-All eleven remaining defaults were measured in v0.137.0. **Exactly one shows
-the hazard: `DoubleMLSSM`** (`242.116` vs `1.177`) -- its score divides by
-`m*pi` AND `(1-m)*pi`, two reciprocals in both directions (`ssm.mbt:73-74`).
-The other ten keep their OLS default **on measured evidence**.
+All eleven remaining defaults were measured in v0.137.0. **Three showed a
+defect: `DoubleMLSSM`** (`242.116` vs `1.177` -- its score divides by `m*pi`
+AND `(1-m)*pi`, two reciprocals in both directions, `ssm.mbt:73-74`), **and
+`DoubleMLPQ` / `DoubleMLQTE`**, which ignored their `quantile` outright.
+SSM was fixed in v0.138.0 and the quantile pair in v0.139.0. The other eight
+keep their OLS default **on measured evidence**.
 
 A static classifier (read the score: does it carry `1/m`? is it doubly robust?)
 was used to prioritise the probes, and it reproduces all four earlier outcomes
@@ -172,11 +175,11 @@ and still measuring harmless. A reciprocal in the score is not sufficient for
 the hazard; the classifier is a way to decide what to measure first, nothing
 more.
 
-> **`DoubleMLPQ` currently IGNORES its `quantile` argument on the default path.**
-> An ordinary caller who never mentions `ml_m` gets the identical coefficient at
-> every tau:
+> **`DoubleMLPQ` IGNORED its `quantile` argument on the default path -- fixed in
+> v0.139.0.** An ordinary caller who never mentioned `ml_m` got the identical
+> coefficient at every tau:
 >
-> | tau | default (OLS) `ml_m` | logistic `ml_m` |
+> | tau | old default (OLS `ml_m`) | shipped now |
 > |---|---|---|
 > | 0.10 | -0.38571498836568785 | -0.38571498836568785 |
 > | 0.25 | **-0.38571498836568785** | 0.5268291897597495 |
@@ -184,11 +187,24 @@ more.
 > | 0.75 | **-0.38571498836568785** | 1.2753280162498020 |
 > | 0.90 | **-0.38571498836568785** | 1.2753280162498020 |
 >
-> Identical to 16 significant digits, equal to the logistic arm's tau=0.10 value,
-> SE ~1e-6 -- the signature of a root finder sitting still. Reproduced on a second
-> wide-outcome fixture, so it is not a narrow-outcome artefact. **Every PQ test in
-> the suite passes `quantile=0.5`**, so nothing can catch it. Root-causing this is
-> tracked as its own item; it outranks every default question here.
+> Cause: `score[i] = treated[i] / m[i] * 1{y[i] <= theta} - q`
+> (`quantile.mbt:127`) with `m` clipped to `[propensity_clip, 1 - propensity_clip]`
+> (`quantile.mbt:175-177`). An unbounded regressor propensity predicts outside
+> `[0,1]`, so treated rows saturate at `m = 1e-6` and carry weight `1e6`; the
+> IPW distribution is then dominated by whichever rows saturated and its
+> tau-quantile is the same for every `q in (0,1)`. `DoubleMLQTE` shares
+> `solve_pq`, and did freeze too -- at `-1.5829876410256796` for tau 0.50-0.90.
+>
+> **Every PQ test that existed passed `quantile=0.5`**, so nothing could catch
+> this. `expand_v139_test.mbt` now sweeps five taus on the shipped path across
+> two fixtures, counting changed steps with *exact* inequality -- the defect is
+> an exact tie, and a tolerance would hide it.
+>
+> **Not fully fixed on QTE:** it still ties at tau 0.75 and 0.90 on the measured
+> fixture. The flip cut the frozen tail from three taus to one. The cause is not
+> a convergence budget (the bisection runs 60 iterations, `quantile.mbt:267-275`)
+> and is most likely a gap in the IPW-weighted outcome distribution at the upper
+> tail. That is an open item, not a finding.
 
 When you pass a classifier explicitly, name it on BOTH sides of any comparison: a
 gate phrased against "the default" silently changes subject when the default

@@ -389,7 +389,9 @@ pub fn DoubleMLPQ::new(
   propensity_clip? : Double = 1.0e-6,
   ps_processor_config? : PSProcessorConfig? = None,
   ml_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+    LogisticRegression::new(),
+  ),
 ) -> DoubleMLPQ {
   try {
     require(quantile > 0.0)
@@ -1439,7 +1441,9 @@ pub fn DoubleMLQTE::new(
   seed? : Int = 3141,
   propensity_clip? : Double = 1.0e-6,
   ml_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+    LogisticRegression::new(),
+  ),
 ) -> DoubleMLQTE {
   {
     data,

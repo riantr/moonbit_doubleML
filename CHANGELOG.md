@@ -9,6 +9,135 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.139.0] — `DoubleMLPQ` / `DoubleMLQTE` stop ignoring their `quantile`
+
+Tests 1035 / 1035 -> 1040 / 1040. One behavioural change (two default values),
+five new gates, no re-pins, **zero existing tests broke**.
+
+### The defect this closes
+
+v0.137.0 measured every remaining `ml_m` default and recorded `DoubleMLPQ` as
+"not demonstrated -- defect", having observed that on the **shipped path** — an
+ordinary caller who never mentions `ml_m` — the coefficient is *identical at every
+quantile*. v0.137.1 root-caused it:
+
+```
+score[i] = treated[i] / m[i] * 1{y[i] <= theta} - q     (quantile.mbt:127)
+m is clipped to [propensity_clip, 1 - propensity_clip]    (quantile.mbt:175-177)
+```
+
+with `propensity_clip` defaulting to `1e-6`. An unbounded regressor propensity
+predicts outside `[0,1]`, so treated rows saturate at `m = 1e-6` and carry weight
+`1e6`. The IPW distribution is then dominated by whichever rows saturated, and
+its tau-quantile is the same for every `q in (0,1)`. Raising the clip weakens the
+freeze, which is what confirmed the mechanism.
+
+A quantile estimator that ignores its quantile is a caller-visible correctness
+bug, not a tuning nuisance. That is why this release **fixes** it rather than
+documenting it the way v0.137.0 documented the other ten "not demonstrated"
+defaults.
+
+### Both flipped, together
+
+`DoubleMLPQ` and `DoubleMLQTE` share `solve_pq` with `ml_m` in the identical
+role. v0.139.0 measured the same freeze at both entry points, so flipping one and
+not the other would have left the defect live on one of them.
+
+`ml_l` deliberately stays OLS on QTE — it models the conditional quantile function
+of the *outcome*, not a probability.
+
+### Measured, five taus, three arms
+
+`shipped - ols` is **exactly 0** at all five taus: the pre-flip number really is
+what a caller receives. `shipped - logistic` is **exactly 0** at all five taus
+post-flip.
+
+| tau | shipped, pre-flip (OLS) | shipped, post-flip |
+|---|---|---|
+| 0.10 | `-0.38571498836568785` | `-0.38571498836568785` |
+| 0.25 | `-0.38571498836568785` | `0.5268291897597495` |
+| 0.50 | `-0.38571498836568785` | `0.9570929867084059` |
+| 0.75 | `-0.38571498836568785` | `1.2753280162498020` |
+| 0.90 | `-0.38571498836568785` | `1.2753280162498020` |
+
+Distinct values across the four steps: **OLS 0 of 4, classifier 3 of 4.** On a
+second fixture (seed 23) the classifier separates all five —
+`-0.2147 / 0.5649 / 0.8300 / 1.6018 / 1.8533`.
+
+### QTE, same fixture — and an honest limit on the claim
+
+| tau | shipped, pre-flip (OLS) | shipped, post-flip | post-flip SE |
+|---|---|---|---|
+| 0.10 | `0.22032114424242955` | `0.2021720617526317` | `0.18341414400727654` |
+| 0.25 | `-0.5034157842861902` | `0.41220797871634085` | `0.7754637158215787` |
+| 0.50 | `-1.5829876410256796` | `-0.2401796659515858` | `0.534738827167696` |
+| 0.75 | `-1.5829876410256796` | `-0.515065745054625` | `0.17741939355515163` |
+| 0.90 | `-1.5829876410256796` | `-0.515065745054625` | `0.17745969054067134` |
+
+Distinct steps: **OLS 2 of 4, classifier 3 of 4.**
+
+**QTE IS NOT FULLY FIXED and this release does not claim it is.** QTE still ties
+at `tau = 0.75` and `tau = 0.90` on this fixture, while PQ does not. The flip
+reduced QTE's frozen tail from three taus to one, but did not remove it.
+
+The cause is **not** a convergence budget: the bisection is 60 iterations over a
+bracketed range (`quantile.mbt:267-275`), far past the tolerance used elsewhere.
+The residual is most likely a gap in the IPW-weighted outcome distribution at the
+upper tail — a single empirical weighted observation can span both quantiles when
+the effective sample size is small. **That is a hypothesis, not a finding**, and
+it is recorded as an open item rather than asserted as fixed.
+
+GATE 3 is written to the measured `>= 3` bound on purpose. It will **fail** if
+QTE's residual tie is ever closed further, because a gate that cannot notice an
+improvement is no more useful than one that cannot notice a break.
+
+### What v0.137.0 got wrong here
+
+v0.137.0 recorded `DoubleMLQTE` as **"not demonstrated"** — safe. It is not.
+Measured across five taus, QTE's OLS arm freezes at `-1.5829876410256796` for
+`tau = 0.50 / 0.75 / 0.90`, frozen to 14 significant digits, with standard errors
+agreeing only to the 8th (`0.18306088971925516` vs `0.18306088779565463`).
+
+The miss came from sampling two taus and reading "they differ" as "no freeze".
+Two points cannot distinguish a moving estimate from one with a flat upper half.
+The lesson is the same shape as the five already recorded in this repo: absence of
+evidence on a fixture that cannot produce the evidence is not evidence of absence.
+
+### Mutations
+
+`_verify/_flip_1390_pq.py revert` restores **both** regressor defaults and
+changes nothing else:
+
+| gate | revert |
+|---|---|
+| `v1390_..._default_ml_m_is_the_classifier_not_the_regressor` | **FAIL** |
+| `v1390_pq_default_responds_to_its_quantile` | **FAIL** |
+| `v1390_..._qte_default_responds_..._at_least_as_much_as_the_regressor` | **FAIL** |
+| `v1390_..._multi_quantile_fit_returns_distinct_estimates` | **FAIL** |
+| `v1390_..._both_learners_sweep_tau_when_the_propensity_is_bounded` | PASS *(by design)* |
+
+GATE 5 surviving the revert is **intended** — it is the benign-regime control, and
+a control that fails when you undo the thing it controls is not a control (the
+same asymmetry as v0.138.0's GATE 4).
+
+### The regression test the suite lacked
+
+**Every PQ test that existed before this release passed `quantile=0.5`.** There
+was no test that swept tau, so nothing could catch this. `v1390_pq_default_
+responds_to_its_quantile` is that test: it sweeps five taus on the shipped path,
+on two fixtures, and counts changed steps with **exact** inequality — a tolerance
+would hide the defect, because the defect *is* an exact tie.
+
+### Zero fallout, and what that means
+
+Not one existing test broke. That is consistent with the diagnosis rather than
+evidence against it: every pre-existing PQ test pinned `quantile=0.5`, so the
+frozen estimate and a correct one agreed at the only quantile anybody asked about.
+
+Probes preserved under `_verify/`: `probe_v1390_pq.mbt` (pre-flip, three arms),
+`probe_v1390_post.mbt` (post-flip). Harness: `_flip_1390_pq.py`.
+
+
 ## [0.138.0] — `DoubleMLSSM`'s default `ml_m` is a classifier, not a regressor
 
 Tests 1029 / 1029 -> 1035 / 1035. One behavioural change (a default value),
