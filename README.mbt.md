@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.136.0** |
+| `moon.mod` version | **0.137.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **202** `.mbt` files (**65** production + **112** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -136,14 +136,47 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLAPO` | hazardous | bias `5.246` vs `0.531`; SE `86.28` vs `0.270` |
 | `DoubleMLAPOS` | hazardous | per-level bias to `436.11` |
 | `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~1e-4 |
+| `DoubleMLSSM` | **hazardous** | coef `242.116` vs `1.177` |
+| `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
+| `DoubleMLQTE` | not demonstrated | `0.249` vs `0.162` |
+| `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` (16x *smaller* SE) |
+| `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
+| `DoubleMLLPLR` | not demonstrated | OLS SE collapses to `4.6e-5` |
+| `DoubleMLPQ` | **see below -- defect** | ignores its `quantile` |
 
-The DID family therefore **keeps** its OLS default. The remaining eleven are
-**unmeasured** -- neither safe nor unsafe, simply untested -- and each must be
-measured before it is migrated. An estimator that does not show the hazard
-keeps its default and documents why. When you pass a classifier explicitly,
-name it on BOTH sides of any comparison: a gate phrased against "the default"
-silently changes subject when the default moves (hit four times across
-v0.134.0-v0.136.0).
+All eleven remaining defaults were measured in v0.137.0. **Exactly one shows
+the hazard: `DoubleMLSSM`** (`242.116` vs `1.177`) -- its score divides by
+`m*pi` AND `(1-m)*pi`, two reciprocals in both directions (`ssm.mbt:73-74`).
+The other ten keep their OLS default **on measured evidence**.
+
+A static classifier (read the score: does it carry `1/m`? is it doubly robust?)
+was used to prioritise the probes, and it reproduces all four earlier outcomes
+-- but `DoubleMLIIVM` **refuted** it, carrying `1/m` and `1/(1-m)` on every row
+and still measuring harmless. A reciprocal in the score is not sufficient for
+the hazard; the classifier is a way to decide what to measure first, nothing
+more.
+
+> **`DoubleMLPQ` currently IGNORES its `quantile` argument on the default path.**
+> An ordinary caller who never mentions `ml_m` gets the identical coefficient at
+> every tau:
+>
+> | tau | default (OLS) `ml_m` | logistic `ml_m` |
+> |---|---|---|
+> | 0.10 | -0.38571498836568785 | -0.38571498836568785 |
+> | 0.25 | **-0.38571498836568785** | 0.5268291897597495 |
+> | 0.50 | **-0.38571498836568785** | 0.9570929867084059 |
+> | 0.75 | **-0.38571498836568785** | 1.2753280162498020 |
+> | 0.90 | **-0.38571498836568785** | 1.2753280162498020 |
+>
+> Identical to 16 significant digits, equal to the logistic arm's tau=0.10 value,
+> SE ~1e-6 -- the signature of a root finder sitting still. Reproduced on a second
+> wide-outcome fixture, so it is not a narrow-outcome artefact. **Every PQ test in
+> the suite passes `quantile=0.5`**, so nothing can catch it. Root-causing this is
+> tracked as its own item; it outranks every default question here.
+
+When you pass a classifier explicitly, name it on BOTH sides of any comparison: a
+gate phrased against "the default" silently changes subject when the default
+moves (hit four times across v0.134.0-v0.136.0).
 
 **`DoubleMLAPOS` honoured a configured `ml_m` everywhere except where it
 counted (fixed in v0.133.0).** Its `fit` path built each child

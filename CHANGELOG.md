@@ -9,6 +9,118 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.137.0] — all eleven remaining `ml_m` defaults measured; the hazard is real in one of them
+
+Docs-only. **No code change, no behavioural change, no test change.**
+Tests unchanged at 1023 / 1029.
+
+The v0.136.0 rule was *measure each estimator before migrating it*. This
+release closes that queue: **all eleven remaining estimators now have a
+measured verdict.**
+
+### The short version
+
+Of the eleven, **one shows the hazard** (`DoubleMLSSM`). Ten do not. And the
+exercise turned up a defect that has nothing to do with learner defaults:
+**`DoubleMLPQ` ignores its `quantile` argument on the default path.**
+
+### Method
+
+Rather than eleven independent probes, the estimators were first classified by
+**reading each score**, then one representative per class was measured. The
+classifier:
+
+| class | shape in the score | prediction |
+|---|---|---|
+| first-order, both directions | `1/m` **and** `1/(1-m)` | hazardous |
+| first-order, treated only | `1/m` on treated rows | hazardous |
+| no `1/m` at all | `v_hat = d - m_hat` | harmless |
+| treated only + doubly robust | the DID family | harmless |
+
+It reproduces all **four** already-measured outcomes (IRM / APO / APOS
+hazardous, DIDBinary harmless), so it was worth probing — but it is a **screen,
+not a substitute for measurement**, and IIVM proved exactly that (below).
+
+### Measured verdicts, all eleven
+
+Both arms are **explicit** learners in every probe. Never against "the
+default": the v0.136.0 mechanism probe did that and compared a value with
+itself.
+
+| Estimator | class | classifier | OLS | verdict |
+|---|---|---|---|---|
+| `DoubleMLSSM` | both directions | 1.177 | **242.116** (se 185.4) | **HAZARDOUS** |
+| `DoubleMLCVAR` | treated only | 2.373 | 2.300 | not demonstrated |
+| `DoubleMLQTE` | treated only | 0.162 | 0.249 | not demonstrated |
+| `DoubleMLPQ` | treated only | 0.727 (tau=0.5) | 0.636 | **see defect below** |
+| `DoubleMLIIVM` | both directions | 1.031 | 0.987 | not demonstrated |
+| `DoubleMLPLR` | none | 1.103 | **1.015** | not demonstrated |
+| `DoubleMLLPLR` | none | 1.571 | −10.101 (se 4.6e−5) | degenerate SE |
+| `DoubleMLDID` ×5 | doubly robust | — | — | not demonstrated |
+
+### The classifier was refuted once, and that is the useful part
+
+`DoubleMLIIVM` was predicted hazardous (its score carries `1/m` **and**
+`1/(1-m)` on every row — `iivm.mbt:645`). It measured *harmless*: OLS gave
+`0.987` against a true LATE near `1.0`, with a **16x smaller** SE than the
+classifier (`0.0047` vs `0.0747`).
+
+So a score with reciprocals in it is **not** sufficient for the hazard. What
+distinguishes SSM from IIVM is not the score's shape but whether the fit can
+put `m_hat` near a boundary: SSM divides by `m*pi` **and** `(1-m)*pi` with a
+second reciprocal factor, and its `psi_b = psi_b1 - psi_b0` difference leaves
+no slack; IIVM's saturation is milder. **The static classifier is a way to
+decide what to measure first, and nothing more.**
+
+### `DoubleMLSSM` — the one real hazard
+
+`psi_b1 = (D==1) * S * (Y - g_d1) / (m*pi) + g_d1`,
+`psi_b0 = (D==0) * S * (Y - g_d0) / ((1-m)*pi) + g_d0`,
+`psi_b  = psi_b1 - psi_b0` (`ssm.mbt:73-74`).
+
+**Two** reciprocals — the treatment propensity *and* the selection propensity
+— in both directions. An unbounded OLS `m_hat` breaks `1/(1-m)` even where
+`1/m` happens to be benign. Measured: classifier `1.177`, OLS **`242.116`**
+with SE `185.4`.
+
+This is the only estimator of the eleven where the default should change, and
+it is queued as its own release.
+
+### A defect that outranks every default question
+
+`DoubleMLPQ`, **on its default path** (i.e. an ordinary caller who never
+mentions `ml_m`), returns the **identical** coefficient across quantiles.
+
+| tau | default (OLS) `ml_m` | logistic `ml_m` |
+|---|---|---|
+| 0.10 | −0.38571498836568785 | −0.38571498836568785 |
+| 0.25 | **−0.38571498836568785** | 0.5268291897597495 |
+| 0.50 | **−0.38571498836568785** | 0.9570929867084059 |
+| 0.75 | **−0.38571498836568785** | 1.2753280162498020 |
+| 0.90 | **−0.38571498836568785** | 1.2753280162498020 |
+
+Identical to 16 significant digits. The frozen value equals the logistic arm's
+**tau = 0.10** value exactly, and the SE is `~1e-6` — the signature of a root
+finder sitting still rather than converging. Reproduced on a second,
+wide-outcome fixture (uniform noise on `[-2, 2]`), so it is not an artefact of
+a narrow outcome.
+
+**Every PQ test in the suite passes `quantile=0.5`.** There is no test that
+sweeps tau, so nothing could catch this. Whatever the mechanism, a quantile
+regression that ignores its quantile is a far more serious problem than a
+suboptimal nuisance-learner default, and it is being root-caused as its own
+release rather than folded into a default flip.
+
+### Decision
+
+`DoubleMLSSM` alone is queued for a default flip. The other ten keep their OLS
+default **on measured evidence**, not on the contract-fidelity argument that
+provably did not hold up at `DoubleMLDIDBinary`.
+
+The programme's premise -- that the OLS `ml_m` default is a broad hazard -- is
+now measured and largely **not** supported: 3 hazardous of 15, plus 2
+degenerate-but-different failures (PQ, LPLR).
+
 ## [0.136.0] — scoping the `ml_m` hazard claim to where it was measured
 
 Docs-only. **No code change, no behavioural change, no test change.**
