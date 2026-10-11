@@ -846,6 +846,30 @@ pub fn DoubleMLPLIV::tune(
 /// `psi_a = -w * v` for the partialling-out IV score
 /// (`w = d - r_hat`, `v = z - m_hat`). Routes through the
 /// shared `irm_style_sensitivity` helper.
+///
+/// ---------------------------------------------------------------------------
+/// v0.144.0: DOCUMENTED DEVIATION -- UPSTREAM DOES NOT IMPLEMENT THIS.
+///
+/// Verified against upstream `doubleml-0.11.4`: `DoubleML.sensitivity_analysis`
+/// is guarded by `if self._sensitivity_implemented:`, whose base default is
+/// `False`, and `plm/pliv.py` never sets it. `DoubleMLPLIV._sensitivity_element_est`
+/// is `pass`. So upstream REFUSES this analysis for PLIV, while this port
+/// returns a number. There is therefore no upstream formula to conform to, and
+/// no correct-by-construction value this function could be changed to.
+///
+/// The port keeps the result because it is a working IRM-style decomposition
+/// and callers depend on it, but it must be read as a PORT-DEFINED quantity.
+/// In particular `mean(psi_a^2)` with `psi_a = -w * v` is the square of the
+/// DML SCORE ELEMENT, not the C&H Riesz representer -- the same conflation that
+/// `DoubleMLPLR` carried until v0.144.0 corrected it. Do not treat the `nu2`
+/// here as comparable to `DoubleMLPLR`'s, which is now upstream's
+/// `1 / mean(v^2)`.
+///
+/// Sibling cases, same upstream verdict: `DoubleMLPLPR`
+/// (`_sensitivity_implemented = False`, `_sensitivity_element_est` is `pass`)
+/// and `DoubleMLLPLR` (`_sensitivity_implemented = False`, and
+/// `_sensitivity_element_est` `raise NotImplementedError()`).
+/// `DoubleMLPLR` is the only one of the four upstream implements.
 pub fn DoubleMLPLIV::sensitivity_analysis(
   self : DoubleMLPLIV,
   cf_y? : Double = 0.05,

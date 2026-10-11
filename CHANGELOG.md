@@ -9,6 +9,106 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.144.0] — fix: PLR's sensitivity reported the fourth moment of the treatment residual
+
+**This is a correctness fix, and it changes numbers.** `DoubleMLPLR::sensitivity_analysis`
+reported a `nu2` that is a different functional form from the one upstream
+defines, and a `sigma2` missing its `theta * nu` centring. Both the IID and the
+cluster entry points are corrected.
+
+### The defect
+
+`plr.mbt` passed the DML **score element** `psi_a = -v^2` (`v = d - m_hat`) to
+`irm_style_sensitivity`, whose third argument is squared (`sensitivity.mbt:41`).
+So the reported Riesz-representer variance was
+
+    mean((-v^2)^2) = mean(v^4)          the FOURTH moment
+
+while upstream `plm/plr.py:290-293` defines
+
+    nu2    = 1.0 / mean(v^2)            the RECIPROCAL of the second moment
+
+Those are not the same quantity at different scales. Measured on a seeded
+confounded design (n = 500, seed 20261):
+
+| quantity | port (before) | upstream | ratio |
+|---|---|---|---|
+| `nu2` | `0.07651580839247248` | `4.609163198545812` | **60.24×** |
+| `sigma2` | `0.7759387293545302` | `0.33692710151193805` | 2.30× |
+
+The ratio is exactly `1 / (mean(v^2) * mean(v^4))`, so it moves with the data
+and is not a units convention a reader could absorb. `rv` and `max_bias` are
+both functions of these two baselines, so `rv = 5.837941709460685` was not the
+Cinelli-Hazlett robustness value for this estimator.
+
+`sigma2` was separately wrong: the port used `mean((y - l_hat)^2)`, leaving the
+coefficient's own contribution `theta * v` inside the "residual variance".
+Upstream centres first.
+
+**Why no gate caught it.** `v066_wbtest.mbt`'s `plr_sensitivity_returns_finite_result`
+asserts only `!is_nan` on all four fields. A finiteness gate cannot see a value
+that is wrong by a factor of 60 — it is decoration over the quantity under test,
+the same failure shape as v0.138.0's GATE 5.
+
+### The fix
+
+Upstream's per-observation `psi_nu2 = nu2 - v^2 * nu2^2` has mean *exactly zero*
+by construction, so transcribing it literally into
+`irm_style_sensitivity_from_elements` would make `nu2` come out as 0 and route
+PLR through the `nu2 <= 0` fallback — reaching the right number by the branch
+reserved for a degenerate case. The scalar is transcribed instead, via a new
+shared helper `sensitivity_from_variance_baselines`.
+
+That helper is licensed by a property re-derived here and now stated at the
+call site: `compute_sensitivity_bias` sets `max_bias[i] = sqrt(sigma2 * nu2)`
+for every `i`, `psi_max_bias` is discarded by every caller
+(`let (max_bias_arr, _) = ...`), and `robustness_value` divides `|theta|` by
+`mean(max_bias)`. The entire returned record is a function of `sigma2` and
+`nu2` alone; the per-observation influence-function arrays cannot reach it.
+
+The cluster path has no upstream counterpart at all — upstream's core package
+exposes no `sensitivity_analysis_cluster` — so it is a port-only extension.
+Its per-observation definitions were the same wrong ones; they now match the
+IID path, clustered: `1 / mean_c (sum_{i in c} v_i)^2` and the `theta`-centred
+residual.
+
+### Also in this release: `pliv` added to the unsupported list
+
+Verified against upstream `doubleml-0.11.4`: `plm/pliv.py` never sets
+`_sensitivity_implemented` (base default `False`) and its
+`_sensitivity_element_est` is `pass`, so upstream refuses this analysis for
+PLIV. The README previously listed only `lplr`, `plpr`, `lpq` and `ssm`;
+`pliv` is now named. `plpr` and `lplr` were already listed correctly —
+`lplr` `raise NotImplementedError()`. All three keep their existing behaviour
+and gain a documented-deviation note at their entry points, because there is no
+upstream formula to conform to and therefore no value a gate could assert.
+
+### Gates
+
+Six new gates in `expand_v144_test.mbt`, each recomputing the formula
+independently from the fitted object rather than pinning a constant. Two assert
+**exact** equality (no tolerance: the defect was 60×, and a tolerance safe
+against float noise would be far too loose to notice it); `rv`/`max_bias` use a
+1e-12 relative tolerance because `max_bias` sums `n` copies of a constant, which
+is not bit-reversible — a first draft asserted exact equality there and failed,
+and the assertion was weakened, not the code.
+
+Mutation evidence (`_verify/mut_v1440_plr_nu2.py`), each mutation imposed
+independently:
+
+| mutation | killed by |
+|---|---|
+| `nu2` → `mean(v^4)` | `plr_sensitivity_nu2_is_the_reciprocal_second_moment`, `plr_sensitivity_nu2_formula_holds_on_a_second_seed` |
+| `sigma2` → `mean((y-l_hat)^2)` | `plr_sensitivity_sigma2_is_centred_by_theta_times_v`, `plr_sensitivity_uncorrected_baseline_would_exceed_corrected_one` |
+
+Baseline and restored states both 10/10 green. Both mutants killed, each only
+by the gates that should catch it.
+
+### Verification
+
+`moon check --deny-warn` and `moon test` on all four backends: **1040** native /
+wasm / js, **1046** wasm-gc, 0 failures.
+
 ## [0.143.0] — the residual PQ/QTE tie is a PLATEAU COLLISION, not a freeze
 
 Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).

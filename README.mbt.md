@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.143.0** |
+| `moon.mod` version | **0.144.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **204** `.mbt` files (**65** production + **114** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **205** `.mbt` files (**65** production + **115** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1034 / 1034 / 1034** |
-| Tests (wasm-gc) | **1040 / 1040** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1040 / 1040 / 1040** |
+| Tests (wasm-gc) | **1046 / 1046** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -456,8 +456,27 @@ out to be **dead** on this path — they feed only `psi_max_bias`, which every
 caller discards — so the whole reported result is a function of `sigma2` and
 `nu2` alone. `DoubleMLDIDCSBinary` was migrated to
 `irm_style_sensitivity_from_elements`; `did`, `did_binary`, `did_cs`, `apo`,
-`irm` and `plr` still use the old convention and each needs its own
-`m_alpha`/`rr` plumbing. Separately, upstream defaults
+`irm` still uses the old convention and needs its own `m_alpha`/`rr`
+plumbing. `plr` could not be migrated that way at all, and is resolved
+separately in **v0.144.0**: its `nu2` is not a mean of a per-observation
+element but the **scalar** `1 / mean((d - m_hat)^2)` (`plr.py:290-293`). The
+port passed `psi_a = -v^2` into the shared helper, which squares its third
+argument, so it reported `mean(v^4)` -- the **fourth** moment, a different
+functional form rather than a differently-scaled version of the intended
+quantity. Measured on a seeded confounded design (n = 500, seed 20261):
+`mean(v^4) = 0.076516` against `1/mean(v^2) = 4.609163`, a factor of **60.24**
+that moves with the data. `sigma2` was `mean((y - l_hat)^2)` rather than
+upstream's `theta * v`-centred `mean((y - l_hat - theta*v)^2)` (`0.775939` vs
+`0.336927`), so the "residual variance" still contained the coefficient's own
+contribution. `rv` was therefore not the Cinelli-Hazlett robustness value.
+Fixed IID and cluster, with six gates that recompute both formulas
+independently. Upstream's per-observation `psi_nu2` has mean exactly zero by
+construction, so transcribing it literally would route PLR through the
+`nu2 <= 0` fallback and reach the right number by the branch reserved for a
+degenerate case; the scalar is transcribed instead, and the new shared
+`sensitivity_from_variance_baselines` is what licenses passing baselines
+directly. `pliv` was added to the unsupported list in the same release --
+upstream never sets `_sensitivity_implemented = True` for it either. Separately, upstream defaults
 `in_sample_normalization` to `True` (`did_cs_binary.py:121`) and this port to
 `false` (`did_cs_binary.mbt:712`) -- **uniformly across all six DID
 estimators**, upstream being `True` in all five of its own. This is a

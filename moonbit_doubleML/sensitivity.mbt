@@ -127,6 +127,49 @@ pub fn irm_style_sensitivity_from_elements(
 }
 
 ///|
+/// Build a `SensitivityResult` from the two variance BASELINES alone.
+///
+/// v0.144.0, added with the `DoubleMLPLR` nu2 fix. Proven at
+/// `compute_sensitivity_bias` (sensitivity.mbt:522-550) and reproduced below:
+/// `max_bias[i] = sqrt(sigma2 * nu2)` for EVERY `i`, `psi_max_bias` is
+/// discarded by every caller in this file (`let (max_bias_arr, _) = ...`),
+/// `robustness_value` divides `|theta|` by `mean(max_bias)`, and `max_bias` is
+/// the mean of a constant array. So the entire returned record -- `rv`,
+/// `max_bias`, `sigma2`, `nu2` -- is a function of `sigma2` and `nu2` alone.
+/// The per-observation influence-function arrays cannot reach it.
+///
+/// That is what makes this helper legitimate rather than a shortcut: it is not
+/// an approximation, it is the same computation with provably dead operands
+/// removed. It exists for estimators whose `nu2` is NOT a mean of a
+/// per-observation score element -- `DoubleMLPLR` wants the SCALAR
+/// `1 / mean(v^2)`, which no per-observation array can express, because the
+/// mean of any array you would need to build here is `nu2` itself only if you
+/// pass a constant, and passing upstream's own `psi_nu2` has mean exactly zero
+/// (see `DoubleMLPLR::sensitivity_analysis`).
+pub fn sensitivity_from_variance_baselines(
+  theta : Double,
+  sigma2 : Double,
+  nu2 : Double,
+  n : Int,
+  cf_y : Double,
+  cf_d : Double,
+) -> SensitivityResult raise {
+  require(n > 0)
+  // Provably dead operands, kept only so `compute_sensitivity_bias` keeps its
+  // documented signature. Passing zeros here cannot change any returned field,
+  // for the reason given above.
+  let zeros : Array[Double] = Array::make(n, 0.0)
+  let (max_bias_arr, _) = compute_sensitivity_bias(sigma2, nu2, zeros, zeros)
+  let mut mb_sum = 0.0
+  for v in max_bias_arr {
+    mb_sum = mb_sum + v
+  }
+  let max_bias = mb_sum / n.to_double()
+  let rv = robustness_value(theta, max_bias_arr)
+  { rv, sigma2, nu2, cf_y, cf_d, max_bias, }
+}
+
+///|
 /// v0.72.0+: cluster-robust analogue to `irm_style_sensitivity`
 /// (see the IID helper above). Replaces the per-observation
 /// variance baselines

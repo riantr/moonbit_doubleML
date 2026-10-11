@@ -739,6 +739,24 @@ pub fn DoubleMLPLPR::predictions_m(self : DoubleMLPLPR) -> Array[Double] {
 /// `cf_y` / `cf_d` default to `0.05` matching the rest of the
 /// v0.66.0-onward sensitivity family. Calling on an un-fit model
 /// aborts via `PreconditionError`.
+///
+/// ---------------------------------------------------------------------------
+/// v0.144.0: DOCUMENTED DEVIATION -- UPSTREAM EXPLICITLY REFUSES THIS.
+///
+/// Verified against upstream `doubleml-0.11.4`: `plm/plpr.py` sets
+/// `self._sensitivity_implemented = False` and its
+/// `_sensitivity_element_est` body is `pass`. Upstream's
+/// `DoubleML.sensitivity_analysis` is guarded on that flag and therefore does
+/// not perform a PLPR sensitivity analysis at all. There is no upstream
+/// formula to conform to.
+///
+/// This port returns a result regardless, kept for API compatibility. Read it
+/// as PORT-DEFINED. `mean(psi_a^2)` below uses `psi_a = -v_hat^2` (the DML
+/// score element) where the C&H construction wants the Riesz representer --
+/// the same conflation `DoubleMLPLR` carried until v0.144.0 corrected it, and
+/// so the `nu2` here is NOT comparable to `DoubleMLPLR`'s upstream-aligned
+/// `1 / mean(v^2)`. No gate asserts a value for PLPR, because there is no
+/// value to assert.
 pub fn DoubleMLPLPR::sensitivity_analysis(
   self : DoubleMLPLPR,
   cf_y? : Double = 0.05,

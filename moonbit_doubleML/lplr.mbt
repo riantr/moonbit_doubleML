@@ -1259,6 +1259,28 @@ impl Learner for LogisticRegression with fn predict(
 /// matching the rest of the v0.66.0-onward sensitivity
 /// family. Calling on an un-fit model aborts via
 /// `PreconditionError`.
+///
+/// ---------------------------------------------------------------------------
+/// v0.144.0: DOCUMENTED DEVIATION -- UPSTREAM RAISES NOT IMPLEMENTED.
+///
+/// This is the strongest of the three. Verified against upstream
+/// `doubleml-0.11.4`: `plm/lplr.py` sets
+/// `self._sensitivity_implemented = False` and its
+/// `_sensitivity_element_est` body is literally
+/// `raise NotImplementedError()`. Upstream does not merely decline to compute
+/// an LPLR sensitivity analysis -- reaching for the elements raises. This port
+/// returns a result anyway, kept for API compatibility, and it must be read as
+/// PORT-DEFINED.
+///
+/// Note this is a DIFFERENT issue from the solver's discarded convergence flag
+/// (`let _ = converged`, further down in `fit`, tracked separately in
+/// v0.145.0). One concerns the sensitivity API surface; the other concerns a
+/// coefficient computed at a non-solution. Both are real, and fixing either
+/// does not address the other.
+///
+/// `mean(psi_a^2)` below uses `psi_a = -d * (d - a_hat)`, the simplified LPLR
+/// IF denominator, which is NOT upstream's Riesz representer. The `nu2` here
+/// is not comparable to `DoubleMLPLR`'s upstream-aligned `1 / mean(v^2)`.
 pub fn DoubleMLLPLR::sensitivity_analysis(
   self : DoubleMLLPLR,
   cf_y? : Double = 0.05,

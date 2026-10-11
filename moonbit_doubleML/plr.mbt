@@ -1014,11 +1014,42 @@ pub fn DoubleMLPLR::bootstrap(
 
 ///|
 /// v0.66.0+: Cinelli & Hazlett (2020) omitted-variable bias
-/// analysis. Outcome residual is `y - l_hat`; the
-/// Riesz-representer variance is `mean(psi_a^2)` where
-/// `psi_a = -v^2` for the partialling-out score
-/// (`v = d - m_hat`). Routes through the shared
-/// `irm_style_sensitivity` helper (see sensitivity.mbt).
+/// analysis.
+///
+/// v0.144.0 -- CORRECTED. This used to report `nu2 = mean(v^4)` and
+/// `sigma2 = mean((y - l_hat)^2)`. Both were wrong, and not by a constant
+/// factor.
+///
+/// The old call passed `self.psi_a` to `irm_style_sensitivity`, which squares
+/// its third argument (sensitivity.mbt:41). But the DML score's `psi_a` is
+/// `-v^2` (plr.mbt:369), so the reported baseline was the FOURTH moment
+/// `mean((-v^2)^2) = mean(v^4)` -- a different functional form, not a
+/// differently-scaled version of the intended quantity. The Riesz
+/// representer is a different object from the score element, which is exactly
+/// why `irm_style_sensitivity_from_elements` was split out in v0.131.0; PLR
+/// never migrated off the legacy helper.
+///
+/// Upstream `plm/plr.py:277-293` defines:
+///     treatment_residual = d - m_hat                      (= v)
+///     nu2    = 1.0 / mean(v^2)                           (a SCALAR)
+///     rr     = treatment_residual * nu2
+///     sigma2 = mean((y - l_hat - theta * v)^2)           (centred by theta*v)
+///
+/// Measured on a seeded confounded design (n = 500, seed 20261) before the
+/// fix: `mean(v^4) = 0.0765` against upstream's `1/mean(v^2) = 4.609`, a
+/// factor of 60.24 that moves with the data (it is `1/(mean(v^2)*mean(v^4))`,
+/// not a units convention), and `sigma2` 0.776 against 0.337. `rv` was
+/// therefore not the Cinelli-Hazlett robustness value at all.
+///
+/// WHY `sensitivity_from_variance_baselines` AND NOT `_from_elements`. Upstream
+/// also builds a per-observation `psi_nu2 = nu2 - v^2 * nu2^2`, whose mean is
+/// EXACTLY zero by construction (`mean(v^2) * nu2^2 == nu2`). Feeding that to
+/// `irm_style_sensitivity_from_elements` would make its `nu2` come out as 0 and
+/// route PLR through the `nu2 <= 0` fallback branch -- the right number reached
+/// by the branch reserved for a degenerate case. The faithful transcription of a
+/// scalar `nu2` under a contract that takes a per-observation score element is
+/// the scalar itself; the Riesz representer is still passed as `v * nu2` in
+/// spirit but is unobservable (see `sensitivity_from_variance_baselines`).
 ///
 /// `cf_y` / `cf_d` are the confounding-strength upper bounds
 /// (defaults 0.05) and are passed through to the result for
@@ -1030,22 +1061,42 @@ pub fn DoubleMLPLR::sensitivity_analysis(
 ) -> SensitivityResult raise {
   require(self.fitted)
   let l_hat = self.predictions_l()
-  // v0.81.0+: residual extraction via `vector_subtract` (the
-  // PLR sensitivity residual `y - l_hat` is a single pure
-  // subtract, the textbook case for the named building block).
-  let residuals = vector_subtract(self.data.y, l_hat)
-  irm_style_sensitivity(self.coef, residuals, self.psi_a, cf_y, cf_d)
+  let m_hat = self.predictions_m()
+  let n = l_hat.length()
+  let theta = self.coef()
+  // The two upstream baselines, computed here rather than delegated, because
+  // both need the same `v` and the `theta`-centring.
+  let mut ss_v2 = 0.0
+  let mut ss_resid = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let v = self.data.d[i] - m_hat[i]
+    let w = self.data.y[i] - l_hat[i] - theta * v
+    ss_v2 = ss_v2 + v * v
+    ss_resid = ss_resid + w * w
+  }
+  let n_d = n.to_double()
+  let nu2 = 1.0 / (ss_v2 / n_d)
+  let sigma2 = ss_resid / n_d
+  sensitivity_from_variance_baselines(theta, sigma2, nu2, n, cf_y, cf_d)
 }
 
 ///|
 /// v0.72.0+: cluster-robust analogue of
-/// `DoubleMLPLR::sensitivity_analysis`. Same residual
-/// formula (`y - l_hat`) and the same `psi_a` as the IID
-/// path; only the variance / bias computation is
-/// cluster-aware (see `irm_style_sensitivity_cluster`).
-/// `cluster_ids` defaults to `DoubleMLData::cluster_vars`
-/// (the optional 5th constructor arg added in v0.55.0); pass
-/// an explicit `cluster_ids` to override.
+/// `DoubleMLPLR::sensitivity_analysis`.
+///
+/// v0.144.0 -- CORRECTED, with a scope caveat that matters. Upstream's core
+/// package has NO `sensitivity_analysis_cluster` method at all (verified
+/// against `doubleml-0.11.4`: the only sensitivity entry point is
+/// `DoubleML.sensitivity_analysis`), so this is a port-only extension and
+/// there is no upstream cluster formula to match. What is fixed here is the
+/// same defect as the IID path: the per-observation definitions feeding the
+/// cluster aggregation are now upstream's.
+///
+/// The cluster analogue of upstream's `nu2 = 1 / mean(v^2)` is the reciprocal
+/// of the cluster-robust second-moment baseline,
+/// `1 / mean_c (sum_{i in c} v_i)^2`, and `sigma2` aggregates the SAME
+/// `theta`-centred residual the IID path uses. `cluster_ids` defaults to
+/// `DoubleMLData::cluster_vars`.
 pub fn DoubleMLPLR::sensitivity_analysis_cluster(
   self : DoubleMLPLR,
   cluster_ids? : Array[Int] = self.data.cluster_vars,
@@ -1054,19 +1105,36 @@ pub fn DoubleMLPLR::sensitivity_analysis_cluster(
 ) -> SensitivityResult raise {
   require(self.fitted)
   let l_hat = self.predictions_l()
+  let m_hat = self.predictions_m()
   let n = l_hat.length()
   require(cluster_ids.length() == n)
-  // v0.81.0+: residual extraction via `vector_subtract` (same
-  // pattern as the IID `sensitivity_analysis` path above).
-  let residuals = vector_subtract(self.data.y, l_hat)
-  irm_style_sensitivity_cluster(
-    self.coef,
-    residuals,
-    self.psi_a,
-    cluster_ids,
-    cf_y,
-    cf_d,
-  )
+  let theta = self.coef()
+  let mut max_cid = -1
+  for i = 0; i < n; i = i + 1 {
+    if cluster_ids[i] > max_cid {
+      max_cid = cluster_ids[i]
+    }
+  }
+  require(max_cid >= 0)
+  let n_clusters = max_cid + 1
+  let n_c_d = n_clusters.to_double()
+  let cl_v : Array[Double] = Array::make(n_clusters, 0.0)
+  let cl_resid : Array[Double] = Array::make(n_clusters, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let cid = cluster_ids[i]
+    let v = self.data.d[i] - m_hat[i]
+    cl_v[cid] = cl_v[cid] + v
+    cl_resid[cid] = cl_resid[cid] + (self.data.y[i] - l_hat[i] - theta * v)
+  }
+  let mut ss_v2 = 0.0
+  let mut ss_resid = 0.0
+  for c = 0; c < n_clusters; c = c + 1 {
+    ss_v2 = ss_v2 + cl_v[c] * cl_v[c]
+    ss_resid = ss_resid + cl_resid[c] * cl_resid[c]
+  }
+  let nu2 = 1.0 / (ss_v2 / n_c_d)
+  let sigma2 = ss_resid / n_c_d
+  sensitivity_from_variance_baselines(theta, sigma2, nu2, n, cf_y, cf_d)
 }
 
 ///|
