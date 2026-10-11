@@ -9,6 +9,120 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.141.0] — `DoubleMLLPLR`: the objective has no root, so the solver cannot be fixed
+
+Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).
+
+### Why this release exists
+
+v0.140.0 root-caused the degenerate SE to a discarded convergence flag
+(`let _ = converged`, `lplr.mbt:866`) and recorded the fix as follow-up. The
+decision taken was to **fix the solver** rather than report failure. Before
+changing a solver, four hypotheses were measured. **Three were refuted by their
+own measurements, and the fourth reframes the problem entirely.**
+
+### The refuted hypotheses
+
+**1. "`j = mean(psi_deriv)` explodes via `exp(-theta*d)`"** — refuted, and
+backwards. A θ sweep shows `j` *shrinking* with distance from zero:
+`2.31e-18` at `theta = -40`, `-0.0082` at `theta = 0`.
+
+**2. "`t_pred` escapes [0,1] and overflows `exp(r_hat)`"** — refuted. `t_pred`
+does reach `[-4.50, 6.87]`, but degeneracy is **uncorrelated** with it:
+
+| cell | `t_pred` range | result |
+|---|---|---|
+| α=0.75, seed=7 | `[-2.86, 4.16]` (ordinary) | **degenerate**: coef `-10.479`, se `9.2e-7` |
+| α=0.75, seed=3141 | up to `+6.93` (wider) | healthy: coef `1.357`, se `0.386` |
+
+A perfectly in-range cell degenerates; a wider one is fine. Clipping `t_pred`
+was therefore abandoned before it was written.
+
+**3. "Rewrite the score in bounded form"** — refuted as **not an identity**. The
+algebra is attractive — `psi_hat * exp(r_hat) == expit(r_hat)`, which removes
+the exponential — and it is wrong here. Measured against the current form on
+**healthy** fixtures: `max_abs_diff = 0.546`, relative difference up to
+**0.92**. Shipping it would have silently changed every LPLR result in the
+package while claiming to be a numerical guard.
+
+**4. "Give the `t` stage a classifier so it cannot extrapolate"** — invalid
+configuration. It **aborts** at `logistic.mbt:206`, because that stage's target
+is `w_inner = ln(m/(1-m))` — a continuous, unbounded logit propensity, not a
+0/1 label. The package's own validation refuses it, correctly.
+
+### The actual finding
+
+Sweeping `mean(psi)` over `theta ∈ [-20, 20]`, at three values of `beta`:
+
+```
+  theta = -20   mean_psi = 2.33e7
+  theta = -12   mean_psi = 7810.7
+  theta =  -4   mean_psi =    2.62
+  theta =   4   mean_psi =    0.00104
+  theta =  20   mean_psi =    0.000166     <- small POSITIVE asymptote
+  sign changes over [-20, 20] = 0
+```
+
+**`mean(psi)` never changes sign.** It decreases monotonically toward a small
+positive asymptote and never crosses zero. **The objective has no root.** Newton
+is chasing a solution that does not exist, so it runs to wherever the damped
+step limit (`lplr.mbt:853-854`) parks it, and `var_est`'s
+`coef = -mean_b / mean_a` reports that location.
+
+This explains the number that first looked like a coincidence. Every degenerate
+cell measures between `-8.3` and `-10.5`:
+
+```
+-10.479 -10.186 -10.161 -10.263 -10.057 -9.706 -10.043
+-9.820  -9.278  -9.702  -9.085  -8.325  -8.900
+```
+
+mean ≈ `-9.85`, spread ±`0.5`, **while the true effect ranges over 0.75 → 2.0**.
+An estimator whose output does not move when the estimand moves by 2.7x is not
+estimating the estimand — it is sitting in a fixed point of the iteration.
+
+### Consequence: this is not a solver fix
+
+The chosen remedy — "bound or reparameterise `exp(r)` so it converges" — cannot
+work as a *solver* change. With no root in range:
+
+- raising the iteration budget does not help;
+- changing the damping does not help;
+- a better starting point does not help;
+- clipping intermediate quantities does not help (measured, hypothesis 2).
+
+The score's `exp(-theta * d)` term (with `d` binary) makes the objective
+**monotone and rootless** for this data. Giving it a root means changing the
+**objective's parameterisation** — a bounded link (e.g. routing the linear index
+through `expit`) — and that is a **model rewrite**, not a bug fix. It would move
+every LPLR result, so it cannot be bundled with a bug fix or shipped on the
+strength of this investigation.
+
+Nothing is changed in this release. The alternative — guarding the discarded
+convergence flag so a rootless solve cannot silently report a number — was
+already measured in v0.141.0's investigation and remains available: the flag is
+`false` on **6/6** degenerate cells and `true` on **18/18** healthy ones,
+including every existing suite fixture. It is a clean oracle. Shipping it is an
+API decision (no `DoubleML*` public `fit` in this package currently declares
+`raise`), not a technical unknown.
+
+### Method note
+
+Three hypotheses were refuted in a single investigation, and each was refuted by
+a measurement that cost one probe. The refutations are recorded here in full
+because the next person will otherwise re-propose the bounded-score rewrite,
+which looks like an obvious numerical improvement and is not an identity.
+
+The diagnostic that settled it is cheap and general: **count sign changes of the
+objective over a wide parameter range before touching the solver.** Zero sign
+changes means there is no root, and no amount of solver tuning will find one.
+
+Probes preserved under `_verify/`: `probe_v1410_lplr.mbt` (convergence rate
+across every suite call site), `probe_v1410_overflow.mbt` (score-rewrite identity
+test — refuted), `probe_v1410_tpred.mbt` (`t_pred` range by learner — refuted),
+`probe_v1410_clip.mbt` (`t_pred` excursion grid), `probe_v1410_attractor.mbt`
+(root-condition and sign-change sweep).
+
 ## [0.140.0] — `DoubleMLLPLR`'s degenerate SE: root-caused, and it is not a `ml_m` default
 
 Docs-only. **No code change, no behavioural change, no test change.** Tests unchanged at 1034 (native / wasm / js) and 1040 (wasm-gc).

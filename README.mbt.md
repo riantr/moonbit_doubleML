@@ -25,7 +25,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.140.0** |
+| `moon.mod` version | **0.141.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **204** `.mbt` files (**65** production + **114** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -158,7 +158,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau 0.50-0.90 |
 | `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` (16x *smaller* SE) |
 | `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
-| `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0** | not an `ml_m` hazard; see below |
+| `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0/0.141.0** | not an `ml_m` hazard; objective has no root; see below |
 | `DoubleMLPQ` | **hazardous -- fixed in v0.139.0** | ignored its `quantile` entirely |
 
 All eleven remaining defaults were measured in v0.137.0. **Three showed a
@@ -248,9 +248,36 @@ moves (hit four times across v0.134.0-v0.136.0).
 >
 > So the default keeps its regressor -- changing it would be the v0.136.0
 > mistake again, trading a working default for a rationale that measurement
-> does not support while leaving the cause untouched. Fixing it means
-> propagating the discarded flag into an error and bounding `exp(r)`; that is
-> tracked as follow-up, not folded into a default change.
+> does not support while leaving the cause untouched.
+>
+> **v0.141.0: the objective has NO ROOT, so this is not a solver bug.**
+> Sweeping `mean(psi)` over `theta` in `[-20, 20]` gives **zero sign changes** --
+> it falls monotonically from `2.33e7` to a small positive asymptote
+> (`0.000166`) and never crosses zero. Newton is chasing a solution that does not
+> exist. Every degenerate cell therefore lands at `-8.3` to `-10.5` (mean
+> `-9.85`) **while the true effect ranges 0.75 to 2.0** -- an output that does
+> not move when the estimand moves by 2.7x.
+>
+> Three candidate fixes were measured and **all three were refuted**:
+>
+> 1. *Bound `t_pred`* -- degeneracy is uncorrelated with its range. A cell with
+>    `t_pred` in `[-2.86, 4.16]` is degenerate; a cell reaching `+6.93` is
+>    healthy.
+> 2. *Rewrite the score in bounded form* -- `psi_hat * exp(r_hat) == expit(r_hat)`
+>    looks like free numerical hygiene and **is not an identity here**: measured
+>    `max_abs_diff = 0.546` and relative difference up to **0.92** on healthy
+>    fixtures. Shipping it would silently change every LPLR result.
+> 3. *Use a classifier for the `t` stage* -- **aborts** at `logistic.mbt:206`,
+>    because that stage regresses on `w_inner = ln(m/(1-m))`, a continuous
+>    unbounded logit propensity, not a 0/1 label.
+>
+> With no root in range, iteration budget, damping, start value and clipping are
+> all inert. Making this score root-bearing requires reparameterising the
+> **objective** (a bounded link such as `expit`), which moves every LPLR result
+> and is therefore a model rewrite rather than a bug fix.
+>
+> The diagnostic that settles it is cheap and general: **count sign changes of the
+> objective over a wide parameter range before touching the solver.**
 
 **`DoubleMLAPOS` honoured a configured `ml_m` everywhere except where it
 counted (fixed in v0.133.0).** Its `fit` path built each child
