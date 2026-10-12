@@ -72,6 +72,15 @@ Evidence in `_verify/` (untracked): `DEFAULT_CENSUS_1570.md` (ROW R, ROW T),
 `_verify_citations_1570.py`, `_verify_comment_only_1570.py`,
 `_verify_strip_sound_1570.py`.
 
+### Status table refreshed
+
+The README Status table had drifted on four numbers. All re-measured on this
+checkout, not carried forward: `.mbt` files **217 -> 218** (**127 -> 128**
+blackbox; 65 production and 25 whitebox were already right, and 65 + 128 + 25
+reconciles to 218), and test counts **1106 -> 1109** on native / wasm / js and
+**1112 -> 1115** on wasm-gc. The "(lib + 6 doc tutorials)" parenthetical still
+reconciles: 1115 - 1109 = 6.
+
 ## [0.157.0] — two more comments corrected by measurement, no behaviour change
 
 Tests 1115 -> 1115 (all four targets): **zero delta**. Comment-only.

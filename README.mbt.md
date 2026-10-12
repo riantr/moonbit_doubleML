@@ -27,11 +27,11 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
 | `moon.mod` version | **0.158.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **217** `.mbt` files (**65** production + **127** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **218** `.mbt` files (**65** production + **128** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1106 / 1106 / 1106** |
-| Tests (wasm-gc) | **1112 / 1112** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1109 / 1109 / 1109** |
+| Tests (wasm-gc) | **1115 / 1115** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
