@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.151.0** |
+| `moon.mod` version | **0.152.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **212** `.mbt` files (**65** production + **122** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **213** `.mbt` files (**65** production + **123** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1083 / 1083 / 1083** |
-| Tests (wasm-gc) | **1089 / 1089** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1087 / 1087 / 1087** |
+| Tests (wasm-gc) | **1093 / 1093** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -440,6 +440,81 @@ function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
 guard passed throughout, because both arrays were length 720 while describing
 different observations. Fixed, and both entry points now share one builder
 (`cs_bin_sensitivity_residuals`) so they cannot drift apart again.
+
+**THE RECOVERY TOLERANCE, and the `t_pre` defect it uncovered** -- v0.152.0.
+v0.150.0 made `dgp_recovery_test` non-vacuous but left its band untouched: an
+absolute `max_abs_err < 5.0`, inherited from before the fix and never examined.
+It was wrong in both directions at once.
+
+Measured across 12 seeds on `make_did_cs_CS2021(800, 3, 1.0, seed)`:
+
+    max |att - 1.0|            14.41   <- the band FAILS on seeds 7, 77, 314
+    max |att - 1.0| / se        2.41   <- in SE units the error IS bounded
+    se range          0.589 .. 8.837
+
+So `5.0` was TOO LOOSE -- at the tested seed it permits 2.9x the error the
+estimator actually makes -- and TOO TIGHT: it rejects a quarter of the seeds, and
+it rejects them for being CORRECT. At seed 314 the estimate is 6.5136 +/- 6.8728,
+i.e. z = 0.802, an entirely ordinary answer the absolute band calls a failure.
+The error is large precisely when the SE is large, which is what a correctly
+scaled robust SE is for. The band is now `|att - 1| < 5 * se`, 5 chosen against
+a measured worst case of 2.41 -- the same 5 the sibling DIDMulti test already
+used. The point estimate and SE are ALSO pinned exactly at 1e-12 relative,
+because with a fixed seed that is the stronger statement and catches drift a
+relative band would forgive.
+
+**`DoubleMLDIDMulti` ignores `t_pre`.** The test that runs on `make_did_CS2021`
+was named `DIDMulti_DGP_estimator_recovers_some_ATT` and constructs
+`DoubleMLDIDCS`. So `DoubleMLDIDMulti` -- the class that owns
+`gt_combinations` and is the documented consumer of that DGP -- has NO recovery
+test anywhere in the package, and the name made the gap invisible. Renamed here
+rather than left claiming coverage it never had.
+
+Why there still isn't one is a blocker, not an oversight. The API takes
+`(g, t_pre, t_eval)` triples and promises control of the base period;
+`coef_at_idx` calls `ignore(t_pre)` and the inner derives its own base as
+`g - 1`. The proof is one line -- `(1, 0, 2)` and `(1, 1, 2)` return the
+IDENTICAL coefficient 0.6790989134518333. And that makes the DGP unusable for
+validating DIDMulti: `make_did_CS2021` treats cohort `g` at `tau_g = g - 1`, so
+the inferred base IS the first treated period. Measured against a true theta of
+1.0: 1.4166 / 0.6791 / 0.3153 / -2.3785 / -1.2812 / -10.5035. A recovery test on
+those numbers would enshrine the bug.
+
+4 gates added (`expand_v152_test.mbt`). GATE 2 pins that the old band WOULD have
+failed, asserting `z < 1.0` alongside `err > 5.0` so the seed that breaks it is
+demonstrably a good estimate -- which is what stops the change being reverted on
+the grounds that `5.0` "was always fine". GATE 4 pins `t_pre`'s inertness as a
+DECLARED DEFECT WITH A TRIPWIRE: it will fail the moment `t_pre` is honoured, at
+which point it is inverted rather than deleted.
+
+Mutation 3/4, and both survivors/results are worth reading. M4 (the stored SE
+inflated 10x) confirmed a weakness I predicted in advance: an SE-relative band
+DIVIDES by the SE, so inflating it drops z tenfold and every recovery gate still
+passes. The band is one-sided -- it can catch a coefficient too far from the
+truth in units of its own SE, never an SE that is too large. What caught M4 was
+GATE 3's exact pin, so the release is not relying on the band alone.
+
+M3 (`di` dropping its time condition) survived, and the first instinct is to
+call that blindness. It is not: measured against baseline the canonical cell is
+BIT-IDENTICAL on all three seeds -- coef and se agree to the last digit. A
+mutant that cannot move a number cannot be caught by an assertion about that
+number. The limitation is the FIXTURE, not the gates: a 2-period panel with a
+single post-treatment cell cannot distinguish that relabelling. Recorded rather
+than papered over with a tighter threshold.
+
+Also caught by running all four targets, again: the `t_pre` gate's literal was
+pinned with `==` and passed native while failing wasm AND wasm-gc -- the same
+~1.5e-15 cross-backend spread as v0.150.0. The inertness assertion `base0 ==
+base1` KEEPS its `==`, because both values come from the same backend and a
+difference there would mean the base period mattered. Only the literal moved to
+1e-12 relative. Native green is not evidence. Four targets, always.
+
+Tests: 1087 native / 1087 wasm / 1093 wasm-gc / 1087 js, all four green.
+213 .mbt files (65 production + 123 blackbox test + 25 whitebox test).
+
+Still open: honouring `t_pre` is a real API defect, not a test gap, and it blocks
+DIDMulti recovery testing until fixed. The port's cell-grid divergence from
+upstream is unchanged.
 
 **THE `alpha_i` RAMP IN `make_did_CS2021` -- the one v0.148.0 missed** -- v0.151.0.
 v0.148.0 removed `alpha_i = 0.5 * unit_in_cohort` from `make_did_cs_CS2021` and

@@ -9,6 +9,107 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.152.0] — the recovery tolerance, and the `t_pre` defect it uncovered
+
+v0.150.0 made `dgp_recovery_test` non-vacuous but left its band untouched: an
+absolute `max_abs_err < 5.0`, inherited from before the fix and never examined.
+This release replaces it with a measured, SE-relative band — and in the course of
+establishing that measurement, found that a public API parameter does nothing.
+
+### The old band was wrong in both directions at once
+
+Measured across 12 seeds on `make_did_cs_CS2021(800, 3, 1.0, seed)`:
+
+```
+max |att - 1.0|            = 14.41    <- `< 5.0` FAILS on seeds 7, 77, 314
+max |att - 1.0| / se       =  2.41    <- in SE units the error IS bounded
+se range                   =  0.589 .. 8.837
+```
+
+So `5.0` was simultaneously **too loose** — at the tested seed it permits 2.9×
+the error the estimator actually makes — and **too tight**: it rejects a quarter
+of the seeds, and it rejects them for being *correct*. At seed 314 the estimate
+is `6.5136 ± 6.8728`, i.e. `z = 0.802`, an entirely ordinary answer that the
+absolute band calls a failure.
+
+The error is large precisely when the SE is large, which is what a correctly
+scaled robust SE is for. The band is now `|att − 1| < 5 · se`, with 5 chosen
+against a measured worst case of 2.41 — the same 5 the sibling DIDMulti test
+already used. The point estimate and SE are *also* pinned exactly (1e-12
+relative; `==` is unavailable for did_cs quantities, which carry the known
+~1.5e-15 cross-backend spread), because with a fixed seed an exact pin is the
+stronger statement and catches drift a relative band would forgive.
+
+### `DoubleMLDIDMulti` ignores `t_pre`
+
+The test that runs on `make_did_CS2021` was named
+`DIDMulti_DGP_estimator_recovers_some_ATT` — and constructs **`DoubleMLDIDCS`**.
+`DoubleMLDIDMulti`, the class that owns `gt_combinations` and is the documented
+consumer of that DGP, has no recovery test anywhere in the package. The name was
+worse than no name: it made the gap invisible. It is renamed in this release
+rather than left claiming coverage it never had.
+
+**Why there still isn't one.** `DoubleMLDIDMulti`'s public API takes
+`(g, t_pre, t_eval)` triples and promises control of the base period.
+`coef_at_idx` calls `ignore(t_pre)` and the inner `DoubleMLDIDCS` derives its
+own base as `g − 1`. The proof is one line — asking for `(1, 0, 2)` and for
+`(1, 1, 2)` returns the **identical** coefficient `0.6790989134518333`.
+
+That makes the DGP unusable for validating DIDMulti. `make_did_CS2021` treats
+cohort `g` at `tau_g = g − 1`, so the inferred base `g − 1` *is* the first
+treated period — contaminated. Measured coefficients against a true θ of 1.0:
+
+```
+(1,0,1)   1.4166      (1,0,2)   0.6791      (1,0,3)   0.3153
+(2,1,2)  -2.3785      (2,1,3)  -1.2812      (3,2,3) -10.5035
+```
+
+Writing a recovery test on those numbers would enshrine the bug, so none exists.
+
+### Gates — 4 added
+
+`expand_v152_test.mbt`. GATE 1 asserts recovery holds in SE units across three
+seeds chosen to span the measured range rather than to pass. GATE 2 pins that
+the old band *would have failed*, with `z < 1.0` asserted alongside
+`err > 5.0` — so the seed that breaks it is demonstrably a good estimate, not a
+broken one, and the change cannot be quietly reverted on the grounds that `5.0`
+"was always fine". GATE 3 is the exact pin. GATE 4 pins `t_pre`'s inertness as
+a **declared defect with a tripwire**: it will fail the moment `t_pre` is
+honoured, at which point it should be inverted rather than deleted.
+
+### Mutation — 3/4, and the survivor was measured, not excused
+
+| Mutant | Verdict |
+|---|---|
+| M1 base period back to `g` | KILLED (process abort) |
+| M2 boundary back to `t > g` | KILLED (process abort) |
+| M3 `di` drops its time condition | **SURVIVED** |
+| M4 stored SE inflated 10× | KILLED — by GATE 3 only |
+
+**M4 is the one I predicted would expose a weakness, and it did.** An SE-relative
+band *divides* by the SE, so inflating the SE 10× drops `z` tenfold and every
+recovery gate still passes. The band is one-sided: it can catch a coefficient
+too far from the truth in units of its own SE, never an SE that is too large.
+What caught it was GATE 3's exact pin — the redundancy the release is relying on,
+confirmed rather than assumed.
+
+**M3 survived, and the first instinct is to call that blindness. It is not.**
+Measured against baseline, the canonical cell is **bit-identical on all three
+seeds** — `coef` and `se` agree to the last digit (`3141 → 2.727522673844541 /
+1.9428873717680928`, `7 → −8.087896169799047 / 6.649661583678014`,
+`314 → 6.513599023364439 / 6.8728096772323575`). A mutant that cannot move a
+number cannot be caught by an assertion about that number. The limitation is the
+**fixture**, not the gates: a 2-period panel with a single post-treatment cell
+cannot distinguish that relabelling. Recorded rather than papered over with a
+tighter threshold.
+
+### Still open
+
+`DoubleMLDIDMulti` ignoring `t_pre` is a real API defect, not a test gap, and it
+blocks DIDMulti recovery testing until it is fixed — honouring `t_pre`, or
+taking an explicit `tau_g` on `DoubleMLDIDCS` in place of inferring it from
+`g`. The port's cell-grid divergence from upstream is unchanged.
+
 ## [0.151.0] — the `alpha_i` ramp in `make_did_CS2021`: the one v0.148.0 missed
 
 v0.148.0 removed `alpha_i = 0.5 * unit_in_cohort` from `make_did_cs_CS2021` and
