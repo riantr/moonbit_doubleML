@@ -251,6 +251,18 @@ test "didcs_four_g_partition_the_canonical_two_period_panel_exactly" {
     assert_true(empty[i] == 0.0)
   }
   // ...and no other one may be empty, or the name would be meaningless.
+  //
+  // This asserted `v1470_mean(a) > 1.0` until v0.148.0 broke it, correctly. The
+  // threshold was an absolute scale smuggled in from the DGP it happened to be
+  // written against: y had mean 49.87, so "> 1.0" looked like a safe proxy for
+  // "populated". The v0.148.0 fixture fix moved mean(y) to 0.085 with sd 3.28,
+  // and the gate went red on a nuisance that is perfectly well populated -- a
+  // false alarm, not a catch.
+  //
+  // The property actually wanted is scale-free: NOT IDENTICALLY ZERO. Asserting
+  // that directly means the gate survives any future rescaling of the outcome,
+  // which is the whole point, and it distinguishes "no data in this cell" from
+  // "this cell's conditional mean happens to be small".
   for
     a in [
       fitted.predictions_g_d0_t0(),
@@ -258,7 +270,13 @@ test "didcs_four_g_partition_the_canonical_two_period_panel_exactly" {
       fitted.predictions_g_d1_t1(),
     ] {
     assert_true(a.length() == empty.length())
-    assert_true(v1470_mean(a) > 1.0)
+    let mut nonzero = false
+    for i = 0; i < a.length(); i = i + 1 {
+      if a[i] != 0.0 {
+        nonzero = true
+      }
+    }
+    assert_true(nonzero)
   }
 }
 

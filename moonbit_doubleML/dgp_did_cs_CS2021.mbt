@@ -114,6 +114,49 @@ pub fn make_did_cs_CS2021(
       eps[idx_b] = z2
     }
   }
+  // 3b. Per-unit intercept `alpha_i`, a standard normal draw. v0.148.0.
+  //
+  // This REPLACED `alpha_i = 0.5 * unit_in_cohort`, a deterministic ramp over
+  // the within-cohort index reaching 99.5 with SD ~ 28.8. The ramp was not a
+  // small modelling choice, it dominated everything else and silently made the
+  // whole fixture unusable. Measured on make_did_cs_CS2021(800, 3, 1.0, 3141):
+  //
+  //   var(y)            = 828.42      (the ramp's share)
+  //   var(X . gamma)    ~  4.3
+  //   corr(X_k, y)      <= 0.027 for every k   ->  r^2 <= 7e-4
+  //   mse(g_hat)        = 871.78
+  //   mse(cell mean)    = 829.09              -> g_hat 5.2% WORSE than a constant
+  //
+  // So E[Y | D, T, X] carried no covariate signal at all: every conditional
+  // nuisance was effectively a constant, `sigma2 = mean((y - g_hat)^2)`
+  // collapsed onto `var(y)`, and the sensitivity machinery had nothing to
+  // condition on. `dgp_recovery_test`'s `max_abs_err < 5.0` never bit either,
+  // because it was reading a zero from a cell that was never estimated.
+  //
+  // A draw is kept deliberately rather than dropping the term outright:
+  // unobserved unit heterogeneity IS the hidden confounding that `nu2` exists
+  // to price, so removing it entirely would leave the fixture unable to
+  // represent the thing it is for. SD 1 puts it on the same scale as the true
+  // treatment effect (`theta = 1.0`) and makes it ~19% of the covariate
+  // signal, i.e. a minority that must be partialled out rather than a
+  // majority that drowns everything.
+  //
+  // Upstream has no unit intercept at all -- its outcome is
+  // `210 + (t/T) * (27.4*W1 + 13.7*W2 + 13.7*W3 + 13.7*W4)`, driven by
+  // covariates. This term is a port addition, kept on the measurement above.
+  let alpha : Array[Double] = Array::make(n_units, 0.0)
+  let half_a = (n_units + 1) / 2
+  for i = 0; i < half_a; i = i + 1 {
+    let (z1, z2) = box_muller_pair(rng)
+    let idx_a = 2 * i
+    let idx_b = 2 * i + 1
+    if idx_a < n_units {
+      alpha[idx_a] = z1
+    }
+    if idx_b < n_units {
+      alpha[idx_b] = z2
+    }
+  }
   // 4. Build panel y, d, t, g, id. Layout: outer = unit, inner = period.
   let y : Array[Double] = Array::make(true_n, 0.0)
   let d : Array[Double] = Array::make(true_n, 0.0)
@@ -134,7 +177,7 @@ pub fn make_did_cs_CS2021(
       for k = 0; k < dim_x; k = k + 1 {
         x_dot_gamma = x_dot_gamma + x_unit[u * dim_x + k]
       }
-      let alpha_i = 0.5 * unit_in_cohort.to_double()
+      let alpha_i = alpha[u]
       let beta_t = 0.3 * period.to_double()
       y[idx] = alpha_i + beta_t + theta * d[idx] + x_dot_gamma + eps[idx]
       t[idx] = period

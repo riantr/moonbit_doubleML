@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.147.0** |
+| `moon.mod` version | **0.148.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **208** `.mbt` files (**65** production + **118** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **209** `.mbt` files (**65** production + **119** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1060 / 1060 / 1060** |
-| Tests (wasm-gc) | **1066 / 1066** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1065 / 1065 / 1065** |
+| Tests (wasm-gc) | **1071 / 1071** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -439,7 +439,51 @@ too large (1.1473 vs 0.00197), and **no test in the package exercised the
 function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
 guard passed throughout, because both arrays were length 720 while describing
 different observations. Fixed, and both entry points now share one builder
-(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. **did_cs sensitivity, stage 1b of 4** -- v0.147.0 adds the four upstream
+(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. **DIDCS fixture: the unit intercept was drowning the covariates** -- v0.148.0
+replaces `alpha_i = 0.5 * unit_in_cohort` (a deterministic ramp to 99.5, SD
+~ 28.8) with a per-unit standard-normal draw. Measured on
+`make_did_cs_CS2021(800, 3, 1.0, 3141)`: `var(y)` 828.42 -> 10.76; `r^2` of each
+X column against y 7e-4 -> 0.451 / 0.572 / 0.670; `corr(id, y)` ~1.0 -> -0.063;
+and `mse(g_hat)/mse(cell mean)` 1.052 -> 0.185 / 0.163 / 0.190. The last row is
+the one that matters: before the fix NO conditional nuisance could beat a
+constant, so `g_hat` was indistinguishable from a cell mean, `sigma2 =
+mean((y - g_hat)^2)` collapsed onto `var(y)`, and the did_cs sensitivity
+migration had nothing to condition on and no gate able to separate a correct
+`g_hat` from a wrong one. After it, the nuisance explains ~82% of within-cell
+variance. A draw rather than deletion, because unobserved unit heterogeneity IS
+the hidden confounding `nu2` prices; SD 1 matches the true effect `theta = 1.0`
+and makes it ~19% of the covariate signal.
+
+**One of v0.147.0's own gates broke correctly and was rewritten.** GATE 5 there
+asserted `v1470_mean(a) > 1.0` to mean "populated", which was an absolute scale
+smuggled in from the DGP it was written against (`y` mean 49.87). After the fix
+`mean(y)` is 0.085 with sd 3.28, so it went red on a perfectly well populated
+nuisance. It now asserts the scale-free property it meant: not identically
+zero.
+
+5 gates added (`expand_v148_test.mbt`). GATE 1 reads the nuisance predictions and
+demands the conditional fit BEAT A CONSTANT on every populated cell (ratio <
+0.25) -- the property stage 2 depends on, and the only gate there that reads
+code rather than the fixture. GATE 2 pins the ramp's absence and first asserts
+`corr(id, id) > 0.999999` so a broken correlation routine cannot pass silently.
+GATE 3 pins covariate `r^2 > 0.35`. GATE 4 pins the outcome scale. GATE 5 proves
+the fix touched `y` and nothing else (occupancy still 400/200/0/200), without
+which the v0.147.0 conclusions could not have carried over.
+
+Mutation evidence 4/4 killed. GATE 5 and every v0.147.0 stage-1b gate survived
+all four, as declared -- they read occupancy. I DECLARED THAT GATE 3 survives
+M2/M4 and the measurement REFUTED it: tripling the unobserved term raises total
+variance without raising the covariate's share, so `r^2` falls under the floor.
+The declaration is corrected in the harness, because a declared control that
+turns out not to be one is worse than none.
+
+**Estimand blocker, still open.** The canonical 2-period panel yields ZERO
+estimable cells (`groups = [1]`, `times = [0, 1]`, both candidates fail
+`eval_period <= g_value` because the base period is the cohort's own treatment
+period), so `dgp_recovery_test`'s `max_abs_err < 5.0` against a true effect of
+1.0 is still vacuous. The estimand fix (base period `g - 1`) is next.
+
+**did_cs sensitivity, stage 1b of 4** -- v0.147.0 adds the four upstream
 `(d, t)` outcome nuisances `g_dXtY = E[Y | D=d, T=t, X]` on the long panel, as
 FOUR NAMED accessors `predictions_g_d0_t0()` / `_d0_t1()` / `_d1_t0()` /
 `_d1_t1()` on `DoubleMLDIDCS`, plus `cross_fit_predict_conditional_dispatch` in

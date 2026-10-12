@@ -9,6 +9,107 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.148.0] — the DIDCS fixture's unit intercept was drowning everything
+
+`make_did_cs_CS2021` gave every unit a **deterministic** intercept
+`alpha_i = 0.5 * unit_in_cohort` — a ramp reaching 99.5, SD ≈ 28.8. It is now a
+per-unit standard-normal draw. Measured consequence, on
+`make_did_cs_CS2021(800, 3, 1.0, 3141)`:
+
+| | before (ramp) | after (draw) |
+|---|---|---|
+| `var(y)` | 828.42 | **10.76** |
+| `r²` X₁ vs y | 0.0007 | **0.670** |
+| `r²` X₂ vs y | 0.0001 | **0.572** |
+| `r²` X₃ vs y | 0.0001 | **0.451** |
+| `corr(id, y)` | ≈ 1.0 | **−0.063** |
+| `mse(g_hat)` / `mse(cell mean)` | **1.052** (loses) | **0.185 / 0.163 / 0.190** (wins ~4×) |
+
+### Why this blocked the sensitivity migration
+
+The ratio row is the whole story. Before the fix **no conditional nuisance
+could beat a constant**: `mse(g_hat) = 871.78` against a cell-mean baseline of
+`829.09`. So `E[Y | D, T, X]` carried no covariate signal, `g_hat` was
+indistinguishable from a constant, and `sigma2 = mean((y − g_hat)²)` collapsed
+onto `var(y)` — leaving stage 2 of the did_cs sensitivity migration with nothing
+to condition on and no gate able to tell a correct `g_hat` from a wrong one.
+After the fix the nuisance explains ~82 % of within-cell variance.
+
+A draw was chosen over deleting the term because unobserved unit
+heterogeneity **is** the hidden confounding `nu2` exists to price; removing it
+outright would leave the fixture unable to represent the thing it is for. SD 1
+puts it on the same scale as the true effect (`theta = 1.0`) and makes it ~19 %
+of the covariate signal — a minority to be partialled out, not a majority that
+drowns everything. Upstream has no unit intercept at all (its outcome is
+`210 + (t/T)·(27.4·W₁ + 13.7·W₂ + …)`), so this term is a port addition, now
+justified by measurement rather than by default.
+
+### A gate of mine broke, correctly, and was rewritten
+
+`expand_v147_test.mbt` GATE 5 asserted `v1470_mean(a) > 1.0` to check that the
+three populated nuisances are not empty. That threshold was an **absolute scale
+smuggled in from the DGP it happened to be written against**: `y` had mean
+49.87, so `> 1.0` looked like a safe proxy for "populated". The fixture fix moved
+`mean(y)` to 0.085 with sd 3.28 and the gate went red on a nuisance that is
+perfectly well populated — a false alarm, not a catch.
+
+The property actually wanted is scale-free: **not identically zero**. It is now
+asserted directly, so the gate survives any future rescaling of the outcome and
+distinguishes "no data in this cell" from "this cell's conditional mean happens
+to be small".
+
+### Gates — 5 added
+
+`expand_v148_test.mbt`.
+
+- **GATE 1 is the one that matters.** It reads the nuisance predictions and
+  demands the conditional fit **beat a constant** on every populated cell
+  (ratio < 0.25). It is the only gate here that reads code output rather than
+  the fixture, so an estimator mutation can kill it. This is the property stage 2
+  depends on.
+- **GATE 2** pins the ramp's absence: `|corr(within-cohort index, y)| < 0.25`,
+  measured −0.063. It first asserts `corr(id, id) > 0.999999`, so a green gate
+  caused by a broken correlation routine cannot pass silently.
+- **GATE 3** pins covariate signal at `r² > 0.35` per column, against a
+  five-order-of-magnitude separation from the old `≤ 7e-4`.
+- **GATE 4** pins the outcome's scale (`mean`, `var`) at 1e-9 relative — the
+  fixture tripwire, so a future edit that moves `var(y)` lands here before it
+  silently invalidates a downstream estimate.
+- **GATE 5** proves the fix touched `y` and nothing else: occupancy is still
+  400 / 200 / 0 / 200, `theta` still 1.0. Without it, the v0.147.0 stage-1b
+  conclusions would have needed re-measuring rather than carrying over.
+
+### Mutation evidence — 4/4 killed, and one declared control was wrong
+
+| Mutant | Gates fired |
+|---|---|
+| M1 the ramp restored | 1, 2, 3, 4 |
+| M2 the draw scaled by 3 | 1, 3, 4 |
+| M3 the alpha term dropped entirely | 4 |
+| M4 half the Box-Muller pair collapsed onto `z1` | 4 |
+
+GATE 5 and every v0.147.0 stage-1b gate survived all four, as declared — they
+read occupancy, and this release changed `y` and nothing else.
+
+**I declared up front that GATE 3 would survive M2 and M4**, reasoning that
+scaling or partly dropping an *additive* term cannot change a covariate–y
+correlation. **The measurement refutes that**: GATE 3 fired under M2.
+Tripling the unobserved term raises total variance without raising the
+covariate's share, so `r²` falls from ~0.45–0.67 to under the 0.35 floor. The
+declaration is corrected in the harness rather than left standing — a declared
+control that turns out not to be one is worse than no declaration.
+
+### Estimand blocker, still open
+
+The canonical 2-period panel yields **zero estimable cells**: `groups = [1]`,
+`times = [0, 1]`, and both candidate cells fail the fit loop's
+`eval_period <= g_value` guard because the base period is the cohort's own
+treatment period. This release makes the fixture able to express a covariate
+signal; it does not by itself give the canonical panel a live cell. The
+estimand fix (base period `g − 1`, so `ATT(g, g)` exists) is next, and
+`dgp_recovery_test`'s `max_abs_err < 5.0` against a true effect of 1.0 remains
+vacuous until then.
+
 ## [0.147.0] — did_cs: the four `(d, t)` outcome nuisances (stage 1b of 4)
 
 Purely additive. **No reported number changes in this release**, and that is
