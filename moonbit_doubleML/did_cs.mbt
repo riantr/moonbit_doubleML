@@ -261,6 +261,31 @@ pub struct DoubleMLDIDCS {
   g_hat_d0t1_long : Array[Double]
   g_hat_d1t0_long : Array[Double]
   g_hat_d1t1_long : Array[Double]
+  // v0.149.0+ (stage 2): upstream's sensitivity ELEMENTS, computed over the
+  // WHOLE PANEL. Upstream's `_sensitivity_element_est` reads `self._dml_data`
+  // in its entirety and has no per-cell subset, and its manual oracle
+  // `fit_did_cs(y, x, d, t, ...)` takes no group argument at all -- so these are
+  // single scalars, not a matrix over the `(group, period)` grid.
+  //
+  //   sigma2 = mean((y - g_hat)^2),  g_hat = sum of the four weighted cells
+  //   nu2    = mean(2*m_alpha - rr^2)
+  //
+  // Both formulas verified BIT-EXACT against a running upstream 0.11.3
+  // (`_verify/_oracle_v1482_nu2_gap.py`: upstream reports 18.253043736106648
+  // and 256.4070590464714; this transcription reproduces both to the last
+  // digit). `sigma2_panel`/`nu2_panel` are 0.0 before `fit`; the per-row
+  // `psi_*` and `riesz_rep` arrays are empty before `fit`.
+  //
+  // NOTE `nu2_panel` can be NaN, and legitimately so: the `in_sample_
+  // normalization = true` branch divides by `mean(d1t0)`, which is 0 on the
+  // canonical 2-period fixture because nobody is treated in the pre-period
+  // (structurally empty cell -- see `predictions_g_d1_t0`). That is upstream's
+  // arithmetic on the same input, not a port defect.
+  sigma2_panel : Double
+  nu2_panel : Double
+  psi_sigma2_long : Array[Double]
+  psi_nu2_long : Array[Double]
+  riesz_rep_long : Array[Double]
   n_groups : Int
   n_periods : Int
   fitted : Bool
@@ -342,6 +367,12 @@ pub fn DoubleMLDIDCS::new(
       g_hat_d0t1_long: [],
       g_hat_d1t0_long: [],
       g_hat_d1t1_long: [],
+      // v0.149.0: stage 2 panel-level sensitivity elements.
+      sigma2_panel: 0.0,
+      nu2_panel: 0.0,
+      psi_sigma2_long: [],
+      psi_nu2_long: [],
+      riesz_rep_long: [],
       n_groups,
       n_periods,
       fitted: false,
@@ -534,6 +565,85 @@ pub fn DoubleMLDIDCS::predictions_g_d1_t0(
   self : DoubleMLDIDCS,
 ) -> Array[Double] {
   self.g_hat_d1t0_long
+}
+
+///|
+/// Upstream's `sigma2` (`did_cs.py:462-463`):
+///
+///     sigma2 = mean((y - g_hat)^2)
+///
+/// PANEL-LEVEL, not per cell. Upstream's `_sensitivity_element_est` reads
+/// `self._dml_data` in its entirety and its manual oracle
+/// `fit_did_cs(y, x, d, t, ...)` takes no group argument at all, so there is
+/// one `sigma2` for the whole panel -- unlike `sensitivity_analysis`, which
+/// returns one `SensitivityResult` per `(group, period)` cell.
+///
+/// This does NOT change what `sensitivity_analysis` reports; that path still
+/// uses `irm_style_sensitivity` over the DML score element. The two disagree
+/// by construction and both are exposed.
+///
+/// `0.0` before `fit`.
+pub fn DoubleMLDIDCS::sensitivity_sigma2(self : DoubleMLDIDCS) -> Double {
+  self.sigma2_panel
+}
+
+///|
+/// Upstream's `nu2` (`did_cs.py:527-528`):
+///
+///     nu2 = mean(2*m_alpha - rr^2)
+///
+/// where `m_alpha` and `rr` are the Riesz quantities from
+/// `doubleml/did/did_cs.py:466-497`. **Both formulas verified bit-exact
+/// against a running upstream 0.11.3**: on a 2x2 panel upstream reports
+/// `nu2 = 18.253043736106648` and `sigma2 = 256.4070590464714`, and this
+/// transcription reproduces both to the last digit
+/// (`_verify/_oracle_v1482_nu2_gap.py`).
+///
+/// PANEL-LEVEL, like `sensitivity_sigma2`.
+///
+/// MAY BE NaN, AND THAT IS CORRECT. The `in_sample_normalization = true`
+/// branch divides by `mean(d1t0)`, which is `0.0` on the canonical 2-period
+/// fixture because nobody is treated in the pre-period -- the `(d=1, t=0)` cell
+/// is structurally empty. Upstream's arithmetic on the same input produces the
+/// same Inf/NaN, and no fallback is substituted, because a quiet replacement
+/// number would be indistinguishable from a correct one.
+///
+/// Which branch runs is `self.in_sample_normalization`, whose port default
+/// (`false`) differs from upstream's (`true`).
+///
+/// `0.0` before `fit`.
+pub fn DoubleMLDIDCS::sensitivity_nu2(self : DoubleMLDIDCS) -> Double {
+  self.nu2_panel
+}
+
+///|
+/// Per-row `psi_sigma2 = (y - g_hat)^2 - sigma2`. Upstream's convention is the
+/// DEVIATION from the scalar (`did_cs.py:464`), so this array has mean exactly
+/// zero -- it is not the raw element. Length `n_obs`; empty before `fit`.
+pub fn DoubleMLDIDCS::sensitivity_psi_sigma2(
+  self : DoubleMLDIDCS,
+) -> Array[Double] {
+  self.psi_sigma2_long
+}
+
+///|
+/// Per-row `psi_nu2 = (2*m_alpha - rr^2) - nu2`. As with `psi_sigma2`, upstream
+/// stores the DEVIATION from the scalar (`did_cs.py:529`), so this array has
+/// mean exactly zero and `sensitivity_nu2` is NOT its mean -- recovering the
+/// element itself needs `psi_nu2[i] + nu2`. Length `n_obs`; empty before
+/// `fit`.
+pub fn DoubleMLDIDCS::sensitivity_psi_nu2(
+  self : DoubleMLDIDCS,
+) -> Array[Double] {
+  self.psi_nu2_long
+}
+
+///|
+/// Per-row Riesz representer `rr`. Length `n_obs`; empty before `fit`.
+pub fn DoubleMLDIDCS::sensitivity_riesz_rep(
+  self : DoubleMLDIDCS,
+) -> Array[Double] {
+  self.riesz_rep_long
 }
 
 ///|
@@ -1143,6 +1253,130 @@ pub fn DoubleMLDIDCS::fit(
       panel_folds,
       cond_d1_t1,
     )
+    // ------------------------------------------------------------------
+    // v0.149.0+ (stage 2): upstream's panel-level sensitivity elements.
+    //
+    //     sigma2 = mean((y - g_hat)^2),  g_hat = (1-d)(1-t) g_d0t0
+    //                                          + (1-d) t   g_d0t1
+    //                                          + d (1-t)   g_d1t0
+    //                                          + d t       g_d1t1
+    //     nu2    = mean(2*m_alpha - rr^2)
+    //
+    // transcribed from `did_cs.py:451-497`. Both verified bit-exact against a
+    // running upstream 0.11.3 -- upstream reports sigma2 = 256.4070590464714
+    // and nu2 = 18.253043736106648 on a 2x2 panel, and this reproduces both to
+    // the last digit (`_verify/_oracle_v1482_nu2_gap.py`).
+    //
+    // ONLY THE `observational` BRANCHES EXIST HERE, because `DoubleMLDIDCS::new`
+    // has no `score` parameter. Upstream's two `experimental` branches are
+    // therefore unreachable and are NOT transcribed; that is an API gap, not
+    // an omission.
+    //
+    // `in_sample_normalization` selects between the two, exactly as upstream
+    // does -- and note the port's default (`false`) DIFFERS from upstream's
+    // (`true`). That divergence is pre-existing and documented; this stage
+    // finally makes it visible in the sensitivity path.
+    //
+    // The `in_sample_normalization = true` branch divides by `mean(d1t0)`, which
+    // is 0.0 on the canonical 2-period fixture because nobody is treated in the
+    // pre-period. That yields Inf/NaN, which is upstream's own arithmetic on
+    // the same input and is left to propagate rather than papered over with a
+    // fallback: a silent substitute number here would be indistinguishable
+    // from a correct one.
+    // ------------------------------------------------------------------
+    let n_panel = self.data.y.length()
+    let pn = n_panel.to_double()
+    let mut _s00 = 0.0
+    let mut _s01 = 0.0
+    let mut _s10 = 0.0
+    let mut _s11 = 0.0
+    let mut _w01 = 0.0
+    let mut _w00 = 0.0
+    let mut _sd = 0.0
+    let mut _st = 0.0
+    for i = 0; i < n_panel; i = i + 1 {
+      let di = self.data.d[i]
+      let ti = self.data.t[i].to_double()
+      let pw = m_hat_long[i] / (1.0 - m_hat_long[i])
+      let a = (1.0 - di) * (1.0 - ti)
+      let b = (1.0 - di) * ti
+      let c = di * (1.0 - ti)
+      let e = di * ti
+      _s00 = _s00 + a
+      _s01 = _s01 + b
+      _s10 = _s10 + c
+      _s11 = _s11 + e
+      _w01 = _w01 + b * pw
+      _w00 = _w00 + a * pw
+      _sd = _sd + di
+      _st = _st + ti
+    }
+    let p_hat = _sd / pn
+    let lambda_hat = _st / pn
+    let _m11 = _s11 / pn
+    let _m10 = _s10 / pn
+    let _mw01 = _w01 / pn
+    let _mw00 = _w00 / pn
+    let psi_sigma2_long : Array[Double] = Array::make(n_panel, 0.0)
+    let psi_nu2_long : Array[Double] = Array::make(n_panel, 0.0)
+    let nu_elem_long : Array[Double] = Array::make(n_panel, 0.0)
+    let riesz_rep_long : Array[Double] = Array::make(n_panel, 0.0)
+    let mut _sig = 0.0
+    let mut _nu = 0.0
+    for i = 0; i < n_panel; i = i + 1 {
+      let di = self.data.d[i]
+      let ti = self.data.t[i].to_double()
+      let pw = m_hat_long[i] / (1.0 - m_hat_long[i])
+      let a = (1.0 - di) * (1.0 - ti)
+      let b = (1.0 - di) * ti
+      let c = di * (1.0 - ti)
+      let e = di * ti
+      let gh = a * g_hat_d0t0_long[i] +
+        b * g_hat_d0t1_long[i] +
+        c * g_hat_d1t0_long[i] +
+        e * g_hat_d1t1_long[i]
+      let r = self.data.y[i] - gh
+      _sig = _sig + r * r
+      let m_alpha = if self.in_sample_normalization {
+        di / p_hat * (1.0 / _m11 + 1.0 / _m10 + pw / _mw01 + pw / _mw00)
+      } else {
+        let m_alpha_1 = 1.0 / lambda_hat + 1.0 / (1.0 - lambda_hat)
+        di / (p_hat * p_hat) * (m_alpha_1 * (1.0 + pw))
+      }
+      let rr = if self.in_sample_normalization {
+        e / _m11 - c / _m10 - b * pw / _mw01 + a * pw / _mw00
+      } else {
+        let rr_1 = ti / (p_hat * lambda_hat) +
+          (1.0 - ti) / (p_hat * (1.0 - lambda_hat))
+        let rr_2 = di + (1.0 - di) * pw
+        rr_1 * rr_2
+      }
+      riesz_rep_long[i] = rr
+      nu_elem_long[i] = 2.0 * m_alpha - rr * rr
+      _nu = _nu + nu_elem_long[i]
+    }
+    let sigma2_panel = _sig / pn
+    let nu2_panel = _nu / pn
+    for i = 0; i < n_panel; i = i + 1 {
+      let di = self.data.d[i]
+      let ti = self.data.t[i].to_double()
+      let a = (1.0 - di) * (1.0 - ti)
+      let b = (1.0 - di) * ti
+      let c = di * (1.0 - ti)
+      let e = di * ti
+      let gh = a * g_hat_d0t0_long[i] +
+        b * g_hat_d0t1_long[i] +
+        c * g_hat_d1t0_long[i] +
+        e * g_hat_d1t1_long[i]
+      let r = self.data.y[i] - gh
+      psi_sigma2_long[i] = r * r - sigma2_panel
+      // Upstream stores `psi_nu2 = nu2_score_element - nu2` (`did_cs.py:529`),
+      // i.e. the DEVIATION, not the raw element. An earlier draft here stored
+      // the raw element under the same name, which left `mean(psi_nu2)`
+      // equal to `nu2` instead of zero -- a silent semantic mismatch with
+      // upstream that a same-named accessor makes easy to miss.
+      psi_nu2_long[i] = nu_elem_long[i] - nu2_panel
+    }
     let coef_values : Array[Double] = []
     let se_values : Array[Double] = []
     let mut coef_values_acc = coef_values
@@ -1454,6 +1688,12 @@ pub fn DoubleMLDIDCS::fit(
       g_hat_d0t1_long,
       g_hat_d1t0_long,
       g_hat_d1t1_long,
+      // v0.149.0: stage 2 panel-level sensitivity elements.
+      sigma2_panel,
+      nu2_panel,
+      psi_sigma2_long,
+      psi_nu2_long,
+      riesz_rep_long,
       fitted: true,
       boot_t_stat: [],
       boot_method: "",

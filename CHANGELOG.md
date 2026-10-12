@@ -9,6 +9,112 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.149.0] — did_cs: upstream's panel-level `sigma2` / `nu2` (stage 2 of 4)
+
+Purely additive. **No reported number changes**, and `sensitivity_analysis` is
+untouched — it still runs `irm_style_sensitivity` over the DML score element.
+The two paths disagree by construction and both are now exposed.
+
+### What lands
+
+Five new accessors on `DoubleMLDIDCS`: `sensitivity_sigma2()`,
+`sensitivity_nu2()`, `sensitivity_psi_sigma2()`, `sensitivity_psi_nu2()`,
+`sensitivity_riesz_rep()`.
+
+### The formulas are verified, not assumed
+
+Both were transcribed from `did_cs.py:451-497` and then checked against a
+**running upstream 0.11.3**, which is installed here. On a 2×2 panel built from
+its own CS2021 DGP, upstream reports
+
+```
+sigma2 = 256.4070590464714      nu2 = 18.253043736106648
+```
+
+and `_verify/_oracle_v1482_nu2_gap.py` reproduces **both to the last digit**.
+So the transcription is pinned against the thing being transcribed, not against
+a reading of it.
+
+Getting there also corrected an earlier note. A first cross-check reported
+17.325 against upstream's 18.253 — a 5.1 % gap that read as "right formula,
+slightly different input". It was neither: my oracle omitted `.ravel()`, so a
+2-D `(816,1)` `m_hat` **silently broadcast** against `(816,)` into a
+`(816,816)` intermediate. A 5.1 % error is exactly the size that hides a shape
+bug behind a tolerance.
+
+### These are PANEL-LEVEL, not per cell
+
+Upstream's `_sensitivity_element_est` reads `self._dml_data` in its entirety,
+and its manual oracle `fit_did_cs(y, x, d, t, …)` takes **no `g`** and has no
+cell loop. So `sigma2` and `nu2` are single scalars for the whole panel. This
+corrects the v0.147.0 changelog, which implied stage 2 would produce per-cell
+values.
+
+### Measured on `make_did_cs_CS2021(800, 3, 1.0, 3141)`
+
+```
+sigma2                     = 1.8855040509678376
+nu2 (in_sample_norm=false) = 21.32163562345964     <- the port's default
+nu2 (in_sample_norm=true)  = NaN
+```
+
+The `NaN` is the interesting one. That branch divides by `mean(d1t0)`, which is
+`0.0` here because nobody is treated in the pre-period — the `(d=1, t=0)` cell
+is structurally empty, the same fact `expand_v147_test.mbt` GATE 5 pins.
+Upstream's arithmetic on the same input produces the same Inf/NaN. **No
+fallback is substituted**, because a quiet replacement number would be
+indistinguishable from a correct one.
+
+Note also that the port's `in_sample_normalization` default (`false`) differs
+from upstream's (`true`). That divergence is pre-existing; stage 2 makes it
+visible in the sensitivity path for the first time.
+
+### Gates — 5 added
+
+`expand_v149_test.mbt`. The scalars are pinned at 1e-12 relative (the did_cs
+quantities carry the known ~1.5e-15 cross-backend spread) and are asserted
+**positive and finite**, since `sqrt(sigma2 · nu2)` depends on it. GATE 3
+proves the `in_sample_normalization` flag selects a genuinely different branch
+(`sigma2` must agree exactly, `nu2` must not). GATE 4 asserts the per-row
+elements are **centred**, matching upstream's convention
+(`psi_nu2 = element − nu2`, `did_cs.py:529`) — so `sensitivity_nu2()` is *not*
+the mean of `sensitivity_psi_nu2()`.
+
+### Mutation evidence — 5/5 killed, and one declared control was wrong
+
+| Mutant | Gates fired |
+|---|---|
+| M1 `g_hat` loses the `d0t1` term | 1, 4 |
+| M2 `nu2`'s element drops `rr²` | 1 |
+| M3 the two branches swapped | 1, 3, 4 |
+| M4 `psi_nu2` stored raw instead of as a deviation | 4 |
+| M5 `sigma2` zeroed before it reaches the struct | 1, 4, 6 |
+
+**M4 is the one that matters**: it is the exact defect that shipped in the first
+draft of this stage and was caught by GATE 4. A raw-vs-deviation swap preserves
+the array's length and shape, so only a gate asserting the **mean** could see
+it — which is why GATE 4 is written that way.
+
+I declared GATE 6 a control that would survive all five, reasoning that
+corrupting a quantity nothing reads cannot move an estimate. **The measurement
+refutes that**: GATE 6 fired under M5, because it ends with a liveness check
+(`sensitivity_sigma2() > 0.0`) and is not purely an estimate-stability check. The
+declaration is corrected in the harness.
+
+M5 also had to be rewritten: its first form wrote literals into a record whose
+new fields use positional shorthand, so it failed to parse — an uncompilable
+mutant proves nothing, and was reported inconclusive rather than counted.
+
+### Still open
+
+The port's `DoubleMLDIDCS` has a `(group, period)` cell grid that upstream's
+does not, and upstream's class is **deprecated** in favour of
+`DoubleMLDIDCSBinary`. This release deliberately adds the panel-level elements
+*alongside* the cell grid rather than resolving that question, so it is correct
+whichever way it goes. The estimand fix (base period `g − 1`, so `ATT(g, g)`
+exists) is unaffected and remains the open item — as does
+`dgp_recovery_test`'s vacuous `max_abs_err < 5.0` against a true effect of 1.0.
+
 ## [0.148.0] — the DIDCS fixture's unit intercept was drowning everything
 
 `make_did_cs_CS2021` gave every unit a **deterministic** intercept

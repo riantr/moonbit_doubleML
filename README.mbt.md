@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.148.0** |
+| `moon.mod` version | **0.149.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **209** `.mbt` files (**65** production + **119** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **210** `.mbt` files (**65** production + **120** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1065 / 1065 / 1065** |
-| Tests (wasm-gc) | **1071 / 1071** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1070 / 1070 / 1070** |
+| Tests (wasm-gc) | **1076 / 1076** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -439,7 +439,68 @@ too large (1.1473 vs 0.00197), and **no test in the package exercised the
 function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
 guard passed throughout, because both arrays were length 720 while describing
 different observations. Fixed, and both entry points now share one builder
-(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. **DIDCS fixture: the unit intercept was drowning the covariates** -- v0.148.0
+(`cs_bin_sensitivity_residuals`) so they cannot drift apart again.
+
+**did_cs sensitivity, stage 2 of 4** -- v0.149.0 adds upstream's PANEL-LEVEL
+`sigma2` and `nu2` as five accessors on `DoubleMLDIDCS`:
+`sensitivity_sigma2()`, `sensitivity_nu2()`, `sensitivity_psi_sigma2()`,
+`sensitivity_psi_nu2()`, `sensitivity_riesz_rep()`. Purely additive -- no reported
+number moves, and `sensitivity_analysis` is untouched, still running
+`irm_style_sensitivity` over the DML score element. The two paths disagree by
+construction, and both are now exposed.
+
+**The formulas are pinned against a RUNNING upstream, not a reading of it.** Both
+were transcribed from `did_cs.py:451-497`, then checked against upstream 0.11.3,
+which is installed here. On a 2x2 panel built from its own CS2021 DGP it reports
+`sigma2 = 256.4070590464714`, `nu2 = 18.253043736106648`, and
+`_verify/_oracle_v1482_nu2_gap.py` reproduces BOTH TO THE LAST DIGIT. A first
+cross-check reported 17.325 against 18.253 and read as a 5.1% input difference.
+It was neither: my oracle omitted `.ravel()`, so a 2-D `(816,1)` `m_hat`
+**silently broadcast** against `(816,)` into a `(816,816)` intermediate. A 5.1%
+error is exactly the size that hides a shape bug behind a tolerance.
+
+**These are PANEL-LEVEL, not per cell.** Upstream's `_sensitivity_element_est`
+reads `self._dml_data` in its entirety, and its manual oracle
+`fit_did_cs(y, x, d, t, ...)` takes no `g` and has no cell loop, so both are
+single scalars for the whole panel. That corrects the v0.147.0 changelog, which
+implied stage 2 would produce per-cell values.
+
+Measured on `make_did_cs_CS2021(800, 3, 1.0, 3141)`: `sigma2 = 1.8855040509678376`;
+`nu2 = 21.32163562345964` with `in_sample_normalization=false` (the port's default,
+upstream's is `true`); and `NaN` with `true`. The `NaN` is the informative one --
+that branch divides by `mean(d1t0)`, which is `0.0` because nobody is treated in
+the pre-period, i.e. the `(d=1, t=0)` cell is structurally empty, the same fact
+`expand_v147_test.mbt` GATE 5 pins. Upstream's arithmetic on the same input
+produces the same Inf/NaN. **No fallback is substituted**, because a quiet
+replacement number is indistinguishable from a correct one.
+
+5 gates added (`expand_v149_test.mbt`). The scalars are pinned at 1e-12 relative
+(the did_cs quantities carry the known ~1.5e-15 cross-backend spread) and are
+asserted positive and finite, since `sqrt(sigma2 * nu2)` depends on it. GATE 3
+proves the `in_sample_normalization` flag selects a genuinely different branch:
+`sigma2` must agree exactly, `nu2` must not. GATE 4 asserts the per-row elements
+are **centred**, per upstream's convention `psi_nu2 = element - nu2`
+(`did_cs.py:529`), so `sensitivity_nu2()` is deliberately NOT the mean of
+`sensitivity_psi_nu2()`.
+
+Mutation evidence 5/5, and M4 is the one that matters: storing the RAW element
+under the name `psi_nu2` is the exact defect that shipped in this stage's first
+draft. A raw-vs-deviation swap preserves the array's length and shape, so only a
+gate asserting the **mean** can see it -- which is why GATE 4 is written that way.
+I DECLARED GATE 6 a control that would survive all five and the measurement
+REFUTED it: GATE 6 ends in a liveness check (`sensitivity_sigma2() > 0.0`) and is
+not purely an estimate-stability check, so it fires under M5. The declaration is
+corrected in the harness.
+
+**Still open.** The port's `DoubleMLDIDCS` has a `(group, period)` cell grid that
+upstream's does not, and upstream's class is **deprecated** in favour of
+`DoubleMLDIDCSBinary`. This release adds the panel-level elements *alongside* the
+grid rather than resolving that, so it is correct whichever way it goes. The
+estimand fix (base period `g - 1`, so `ATT(g, g)` exists) is unaffected and
+remains open, as does `dgp_recovery_test`'s vacuous `max_abs_err < 5.0` against
+a true effect of 1.0.
+
+**DIDCS fixture: the unit intercept was drowning the covariates** -- v0.148.0
 replaces `alpha_i = 0.5 * unit_in_cohort` (a deterministic ramp to 99.5, SD
 ~ 28.8) with a per-unit standard-normal draw. Measured on
 `make_did_cs_CS2021(800, 3, 1.0, 3141)`: `var(y)` 828.42 -> 10.76; `r^2` of each
