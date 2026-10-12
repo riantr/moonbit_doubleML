@@ -252,6 +252,15 @@ pub struct DoubleMLDIDCS {
   // kept so the nuisance is reproducible and its stratified scheme is
   // inspectable. Empty until `fit`.
   panel_folds : Array[Fold]
+  // v0.147.0+ (stage 1b): the four upstream `(d, t)` outcome nuisances
+  // `g_dXtY = E[Y | D=d, T=t, X]` on the long panel, each cross-fitted with
+  // upstream's conditional convention (fit on the cell, predict on every row).
+  // Upstream assembles `g_hat` from them by the `(1-d)(1-t)` decomposition
+  // (`did_cs.py:456-461`). Each has length `n_obs`; empty until `fit`.
+  g_hat_d0t0_long : Array[Double]
+  g_hat_d0t1_long : Array[Double]
+  g_hat_d1t0_long : Array[Double]
+  g_hat_d1t1_long : Array[Double]
   n_groups : Int
   n_periods : Int
   fitted : Bool
@@ -329,6 +338,10 @@ pub fn DoubleMLDIDCS::new(
       // v0.146.0+: panel-wide nuisance state, populated by `fit`.
       m_hat_long: [],
       panel_folds: [],
+      g_hat_d0t0_long: [],
+      g_hat_d0t1_long: [],
+      g_hat_d1t0_long: [],
+      g_hat_d1t1_long: [],
       n_groups,
       n_periods,
       fitted: false,
@@ -452,6 +465,84 @@ pub fn DoubleMLDIDCS::predictions_m(self : DoubleMLDIDCS) -> Array[Double] {
 /// inspectable rather than a hidden detail of `fit`.
 pub fn DoubleMLDIDCS::sensitivity_folds(self : DoubleMLDIDCS) -> Array[Fold] {
   self.panel_folds
+}
+
+///|
+/// The four upstream `(d, t)` outcome nuisances `g_dXtY = E[Y | D=d, T=t, X]`
+/// on the long panel. v0.147.0+ (stage 1b of the did_cs sensitivity
+/// migration). Empty until `fit`; each array has length `n_obs`.
+///
+/// They are exposed as FOUR NAMED accessors, not as a positional tuple. That
+/// is a deliberate reversal of the obvious design, and the reason is measured:
+/// nothing about a 4-tuple carries identity. The four arrays differ in mean by
+/// 1.9% at most, every one of them has length `n`, all are finite and all
+/// vary -- so a return literal with two cells swapped satisfies every
+/// length/finiteness/variation gate while quietly building the wrong
+/// `g_hat` for whoever assembles it. With four names, the permutation is not
+/// something a gate has to catch; it is not expressible. The names also match
+/// the sibling `DoubleMLDIDCSBinary::predictions_g_d0_t0` and siblings, so the
+/// two estimators read the same way.
+///
+/// Upstream assembles the sensitivity outcome baseline from them as
+///
+///     g_hat = (1-d)(1-t) g_d0t0 + (1-d) t g_d0t1
+///           + d (1-t) g_d1t0 + d t   g_d1t1        (did_cs.py:456-461)
+///
+/// TWO CONVENTIONS WORTH KNOWING, both from upstream and both easy to
+/// transcribe backwards:
+///
+/// 1. The cells are **`t` in {0, 1}**. Upstream's `DoubleMLDIDCS` is the 2x2
+///    repeated-cross-section design; its oracle selects
+///    `intersect1d(where(d == 0), where(t == 0))` and siblings, and
+///    `dgp_did_CS2021.py:309` shows its `t` is the period. So on a panel with
+///    more than two periods -- which this port permits and upstream does not --
+///    rows with `t >= 2` train none of the four. That is upstream's behaviour
+///    reproduced, not an oversight here.
+/// 2. The condition gates **fitting**, not prediction: upstream's
+///    `fit_predict` fits on the cell but predicts on the whole test fold, so
+///    every row receives a value from all four nuisances.
+/// 3. A cell with no rows -- `(d=1, t=0)` on the canonical 2-period fixture,
+///    where nobody is treated in the pre-period -- yields an all-`0.0` array
+///    rather than an error or a short array. That nuisance's weight `d*(1-t)`
+///    is identically zero wherever `t = 0`, so `g_hat` is unaffected, but a
+///    caller reading the array directly must not mistake `0.0` for a predicted
+///    `E[Y | D=1, T=0, X] = 0`.
+
+///|
+/// `E[Y | D = 0, T = 0, X]`, cross-fitted over the whole panel. Length `n_obs`.
+/// The conventions above apply to all four; they are documented on this one.
+pub fn DoubleMLDIDCS::predictions_g_d0_t0(
+  self : DoubleMLDIDCS,
+) -> Array[Double] {
+  self.g_hat_d0t0_long
+}
+
+///|
+/// `E[Y | D = 0, T = 1, X]`, cross-fitted over the whole panel. Length `n_obs`.
+/// See `DoubleMLDIDCS::predictions_g_d0_t0` for the shared conventions.
+pub fn DoubleMLDIDCS::predictions_g_d0_t1(
+  self : DoubleMLDIDCS,
+) -> Array[Double] {
+  self.g_hat_d0t1_long
+}
+
+///|
+/// `E[Y | D = 1, T = 0, X]`, cross-fitted over the whole panel. Length `n_obs`.
+/// See `DoubleMLDIDCS::predictions_g_d0_t0` for the shared conventions.
+/// Structurally EMPTY on the canonical 2-period fixture -- see convention 3.
+pub fn DoubleMLDIDCS::predictions_g_d1_t0(
+  self : DoubleMLDIDCS,
+) -> Array[Double] {
+  self.g_hat_d1t0_long
+}
+
+///|
+/// `E[Y | D = 1, T = 1, X]`, cross-fitted over the whole panel. Length `n_obs`.
+/// See `DoubleMLDIDCS::predictions_g_d0_t0` for the shared conventions.
+pub fn DoubleMLDIDCS::predictions_g_d1_t1(
+  self : DoubleMLDIDCS,
+) -> Array[Double] {
+  self.g_hat_d1t1_long
 }
 
 ///|
@@ -974,6 +1065,84 @@ pub fn DoubleMLDIDCS::fit(
       self.data.d,
       panel_folds,
     )
+    // ---------------------------------------------------------------------
+    // v0.147.0, STAGE 1b -- the FOUR (d, t) outcome nuisances.
+    //
+    // Upstream fits one outcome regression per cell of the 2x2 design,
+    // `g_dXtY = E[Y | D=d, T=t, X]` (`did_cs.py:445-449`), and assembles
+    //     g_hat = (1-d)(1-t) g_d0t0 + (1-d) t g_d0t1
+    //           + d (1-t) g_d1t0 + d t   g_d1t1
+    // The port only ever had TWO outcome nuisances, split by `d` alone, taken
+    // from each cell's child `DoubleMLDIDBinary` -- so it cannot build
+    // upstream's `g_hat` at all.
+    //
+    // THE CELLS ARE t IN {0, 1}, AND THAT IS NOT A CHOICE. Upstream's own
+    // oracle selects `intersect1d(where(d == 0), where(t == 0))` and the three
+    // siblings (`tests/_utils_did_cs_manual.py`), and `dgp_did_CS2021.py:309`
+    // sets `"t": time_matrix.flatten()` -- upstream's `t` IS the period, so
+    // those four conditions cover exactly the first two periods.
+    // `DoubleMLDIDCS` is the 2x2 repeated-cross-section design; upstream's
+    // multi-period class is `DoubleMLIDMulti`.
+    //
+    // On the canonical 2-period `make_did_cs_CS2021` panel `t in {0,1}` is the
+    // WHOLE panel, so this is an exact transcription there. On a panel with
+    // more periods -- which the port permits and upstream does not -- rows with
+    // `t >= 2` train none of the four, matching upstream. Extending the cells
+    // to later periods would be a NEW modelling decision, not a port, and is
+    // deliberately not done here.
+    //
+    // Prediction still covers every row: upstream's `fit_predict` fits on
+    // `train_index_cond` but predicts on the whole test fold.
+    // ---------------------------------------------------------------------
+    let mut cond_d0_t0 : Array[Int] = []
+    let mut cond_d0_t1 : Array[Int] = []
+    let mut cond_d1_t0 : Array[Int] = []
+    let mut cond_d1_t1 : Array[Int] = []
+    for i = 0; i < n; i = i + 1 {
+      let di = self.data.d[i]
+      let ti = self.data.t[i]
+      if ti == 0 {
+        if di == 0.0 {
+          cond_d0_t0 = cond_d0_t0 + [i]
+        } else {
+          cond_d1_t0 = cond_d1_t0 + [i]
+        }
+      } else if ti == 1 {
+        if di == 0.0 {
+          cond_d0_t1 = cond_d0_t1 + [i]
+        } else {
+          cond_d1_t1 = cond_d1_t1 + [i]
+        }
+      }
+    }
+    let g_hat_d0t0_long = cross_fit_predict_conditional_dispatch(
+      ml_g,
+      self.data.x,
+      self.data.y,
+      panel_folds,
+      cond_d0_t0,
+    )
+    let g_hat_d0t1_long = cross_fit_predict_conditional_dispatch(
+      ml_g,
+      self.data.x,
+      self.data.y,
+      panel_folds,
+      cond_d0_t1,
+    )
+    let g_hat_d1t0_long = cross_fit_predict_conditional_dispatch(
+      ml_g,
+      self.data.x,
+      self.data.y,
+      panel_folds,
+      cond_d1_t0,
+    )
+    let g_hat_d1t1_long = cross_fit_predict_conditional_dispatch(
+      ml_g,
+      self.data.x,
+      self.data.y,
+      panel_folds,
+      cond_d1_t1,
+    )
     let coef_values : Array[Double] = []
     let se_values : Array[Double] = []
     let mut coef_values_acc = coef_values
@@ -1280,6 +1449,11 @@ pub fn DoubleMLDIDCS::fit(
       // v0.146.0: panel-wide nuisance state (stage 1a).
       m_hat_long,
       panel_folds,
+      // v0.147.0: the four (d, t) outcome nuisances (stage 1b).
+      g_hat_d0t0_long,
+      g_hat_d0t1_long,
+      g_hat_d1t0_long,
+      g_hat_d1t1_long,
       fitted: true,
       boot_t_stat: [],
       boot_method: "",

@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.146.0** |
+| `moon.mod` version | **0.147.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **207** `.mbt` files (**65** production + **117** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **208** `.mbt` files (**65** production + **118** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1053 / 1053 / 1053** |
-| Tests (wasm-gc) | **1059 / 1059** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1060 / 1060 / 1060** |
+| Tests (wasm-gc) | **1066 / 1066** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -439,7 +439,61 @@ too large (1.1473 vs 0.00197), and **no test in the package exercised the
 function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
 guard passed throughout, because both arrays were length 720 while describing
 different observations. Fixed, and both entry points now share one builder
-(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. **did_cs sensitivity, stage 1 of 4** -- v0.146.0 adds
+(`cs_bin_sensitivity_residuals`) so they cannot drift apart again. **did_cs sensitivity, stage 1b of 4** -- v0.147.0 adds the four upstream
+`(d, t)` outcome nuisances `g_dXtY = E[Y | D=d, T=t, X]` on the long panel, as
+FOUR NAMED accessors `predictions_g_d0_t0()` / `_d0_t1()` / `_d1_t0()` /
+`_d1_t1()` on `DoubleMLDIDCS`, plus `cross_fit_predict_conditional_dispatch` in
+`learner.mbt` mirroring upstream's `fit_predict(..., train_cond=...)`
+(`did/tests/_utils.py:33-45`). Upstream's `sigma2` needs `g_hat` assembled from
+all four (`did_cs.py:445-449`, `456-461`); the port had two, split by `d` alone
+and taken from each cell's child `DoubleMLDIDBinary` restricted to its own
+subset -- a different object that cannot be reassembled on the full panel.
+
+**Four names, not a 4-tuple, and measurement is why.** The obvious design is one
+`predictions_g_d()` returning `(d0t0, d0t1, d1t0, d1t1)`. Two probes ruled it
+out. First, the obvious discriminator does not exist: cell-wise RMSE has no
+minimal diagonal -- `g_d0t1` beats `g_d0t0` on cell `(d0,t0)` -- because RMSE
+~14 is dominated by noise while the four conditional means differ by under 2.
+Second, nothing else sees a permutation either: all four arrays have length `n`,
+are all finite and all vary, so a swapped return literal passes every
+length/finiteness/variation gate while quietly building the wrong `g_hat`. With
+four names the permutation is not expressible.
+
+**The cells are `t` in {0,1}, settled from upstream's source.** Extending them
+to later periods would be a NEW modelling decision, not a port.
+`did/tests/_utils_did_cs_manual.py` selects `intersect1d(where(d == 0), where(t
+== 0))` and three siblings; `dgp_did_CS2021.py:309` sets `"t":
+time_matrix.flatten()`, so upstream's `t` IS the period; and `_utils.py:33-45`
+intersects the condition with the training index and then predicts on the whole
+test fold, so the condition gates FITTING, not prediction. Upstream's
+`DoubleMLDIDCS` is therefore the 2x2 repeated-cross-section design (its
+multi-period sibling is `DoubleMLIDMulti`). On the canonical 2-period panel this
+is an exact transcription; on a longer panel -- which this port permits and
+upstream does not -- rows with `t >= 2` train none of the four, reproducing
+upstream.
+
+**Purely additive -- no reported number moves**, asserted by GATE 4. A draft of
+GATE 1 that asserted array LENGTH was discarded before shipping: the helper
+pre-sizes its output to `n`, so restricting *prediction* to the cell still
+returns four arrays of length `n`. GATE 1 now asserts COVERAGE (measured: zero
+exact `0.0` entries anywhere on the 4-period panel, versus 1300/1400/1500/1400
+under that mutation). GATE 7 pins one measured mean per named accessor and
+restores exactness where available: `g_d0t1`, `g_d1t0`, `g_d1t1` are
+bit-identical on all four backends and asserted with `==`; only `g_d0t0` differs
+(js ends `...4715` vs `...472`, ~2e-16) and alone carries a 1e-12 tolerance.
+Mutation evidence 6/6 killed, with GATE 3 declared NON-DISCRIMINATING: it reads
+`data.d`/`data.t`, i.e. the fixture, so it cannot fail under any code mutation.
+
+**Stage 1b blocker, recorded so it is not rediscovered.** The four nuisances now
+exist; what remains is that upstream's `nu2` needs `m_alpha`/`rr` across four
+upstream branches, one of which is unreachable because `DoubleMLDIDCS::new` has
+no `score` parameter while the sub-DID hardcodes `score="observational"`.
+Upstream's did_cs numbers are therefore an architectural change to the
+estimator, not a formula swap; until stage 2 lands, `nu2` is still
+`mean(psi_a^2)` on the DML score element and NOT upstream's
+`mean(2*m_alpha - rr^2)`.
+
+**did_cs sensitivity, stage 1 of 4** -- v0.146.0 adds
 `DoubleMLDIDCS::predictions_m()`, the cross-fitted group propensity
 `m_hat = E[D | X]` on the LONG panel, plus `sensitivity_folds()` exposing the
 panel-wide folds behind it. Upstream's did_cs decomposition needs exactly this

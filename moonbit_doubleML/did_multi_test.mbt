@@ -156,7 +156,7 @@ test "did_multi_fit_and_aggregate" { // 4 cohorts × 4 periods, theta0 = 1.0 for
   // groups with at least one post-treatment cell. Group 3
   // (g=3) has zero post-treatment cells in the n_periods=4
   // grid (t = 0, 1, 2, 3; no t > 3), so its aggregation
-  // legitimately returns 0.0 �?that's a data limitation, not
+  // legitimately returns 0.0 — that's a data limitation, not
   // a bug. Check only groups with at least one strict
   // post-treatment cell (g < max period).
   let max_period = n_periods - 1
@@ -173,8 +173,8 @@ test "did_multi_fit_and_aggregate" { // 4 cohorts × 4 periods, theta0 = 1.0 for
   let t_agg = fitted.aggregate_time()
   inspect(t_agg.theta.length(), content="4")
   // Event-time aggregation: 6 event-time entries
-  // (e = t - g �?{-3, -2, -1, 0, 1, 2} for the staggered
-  // design with g �?{1, 2, 3}, t �?{0, 1, 2, 3}). The
+  // (e = t - g — {-3, -2, -1, 0, 1, 2} for the staggered
+  // design with g — {1, 2, 3}, t — {0, 1, 2, 3}). The
   // aggregator leaves the e <= 0 entries at 0.0 (no
   // post-treatment cell maps to those).
   let e_agg = fitted.aggregate_event()

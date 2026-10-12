@@ -49,7 +49,7 @@ test "did_binary_preprocess_keeps_both_periods" {
 /// (`y_diff = y_post - y_pre`), the wide-format outcome is
 /// approximately `theta * d` (the `x @ 1` terms cancel in the
 /// difference) plus noise. With enough observations the estimator
-/// should recover `theta �?1.0` within a few SE.
+/// should recover `theta — 1.0` within a few SE.
 test "did_binary_recovers_known_att" {
   let n_units = 400
   let p = 3

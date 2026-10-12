@@ -338,6 +338,93 @@ pub fn cross_fit_predict_dispatch(
 }
 
 ///|
+/// Flat row-gather: returns `indices.length() * p` values, row-major.
+/// Private -- the only caller is `cross_fit_predict_conditional_dispatch`.
+/// v0.147.0+.
+///
+/// No public row-subset matrix helper existed, and building one would be a
+/// wider API change than this needs; the gather is two lines and stays local.
+fn gather_rows(x : Matrix, indices : Array[Int], p : Int) -> Array[Double] {
+  let out : Array[Double] = Array::make(indices.length() * p, 0.0)
+  for k = 0; k < indices.length(); k = k + 1 {
+    let r = indices[k]
+    for j = 0; j < p; j = j + 1 {
+      out[k * p + j] = x.get(r, j)
+    }
+  }
+  out
+}
+
+///|
+/// Cross-fitted prediction where the TRAINING rows are additionally restricted
+/// by `train_cond`, but PREDICTION still covers every row. v0.147.0+.
+///
+/// This exists because `cross_fit_predict_dispatch` always fits on the whole
+/// training fold, and one estimator needs upstream's other convention. Mirrors
+/// upstream `fit_predict(..., train_cond=...)`
+/// (`did/tests/_utils.py:33-45`):
+///
+///     train_index_cond = np.intersect1d(train_cond, train_index)
+///     y_hat.append(ml_model.fit(x[train_index_cond],
+///                               y[train_index_cond]).predict(x[test_index]))
+///
+/// The condition gates what the model is FITTED on, NOT what it predicts on.
+/// Reading that difference the other way -- restricting the output as well --
+/// would leave rows in the empty/fallback-cell regime and quietly corrupt the
+/// nuisance, which is exactly the kind of transcription error this comment
+/// exists to prevent.
+///
+/// A fold whose conditioned training set is empty is SKIPPED, leaving its test
+/// rows at `0.0`. That is the one case where the output is not a prediction,
+/// and callers must treat it as "no information" rather than a zero nuisance.
+pub fn cross_fit_predict_conditional_dispatch(
+  learner : LearnerDispatch,
+  x : Matrix,
+  y : Array[Double],
+  folds : Array[Fold],
+  train_cond : Array[Int],
+) -> Array[Double] {
+  let n = y.length()
+  let p = x.cols()
+  let cond : Array[Bool] = Array::make(n, false)
+  for i in train_cond {
+    cond[i] = true
+  }
+  let out : Array[Double] = Array::make(n, 0.0)
+  for f = 0; f < folds.length(); f = f + 1 {
+    let te = folds[f].test_indices()
+    if te.length() == 0 {
+      continue
+    }
+    let tr_all = folds[f].train_indices()
+    let mut tr_idx : Array[Int] = []
+    for i in tr_all {
+      if cond[i] {
+        tr_idx = tr_idx + [i]
+      }
+    }
+    if tr_idx.length() == 0 {
+      continue
+    }
+    let x_train = Matrix::from_array(
+      gather_rows(x, tr_idx, p),
+      tr_idx.length(),
+      p,
+    )
+    let y_train = Array::make(tr_idx.length(), 0.0)
+    for k = 0; k < tr_idx.length(); k = k + 1 {
+      y_train[k] = y[tr_idx[k]]
+    }
+    let x_test = Matrix::from_array(gather_rows(x, te, p), te.length(), p)
+    let preds = fit_predict_one_dispatch(learner, x_train, y_train, x_test)
+    for k = 0; k < te.length(); k = k + 1 {
+      out[te[k]] = preds[k]
+    }
+  }
+  out
+}
+
+///|
 /// Single-fit + single-predict helper for a `LearnerDispatch`.
 /// Used by estimators (e.g. `DoubleMLSSM` for the augmented
 /// `(X, D) -> S` pi fit, `DoubleMLIIVM` for conditional subsets

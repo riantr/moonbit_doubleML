@@ -126,8 +126,8 @@ test "ssm_g_d1_d0_design_does_not_use_pi_as_feature" {
   // and that the fitted predictor's `n_features()` reflects the
   // raw X dimensionality (no extra column for pi). We also check
   // that the resulting coef and se on the canonical DGP land
-  // within the post-fix range (�?0.97 to 1.03 for theta and
-  // �?0.03 to 0.06 for se) �?the pre-fix value was theta �?0.94
+  // within the post-fix range (— 0.97 to 1.03 for theta and
+  // — 0.03 to 0.06 for se) — the pre-fix value was theta — 0.94
   // with a different SE.
   let n = 1500
   let p = 5
@@ -180,7 +180,7 @@ test "ssm_g_d1_d0_design_does_not_use_pi_as_feature" {
   let fitted = DoubleMLSSM::new(data, n_folds=2, n_rep=1, seed=3141).fit()
   let theta = fitted.coef()
   let se = fitted.se()
-  // The pre-fix value was theta �?0.94. After the fix, theta
+  // The pre-fix value was theta — 0.94. After the fix, theta
   // should land within the [0.95, 1.05] band. We give a wider
   // tolerance to be robust to seed / RNG drift across platforms.
   inspect((theta - theta0).abs() < 0.1, content="true")

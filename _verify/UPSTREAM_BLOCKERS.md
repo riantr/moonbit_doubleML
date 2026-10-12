@@ -408,7 +408,7 @@ snippet genuinely triggers the documented error).
 **Auditor**: `moonbit-prove-verifier` (verifier worker, branch session
 `mvs_b2665c67c37649dcad1df4f769ccb8fc`).
 **Toolchain observed**: moon 0.1.20260904, moonc v0.10.12+1634b282e
-(different from producer's reported v0.10.11, but compatible 鈥?see
+(different from producer's reported v0.10.11, but compatible — see
 Finding A1).
 **Audit scratch** (post-v0.52.0 release state):
 `_verify/audit-scratch-v0.52/` (archived; logs preserved as
@@ -482,9 +482,9 @@ Mapping to the producer's 6-category scheme:
 | Category                | Mapping                                            | Count |
 | ----------------------- | -------------------------------------------------- | ----: |
 | Bucket 1 (Array lower)  | prim_body (16) + prim_logic (18)                   |  34   |
-| Bucket 2 (Double cmp)   | (none expected 鈥?Int-only contract)                |   0   |
-| Bucket 3 (raise in body)| (none expected 鈥?try/catch shim only)              |   0   |
-| Bucket 4 (foreach)      | (none expected 鈥?C-style range only)               |   0   |
+| Bucket 2 (Double cmp)   | (none expected — Int-only contract)                |   0   |
+| Bucket 3 (raise in body)| (none expected — try/catch shim only)              |   0   |
+| Bucket 4 (foreach)      | (none expected — C-style range only)               |   0   |
 | New Block A (call wl)   | call_body (7) + call_logic (1)                     |   8   |
 | New Block B (lit/block) | expr_body (14)                                     |  14   |
 | **Total**               |                                                    | **56**|
@@ -514,7 +514,7 @@ identification is consistent with the producer's listing.
 
 ### Phase 5 not-triggered verdict verification
 
-#### Bucket 2 (Double comparison) 鈥?**VERDICT: REPRODUCER FIRES**
+#### Bucket 2 (Double comparison) — **VERDICT: REPRODUCER FIRES**
 
 Minimal reproducer at `_verify/audit-bucket2-double/double_cmp.mbt`:
 
@@ -548,13 +548,13 @@ underlying Blocker 2 itself is real and reproducible.
 
 **Note**: the producer's characterization of Bucket 2 as "Double
 comparison primitives not supported" is **incomplete**. The
-minimal reproducer also surfaces a separate restriction 鈥?`1.5` (a `Double` literal) is rejected with a different error
+minimal reproducer also surfaces a separate restriction — `1.5` (a `Double` literal) is rejected with a different error
 ("only Bool/Byte/Int/UInt/Int64/UInt64 constants are supported
 in logic/contracted function body"). This is a sub-class of
 "Double literal in proof body" that the producer's report does
 not name. See Finding A2.
 
-#### Bucket 3 (raise in body) 鈥?**VERDICT: REPRODUCER BEHAVIOR UNUSUAL**
+#### Bucket 3 (raise in body) — **VERDICT: REPRODUCER BEHAVIOR UNUSUAL**
 
 The minimal reproducer for Bucket 3 (a function with
 `proof_require` whose body uses `raise X`) causes **`moonc prove`
@@ -576,7 +576,7 @@ This is a toolchain-blocking failure, not a clean diagnostic. The
 producer's "Bucket 3 not triggered" verdict for the main package
 is correct, but for a slightly different reason than the producer
 states: the main package's `try { require() } catch { abort() }`
-shim is not just a workaround for Blocker 3 鈥?it is **the only
+shim is not just a workaround for Blocker 3 — it is **the only
 shape that lets the package be proven at all**. A package whose
 body contains a `raise` (even wrapped in try/catch with abort)
 is **rejected by `moonc prove` before any of the 4 documented
@@ -584,7 +584,7 @@ blockers can fire**.
 
 See Finding A3.
 
-#### Bucket 4 (foreach) 鈥?**VERDICT: REPRODUCER BEHAVIOR UNUSUAL**
+#### Bucket 4 (foreach) — **VERDICT: REPRODUCER BEHAVIOR UNUSUAL**
 
 The minimal reproducer for Bucket 4 (a function with
 `proof_require` whose body uses `for x in arr`) also causes
@@ -650,13 +650,13 @@ Instead, `moonc prove` exits with the help-text
 `moonc prove [options] <input files>` error, indicating that
 the moonc binary received no valid input file. This means the
 **proof pipeline does not report a precise Bucket 3 failure
-mode** for the reproducer 鈥?it just dies.
+mode** for the reproducer — it just dies.
 
 The producer's claim that "Blocker 3 is not triggered in the
 main package" is correct (the main package avoids `raise`
 entirely), but a user who tries to convert
 `try { require() } catch { abort() }` to `raise PreconditionError`
-will not see a clear diagnostic 鈥?they will see the moonc help
+will not see a clear diagnostic — they will see the moonc help
 text and have to manually diagnose why the package is
 un-provable.
 
@@ -688,14 +688,14 @@ diagnostic.
 `_verify/audit_bucket4_foreach/foreach_test.mbt` + the
 `prove_v2.log` output.
 
-**Recommendation**: same as A3 鈥?file upstream.
+**Recommendation**: same as A3 — file upstream.
 
 #### A5 (nit): audit-scratch `seed_to_bytes` is a stand-in, not the real helper
 
 The audit-scratch's `seed_to_bytes : Int -> Int` is a stand-in
 for the main package's `seed_to_bytes : Int -> Array[Int]`
 (8-byte little-endian). The stand-in is not byte-equivalent and
-is not intended to be 鈥?the audit-scratch is verifying the
+is not intended to be — the audit-scratch is verifying the
 **contract and proof pipeline behavior**, not the runtime
 correctness of `seed_to_bytes`. The audit-scratch's RNG and
 permutation are also stand-ins. This is documented in
@@ -710,7 +710,7 @@ choice.
 The audit-scratch's 56 errors are distributed across the same
 6 categories as the producer's 80 errors, with proportions within
 5-6% of each other. The audit-scratch is a smaller mirror
-(intentionally 鈥?it strips the random-RNG and the
+(intentionally — it strips the random-RNG and the
 `Bytes::from_array` chain to keep the package self-contained),
 so the absolute counts differ but the relative distribution is
 consistent. This is a sanity check, not a finding.

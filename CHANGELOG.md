@@ -9,7 +9,145 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-﻿## [0.146.0] 鈥?did_cs: persist the panel-wide group propensity (stage 1a of 4)
+## [0.147.0] — did_cs: the four `(d, t)` outcome nuisances (stage 1b of 4)
+
+Purely additive. **No reported number changes in this release**, and that is
+asserted rather than asserted-to.
+
+### What lands
+
+`DoubleMLDIDCS` now cross-fits and exposes the four upstream outcome nuisances
+`g_dXtY = E[Y | D=d, T=t, X]` on the long panel, as four **named** accessors
+`predictions_g_d0_t0()` / `_d0_t1()` / `_d1_t0()` / `_d1_t1()`, backed by a new
+`cross_fit_predict_conditional_dispatch` in `learner.mbt` — upstream's
+`fit_predict(..., train_cond=...)` convention (`did/tests/_utils.py:33-45`).
+
+### Why
+
+Upstream's `sigma2` needs `g_hat` assembled from **four** `(d, t)` cells
+(`did_cs.py:445-449`, `456-461`). The port had **two**, split by `d` alone, taken
+from each cell's child `DoubleMLDIDBinary` restricted to its own subset — a
+different object that cannot be reassembled on the full panel. Recording the
+blocker was part of v0.146.0; this stage resolves it.
+
+### The API is four names, not a 4-tuple — and that was a measured decision
+
+The obvious design is one `predictions_g_d()` returning
+`(d0t0, d0t1, d1t0, d1t1)`. Two probes ruled it out:
+
+1. **The obvious discriminator does not exist.** Cell-wise RMSE has no minimal
+   diagonal — `g_d0t1` beats `g_d0t0` on cell `(d0,t0)`. RMSE ≈ 14 is dominated
+   by noise while the four conditional means differ by under 2. A gate resting
+   on "each nuisance predicts its own cell" would have been decorative.
+2. **Nothing else sees a permutation either.** All four arrays have length `n`,
+   are all finite, and all vary — so a swapped return literal passes every
+   length / finiteness / variation gate while quietly building the wrong
+   `g_hat` for whoever assembles it.
+
+With four named accessors the permutation is not expressible. The names also
+match the sibling `DoubleMLDIDCSBinary::predictions_g_d0_t0` and siblings, so
+the two estimators read the same way.
+
+### The `t ∈ {0,1}` question, settled by upstream's source rather than by taste
+
+The four cells cover only `t = 0` and `t = 1`. That is not a shortcut, and
+extending them would be a **new modelling decision, not a port**:
+
+- `did/tests/_utils_did_cs_manual.py::fit_nuisance_did_cs` selects
+  `intersect1d(where(d == 0), where(t == 0))` and three siblings;
+- `did/datasets/dgp_did_CS2021.py:309` sets `"t": time_matrix.flatten()`, so
+  upstream's `t` **is** the period;
+- `did/tests/_utils.py:33-45` intersects the condition with the training index
+  and then predicts on the whole test fold — the condition gates **fitting**,
+  not prediction.
+
+So upstream's `DoubleMLDIDCS` is the 2×2 repeated-cross-section design and its
+multi-period sibling is `DoubleMLIDMulti`. On the canonical 2-period
+`make_did_cs_CS2021` panel `t ∈ {0,1}` is the whole panel and this is an exact
+transcription; on a longer panel — which this port permits and upstream does
+not — rows with `t ≥ 2` train none of the four, reproducing upstream.
+
+### Gates — 7 added, and one was rewritten because a probe showed it was blind
+
+`expand_v147_test.mbt`. **GATE 1 was rewritten before it shipped.**
+`cross_fit_predict_conditional_dispatch` pre-sizes its output to `n` and skips
+only a fold whose conditioned training set is empty, so restricting
+*prediction* to the cell still returns four arrays of length `n`. The first
+draft asserted length and would have survived that mutation — which is the exact
+error `learner.mbt`'s own doc comment warns against. GATE 1 now asserts
+**coverage** instead: measured on the 4-period panel there are **0** exact `0.0`
+entries anywhere in any of the four arrays, while cell-restricted prediction
+would leave 1300 / 1400 / 1500 / 1400 of them.
+
+- **GATE 7 (identity)** pins one measured mean per named accessor, so an
+  accessor returning the wrong field is caught rather than merely plausible.
+  Tolerance is the minimum separation, not a guess: the four means are
+  24.4938 / 24.9540 / 25.5576 / 26.1620, closest pair 1.8% apart, so at 1e-12
+  any swap exceeds tolerance by ten orders of magnitude. **Exactness is
+  restored where available**: run on all four backends, the means of `g_d0t1`,
+  `g_d1t0` and `g_d1t1` are bit-identical and are asserted with `==`. Only
+  `g_d0t0` differs — js ends `...4715` where the other three end `...472`,
+  ≈2e-16 relative — and only that one carries a tolerance.
+- **GATE 5** pins that `(d=1, t=0)` is *structurally empty* on the canonical
+  2-period fixture (nobody is treated in the pre-period) and pins that the name
+  `d1t0` reaches the array that is actually all zeros. Harmless for `g_hat`,
+  whose weight `d·(1−t)` is identically zero wherever `t = 0`, but a caller
+  reading the array directly would otherwise see a plausible number that means
+  nothing.
+- **GATE 3** pins occupancy 300 / 200 / 100 / 200 with **800 rows outside the
+  2×2** — the number a future reader needs to notice if someone helpfully
+  extends the cells to later periods.
+
+### Mutation evidence — 6 mutants, all killed, and the map says which gate is real
+
+Six mutations of `did_cs.mbt` / `learner.mbt`: **6/6 killed, 0 survivors, 0
+inconclusive.** Which gate fires is the part that matters:
+
+| Mutant | Gates that fired |
+|---|---|
+| M1 cells generalised to all periods | 7 |
+| M2 `d`-split dropped | 1, 2, 7 |
+| M3 prediction restricted to the cell | 1, 7 |
+| M4 `d0_t0` accessor returns the `d1t0` field | 5, 7 |
+| M5 computed but never observable at the accessor | 1, 2, 5, 7 |
+| M6 condition dropped (plain cross-fit) | 7 |
+
+**Three gates never fired, and two of them are declared while one was
+corrected.**
+
+- **GATE 3 is declared non-discriminating.** It counts occupancy from
+  `data.d` / `data.t` — i.e. from the **fixture**. The data does not change when
+  the code does, so no mutation of the nuisance computation can fail it,
+  *including M1*, the one mutant that actually breaks the `t ∈ {0,1}`
+  property. M1 is caught by GATE 7 instead, which reads the numbers the cell
+  assignment produces. GATE 3 is a fixture pin and a tripwire for a future
+  fixture change; it is **not** evidence the cell assignment is correct, and its
+  doc comment now says so. An unexplained survivor is how a gate nobody
+  understands ends up cited as coverage.
+- **GATE 4** (no estimate moves) survives all six, by design: nothing consumes
+  the four nuisances yet, so corrupting a quantity no estimator reads cannot
+  move an old estimate. That uniform survival *is* the property being certified.
+- **GATE 6** (empty before fit) survives M1-M5, none of which touch the
+  constructor's `[]` initialisation. It guards the absent/zero boundary.
+
+**Two mutant designs were discarded as inconclusive, not counted.** The obvious
+"propagate `[]`" and "delete `if cond[i]`" forms both orphan a variable, fail to
+build, and therefore prove nothing — an uncompilable mutant is not a kill. Both
+were rewritten to preserve behaviour *and* compile.
+
+**M3 is why GATE 1 was rewritten before shipping.** It kills the coverage check
+that its length-only draft could not see.
+
+**Stage 1b blocker, recorded so it is not rediscovered.** Upstream's `sigma2`
+needs `g_hat` from four `(d, t)` outcome nuisances; stage 1b supplies them.
+Separately, `DoubleMLDIDCS::new` has no `score` parameter while the sub-DID
+hardcodes `score="observational"`, so upstream's two `experimental` branches are
+unreachable. Upstream's did_cs numbers are therefore an architectural change to
+the estimator, not a formula swap; until stage 2 lands, `nu2` is still
+`mean(psi_a^2)` on the DML score element and NOT upstream's
+`mean(2*m_alpha - rr^2)`.
+
+## [0.146.0] — did_cs: persist the panel-wide group propensity (stage 1a of 4)
 
 Purely additive. **No reported number changes in this release**, and that is
 asserted rather than asserted-to.
@@ -22,7 +160,7 @@ panel-wide folds backing it via `sensitivity_folds()`.
 
 ### Why
 
-Upstream's did_cs sensitivity decomposition needs this on the full panel 鈥?`propensity_weight_d0 = m_hat / (1 - m_hat)` (`did_cs.py:470`), which feeds
+Upstream's did_cs sensitivity decomposition needs this on the full panel — `propensity_weight_d0 = m_hat / (1 - m_hat)` (`did_cs.py:470`), which feeds
 `m_alpha` and hence `nu2 = mean(2*m_alpha - rr^2)` (`did_cs.py:527-528`).
 
 Nothing in the port could supply it:
@@ -42,13 +180,13 @@ treatment and period are spread across folds.
 `sensitivity_analysis` still routes through the legacy `irm_style_sensitivity`.
 `nu2` is still `mean(psi_a^2)` on the DML score element, not upstream's
 `mean(2*m_alpha - rr^2)`. The stage that consumes this nuisance additionally
-needs the four `(d, t)` outcome nuisances, which this release does not build 鈥?see the blocker recorded below.
+needs the four `(d, t)` outcome nuisances, which this release does not build — see the blocker recorded below.
 
 ### Blocker recorded for stage 1b
 
 Upstream's `sigma2` needs `g_hat` built from **four** `(d, t)` outcome
 nuisances (`did_cs.py:445-449`). The port has **two**, split by `d` only, taken
-from each cell's child (`did_cs.mbt:1045-1046`) 鈥?they cannot be recovered,
+from each cell's child (`did_cs.mbt:1045-1046`) — they cannot be recovered,
 only refit on the full panel. And `DoubleMLDIDCS::new` has no `score` parameter
 while the sub-DID hardcodes `score="observational"` (`did_cs.mbt:1009`), so
 upstream's two `experimental` branches are unreachable. Getting upstream's
@@ -59,9 +197,9 @@ numbers is therefore an architectural change, not a formula swap.
 | | |
 |---|---|
 | `m_hat` length | `1600` (the long panel: 400 units 脳 4 periods) |
-| `m_hat` range | `0.46749202888133645` 鈥?`0.6551214919179011` |
+| `m_hat` range | `0.46749202888133645` — `0.6551214919179011` |
 | `mean(m_hat)` | `0.5627032315060088` vs `mean(D) = 0.5625` |
-| folds | 2, 800 test rows each 鈥?exact, non-overlapping cover |
+| folds | 2, 800 test rows each — exact, non-overlapping cover |
 
 `mean(m_hat)` tracking `mean(D)` to within `2e-4` is the calibration check that
 the cross-fit is wired to the right target.
@@ -69,7 +207,7 @@ the cross-fit is wired to the right target.
 ### Gates
 
 Seven in `expand_v146_test.mbt`. **GATE 5 is the one that matters**: it pins
-three `coef`/`se` pairs against values recorded *before* this change existed 鈥?
+three `coef`/`se` pairs against values recorded *before* this change existed —
 ```
 (g=1,t=2) 0.719493089978081    se 1.436337096130982
 (g=1,t=3) 0.35566148636473893  se 1.2174113759994636
@@ -81,10 +219,10 @@ so "I only added a field" is a measurement rather than a claim.
 **GATE 5's first draft pinned these bit-for-bit, and failed on wasm, wasm-gc
 and js.** Chasing that rather than loosening blindly is what made it
 informative: the did_cs estimates are **not** bit-identical across backends.
-Measured spread on `coef(0,2)` 鈥?native `0.719493089978081`, wasm/wasm-gc
-`...806`, js `...821` 鈥?is about **1.5e-15 relative**, two ULP, and it is
+Measured spread on `coef(0,2)` — native `0.719493089978081`, wasm/wasm-gc
+`...806`, js `...821` — is about **1.5e-15 relative**, two ULP, and it is
 pre-existing: stage 1a does not touch the estimation path. The gate now uses a
-1e-12 *relative* tolerance, set from that measurement 鈥?~700脳 above the observed
+1e-12 *relative* tolerance, set from that measurement — ~700脳 above the observed
 platform noise and still ten orders of magnitude below the smallest change a
 real regression of this estimator could produce. The weakness is declared:
 a perturbation below the platform noise floor is not distinguishable from the
@@ -95,7 +233,7 @@ has no inherited spread, and measurably it does not:
 `mean(m_hat) = 0.5627032315060088` on all four backends, bit for bit. So that is
 pinned exactly.
 
-GATE 6 pins that an unfitted model returns an **empty** nuisance, not zeros 鈥?the
+GATE 6 pins that an unfitted model returns an **empty** nuisance, not zeros — the
 "absent vs zero" distinction `sensitivity_analysis` itself currently gets wrong
 for skipped cells.
 
@@ -12409,7 +12547,7 @@ point and the v0.54.0 work is a forward-merge, not a retroactive
 v0.53.0 patch.
 
 ---
-## [0.53.0] 鈥?global-review fixes + whitebox-test convention + CI loop tightening
+## [0.53.0] — global-review fixes + whitebox-test convention + CI loop tightening
 
 Triggered by the v0.52 post-release global review (15-member
 workspace scan + Python cross-validators + dependency-rule
@@ -12419,11 +12557,11 @@ API changes; the v0.52 surface is byte-identical.
 
 ### Added
 
-- **Whitebox-test convention** 鈥?`*_wbtest.mbt` files for
+- **Whitebox-test convention** — `*_wbtest.mbt` files for
   package-internal helpers. Two wbtest files added (11 tests
   total):
   - `kfold_wbtest.mbt` (5 tests): `expand_unit_folds_to_rows`
-    invariants (cluster contract 鈥?no unit straddles a split;
+    invariants (cluster contract — no unit straddles a split;
     per-fold unit count matches unit-level fold size; total
     row coverage complete) and `build_row_unit_map` correctness
     under non-contiguous unit ids + the v0.36.0
@@ -12438,7 +12576,7 @@ API changes; the v0.52 surface is byte-identical.
 
 ### Fixed (CI / housekeeping)
 
-- **`examples/consumer_demo/` workspace registration** 鈥?
+- **`examples/consumer_demo/` workspace registration** —
   the 14th on-disk example (a `moon.mod` v0.1.0 package
   intended as the library-user pattern demo for
   `moon add riantr/moonbit_doubleML`) was not in `moon.work`,
@@ -12447,24 +12585,24 @@ API changes; the v0.52 surface is byte-identical.
   `examples/consumer_demo/moon.pkg`.
 
 - **`__pycache__/validate_with_python.cpython-313.pyc`
-  force-tracked** 鈥?`__pycache__/` is in `.gitignore` but
+  force-tracked** — `__pycache__/` is in `.gitignore` but
   the file was force-added; `git rm --cached` removed it.
 
-- **`doc/native/` build artefacts untracked** 鈥?six
+- **`doc/native/` build artefacts untracked** — six
   `doc/00X_*` tutorials were each producing a `native/`
   build tree (559 untracked files: `.core`, `.mbt`, `.json`,
   `.exe`, plus `doc/.moon-lock` and `doc/.moon_db`).
   Added `doc/.moon-lock`, `doc/.moon_db`, `doc/native/` to
   `.gitignore`.
 
-- **`validate_with_python.py` master script stale** 鈥?
+- **`validate_with_python.py` master script stale** —
   referenced the deleted `cmd/main` path and emitted no
   trailing `PASS`. Renamed to
   `validate_with_python.py.archived_2026_09_25` so it
   exits the `validate_*_with_python.py` CI glob and matches
   the existing `*.archived.*` ignore rule.
 
-- **`.archived_<date>` scratch suffix not gitignored** 鈥?
+- **`.archived_<date>` scratch suffix not gitignored** —
   the verifier / cleanup cycle uses `<name>.archived_<date>`
   renames that were not covered by `*.archived` /
   `*.archived.*`. 18 untracked scratch files from the v0.52
@@ -12472,7 +12610,7 @@ API changes; the v0.52 surface is byte-identical.
   `*.archived_*` to `.gitignore`.
 
 - **`python-cross-check` CI loop silently passed on
-  missing PASS** 鈥?the loop was `python "$s" | tail -1`,
+  missing PASS** — the loop was `python "$s" | tail -1`,
   which never asserted the trailing line contained `PASS`,
   so any script that crashed silently exited 0. Renamed the
   step to "Run all 23 validate_*_with_python.py scripts"
@@ -12482,20 +12620,20 @@ API changes; the v0.52 surface is byte-identical.
 
 ### Changed (docs)
 
-- **Estimator count wording** 鈥?README/AGENTS/skills all
+- **Estimator count wording** — README/AGENTS/skills all
   updated from "17 models" to the accurate "22 estimators
   in 17 files (19 upstream + 3 extras: `DIDCSBinary`, `LPLR`,
   `PLPR`)". Models table expanded from 19 to 22 rows with
   `(upstream)` / `(extra)` markers.
 
-- **Example count wording** 鈥?README "Demo entry points"
+- **Example count wording** — README "Demo entry points"
   and "Project layout" sections, AGENTS.md "moon.work
   members", and skills all aligned on "14 dirs in moon.work,
   13 CLI demos + 1 library-user pattern + 1 HTTP service".
   Also corrected the `examples/lplr` driver row (was tagged
   `DoubleMLLPQ`, actually `DoubleMLLPLR`).
 
-- **README Models table** 鈥?corrected `did_cs_binary` entry
+- **README Models table** — corrected `did_cs_binary` entry
   from "DoubleMLDIDCS (binary outcome)" to
   "DoubleMLDIDCSBinary" (now its own estimator struct in
   `did_cs_binary.mbt`).
@@ -12523,7 +12661,7 @@ API changes; the v0.52 surface is byte-identical.
 | `701ee5b` | matrix: add whitebox tests for hot-path structural contracts |
 
 ---
-## [0.52.0] 鈥?`LPQ` completeness + estimator fit() cascade wrap + backend math consistency
+## [0.52.0] — `LPQ` completeness + estimator fit() cascade wrap + backend math consistency
 
 Triggered by the v0.52 reproduction review cycle
 (`_verify/REVIEW_FRONTEND.md` + `_verify/REVIEW_BACKEND.md`).
@@ -12545,10 +12683,10 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   - `DoubleMLLPQ::n_obs` / `n_features` getters wrapped for API
     consistency with the rest of the DML estimator surface.
   - New test: `DoubleMLLPQ::confint_before_fit_aborts`
-    (`lpq_test.mbt`) 鈥?assert confint aborts when called before
+    (`lpq_test.mbt`) — assert confint aborts when called before
     fit, matching the LPLR regression-test pattern.
 
-- **Estimator fit() cascade wrap sweep** (11 sites) 鈥?closes the
+- **Estimator fit() cascade wrap sweep** (11 sites) — closes the
   v0.48.0 cascade gap between cluster paths (already wrapped) and
   row-level / non-cluster paths. Now wraps:
   - row-level `DoubleMLPLR::fit` (`plr.mbt:165`)
@@ -12591,31 +12729,31 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   inner `(a[i] - m) * (a[i] - m)` sum is now Kahan-compensated,
   matching the sibling `mean`.
 
-- **Regression test** (`matrix_test.mbt`) 鈥?adds
+- **Regression test** (`matrix_test.mbt`) — adds
   `matvec_t_kahan_matches_matvec` that constructs a
   sign-cancelling input where the un-Kahan version drifts,
   asserting `matvec(A, x)` and `matvec_t(A^T, x)` agree to
   蔚-precision. Catches future Kahan reverts.
 
 - **Dead-code cleanup**:
-  - `linalg.mbt:35-37` 鈥?removed the unreachable `if d == 0.0
+  - `linalg.mbt:35-37` — removed the unreachable `if d == 0.0
     { continue }` branch in `cholesky` (the `require(diag > 0.0)`
     on line 31 makes it unreachable).
-  - `did_aggregation.mbt:81-82` 鈥?removed the unused `w_g`
+  - `did_aggregation.mbt:81-82` — removed the unused `w_g`
     computation in `aggregate_group` (result was assigned to
     `_` immediately).
-  - `quantile.mbt:211-212` 鈥?removed the unused `lo_score`
+  - `quantile.mbt:211-212` — removed the unused `lo_score`
     computation in `solve_pq`. The pre-v0.42.0 lower-bracket
     dead-code cleanup was incomplete; this finishes the
     cleanup.
 
 ### Changed
 
-- **`cmd/*/moon.pkg`** 鈥?removed `moonbitlang/core/bytes` import
+- **`cmd/*/moon.pkg`** — removed `moonbitlang/core/bytes` import
   from all 11 cmd entries (apos, cvar, datasets, did_binary,
   did_cross_section, did_cs, did_multi, fuzz, lplr, main, plpr).
   None of the cmd entries used `bytes`. Several cmd entries
-  additionally had unused `random` / `math` imports 鈥?pruned to
+  additionally had unused `random` / `math` imports — pruned to
   match actual usage (`apos` + `main` keep only `math`;
   `did_binary`, `did_cross_section`, `did_cs`, `did_multi`, `cvar`
   keep only `riantr/moonbit_doubleML`; `datasets`, `fuzz`, `lplr` keep both
@@ -12624,7 +12762,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 
 ### Deprecated
 
-- **`Array::new()`** 鈥?7 pre-existing call sites replaced with
+- **`Array::new()`** — 7 pre-existing call sites replaced with
   `[]` literals (deprecated under moon 0.1.20260904+). Sites:
   `kfold.mbt:627` (`out : Array[Array[Double]] = []`),
   `lplr.mbt:428` (`w_inner : Array[Array[Double]] = []`),
@@ -12636,7 +12774,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 
 ### Skipped
 
-- **`_verify/audit-scratch-v0.52/`** 鈥?the v0.52 reproduction
+- **`_verify/audit-scratch-v0.52/`** — the v0.52 reproduction
   audit-scratch directory (proof-enabled `kfold_stratified`
   mirror) is moved out of the project workspace
   (`D:\src\MiniMax\Projects\DoubleMachineLearning\_archived-audit-scratch-v0.52`)
@@ -12648,8 +12786,8 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 
 ### Tests
 
-- `DoubleMLLPQ::confint_before_fit_aborts` 鈥?1 test
-- `matvec_t_kahan_matches_matvec` 鈥?1 test
+- `DoubleMLLPQ::confint_before_fit_aborts` — 1 test
+- `matvec_t_kahan_matches_matvec` — 1 test
 - Net delta: **+2 tests (329 鈫?331)**
 - All 4 backends 脳 `--deny-warn`: 331 / 331 PASS
 - 11 fuzz surfaces: 0 violations
@@ -12677,10 +12815,10 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 
 ---
 
-## [0.51.0] 鈥?`DoubleMLDIDCSBinary` (Callaway-Sant'Anna DID with binary outcome)
+## [0.51.0] — `DoubleMLDIDCSBinary` (Callaway-Sant'Anna DID with binary outcome)
 
 ### Added
-- **`did_cs_binary.mbt::DoubleMLDIDCSBinary`** 鈥?new
+- **`did_cs_binary.mbt::DoubleMLDIDCSBinary`** — new
   Callaway-Sant'Anna (2021) DID estimator for panel data
   with binary outcomes, port of the upstream
   `doubleml.DoubleMLDIDCSBinary` (Python 0.11.3). Implements
@@ -12699,14 +12837,14 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 - **Internal helpers** in `did_cs_binary.mbt`
   (co-located for v0.51.0 simplicity, all `fn` not
   `pub fn`):
-    - `cs_bin_panel_subset` 鈥?subset the long-format
+    - `cs_bin_panel_subset` — subset the long-format
       panel to the 4 `(G, T)` cells.
-    - `cs_bin_crossfit_nuisance` 鈥?crossfit the 4
+    - `cs_bin_crossfit_nuisance` — crossfit the 4
       g-functions and the propensity.
-    - `fit_cs_bin_g` 鈥?fit one g-function on the
+    - `fit_cs_bin_g` — fit one g-function on the
       matching `(d, t)` cell and predict on the test
       fold.
-    - `cs_bin_score_obs` 鈥?observational
+    - `cs_bin_score_obs` — observational
       Sant'Anna-Zhao (2020) score (psi_a, psi_b),
       with optional in-sample normalization.
 - **`DoubleMLDIDCSBinary` accessors**: `coef`, `se`,
@@ -12717,7 +12855,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   `predictions_g_d0_t0`, `predictions_g_d0_t1`,
   `predictions_g_d1_t0`, `predictions_g_d1_t1`,
   `predictions_m`, `psi_a`, `psi_b`.
-- **`did_cs_binary_test.mbt`** 鈥?4 new tests:
+- **`did_cs_binary_test.mbt`** — 4 new tests:
   `did_cs_binary_recovers_att` (synthetic 2-period
   2-group DGP with binary Y, true ATT = 1.0, estimator
   recovers it), `did_cs_binary_panel_subset_shape`
@@ -12726,10 +12864,10 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   partition is well-defined for the 4-stratum setup),
   `did_cs_binary_accessors_match` (constructor args
   round-trip through accessors).
-- **`cmd/did_cs_binary/main.mbt`** + **`cmd/did_cs_binary/moon.pkg`** 鈥?  2-period, 2-group panel DGP with deterministic binary
+- **`cmd/did_cs_binary/main.mbt`** + **`cmd/did_cs_binary/moon.pkg`** —  2-period, 2-group panel DGP with deterministic binary
   Y. Runs `DoubleMLDIDCSBinary` and prints
   `ATT_hat / SE / 95% CI` to stdout.
-- **`validate_did_cs_binary_with_python.py`** 鈥?new
+- **`validate_did_cs_binary_with_python.py`** — new
   validator. Hand-rolled reference reproduces the
   MoonBit estimator and compares against upstream
   `doubleml.DoubleMLDIDCSBinary` for the same DGP.
@@ -12762,7 +12900,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   to the score (the upstream uses it to extend the
   post-treatment window; that's a v0.52.0+ target).
 - **No sensitivity analysis, no `tune_optuna`, no
-  multiplier bootstrap** 鈥?all v0.52.0+ targets.
+  multiplier bootstrap** — all v0.52.0+ targets.
 
 ### Tests
 - 329/329 PASS (was 325: +4 for `DoubleMLDIDCSBinary`)
@@ -12771,10 +12909,10 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 
 ---
 
-## [0.50.1] 鈥?Doc/comment drift patch for v0.49.0 + v0.50.0
+## [0.50.1] — Doc/comment drift patch for v0.49.0 + v0.50.0
 
 ### Fixed
-- **`apo.mbt::DoubleMLAPOS` struct docstring** 鈥?the v0.49.0
+- **`apo.mbt::DoubleMLAPOS` struct docstring** — the v0.49.0
   docstring claimed "stratified sample splitting" and
   "treatment levels fit with the same fold partition". The
   child `DoubleMLAPO` actually draws its own folds via
@@ -12782,34 +12920,34 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   partition through a `fit_with_splits` helper is a
   v0.50.0+ target. Reworded to clarify the v0.49.0 actual
   semantics.
-- **`apo.mbt::DoubleMLAPOS::fit` inline comment** 鈥?the
+- **`apo.mbt::DoubleMLAPOS::fit` inline comment** — the
   v0.49.0 comment referred to a non-existent
   `fit_with_splits` helper and stated that the child uses
   the parent's stratified fold partition (it does not).
   Reworded to describe the actual v0.49.0 behaviour:
   each child draws its own folds; the parent is the
   repetition owner.
-- **`apo.mbt::DoubleMLAPOS::causal_contrast` docstring** 鈥?  the v0.49.0 docstring claimed each returned row has
+- **`apo.mbt::DoubleMLAPOS::causal_contrast` docstring** —  the v0.49.0 docstring claimed each returned row has
   length `treatment_levels.length()`. Actual layout is
   `2 * treatment_levels.length() - 1`: the ref-level slot
   is a single `0.0` and every other slot is a `(delta, se)`
   pair. Reworded with the actual indices and an example
   for a 2-level input.
-- **`kfold.mbt::kfold_stratified` dead `key_of` array** 鈥?  the v0.49.0 implementation built a `key_of` array per
+- **`kfold.mbt::kfold_stratified` dead `key_of` array** —  the v0.49.0 implementation built a `key_of` array per
   row but only used it as a debugging handle (`let _ = key_of`).
   Removed the array and the let-binding.
 
 ### Documentation
-- **`CHANGELOG.md` v0.50.0 entry** 鈥?"6 public accessors"
+- **`CHANGELOG.md` v0.50.0 entry** — "6 public accessors"
   corrected to **8** (the v0.50.0 `DoubleMLCVAR` exposes
   `coef`, `se`, `confint`, `predictions_g`,
   `predictions_m`, `n_obs`, `n_features`, `fitted`).
-- **`cmd/cvar/main.mbt` import alias** 鈥?`@riantr/moonbit_doubleML.*`
+- **`cmd/cvar/main.mbt` import alias** — `@riantr/moonbit_doubleML.*`
   replaced with `@dml.*` to match every other
   `cmd/*/main.mbt` in the project.
 
 ### Style
-- **`cmd/apos/main.mbt` formatting** 鈥?`moon fmt` produced
+- **`cmd/apos/main.mbt` formatting** — `moon fmt` produced
   a non-empty diff on the file at v0.50.0 ship time; v0.50.1
   reformats inline `println` calls and the Y expression
   for consistency. No semantic change.
@@ -12821,10 +12959,10 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 
 ---
 
-## [0.50.0] 鈥?`DoubleMLCVAR` (Conditional Value at Risk for potential outcomes, Kallus/Mao/Uehara 2024)
+## [0.50.0] — `DoubleMLCVAR` (Conditional Value at Risk for potential outcomes, Kallus/Mao/Uehara 2024)
 
 ### Added
-- **`cvar.mbt::DoubleMLCVAR`** 鈥?new IRM-family estimator
+- **`cvar.mbt::DoubleMLCVAR`** — new IRM-family estimator
   that targets the upper-tail conditional mean of
   `Y(treatment)` (the CVaR) via the Kallus/Mao/Uehara
   (2024) "Removing Hidden Confounding by Supervised
@@ -12880,7 +13018,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   `predictions_g` / `predictions_m` accessors return
   the last rep's cross-fitted nuisances (matching the
   rest of the package's "last rep wins" convention).
-- **`cvar_test.mbt`** 鈥?5 new tests:
+- **`cvar_test.mbt`** — 5 new tests:
   `cvar_recovers_conditional_value_at_risk`
   (positive DGP, `|coef - 1.74| < 2*se + 0.05`),
   `cvar_quantile_extremes` (q=0.05 / q=0.5 / q=0.95
@@ -12891,13 +13029,13 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   predictions_g, predictions_m, confint + clip),
   `cvar_normalize_ipw_off_still_recovers` (regression
   test for the new `normalize_ipw=false` branch).
-- **`cmd/cvar/main.mbt` + `cmd/cvar/moon.pkg`** 鈥?new
+- **`cmd/cvar/main.mbt` + `cmd/cvar/moon.pkg`** — new
   2-level discrete-treatment DGP command. Runs CVaR at
   q=0.5 on the canonical DGP, prints the coef, SE, 95%
   CI, and a `PASS / FAIL` line against the true CVaR
   1.74. Same shape as the v0.49.0 `cmd/apos` and the
   v0.46.0 `cmd/lplr` examples.
-- **`validate_cvar_with_python.py`** 鈥?new validator.
+- **`validate_cvar_with_python.py`** — new validator.
   Hand-rolled numpy port of `_nuisance_est` (the same
   algorithm) + upstream `doubleml.DoubleMLCVAR` cross-
   check. `MODEL_TOL = 0.3` (matches the v0.49.0 APOS
@@ -12969,7 +13107,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 - The cross-fitted nuisances returned by
   `predictions_g` / `predictions_m` are the *last
   rep's* (matching the rest of the package's
-  convention). The upstream returns the same 鈥?only
+  convention). The upstream returns the same — only
   the last rep's nuisances are in the public
   `DoubleML` summary table.
 - `treatment` parameter is restricted to `0.0` or
@@ -12981,21 +13119,21 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 
 ---
 
-## [0.49.0] 鈥?`DoubleMLAPOS` full upstream parity (validation + causal_contrast + kfold_stratified)
+## [0.49.0] — `DoubleMLAPOS` full upstream parity (validation + causal_contrast + kfold_stratified)
 
 ### Added
-- **`kfold.mbt::kfold_stratified`** 鈥?new stratified k-fold
+- **`kfold.mbt::kfold_stratified`** — new stratified k-fold
   partition helper. Within-stratum independent permutation + fold
   merging, matching the upstream `sklearn.StratifiedKFold`
   semantics. Used by `DoubleMLAPOS` to balance each treatment
   level across folds (avoids empty-treatment folds that would
   zero-out the IPW denominator).
-- **`apo.mbt::DoubleMLAPOS::treatment_levels` accessor** 鈥?  returns the user-supplied treatment-level list in request
+- **`apo.mbt::DoubleMLAPOS::treatment_levels` accessor** —  returns the user-supplied treatment-level list in request
   order.
-- **`apo.mbt::DoubleMLAPOS::n_treatment_levels` accessor** 鈥?  returns the length of `treatment_levels`.
-- **`apo.mbt::DoubleMLAPOS::fitted` accessor** 鈥?returns
+- **`apo.mbt::DoubleMLAPOS::n_treatment_levels` accessor** —  returns the length of `treatment_levels`.
+- **`apo.mbt::DoubleMLAPOS::fitted` accessor** — returns
   `Bool` indicating whether `fit()` has been called.
-- **`apo.mbt::DoubleMLAPOS::causal_contrast`** 鈥?new method.
+- **`apo.mbt::DoubleMLAPOS::causal_contrast`** — new method.
   For each supplied `reference_level`, returns one row of
   `(delta_0, ..., delta_i, se_i, ...)` where `delta_i =
   coefs[i] - coefs[ref_idx]` and `se_i = sqrt(se_i^2 +
@@ -13003,37 +13141,37 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   (trivial). Matches the upstream
   `DoubleMLAPOS.causal_contrast(reference_levels)` summary
   table semantics.
-- **`apo.mbt::DoubleMLAPOS::new` validation** 鈥?now rejects
+- **`apo.mbt::DoubleMLAPOS::new` validation** — now rejects
   duplicate `treatment_levels` and `treatment_levels` not
   present in `data.d` (the latter was a runtime "ValueError"
   in upstream `DoubleMLAPOS.__init__`).
-- **`apo.mbt::DoubleMLAPOS::new` `fitted` field** 鈥?struct
+- **`apo.mbt::DoubleMLAPOS::new` `fitted` field** — struct
   gained a `fitted : Bool` field (initialised to `false`,
   set to `true` after `fit()`).
-- **`apo_test.mbt`** 鈥?4 new tests:
+- **`apo_test.mbt`** — 4 new tests:
   `apos_causal_contrast_with_reference`,
   `apos_accessors_match`,
   `kfold_stratified_balances_each_stratum`,
   plus an internal `count_eq` helper.
-- **`validate_apos_with_python.py`** 鈥?new validator.
+- **`validate_apos_with_python.py`** — new validator.
   Hand-rolled reference (closed-form linear regression,
   matches the MoonBit `LinearRegression` learner) +
   optional upstream `doubleml.DoubleMLAPOS` cross-check
   (using sklearn `LinearRegression` and
   `LogisticRegression`).
-- **`cmd/apos/main.mbt`** 鈥?new end-to-end demo. Symmetric
+- **`cmd/apos/main.mbt`** — new end-to-end demo. Symmetric
   2-level discrete-treatment DGP (`theta_0 = 1.0` per
   level); estimator should land at `(1.0, 1.0)` and the
   `causal_contrast(level=1)` should be `~0`.
 
 ### Changed
-- **`apo.mbt::DoubleMLAPOS::fit`** 鈥?`n_rep` is now passed
+- **`apo.mbt::DoubleMLAPOS::fit`** — `n_rep` is now passed
   through to each child `DoubleMLAPO` so the child uses the
   same fold partition as the parent. This produces
   `n_rep` total fold draws per treatment level (previously
   the parent called children with `n_rep=1`, which produced
   `n_rep` folds but at coarser-than-expected granularity).
-- **`apo_test.mbt::apos_fits_each_treatment_level`** 鈥?  unchanged; pre-v0.49.0 baseline.
+- **`apo_test.mbt::apos_fits_each_treatment_level`** —  unchanged; pre-v0.49.0 baseline.
 
 ### Tests
 - 321/321 PASS (was 293: +28 for `DoubleMLAPOS` /
@@ -13049,7 +13187,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
   with_python + the new **apos**).
 
 ### Whitebox conversion progress
-- v0.35.0 鈥?v0.46.0: 10/14 (11 aborts converted to typed
+- v0.35.0 — v0.46.0: 10/14 (11 aborts converted to typed
   raise; 3 dead-code aborts documented with improved
   diagnostics).
 - v0.47.0: `PreconditionError` planning release (suberror
@@ -13074,7 +13212,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.48.0] 鈥?`check` / `require` 鈫?`raise PreconditionError` (full cascade, abort preserved)
+## [0.48.0] — `check` / `require` 鈫?`raise PreconditionError` (full cascade, abort preserved)
 
 ### Changed
 - **`check.mbt::check`**: signature changed from
@@ -13166,7 +13304,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 - v0.44.0: 10/14 (PSProcessorConfig inconsistent-cv)
 - v0.45.0: 10/14 (transform_panel dead-code skip)
 - v0.46.0: 10/14 (p_adjust dead-code skip)
-- v0.47.0: 10/14 (planning release 鈥?suberror declared)
+- v0.47.0: 10/14 (planning release — suberror declared)
 - v0.48.0: **11/14** (central `check`/`require` 鈫?  `raise PreconditionError`, full cascade, abort
   behavior preserved at every call site)
 - Remaining 3: `did_multi.mbt:558` (p_adjust unknown-method
@@ -13180,7 +13318,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.47.0] 鈥?`PreconditionError` planning release: suberror + helper
+## [0.47.0] — `PreconditionError` planning release: suberror + helper
 
 ### Added
 - **`kfold.mbt::PreconditionError`** (new suberror):
@@ -13209,7 +13347,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
   `require`; v0.47.0 adds the `check_make_violated`
   helper as a forward-compatible hook for the upcoming
   conversion. The `check` / `require` semantics are
-  unchanged (still `abort` on failure) 鈥?v0.47.0 is a
+  unchanged (still `abort` on failure) — v0.47.0 is a
   planning release, not a behavior change.
 - **`check_test.mbt`**: extended by 27 lines to host
   the new regression test. The pre-v0.47.0 file
@@ -13244,9 +13382,9 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 - v0.44.0: 10/14 (PSProcessorConfig inconsistent-cv)
 - v0.45.0: 10/14 (transform_panel dead-code skip)
 - v0.46.0: 10/14 (p_adjust dead-code skip)
-- v0.47.0: **10/14** (planning release 鈥?suberror declared, helper
+- v0.47.0: **10/14** (planning release — suberror declared, helper
   shipped, conversion deferred to v0.48.0+)
-- Remaining 1: `check.mbt:11` (central `require`) 鈥?the
+- Remaining 1: `check.mbt:11` (central `require`) — the
   v0.47.0 planning release sets up the type and helper
   for the v0.48.0+ conversion, which is expected to
   take 1-2 releases with try/catch/re-abort shims at
@@ -13255,7 +13393,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.46.0] 鈥?`DoubleMLDIDMulti::p_adjust` dead-code abort: documented + improved diagnostic
+## [0.46.0] — `DoubleMLDIDMulti::p_adjust` dead-code abort: documented + improved diagnostic
 
 ### Skipped (dead code)
 - **`did_multi.mbt:574`** (`DoubleMLDIDMulti::p_adjust` match
@@ -13310,13 +13448,13 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 - v0.44.0: 10/14 (PSProcessorConfig inconsistent-cv)
 - v0.45.0: 10/14 (transform_panel dead-code skip)
 - v0.46.0: **10/14** (p_adjust dead-code skip)
-- Remaining 1: `check.mbt:11` (central `require`) 鈥?2-3
+- Remaining 1: `check.mbt:11` (central `require`) — 2-3
   release effort because it cascades to all 324 pub
   functions.
 
 ---
 
-## [0.45.0] 鈥?`transform_panel` dead-code abort: documented + improved diagnostic
+## [0.45.0] — `transform_panel` dead-code abort: documented + improved diagnostic
 
 ### Skipped (dead code)
 - **`plpr.mbt:447`** (`transform_panel` else-branch abort):
@@ -13372,7 +13510,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.44.0] 鈥?`PSProcessorConfig::new` cv_calibration abort 鈫?`raise PSConfigError`
+## [0.44.0] — `PSProcessorConfig::new` cv_calibration abort 鈫?`raise PSConfigError`
 
 ### Changed
 - **`ps_processor.mbt::PSProcessorConfig::new`**: signature
@@ -13380,7 +13518,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
   `PSProcessorConfig raise PSConfigError`. The inconsistent-
   configuration defensive guard (`abort`) is replaced with
   `raise PSConfigError::InconsistentCVCalibration`. No
-  payload 鈥?the call-site is enough to identify the
+  payload — the call-site is enough to identify the
   configuration error.
 - **`ps_processor.mbt::PSProcessorConfig::default`**: no
   signature change. Implementation reworked to construct
@@ -13440,7 +13578,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.43.0] 鈥?`DoubleMLDIDData::new` binary-check abort 鈫?`raise DIDDataError`
+## [0.43.0] — `DoubleMLDIDData::new` binary-check abort 鈫?`raise DIDDataError`
 
 ### Changed
 - **`did.mbt::DoubleMLDIDData::new`**: signature changed from
@@ -13503,7 +13641,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.42.0] 鈥?`solve_pq` upper-bracket abort 鈫?`raise BracketSignError`
+## [0.42.0] — `solve_pq` upper-bracket abort 鈫?`raise BracketSignError`
 
 ### Changed
 - **`quantile.mbt::solve_pq`**: signature changed from
@@ -13542,7 +13680,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
   (quantile_test.mbt): regression test for the v0.42.0
   upper-bracket abort 鈫?raise conversion. Calls
   `solve_pq` directly with a pathological DGP/quantile
-  combination (`y = 0`, `d = 0`, `q = 0.99` 鈥?sparse
+  combination (`y = 0`, `d = 0`, `q = 0.99` — sparse
   treatment with high quantile means the IPW score at the
   upper bracket is non-positive after 20 widens) and
   asserts the error fires. Uses the
@@ -13579,7 +13717,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.41.0] 鈥?`array_min` / `array_max` abort 鈫?`raise EmptyArrayError`
+## [0.41.0] — `array_min` / `array_max` abort 鈫?`raise EmptyArrayError`
 
 ### Changed
 - **`quantile.mbt::array_min`** and **`quantile.mbt::array_max`**:
@@ -13599,7 +13737,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
   preserve the pre-v0.41.0 process-death behavior on an
   empty `data.y`.
 - **`kfold.mbt`**: declared `pub suberror EmptyArrayError`
-  (no payload 鈥?the empty-array case has no diagnostic
+  (no payload — the empty-array case has no diagnostic
   detail to carry). Sits alongside the v0.35.0
   `VarEstClusterError`, v0.36.0 `ClusterDataError`,
   v0.37.0 `BootstrapMethodError` / `InvalidCalibrationError`,
@@ -13648,7 +13786,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.40.0] 鈥?Random restart on J-floor: `max_attempts` parameter
+## [0.40.0] — Random restart on J-floor: `max_attempts` parameter
 
 ### Added
 - **`max_attempts?` parameter** on every cluster-robust fit
@@ -13700,7 +13838,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.39.0] 鈥?Fuzz surface 11: PLPR cluster-path stress (small n_units)
+## [0.39.0] — Fuzz surface 11: PLPR cluster-path stress (small n_units)
 
 ### Added
 - **`cmd/fuzz/main.mbt` (surface 11)**: new fuzz surface that
@@ -13713,7 +13851,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
       `var_est_cluster`) on tiny inputs where fold splits are
       nearly degenerate.
     - **11b (75 trials)**: `n_units=2`, 2-fold kfold. Pathological
-      imbalanced fold sizes (1 unit per fold) 鈥?the worst case
+      imbalanced fold sizes (1 unit per fold) — the worst case
       for the v0.34.0 J-floor, since `mean(psi_deriv)` over a
       single unit is just that unit's psi_deriv, which can land
       near zero when the unit has near-canceling d and y terms.
@@ -13751,7 +13889,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.38.0] 鈥?`isotonic_calibrate_cv` abort 鈫?`raise CalibrationFittingError`
+## [0.38.0] — `isotonic_calibrate_cv` abort 鈫?`raise CalibrationFittingError`
 
 ### Changed
 - **`ps_processor.mbt::isotonic_calibrate_cv`**: signature changed
@@ -13802,12 +13940,12 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
   ps_processor.mbt:35/422, quantile.mbt:4/18/193/198,
   did.mbt:27, check.mbt:11) targeted for future releases.
   The quantile helpers (`array_min`/`array_max`) and the
-  `solve_pq` bracket aborts are next on the list 鈥?both are
+  `solve_pq` bracket aborts are next on the list — both are
   internal helpers with controlled blast radius.
 
 ---
 
-## [0.37.0] 鈥?Two more defensive aborts 鈫?raise conversions
+## [0.37.0] — Two more defensive aborts 鈫?raise conversions
 
 ### Changed
 - **`did_multi.mbt::draw_bootstrap_weights`**: signature changed
@@ -13903,7 +14041,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.36.0] 鈥?`build_row_unit_map` abort 鈫?`raise ClusterDataError`
+## [0.36.0] — `build_row_unit_map` abort 鈫?`raise ClusterDataError`
 
 ### Changed
 - **`kfold.mbt::build_row_unit_map`**: signature changed from
@@ -13961,7 +14099,7 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.35.0] 鈥?`var_est_cluster` abort 鈫?`raise VarEstClusterError`
+## [0.35.0] — `var_est_cluster` abort 鈫?`raise VarEstClusterError`
 
 ### Changed
 - **`plpr.mbt::var_est_cluster`**: signature changed from `Double`
@@ -14002,11 +14140,11 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 ### Whitebox verification
 - 8 cluster mutations applied (per `_verify/_whitebox_mut.py`):
   - 7 KILLED (M01, M02, M04, M05, M06, M07, M08)
-  - 1 SURVIVED (M03: relax floor 1e-6鈫?e-2 鈥?only catches
+  - 1 SURVIVED (M03: relax floor 1e-6鈫?e-2 — only catches
     fold splits with J 鈭?[1e-6, 1e-2), which the unit test
     corpus does not naturally produce; the v0.32.0 validator's
     30-seed empirical study exercises that range empirically)
-- M04 (`if false` 鈥?remove J-floor entirely) was previously
+- M04 (`if false` — remove J-floor entirely) was previously
   unreachable; the new `plpr_var_est_cluster_raises_j_too_small_on_zero_j`
   test now catches it.
 
@@ -14034,14 +14172,14 @@ All four check vs `max(MODEL_TOL=0.3, 2.0 * handrolled_se)`
 
 ---
 
-## [0.34.0] 鈥?Cluster path fragility statistics + PLIV/IIVM fuzz coverage
+## [0.34.0] — Cluster path fragility statistics + PLIV/IIVM fuzz coverage
 
 ### Changed
 - **`cmd/fuzz/main.mbt` (surface 10)**: PLIV and IIVM cluster-
   robust fits now also build the **row-level counterpart**
   (without `cluster_vars`) and assert the **cluster/row SE
   ratio stays bounded**. PLIV/IIVM bound is `1e9x` (deliberately
-  loose 鈥?these IV-family estimators have a much more
+  loose — these IV-family estimators have a much more
   numerical-fragile cluster-vs-row ratio than PLR; the v0.32.0
   + v0.34.0 empirical work found seed-level ratios up to 7e8 on
   random DGP draws).
@@ -14124,7 +14262,7 @@ land on a near-zero `J = mean(psi_a)` for either path.
 
 ---
 
-## [0.33.0] 鈥?Fuzz cluster-vs-row SE ratio guard (v0.32.0 lesson applied)
+## [0.33.0] — Fuzz cluster-vs-row SE ratio guard (v0.32.0 lesson applied)
 
 ### Changed
 - **`cmd/fuzz/main.mbt` (surface 9)**: new invariant checks
@@ -14148,7 +14286,7 @@ land on a near-zero `J = mean(psi_a)` for either path.
 v0.32.0 found that the cluster path is **numerically
 fragile** on a fraction of seeds: fold-weighted `J` near
 zero inflates the variance by orders of magnitude. fuzzer
-9 didn't have any guard against this class of failure 鈥?it only checked finiteness of the cluster SE in isolation,
+9 didn't have any guard against this class of failure — it only checked finiteness of the cluster SE in isolation,
 not the ratio between cluster and row SE on the same data.
 v0.33.0 plugs that gap. The 1e4x bound is empirically
 calibrated: on 300 random fuzz trials with the v0.33.0
@@ -14157,7 +14295,7 @@ the bound (MoonBit's cluster path is more numerically
 robust than upstream's `DoubleMLPLIV._est_coef` formulation).
 
 ### Tests
-282 (unchanged; no new tests 鈥?the fuzz invariant is the
+282 (unchanged; no new tests — the fuzz invariant is the
 test).
 
 ### QA battery (T340)
@@ -14171,27 +14309,27 @@ new cluster-vs-row SE ratio guard on surface 9), components
 ### Mutation / regression notes
 The new fuzz invariant catches:
   - accidental swap of cluster SE for row SE (ratio would
-    be 1.0 on every trial 鈥?invariant `max / min < 1e4x`
+    be 1.0 on every trial — invariant `max / min < 1e4x`
     still passes, so this is NOT caught by the new guard;
     but the existing fuzz finiteness check catches
     swapped-zero or swapped-infinity cases).
   - accidental `100x` SE inflation in the cluster path
-    (v0.32.0 lesson) 鈥?caught by the `1e4x` bound.
+    (v0.32.0 lesson) — caught by the `1e4x` bound.
   - regression where the cluster path falls back to
-    row-level aggregation (no effect 鈥?same numerical
+    row-level aggregation (no effect — same numerical
     answer would still pass).
 
 The new fuzz invariant does NOT catch:
-  - small (1.5-2x) cluster-vs-row SE disagreement 鈥?those
+  - small (1.5-2x) cluster-vs-row SE disagreement — those
     are within the empirical 1.12x median ratio range and
     would not be flagged even by a tighter bound.
   - sign flips in the cluster-vs-row SE order (cluster
-    smaller than row or vice versa) 鈥?those are correct
+    smaller than row or vice versa) — those are correct
     mathematical behaviour on different fold splits.
 
 ---
 
-## [0.32.0] 鈥?Strong-IV cluster validator (`validate_cluster_iv_with_python.py` upgrade)
+## [0.32.0] — Strong-IV cluster validator (`validate_cluster_iv_with_python.py` upgrade)
 
 ### Changed
 - **`validate_cluster_iv_with_python.py`**: rewritten with a
@@ -14226,7 +14364,7 @@ The new fuzz invariant does NOT catch:
 
 ### Tests
 276 -> 282 (unchanged from v0.31.0; the validator upgrade
-does not change the MoonBit test suite 鈥?the existing
+does not change the MoonBit test suite — the existing
 `pliv_cluster_test.mbt::pliv_cluster_se_finite_and_stable` and
 `iivm_cluster_test.mbt::iivm_cluster_se_finite_and_stable` already
 assert the cluster path is finite and bounded).
@@ -14264,11 +14402,11 @@ order of magnitude, and the cluster/row SE ratio varies by
 seed in the empirically expected 0.3-5x range. The previous
 v0.30.0 test was only "finite + bounded"; the new v0.32.0
 test is "finite + bounded + cross-implementation agreement
-in order of magnitude" 鈥?a stronger property.
+in order of magnitude" — a stronger property.
 
 ---
 
-## [0.31.0] 鈥?`DoubleMLPLPR` cluster-path dedup (v0.26.0 -> v0.28.0 helpers)
+## [0.31.0] — `DoubleMLPLPR` cluster-path dedup (v0.26.0 -> v0.28.0 helpers)
 
 ### Changed
 - **PLPR `fit` uses the shared cluster helpers from v0.28.0 +
@@ -14301,7 +14439,7 @@ this change, all five cluster-DML fits (`DoubleMLPLR`,
 `cluster_causal_param_and_se` pathway. The dupcheck helper-
 site whitelist is also a release-worthy change because it
 encodes the policy "a shared helper's call site is *not* a
-duplicate signal" 鈥?this is a project-level invariant that
+duplicate signal" — this is a project-level invariant that
 all future shared helpers should also benefit from.
 
 ### Tests
@@ -14340,12 +14478,12 @@ refactor-only release (no source-of-truth algorithmic change).
   3-tuple, not a struct) and added a 9-line `ClusterCtx::new`
   at every call site. Reverted to the original 8-arg
   signature. The dupcheck helper-call whitelist is the
-  correct fix for the false-positive 12-line duplicate 鈥?it
+  correct fix for the false-positive 12-line duplicate — it
   doesn't change the helper's API at all.
 
 ---
 
-## [0.30.0] 鈥?Cluster-robust inference for `DoubleMLPLIV` / `DoubleMLIIVM`
+## [0.30.0] — Cluster-robust inference for `DoubleMLPLIV` / `DoubleMLIIVM`
 
 ### Added
 - **`DoubleMLPLIVData` and `DoubleMLIIVMData` gain
@@ -14410,7 +14548,7 @@ Nine gates all PASS: fmt CLEAN, SAST clean, dupcheck 0
 blocks (33 files), deps core-only, unit 282 x {wasm, wasm-gc,
 js, native}, Gherkin unchanged (no new feature in this
 extension release), mutation skipped (the cluster-path
-mutations covered by v0.28.0 also exercise this surface 鈥?the v0.30.0 cluster-DML paths use the same helper functions),
+mutations covered by v0.28.0 also exercise this surface — the v0.30.0 cluster-DML paths use the same helper functions),
 fuzz 10 surfaces x 300 trials 0 violations, components 9/9.
 
 ### Diagnostic lesson (numeric-path)
@@ -14455,7 +14593,7 @@ it's a recording of facts already visible in the test
 output.
 
 The audit's three-action recommendation:
-1. The `final-verdict.md` "Check 7 鈥?8 known-deferred
+1. The `final-verdict.md` "Check 7 — 8 known-deferred
    Critical/High bugs" entry is wrong (it was written on
    2026-08-12 and not updated since; the source has moved
    on). Future audits should track deferrals in
@@ -14481,15 +14619,15 @@ The audit's three-action recommendation:
 | 8 | PolicyTree `depth` unused, gain was `\|s_l\|+\|s_r\|` | 0.4.0+ | `blp_policy.mbt:178-294` `policy_tree_build` recursion + `var_l / var_r` gain |
 
 ### Tests
-276/276 (unchanged 鈥?0 source code changes in this release).
+276/276 (unchanged — 0 source code changes in this release).
 
 ### QA battery (T300)
 Nine gates all PASS: fmt CLEAN (no files changed), SAST clean,
 dupcheck 0 blocks, deps core-only, unit 276 x {wasm, wasm-gc,
 js, native}, Gherkin unchanged (no new feature), mutation
-skipped (no source changes 鈥?the v0.4.0 / v0.19.0 mutations
+skipped (no source changes — the v0.4.0 / v0.19.0 mutations
 already cover the fixed code), fuzz 9 surfaces x 300 trials
-(unchanged 鈥?no new surfaces needed), components 9/9 (all
+(unchanged — no new surfaces needed), components 9/9 (all
 existing cmd demos pass output assertions unchanged).
 
 ### Validator exit codes (post-audit)
@@ -14503,7 +14641,7 @@ validate_rdd_with_python.py ....... PASS
 
 ---
 
-## [0.28.0] 鈥?Cluster-robust inference for `DoubleMLPLR` / `DoubleMLIRM`
+## [0.28.0] — Cluster-robust inference for `DoubleMLPLR` / `DoubleMLIRM`
 
 ### Added
 - **`DoubleMLData` gains `cluster_vars`**: pass a length-`n`
@@ -14527,7 +14665,7 @@ validate_rdd_with_python.py ....... PASS
      existing `var_est_cluster` helper).
   Per-row nuisances are cross-fitted with cluster-respecting
   folds, so the per-row score elements `psi_a = -(d - m)^)`, `psi_b
-  = (d - m) * (y - l)` are the same as the row-level path 鈥?only
+  = (d - m) * (y - l)` are the same as the row-level path — only
   the fold partition and the two aggregation steps differ.
 - **Clustered-DML path for `DoubleMLIRM`**: same shape; the
   per-row ATE score elements are unchanged, but the fold-weighted
@@ -14535,7 +14673,7 @@ validate_rdd_with_python.py ....... PASS
   correlation that the row-level SE deflates.
 - **`expand_unit_folds_to_rows` / `build_row_unit_map`** in
   `kfold.mbt`: shared cluster-fold builders (dedup'd from the
-  PLPR / PLR / IRM cluster paths 鈥?total duplication dropped from
+  PLPR / PLR / IRM cluster paths — total duplication dropped from
   one 12-line block to zero).
 - **`validate_cluster_plr_with_python.py`**: three-way
   cross-check against installed upstream `doubleml 0.11.3`
@@ -14587,14 +14725,14 @@ mutation classes in the cluster infrastructure:
 - A **direct data-class accessor test** catches the
   `is_cluster_data() -> false` typo that sends cluster data
   through the row-level path. The cluster SE vs row SE test
-  alone does not catch this 鈥?when both paths collapse to
+  alone does not catch this — when both paths collapse to
   row-level, the SE values are identical and the ratio is
   1.0 (the guard's lower bound is the only invariant that
   fires).
 
 ---
 
-## [0.27.0] 鈥?`DoubleMLLPLR` (partially logistic regression)
+## [0.27.0] — `DoubleMLLPLR` (partially logistic regression)
 
 ### Added
 - **`lplr.mbt`**: port of upstream `doubleml.plm.DoubleMLLPLR`
@@ -14686,7 +14824,7 @@ score_const branches. Two reinforcing tests are required to
 catch all mutation classes:
 1. A **DGP-banded smoke test** tight enough around the
    upstream reference (`theta 鈭?[-0.05, 1.0]` on this DGP)
-   to catch Newton runaway 鈥?wider bands like `[-1, 2.5]`
+   to catch Newton runaway — wider bands like `[-1, 2.5]`
    silently pass sign-flipped scores because the LPLR
    root-finding converges in *both* sign conventions.
 2. The **CI identity** (`hi - lo == 2 * z * se`) and the
@@ -14707,7 +14845,7 @@ inside the well-conditioned region of the score.
 
 ---
 
-## [0.26.0] 鈥?`DoubleMLPLPR` (static panel partially linear regression)
+## [0.26.0] — `DoubleMLPLPR` (static panel partially linear regression)
 
 ### Added
 - **`plpr.mbt`**: port of upstream `doubleml.plm.DoubleMLPLPR`
@@ -14727,7 +14865,7 @@ inside the well-conditioned region of the score.
   - **Clustered inference path** (the load-bearing design point):
     upstream re-wraps the transformed panel as static-panel data
     with `cluster_cols = id_col`, so estimation always uses the
-    cluster machinery 鈥?folds are drawn over whole units
+    cluster machinery — folds are drawn over whole units
     (`kfold` on unique ids, expanded to row folds), the causal
     parameter is the fold-weighted ratio of cluster score sums
     (**`est_coef_cluster`**, mirroring
@@ -14753,7 +14891,7 @@ inside the well-conditioned region of the score.
   so upstream numbers drift run-to-run; comparisons use bands.
 - **`cmd/plpr`** demo: four-approach comparison table on the
   FE-correlated DGP (60 x 4, true theta = 1.0).
-- **Fuzz surface 7/7**: PLPR clustered fits over random panels 鈥?  finite coef/se, structural transformed-row count per approach,
+- **Fuzz surface 7/7**: PLPR clustered fits over random panels —  finite coef/se, structural transformed-row count per approach,
   same-seed bit-exact refit determinism.
 
 ### Changed
@@ -14785,7 +14923,7 @@ hand-computed reference test catches it exactly.
 
 ---
 
-## [0.25.0] 鈥?`GainStatsSource::from_blp_cv_repeated` (multi-seed K-fold average)
+## [0.25.0] — `GainStatsSource::from_blp_cv_repeated` (multi-seed K-fold average)
 
 ### Added
 - **`sensitivity.mbt::GainStatsSource::from_blp_cv_repeated(blp,
@@ -14862,13 +15000,13 @@ Full nine-step quality gate run before tagging:
    `--deny-warn`. PASS.
 6. **Gherkin**: added `features/dml_acceptance.feature`
    (3 features / 10 scenarios) mapping every scenario
-   to its executable MoonBit test 鈥?MoonBit has no
+   to its executable MoonBit test — MoonBit has no
    native Cucumber runner, so the .feature file is
    the documented acceptance layer. PASS (documented).
 7. **Mutation testing**: 5 hand-rolled mutants:
    M1 universal `t != g`鈫抈t == g` (killed 脳2),
    M2 `from_blp_cv_repeated` denominator drops
-   `n_repeats` (**initially SURVIVED** 鈥?the
+   `n_repeats` (**initially SURVIVED** — the
    smooths test was vacuous: an affine test-noise
    helper made OOF residuals ~1e-25 and the
    absolute tolerance swamped everything;
@@ -14898,7 +15036,7 @@ Full nine-step quality gate run before tagging:
 
 ---
 
-## [0.24.1] 鈥?`did_multi` "universal" / "all" keyword emits pre-treatment placebos
+## [0.24.1] — `did_multi` "universal" / "all" keyword emits pre-treatment placebos
 
 ### Fixed
 - **`did_multi.mbt::expand_gt_keyword`**:
@@ -14958,7 +15096,7 @@ actually do what it says.
 
 ---
 
-## [0.24.0] 鈥?`tsbh` / `tsby` two-stage FDR + BH/BY long-name aliases
+## [0.24.0] — `tsbh` / `tsby` two-stage FDR + BH/BY long-name aliases
 
 ### Added
 - **`did_multi.mbt::tsbh_p_adjust(unadjusted)`**:
@@ -14992,20 +15130,20 @@ actually do what it says.
 - 241/241 across all 4 backends (native, wasm-gc,
   wasm, js). Was 235 in v0.23.0; +6 new tests in
   `did_multi_test.mbt`:
-  - `tsbh_p_adjust_handrolled` 鈥?TSBH is
+  - `tsbh_p_adjust_handrolled` — TSBH is
     pointwise <= BH (the two-stage correction
     never inflates p-values).
-  - `tsby_p_adjust_handrolled` 鈥?TSBY is
+  - `tsby_p_adjust_handrolled` — TSBY is
     pointwise >= TSBH (BY is more conservative
     than BH) and pointwise <= BY (the two-stage
     correction makes TSBY less conservative than
     the basic BY).
-  - `p_adjust_fdr_bh_alias` 鈥?`p_adjust("fdr_bh")`
+  - `p_adjust_fdr_bh_alias` — `p_adjust("fdr_bh")`
     produces the same output as `p_adjust("bh")`.
-  - `p_adjust_fdr_by_alias` 鈥?`p_adjust("fdr_by")`
+  - `p_adjust_fdr_by_alias` — `p_adjust("fdr_by")`
     produces the same output as `p_adjust("by")`.
-  - `p_adjust_tsbh_no_bootstrap_required` 鈥?    `p_adjust("tsbh")` works without `bootstrap()`.
-  - `p_adjust_tsby_no_bootstrap_required` 鈥?    `p_adjust("tsby")` works without `bootstrap()`.
+  - `p_adjust_tsbh_no_bootstrap_required` —    `p_adjust("tsbh")` works without `bootstrap()`.
+  - `p_adjust_tsby_no_bootstrap_required` —    `p_adjust("tsby")` works without `bootstrap()`.
 
 ### Cross-check vs statsmodels
 The `validate_padjust_with_python.py` script now
@@ -15030,11 +15168,11 @@ algorithms are exact).
   parameter if needed.
 - No changes to the existing `"romano-wolf"`,
   `"holm"`, `"bonferroni"`, `"bh"`, `"by"`
-  paths 鈥?the new methods are additive.
+  paths — the new methods are additive.
 
 ---
 
-## [0.23.0] 鈥?`GainStatsSource::from_blp_hc0` (HC0-honest `nu2`)
+## [0.23.0] — `GainStatsSource::from_blp_hc0` (HC0-honest `nu2`)
 
 ### Added
 - **`GainStatsSource::from_blp_hc0(blp, n_folds?,
@@ -15071,18 +15209,18 @@ in a way that captures the per-observation
 - 235/235 across all 4 backends (native, wasm-gc,
   wasm, js). Was 231 in v0.22.0; +4 new tests in
   `sensitivity_test.mbt`:
-  - `gain_stats_from_blp_hc0_basic` 鈥?basic
+  - `gain_stats_from_blp_hc0_basic` — basic
     shape and accessor consistency.
-  - `gain_stats_from_blp_hc0_nu2_differs` 鈥?the
+  - `gain_stats_from_blp_hc0_nu2_differs` — the
     HC0 `nu2` differs from the homoskedastic
     `nu2` (computed by `from_blp_cv`) on a
     heteroskedastic DGP. On a homoskedastic
     DGP the two are equal.
   - `gain_stats_from_blp_hc0_nu2_matches_projection_formula`
-    鈥?recompute the projection formula from
+    — recompute the projection formula from
     scratch and verify bit-equal to the
     function output.
-  - `panic_gain_stats_from_blp_hc0_unfitted` 鈥?    `from_blp_hc0` requires the BLP to be fit.
+  - `panic_gain_stats_from_blp_hc0_unfitted` —    `from_blp_hc0` requires the BLP to be fit.
 
 ### Notes
 - The intercept `nu2[0]` is set to 1.0 (sentinel),
@@ -15103,7 +15241,7 @@ in a way that captures the per-observation
 
 ---
 
-## [0.22.0] 鈥?`GainStatsSource::from_blp_cv` (cross-fit BLP)
+## [0.22.0] — `GainStatsSource::from_blp_cv` (cross-fit BLP)
 
 ### Added
 - **`GainStatsSource::from_blp_cv(blp, n_folds?,
@@ -15139,22 +15277,22 @@ in a way that captures the per-observation
 - 231/231 across all 4 backends (native, wasm-gc,
   wasm, js). Was 225 in v0.21.0; +6 new tests in
   `sensitivity_test.mbt`:
-  - `gain_stats_from_blp_cv_basic` 鈥?basic
+  - `gain_stats_from_blp_cv_basic` — basic
     auto-population; shape and per-coef consistency
     with the BLP's full-data fit.
   - `gain_stats_from_blp_cv_differs_from_in_sample`
-    鈥?the cross-fit `var_y_residuals` is at least
+    — the cross-fit `var_y_residuals` is at least
     the in-sample `var_y_residuals` (because the
     in-sample version is biased low).
-  - `gain_stats_from_blp_cv_deterministic` 鈥?    same `seed` produces bit-equal `var_y_residuals`
+  - `gain_stats_from_blp_cv_deterministic` —    same `seed` produces bit-equal `var_y_residuals`
     and `nu2`.
-  - `gain_stats_from_blp_cv_end_to_end` 鈥?two
+  - `gain_stats_from_blp_cv_end_to_end` — two
     BLPs (long = constant, short = noise) with
     the same `n_coef`; the long has lower cross-fit
     `var_y_residuals`.
-  - `panic_gain_stats_from_blp_cv_unfitted` 鈥?    `from_blp_cv` requires the BLP to be fit.
+  - `panic_gain_stats_from_blp_cv_unfitted` —    `from_blp_cv` requires the BLP to be fit.
   - `panic_gain_stats_from_blp_cv_n_folds_too_small`
-    鈥?`n_folds` must be >= 2.
+    — `n_folds` must be >= 2.
 
 ### Notes
 - The cross-fit `var_y_residuals` is **strictly
@@ -15182,7 +15320,7 @@ in a way that captures the per-observation
 
 ---
 
-## [0.21.0] 鈥?`DoubleMLDIDCrossSection::bootstrap` (multiplier bootstrap + joint CI)
+## [0.21.0] — `DoubleMLDIDCrossSection::bootstrap` (multiplier bootstrap + joint CI)
 
 ### Added
 - **`DoubleMLDIDCrossSection::bootstrap(method_name?,
@@ -15232,20 +15370,20 @@ in a way that captures the per-observation
 - 225/225 across all 4 backends (native, wasm-gc,
   wasm, js). Was 215 in v0.20.0; +10 new tests in
   `did_cross_section_test.mbt`:
-  - `did_cross_section_bootstrap_basic` 鈥?`boot_t_stat`
+  - `did_cross_section_bootstrap_basic` — `boot_t_stat`
     length and metadata.
-  - `did_cross_section_bootstrap_deterministic` 鈥?    same seed produces bit-equal output.
-  - `did_cross_section_bootstrap_moments` 鈥?    `boot_t_stat` has mean ~ 0 and SD ~ 1.
-  - `did_cross_section_bootstrap_bayes` 鈥?    `method_name = "Bayes"` produces a different
+  - `did_cross_section_bootstrap_deterministic` —    same seed produces bit-equal output.
+  - `did_cross_section_bootstrap_moments` —    `boot_t_stat` has mean ~ 0 and SD ~ 1.
+  - `did_cross_section_bootstrap_bayes` —    `method_name = "Bayes"` produces a different
     draw.
-  - `did_cross_section_bootstrap_wild` 鈥?    `method_name = "wild"` works.
+  - `did_cross_section_bootstrap_wild` —    `method_name = "wild"` works.
   - `panic_did_cross_section_joint_confint_without_bootstrap`
-    鈥?`confint(joint=true)` aborts if `bootstrap()`
+    — `confint(joint=true)` aborts if `bootstrap()`
     wasn't called.
-  - `did_cross_section_joint_confint_wider` 鈥?    joint CI is wider than pointwise.
-  - `did_cross_section_confint_custom_level` 鈥?    `level = 0.99` is wider than default `0.95`.
-  - `did_cross_section_norm_cdf_ppf_inverse` 鈥?    `norm_cdf(norm_ppf(p)) 鈮?p` within 1e-4.
-  - `did_cross_section_norm_ppf_975` 鈥?    `norm_ppf(0.975) 鈮?1.96` (within 1e-5).
+  - `did_cross_section_joint_confint_wider` —    joint CI is wider than pointwise.
+  - `did_cross_section_confint_custom_level` —    `level = 0.99` is wider than default `0.95`.
+  - `did_cross_section_norm_cdf_ppf_inverse` —    `norm_cdf(norm_ppf(p)) 鈮?p` within 1e-4.
+  - `did_cross_section_norm_ppf_975` —    `norm_ppf(0.975) 鈮?1.96` (within 1e-5).
 
 ### Cross-check vs numpy
 The `validate_did_cross_section_with_python.py`
@@ -15282,7 +15420,7 @@ matches numpy to within Monte-Carlo error
 
 ---
 
-## [0.20.0] 鈥?`DoubleMLDIDCrossSection` (Sant'Anna-Zhao 2020 cross-section DID)
+## [0.20.0] — `DoubleMLDIDCrossSection` (Sant'Anna-Zhao 2020 cross-section DID)
 
 ### Added
 - **`DoubleMLDIDCrossSectionData`** (in new
@@ -15348,22 +15486,22 @@ are supported, matching the upstream:
   - `panic_did_cross_section_rejects_non_binary_d`
   - `panic_did_cross_section_rejects_t_all_zero`
   - `did_cross_section_data_accessors`
-  - `did_cross_section_recovers_known_att` 鈥?    end-to-end ATT recovery on a 500-unit DGP with
+  - `did_cross_section_recovers_known_att` —    end-to-end ATT recovery on a 500-unit DGP with
     true ATT = 1.0; ATT_hat 鈭?[0.5, 1.5] and the
     95% CI contains 1.0.
-  - `did_cross_section_experimental_score` 鈥?    `score = "experimental"`, same DGP, ATT_hat
+  - `did_cross_section_experimental_score` —    `score = "experimental"`, same DGP, ATT_hat
     also in [0.5, 1.5].
-  - `did_cross_section_in_sample_normalization` 鈥?    `in_sample_normalization = true`, same DGP,
+  - `did_cross_section_in_sample_normalization` —    `in_sample_normalization = true`, same DGP,
     ATT_hat also in [0.5, 1.5].
-  - `did_cross_section_psi_a_basic` 鈥?`psi_a` is
+  - `did_cross_section_psi_a_basic` — `psi_a` is
     the negative of the treatment-weighted
     indicator, length `n`.
-  - `did_cross_section_orthogonalization` 鈥?    `mean(psi_a + theta * psi_b) 鈮?0` (the
+  - `did_cross_section_orthogonalization` —    `mean(psi_a + theta * psi_b) 鈮?0` (the
     orthogonalization property).
-  - `did_cross_section_predictions` 鈥?all 5
+  - `did_cross_section_predictions` — all 5
     prediction accessors return length-`n` arrays.
-  - `did_cross_section_confint_centered` 鈥?    `confint = (theta - 1.96 * se, theta + 1.96 * se)`.
-  - `did_cross_section_deterministic` 鈥?same seed
+  - `did_cross_section_confint_centered` —    `confint = (theta - 1.96 * se, theta + 1.96 * se)`.
+  - `did_cross_section_deterministic` — same seed
     produces bit-equal ATT and SE.
 
 ### Cross-check vs upstream numpy
@@ -15402,7 +15540,7 @@ as the MoonBit test):
 
 ---
 
-## [0.19.0] 鈥?`GainStatsSource::from_blp` auto-population
+## [0.19.0] — `GainStatsSource::from_blp` auto-population
 
 ### Added
 - **`DoubleMLBLP::n_obs()`** accessor: sample size used
@@ -15446,18 +15584,18 @@ as the MoonBit test):
 - 204/204 across all 4 backends (native, wasm-gc,
   wasm, js). Was 200 in v0.18.0; +4 new tests in
   `sensitivity_test.mbt`:
-  - `gain_stats_from_blp_basic` 鈥?basic auto-population
+  - `gain_stats_from_blp_basic` — basic auto-population
     on a 2-column basis (3 coefs with intercept).
     Verifies all 4 per-rep arrays match the BLP's
     fit output.
-  - `gain_stats_from_blp_n_rep` 鈥?`n_rep=1` (default)
+  - `gain_stats_from_blp_n_rep` — `n_rep=1` (default)
     works; arrays are length `n_coef` (broadcast).
-  - `panic_gain_stats_from_blp_unfitted` 鈥?`from_blp`
+  - `panic_gain_stats_from_blp_unfitted` — `from_blp`
     requires the BLP to be fit first (the accessors
     throw if `!fitted`).
-  - `panic_gain_stats_from_blp_n_rep_invalid` 鈥?    `n_rep` must divide `n_coef` (3 does not divide
+  - `panic_gain_stats_from_blp_n_rep_invalid` —    `n_rep` must divide `n_coef` (3 does not divide
     2 with a 1-column basis).
-  - `gain_stats_end_to_end_via_blp` 鈥?two BLPs (low
+  - `gain_stats_end_to_end_via_blp` — two BLPs (low
     and high noise) on the same 1-column basis
     (same `n_coef`), auto-populated sources, then
     `gain_statistics` runs end-to-end. The "long"
@@ -15469,7 +15607,7 @@ as the MoonBit test):
 - The 15/15 Python validators still PASS
   (including `validate_gain_statistics_with_python.py`,
   which is unaffected by the `from_blp` signature
-  change 鈥?the underlying `gain_statistics` algorithm
+  change — the underlying `gain_statistics` algorithm
   is unchanged).
 - 5/5 demos still run cleanly with bit-equal output
   to v0.18.0 (none of them uses `from_blp`).
@@ -15498,7 +15636,7 @@ as the MoonBit test):
 
 ---
 
-## [0.18.0] 鈥?BH / BY FDR p-adjust
+## [0.18.0] — BH / BY FDR p-adjust
 
 ### Added
 - **`did_multi.mbt::bh_fdr_p_adjust(unadjusted)`**:
@@ -15522,23 +15660,23 @@ as the MoonBit test):
 ### Tests
 - 200/200 across all 4 backends (native, wasm-gc, wasm,
   js). Was 192 in v0.17.0, +8 new tests:
-  - `bh_fdr_handrolled` 鈥?known 4-element example
+  - `bh_fdr_handrolled` — known 4-element example
     with exact reference values.
-  - `by_fdr_handrolled` 鈥?same example, BY formula
+  - `by_fdr_handrolled` — same example, BY formula
     with `c = 1 + 1/2 + 1/3 + 1/4 = 2.0833...`.
-  - `bh_by_inclusion_relations` 鈥?`BY[i] >= BH[i]`
+  - `bh_by_inclusion_relations` — `BY[i] >= BH[i]`
     pointwise (`c >= 1`).
-  - `bh_by_sorted_output_is_monotonic` 鈥?algorithm
+  - `bh_by_sorted_output_is_monotonic` — algorithm
     invariant: BH/BY are non-decreasing when read in
     sorted-p order.
-  - `p_adjust_bh_no_bootstrap_required` 鈥?end-to-end
+  - `p_adjust_bh_no_bootstrap_required` — end-to-end
     through `DoubleMLDIDMulti::p_adjust("bh")` on the
     canonical DGP.
-  - `p_adjust_by_no_bootstrap_required` 鈥?end-to-end
+  - `p_adjust_by_no_bootstrap_required` — end-to-end
     through `p_adjust("by")`, plus `BY >= BH` check.
-  - `p_adjust_bh_deterministic` 鈥?same DGP, two fits,
+  - `p_adjust_bh_deterministic` — same DGP, two fits,
     bit-equal output.
-  - `bh_by_vs_statsmodels_reference` 鈥?exact
+  - `bh_by_vs_statsmodels_reference` — exact
     cross-check against
     `statsmodels.stats.multitest.multipletests`
     on a 5-element p-value array.
@@ -15570,7 +15708,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.17.1] 鈥?`moon fmt` pass (hygiene)
+## [0.17.1] — `moon fmt` pass (hygiene)
 
 ### Fixed
 - `kde.mbt`: trailing newline added. The file was
@@ -15614,7 +15752,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.17.0] 鈥?`gain_statistics` (sensitivity parameter benchmarks from two DML fits)
+## [0.17.0] — `gain_statistics` (sensitivity parameter benchmarks from two DML fits)
 
 ### Added
 - **`sensitivity.mbt::gain_statistics(dml_long, dml_short)`**:
@@ -15718,7 +15856,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.16.0] 鈥?`DoubleMLDIDMulti` multiple-testing p-adjustment (Romano-Wolf / Holm / Bonferroni)
+## [0.16.0] — `DoubleMLDIDMulti` multiple-testing p-adjustment (Romano-Wolf / Holm / Bonferroni)
 
 ### Added
 - **`did_multi.mbt::DoubleMLDIDMulti::p_adjust(method_name)`**:
@@ -15780,7 +15918,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   fallback path supports `bonferroni`, `holm`,
   `sidak`, `fdr_bh`, `fdr_by`, etc. We port the most
   common three (`romano-wolf`, `holm`,
-  `bonferroni`); the rest are deferred 鈥?add a
+  `bonferroni`); the rest are deferred — add a
   one-liner per method in `did_multi.mbt::p_adjust`
   if needed.
 - **The default `p_adjust(method_name)` is
@@ -15825,7 +15963,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.15.0] 鈥?`DoubleMLDIDMulti` multiplier bootstrap / joint confidence intervals
+## [0.15.0] — `DoubleMLDIDMulti` multiplier bootstrap / joint confidence intervals
 
 ### Added
 - **`did_multi.mbt::DoubleMLDIDMulti::bootstrap(method_name,
@@ -15902,7 +16040,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   quantile of `max_k |boot_t_stat[b, k]|` over
   `n_rep_boot` replications. With `n_rep_boot = 500`
   and `level = 0.95`, the critical value is typically
-  2.5 鈥?4 on the canonical DGP (vs. 1.96 for the
+  2.5 — 4 on the canonical DGP (vs. 1.96 for the
   pointwise Wald CI). This matches the upstream
   `confint(joint=True)` behaviour.
 - **Joint CIs on a small DGP may not cover the true
@@ -15958,10 +16096,10 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.14.0] 鈥?isotonic (PAVA) propensity-score calibration
+## [0.14.0] — isotonic (PAVA) propensity-score calibration
 
 ### Added
-- **`ps_processor.mbt::pava(y, weights?)`** 鈥?pure-MoonBit
+- **`ps_processor.mbt::pava(y, weights?)`** — pure-MoonBit
   pool-adjacent-violators algorithm. Given a sequence `y`
   sorted by the predictor `x` and (optionally) per-element
   `weights`, returns the isotonic (non-decreasing) L2
@@ -15971,14 +16109,14 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   Weighted-mean handling matches the canonical PAVA
   convention: a single block of `n` weighted observations
   with sum `s` and weight `w` reports `s / w`, not `s / n`.
-- **`ps_processor.mbt::fit_isotonic(x, y)`** 鈥?sort `(x, y)`
+- **`ps_processor.mbt::fit_isotonic(x, y)`** — sort `(x, y)`
   by `x` (stable sort, ties preserve original order) and
   apply `pava` to the sorted `y`. Returns `(sorted_x,
   sorted_y_hat)` with both arrays the same length as the
   input. Used as the calibration-step foundation for
   `PSProcessor::adjust_ps`.
 - **`ps_processor.mbt::predict_isotonic(fitted_x,
-  fitted_y_hat, x_new)`** 鈥?step-function lookup on the
+  fitted_y_hat, x_new)`** — step-function lookup on the
   PAVA-fitted model. For each `x_new[i]`, returns the
   `fitted_y_hat` at the largest `fitted_x[j] <= x_new[i]`,
   clipped to `[0, 1]` (defensive). Matches
@@ -15997,7 +16135,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   in the original index order. When `cv = None`, a
   deterministic 5-fold split with `seed=3141` is used
   (matches upstream `cross_val_predict(cv=5)` default).
-- **`validate_pava_with_python.py`** 鈥?new Python
+- **`validate_pava_with_python.py`** — new Python
   cross-check. Prints the sklearn `IsotonicRegression`
   reference (in-sample + 5-fold CV) on a 10-element DGP
   with strictly-distinct propensity scores and binary
@@ -16090,7 +16228,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.13.0] 鈥?Polish: API accessor consistency, REVIEW history trim, logistic_test cleanup
+## [0.13.0] — Polish: API accessor consistency, REVIEW history trim, logistic_test cleanup
 
 ### Added
 - **`n_obs` / `n_features` accessors on every model**. The 15 estimators
@@ -16109,7 +16247,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 ### Changed
 - **REVIEW history trim**: dropped 6 historical-context comments that
   no longer reflect the current code (REVIEW L2 / L3 / M3 / M4 / M9 /
-  M10 鈥?purely "we used to do X, now we do Y" notes). Kept the
+  M10 — purely "we used to do X, now we do Y" notes). Kept the
   REVIEW comments that document real API contracts (L5 / L7 / L8 /
   L11 / L12 / H1 / M10-fix / L11-fix). Net `鈭?0` lines of comment
   text with zero behaviour change.
@@ -16134,7 +16272,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   release: same numbers, same tests, just cleaner accessor surface
   and a tidier comment trail.
 - **No new features, no test additions, no API breakage**. The
-  `n_obs` / `n_features` additions are pure additions 鈥?no field
+  `n_obs` / `n_features` additions are pure additions — no field
   renames, no signature changes.
 
 ### Verification
@@ -16150,7 +16288,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.12.0] 鈥?Cleanup: chacha8_rng helper + verifier-scratch hygiene
+## [0.12.0] — Cleanup: chacha8_rng helper + verifier-scratch hygiene
 
 ### Added
 - **`seed.mbt::chacha8_rng(seed)`**: convenience constructor
@@ -16171,7 +16309,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 - **`.gitignore`**: the `_verify/` directory is split into
   tracked-vs-scratch:
   - **Tracked** (must stay): `T###-verdict.md` and
-    `T###-commit-msg.txt` 鈥?the release summary and the
+    `T###-commit-msg.txt` — the release summary and the
     git commit message template.
   - **Scratch** (gitignored): build logs, probe outputs,
     Python validator outputs, ad-hoc adversarial test
@@ -16223,7 +16361,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.11.0] 鈥?DoubleMLDIDMulti (top-level multi-period DID with aggregation)
+## [0.11.0] — DoubleMLDIDMulti (top-level multi-period DID with aggregation)
 
 ### Added
 - **`did_aggregation.mbt`** (~250 LOC): `DIDAggregationResult`
@@ -16305,7 +16443,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   **150/150 passed** (was 144, +6 new tests: 4 `did_aggregation`
   + 2 `did_multi`).
 - 9 Python validators: all PASS, including the existing
-  `validate_did_*_with_python.py` (no new validator 鈥?the
+  `validate_did_*_with_python.py` (no new validator — the
   `did_multi` aggregations are pure MoonBit-only, with the
   per-cell numbers already cross-checked by
   `validate_did_binary_with_python.py` and
@@ -16320,7 +16458,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.10.0] 鈥?DoubleMLDIDCSBinary (ps_processor + G+2T stratified folds)
+## [0.10.0] — DoubleMLDIDCSBinary (ps_processor + G+2T stratified folds)
 
 ### Added
 - **`ps_processor.mbt`** (~140 LOC): `PSProcessorConfig` struct
@@ -16409,7 +16547,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.9.0] 鈥?Callaway-Sant'Anna staggered DID (DoubleMLDIDCS)
+## [0.9.0] — Callaway-Sant'Anna staggered DID (DoubleMLDIDCS)
 
 ### Added
 - **`DoubleMLDIDCS`** (`did_cs.mbt`, ~260 LOC): Callaway-Sant'Anna
@@ -16428,7 +16566,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   `d 鈭?{0, 1}` at construction time. `DoubleMLDIDCSData::new` deep-
   copies `g` and `t` so the caller's arrays are never mutated by the
   in-place sort inside `discover_groups_times` (`Array::copy()` is
-  shallow, and `Array::sort()` mutates the receiver in place 鈥?a
+  shallow, and `Array::sort()` mutates the receiver in place — a
   discovered trap on this build of MoonBit).
 - **`cmd/did_cs/main.mbt`** demo: synthetic staggered panel DGP
   (200 units 脳 4 periods, cohorts g=0, 1, 2, 3; true ATT = 1.0)
@@ -16472,7 +16610,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.8.0] 鈥?DoubleMLDIDBinary (panel data DID) + DoubleMLDID score extensions
+## [0.8.0] — DoubleMLDIDBinary (panel data DID) + DoubleMLDID score extensions
 
 ### Added
 - **`DoubleMLDIDBinary`** (`did_binary.mbt`): binary-treatment DID
@@ -16495,7 +16633,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ### Changed
 - **`DoubleMLDID`** (`did.mbt`): now supports two new constructor
-  options 鈥?`score : "observational" | "experimental"` (default
+  options — `score : "observational" | "experimental"` (default
   `"observational"`) and `in_sample_normalization : Bool` (default
   `false`). The 2脳2 = 4 score flavours implement the four cells of
   Sant'Anna & Zhao (2020) Table 1 (experimental / observational
@@ -16515,7 +16653,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.7.0] 鈥?REVIEW-0.4.3 leftover smells + 0.7.0 hygiene
+## [0.7.0] — REVIEW-0.4.3 leftover smells + 0.7.0 hygiene
 
 ### Fixed
 - **L12** (`logistic.mbt:81-93`): `LogisticRegression::fit` now
@@ -16531,7 +16669,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   `acc_s` / `acc_e` during the `+ [...]` accumulator refactor.
   The `ignore()` calls on the unused arrays were also dropped.
 
-- **N2** (`sensitivity.mbt:3`): typo in doc 鈥?"per-dessity" 鈫?"per-density".
+- **N2** (`sensitivity.mbt:3`): typo in doc — "per-dessity" 鈫?"per-density".
 
 ### Changed
 - **L11** (`lpq.mbt:224-228`, `var_est.mbt:55-87`): LPQ's variance
@@ -16540,7 +16678,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   `sum(psi^2) / n / (deriv^2 * n)` formula. The math is byte-equal;
   the helper has a Kahan-compensated accumulator and aborts on
   `jacobian == 0`. Removes the last inlined variance calc across the
-  package 鈥?every estimator now goes through `var_est.mbt` (either
+  package — every estimator now goes through `var_est.mbt` (either
   the 2-argument or the 1-argument + jacobian form).
 
 ### Tests
@@ -16553,7 +16691,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.6.0] 鈥?RDD HC0 + Sensitivity + Resampling + LPQ KDE + dataset demo
+## [0.6.0] — RDD HC0 + Sensitivity + Resampling + LPQ KDE + dataset demo
 
 ### Added
 - **RDD HC0 sandwich SE** (`rdd.mbt`, `linear.mbt:125-175`):
@@ -16572,7 +16710,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   computes the worst-case bias vector
   `sqrt(sigma2 * nu2)` and its gradient w.r.t. confounding
   strength. `robustness_value = |theta_hat| / mean(max_bias)` gives
-  the scalar "RV" 鈥?the minimum confounding strength that would
+  the scalar "RV" — the minimum confounding strength that would
   change the estimator's sign.
 - **`silverman_bandwidth`** + **`gaussian_kde`** +
   **`gaussian_kde_weighted`** (`kde.mbt`): Silverman's rule of
@@ -16619,7 +16757,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.5.0] 鈥?REVIEW-0.4.3 high + medium + low polish
+## [0.5.0] — REVIEW-0.4.3 high + medium + low polish
 
 ### Fixed
 - **H2** (`apo.mbt:163-176`): `DoubleMLAPO::fit` no longer inlines
@@ -16653,7 +16791,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   one `panic_` test each (H1 + L7); the count had been stale since.
 
 ### Skipped (with reason)
-- **L11** (LPQ inlined variance): structural difference 鈥?LPQ's
+- **L11** (LPQ inlined variance): structural difference — LPQ's
   `deriv` is a gradient, not a constant-`1` mean, so a
   `var_est_with_jacobian` helper would be a different refactor. 5
   lines of code, no current maintenance hazard.
@@ -16680,7 +16818,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.4.3] 鈥?REVIEW low polish
+## [0.4.3] — REVIEW low polish
 
 ### Fixed
 - **L7** (`linear.mbt:166-189`): `LinearRegression::fit_weighted` now
@@ -16697,7 +16835,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   the full HC0 vs. nonrobust semantics and the rationale for keeping
   `cov_type` as a struct field (post-fit introspection).
 - **L6** (`seed.mbt:31-37`): in-source comment explains why the
-  match uses a wildcard instead of an explicit `3 => b3` 鈥?`Int % 4`
+  match uses a wildcard instead of an explicit `3 => b3` — `Int % 4`
   is signed, so negative remainders are possible. The "explicit
   case" alternative is non-exhaustive and fails `moon --deny-warn`.
 - **L8** (`linear.mbt:127-156`): `covariance_diagonal` doc warns that
@@ -16723,13 +16861,13 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.4.2] 鈥?REVIEW medium polish
+## [0.4.2] — REVIEW medium polish
 
 ### Changed
 - **M1** (`apo.mbt:70-77`): `DoubleMLAPO::predictions_g` / `predictions_m`
   now `require(self.fitted)` (consistent with `coef` / `se`).
 - **M3** (`apo.mbt:124-148`): `DoubleMLAPO::fit` no longer round-trips
-  through `ga` / `ma` accumulators 鈥?accumulates directly into `g`
+  through `ga` / `ma` accumulators — accumulates directly into `g`
   / `m` and divides by `n_rep` at the end.
 - **M4** (`apo.mbt:217-228`): `DoubleMLAPOS::fit` now passes `n_rep=1`
   to each child `DoubleMLAPO::fit` (the parent APOS loop performs the
@@ -16740,7 +16878,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   `solve_spd`. Saves O(p鲁) memory per fit and produces bit-equal
   HC0 SE values.
 - **M10** (`linear.mbt:194-221`): `fit_weighted` no longer computes
-  the unweighted `(X'X)^{-1}` diagonal 鈥?only the weighted
+  the unweighted `(X'X)^{-1}` diagonal — only the weighted
   `(X'WX)^{-1}` diagonal is needed (by `DoubleMLRDD`). Saves one
   matrix multiplication + one Cholesky-based inverse per fit.
 
@@ -16765,7 +16903,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 - **M5** (defensive `Array::copy` on `predictions_*` accessors): the
   review itself notes this is a 90-line change with poor risk/reward
   ratio. The current shared-reference behaviour is faster and the
-  caller is trusted. Deferred 鈥?not blocking.
+  caller is trusted. Deferred — not blocking.
 
 ### Tests
 - 114 / 114 across all 4 backends (no test count change; existing
@@ -16777,7 +16915,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.4.1] 鈥?REVIEW H1 fix
+## [0.4.1] — REVIEW H1 fix
 
 ### Fixed
 - **`solve_pq` upper bracket robustness** (`quantile.mbt:150-188`):
@@ -16800,11 +16938,11 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.4.0] 鈥?TODO #11c.4
+## [0.4.0] — TODO #11c.4
 
 ---
 
-## [0.4.0] 鈥?TODO #11c
+## [0.4.0] — TODO #11c
 
 ### Added
 - **`LinearRegression::sandwich_se`** (`linear.mbt`): HC0 heteroskedasticity-
@@ -16834,9 +16972,9 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   The `depth` field is now honoured; default stays `1`.
 
 ### Fixed
-- **`DoubleMLPolicyTree`** previously ignored the `depth` parameter 鈥?the
+- **`DoubleMLPolicyTree`** previously ignored the `depth` parameter — the
   fit was always a single-level stump. TODO #11c.3 implements an actual
-  recursive tree-growth (root split 鈫?2 subtrees 鈫?2 sub-subtrees 鈫?鈥?.
+  recursive tree-growth (root split 鈫?2 subtrees 鈫?2 sub-subtrees 鈫?— .
   The variance-reduction gain formula (TODO #11a Bug #8) is preserved.
 
 ### Tests
@@ -16848,7 +16986,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.3.0] 鈥?TODO #11b
+## [0.3.0] — TODO #11b
 
 ### Added
 - **`pq_score_ipw`** (`quantile.mbt`): IPW-only score for the PQ bisection.
@@ -16874,7 +17012,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   bisected theta + 4 more for the numerical derivative (6 total vs 100+).
 
 ### Fixed
-- **QTE SE** was `sqrt(s1^2 + s0^2)` 鈥?quadrature under zero cov.
+- **QTE SE** was `sqrt(s1^2 + s0^2)` — quadrature under zero cov.
   Bug #2 fix.
 - **PQ / LPQ g cross-fit** was 50-100 per fit. Bug #3 fix; the math is
   the same, the speed is 10-20x.
@@ -16888,7 +17026,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.2.0] 鈥?TODO #11a
+## [0.2.0] — TODO #11a
 
 ### Fixed
 - **Bug #1** (`ssm.mbt:243-275`): SSM `pi` data leakage. The `pi` array
@@ -16930,7 +17068,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
 
 ---
 
-## [0.1.0] 鈥?TODO #1鈥?10
+## [0.1.0] — TODO #1— 10
 
 This is the initial port. Each TODO addressed a separate concern:
 
@@ -16954,7 +17092,7 @@ This is the initial port. Each TODO addressed a separate concern:
 - Final `_verify/final-verdict.md` (VERDICT: PASS, B+ rating) covering
   build + test on all 4 backends, end-to-end `moon run cmd/main`,
   9 `validate_*_with_python.py`, and the 8 known-deferred Critical/High
-  bugs (all expanded into TODO #11a鈥?11c.4).
+  bugs (all expanded into TODO #11a— 11c.4).
 
 ---
 
