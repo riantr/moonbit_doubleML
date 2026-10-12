@@ -342,6 +342,38 @@ pub fn DoubleMLDIDCS::new(
     None => ps_processor.config
   }
   try {
+    // NOTE (v0.156.0): deliberately NO `n_folds <= ...` upper bound here,
+    // unlike every other estimator (`apo.mbt:116`, `plr.mbt:107`, `irm.mbt:122`
+    // and the rest all carry one). `n_folds` is instead bound DOWNSTREAM, and
+    // against a HARDCODED FOUR-ROW PLACEHOLDER rather than any real data:
+    //
+    //   did_cs.mbt:1620   DoubleMLDIDCS::fit -> DoubleMLDIDBinary::new
+    //   did_binary.mbt:352   pub fn DoubleMLDIDBinary::new
+    //   did_binary.mbt:439     inner: DoubleMLDID::new(
+    //   did_binary.mbt:441       DoubleMLDIDData::new(Matrix::zeros(4, ...), ...)
+    //   did.mbt:276          require(n_folds <= data.n_obs())
+    //   did.mbt:317          abort(...)   <- the failure
+    //
+    // `DoubleMLDIDBinary::new` builds a 4-row dummy inner model so that
+    // construction does not trip the precondition, and overwrites it with the
+    // real one in `fit()`. Its own comment (did_binary.mbt:412-417) notes this
+    // is safe because "`n_folds` defaults to 2". That is exactly why the limit
+    // was never hit: the default is under the ceiling and the ceiling is
+    // invisible until someone passes a larger number.
+    //
+    // MEASURED (`_verify/N_FOLDS_1570.md`, `_nfolds_threshold_1570.txt`):
+    // this makes upstream's default `n_folds = 5` UNATTAINABLE on this
+    // estimator, and the bound is a CONSTANT, not a property of the sample.
+    //   n_folds = 2 -> fits   n_folds = 3 -> fits   n_folds = 4 -> fits
+    //   n_folds = 5 -> aborts
+    // 4 still fits at n_obs = 1600 AND 4000, pinning the ceiling at the dummy's
+    // 4 rows. The real DIDCS cells are nowhere near it: this DGP makes 16
+    // (g,t) cells (`dgp_did_CS2021.mbt:50-52`), the smallest holding 100 rows
+    // at n_obs = 1600 and 250 at n_obs = 4000.
+    //
+    // Consequence: `n_folds = 2` is not a fidelity gap to be closed here. Do
+    // not "fix" it to match upstream; that breaks the estimator. Callers porting
+    // upstream code that sets `n_folds >= 5` will hit the abort above.
     require(n_folds >= 2)
     require(n_rep >= 1)
     require(propensity_clip > 0.0)

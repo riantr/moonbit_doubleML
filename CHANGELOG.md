@@ -9,6 +9,104 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.156.0] — two source comments corrected by measurement, no behaviour change
+
+Tests 1115 -> 1115 (all four targets): **zero delta**. Comment-only. No reported
+number moves, and no gate was added or removed.
+
+This release **changes no behaviour at all**. It exists because measuring two
+defaults produced findings that contradicted what this package's own comments
+claimed about them — in one case vindicating the comment, in the other replacing
+its explanation with the actual mechanism.
+
+### 1. `in_sample_normalization` (DID / DIDCS)
+
+`did.mbt` described the two normalisations as "equivalent asymptotically but
+differ in finite samples". Measured, on three arms, every one re-checked for
+reproducibility by running it twice (`worst_repeat_diff = 0`):
+
+- `psi_a` is **bit-identical** between the settings: `max |dpsi_a| = 0` at
+  n = 200 / 500 / 1000 / 2000 / 5000. This is structural, not luck — `p_hat`
+  is `mean(d)`, so `d / p_hat` and `d / mean(d)` are the same expression and the
+  flag cannot reach `psi_a` at all. All difference lives in `psi_b`.
+- Effect on the cross-section estimators: at most **0.039 SE**, decaying like
+  O(1/n) to 0.00002 SE at n = 5000.
+- On `DoubleMLDIDCS`: up to **0.97 SE**, with the reported SE itself differing by
+  3.3x. The fitted propensities are bit-identical, so this is the score weighting
+  alone, not propensity degeneracy.
+- Upstream oracle, on upstream's own DGP: at most **0.048 SE** (mean |dcoef|
+  0.0024, SE ratio 1.011, sd ratio 1.004).
+
+**The original comment was essentially right, and is left in force.** Upstream's
+divergence really is finite-sample-scale. What is worth knowing is the gap: this
+port's `DoubleMLDIDCS` moves ~20x more than upstream does on the same
+comparison.
+
+### 2. `n_folds` on `DoubleMLDIDCS` — upstream's own default cannot run
+
+`n_folds = 5` **aborts** at n_obs = 1600, 4000 and 16000; `n_folds = 2` fits all
+three. A positive control (`n_folds = 2`, independently established to fit) was
+required to fail under the `panic_` convention and did, which is what licenses
+reading the other three as aborts.
+
+The threshold was then located exactly: **`n_folds = 4` still fits, `5` aborts**,
+at n_obs = 1600 *and* 4000. That is not a sample-size limit.
+
+The binding set is a **hardcoded 4-row placeholder**: `DoubleMLDIDBinary::new`
+builds a dummy inner `DoubleMLDID` on `Matrix::zeros(4, ...)`
+(`did_binary.mbt:441`) so construction does not trip
+`require(n_folds <= data.n_obs())` (`did.mbt:276`, aborting at `did.mbt:317`).
+Its own comment says this is safe because "`n_folds` defaults to 2" — which is
+exactly why the ceiling was never noticed: the default sits under it.
+
+The real DIDCS cells are nowhere near the limit. This DGP produces **16** (g,t)
+cells (`dgp_did_CS2021.mbt:50-52`), the smallest holding 100 rows at
+n_obs = 1600 and 250 at n_obs = 4000.
+
+The ceiling was then shown to be **scale-invariant**, which is what separates a
+constant from a limit. Constructing `DoubleMLDIDBinary` **directly**, with no
+DIDCS involved, at 600 units (real wide-format subset = 600 rows):
+`n_folds = 2` and `n_folds = 4` both fit, and `n_folds = 5` still aborts. A
+subset-size limit would have sailed through at 600 rows. So the bound is the
+constant 4, and it belongs to the **`DoubleMLDIDBinary` type** rather than to
+DIDCS's cell loop — anyone constructing that type hits the same wall.
+
+`did_cs.mbt` is the only estimator with **no** `n_folds <= n_obs` guard of its
+own, so the bound arrives from downstream. Documented now at the guard site, at
+`did_binary.mbt:412`, and in the placeholder's own comment, so the next reader
+does not "fix" the default to match upstream and break the estimator.
+
+Elsewhere `n_folds = 5` is mildly better and moves the estimate by up to
+1.03 SE on PLR — ordinary cross-fitting noise, correctly priced by the SE.
+
+### Also corrected here
+
+`README.mbt.md` pinned `moon.mod version` at **0.154.0** while `moon.mod` was
+already at 0.155.0.
+
+### Retracted from the first pass of this release
+
+The first pass of this entry claimed the upstream arm moved the estimate by
+**3.17 SE** and that the `did.mbt` comment "understated it by two orders of
+magnitude". Both were wrong. That arm seeded the *data* but not the estimator:
+`DoubleMLDIDCS` draws its own cross-fitting split at construction, so
+`np.random.seed(s)` placed before `fit()` came too late. Three placements were
+tested; only seeding before **construction** reproduces exactly (`max |diff| =
+0`). Re-measured properly, the figure is **0.048 SE**.
+
+The generalisable point is the one that matters: an instrument whose
+reproducibility was never demonstrated has not produced a result, and a large
+"finding" is the symptom most likely to be noise. Every port-side number quoted
+above was re-checked the same way and is exact on repeat.
+
+### Not established
+
+Whether the hardcoded 4-row placeholder should be replaced with the real
+preprocessed subset at construction time, which would lift the ceiling, or
+whether `n_folds >= 5` should be rejected with a clear message instead of
+aborting deep in `DoubleMLDID::new`. Both are behaviour changes and neither was
+made here.
+
 ## [0.155.0] — `DoubleMLPLR` accepts upstream's own spelling of the partialling-out score
 
 Tests 1106 -> 1109 (native / wasm / js), 1112 -> 1115 (wasm-gc): exactly +3,

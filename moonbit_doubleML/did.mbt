@@ -164,9 +164,40 @@ pub struct DoubleMLDID {
   // Whether to normalise the IPW weights by their sample mean
   // (Sant'Anna & Zhao 2020 eq. 4.3) or by `p_hat = mean(d)`. The
   // `in_sample_normalization = true` form uses `d / mean(d)` instead
-  // of `d / p_hat` for `psi_a`; equivalent asymptotically but
-  // differs in finite samples. Default is `false` to preserve
-  // pre-0.8.0 bit-equality with the prior `DoubleMLDID` port.
+  // of `d / p_hat` for `psi_a`.
+  //
+  // MEASURED (v0.156.0, `_verify/IN_SAMPLE_NORMALIZATION_1570.md`), which
+  // corrects the magnitude this comment used to claim was "finite-sample
+  // noise":
+  //
+  // - `psi_a` is BIT-IDENTICAL between the two settings -- `max |dpsi_a| = 0`
+  //   at n = 200/500/1000/2000/5000. This is structural, not luck: `p_hat` is
+  //   `mean(d)`, so `d / p_hat` and `d / mean(d)` are the same expression and
+  //   the flag cannot reach `psi_a` at all. All difference lives in `psi_b`.
+  // - On these cross-section estimators the effect on the reported estimate is
+  //   at most 0.039 SE, decaying like O(1/n) to 0.00002 SE at n = 5000.
+  // - On `DoubleMLDIDCS` it is NOT cosmetic: up to 0.97 SE, and the reported
+  //   SE itself differs by 3.3x between the settings. The propensities are
+  //   bit-identical, so this is the score weighting alone, not degeneracy.
+  // - Upstream defaults this to `true`. Measured on upstream's own DGP with a
+  //   properly seeded estimator, the two settings differ by at most
+  //   **0.048 SE** (mean |dcoef| 0.0024, SE ratio 1.011, sd ratio 1.004). So
+  //   upstream's divergence genuinely IS finite-sample-scale -- this comment's
+  //   original wording was right, and an earlier revision of this comment that
+  //   claimed "3.17 SE" was measuring unseeded noise and has been retracted.
+  // - The surprising number is this port's own: `DoubleMLDIDCS` moves up to
+  //   **0.97 SE** here, ~20x upstream's 0.048, with the reported SE differing
+  //   by 3.3x. That gap is the part worth knowing about.
+  //
+  // Every port figure above was re-checked for reproducibility: each arm run
+  // twice, `worst_repeat_diff = 0` (`_probe_determinism_1570_test.mbt.txt`).
+  // The upstream figures required seeding `np.random.seed(s)` BEFORE
+  // `DoubleMLDIDCS(...)` construction, not before `fit()`
+  // (`_isn_determinism_1570.txt`).
+  //
+  // The default stays `false` to preserve pre-0.8.0 bit-equality with the
+  // prior `DoubleMLDID` port -- a backward-compatibility reason. It is NOT
+  // kept because `false` matches upstream.
   in_sample_normalization : Bool
   // v0.59.0+: injected nuisance learners (replaces the v0.57.0
   // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0

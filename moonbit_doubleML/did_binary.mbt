@@ -415,6 +415,22 @@ pub fn DoubleMLDIDBinary::new(
       // `DoubleMLDID::new` precondition `n_folds <= n_obs` is not
       // tripped at construction time (`n_folds` defaults to 2).
       // The dummy is overwritten by the real inner model on `fit()`.
+      //
+      // v0.156.0 -- the 4 rows are a HARD CEILING on `n_folds` for this type
+      // and for `DoubleMLDIDCS`, which constructs one of these per cell.
+      // `n_folds <= 4` fits; `n_folds >= 5` aborts, at EVERY sample size.
+      //
+      // Isolated on this type directly, with no DIDCS involved: at 600 units
+      // (real wide-format subset = 600 rows) `n_folds = 2` and `n_folds = 4`
+      // both fit and `n_folds = 5` still aborts. So the bound is the constant
+      // 4, not the data -- a subset-size limit would have passed at 600 rows.
+      // Measured on DIDCS as well, where the real cells hold 100 rows at
+      // n_obs = 1600 and 250 at 4000.
+      //
+      // Consequence: this is not something more data relieves, and the upstream
+      // `n_folds = 5` default cannot be matched to on this estimator. The port
+      // default of 2 sits under the ceiling, which is why it went unnoticed.
+      // See `_verify/N_FOLDS_1570.md`.
       // v0.43.0: wrap DoubleMLDIDData::new in try/catch/re-abort to
       // preserve pre-v0.43.0 process-death behavior. The dummy
       // data is valid binary d, so the catch arm is unreachable in
