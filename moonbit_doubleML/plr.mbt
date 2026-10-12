@@ -353,7 +353,7 @@ fn plr_score_elements(
 ) -> (Array[Double], Array[Double]) {
   let psi_a : Array[Double] = Array::make(n, 0.0)
   let psi_b : Array[Double] = Array::make(n, 0.0)
-  if score == "iv-type" || score == "IV-type" {
+  if plr_is_iv_score(score) {
     // IV-type: z[i] is the instrument (length n is caller's
     // responsibility; the array index below would panic if z
     // is shorter). The default `z = []` (length 0) on
@@ -374,12 +374,41 @@ fn plr_score_elements(
 }
 
 ///|
+/// Is `score` one of the two spellings this package has ever used for the
+/// partialling-out score?
+///
+/// v0.155.0: upstream `doubleml/plm/plr.py:99` declares
+/// `valid_scores = ["IV-type", "partialling out"]` -- **with a space** -- and
+/// its `__init__` default is `score="partialling out"`. This port has always
+/// spelled it `"partialling-out"` (hyphen), so the port's default was a value
+/// upstream rejects, and `DoubleMLPLR` aborted on upstream's own spelling.
+/// `DoubleMLPLPR::new` (plpr.mbt:554) uses the SPACE spelling, matching
+/// upstream, so the two estimators in this package did not share a vocabulary.
+///
+/// Accepting both is strictly additive and cannot move a number:
+/// `plr_score_elements` (plr.mbt:356) selects the IV branch only on an
+/// iv-type spelling and falls through to partialling-out for everything
+/// else, so `"partialling out"` already computed the identical PO score --
+/// it was only the `require` that rejected it. No default is changed, so no
+/// existing call site moves.
+fn plr_is_po_score(score : String) -> Bool {
+  score == "partialling-out" || score == "partialling out"
+}
+
+///|
+fn plr_is_iv_score(score : String) -> Bool {
+  score == "iv-type" || score == "IV-type"
+}
+
+///|
 /// The `learner_l` / `learner_m` labeled params accept any
 /// `LearnerDispatch` (defaults to the constructor-set values,
 /// i.e. a fresh `LinearRegression`). Per-fit overrides let
 /// callers swap in alternative nuisance estimators
 /// (`ConstantLearner`, `NoopLearner`, ...) without rebuilding
 /// the `DoubleMLPLR` instance.
+
+///|
 pub fn DoubleMLPLR::fit(
   self : DoubleMLPLR,
   learner_l~ : LearnerDispatch = self.learner_l,
@@ -389,16 +418,14 @@ pub fn DoubleMLPLR::fit(
   tune_result~ : TuneResult? = None,
 ) -> DoubleMLPLR {
   try {
-    require(
-      score == "partialling-out" || score == "iv-type" || score == "IV-type",
-    )
+    require(plr_is_po_score(score) || plr_is_iv_score(score))
     require(max_attempts >= 1)
     // v0.55.0: real IV-type branch. Caller must have built
     // `DoubleMLData` with a non-empty `z` vector of length `n_obs`.
     // The require below is the v0.48.0+ cascade: false here
     // throws `PreconditionError::Violated(loc)` which the outer
     // `try` catches and re-aborts with a descriptive message.
-    if score == "iv-type" || score == "IV-type" {
+    if plr_is_iv_score(score) {
       require(self.data.z.length() == self.n_obs())
     }
     if self.data.is_cluster_data() {
@@ -655,7 +682,7 @@ fn DoubleMLPLR::fit_cluster(
     // `DoubleMLData` with a non-empty `z` vector. Same
     // require-cascade as `fit()` for the v0.48.0+
     // `PreconditionError::Violated(loc)` -> `abort(...)` flow.
-    if score == "iv-type" || score == "IV-type" {
+    if plr_is_iv_score(score) {
       require(self.data.z.length() == self.n_obs())
     }
     let cluster = self.data.cluster_vars

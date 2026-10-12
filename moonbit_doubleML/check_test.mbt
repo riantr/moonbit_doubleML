@@ -195,6 +195,36 @@ test "panic_plr_new_n_rep_zero" {
 }
 
 ///|
+/// v0.155.0: the `score` widening must be to exactly ONE extra spelling,
+/// not to anything. An unknown score must still abort, or the fix has become
+/// a silent catch-all that quietly runs every typo as partialling-out.
+/// The accepted set is now
+///   { "partialling-out", "partialling out", "iv-type", "IV-type" }
+/// via `plr_is_po_score` / `plr_is_iv_score` (plr.mbt:394, :399).
+/// This driver pins that an UNRELATED spelling is still rejected; the
+/// positive half (both partialling-out spellings agreeing bit-for-bit) is in
+/// `expand_v155_test.mbt::v1550_score_upstream_spelling_bit_identical`.
+test "panic_plr_fit_unknown_score_spelling" {
+  let n = 100
+  let rng = chacha8_rng(42)
+  let x_data : Array[Double] = Array::make(n * 3, 0.0)
+  let y_data : Array[Double] = Array::make(n, 0.0)
+  let d_data : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let x0 = rng.double() * 2.0 - 1.0
+    let x1 = rng.double() * 2.0 - 1.0
+    let x2 = rng.double() * 2.0 - 1.0
+    x_data[i * 3 + 0] = x0
+    x_data[i * 3 + 1] = x1
+    x_data[i * 3 + 2] = x2
+    d_data[i] = 0.3 * x0 + 0.4 * x1 + (rng.double() - 0.5) * 0.6
+    y_data[i] = 1.5 * d_data[i] + 0.5 * x0
+  }
+  let data = DoubleMLData::new(Matrix::from_array(x_data, n, 3), y_data, d_data)
+  let _ = DoubleMLPLR::new(data, n_folds=2, seed=1).fit(score="partialling_out")
+}
+
+///|
 /// `DoubleMLIRM::new` must abort when the propensity clip parameter is
 /// non-positive. The panic path goes through
 /// `require(propensity_clip > 0.0)` inside `irm.mbt`. (The companion

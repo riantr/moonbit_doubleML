@@ -9,6 +9,100 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.155.0] — `DoubleMLPLR` accepts upstream's own spelling of the partialling-out score
+
+Tests 1106 -> 1109 (native / wasm / js), 1112 -> 1115 (wasm-gc): exactly +3,
+three new gates, every pre-existing count and every reported number unchanged.
+
+This is the first release in the defaults audit that **fixes** something. It
+fixes only the one divergence that survived every check.
+
+### The defect, as measured
+
+Upstream `doubleml/plm/plr.py:99` declares
+
+```python
+valid_scores = ["IV-type", "partialling out"]   # note: SPACE
+```
+
+and its `__init__` default is `score="partialling out"`. This port defaulted
+
+```moonbit
+score~ : String = "partialling-out"            // note: HYPHEN
+```
+
+-- a value upstream's `_check_score` rejects. The two accepted sets therefore
+intersected in exactly one element:
+
+```
+port accepted  INTERSECT  upstream accepted  =  { "IV-type" }
+```
+
+and **both** broken directions abort, measured:
+
+| call | result |
+|---|---|
+| `DoubleMLPLR::fit(score="partialling out")` (upstream's) | **abort** |
+| `DoubleMLPLPR::new(score="partialling-out")` (this port's) | **abort** |
+
+So within one package, `partialling out` works on PLPR and aborts on PLR,
+while `partialling-out` works on PLR and aborts on PLPR. A user who corrected
+the spelling for one estimator broke the other.
+
+### The fix
+
+One predicate, `plr_is_po_score` (`plr.mbt:394`), now accepts both spellings,
+and all five literal `score` comparisons are funnelled through two helpers
+(`plr_is_po_score`, `plr_is_iv_score`) so the row-level and cluster paths
+cannot drift apart. `tune.mbt:355` forwards the string unchanged and inherits
+the alias.
+
+**No default changed, so no existing call site moves.**
+
+### Why it provably moves no number
+
+The branch selector `plr_score_elements` (`plr.mbt:356`) tests only for an
+iv-type spelling and falls through to partialling-out for everything else --
+so `"partialling out"` was *already* computing the identical PO score. Only the
+`require` rejected it. Measured, all three spellings:
+
+```
+default / "partialling-out" / "partialling out"
+  coef = 1.4445411463639795
+  se   = 0.045208884326958514
+  pairwise differences = 0
+```
+
+`expand_v155_test.mbt::v1550_score_upstream_spelling_bit_identical` pins that
+as an **exact** zero, not a tolerance, so a later "helpful" normalisation that
+silently changed which score is computed would fail the gate.
+
+The widening is to **one** extra spelling, not to anything:
+`check_test.mbt::panic_plr_fit_unknown_score_spelling` pins that an unrelated
+spelling still aborts, so the fix cannot degrade into a silent catch-all that
+runs every typo as partialling-out.
+
+### Gates
+
+`expand_v155_test.mbt` (2):
+
+1. `v1550_score_upstream_spelling_bit_identical` -- the space spelling is bit
+   identical to the default; **and**, as the declared control, `IV-type` still
+   moves the coefficient, so `score` remains load-bearing rather than inert.
+   Both iv-type spellings agree with each other.
+2. `v1550_score_gate_fixture_still_sensible` -- the fixture is still sane, so
+   "identical" cannot be satisfied by both arms being garbage.
+
+`check_test.mbt` (1, panic driver, per the package's existing convention):
+
+3. `panic_plr_fit_unknown_score_spelling` -- `score="partialling_out"` aborts.
+
+### Gates
+
+`moon check` 0. `moon fmt --check` 0 (`moon fmt` touched only `plr.mbt` and
+`check_test.mbt`; no collateral rewrites across the other 216 `.mbt` files, and
+no BOM or CRLF introduced). `typos` 1.19.0 exit 0. Full suite on four
+targets: **1109 / 1109 / 1115 / 1109**, zero failures.
 ## [0.154.0] — the sensitivity elements are 2-period panels only
 
 Docs-only plus tripwires. **No behaviour change.** Tests 1098 -> 1106 (native /
