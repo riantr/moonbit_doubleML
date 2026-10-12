@@ -214,14 +214,14 @@ fn expand_v100_didmulti_cell(m : DoubleMLDIDMulti, idx : Int) -> (Int, Int) {
 
 ///|
 /// Combination indices whose `(g, t_eval)` is a cell the inner
-/// actually estimated (`t_eval > g`). Returns 3 indices -- 1, 2, 5 --
-/// under the `"all"` keyword.
+/// actually estimated. v0.150.0: the inner's live boundary moved from
+/// `t_eval > g` to `t_eval >= g`, so this moved with it. Measured 2026-10-12.
 fn expand_v100_didmulti_live_idx(m : DoubleMLDIDMulti) -> Array[Int] {
   let out : Array[Int] = []
   let mut out_acc = out
   for i = 0; i < m.n_combinations(); i = i + 1 {
     let (g, _t_pre, t_eval) = m.gt_combinations[i]
-    if t_eval > g {
+    if t_eval >= g {
       out_acc = out_acc + [i]
     }
   }
@@ -514,7 +514,16 @@ test "didmulti_cluster_sandwich_se_at_idx" {
     inspect(se_pooled != hc0, content="true")
     // Pooling blocks of 4 leaves fewer, fatter clusters, so the
     // meat is strictly larger and the SE strictly wider.
-    inspect(se_pooled > se_single, content="true")
+    // v0.150.0 REWRITTEN, same reason as the DIDCS twin in
+    // `expand_v100_didcs_test.mbt`: `se_pooled > se_single` is not a theorem --
+    // the cluster sandwich exceeds the IID one only under POSITIVE within-block
+    // score correlation. Measured 2026-10-12: cells (0,3) and (1,3) widen,
+    // cell (0,2) INVERTS (0.0042918 < 0.0044041). Pinned per cell instead.
+    if gi == 0 && pi == 2 {
+      inspect(se_pooled < se_single, content="true")
+    } else {
+      inspect(se_pooled > se_single, content="true")
+    }
     // Index-respecting: two live indices cluster differently.
     inspect(
       m.cluster_sandwich_se_at_idx(live[0], pooled) !=

@@ -231,7 +231,8 @@ fn expand_v100_live_cells(f : DoubleMLDIDCS) -> Array[(Int, Int)] {
   for gi = 0; gi < f.n_groups(); gi = gi + 1 {
     let g_value = f.group_at(gi)
     for pi = 0; pi < f.n_periods(); pi = pi + 1 {
-      if f.period_at(pi) <= g_value {
+      // v0.150.0: `t >= g` is post-treatment, so the live boundary is `t < g`.
+      if f.period_at(pi) < g_value {
         continue
       }
       out_acc = out_acc + [(gi, pi)]
@@ -275,7 +276,7 @@ fn expand_v100_didcs_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
 test "didcs_sandwich_hc0_equals_se_per_cell" {
   let f = expand_v100_didcs()
   let cells = expand_v100_live_cells(f)
-  inspect(cells.length(), content="3")
+  inspect(cells.length(), content="6")
   for c in cells {
     let (gi, pi) = c
     let se_hc0 = f.sandwich_se_at(gi, pi, SandwichKind::hc0())
@@ -657,7 +658,26 @@ test "didcs_cluster_sandwich_se_at" {
     // Pooling blocks of 4 leaves fewer, fatter clusters, so the
     // meat is strictly larger and the SE strictly wider than the
     // all-singleton / HC0 value on this data.
-    inspect(se_pooled > se_single, content="true")
+    // v0.150.0 REWRITTEN. The old assertion was `se_pooled > se_single`, justified
+    // as "pooling blocks of 4 leaves fewer, fatter clusters, so the meat is
+    // strictly larger and the SE strictly wider". That is NOT a theorem. The
+    // cluster sandwich exceeds the IID one only when the within-block score
+    // correlation is POSITIVE; pooling can just as easily tighten it. Once the
+    // base period moved to `g - 1` and the cells' rows changed, cell (0,2)
+    // INVERTED -- pooled 0.0042918 < singleton 0.0044041 -- and the old
+    // assertion failed there. It had been asserting a property of this data,
+    // not of the code.
+    //
+    // The sign is now pinned per cell from the measured run of 2026-10-12:
+    // five of six cells widen, (0,2) narrows. This keeps the assertion
+    // STRONGER than a bare `!=` (which would only restate the `!= hc0` line
+    // above, since `singleton == hc0` exactly) -- the inversion is now an
+    // explicit, falsifiable claim about a specific cell.
+    if gi == 0 && pi == 2 {
+      inspect(se_pooled < se_single, content="true")
+    } else {
+      inspect(se_pooled > se_single, content="true")
+    }
   }
 }
 
@@ -672,23 +692,27 @@ test "didcs_cluster_sandwich_se_at" {
 /// falsifiable assertions; the aborting calls follow in tests 7 and
 /// 8.
 ///
-/// An unestimated cell (`t_eval <= g`, or no observed pre-period)
+/// An unestimated cell (`t_eval < g`, or no observed base period `g - 1`)
 /// stores the EMPTY per-cell row array -- that is precisely the
 /// condition `sandwich_se_at` and `cluster_sandwich_se_at` check
 /// before doing any arithmetic, and it is what stops them returning
 /// a plausible-looking `0.0` where `se_at` legitimately reports one.
+///
+/// v0.150.0: the boundary moved from `t_eval <= g` to `t_eval < g`, and with it
+/// the live-cell count on this fixture from 3 to 6 -- cohorts 1, 2 and 3 now
+/// each contribute their own treatment-period cell. Measured 2026-10-12.
 test "didcs_sandwich_empty_cell_state" {
   let f = expand_v100_didcs()
   inspect(f.n_groups(), content="3")
   inspect(f.n_periods(), content="4")
   let n_live = expand_v100_live_cells(f).length()
-  inspect(n_live, content="3")
+  inspect(n_live, content="6")
   let mut n_degenerate = 0
   for gi = 0; gi < f.n_groups(); gi = gi + 1 {
     for pi = 0; pi < f.n_periods(); pi = pi + 1 {
       let flat = expand_v100_flat(f, gi, pi)
       let row = f.cell_psi_a[flat]
-      if f.period_at(pi) <= f.group_at(gi) {
+      if f.period_at(pi) < f.group_at(gi) {
         // Pre-treatment cell: no estimate, empty row, and
         // `se_at` reports 0.0 -- the two are consistent, and the
         // sandwich refuses rather than echoing the 0.0.
@@ -703,8 +727,8 @@ test "didcs_sandwich_empty_cell_state" {
       }
     }
   }
-  // 12 cells total, 3 of them live.
-  inspect(n_degenerate, content="9")
+  // 12 cells total, 6 of them live.
+  inspect(n_degenerate, content="6")
   // The state exists on both an un-fit model (empty sentinel) and a
   // fitted one, and `fit` overwrites the sentinel rather than
   // leaving it.
@@ -873,7 +897,7 @@ test "didcs_sandwich_after_memoize_cache_hit" {
     seed=3141,
   ).fit()
   let cells = expand_v100_live_cells(f1)
-  inspect(cells.length(), content="3")
+  inspect(cells.length(), content="6")
   for c in cells {
     let (gi, pi) = c
     let flat = expand_v100_flat(f1, gi, pi)

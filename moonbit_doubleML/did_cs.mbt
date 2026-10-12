@@ -1408,11 +1408,23 @@ pub fn DoubleMLDIDCS::fit(
     let mut cell_psi_b_values_acc = cell_psi_b_values
     for gi = 0; gi < self.n_groups; gi = gi + 1 {
       let g_value = self.data.groups[gi]
-      // Find the index of the period equal to g_value (the
-      // pre-treatment baseline).
+      // v0.150.0: the base period is `g_value - 1`, NOT `g_value`.
+      //
+      // A cohort treated AT period `g` is untreated in `g - 1`, and
+      // ATT(g, g) is a real estimand: post-treatment starts AT the
+      // treatment period, which is what `dgp_recovery_test` has always
+      // documented. The old rule used `g_value` as its own baseline and
+      // then required `eval_period > pre_period`, so it admitted only
+      // `t > g` and could never reach `t == g`. Measured on the
+      // canonical `make_did_cs_CS2021(800, 3, 1.0, 3141)`: groups=[1],
+      // times=[0,1], so base=1 admits nothing at all, and the single
+      // post-treatment cell (g=1, t=1) -- 200 rows, all 200 treated --
+      // was never estimated. `coef_at` then returned the 0.0 it was
+      // initialised with, so `dgp_recovery_test`'s `max_abs_err < 5.0`
+      // passed on `|0 - 1| = 1.0` while testing nothing.
       let mut pre_period_idx = -1
       for pi = 0; pi < self.n_periods; pi = pi + 1 {
-        if self.data.times[pi] == g_value {
+        if self.data.times[pi] == g_value - 1 {
           pre_period_idx = pi
         }
       }
@@ -1421,7 +1433,7 @@ pub fn DoubleMLDIDCS::fit(
         // all (g_value, t_eval) cells for this group.
         continue
       }
-      let pre_period = g_value
+      let pre_period = g_value - 1
       for pi = 0; pi < self.n_periods; pi = pi + 1 {
         let eval_period = self.data.times[pi]
         if eval_period <= pre_period {
@@ -1624,18 +1636,21 @@ pub fn DoubleMLDIDCS::fit(
     let mut coef_idx = 0
     for gi = 0; gi < self.n_groups; gi = gi + 1 {
       let g_value = self.data.groups[gi]
-      // Locate the pre-treatment period (g_value itself) in the
-      // time index; if absent, the whole group is skipped.
+      // v0.150.0: base period is `g_value - 1` -- MUST stay identical to
+      // the fit loop's rule. This loop walks the same (g, t) grid in the
+      // same order and uses `coef_idx` as a CURSOR into the per-cell
+      // accumulators, so a predicate that disagrees with the fit loop's
+      // by even one cell would shift every later cell's coefficient.
       let mut has_pre = false
       for pi = 0; pi < self.n_periods; pi = pi + 1 {
-        if self.data.times[pi] == g_value {
+        if self.data.times[pi] == g_value - 1 {
           has_pre = true
         }
       }
       for pi = 0; pi < self.n_periods; pi = pi + 1 {
         let eval_period = self.data.times[pi]
         let flat = gi * self.n_periods + pi
-        if !has_pre || eval_period <= g_value {
+        if !has_pre || eval_period <= g_value - 1 {
           continue
         }
         final_coef[flat] = coef_values_acc[coef_idx]

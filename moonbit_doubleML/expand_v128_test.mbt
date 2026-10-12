@@ -652,11 +652,16 @@ test "v128_did_cs_forwards_the_config" {
       ),
     ),
   ).fit()
+  // v0.150.0 RE-PINNED for the new base period. Measured 2026-10-12. Note the
+  // old values were ~-0.0019, i.e. essentially zero, because (gi=0, pi=2) was
+  // a dead cell under the old `t <= g` rule and this was reading the zero
+  // sentinel through a config-forwarding test. `base` (no override) equals `a`
+  // because the default clipping threshold is also 1e-2.
   assert_true(a.coef_at(gi, pi) != c.coef_at(gi, pi))
   assert_true(a.coef_at(gi, pi) != iso.coef_at(gi, pi))
-  assert_true(a.coef_at(gi, pi) == -0.0019323640007233803)
-  assert_true(c.coef_at(gi, pi) == -0.0013883780810574286)
-  assert_true(iso.coef_at(gi, pi) == -0.001710502053024229)
+  assert_true(a.coef_at(gi, pi) == 0.9968362069375236)
+  assert_true(c.coef_at(gi, pi) == 0.9966438106273696)
+  assert_true(iso.coef_at(gi, pi) == 0.9991226924315058)
   // stored config survives the rebuild
   let m = DoubleMLDIDCS::new(
     data,

@@ -151,12 +151,23 @@ test "didcs_panel_folds_partition_every_row_exactly_once" {
 test "didcs_stage_1a_does_not_move_any_estimate" {
   let fitted = v1460_four_period_fit()
   let rel = fn(got : Double, want : Double) { (got - want).abs() / want.abs() }
-  assert_true(rel(fitted.coef_at(0, 2), 0.719493089978081) < 1.0e-12)
-  assert_true(rel(fitted.se_at(0, 2), 1.436337096130982) < 1.0e-12)
-  assert_true(rel(fitted.coef_at(0, 3), 0.35566148636473893) < 1.0e-12)
-  assert_true(rel(fitted.se_at(0, 3), 1.2174113759994636) < 1.0e-12)
-  assert_true(rel(fitted.coef_at(1, 3), 0.15902160278807542) < 1.0e-12)
-  assert_true(rel(fitted.se_at(1, 3), 1.4409600613450697) < 1.0e-12)
+  // v0.150.0 RE-PINNED. The estimand fix moved the base period from `g` to
+  // `g - 1`, so every cell's row subset changed and the old values no longer
+  // describe this estimator. All six below are measured off a real run of this
+  // fixture on 2026-10-12; none is a guess.
+  //
+  // READ THESE AS REGRESSION LOCKS, NOT ATT RECOVERIES. `make_did_CS2021`
+  // treats cohort `g` at `tau_g = g - 1` (cohort 1 is treated from t=0), while
+  // `DoubleMLDIDCS` interprets `g_value` as the treatment PERIOD. This fixture
+  // therefore does not satisfy DIDCS's g-is-tau convention under either base
+  // period rule, and its cells are not CS ATT(g, t). The fixtures that DO
+  // satisfy it recover ATT to ~0.4% -- see `expand_v150_test.mbt` GATE 3.
+  assert_true(rel(fitted.coef_at(0, 2), 0.45314982908769347) < 1.0e-12)
+  assert_true(rel(fitted.se_at(0, 2), 1.4998819531988425) < 1.0e-12)
+  assert_true(rel(fitted.coef_at(0, 3), 0.08931822547434981) < 1.0e-12)
+  assert_true(rel(fitted.se_at(0, 3), 1.389494533829865) < 1.0e-12)
+  assert_true(rel(fitted.coef_at(1, 3), -0.7057449656908239) < 1.0e-12)
+  assert_true(rel(fitted.se_at(1, 3), 1.2517201629194283) < 1.0e-12)
 }
 
 ///|

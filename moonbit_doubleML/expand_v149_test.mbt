@@ -152,23 +152,41 @@ test "didcs_panel_elements_are_absent_before_fit" {
 }
 
 ///|
-/// GATE 6. ADDITIVITY. Stage 2 adds accessors and changes nothing reported.
-/// `sensitivity_analysis` still runs `irm_style_sensitivity` over the DML score
-/// element and is untouched, so its numbers and the estimates behind them must
-/// be exactly what v0.148.0 recorded. Note the canonical panel has zero
-/// estimable cells (the base period is the cohort's own treatment period), so
-/// what is pinnable here is that the SEED path is unchanged, not an ATT.
+/// GATE 6. REWRITTEN in v0.150.0 -- and this is the clearest example in the
+/// package of a gate that pinned a DEFECT and read as evidence while doing it.
+///
+/// It used to assert that EVERY cell on the canonical panel is the 0.0 sentinel,
+/// with the comment "Every cell is skipped, so every coefficient is the 0.0
+/// sentinel." That was true, and it was the bug: `dgp_recovery_test` was
+/// asserting `max_abs_err < 5.0` against a hardcoded zero while claiming to
+/// recover an ATT of 1.0. A gate that certifies "nothing was estimated" looks
+/// exactly like a gate that certifies "nothing changed", which is why stage 2
+/// shipped with the defect still live.
+///
+/// It now asserts the partition that is actually correct: `t < g` is
+/// pre-treatment and stays at the 0.0 sentinel, `t >= g` is post-treatment and
+/// carries a REAL estimate. `coef_at(0, 1) = 2.727522673844541` with
+/// `se = 1.9428873717680928`, measured 2026-10-12. Stage 2 still does not
+/// change any number -- the sensitivity path is untouched -- but the numbers
+/// being asserted are now real ones.
 test "didcs_stage_2_does_not_move_any_estimate" {
   let fitted = v1490_cs()
   assert_true(fitted.n_groups() == 1)
   assert_true(fitted.n_periods() == 2)
-  // Every cell is skipped, so every coefficient is the 0.0 sentinel.
-  for gi = 0; gi < fitted.n_groups(); gi = gi + 1 {
-    for pi = 0; pi < fitted.n_periods(); pi = pi + 1 {
-      assert_true(fitted.coef_at(gi, pi) == 0.0)
-      assert_true(fitted.se_at(gi, pi) == 0.0)
-    }
-  }
+  // (g=1, t=0): t < g, genuinely pre-treatment, no estimate, stays 0.0.
+  assert_true(fitted.coef_at(0, 0) == 0.0)
+  assert_true(fitted.se_at(0, 0) == 0.0)
+  // (g=1, t=1): t == g, post-treatment SINCE v0.150.0, and estimated.
+  //
+  // 1e-12 RELATIVE, not `==`. These are did_cs ATTs, which carry the known
+  // ~1.5e-15 (two ULP) spread across backends -- the same reason
+  // `expand_v146_test.mbt` GATE 5 uses a tolerance. An exact `==` here passed
+  // on native and failed on wasm, wasm-gc AND js, which is the signature of a
+  // platform difference rather than a regression. Measured native values:
+  // coef 2.727522673844541, se 1.9428873717680928.
+  let rel = fn(got : Double, want : Double) { (got - want).abs() / want.abs() }
+  assert_true(rel(fitted.coef_at(0, 1), 2.727522673844541) < 1.0e-12)
+  assert_true(rel(fitted.se_at(0, 1), 1.9428873717680928) < 1.0e-12)
   // And the new elements are nonetheless populated, which is the whole point:
   // they are panel-level and do not need a live cell.
   assert_true(fitted.sensitivity_sigma2() > 0.0)

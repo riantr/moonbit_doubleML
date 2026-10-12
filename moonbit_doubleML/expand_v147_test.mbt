@@ -213,12 +213,16 @@ test "didcs_four_g_cells_are_t_in_01_and_rows_beyond_train_none" {
 /// move an old estimate. That uniform survival IS the property being certified.
 test "didcs_stage_1b_does_not_move_any_estimate" {
   let fitted = v1470_four_period_fit()
-  assert_true(v1470_rel(fitted.coef_at(0, 2), 0.719493089978081) < 1.0e-12)
-  assert_true(v1470_rel(fitted.se_at(0, 2), 1.436337096130982) < 1.0e-12)
-  assert_true(v1470_rel(fitted.coef_at(0, 3), 0.35566148636473893) < 1.0e-12)
-  assert_true(v1470_rel(fitted.se_at(0, 3), 1.2174113759994636) < 1.0e-12)
-  assert_true(v1470_rel(fitted.coef_at(1, 3), 0.15902160278807542) < 1.0e-12)
-  assert_true(v1470_rel(fitted.se_at(1, 3), 1.4409600613450697) < 1.0e-12)
+  // v0.150.0 RE-PINNED for the new base period; all six measured off a real run.
+  // Same caveat as `expand_v146_test.mbt` GATE 5: `make_did_CS2021` sets
+  // `tau_g = g - 1`, so `g` is a cohort LABEL there, not a treatment period,
+  // and these are regression locks rather than ATT recoveries.
+  assert_true(v1470_rel(fitted.coef_at(0, 2), 0.45314982908769347) < 1.0e-12)
+  assert_true(v1470_rel(fitted.se_at(0, 2), 1.4998819531988425) < 1.0e-12)
+  assert_true(v1470_rel(fitted.coef_at(0, 3), 0.08931822547434981) < 1.0e-12)
+  assert_true(v1470_rel(fitted.se_at(0, 3), 1.389494533829865) < 1.0e-12)
+  assert_true(v1470_rel(fitted.coef_at(1, 3), -0.7057449656908239) < 1.0e-12)
+  assert_true(v1470_rel(fitted.se_at(1, 3), 1.2517201629194283) < 1.0e-12)
 }
 
 ///|

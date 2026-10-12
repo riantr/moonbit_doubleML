@@ -198,14 +198,19 @@ test "didcs_sensitivity_returns_per_cell_results" {
   // stays at 2 (the discovery rule strips the
   // never_treated_value).
   assert_eq(results.length(), 6)
-  // Fitted cells (eval_period > g_value): (g=1, t=2) ->
-  // gi=0 / pi=1 / flat=1; (g=1, t=3) -> gi=0 / pi=2 /
-  // flat=2; (g=2, t=3) -> gi=1 / pi=2 / flat=5.
-  let fitted_cells : Array[Int] = [1, 2, 5]
-  // Zero cells (eval_period <= g_value): (g=1, t=1) ->
-  // gi=0 / pi=0 / flat=0; (g=2, t=1) -> gi=1 / pi=0 /
-  // flat=3; (g=2, t=2) -> gi=1 / pi=1 / flat=4.
-  let zero_cells : Array[Int] = [0, 3, 4]
+  // v0.150.0 RE-PARTITIONED. The live boundary moved from `t_eval > g` to
+  // `t_eval >= g`, which reshapes this fixture's split in TWO ways, both
+  // measured 2026-10-12.
+  //
+  // 1. Cohort g=1 drops out ENTIRELY. Its base period is now `g - 1 = 0`, and
+  //    this DGP's periods are 1, 2, 3 -- period 0 is never observed. An
+  //    `ATT(g, g)` cannot be estimated without seeing `g - 1`, so the group is
+  //    skipped and all three of its cells stay at the zero sentinel. That is
+  //    correct behaviour, not a regression: the old rule silently used t = 1 as
+  //    the base for g = 1, which is cohort 1's FIRST TREATED period.
+  // 2. Cohort g=2 gains its treatment-period cell (g=2, t=2) -> flat=4.
+  let fitted_cells : Array[Int] = [4, 5]
+  let zero_cells : Array[Int] = [0, 1, 2, 3]
   for k in fitted_cells {
     assert_true(results[k].rv.is_nan() == false)
     assert_true(results[k].sigma2.is_nan() == false)

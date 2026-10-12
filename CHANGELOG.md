@@ -9,6 +9,184 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.150.0] — the estimand fix: base period `g − 1`, so `ATT(g, g)` exists
+
+**This release changes reported numbers.** It is the first in this thread that
+does. Everything from v0.146.0 to v0.149.0 was additive; this one makes a
+cohort's first treated period estimable, and every ATT on a treatment period
+was previously `0.0` because it was never computed.
+
+### The defect
+
+`DoubleMLDIDCS::fit` used a cohort's **own treatment period** as its
+pre-treatment baseline and then required `eval_period > pre_period`. So it could
+only ever reach `t > g`, and `ATT(g, g)` — the ATT in the *first treated
+period* — was never estimated on any panel, ever.
+
+Callaway & Sant'Anna's convention is the opposite: a cohort treated at `g` is
+untreated at `g − 1`, and post-treatment begins **at** `g`. The base period is
+therefore `g − 1` and the live boundary is `t >= g`.
+
+### Why it went unnoticed for so long
+
+On the canonical fixture `make_did_cs_CS2021(800, 3, 1.0, 3141)` the panel is
+`groups = [1]`, `times = [0, 1]`, so `t > g` admits **nothing at all**.
+`final_coef` is zero-initialised (`did_cs.mbt:1581`), so `coef_at(0, 1)`
+returned the `0.0` it was created with, and `dgp_recovery_test`'s
+`max_abs_err < 5.0` passed on `|0 − 1| = 1.0` — asserting against a hardcoded
+zero while claiming to recover an ATT of 1.0.
+
+Three separate parts of the package already disagreed with the estimator:
+
+- the fixture's own DGP treats cohort 1 from `k >= cohort`,
+- `dgp_recovery_test` documents the convention as `ATT(g, t)` for `t >= g`,
+- `did_cs_test.mbt`'s fixture sets `d` at `k >= cohort` and then *asserted*
+  `coef_at(0, 1) == 0`.
+
+The estimator was the only thing that believed `t <= g` is pre-treatment.
+
+### Measured before and after
+
+| | before | after |
+|---|---|---|
+| `coef_at(0, 1)` on the canonical panel | `0.0` (the sentinel) | `2.727522673844541` |
+| `se_at(0, 1)` | `0.0` | `1.9428873717680928` |
+| `dgp_recovery_test` error | `1.0`, from a zero | `1.7275`, from an estimate |
+
+On a fixture that *does* satisfy the convention (`g` is the treatment period,
+effect appears from `k > g`), ATT is recovered to within 0.5 %:
+
+| cell | true ATT | estimate |
+|---|---|---|
+| (g=1, t=1) | 0.0 | `−0.0010` |
+| (g=1, t=2) | 1.0 | `0.9965` |
+| (g=1, t=3) | 1.0 | `0.9982` |
+| (g=2, t=2) | 0.0 | `−0.0052` |
+| (g=2, t=3) | 1.0 | `1.0042` |
+| (g=3, t=3) | 0.0 | `0.0094` |
+
+The canonical 2-period panel's `2.7275 ± 1.9429` is noisy because it is a single
+cell from one cohort with no repeated periods to average over — 0.89 SE from the
+truth. That is a property of the fixture, not of the fix; the 4-cohort panel
+above is what the estimator is actually built for.
+
+### Nine tests pinned the defect
+
+All nine fail under the fix, and all nine share one cause: the package
+consistently treated `t <= g` as "not estimable", matching the old rule.
+`expand_v100_didcs_test.mbt` even documented it — *"An unestimated cell
+(`t_eval <= g`)"*. Rewritten or re-pinned from measured runs; no value here was
+guessed.
+
+Two of them were worth more than a re-pin:
+
+**`expand_v149_test.mbt` GATE 6 asserted that every cell is the 0.0 sentinel**,
+with the comment *"Every cell is skipped, so every coefficient is the 0.0
+sentinel."* That was true, and it was the bug — and it shipped in v0.149.0,
+which was released with this defect still live. A gate certifying "nothing was
+estimated" is indistinguishable from a gate certifying "nothing changed". It
+now asserts the correct partition: `t < g` is zero, `t >= g` is estimated.
+
+**`se_pooled > se_single` was not a theorem.** Both cluster-sandwich tests
+claimed "pooling blocks of 4 leaves fewer, fatter clusters, so the meat is
+strictly larger and the SE strictly wider". The cluster sandwich exceeds the
+IID one only under *positive* within-block score correlation. When the base
+period moved, cell (0,2) inverted — `0.0042918 < 0.0044041` — and the
+assertion failed there. It had been asserting a property of the data, not of the
+code. The sign is now pinned per cell (five of six widen, (0,2) narrows), which
+is strictly stronger than the bare `!=` it could have been weakened to.
+
+### A latent convention mismatch, found on the way
+
+`make_did_CS2021` (the 4-cohort DGP behind the v0.146.0/v0.147.0 gates) sets
+`tau_g = cohort - 1`, so cohort 1 is treated from **t = 0** — while
+`DoubleMLDIDCS` interprets `g_value` as the treatment **period**. That fixture
+therefore does not satisfy DIDCS's g-is-tau convention under *either* base
+period rule, and its cells were never `ATT(g, t)` in the CS sense: they read
+`0.089`, `−0.706`, `−6.29` against a true effect of 1.0.
+
+Those gates are re-pinned to the new measured values and now carry an explicit
+warning that they are regression locks, **not** ATT recoveries. The same file
+still carries `alpha_i = 0.5 * unit_in_cohort`, the deterministic unit-intercept
+ramp that v0.148.0 removed from `make_did_cs_CS2021` — that fix was never
+applied to the multi-cohort DGP.
+
+### The new sharp edge
+
+A cohort whose `g − 1` is not observed cannot have `ATT(g, g)` estimated at
+all, and is now skipped rather than silently given a different base.
+`v068_wbtest.mbt`'s fixture has periods `1, 2, 3` and no period 0, so cohort
+`g = 1` drops out entirely and its three cells stay at the zero sentinel. That
+is correct — the old rule quietly used `t = 1` as the base for `g = 1`, which is
+that cohort's *first treated* period. GATE 5 pins it.
+
+### Gates — 5 added
+
+`expand_v150_test.mbt`. GATE 1 is the gate that was missing: the
+`(g=1, t=1)` cell must carry an actual estimate, witnessed by a **populated
+per-cell IF row** rather than `coef != 0.0`, because a coefficient could be
+non-zero by accident. It first asserts the per-cell arrays are GRID-sized, since
+everything after it indexes them by the flat `(gi, pi)` cursor. GATE 2 asserts
+the boundary as a partition over every cell. GATE 3 is the payoff — it pins the
+estimator to the *truth* on the convention-conforming fixture, which no other
+gate here can do. GATE 4 pins the canonical ATT exactly, at 1e-12 relative (the
+did_cs quantities carry the known ~1.5e-15 cross-backend spread, so `==` was
+never available). GATE 5 pins the dropped-cohort behaviour.
+
+### Mutation evidence — 5/5 killed, and the kills all look the same
+
+| Mutant | Verdict | Aborted in |
+|---|---|---|
+| M1 base period back to `g` | KILLED | GATE 1 |
+| M2 boundary back to `t > g` | KILLED | GATE 1 |
+| M3 fit-loop base search back to `t == g` | KILLED | GATE 5 |
+| M4 reassembly base search out of step | KILLED | GATE 5 |
+| M5 reassembly boundary out of step | KILLED | `didcs_sandwich_hc0_equals_se_per_cell` |
+
+**Every kill is a process abort (`0xc0000409`), not a failed assertion.** That
+is worth stating rather than rounding up to "5/5 killed" and moving on. The
+cause is the cursor desync: any mutant that moves one mirrored site without the
+other leaves the reassembly pass admitting a cell the fit loop never estimated,
+so it reads `coef_values_acc[coef_idx]` out of an empty array. A loud abort is
+the right failure for that — the alternative is a silently wrong coefficient
+copied one position off, which is exactly the bug class this release is about.
+
+**Declared blind spot.** No gate here is demonstrated to catch a mutation that
+produces a *wrong but in-bounds* number. All five mutants happen to desync the
+sites and therefore die loudly. A mutant that altered the arithmetic while
+keeping both predicates in step would have to survive, and I did not build one.
+That is a real gap in the evidence, not a formality.
+
+The harness's first run reported all five as INCONCLUSIVE and that was wrong:
+its rule was "no `Total tests:` line means it did not compile", and the line was
+missing because the process had *died*. It now distinguishes a compile failure
+from an abort, which are three outcomes, not two. Separately, cancelling a
+mutation run mid-flight left `did_cs.mbt` carrying M4 in the working tree — the
+`finally` restore never ran. Caught by re-reading the anchors before doing
+anything else, which is the only reason it did not get committed.
+
+### An exact `==` I wrote myself failed on three backends
+
+Rewriting v0.149.0's GATE 6, I pinned the new canonical ATT with `==` while
+documenting, two files over, that did_cs ATTs carry the known ~1.5e-15 (two
+ULP) cross-backend spread and cannot be compared exactly. The result:
+**native green, wasm / wasm-gc / js red**, all three on the same assertion. The
+signature is unambiguous — a platform difference, not a regression — and it is
+the reason `expand_v146_test.mbt` GATE 5 and `expand_v150_test.mbt` GATE 4 use
+1e-12 relative. Both are now consistent, and the comment records the failure so
+the next person does not "restore" the exact comparison.
+
+Green on native is not evidence. Four targets, always.
+
+### Still open
+
+The port's `DoubleMLDIDCS` has a `(group, period)` cell grid that upstream's
+does not — `_check_data` rejects a `g` column outright — and upstream's class is
+deprecated in favour of `DoubleMLDIDCSBinary`. Separately, and now visible from
+this release: DIDCS infers treatment timing from `g_value`, which the
+`make_did_CS2021` fixture does not honour. An explicit `tau_g` would remove
+that inference. Both remain open.
+
 ## [0.149.0] — did_cs: upstream's panel-level `sigma2` / `nu2` (stage 2 of 4)
 
 Purely additive. **No reported number changes**, and `sensitivity_analysis` is

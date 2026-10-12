@@ -93,8 +93,10 @@ test "did_cs_recovers_known_att_per_cell" {
 }
 
 ///|
-/// Pre-treatment cells (t_eval <= g) should remain at 0.0 (no
-/// estimate; CS-DID does not define pre-treatment effects).
+/// Pre-treatment cells (`t_eval < g`) should remain at 0.0 (no
+/// estimate; CS-DID does not define pre-treatment effects). v0.150.0: the
+/// boundary is `t < g`, not `t <= g` -- post-treatment starts AT the treatment
+/// period, so `ATT(g, g)` is estimable off base period `g - 1`.
 test "did_cs_pre_treatment_cells_remain_zero" {
   let n_per_cohort = 40
   let p = 2
@@ -128,12 +130,22 @@ test "did_cs_pre_treatment_cells_remain_zero" {
     g_arr,
   )
   let fitted = DoubleMLDIDCS::new(data, n_folds=2, seed=3141).fit()
-  // For g = 1, t_eval = 0, 1 are pre-treatment. coef_at(0, 0)
-  // and coef_at(0, 1) should remain 0.0.
+  // v0.150.0: post-treatment starts AT the treatment period, so for g = 1 the
+  // pre-treatment cells are t = 0 ONLY. This test's own DGP already said so --
+  // `d[row] = if cohort > 0 && k >= cohort` treats cohort 1 from t = 1 -- while
+  // the old assertion demanded `coef_at(0, 1) == 0`. The assertion contradicted
+  // the fixture it was written to check.
   inspect(fitted.coef_at(0, 0), content="0")
-  inspect(fitted.coef_at(0, 1), content="0")
   inspect(fitted.se_at(0, 0), content="0")
-  inspect(fitted.se_at(0, 1), content="0")
+  // t = 1, 2, 3 are post-treatment and estimated. The structural witness is the
+  // populated per-cell IF row, NOT the coefficient: on this fixture `y = k +
+  // cohort` is exactly linear with an all-zero X, so the estimates come out
+  // around 1e-23 and their magnitude carries no information. The old
+  // `!= 0.0` checks below pass on those 1e-23 values, which is why they are
+  // kept but are not the thing being claimed.
+  for pi = 1; pi < fitted.n_periods(); pi = pi + 1 {
+    inspect(fitted.cell_psi_a[pi].length() > 0, content="true")
+  }
   // g = 1, t_eval = 2, 3 are post-treatment; should be filled.
   inspect(fitted.coef_at(0, 2) != 0.0, content="true")
   inspect(fitted.coef_at(0, 3) != 0.0, content="true")
