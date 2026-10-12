@@ -25,9 +25,9 @@ pub struct DoubleMLCVAR {
   data : DoubleMLData
   treatment : Double
   quantile : Double
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `kfold` for the OUTER folds.
@@ -84,8 +84,8 @@ pub struct DoubleMLCVAR {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.83.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.82.0
   // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
@@ -126,16 +126,16 @@ pub extend DoubleMLCVAR with @moonbitlang/core/debug.Debug::{to_repr}
 ///                       (default `true`).
 pub fn DoubleMLCVAR::new(
   data : DoubleMLData,
-  treatment? : Double = 1.0,
-  quantile? : Double = 0.5,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor_config? : PSProcessorConfig? = None,
-  normalize_ipw? : Bool = true,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  treatment~ : Double = 1.0,
+  quantile~ : Double = 0.5,
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  normalize_ipw~ : Bool = true,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLCVAR {
   // v0.126.0: upstream `init_ps_processor` (`cvar.py:153`) -- the config
   // wins outright, the deprecated scalar is read into it only when no
@@ -244,13 +244,13 @@ pub fn DoubleMLCVAR::has_cache(self : DoubleMLCVAR) -> Bool {
 
 ///|
 /// Number of observations.
-pub fn DoubleMLCVAR::n_obs(self : DoubleMLCVAR) -> Int {
+pub fn DoubleMLCVAR::n_obs(self : DoubleMLCVAR) -> Int32 {
   self.data.n_obs()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLCVAR::n_features(self : DoubleMLCVAR) -> Int {
+pub fn DoubleMLCVAR::n_features(self : DoubleMLCVAR) -> Int32 {
   self.data.n_features()
 }
 
@@ -357,8 +357,8 @@ pub fn DoubleMLCVAR::predictions_m(self : DoubleMLCVAR) -> Array[Double] {
 /// upstream parity.
 pub fn DoubleMLCVAR::sensitivity_analysis(
   self : DoubleMLCVAR,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let n = self.n_obs()
@@ -412,9 +412,9 @@ pub fn DoubleMLCVAR::sensitivity_analysis(
 /// `cluster_ids` defaults to `DoubleMLData::cluster_vars`.
 pub fn DoubleMLCVAR::sensitivity_analysis_cluster(
   self : DoubleMLCVAR,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let n = self.n_obs()
@@ -445,14 +445,14 @@ pub fn DoubleMLCVAR::sensitivity_analysis_cluster(
 /// (`smpls_prelim = StratifiedKFold(n_splits=n_folds).split(
 /// train_1, ...)`) from the `ml_g` fit on `train_2`.
 fn stratified_half_split(
-  train : Array[Int],
+  train : Array[Int32],
   d : Array[Double],
-  seed : Int,
-) -> (Array[Int], Array[Int]) {
+  seed : Int32,
+) -> (Array[Int32], Array[Int32]) {
   // Group train indices by stratum. Strata are keyed by their
   // string representation (handles non-integer d, though the
   // CVaR API restricts d to {0, 1}).
-  let by_stratum : Array[(String, Array[Int])] = []
+  let by_stratum : Array[(String, Array[Int32])] = []
   for i in train {
     let key = d[i].to_string()
     let mut found = false
@@ -483,8 +483,8 @@ fn stratified_half_split(
   // `train_test_split(test_size=0.5)` semantics for the
   // "balanced" branch). If a stratum has an odd length, the
   // extra element lands in s1.
-  let s1 : Array[Int] = []
-  let s2 : Array[Int] = []
+  let s1 : Array[Int32] = []
+  let s2 : Array[Int32] = []
   for k_idx = 0; k_idx < by_stratum.length(); k_idx = k_idx + 1 {
     let arr = by_stratum[k_idx].1
     let half = arr.length() / 2
@@ -654,10 +654,10 @@ fn cvar_inner_crossfit(
   y : Array[Double],
   d : Array[Double],
   treated : Array[Double],
-  train : Array[Int],
-  eval_set : Array[Int],
-  n_folds : Int,
-  seed : Int,
+  train : Array[Int32],
+  eval_set : Array[Int32],
+  n_folds : Int32,
+  seed : Int32,
   quantile : Double,
   treatment : Double,
   ps_processor_config : PSProcessorConfig,
@@ -684,11 +684,11 @@ fn cvar_inner_crossfit(
     // indexing through `train_1[pos]`.
     let prelim_train_pos = fold.train_indices()
     let prelim_test_pos = fold.test_indices()
-    let prelim_train_global : Array[Int] = Array::makei(
+    let prelim_train_global : Array[Int32] = Array::makei(
       prelim_train_pos.length(),
       fn(k) { train_1[prelim_train_pos[k]] },
     )
-    let prelim_test_global : Array[Int] = Array::makei(
+    let prelim_test_global : Array[Int32] = Array::makei(
       prelim_test_pos.length(),
       fn(k) { train_1[prelim_test_pos[k]] },
     )
@@ -770,7 +770,7 @@ fn cvar_inner_crossfit(
     g_target[i] = if z > ipw_est { z } else { ipw_est }
   }
   // Build (train_2, d == treatment) subset.
-  let train_2_treat : Array[Int] = []
+  let train_2_treat : Array[Int32] = []
   for i in train_2 {
     if d[i] == treatment {
       train_2_treat.push(i)
@@ -822,8 +822,8 @@ fn cvar_inner_crossfit(
 ///      aggregate across reps with `aggregate_coef_se`.
 pub fn DoubleMLCVAR::fit(
   self : DoubleMLCVAR,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLCVAR {
   try {
     require(self.quantile > 0.0 && self.quantile < 1.0)
@@ -851,7 +851,7 @@ pub fn DoubleMLCVAR::fit(
     let mut last_ipw_vec : Array[Double] = []
     // v0.83.0+: track the LAST rep's row-to-fold mapping for
     // the cache writeback.
-    let fold_ids : Array[Int] = Array::make(n, 0)
+    let fold_ids : Array[Int32] = Array::make(n, 0)
     // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
     // multiplier bootstrap. Same convention as `last_g` /
     // `last_m`: each rep overwrites, so the post-loop values
@@ -1194,9 +1194,9 @@ pub fn DoubleMLCVAR::fit(
 pub fn DoubleMLCVAR::tune(
   self : DoubleMLCVAR,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLCVAR {
   try {
     require(param_set.length() > 0)
@@ -1245,9 +1245,9 @@ pub fn DoubleMLCVAR::tune(
 /// `boot_method` / `n_rep_boot` / `boot_seed` populated.
 pub fn DoubleMLCVAR::bootstrap(
   self : DoubleMLCVAR,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLCVAR {
   try {
     require(self.fitted)
@@ -1336,7 +1336,7 @@ pub fn DoubleMLCVAR::sandwich_se(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLCVAR::cluster_sandwich_se(
   self : DoubleMLCVAR,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

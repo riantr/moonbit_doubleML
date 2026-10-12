@@ -30,7 +30,7 @@ test "pq_fit_cluster_produces_finite_estimates" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let x0 = rng.double() * 2.0 - 1.0
     let d_i = if rng.double() > 0.5 { 1.0 } else { 0.0 }
@@ -68,7 +68,7 @@ test "qte_fit_cluster_produces_finite_estimates" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let x0 = rng.double() * 2.0 - 1.0
     let d_i = if rng.double() > 0.5 { 1.0 } else { 0.0 }

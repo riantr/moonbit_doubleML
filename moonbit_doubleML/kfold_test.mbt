@@ -103,8 +103,8 @@ test "slice_matrix_rows" {
 /// catch branch asserts the exact variant and payload, the
 /// noraise branch fails the test if no error fires.
 test "build_row_unit_map_raises_missing_unit" {
-  let cluster : Array[Int] = [0, 1, 5, 0] // 5 not in uniq
-  let uniq : Array[Int] = [0, 1]
+  let cluster : Array[Int32] = [0, 1, 5, 0] // 5 not in uniq
+  let uniq : Array[Int32] = [0, 1]
   try build_row_unit_map(cluster, uniq) catch {
     ClusterDataError::MissingUnit(g) => inspect(g, content="5")
   } noraise {

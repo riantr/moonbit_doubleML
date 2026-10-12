@@ -61,7 +61,7 @@
 /// for rows that land here).
 pub enum CART {
   Leaf(Double)
-  Split(Int, Double, CART, CART)
+  Split(Int32, Double, CART, CART)
 } derive(Debug)
 
 ///|
@@ -72,16 +72,16 @@ pub extend CART with @moonbitlang/core/debug.Debug::{to_repr}
 /// CART trees on bootstrap samples; predicts by averaging
 /// leaf values across all trees.
 pub struct RFLearner {
-  n_trees : Int
-  max_depth : Int
-  min_samples_leaf : Int
-  mtry : Int // -1 = sqrt(n_features) at fit time
-  bootstrap_seed : Int
+  n_trees : Int32
+  max_depth : Int32
+  min_samples_leaf : Int32
+  mtry : Int32 // -1 = sqrt(n_features) at fit time
+  bootstrap_seed : Int32
   // Fitted state (empty until `fit` is called).
   trees : Array[CART]
   // Number of feature columns the forest was fit on. Used in
   // `predict` to validate input shape. -1 = not yet fit.
-  n_features : Int
+  n_features : Int32
 } derive(Debug)
 
 ///|
@@ -100,11 +100,11 @@ pub extend RFLearner with Learner::{predict}
 
 ///|
 pub fn RFLearner::new(
-  n_trees? : Int = 100,
-  max_depth? : Int = 10,
-  min_samples_leaf? : Int = 5,
-  mtry? : Int = -1,
-  bootstrap_seed? : Int = 3141,
+  n_trees~ : Int32 = 100,
+  max_depth~ : Int32 = 10,
+  min_samples_leaf~ : Int32 = 5,
+  mtry~ : Int32 = -1,
+  bootstrap_seed~ : Int32 = 3141,
 ) -> RFLearner {
   {
     n_trees,
@@ -120,7 +120,7 @@ pub fn RFLearner::new(
 ///|
 /// Number of feature columns the forest was fit on. Returns
 /// -1 if the learner has not been fit yet.
-pub fn RFLearner::n_features(self : RFLearner) -> Int {
+pub fn RFLearner::n_features(self : RFLearner) -> Int32 {
   self.n_features
 }
 
@@ -128,7 +128,7 @@ pub fn RFLearner::n_features(self : RFLearner) -> Int {
 /// Number of trees in the fitted forest. Returns 0 if not
 /// yet fit (so callers can early-return on `RFLearner::new()`
 /// without an explicit "is_fitted" flag).
-pub fn RFLearner::n_trees(self : RFLearner) -> Int {
+pub fn RFLearner::n_trees(self : RFLearner) -> Int32 {
   self.trees.length()
 }
 
@@ -145,9 +145,9 @@ pub fn RFLearner::n_trees(self : RFLearner) -> Int {
 /// Seed determinism: with the same seed, the returned index
 /// sequence is bit-identical across runs (necessary for
 /// `validate_*_with_python.py` parity tests).
-fn bootstrap_indices(n_obs : Int, seed : Int) -> Array[Int] {
+fn bootstrap_indices(n_obs : Int32, seed : Int32) -> Array[Int32] {
   let rng = chacha8_rng(seed)
-  let out : Array[Int] = Array::make(n_obs, 0)
+  let out : Array[Int32] = Array::make(n_obs, 0)
   for i = 0; i < n_obs; i = i + 1 {
     out[i] = rng.int(limit=n_obs)
   }
@@ -200,11 +200,11 @@ fn bootstrap_indices(n_obs : Int, seed : Int) -> Array[Int] {
 fn cart_fit(
   x : Matrix,
   y : Array[Double],
-  sample_idx : Array[Int],
-  depth : Int,
-  max_depth : Int,
-  min_samples_leaf : Int,
-  mtry : Int,
+  sample_idx : Array[Int32],
+  depth : Int32,
+  max_depth : Int32,
+  min_samples_leaf : Int32,
+  mtry : Int32,
   feature_rng : @random.Rand,
   clf : Bool,
   hess : Array[Double],
@@ -258,7 +258,7 @@ fn cart_fit(
   }
   // Pick mtry random feature indices WITHOUT replacement via
   // the Fisher-Yates partial shuffle on [0, n_features).
-  let feat_pool : Array[Int] = Array::makei(n_features, fn(i) { i })
+  let feat_pool : Array[Int32] = Array::makei(n_features, fn(i) { i })
   let mtry_actual = if mtry_eff > n_features { n_features } else { mtry_eff }
   for i = 0; i < mtry_actual; i = i + 1 {
     let j = i + feature_rng.int(limit=n_features - i)
@@ -270,8 +270,8 @@ fn cart_fit(
   let mut best_score = 1.0e300 // sentinel "no split found yet"
   let mut best_feature = -1
   let mut best_threshold = 0.0
-  let mut best_left : Array[Int] = []
-  let mut best_right : Array[Int] = []
+  let mut best_left : Array[Int32] = []
+  let mut best_right : Array[Int32] = []
   for k = 0; k < mtry_actual; k = k + 1 {
     let f = feat_pool[k]
     // Sort sample indices by `x[idx, f]`. Use a simple
@@ -492,7 +492,7 @@ fn cart_fit(
 /// `if h == 0.0 { 1.0 }` as some implementations do.
 fn cart_leaf_value(
   y : Array[Double],
-  sample_idx : Array[Int],
+  sample_idx : Array[Int32],
   hess : Array[Double],
   w : Array[Double],
 ) -> Double {
@@ -553,11 +553,11 @@ fn cart_leaf_value(
 fn sort_indices_by_feature(
   x : Matrix,
   y : Array[Double],
-  sample_idx : Array[Int],
-  feature : Int,
-) -> Array[Int] {
+  sample_idx : Array[Int32],
+  feature : Int32,
+) -> Array[Int32] {
   let n = sample_idx.length()
-  let out : Array[Int] = Array::makei(n, fn(i) { sample_idx[i] })
+  let out : Array[Int32] = Array::makei(n, fn(i) { sample_idx[i] })
   // Insertion sort: stable, fast on small n.
   for i = 1; i < n; i = i + 1 {
     let key = out[i]
@@ -581,7 +581,7 @@ fn sort_indices_by_feature(
 /// Predict the per-tree value for row `i` of `x`. Recursive
 /// descent through the tree; returns the leaf value at the
 /// terminal node.
-fn cart_predict(tree : CART, x : Matrix, row : Int) -> Double {
+fn cart_predict(tree : CART, x : Matrix, row : Int32) -> Double {
   match tree {
     CART::Leaf(v) => v
     CART::Split(f, t, l, r) =>

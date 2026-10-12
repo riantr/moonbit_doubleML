@@ -24,15 +24,15 @@
 ///     biased: 0.8339 / 0.8301 / 0.8503 against a true ATT
 ///     of 1.0, i.e. stuck at -15% and not converging.
 fn expand_v102_cs_dgp(
-  n : Int,
-  p : Int,
+  n : Int32,
+  p : Int32,
   att : Double,
 ) -> DoubleMLDIDCrossSectionData {
   let rng = chacha8_rng(42)
   let x = Matrix::zeros(n, p)
   let y : Array[Double] = []
   let d : Array[Double] = []
-  let t : Array[Int] = []
+  let t : Array[Int32] = []
   let mut y_acc = y
   let mut d_acc = d
   let mut t_acc = t
@@ -52,7 +52,7 @@ fn expand_v102_cs_dgp(
 }
 
 ///|
-fn expand_v102_fit(n : Int, att : Double) -> DoubleMLDIDCrossSection {
+fn expand_v102_fit(n : Int32, att : Double) -> DoubleMLDIDCrossSection {
   DoubleMLDIDCrossSection::new(
     expand_v102_cs_dgp(n, 2, att),
     n_folds=2,
@@ -149,7 +149,7 @@ test "didcs102_small_sample_correction_algebra" {
 test "didcs102_cluster_sandwich_differs_from_iid" {
   let f = expand_v102_fit(600, 1.0)
   let n = f.psi_a().length()
-  let cluster_ids : Array[Int] = Array::make(n, 0)
+  let cluster_ids : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     cluster_ids[i] = i / 30
   }

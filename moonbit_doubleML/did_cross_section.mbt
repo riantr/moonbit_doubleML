@@ -19,7 +19,7 @@ pub struct DoubleMLDIDCrossSectionData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
-  t : Array[Int]
+  t : Array[Int32]
   // Convenience: the data-set name, used only for
   // `DoubleMLDIDCrossSection` error messages.
   name : String
@@ -35,8 +35,8 @@ pub fn DoubleMLDIDCrossSectionData::new(
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
-  t : Array[Int],
-  name? : String = "cross_section",
+  t : Array[Int32],
+  name~ : String = "cross_section",
 ) -> DoubleMLDIDCrossSectionData {
   try {
     let n = y.length()
@@ -74,7 +74,7 @@ pub fn DoubleMLDIDCrossSectionData::new(
 /// Sample size of the cross-section DID data.
 pub fn DoubleMLDIDCrossSectionData::n_obs(
   self : DoubleMLDIDCrossSectionData,
-) -> Int {
+) -> Int32 {
   self.y.length()
 }
 
@@ -84,7 +84,7 @@ pub fn DoubleMLDIDCrossSectionData::n_obs(
 /// learner).
 pub fn DoubleMLDIDCrossSectionData::n_features(
   self : DoubleMLDIDCrossSectionData,
-) -> Int {
+) -> Int32 {
   self.x.cols()
 }
 
@@ -116,9 +116,9 @@ pub fn DoubleMLDIDCrossSectionData::n_features(
 ///     `weight_psi_a = d / mean(d)`.
 pub struct DoubleMLDIDCrossSection {
   data : DoubleMLDIDCrossSectionData
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   score : String
   in_sample_normalization : Bool
   propensity_clip : Double
@@ -169,8 +169,8 @@ pub struct DoubleMLDIDCrossSection {
   // `bootstrap` is called.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.82.0+: memoization flag. The cross-section DID uses a
   // single `crossfit_nuisance` call that runs `n_rep` reps
   // internally, so a per-rep cache is not applicable. The
@@ -185,17 +185,17 @@ pub extend DoubleMLDIDCrossSection with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLDIDCrossSection::new(
   data : DoubleMLDIDCrossSectionData,
-  n_folds? : Int = 5,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  score? : String = "observational",
-  in_sample_normalization? : Bool = false,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor? : PSProcessor = PSProcessor::new(),
+  n_folds~ : Int32 = 5,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  score~ : String = "observational",
+  in_sample_normalization~ : Bool = false,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor~ : PSProcessor = PSProcessor::new(),
   // v0.128.0: upstream ps_processor_config; wins outright over ps_processor.
-  ps_processor_config? : PSProcessorConfig? = None,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ps_processor_config~ : PSProcessorConfig? = None,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCrossSection {
   // v0.128.0: config wins outright; ps_processor supplies it only when none given.
   let ps_processor_config = match ps_processor_config {
@@ -448,8 +448,8 @@ pub fn DoubleMLDIDCrossSection::has_cache(
 /// `level` is the confidence level (default `0.95`).
 pub fn DoubleMLDIDCrossSection::confint(
   self : DoubleMLDIDCrossSection,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -516,9 +516,9 @@ pub fn DoubleMLDIDCrossSection::confint(
 /// Returns (g_d0_t0, g_d0_t1, g_d1_t0, g_d1_t1, m).
 fn crossfit_nuisance(
   data : DoubleMLDIDCrossSectionData,
-  n_folds : Int,
-  n_rep : Int,
-  seed : Int,
+  n_folds : Int32,
+  n_rep : Int32,
+  seed : Int32,
   propensity_clip : Double,
   ps_processor : PSProcessor,
   ml_g : LearnerDispatch,
@@ -545,7 +545,7 @@ fn crossfit_nuisance(
       let mut x_train_acc : Array[Double] = []
       let mut y_train_acc : Array[Double] = []
       let mut d_train_acc : Array[Double] = []
-      let mut t_train_acc : Array[Int] = []
+      let mut t_train_acc : Array[Int32] = []
       for k = 0; k < n_train; k = k + 1 {
         let i = train_idx[k]
         for j = 0; j < p; j = j + 1 {
@@ -630,10 +630,10 @@ fn fit_g_subset_predict(
   x_train : Matrix,
   y_train : Array[Double],
   d_train : Array[Double],
-  t_train : Array[Int],
+  t_train : Array[Int32],
   x_test : Matrix,
   d_value : Double,
-  t_value : Int,
+  t_value : Int32,
 ) -> Array[Double] {
   let n_train = y_train.length()
   let p = x_train.cols()
@@ -736,7 +736,7 @@ pub fn norm_ppf(p : Double) -> Double {
 fn compute_score(
   y : Array[Double],
   d : Array[Double],
-  t : Array[Int],
+  t : Array[Int32],
   g00 : Array[Double],
   g01 : Array[Double],
   g10 : Array[Double],
@@ -999,8 +999,8 @@ fn compute_score(
 /// score, and returns the ATT and HC0 SE.
 pub fn DoubleMLDIDCrossSection::fit(
   self : DoubleMLDIDCrossSection,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDCrossSection {
   // v0.102.0: the trailing `try` / `catch` is gone. `fit`
   // used to compute `theta_hat` and `se` itself, which is
@@ -1141,9 +1141,9 @@ pub fn DoubleMLDIDCrossSection::fit(
 pub fn DoubleMLDIDCrossSection::tune(
   self : DoubleMLDIDCrossSection,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLDIDCrossSection {
   try {
     require(param_set.length() > 0)
@@ -1188,9 +1188,9 @@ pub fn DoubleMLDIDCrossSection::tune(
 /// required for `confint(joint=true)`.
 pub fn DoubleMLDIDCrossSection::bootstrap(
   self : DoubleMLDIDCrossSection,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLDIDCrossSection {
   try {
     require(self.fitted)
@@ -1288,8 +1288,8 @@ pub fn DoubleMLDIDCrossSection::bootstrap(
 /// aborts via `PreconditionError`.
 pub fn DoubleMLDIDCrossSection::sensitivity_analysis(
   self : DoubleMLDIDCrossSection,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g00 = self.predictions_g_d0_t0()
@@ -1320,9 +1320,9 @@ pub fn DoubleMLDIDCrossSection::sensitivity_analysis(
 /// clusters.
 pub fn DoubleMLDIDCrossSection::sensitivity_analysis_cluster(
   self : DoubleMLDIDCrossSection,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g00 = self.predictions_g_d0_t0()
@@ -1433,7 +1433,7 @@ pub fn DoubleMLDIDCrossSection::sandwich_se(
 /// `cluster_ids.length() == psi_a.length()`.
 pub fn DoubleMLDIDCrossSection::cluster_sandwich_se(
   self : DoubleMLDIDCrossSection,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

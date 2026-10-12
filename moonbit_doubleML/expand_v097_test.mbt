@@ -25,7 +25,7 @@
 /// ends of `x0` -- so the homoskedastic and HC0 standard errors
 /// genuinely differ and a `hac_se` that silently returned the
 /// homoskedastic number would be caught.
-fn v097_dgp(n : Int) -> (Matrix, Array[Double]) {
+fn v097_dgp(n : Int32) -> (Matrix, Array[Double]) {
   let p_basis = 2
   let basis = Matrix::zeros(n, p_basis)
   let orth = Array::make(n, 0.0)
@@ -47,7 +47,7 @@ fn v097_dgp(n : Int) -> (Matrix, Array[Double]) {
 /// ridge)` and EVERY row carries the same leverage
 /// `h = 1 / (n + ridge)` -- an exactly known value, which is what lets
 /// test 5 state the `HC2 / HC0` and `HC3 / HC0` ratios in closed form.
-fn v097_dgp_constant_leverage(n : Int) -> (Matrix, Array[Double]) {
+fn v097_dgp_constant_leverage(n : Int32) -> (Matrix, Array[Double]) {
   let basis = Matrix::zeros(n, 2)
   let orth = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
@@ -144,7 +144,7 @@ fn v097_reference(
 /// Entry `a` of the hand-augmented row `i` of `basis`: `a == 0` is
 /// the intercept column `LinearRegression::fit` adds, `a >= 1` is
 /// `basis.get(i, a - 1)`.
-fn v097_xa(basis : Matrix, i : Int, a : Int) -> Double {
+fn v097_xa(basis : Matrix, i : Int32, a : Int32) -> Double {
   if a == 0 {
     1.0
   } else {
@@ -162,8 +162,8 @@ fn v097_hc_se(
   basis : Matrix,
   resid : Array[Double],
   hat : Array[Double],
-  j : Int,
-  pow : Int,
+  j : Int32,
+  pow : Int32,
 ) -> Double {
   let n = resid.length()
   let p1 = m.cols()
@@ -196,7 +196,7 @@ fn v097_hc0_se(
   m : Matrix,
   basis : Matrix,
   resid : Array[Double],
-  j : Int,
+  j : Int32,
 ) -> Double {
   v097_hc_se(m, basis, resid, [], j, 0)
 }

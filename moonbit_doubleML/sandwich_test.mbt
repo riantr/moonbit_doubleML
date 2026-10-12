@@ -126,7 +126,7 @@ test "cluster_sandwich_variance_independent_clusters" {
   let b = 0.4
   let psi_a : Array[Double] = Array::make(10, 1.0)
   let psi : Array[Double] = [a, a, a, a, a, -b, -b, -b, -b, -b]
-  let cluster_ids : Array[Int] = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
+  let cluster_ids : Array[Int32] = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
   let m_inv = Matrix::from_array([1.0], 1, 1)
   let v = cluster_sandwich_variance(psi_a, psi, m_inv, cluster_ids, 1)
   let expected = 5.0 / 16.0 * (a * a + b * b)
@@ -218,7 +218,7 @@ test "irm_cluster_sandwich_se_smoke" {
   let x_mat = Matrix::zeros(n, p)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster_ids : Array[Int] = Array::make(n, 0)
+  let cluster_ids : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     cluster_ids[i] = i
     x_mat.set(i, 0, i.to_double() * 0.1)

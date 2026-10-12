@@ -71,7 +71,7 @@ fn expand_v088_pinned_close(x : Double, y : Double) -> Bool {
 /// non-constant, and every HC2 / HC3 value was wrong.
 ///
 /// Returns `(psi_a, psi, m_inv)`.
-fn expand_v088_input_a(n : Int) -> (Array[Double], Array[Double], Matrix) {
+fn expand_v088_input_a(n : Int32) -> (Array[Double], Array[Double], Matrix) {
   let psi_a : Array[Double] = Array::make(n, 0.0)
   let psi : Array[Double] = Array::make(n, 0.0)
   let period : Array[Double] = [1.0, -0.5, 0.25, 0.125]
@@ -106,7 +106,7 @@ fn expand_v088_hc_pair(
   psi_a : Array[Double],
   psi : Array[Double],
   m_inv : Matrix,
-  n : Int,
+  n : Int32,
 ) -> (Double, Double) {
   let v0 = sandwich_variance_hc0(psi_a, psi, m_inv, n, 1)
   let v2 = sandwich_variance_hc2(psi_a, psi, m_inv, n, 1)

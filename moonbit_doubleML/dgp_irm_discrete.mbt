@@ -22,10 +22,10 @@ struct IrmDiscreteData {
 
 ///|
 pub fn make_irm_discrete_treatments(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> IrmDiscreteData {
   let rng = chacha8_rng(seed)
   // Pre-draw X-draw normals.

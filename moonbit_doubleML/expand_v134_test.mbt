@@ -38,7 +38,7 @@
 //| SE carry the load.
 
 ///|
-fn v1340_data(n : Int, p : Int, seed : Int) -> DoubleMLData {
+fn v1340_data(n : Int32, p : Int32, seed : Int32) -> DoubleMLData {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)

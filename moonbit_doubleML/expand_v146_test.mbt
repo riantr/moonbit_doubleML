@@ -112,7 +112,7 @@ test "didcs_panel_folds_partition_every_row_exactly_once" {
   let folds = fitted.sensitivity_folds()
   let n = fitted.predictions_m().length()
   assert_true(folds.length() == 2)
-  let counts : Array[Int] = Array::make(n, 0)
+  let counts : Array[Int32] = Array::make(n, 0)
   for f = 0; f < folds.length(); f = f + 1 {
     for idx in folds[f].test_indices() {
       counts[idx] = counts[idx] + 1

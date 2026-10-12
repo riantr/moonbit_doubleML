@@ -9,7 +9,7 @@ pub struct DoubleMLPLIVData {
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
-  cluster_vars : Array[Int]
+  cluster_vars : Array[Int32]
 } derive(Debug)
 
 ///|
@@ -24,7 +24,7 @@ pub fn DoubleMLPLIVData::new(
   y : Array[Double],
   d : Array[Double],
   z : Array[Double],
-  cluster_vars? : Array[Int] = [],
+  cluster_vars~ : Array[Int32] = [],
 ) -> DoubleMLPLIVData {
   try {
     require(x.nrows == y.length())
@@ -42,13 +42,13 @@ pub fn DoubleMLPLIVData::new(
 
 ///|
 /// Number of observations.
-pub fn DoubleMLPLIVData::n_obs(self : DoubleMLPLIVData) -> Int {
+pub fn DoubleMLPLIVData::n_obs(self : DoubleMLPLIVData) -> Int32 {
   self.x.rows()
 }
 
 ///|
 /// Number of features.
-pub fn DoubleMLPLIVData::n_features(self : DoubleMLPLIVData) -> Int {
+pub fn DoubleMLPLIVData::n_features(self : DoubleMLPLIVData) -> Int32 {
   self.x.cols()
 }
 
@@ -61,7 +61,7 @@ pub fn DoubleMLPLIVData::is_cluster_data(self : DoubleMLPLIVData) -> Bool {
 
 ///|
 /// Length of the cluster_vars vector (0 when not clustered).
-pub fn DoubleMLPLIVData::n_cluster_vars(self : DoubleMLPLIVData) -> Int {
+pub fn DoubleMLPLIVData::n_cluster_vars(self : DoubleMLPLIVData) -> Int32 {
   self.cluster_vars.length()
 }
 
@@ -102,9 +102,9 @@ pub fn DoubleMLPLIVData::n_cluster_vars(self : DoubleMLPLIVData) -> Int {
 /// are estimated with the same closed-form `LinearRegression` learner.
 pub struct DoubleMLPLIV {
   data : DoubleMLPLIVData
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `kfold`, and the repetition count comes from
@@ -137,8 +137,8 @@ pub struct DoubleMLPLIV {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.82.0+: memoization state. Mirrors the IRM / PLR / IIVM
   // plumbing. `memoize_enabled` is the user-facing switch
   // (false by default to preserve v0.81.0 behavior bit-for-bit).
@@ -152,10 +152,10 @@ pub extend DoubleMLPLIV with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLPLIV::new(
   data : DoubleMLPLIVData,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  learner? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  learner~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLPLIV {
   try {
     require(n_folds >= 2)
@@ -196,7 +196,7 @@ pub fn DoubleMLPLIV::new(
 }
 
 ///|
-pub fn DoubleMLPLIV::n_obs(self : DoubleMLPLIV) -> Int {
+pub fn DoubleMLPLIV::n_obs(self : DoubleMLPLIV) -> Int32 {
   self.data.n_obs()
 }
 
@@ -227,8 +227,8 @@ pub fn DoubleMLPLIV::se(self : DoubleMLPLIV) -> Double {
 /// accepted for API parity.
 pub fn DoubleMLPLIV::confint(
   self : DoubleMLPLIV,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -307,8 +307,8 @@ pub fn DoubleMLPLIV::predictions_m(self : DoubleMLPLIV) -> Array[Double] {
 /// upstream `doubleml`), not a cross-rep average.
 pub fn DoubleMLPLIV::fit(
   self : DoubleMLPLIV,
-  learner? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  max_attempts? : Int = 1,
+  learner~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLPLIV {
   try {
     require(max_attempts >= 1)
@@ -379,7 +379,7 @@ pub fn DoubleMLPLIV::fit(
     let mut l_pred : Array[Double] = Array::make(n, 0.0)
     let mut r_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
-    let mut fold_ids : Array[Int] = []
+    let mut fold_ids : Array[Int32] = []
     for r = 0; r < nrep; r = r + 1 {
       let (l_pred_r, r_pred_r, m_pred_r) = if cache_hit && r == nrep - 1 {
         // Reuse the cached LAST-rep predictions.
@@ -415,7 +415,7 @@ pub fn DoubleMLPLIV::fit(
         )
         if r == nrep - 1 {
           // Build the row -> fold_id map for the cache write below.
-          let fid : Array[Int] = Array::make(n, 0)
+          let fid : Array[Int32] = Array::make(n, 0)
           for f = 0; f < folds.length(); f = f + 1 {
             for i in folds[f].test_indices() {
               fid[i] = f
@@ -537,7 +537,7 @@ pub fn DoubleMLPLIV::fit(
 fn DoubleMLPLIV::fit_cluster(
   self : DoubleMLPLIV,
   learner~ : LearnerDispatch,
-  max_attempts? : Int = 1,
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLPLIV {
   try {
     require(max_attempts >= 1)
@@ -558,8 +558,8 @@ fn DoubleMLPLIV::fit_cluster(
           ")",
         )
     }
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n; i = i + 1 {
@@ -730,9 +730,9 @@ fn DoubleMLPLIV::fit_cluster(
 /// `n_thetas=1` case.
 pub fn DoubleMLPLIV::bootstrap(
   self : DoubleMLPLIV,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLPLIV {
   try {
     require(self.fitted)
@@ -809,9 +809,9 @@ pub fn DoubleMLPLIV::bootstrap(
 pub fn DoubleMLPLIV::tune(
   self : DoubleMLPLIV,
   param_set~ : Array[LearnerDispatch],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLPLIV {
   try {
     require(param_set.length() > 0)
@@ -872,8 +872,8 @@ pub fn DoubleMLPLIV::tune(
 /// `DoubleMLPLR` is the only one of the four upstream implements.
 pub fn DoubleMLPLIV::sensitivity_analysis(
   self : DoubleMLPLIV,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let l_hat = self.predictions_l()
@@ -894,9 +894,9 @@ pub fn DoubleMLPLIV::sensitivity_analysis(
 /// `cluster_ids` defaults to `DoubleMLData::cluster_vars`.
 pub fn DoubleMLPLIV::sensitivity_analysis_cluster(
   self : DoubleMLPLIV,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let l_hat = self.predictions_l()
@@ -968,7 +968,7 @@ pub fn DoubleMLPLIV::sandwich_se(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLPLIV::cluster_sandwich_se(
   self : DoubleMLPLIV,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

@@ -27,13 +27,13 @@ pub struct LinearRegression {
 pub extend LinearRegression with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
-pub fn LinearRegression::new(ridge? : Double = 1.0e-10) -> LinearRegression {
+pub fn LinearRegression::new(ridge~ : Double = 1.0e-10) -> LinearRegression {
   { ridge, coef_: [], xtx_inv_diag: [], xtwx_inv_diag: [], fitted: false, }
 }
 
 ///|
 /// Number of features (excluding the intercept).
-pub fn LinearRegression::n_features(self : LinearRegression) -> Int {
+pub fn LinearRegression::n_features(self : LinearRegression) -> Int32 {
   if self.fitted {
     self.coef_.length() - 1
   } else {

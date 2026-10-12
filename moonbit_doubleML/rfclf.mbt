@@ -77,14 +77,14 @@
 /// Random-forest classifier (binary). `predict` returns
 /// `P(y = 1 | x)`, not a hard class label -- see the file header.
 pub struct RFClassifier {
-  n_trees : Int
-  max_depth : Int
-  min_samples_leaf : Int
-  mtry : Int // -1 = floor(sqrt(n_features)) at fit time
-  bootstrap_seed : Int
+  n_trees : Int32
+  max_depth : Int32
+  min_samples_leaf : Int32
+  mtry : Int32 // -1 = floor(sqrt(n_features)) at fit time
+  bootstrap_seed : Int32
   // Fitted state (empty until `fit` is called).
   trees : Array[CART]
-  n_features : Int // -1 = not yet fit
+  n_features : Int32 // -1 = not yet fit
 } derive(Debug)
 
 ///|
@@ -98,11 +98,11 @@ pub extend RFClassifier with Learner::{predict}
 
 ///|
 pub fn RFClassifier::new(
-  n_trees? : Int = 100,
-  max_depth? : Int = 10,
-  min_samples_leaf? : Int = 5,
-  mtry? : Int = -1,
-  bootstrap_seed? : Int = 3141,
+  n_trees~ : Int32 = 100,
+  max_depth~ : Int32 = 10,
+  min_samples_leaf~ : Int32 = 5,
+  mtry~ : Int32 = -1,
+  bootstrap_seed~ : Int32 = 3141,
 ) -> RFClassifier {
   {
     n_trees,
@@ -117,13 +117,13 @@ pub fn RFClassifier::new(
 
 ///|
 /// Number of feature columns the forest was fit on; -1 before fit.
-pub fn RFClassifier::n_features(self : RFClassifier) -> Int {
+pub fn RFClassifier::n_features(self : RFClassifier) -> Int32 {
   self.n_features
 }
 
 ///|
 /// Number of trees in the fitted forest; 0 before fit.
-pub fn RFClassifier::n_trees(self : RFClassifier) -> Int {
+pub fn RFClassifier::n_trees(self : RFClassifier) -> Int32 {
   self.trees.length()
 }
 

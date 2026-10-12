@@ -84,7 +84,7 @@ fn v1470_all(fitted : DoubleMLDIDCS) -> Array[Array[Double]] {
 
 ///|
 /// silently, it has to be counted.
-fn v1470_cells(fitted : DoubleMLDIDCS) -> (Int, Int, Int, Int, Int) {
+fn v1470_cells(fitted : DoubleMLDIDCS) -> (Int32, Int32, Int32, Int32, Int32) {
   let d = fitted.data.d
   let t = fitted.data.t
   let n = fitted.predictions_m().length()

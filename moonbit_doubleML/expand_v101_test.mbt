@@ -50,7 +50,7 @@ fn expand_v101_close(x : Double, y : Double) -> Bool {
 /// `p = 3` covariates, `u0` linear in X, Bernoulli treatment, an
 /// additive quantile shift (so every requested level is identified),
 /// and homoskedastic noise.
-fn expand_v101_qte_data(n : Int, seed : Int) -> DoubleMLData {
+fn expand_v101_qte_data(n : Int32, seed : Int32) -> DoubleMLData {
   let p = 3
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
@@ -83,9 +83,9 @@ fn expand_v101_quantiles() -> Array[Double] {
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-5
 /// (`pooled[i] = i / 5`) cluster ids for a sample of `n`.
-fn expand_v101_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v101_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 5
@@ -96,7 +96,7 @@ fn expand_v101_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
 ///|
 /// Quantile row `j` of `psi_flat`, built independently of the
 /// production slice helper so the field layout itself is pinned.
-fn expand_v101_row(m : DoubleMLQTE, j : Int, n : Int) -> Array[Double] {
+fn expand_v101_row(m : DoubleMLQTE, j : Int32, n : Int32) -> Array[Double] {
   let row : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     row[i] = m.psi_flat[j * n + i]

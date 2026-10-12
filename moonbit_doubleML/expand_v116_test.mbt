@@ -54,7 +54,7 @@
 /// The oracle's DGP generator. `Int64` suffixes are load-bearing:
 /// `2147483648` does not fit an `Int32` literal, and the arithmetic has
 /// to reproduce Python's exact integers, not wrap.
-fn v116_lcg(i : Int, salt : Int) -> Double {
+fn v116_lcg(i : Int32, salt : Int32) -> Double {
   let s = (1103515245L * (i + 1).to_int64() + salt.to_int64()) % 2147483648L
   s.to_double() / 2147483648.0
 }

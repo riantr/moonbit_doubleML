@@ -33,7 +33,11 @@
 // ---------------------------------------------------------------------------
 
 ///|
-fn v130_cs_data(n_per_cohort : Int, p : Int, seed : Int) -> DoubleMLDIDCSData {
+fn v130_cs_data(
+  n_per_cohort : Int32,
+  p : Int32,
+  seed : Int32,
+) -> DoubleMLDIDCSData {
   let cohort_count = 3
   let n_periods = 3
   let n_units = n_per_cohort * cohort_count
@@ -41,9 +45,9 @@ fn v130_cs_data(n_per_cohort : Int, p : Int, seed : Int) -> DoubleMLDIDCSData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(seed)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort

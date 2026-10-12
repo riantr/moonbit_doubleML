@@ -67,7 +67,11 @@ fn v098_tree_repr(node : PolicyTreeNode) -> String {
 /// itself. The `+1` offsets are the test's own DFS bookkeeping and
 /// are deliberately structured differently from the source's
 /// "skip the left subtree" formulation.
-fn v098_leaf_index_walk(node : PolicyTreeNode, x : Matrix, row : Int) -> Int {
+fn v098_leaf_index_walk(
+  node : PolicyTreeNode,
+  x : Matrix,
+  row : Int32,
+) -> Int32 {
   match node {
     Leaf(_) => 0
     Split(feature, threshold, l, r) =>
@@ -82,7 +86,7 @@ fn v098_leaf_index_walk(node : PolicyTreeNode, x : Matrix, row : Int) -> Int {
 ///|
 /// Test-side leaf counter, independent of the source's
 /// `policy_tree_count_leaves`.
-fn v098_leaf_n_leaves(node : PolicyTreeNode) -> Int {
+fn v098_leaf_n_leaves(node : PolicyTreeNode) -> Int32 {
   match node {
     Leaf(_) => 1
     Split(_, _, l, r) => v098_leaf_n_leaves(l) + v098_leaf_n_leaves(r)
@@ -135,7 +139,7 @@ fn v098_dbl_array_eq_nan_aware(a : Array[Double], b : Array[Double]) -> Bool {
 /// deprecated Show path -- and these arrays are EXACTLY the values
 /// the regression pins need to compare, so they are rendered here
 /// and the resulting STRING is what gets pinned.
-fn v098_show_ints(xs : Array[Int]) -> String {
+fn v098_show_ints(xs : Array[Int32]) -> String {
   let mut s = "["
   for i = 0; i < xs.length(); i = i + 1 {
     if i > 0 {
@@ -165,7 +169,7 @@ fn v098_show_ints(xs : Array[Int]) -> String {
 ///     `leaf_se` measures. A constant-signal DGP would make every
 ///     `leaf_se` exactly zero and the whole uncertainty surface
 ///     vacuous.
-fn v098_dgp(n : Int) -> (Matrix, Array[Double]) {
+fn v098_dgp(n : Int32) -> (Matrix, Array[Double]) {
   let p = 3
   let x = Matrix::zeros(n, p)
   let orth = Array::make(n, 0.0)
@@ -206,7 +210,7 @@ fn v098_dgp(n : Int) -> (Matrix, Array[Double]) {
 /// with nonvanishing probability, producing terminal nodes
 /// containing very few observations and leading to large estimation
 /// variance".
-fn v098_small_leaf_dgp(n : Int) -> (Matrix, Array[Double]) {
+fn v098_small_leaf_dgp(n : Int32) -> (Matrix, Array[Double]) {
   v098_dgp(n)
 }
 
@@ -221,7 +225,7 @@ fn v098_small_leaf_dgp(n : Int) -> (Matrix, Array[Double]) {
 fn v098_perturb(
   x : Matrix,
   s : Array[Double],
-  rows : Array[Int],
+  rows : Array[Int32],
 ) -> Array[Double] {
   let out = s.copy()
   for i in rows {
@@ -436,7 +440,7 @@ test "policy_tree_honest_structure_ignores_estimation_half" {
 
 ///|
 /// Test-side disjointness of two index lists.
-fn v098_any_overlap(a : Array[Int], b : Array[Int]) -> Bool {
+fn v098_any_overlap(a : Array[Int32], b : Array[Int32]) -> Bool {
   let mut hit = false
   for i in a {
     for j in b {
@@ -450,7 +454,7 @@ fn v098_any_overlap(a : Array[Int], b : Array[Int]) -> Bool {
 
 ///|
 /// Test-side elementwise `Int` array equality.
-fn v098_int_array_eq(a : Array[Int], b : Array[Int]) -> Bool {
+fn v098_int_array_eq(a : Array[Int32], b : Array[Int32]) -> Bool {
   if a.length() != b.length() {
     return false
   }

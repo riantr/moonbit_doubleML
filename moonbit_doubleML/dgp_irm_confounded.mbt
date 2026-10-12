@@ -28,10 +28,10 @@ struct IrmConfoundedData {
 
 ///|
 pub fn make_irm_confounded_data(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> IrmConfoundedData {
   let rng = chacha8_rng(seed)
   // 1. Pre-draw X-draw normals.

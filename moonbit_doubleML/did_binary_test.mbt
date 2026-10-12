@@ -10,11 +10,11 @@ test "did_binary_preprocess_keeps_both_periods" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
   let d : Array[Double] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0]
-  let t : Array[Int] = [0, 1, 0, 1, 0, 1, 0, 1]
+  let t : Array[Int32] = [0, 1, 0, 1, 0, 1, 0, 1]
   // g[unit]: units 0,1,2 are treated (g=1); unit 3 never-treated (g=0)
-  let g : Array[Int] = [1, 1, 1, 1, 1, 1, 0, 0]
+  let g : Array[Int32] = [1, 1, 1, 1, 1, 1, 0, 0]
   // id: 0,1,2,3 each with both periods
-  let id : Array[Int] = [0, 0, 1, 1, 2, 2, 3, 3]
+  let id : Array[Int32] = [0, 0, 1, 1, 2, 2, 3, 3]
   let data = DoubleMLDIDBinaryData::new(
     Matrix::from_array(x_flat, n, p),
     y,
@@ -59,9 +59,9 @@ test "did_binary_recovers_known_att" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     // Each unit's x is drawn once (time-invariant covariates).
@@ -144,9 +144,9 @@ test "did_binary_uses_ps_processor_clipping" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let is_treated = if u % 2 == 0 { 1 } else { 0 }
@@ -207,9 +207,9 @@ test "did_binary_att_invariant_under_ps_processor" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let is_treated = if u % 2 == 0 { 1 } else { 0 }

@@ -9,18 +9,18 @@
 /// `plpr_test.mbt` / `plr_cluster_test.mbt`.
 fn build_iv_clustered_dgp(
   rng : @random.Rand,
-  n_units : Int,
-  n_periods : Int,
+  n_units : Int32,
+  n_periods : Int32,
   theta0 : Double,
   iv_strength : Double,
-) -> (Matrix, Array[Double], Array[Double], Array[Double], Array[Int]) {
+) -> (Matrix, Array[Double], Array[Double], Array[Double], Array[Int32]) {
   let p = 3
   let n = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let z : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let alpha = (rng.double() - 0.5) * 4.0
     let unit_trait = rng.double() * 2.0 - 1.0

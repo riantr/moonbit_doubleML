@@ -12,7 +12,7 @@
 /// that want to retry or surface the error to downstream
 /// consumers should propagate it via `?`.
 pub suberror VarEstClusterError {
-  JTooSmall(Double, Double, Int) // (j, g, n_units)
+  JTooSmall(Double, Double, Int32) // (j, g, n_units)
 }
 
 ///|
@@ -28,7 +28,7 @@ pub suberror VarEstClusterError {
 /// skipped on native/wasm-gc (MoonBit's `panic_*` driver skips
 /// panic-prefixed tests; see `_verify/WHITEBOX_T_REPORT.md`).
 pub suberror ClusterDataError {
-  MissingUnit(Int) // (unit_id)
+  MissingUnit(Int32) // (unit_id)
 }
 
 ///|
@@ -144,7 +144,7 @@ pub suberror BracketSignError {
 /// constructs a `DoubleMLDIDData` with a non-binary `d`
 /// entry and asserts the error fires.
 pub suberror DIDDataError {
-  NonBinaryTreatment(Int) // (first non-binary index)
+  NonBinaryTreatment(Int32) // (first non-binary index)
 }
 
 ///|
@@ -198,8 +198,8 @@ pub suberror PreconditionError {
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
 pub struct Fold {
-  train_idx : Array[Int]
-  test_idx : Array[Int]
+  train_idx : Array[Int32]
+  test_idx : Array[Int32]
 } derive(Debug)
 
 ///|
@@ -207,13 +207,13 @@ pub extend Fold with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Train indices (accessor for the `train_idx` private field).
-pub fn Fold::train_indices(self : Fold) -> Array[Int] {
+pub fn Fold::train_indices(self : Fold) -> Array[Int32] {
   self.train_idx
 }
 
 ///|
 /// Test indices (accessor for the `test_idx` private field).
-pub fn Fold::test_indices(self : Fold) -> Array[Int] {
+pub fn Fold::test_indices(self : Fold) -> Array[Int32] {
   self.test_idx
 }
 
@@ -221,7 +221,7 @@ pub fn Fold::test_indices(self : Fold) -> Array[Int] {
 /// Public constructor: build a fold from explicit train/test index
 /// arrays (used by callers that drive cross-fitting with their own
 /// partitions, e.g. the clustered panel path in `plpr.mbt`).
-pub fn Fold::new(train_idx : Array[Int], test_idx : Array[Int]) -> Fold {
+pub fn Fold::new(train_idx : Array[Int32], test_idx : Array[Int32]) -> Fold {
   try {
     require(test_idx.length() > 0)
     require(train_idx.length() + test_idx.length() > 0)
@@ -240,9 +240,9 @@ pub(all) struct SampleSplitting {
   /// One entry per repetition; each entry is one entry per fold.
   smpls : Array[Array[Fold]]
   /// Derived: the inner length. Every repetition must agree on it.
-  folds : Int
+  folds : Int32
   /// Derived: the outer length.
-  reps : Int
+  reps : Int32
 }
 
 ///|
@@ -286,7 +286,7 @@ pub(all) struct SampleSplitting {
 /// generic path lands on the same answer without a branch.
 pub fn check_sample_splitting(
   smpls : Array[Array[Fold]],
-  n_obs : Int,
+  n_obs : Int32,
 ) -> SampleSplitting raise PreconditionError {
   require(n_obs > 0)
   require(smpls.length() > 0)
@@ -343,10 +343,10 @@ pub fn check_sample_splitting(
 /// is currently being filled (the same behavior as sklearn's
 /// `StratifiedKFold` with the default fallback).
 pub fn kfold_stratified(
-  n : Int,
+  n : Int32,
   strata : Array[Double],
-  n_folds : Int,
-  seed : Int,
+  n_folds : Int32,
+  seed : Int32,
 ) -> Array[Fold] {
   try {
     require(n > 0)
@@ -362,7 +362,7 @@ pub fn kfold_stratified(
   // critical path. The number of strata is small (typically 2-5 for
   // multi-level IRM treatment assignment), so the linear `find_by_key`
   // is not a hot-spot.
-  let by_stratum : Array[(String, Array[Int])] = []
+  let by_stratum : Array[(String, Array[Int32])] = []
   for i = 0; i < n; i = i + 1 {
     let key = strata[i].to_string()
     let mut found = false
@@ -380,19 +380,19 @@ pub fn kfold_stratified(
   // Permute each stratum independently with its own deterministic
   // sub-seed so two runs of the same (strata, n_folds, seed) triple
   // reproduce bit-exactly.
-  let stratum_perm : Array[(String, Array[Int])] = []
+  let stratum_perm : Array[(String, Array[Int32])] = []
   for k_idx = 0; k_idx < by_stratum.length(); k_idx = k_idx + 1 {
     let key = by_stratum[k_idx].0
     let arr = by_stratum[k_idx].1
     let sub_seed = seed + k_idx * 31337
     let bytes = seed_to_bytes(sub_seed)
     let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
-    let perm : Array[Int] = Array::makei(arr.length(), fn(i) { i })
+    let perm : Array[Int32] = Array::makei(arr.length(), fn(i) { i })
     for i = perm.length() - 1; i > 0; i = i - 1 {
       let j = rng.int(limit=i + 1)
       perm.swap(i, j)
     }
-    let shuffled : Array[Int] = Array::make(arr.length(), 0)
+    let shuffled : Array[Int32] = Array::make(arr.length(), 0)
     for i = 0; i < perm.length(); i = i + 1 {
       shuffled[i] = arr[perm[i]]
     }
@@ -401,8 +401,8 @@ pub fn kfold_stratified(
   // Assemble each fold by collecting the f-th slice of every stratum.
   let folds : Array[Fold] = []
   for f = 0; f < n_folds; f = f + 1 {
-    let test_idx : Array[Int] = []
-    let train_idx : Array[Int] = []
+    let test_idx : Array[Int32] = []
+    let train_idx : Array[Int32] = []
     for k_idx = 0; k_idx < stratum_perm.length(); k_idx = k_idx + 1 {
       let arr = stratum_perm[k_idx].1
       if arr.length() >= n_folds {
@@ -435,7 +435,7 @@ pub fn kfold_stratified(
 }
 
 ///|
-pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
+pub fn kfold(n_obs : Int32, n_folds : Int32, seed : Int32) -> Array[Fold] {
   try {
     require(n_obs > 0)
     require(n_folds > 0)
@@ -449,7 +449,7 @@ pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
     let bytes = seed_to_bytes(seed)
     let rng = @random.Rand::chacha8(seed=Bytes::from_array(bytes))
     // Fisher-Yates permutation of [0, n_obs)
-    let perm : Array[Int] = Array::makei(n_obs, fn(i) { i })
+    let perm : Array[Int32] = Array::makei(n_obs, fn(i) { i })
     for i = n_obs - 1; i > 0; i = i - 1 {
       let j = rng.int(limit=i + 1)
       perm.swap(i, j)
@@ -460,11 +460,11 @@ pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
     let mut offset = 0
     for f = 0; f < n_folds; f = f + 1 {
       let test_size = if f < rem { base + 1 } else { base }
-      let test_idx : Array[Int] = []
+      let test_idx : Array[Int32] = []
       for k = 0; k < test_size; k = k + 1 {
         test_idx.push(perm[offset + k])
       }
-      let train_idx : Array[Int] = []
+      let train_idx : Array[Int32] = []
       for k = 0; k < n_obs; k = k + 1 {
         if k < offset || k >= offset + test_size {
           train_idx.push(perm[k])
@@ -483,7 +483,7 @@ pub fn kfold(n_obs : Int, n_folds : Int, seed : Int) -> Array[Fold] {
 ///|
 /// Slice a matrix by a list of row indices, returning a new `n x p`
 /// matrix with the selected rows in the given order.
-pub fn slice_matrix_rows(x : Matrix, idx : Array[Int]) -> Matrix {
+pub fn slice_matrix_rows(x : Matrix, idx : Array[Int32]) -> Matrix {
   let n = idx.length()
   let out = Matrix::zeros(n, x.ncols)
   for i = 0; i < n; i = i + 1 {
@@ -497,7 +497,7 @@ pub fn slice_matrix_rows(x : Matrix, idx : Array[Int]) -> Matrix {
 
 ///|
 /// Slice a vector by a list of indices.
-pub fn slice_vector(v : Array[Double], idx : Array[Int]) -> Array[Double] {
+pub fn slice_vector(v : Array[Double], idx : Array[Int32]) -> Array[Double] {
   let out : Array[Double] = Array::make(idx.length(), 0.0)
   for i = 0; i < idx.length(); i = i + 1 {
     out[i] = v[idx[i]]
@@ -509,7 +509,7 @@ pub fn slice_vector(v : Array[Double], idx : Array[Int]) -> Array[Double] {
 /// The full index range `[0, n)`. Convenient for callers that need
 /// to pass a complete index list to `filter_indices` (e.g. the LPQ
 /// complier-prob computation in `lpq.mbt::DoubleMLLPQ::fit`).
-pub fn range_indices(n : Int) -> Array[Int] {
+pub fn range_indices(n : Int32) -> Array[Int32] {
   Array::makei(n, fn(i) { i })
 }
 
@@ -533,15 +533,15 @@ pub fn range_indices(n : Int) -> Array[Int] {
 ///   - `unit_fold`     : length-`n_units` per-unit test-fold index
 ///   - `fold_n_units`  : length-`n_folds` per-fold unit count
 pub fn expand_unit_folds_to_rows(
-  cluster : Array[Int],
+  cluster : Array[Int32],
   folds_u : Array[Fold],
-  row_unit : Array[Int],
-) -> (Array[Fold], Array[Int], Array[Int]) {
+  row_unit : Array[Int32],
+) -> (Array[Fold], Array[Int32], Array[Int32]) {
   let n = cluster.length()
   let n_units = row_unit_max(row_unit) + 1
   let folds_row : Array[Fold] = []
-  let unit_fold : Array[Int] = Array::make(n_units, 0)
-  let fold_n_units : Array[Int] = Array::make(folds_u.length(), 0)
+  let unit_fold : Array[Int32] = Array::make(n_units, 0)
+  let fold_n_units : Array[Int32] = Array::make(folds_u.length(), 0)
   for f = 0; f < folds_u.length(); f = f + 1 {
     let tu = folds_u[f].test_indices()
     fold_n_units[f] = tu.length()
@@ -550,8 +550,8 @@ pub fn expand_unit_folds_to_rows(
       in_test[tu[k]] = true
       unit_fold[tu[k]] = f
     }
-    let train_rows : Array[Int] = []
-    let test_rows : Array[Int] = []
+    let train_rows : Array[Int32] = []
+    let test_rows : Array[Int32] = []
     for i = 0; i < n; i = i + 1 {
       if in_test[row_unit[i]] {
         test_rows.push(i)
@@ -581,12 +581,12 @@ pub fn expand_unit_folds_to_rows(
 /// consumers should propagate via `?`. The error type is declared
 /// at the top of this file so the cluster helper stack can share it.
 pub fn build_row_unit_map(
-  cluster : Array[Int],
-  uniq : Array[Int],
-) -> Array[Int] raise ClusterDataError {
+  cluster : Array[Int32],
+  uniq : Array[Int32],
+) -> Array[Int32] raise ClusterDataError {
   let n = cluster.length()
   let n_units = uniq.length()
-  let row_unit : Array[Int] = Array::make(n, 0)
+  let row_unit : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     let g = cluster[i]
     let mut found = false
@@ -608,7 +608,7 @@ pub fn build_row_unit_map(
 /// Helper: `max(row_unit)` (the largest unit position, equal to
 /// `n_units - 1` when `row_unit` is built from a complete
 /// `uniq` vector).
-fn row_unit_max(row_unit : Array[Int]) -> Int {
+fn row_unit_max(row_unit : Array[Int32]) -> Int32 {
   let mut m = 0
   for i = 0; i < row_unit.length(); i = i + 1 {
     if row_unit[i] > m {
@@ -640,11 +640,11 @@ pub fn cluster_causal_param_and_se(
   psi_a : Array[Double],
   psi_b : Array[Double],
   folds_row : Array[Fold],
-  fold_n_units : Array[Int],
-  unit_rows : Array[Array[Int]],
-  unit_fold : Array[Int],
-  n_folds_u : Int,
-  n_folds_per_cluster : Int,
+  fold_n_units : Array[Int32],
+  unit_rows : Array[Array[Int32]],
+  unit_fold : Array[Int32],
+  n_folds_u : Int32,
+  n_folds_per_cluster : Int32,
 ) -> (Double, Double) raise VarEstClusterError {
   let theta_r = est_coef_cluster(psi_a, psi_b, folds_row, fold_n_units)
   let n = psi_a.length()
@@ -676,7 +676,7 @@ pub fn[T : Learner] cross_fit_predict(
   x : Matrix,
   y : Array[Double],
   folds : Array[Fold],
-  sample_weight? : Array[Double] = [],
+  sample_weight~ : Array[Double] = [],
 ) -> Array[Double] {
   let n_obs = x.nrows
   let preds : Array[Double] = Array::make(n_obs, 0.0)
@@ -732,11 +732,11 @@ pub fn[T : Learner] double_cross_fit_predict(
   x : Matrix,
   y : Array[Double],
   outer : Array[Fold],
-  n_inner : Int,
-  seed : Int,
-  sample_weight? : Array[Double] = [],
+  n_inner : Int32,
+  seed : Int32,
+  sample_weight~ : Array[Double] = [],
 ) -> Array[Array[Double]] {
-  let mut rng_state : Int = seed
+  let mut rng_state : Int32 = seed
   let weighted = sample_weight.length() > 0
   if weighted && sample_weight.length() != x.nrows {
     abort(
@@ -756,17 +756,21 @@ pub fn[T : Learner] double_cross_fit_predict(
     rng_state = rng_state + 1
     let preds : Array[Double] = Array::make(m, 0.0)
     for ifold in inner {
-      let xt_rows : Array[Int] = Array::makei(ifold.train_idx.length(), fn(k) {
+      let xt_rows : Array[Int32] = Array::makei(ifold.train_idx.length(), fn(
+        k,
+      ) {
         train_idx[ifold.train_idx[k]]
       })
-      let yt_rows : Array[Int] = Array::makei(ifold.train_idx.length(), fn(k) {
+      let yt_rows : Array[Int32] = Array::makei(ifold.train_idx.length(), fn(
+        k,
+      ) {
         train_idx[ifold.train_idx[k]]
       })
       let xt = slice_matrix_rows(x, xt_rows)
       let yt = slice_vector(y, yt_rows)
       let wt = if weighted { slice_vector(sample_weight, xt_rows) } else { [] }
       let fitted = learner.fit(xt, yt, wt)
-      let te_rows : Array[Int] = Array::makei(ifold.test_idx.length(), fn(k) {
+      let te_rows : Array[Int32] = Array::makei(ifold.test_idx.length(), fn(k) {
         train_idx[ifold.test_idx[k]]
       })
       let p = fitted.predict(slice_matrix_rows(x, te_rows))
@@ -790,9 +794,9 @@ pub fn double_cross_fit_predict_dispatch(
   x : Matrix,
   y : Array[Double],
   outer : Array[Fold],
-  n_inner : Int,
-  seed : Int,
-  sample_weight? : Array[Double] = [],
+  n_inner : Int32,
+  seed : Int32,
+  sample_weight~ : Array[Double] = [],
 ) -> Array[Array[Double]] {
   match learner {
     LinearRegression(lr) =>

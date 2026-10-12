@@ -11,9 +11,9 @@ fn main {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = @moonbit_doubleML.chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let xu : Array[Double] = Array::make(p, 0.0)

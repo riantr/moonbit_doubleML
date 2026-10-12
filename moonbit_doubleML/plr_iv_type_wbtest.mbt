@@ -39,8 +39,8 @@
 
 ///|
 fn plr_iv_test_dgp(
-  n : Int,
-  seed : Int,
+  n : Int32,
+  seed : Int32,
 ) -> (Matrix, Array[Double], Array[Double], Array[Double]) {
   // Standard DML DGP: y = theta * d + 0.5 * x0 + eps;
   // d = 0.3 * x0 + 0.4 * x1 + v; eps ~ N(0, 0.5); v ~ N(0, 0.3).
@@ -220,7 +220,7 @@ test "plr_iv_type_wbtest_fit_cluster_iv_type_routes" {
   let y_data : Array[Double] = Array::make(n, 0.0)
   let d_data : Array[Double] = Array::make(n, 0.0)
   let z_data : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let alpha = (rng.double() - 0.5) * 4.0
     for k = 0; k < n_periods; k = k + 1 {

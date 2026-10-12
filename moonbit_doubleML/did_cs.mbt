@@ -17,16 +17,16 @@ pub struct DoubleMLDIDCSData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
-  t : Array[Int]
-  id : Array[Int]
-  g : Array[Int]
+  t : Array[Int32]
+  id : Array[Int32]
+  g : Array[Int32]
   // Sorted unique treatment-group values (excluding the
   // never-treated sentinel which is the minimum of `g`). This is
   // set by `fit` from the data.
-  groups : Array[Int]
+  groups : Array[Int32]
   // Sorted unique time-period values, including the smallest as the
   // `never_treated_time` sentinel.
-  times : Array[Int]
+  times : Array[Int32]
 } derive(Debug)
 
 ///|
@@ -37,9 +37,9 @@ pub fn DoubleMLDIDCSData::new(
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
-  t : Array[Int],
-  id : Array[Int],
-  g : Array[Int],
+  t : Array[Int32],
+  id : Array[Int32],
+  g : Array[Int32],
 ) -> DoubleMLDIDCSData {
   try {
     let n = y.length()
@@ -55,11 +55,11 @@ pub fn DoubleMLDIDCSData::new(
     // Deep-copy `g` and `t` so the caller's arrays are not mutated
     // by the in-place sort inside `discover_groups_times` (and any
     // future in-place ops in `fit`).
-    let g_owned : Array[Int] = []
+    let g_owned : Array[Int32] = []
     for v in g {
       g_owned.push(v)
     }
-    let t_owned : Array[Int] = []
+    let t_owned : Array[Int32] = []
     for v in t {
       t_owned.push(v)
     }
@@ -82,9 +82,9 @@ pub fn DoubleMLDIDCSData::new(
 /// for the panel sizes typical of CS-DID (n_groups ≤ 10,
 /// n_periods ≤ 20).
 fn discover_groups_times(
-  g : Array[Int],
-  t : Array[Int],
-) -> (Array[Int], Array[Int]) {
+  g : Array[Int32],
+  t : Array[Int32],
+) -> (Array[Int32], Array[Int32]) {
   let n = g.length()
   // never_treated_value = min(g).
   let mut never_treated_value = g[0]
@@ -97,19 +97,19 @@ fn discover_groups_times(
   // deep-copy first because `Array::sort` is in-place and
   // `Array::copy` is shallow: sorting `g_sorted` would also
   // mutate the caller's `g` array.
-  let g_sorted : Array[Int] = []
+  let g_sorted : Array[Int32] = []
   for v in g {
     g_sorted.push(v)
   }
   g_sorted.sort()
-  let t_sorted : Array[Int] = []
+  let t_sorted : Array[Int32] = []
   for v in t {
     t_sorted.push(v)
   }
   t_sorted.sort()
-  let g_unique : Array[Int] = []
+  let g_unique : Array[Int32] = []
   let mut g_unique_acc = g_unique
-  let t_unique : Array[Int] = []
+  let t_unique : Array[Int32] = []
   let mut t_unique_acc = t_unique
   for i = 0; i < n; i = i + 1 {
     let gv = g_sorted[i]
@@ -154,10 +154,10 @@ fn discover_groups_times(
 pub struct DoubleMLDIDCS {
   data : DoubleMLDIDCSData
   control_group : String
-  anticipation_periods : Int
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  anticipation_periods : Int32
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   propensity_clip : Double
   // v0.10.0+: propensity-score processor. Propagated through to
   // each per-cell `DoubleMLDIDBinary` fit; controls the
@@ -286,8 +286,8 @@ pub struct DoubleMLDIDCS {
   psi_sigma2_long : Array[Double]
   psi_nu2_long : Array[Double]
   riesz_rep_long : Array[Double]
-  n_groups : Int
-  n_periods : Int
+  n_groups : Int32
+  n_periods : Int32
   fitted : Bool
   // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
   // flat `[n_rep_boot * n_cells]` array of t-statistics in
@@ -296,13 +296,21 @@ pub struct DoubleMLDIDCS {
   // `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.82.0+: memoization flag. The wrapper's `fit()` forwards
   // this flag to every per-cell `DoubleMLDIDBinary.fit()` so the
   // aggregated cross-fits honour `.enable_memoize()` /
   // `.has_cache()` uniformly.
   memoize_enabled : Bool
+  // v0.153.0: the learner pair. Before this, `ml_g` / `ml_m` existed only as
+  // `fit` parameters defaulting to OLS -- never stored, never exposed -- so a
+  // fitted `DoubleMLDIDCS` could not report which learners produced it, and the
+  // per-cell `DoubleMLDIDBinary` children were handed whatever `fit` received
+  // without the parent recording the choice. Now recorded at construction and
+  // readable via `learner_g()` / `learner_m()`.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
 } derive(Debug)
 
 ///|
@@ -311,16 +319,21 @@ pub extend DoubleMLDIDCS with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLDIDCS::new(
   data : DoubleMLDIDCSData,
-  control_group? : String = "never_treated",
-  anticipation_periods? : Int = 0,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor? : PSProcessor = PSProcessor::new(),
+  control_group~ : String = "never_treated",
+  anticipation_periods~ : Int32 = 0,
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor~ : PSProcessor = PSProcessor::new(),
   // v0.128.0: upstream ps_processor_config; wins outright over ps_processor.
-  ps_processor_config? : PSProcessorConfig? = None,
-  in_sample_normalization? : Bool = false,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  in_sample_normalization~ : Bool = false,
+  // v0.153.0: the nuisance learners, recorded at construction rather than taken
+  // implicitly at `fit` time. Defaults are unchanged -- OLS for both -- so an
+  // existing caller that never mentions them gets the identical fit.
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCS {
   // v0.128.0: config wins outright; `ps_processor` supplies the config only
   // when none is given. Same DID rule as `DoubleMLDID`.
@@ -349,6 +362,8 @@ pub fn DoubleMLDIDCS::new(
       propensity_clip,
       ps_processor_config,
       in_sample_normalization,
+      ml_g,
+      ml_m,
       coef_matrix: Array::make(n_groups * n_periods, 0.0),
       se_matrix: Array::make(n_groups * n_periods, 0.0),
       psi_matrix: Array::make(n_groups * n_periods * data.y.length(), 0.0),
@@ -394,8 +409,8 @@ pub fn DoubleMLDIDCS::new(
 /// (g, t) cell is empty (e.g. `t_eval ≤ g` for the chosen group).
 pub fn DoubleMLDIDCS::coef_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
+  group_idx : Int32,
+  period_idx : Int32,
 ) -> Double {
   try {
     require(self.fitted)
@@ -439,8 +454,8 @@ pub fn DoubleMLDIDCS::has_cache(self : DoubleMLDIDCS) -> Bool {
 /// Per-`(g, t)` ATT standard error.
 pub fn DoubleMLDIDCS::se_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
+  group_idx : Int32,
+  period_idx : Int32,
 ) -> Double {
   try {
     require(self.fitted)
@@ -455,14 +470,30 @@ pub fn DoubleMLDIDCS::se_at(
 
 ///|
 /// Number of groups (excluding the never-treated sentinel).
-pub fn DoubleMLDIDCS::n_groups(self : DoubleMLDIDCS) -> Int {
+pub fn DoubleMLDIDCS::n_groups(self : DoubleMLDIDCS) -> Int32 {
   self.n_groups
 }
 
 ///|
 /// Number of distinct time periods.
-pub fn DoubleMLDIDCS::n_periods(self : DoubleMLDIDCS) -> Int {
+pub fn DoubleMLDIDCS::n_periods(self : DoubleMLDIDCS) -> Int32 {
   self.n_periods
+}
+
+///|
+/// v0.153.0: the outcome learner (`ml_g`) recorded at construction and used by
+/// `fit` when no explicit argument is given. Reports the DEFAULT, not
+/// necessarily the learner of the current fit: an explicit `fit(ml_g = ...)`
+/// overrides it for that call only and is not recorded.
+pub fn DoubleMLDIDCS::learner_g(self : DoubleMLDIDCS) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// v0.153.0: the propensity learner (`ml_m`) recorded at construction. See
+/// `learner_g` for the same default-vs-current-fit caveat.
+pub fn DoubleMLDIDCS::learner_m(self : DoubleMLDIDCS) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -657,7 +688,10 @@ pub fn DoubleMLDIDCS::predictions_g_d1_t1(
 
 ///|
 /// Group value at row index `i` (sorted ascending).
-pub fn DoubleMLDIDCS::group_at(self : DoubleMLDIDCS, group_idx : Int) -> Int {
+pub fn DoubleMLDIDCS::group_at(
+  self : DoubleMLDIDCS,
+  group_idx : Int32,
+) -> Int32 {
   try {
     require(group_idx >= 0 && group_idx < self.n_groups)
     self.data.groups[group_idx]
@@ -669,7 +703,10 @@ pub fn DoubleMLDIDCS::group_at(self : DoubleMLDIDCS, group_idx : Int) -> Int {
 
 ///|
 /// Time value at column index `t` (sorted ascending).
-pub fn DoubleMLDIDCS::period_at(self : DoubleMLDIDCS, period_idx : Int) -> Int {
+pub fn DoubleMLDIDCS::period_at(
+  self : DoubleMLDIDCS,
+  period_idx : Int32,
+) -> Int32 {
   try {
     require(period_idx >= 0 && period_idx < self.n_periods)
     self.data.times[period_idx]
@@ -820,9 +857,9 @@ pub fn DoubleMLDIDCS::period_at(self : DoubleMLDIDCS, period_idx : Int) -> Int {
 /// inputs the same way.
 fn DoubleMLDIDCS::cell_flat_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
-) -> Int {
+  group_idx : Int32,
+  period_idx : Int32,
+) -> Int32 {
   try {
     require(self.fitted)
     require(group_idx >= 0 && group_idx < self.n_groups)
@@ -848,8 +885,8 @@ fn DoubleMLDIDCS::cell_flat_at(
 /// answer rather than an obvious absence.
 fn DoubleMLDIDCS::cell_psi_a_row_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
+  group_idx : Int32,
+  period_idx : Int32,
 ) -> Array[Double] {
   let flat = self.cell_flat_at(group_idx, period_idx)
   let row = self.cell_psi_a[flat]
@@ -874,8 +911,8 @@ fn DoubleMLDIDCS::cell_psi_a_row_at(
 /// (`fit` asserts it at the point of capture).
 fn DoubleMLDIDCS::cell_psi_b_row_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
+  group_idx : Int32,
+  period_idx : Int32,
 ) -> Array[Double] {
   let flat = self.cell_flat_at(group_idx, period_idx)
   let row = self.cell_psi_b[flat]
@@ -909,8 +946,8 @@ fn DoubleMLDIDCS::cell_psi_b_row_at(
 /// is the same shape the fifteen other estimators expose.
 fn DoubleMLDIDCS::m_inv_1x1_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
+  group_idx : Int32,
+  period_idx : Int32,
 ) -> Matrix {
   let psi_a = self.cell_psi_a_row_at(group_idx, period_idx)
   let mean_a = mean(psi_a)
@@ -971,8 +1008,8 @@ fn DoubleMLDIDCS::m_inv_1x1_at(
 /// `n_obs > n_params` for HC1 / HC2 / HC3.
 pub fn DoubleMLDIDCS::sandwich_se_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
+  group_idx : Int32,
+  period_idx : Int32,
   kind : SandwichKind,
 ) -> Double {
   try {
@@ -1040,9 +1077,9 @@ pub fn DoubleMLDIDCS::sandwich_se_at(
 /// `cluster_ids.length() == n_wide`, all `cluster_ids[i] >= 0`.
 pub fn DoubleMLDIDCS::cluster_sandwich_se_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
-  cluster_ids : Array[Int],
+  group_idx : Int32,
+  period_idx : Int32,
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     let m_inv = self.m_inv_1x1_at(group_idx, period_idx)
@@ -1103,8 +1140,8 @@ pub fn DoubleMLDIDCS::cluster_sandwich_se_at(
 /// `0 <= group_idx < n_groups`, `0 <= period_idx < n_periods`.
 pub fn DoubleMLDIDCS::bias_corrected_coef_at(
   self : DoubleMLDIDCS,
-  group_idx : Int,
-  period_idx : Int,
+  group_idx : Int32,
+  period_idx : Int32,
 ) -> Double {
   self.coef_matrix[self.cell_flat_at(group_idx, period_idx)]
 }
@@ -1123,10 +1160,21 @@ pub fn DoubleMLDIDCS::bias_corrected_coef_at(
 /// layers can drop them via the `nan`-aware aggregator).
 pub fn DoubleMLDIDCS::fit(
   self : DoubleMLDIDCS,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  // v0.153.0: these defaulted to `LearnerDispatch::linear_regression()` on every
+  // call, discarding whatever the constructor recorded. They now default to the
+  // stored pair -- an explicit argument still wins, an omitted one reuses the
+  // constructor's choice, matching the sibling estimators. The defaults
+  // themselves are unchanged, so no existing call site moves.
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDCS {
-  ignore(ml_g)
+  // v0.153.0: a vestigial `ignore(ml_g)` stood here. `ml_g` has driven the
+  // four conditional `(d, t)` outcome nuisances since v0.146.0 (see the
+  // `cross_fit_predict_conditional_dispatch` calls below) and is forwarded to
+  // each per-`(g, t)` child fit, so the line claimed a drop that does not
+  // exist -- and, sitting directly above the v0.146.0 note, implied `ml_g` was
+  // discarded too.
+  //
   // v0.146.0: `ml_m` is no longer ignored -- it drives the panel-wide
   // cross-fitted `m_hat` below. It was ignored because every cell used to
   // delegate its propensity to a child `DoubleMLDIDBinary`, which takes
@@ -1204,10 +1252,10 @@ pub fn DoubleMLDIDCS::fit(
     // Prediction still covers every row: upstream's `fit_predict` fits on
     // `train_index_cond` but predicts on the whole test fold.
     // ---------------------------------------------------------------------
-    let mut cond_d0_t0 : Array[Int] = []
-    let mut cond_d0_t1 : Array[Int] = []
-    let mut cond_d1_t0 : Array[Int] = []
-    let mut cond_d1_t1 : Array[Int] = []
+    let mut cond_d0_t0 : Array[Int32] = []
+    let mut cond_d0_t1 : Array[Int32] = []
+    let mut cond_d1_t0 : Array[Int32] = []
+    let mut cond_d1_t1 : Array[Int32] = []
     for i = 0; i < n; i = i + 1 {
       let di = self.data.d[i]
       let ti = self.data.t[i]
@@ -1444,13 +1492,13 @@ pub fn DoubleMLDIDCS::fit(
         let mut x_sub_acc : Array[Double] = []
         let mut y_sub_acc : Array[Double] = []
         let mut d_sub_acc : Array[Double] = []
-        let mut t_sub_acc : Array[Int] = []
-        let mut id_sub_acc : Array[Int] = []
-        let mut g_sub_acc : Array[Int] = []
+        let mut t_sub_acc : Array[Int32] = []
+        let mut id_sub_acc : Array[Int32] = []
+        let mut g_sub_acc : Array[Int32] = []
         // v0.15.0+: track the full long-format index for each
         // sub row, so we can map wide-format psi back to the
         // full long-format panel for the multiplier bootstrap.
-        let mut full_idx_acc : Array[Int] = []
+        let mut full_idx_acc : Array[Int32] = []
         for i = 0; i < n; i = i + 1 {
           let gv = self.data.g[i]
           let tv = self.data.t[i]
@@ -1739,9 +1787,9 @@ pub fn DoubleMLDIDCS::fit(
 /// Calling on an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLDIDCS::bootstrap(
   self : DoubleMLDIDCS,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLDIDCS {
   try {
     require(self.fitted)
@@ -1821,8 +1869,8 @@ pub fn DoubleMLDIDCS::bootstrap(
 /// `PreconditionError`.
 pub fn DoubleMLDIDCS::sensitivity_analysis(
   self : DoubleMLDIDCS,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   let n_obs = self.data.y.length()
@@ -1867,8 +1915,8 @@ pub fn DoubleMLDIDCS::sensitivity_analysis(
 /// to have been called.
 pub fn DoubleMLDIDCS::confint(
   self : DoubleMLDIDCS,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> Array[(Double, Double)] {
   try {
     require(self.fitted)
@@ -1939,9 +1987,9 @@ pub fn DoubleMLDIDCS::confint(
 /// `n_groups * n_periods` in row-major `(gi, pi)` order.
 pub fn DoubleMLDIDCS::sensitivity_analysis_cluster(
   self : DoubleMLDIDCS,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   let n_obs = self.data.y.length()
@@ -2070,9 +2118,9 @@ pub fn DoubleMLDIDCS::sensitivity_analysis_cluster(
 pub fn DoubleMLDIDCS::tune(
   self : DoubleMLDIDCS,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLDIDCS {
   try {
     require(param_set.length() > 0)

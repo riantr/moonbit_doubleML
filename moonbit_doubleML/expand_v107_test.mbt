@@ -25,8 +25,8 @@
 /// indexing and the bound are stated together.
 fn v107_ssm_dgp(
   rng : @random.Rand,
-  n : Int,
-  p : Int,
+  n : Int32,
+  p : Int32,
   theta0 : Double,
 ) -> DoubleMLSSMData {
   let pool : Array[Double] = []
@@ -60,7 +60,7 @@ fn v107_ssm_dgp(
 }
 
 ///|
-fn v107_ssm_fit(n : Int, p : Int, seed : Int) -> DoubleMLSSM {
+fn v107_ssm_fit(n : Int32, p : Int32, seed : Int32) -> DoubleMLSSM {
   DoubleMLSSM::new(
     v107_ssm_dgp(chacha8_rng(seed), n, p, 1.0),
     n_folds=2,
@@ -78,9 +78,9 @@ fn v107_ssm_fit(n : Int, p : Int, seed : Int) -> DoubleMLSSM {
 /// kept and still used by the other tests in this file, so the default path
 /// stays under test -- it just is not the arm the fragility claim is about.
 fn v107_ssm_fit_ml(
-  n : Int,
-  p : Int,
-  seed : Int,
+  n : Int32,
+  p : Int32,
+  seed : Int32,
   ml_m : LearnerDispatch,
 ) -> DoubleMLSSM {
   DoubleMLSSM::new(

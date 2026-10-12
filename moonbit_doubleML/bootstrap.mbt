@@ -67,9 +67,9 @@ pub fn did_bootstrap_t_stat(
   weights : Array[Double],
   psi : Array[Double],
   se : Array[Double],
-  n_rep_boot : Int,
-  n_obs : Int,
-  n_thetas : Int,
+  n_rep_boot : Int32,
+  n_obs : Int32,
+  n_thetas : Int32,
 ) -> Array[Double] {
   let boot_t_stat : Array[Double] = Array::make(n_rep_boot * n_thetas, 0.0)
   let n_d = n_obs.to_double()

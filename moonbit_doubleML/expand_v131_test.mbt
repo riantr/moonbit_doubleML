@@ -15,7 +15,7 @@
 //| reproduces the MoonBit values to ~1e-16.
 
 ///|
-fn v1316_did_data(n : Int, p : Int, seed : Int) -> DoubleMLDIDData raise {
+fn v1316_did_data(n : Int32, p : Int32, seed : Int32) -> DoubleMLDIDData raise {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -174,7 +174,7 @@ test "v1316_did_experimental_score_nu2_ignores_the_propensity" {
 /// classifier with `predict_proba` for the same reason.
 /// `irm/irm.py:419-423` / `irm/apo.py:378-382`, with `weights == weights_bar
 /// == 1` and `normalize_ipw == False`.
-fn v1317_data(n : Int, p : Int, seed : Int) -> DoubleMLData {
+fn v1317_data(n : Int32, p : Int32, seed : Int32) -> DoubleMLData {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)

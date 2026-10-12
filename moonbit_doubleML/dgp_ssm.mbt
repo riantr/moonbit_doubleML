@@ -36,10 +36,10 @@ struct SsmData {
 ///|
 /// Generate the SSM DGP.
 pub fn make_ssm_data(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> SsmData {
   let rng = chacha8_rng(seed)
   // 1. Pre-draw X-draw normals.

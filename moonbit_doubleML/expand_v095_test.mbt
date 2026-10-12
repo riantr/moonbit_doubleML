@@ -102,7 +102,7 @@ fn expand_v095_close(x : Double, y : Double) -> Bool {
 ///     DGP would give every quantile the same density and could not
 ///     tell a per-quantile implementation from a loop that ignored
 ///     `j`.
-fn expand_v095_qte_data(n : Int) -> DoubleMLData {
+fn expand_v095_qte_data(n : Int32) -> DoubleMLData {
   let x_flat : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -145,7 +145,7 @@ fn expand_v095_quantiles() -> Array[Double] {
 
 ///|
 /// The fitted QTE every test in this file shares.
-fn expand_v095_fit(n : Int) -> DoubleMLQTE {
+fn expand_v095_fit(n : Int32) -> DoubleMLQTE {
   DoubleMLQTE::new(
     expand_v095_qte_data(n),
     quantiles=expand_v095_quantiles(),
@@ -156,7 +156,7 @@ fn expand_v095_fit(n : Int) -> DoubleMLQTE {
 ///|
 /// Quantile `j`'s IF row, built independently of the production
 /// slice (`psi_flat[j * n_obs .. (j + 1) * n_obs]`).
-fn expand_v095_row(m : DoubleMLQTE, j : Int, n : Int) -> Array[Double] {
+fn expand_v095_row(m : DoubleMLQTE, j : Int32, n : Int32) -> Array[Double] {
   let row : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     row[i] = m.psi_flat[j * n + i]
@@ -167,9 +167,9 @@ fn expand_v095_row(m : DoubleMLQTE, j : Int, n : Int) -> Array[Double] {
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-4
 /// (`pooled[i] = i / 4`) cluster ids for a sample of `n`.
-fn expand_v095_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v095_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -925,7 +925,7 @@ test "qte_cluster_fit_persists_jacobians" {
 /// `expand_v095_qte_data` with both arms' outcome widths doubled, so
 /// the densities -- and hence the Jacobians -- roughly halve. Used by
 /// test 3 to show the persisted values move with the data.
-fn expand_v095_qte_data_wide(n : Int) -> DoubleMLData {
+fn expand_v095_qte_data_wide(n : Int32) -> DoubleMLData {
   let x_flat : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)

@@ -71,7 +71,7 @@ fn expand_v092_close(x : Double, y : Double) -> Bool {
 /// uses, so the two files' numbers are comparable.
 /// `n = 500`, `p = 6`, Box-Muller normals, `d ~ Bernoulli(expit(a))`,
 /// `y ~ Bernoulli(expit(0.5 * (d - a_0) + r_0))`.
-fn expand_v092_lplr_data(n : Int, p : Int) -> DoubleMLBinaryData {
+fn expand_v092_lplr_data(n : Int32, p : Int32) -> DoubleMLBinaryData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -125,16 +125,16 @@ fn expand_v092_lplr_data(n : Int, p : Int) -> DoubleMLBinaryData {
 /// (`aggregate_coef_se` has an `n_rep == 1` fast path returning
 /// `(coefs[0], ses[0])` unchanged) and the persisted
 /// influence-function arrays are that repetition's.
-fn expand_v092_fit(n : Int) -> DoubleMLLPLR {
+fn expand_v092_fit(n : Int32) -> DoubleMLLPLR {
   DoubleMLLPLR::new(expand_v092_lplr_data(n, 6), n_folds=2, n_folds_inner=2).fit()
 }
 
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-4
 /// (`pooled[i] = i / 4`) cluster ids for a sample of `n`.
-fn expand_v092_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v092_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4

@@ -39,8 +39,8 @@ pub struct DoubleMLPanelData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
-  t : Array[Int]
-  id : Array[Int]
+  t : Array[Int32]
+  id : Array[Int32]
 } derive(Debug)
 
 ///|
@@ -51,8 +51,8 @@ pub fn DoubleMLPanelData::new(
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
-  t : Array[Int],
-  id : Array[Int],
+  t : Array[Int32],
+  id : Array[Int32],
 ) -> DoubleMLPanelData {
   try {
     let n = x.nrows
@@ -81,7 +81,7 @@ struct PanelTransform {
   y : Array[Double]
   d : Array[Double]
   d_mean_row : Array[Double]
-  id : Array[Int]
+  id : Array[Int32]
 } derive(Debug)
 
 ///|
@@ -90,8 +90,8 @@ pub extend PanelTransform with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 /// Sort rows by (id, t) ascending and return the permutation of
 /// row indices. Stable: ties on (id, t) keep original order.
-fn sort_rows_by_id_time(id : Array[Int], t : Array[Int]) -> Array[Int] {
-  let order : Array[Int] = Array::makei(id.length(), fn(i) { i })
+fn sort_rows_by_id_time(id : Array[Int32], t : Array[Int32]) -> Array[Int32] {
+  let order : Array[Int32] = Array::makei(id.length(), fn(i) { i })
   // Insertion sort (n is small in tests/demos; deterministic).
   for i = 1; i < order.length(); i = i + 1 {
     let mut j = i
@@ -111,12 +111,12 @@ fn sort_rows_by_id_time(id : Array[Int], t : Array[Int]) -> Array[Int] {
 
 ///|
 /// Unit-level means of one vector keyed by `id`, returned per row.
-fn unit_means(v : Array[Double], id : Array[Int]) -> Array[Double] {
+fn unit_means(v : Array[Double], id : Array[Int32]) -> Array[Double] {
   let n = v.length()
   // Map unit id -> (sum, count). Units are Ints; use a simple
   // two-pass scheme: collect unique ids, then accumulate.
-  let uniq : Array[Int] = []
-  let mut uniq_acc : Array[Int] = uniq
+  let uniq : Array[Int32] = []
+  let mut uniq_acc : Array[Int32] = uniq
   for i = 0; i < n; i = i + 1 {
     let g = id[i]
     let mut found = false
@@ -131,7 +131,7 @@ fn unit_means(v : Array[Double], id : Array[Int]) -> Array[Double] {
     }
   }
   let sums : Array[Double] = Array::make(uniq_acc.length(), 0.0)
-  let counts : Array[Int] = Array::make(uniq_acc.length(), 0)
+  let counts : Array[Int32] = Array::make(uniq_acc.length(), 0)
   for i = 0; i < n; i = i + 1 {
     let g = id[i]
     for k = 0; k < uniq_acc.length(); k = k + 1 {
@@ -167,8 +167,8 @@ fn grand_mean(v : Array[Double]) -> Double {
 
 ///|
 /// Unique unit ids in first-appearance order.
-fn unique_units(id : Array[Int]) -> Array[Int] {
-  let uniq : Array[Int] = []
+fn unique_units(id : Array[Int32]) -> Array[Int32] {
+  let uniq : Array[Int32] = []
   for i = 0; i < id.length(); i = i + 1 {
     let g = id[i]
     let mut found = false
@@ -197,7 +197,7 @@ pub fn est_coef_cluster(
   psi_a : Array[Double],
   psi_b : Array[Double],
   folds_row : Array[Fold],
-  fold_n_units : Array[Int],
+  fold_n_units : Array[Int32],
 ) -> Double {
   try {
     require(folds_row.length() == fold_n_units.length())
@@ -250,10 +250,10 @@ pub fn est_coef_cluster(
 pub fn var_est_cluster(
   psi : Array[Double],
   psi_deriv : Array[Double],
-  unit_rows : Array[Array[Int]],
-  unit_fold : Array[Int],
-  n_folds : Int,
-  n_folds_per_cluster : Int,
+  unit_rows : Array[Array[Int32]],
+  unit_fold : Array[Int32],
+  n_folds : Int32,
+  n_folds_per_cluster : Int32,
 ) -> Double raise VarEstClusterError {
   // v0.48.0: per-call wrap on the lone `require(m > 0)` because the
   // body also raises VarEstClusterError::JTooSmall; a block-level
@@ -325,11 +325,11 @@ fn transform_panel(
     let order = sort_rows_by_id_time(data.id, data.t)
     // Drop ids with only a single row (they carry no within-unit
     // variation). Count occurrences per sorted id.
-    let sorted_id : Array[Int] = Array::make(n_raw, 0)
+    let sorted_id : Array[Int32] = Array::make(n_raw, 0)
     for k = 0; k < n_raw; k = k + 1 {
       sorted_id[k] = data.id[order[k]]
     }
-    let counts_of_sorted : Array[Int] = Array::make(n_raw, 0)
+    let counts_of_sorted : Array[Int32] = Array::make(n_raw, 0)
     for k = 0; k < n_raw; k = k + 1 {
       let g = sorted_id[k]
       let mut c = 0
@@ -340,8 +340,8 @@ fn transform_panel(
       }
       counts_of_sorted[k] = c
     }
-    let keep : Array[Int] = []
-    let mut keep_acc : Array[Int] = keep
+    let keep : Array[Int32] = []
+    let mut keep_acc : Array[Int32] = keep
     for k = 0; k < n_raw; k = k + 1 {
       if counts_of_sorted[k] >= 2 {
         keep_acc = keep_acc + [order[k]]
@@ -353,7 +353,7 @@ fn transform_panel(
       // Gather sorted arrays.
       let y_s : Array[Double] = Array::make(n, 0.0)
       let d_s : Array[Double] = Array::make(n, 0.0)
-      let id_s : Array[Int] = Array::make(n, 0)
+      let id_s : Array[Int32] = Array::make(n, 0)
       for k = 0; k < n; k = k + 1 {
         let i = keep_acc[k]
         y_s[k] = data.y[i]
@@ -396,7 +396,7 @@ fn transform_panel(
       let mut d_out_acc : Array[Double] = d_out
       let x_out : Array[Double] = []
       let mut x_out_acc : Array[Double] = x_out
-      let id_out : Array[Int] = []
+      let id_out : Array[Int32] = []
       let p_fd = p_x * 2
       let mut k = 0
       while k < n {
@@ -436,7 +436,7 @@ fn transform_panel(
       // Within transformation: v - unit_mean(v) + grand_mean(v).
       let y_s : Array[Double] = Array::make(n, 0.0)
       let d_s : Array[Double] = Array::make(n, 0.0)
-      let id_s : Array[Int] = Array::make(n, 0)
+      let id_s : Array[Int32] = Array::make(n, 0)
       for k = 0; k < n; k = k + 1 {
         let i = keep_acc[k]
         y_s[k] = data.y[i]
@@ -503,9 +503,9 @@ pub struct DoubleMLPLPR {
   panel : DoubleMLPanelData
   approach : String
   score : String
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.59.0+: injected nuisance learner (replaces the v0.57.0
   // hardcoded `LinearRegression`). Defaults to OLS so v0.57.0
   // callers see byte-identical results.
@@ -530,8 +530,8 @@ pub struct DoubleMLPLPR {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.83.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.82.0
   // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
@@ -550,12 +550,12 @@ pub extend DoubleMLPLPR with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLPLPR::new(
   panel : DoubleMLPanelData,
-  approach? : String = "fd_exact",
-  score? : String = "partialling out",
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  learner? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  approach~ : String = "fd_exact",
+  score~ : String = "partialling out",
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  learner~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLPLPR {
   try {
     require(
@@ -759,8 +759,8 @@ pub fn DoubleMLPLPR::predictions_m(self : DoubleMLPLPR) -> Array[Double] {
 /// value to assert.
 pub fn DoubleMLPLPR::sensitivity_analysis(
   self : DoubleMLPLPR,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let y = self.panel.y
@@ -797,8 +797,8 @@ pub fn DoubleMLPLPR::sensitivity_analysis(
 /// cluster-robust SE).
 pub fn DoubleMLPLPR::fit(
   self : DoubleMLPLPR,
-  learner? : LearnerDispatch = self.learner,
-  max_attempts? : Int = 1,
+  learner~ : LearnerDispatch = self.learner,
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLPLPR {
   try {
     ignore(learner)
@@ -828,8 +828,8 @@ pub fn DoubleMLPLPR::fit(
         )
     }
     // Ascending row indices per unit.
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n; i = i + 1 {
@@ -844,7 +844,7 @@ pub fn DoubleMLPLPR::fit(
     // the cache writeback. PLPR's fold structure is unit-level
     // (clusters) but the cache uses row-level `fold_ids` to
     // match the rest of the package's `FitCache` layout.
-    let fold_ids : Array[Int] = Array::make(n, 0)
+    let fold_ids : Array[Int32] = Array::make(n, 0)
     // v0.83.0+: cached g_pred (only meaningful for IV-type
     // score; PO leaves it as an empty array). Stored so the
     // cache-hit path can reuse the IV-type auxiliary crossfit
@@ -1177,9 +1177,9 @@ pub fn DoubleMLPLPR::fit(
 /// `boot_method` / `n_rep_boot` / `boot_seed` populated.
 pub fn DoubleMLPLPR::bootstrap(
   self : DoubleMLPLPR,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLPLPR {
   try {
     require(self.fitted)
@@ -1274,9 +1274,9 @@ pub fn DoubleMLPLPR::bootstrap(
 pub fn DoubleMLPLPR::tune(
   self : DoubleMLPLPR,
   param_set~ : Array[LearnerDispatch],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLPLPR {
   try {
     require(param_set.length() > 0)
@@ -1326,9 +1326,9 @@ pub fn DoubleMLPLPR::tune(
 /// user must pass `cluster_ids` explicitly.
 pub fn DoubleMLPLPR::sensitivity_analysis_cluster(
   self : DoubleMLPLPR,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let y = self.panel.y
@@ -1433,7 +1433,7 @@ pub fn DoubleMLPLPR::sandwich_se(
 /// `cluster_ids.length() == psi_a.length()`.
 pub fn DoubleMLPLPR::cluster_sandwich_se(
   self : DoubleMLPLPR,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

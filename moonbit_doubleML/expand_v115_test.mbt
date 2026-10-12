@@ -73,7 +73,7 @@
 // ---------------------------------------------------------------------------
 
 ///|
-fn v115_rdd_data(n : Int, theta : Double) -> DoubleMLRDDData {
+fn v115_rdd_data(n : Int32, theta : Double) -> DoubleMLRDDData {
   let x = Matrix::zeros(n, 1)
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
@@ -102,7 +102,7 @@ fn v115_rdd_data(n : Int, theta : Double) -> DoubleMLRDDData {
 /// outside `rdd.mbt` -- the data has to be threaded through rather than
 /// read back off a fitted model.
 fn v115_stage(
-  n : Int,
+  n : Int32,
   theta : Double,
 ) -> (DoubleMLRDDData, Double, Double, DoubleMLRDD) {
   let data = v115_rdd_data(n, theta)
@@ -332,7 +332,7 @@ test "v115_bias_stage_holds_across_draws" {
 /// With `c_left = 0.4` and `c_right = 0.9` the two side biases differ, so
 /// the linear route is off by `0.1*(c_left - c_right)*h^2` and the
 /// quadratic route still contains the truth exactly.
-fn v115_exact_quadratic(n : Int, jump : Double) -> DoubleMLRDDData {
+fn v115_exact_quadratic(n : Int32, jump : Double) -> DoubleMLRDDData {
   let x = Matrix::zeros(n, 1)
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)

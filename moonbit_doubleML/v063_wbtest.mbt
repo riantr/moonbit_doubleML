@@ -13,7 +13,10 @@
 // ---------------------------------------------------------------------------
 
 ///|
-fn make_apo_data(n : Int, seed : Int) -> (Matrix, Array[Double], Array[Double]) {
+fn make_apo_data(
+  n : Int32,
+  seed : Int32,
+) -> (Matrix, Array[Double], Array[Double]) {
   let rng = chacha8_rng(seed)
   let p = 2
   let x_flat : Array[Double] = Array::make(n * p, 0.0)

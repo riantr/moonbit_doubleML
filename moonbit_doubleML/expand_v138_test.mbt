@@ -98,11 +98,11 @@
 /// while a classifier cannot. `slope` sets the steepness; `theta` is the true
 /// treatment effect, so every bias below is measured against a known value.
 fn v1380_data(
-  n : Int,
-  p : Int,
+  n : Int32,
+  p : Int32,
   slope : Double,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> DoubleMLSSMData {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)

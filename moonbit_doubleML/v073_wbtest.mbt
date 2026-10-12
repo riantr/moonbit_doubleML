@@ -47,10 +47,10 @@ test "didcs_sensitivity_cluster_returns_per_cell_results" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -135,10 +135,10 @@ test "didmulti_sensitivity_cluster_returns_per_combination_results" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -202,8 +202,8 @@ test "didcs_cross_section_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -257,9 +257,9 @@ test "plpr_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n_raw * p, 0.0)
   let y : Array[Double] = Array::make(n_raw, 0.0)
   let d : Array[Double] = Array::make(n_raw, 0.0)
-  let t : Array[Int] = Array::make(n_raw, 0)
-  let id : Array[Int] = Array::make(n_raw, 0)
-  let cluster_raw : Array[Int] = Array::make(n_raw, 0)
+  let t : Array[Int32] = Array::make(n_raw, 0)
+  let id : Array[Int32] = Array::make(n_raw, 0)
+  let cluster_raw : Array[Int32] = Array::make(n_raw, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -309,7 +309,7 @@ test "plpr_sensitivity_cluster_returns_finite_result" {
   // so `cluster_raw[u * 3 + 1]` and `cluster_raw[u * 3 +
   // 2]` carry the cluster id for unit `u`.
   let n_transformed = fitted.predictions_l().length()
-  let cluster_t : Array[Int] = Array::make(n_transformed, 0)
+  let cluster_t : Array[Int32] = Array::make(n_transformed, 0)
   for u = 0; u < n_units; u = u + 1 {
     for j = 0; j < n_periods_p - 1; j = j + 1 {
       let k = u * (n_periods_p - 1) + j
@@ -346,7 +346,7 @@ test "lplr_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5

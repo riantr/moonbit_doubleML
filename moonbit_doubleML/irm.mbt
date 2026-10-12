@@ -38,9 +38,9 @@
 /// score, guarding against near-zero or near-one values.
 pub struct DoubleMLIRM {
   data : DoubleMLData
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `kfold`, and the repetition count comes from
@@ -89,8 +89,8 @@ pub struct DoubleMLIRM {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.80.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.79.0
   // behavior bit-for-bit). When true, `fit()` caches the last
@@ -107,13 +107,13 @@ pub extend DoubleMLIRM with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLIRM::new(
   data : DoubleMLData,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor_config? : PSProcessorConfig? = None,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(
     LogisticRegression::new(),
   ),
 ) -> DoubleMLIRM {
@@ -169,13 +169,13 @@ pub fn DoubleMLIRM::new(
 }
 
 ///|
-pub fn DoubleMLIRM::n_obs(self : DoubleMLIRM) -> Int {
+pub fn DoubleMLIRM::n_obs(self : DoubleMLIRM) -> Int32 {
   self.data.n_obs()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLIRM::n_features(self : DoubleMLIRM) -> Int {
+pub fn DoubleMLIRM::n_features(self : DoubleMLIRM) -> Int32 {
   self.data.n_features()
 }
 
@@ -207,8 +207,8 @@ pub fn DoubleMLIRM::se(self : DoubleMLIRM) -> Double {
 /// parity with the multi-theta estimators.
 pub fn DoubleMLIRM::confint(
   self : DoubleMLIRM,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -310,8 +310,8 @@ pub fn DoubleMLIRM::has_cache(self : DoubleMLIRM) -> Bool {
 
 ///|
 /// Filter `idx` to keep only entries `i` for which `mask[i]` is true.
-pub fn filter_indices(idx : Array[Int], mask : Array[Double]) -> Array[Int] {
-  let out : Array[Int] = []
+pub fn filter_indices(idx : Array[Int32], mask : Array[Double]) -> Array[Int32] {
+  let out : Array[Int32] = []
   for i in idx {
     if mask[i] == 1.0 {
       out.push(i)
@@ -369,7 +369,7 @@ fn cross_fit_irm(
       // (train_d0, test_idx) and call `cross_fit_predict_dispatch`
       // with [single_fold]. The standard cross_fit helper handles
       // the LearnerDispatch enum dispatch (5 arms) for us.
-      let train_d0 : Array[Int] = []
+      let train_d0 : Array[Int32] = []
       for i in train_idx {
         if d[i] == 0.0 {
           train_d0.push(i)
@@ -384,7 +384,7 @@ fn cross_fit_irm(
         g0[row] = p0[row]
       }
       // g1: train on D == 1 — same single-fold dispatch pattern.
-      let train_d1_only : Array[Int] = []
+      let train_d1_only : Array[Int32] = []
       for i in train_idx {
         if d[i] == 1.0 {
           train_d1_only.push(i)
@@ -448,9 +448,9 @@ fn cross_fit_irm(
 /// score sums, and the SE is unit-level cluster-robust.
 pub fn DoubleMLIRM::fit(
   self : DoubleMLIRM,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
-  max_attempts? : Int = 1,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLIRM {
   try {
     require(max_attempts >= 1)
@@ -543,7 +543,7 @@ pub fn DoubleMLIRM::fit(
     let mut m : Array[Double] = Array::make(n, 0.0)
     let mut m_raw : Array[Double] = Array::make(n, 0.0)
     // Track the LAST rep's fold_ids (for cache write below).
-    let mut fold_ids : Array[Int] = []
+    let mut fold_ids : Array[Int32] = []
     for r = 0; r < nrep; r = r + 1 {
       let rep_seed = self.seed + r
       let (g0_r, g1_r, m_r, m_raw_r) = if cache_hit && r == nrep - 1 {
@@ -566,7 +566,7 @@ pub fn DoubleMLIRM::fit(
           kfold(n, self.n_folds, rep_seed)
         }
         // Build the row -> fold_id map for the cache write below.
-        let fid : Array[Int] = Array::make(n, 0)
+        let fid : Array[Int32] = Array::make(n, 0)
         for f = 0; f < folds.length(); f = f + 1 {
           for i in folds[f].test_indices() {
             fid[i] = f
@@ -718,7 +718,7 @@ fn DoubleMLIRM::fit_cluster(
   self : DoubleMLIRM,
   ml_g~ : LearnerDispatch,
   ml_m~ : LearnerDispatch,
-  max_attempts? : Int = 1,
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLIRM {
   try {
     require(max_attempts >= 1)
@@ -739,8 +739,8 @@ fn DoubleMLIRM::fit_cluster(
           ")",
         )
     }
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n; i = i + 1 {
@@ -921,9 +921,9 @@ fn DoubleMLIRM::fit_cluster(
 /// `n_thetas=1` case.
 pub fn DoubleMLIRM::bootstrap(
   self : DoubleMLIRM,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLIRM {
   try {
     require(self.fitted)
@@ -1001,9 +1001,9 @@ pub fn DoubleMLIRM::bootstrap(
 pub fn DoubleMLIRM::tune(
   self : DoubleMLIRM,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLIRM {
   try {
     require(param_set.length() > 0)
@@ -1102,8 +1102,8 @@ pub fn DoubleMLIRM::sensitivity_nu2_elements(
 ///|
 pub fn DoubleMLIRM::sensitivity_analysis(
   self : DoubleMLIRM,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g0 = self.predictions_g0()
@@ -1140,9 +1140,9 @@ pub fn DoubleMLIRM::sensitivity_analysis(
 /// `cluster_ids` defaults to `DoubleMLData::cluster_vars`.
 pub fn DoubleMLIRM::sensitivity_analysis_cluster(
   self : DoubleMLIRM,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g0 = self.predictions_g0()
@@ -1224,7 +1224,7 @@ pub fn DoubleMLIRM::sandwich_se(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLIRM::cluster_sandwich_se(
   self : DoubleMLIRM,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

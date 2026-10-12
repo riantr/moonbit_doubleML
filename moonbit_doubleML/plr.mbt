@@ -40,9 +40,9 @@ pub struct DoubleMLPLR {
   // `DoubleMLPLR::fit`'s labeled params.
   learner_l : LearnerDispatch
   learner_m : LearnerDispatch
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `kfold`. The repetition count still comes from
@@ -71,8 +71,8 @@ pub struct DoubleMLPLR {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.58.0+: populated by `DoubleMLPLR::tune(...)` with the
   // chosen candidate and per-candidate scores. `None` for models
   // built via `DoubleMLPLR::new(...)` or re-fit via
@@ -96,11 +96,11 @@ pub extend DoubleMLPLR with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLPLR::new(
   data : DoubleMLData,
-  learner_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  learner_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
+  learner_l~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  learner_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLPLR {
   try {
     require(n_folds >= 2)
@@ -142,13 +142,13 @@ pub fn DoubleMLPLR::new(
 
 ///|
 /// Number of observations.
-pub fn DoubleMLPLR::n_obs(self : DoubleMLPLR) -> Int {
+pub fn DoubleMLPLR::n_obs(self : DoubleMLPLR) -> Int32 {
   self.data.n_obs()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLPLR::n_features(self : DoubleMLPLR) -> Int {
+pub fn DoubleMLPLR::n_features(self : DoubleMLPLR) -> Int32 {
   self.data.n_features()
 }
 
@@ -185,8 +185,8 @@ pub fn DoubleMLPLR::se(self : DoubleMLPLR) -> Double {
 /// (APOS / QTE / DIDCS) and the IRM-style cluster path.
 pub fn DoubleMLPLR::confint(
   self : DoubleMLPLR,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -345,7 +345,7 @@ pub fn DoubleMLPLR::has_cache(self : DoubleMLPLR) -> Bool {
 /// context (e.g. names the offending `DoubleMLPLR::fit`
 /// call site).
 fn plr_score_elements(
-  n : Int,
+  n : Int32,
   v_hat : Array[Double],
   u_hat : Array[Double],
   z : Array[Double],
@@ -382,11 +382,11 @@ fn plr_score_elements(
 /// the `DoubleMLPLR` instance.
 pub fn DoubleMLPLR::fit(
   self : DoubleMLPLR,
-  learner_l? : LearnerDispatch = self.learner_l,
-  learner_m? : LearnerDispatch = self.learner_m,
-  max_attempts? : Int = 1,
-  score? : String = "partialling-out",
-  tune_result? : TuneResult? = None,
+  learner_l~ : LearnerDispatch = self.learner_l,
+  learner_m~ : LearnerDispatch = self.learner_m,
+  max_attempts~ : Int32 = 1,
+  score~ : String = "partialling-out",
+  tune_result~ : TuneResult? = None,
 ) -> DoubleMLPLR {
   try {
     require(
@@ -491,7 +491,7 @@ pub fn DoubleMLPLR::fit(
     let mut l_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
     // Track the LAST rep's fold_ids (for cache write below).
-    let mut fold_ids : Array[Int] = []
+    let mut fold_ids : Array[Int32] = []
     for r = 0; r < nrep; r = r + 1 {
       let (l_pred_r, m_pred_r) = if cache_hit && r == nrep - 1 {
         // Reuse the cached LAST-rep predictions.
@@ -520,7 +520,7 @@ pub fn DoubleMLPLR::fit(
           folds,
         )
         // Build the row -> fold_id map for the cache write below.
-        let fid : Array[Int] = Array::make(n, 0)
+        let fid : Array[Int32] = Array::make(n, 0)
         for f = 0; f < folds.length(); f = f + 1 {
           for i in folds[f].test_indices() {
             fid[i] = f
@@ -645,9 +645,9 @@ fn DoubleMLPLR::fit_cluster(
   self : DoubleMLPLR,
   learner_l~ : LearnerDispatch,
   learner_m~ : LearnerDispatch,
-  max_attempts? : Int = 1,
-  score? : String = "partialling-out",
-  tune_result? : TuneResult? = None,
+  max_attempts~ : Int32 = 1,
+  score~ : String = "partialling-out",
+  tune_result~ : TuneResult? = None,
 ) -> DoubleMLPLR {
   try {
     require(max_attempts >= 1)
@@ -677,8 +677,8 @@ fn DoubleMLPLR::fit_cluster(
         )
     }
     // ascending row indices per unit
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n; i = i + 1 {
@@ -946,9 +946,9 @@ pub fn DoubleMLPLR::sample_splitting(self : DoubleMLPLR) -> SampleSplitting? {
 /// `n_thetas=1` case with `psi[i] = psi_at(coef, psi_a, psi_b)[i]`.
 pub fn DoubleMLPLR::bootstrap(
   self : DoubleMLPLR,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLPLR {
   try {
     require(self.fitted)
@@ -1056,8 +1056,8 @@ pub fn DoubleMLPLR::bootstrap(
 /// upstream parity.
 pub fn DoubleMLPLR::sensitivity_analysis(
   self : DoubleMLPLR,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let l_hat = self.predictions_l()
@@ -1099,9 +1099,9 @@ pub fn DoubleMLPLR::sensitivity_analysis(
 /// `DoubleMLData::cluster_vars`.
 pub fn DoubleMLPLR::sensitivity_analysis_cluster(
   self : DoubleMLPLR,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let l_hat = self.predictions_l()
@@ -1184,7 +1184,7 @@ pub fn DoubleMLPLR::sandwich_se(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLPLR::cluster_sandwich_se(
   self : DoubleMLPLR,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

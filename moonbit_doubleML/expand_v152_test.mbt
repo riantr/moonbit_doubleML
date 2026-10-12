@@ -18,7 +18,7 @@
 // a correctly-scaled robust SE is for -- so the honest band is in SE units.
 
 ///|
-fn v1520_fit(seed : Int) -> DoubleMLDIDCS {
+fn v1520_fit(seed : Int32) -> DoubleMLDIDCS {
   let d = make_did_cs_CS2021(800, 3, 1.0, seed)
   DoubleMLDIDCS::new(
     DoubleMLDIDCSData::new(
@@ -45,7 +45,7 @@ fn v1520_fit(seed : Int) -> DoubleMLDIDCS {
 /// 7 (err 9.0879 / z 1.367, the widest absolute error) and 314 (err 5.5136 /
 /// z 0.802, which is what breaks the OLD band).
 test "v1520_recovery_holds_in_se_units_across_seeds" {
-  let seeds : Array[Int] = [3141, 7, 314]
+  let seeds : Array[Int32] = [3141, 7, 314]
   for s in seeds {
     let f = v1520_fit(s)
     let att = f.coef_at(0, 1)
@@ -112,7 +112,7 @@ test "v1520_canonical_cell_is_pinned" {
 /// coefficients, which is the property the API has always advertised.
 test "v1520_didmulti_t_pre_is_inert_declared_defect" {
   let data = make_did_CS2021(1600, 3, 1.0, 3141)
-  let mk = fn(combos : Array[(Int, Int, Int)]) -> Double {
+  let mk = fn(combos : Array[(Int32, Int32, Int32)]) -> Double {
     DoubleMLDIDMulti::new(
       DoubleMLDIDCSData::new(
         data.x_get(),

@@ -25,7 +25,7 @@ test "didcs_rf_learning_actually_runs" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     for j = 0; j < p; j = j + 1 {
       x_flat[i * p + j] = rng.double()
@@ -57,7 +57,7 @@ test "didcs_gb_learning_actually_runs" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     for j = 0; j < p; j = j + 1 {
       x_flat[i * p + j] = rng.double()

@@ -38,18 +38,18 @@
 
 ///|
 fn v127_panel(
-  n_units : Int,
-  p : Int,
+  n_units : Int32,
+  p : Int32,
   slope : Double,
-  seed : Int,
+  seed : Int32,
 ) -> DoubleMLDIDBinaryData {
   let n = n_units * 2
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(seed)
   for u = 0; u < n_units; u = u + 1 {
     let mut x0 = 0.0
@@ -82,7 +82,7 @@ fn v127_panel(
 }
 
 ///|
-fn v127_raw(n : Int) -> DoubleMLDIDData raise {
+fn v127_raw(n : Int32) -> DoubleMLDIDData raise {
   let x = Matrix::zeros(n, 2)
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
@@ -105,7 +105,7 @@ fn v127_raw(n : Int) -> DoubleMLDIDData raise {
 fn v127_panel_fit(
   data : DoubleMLDIDBinaryData,
   cfg : PSProcessorConfig,
-  pclip? : Double = 1.0e-6,
+  pclip~ : Double = 1.0e-6,
 ) -> DoubleMLDIDBinary {
   DoubleMLDIDBinary::new(
     data,

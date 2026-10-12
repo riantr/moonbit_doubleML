@@ -73,7 +73,7 @@ fn expand_v086_psi(
   psi_a : Array[Double],
   psi_b : Array[Double],
   coef : Double,
-  n_obs : Int,
+  n_obs : Int32,
 ) -> Array[Double] {
   let psi : Array[Double] = Array::make(n_obs, 0.0)
   for i = 0; i < n_obs; i = i + 1 {
@@ -97,7 +97,7 @@ fn expand_v086_ref_hc0(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
-  n_obs : Int,
+  n_obs : Int32,
 ) -> Double {
   let _ = psi_a
   let mut acc = 0.0
@@ -294,13 +294,13 @@ test "iivm_sandwich_se_smoke" {
   inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
   // (4) singleton clusters reproduce the IID HC0 exactly;
   // pooled clusters do not.
-  let singleton : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
   }
   let se_singleton = fitted.cluster_sandwich_se(singleton)
   inspect(expand_v086_close(se_singleton, se_hc0), content="true")
-  let pooled : Array[Int] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     pooled[i] = i / 4
   }
@@ -404,13 +404,13 @@ test "pliv_sandwich_se_smoke" {
   inspect(se_hc3 > se_hc2, content="true")
   inspect(expand_v086_close(se_hc2, se_hc1), content="true")
   inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
   }
   let se_singleton = fitted.cluster_sandwich_se(singleton)
   inspect(expand_v086_close(se_singleton, se_hc0), content="true")
-  let pooled : Array[Int] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     pooled[i] = i / 4
   }
@@ -499,13 +499,13 @@ test "did_sandwich_se_smoke" {
   inspect(se_hc3 > se_hc2, content="true")
   inspect(expand_v086_close(se_hc2, se_hc1), content="true")
   inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
   }
   let se_singleton = fitted.cluster_sandwich_se(singleton)
   inspect(expand_v086_close(se_singleton, se_hc0), content="true")
-  let pooled : Array[Int] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     pooled[i] = i / 4
   }
@@ -568,13 +568,13 @@ test "cvar_sandwich_se_smoke" {
   inspect(se_hc3 > se_hc2, content="true")
   inspect(expand_v086_close(se_hc2, se_hc1), content="true")
   inspect(expand_v086_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
   }
   let se_singleton = fitted.cluster_sandwich_se(singleton)
   inspect(expand_v086_close(se_singleton, se_hc0), content="true")
-  let pooled : Array[Int] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     pooled[i] = i / 4
   }

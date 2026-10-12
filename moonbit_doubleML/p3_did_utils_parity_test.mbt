@@ -23,9 +23,9 @@ test "DIDCS_data_groups_times_discovered_correctly" {
   let x = Matrix::ones(n, 1)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_per_cohort * n_groups; u = u + 1 {
     let cohort = u / n_per_cohort
     let unit_in_cohort = u % n_per_cohort
@@ -52,8 +52,8 @@ test "Panel_data_struct_constructible" {
   let x = Matrix::ones(n, 1)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     for p = 0; p < n_periods; p = p + 1 {
       let idx = u * n_periods + p

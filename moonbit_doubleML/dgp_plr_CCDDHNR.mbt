@@ -43,10 +43,10 @@ struct PlrCcddhnr2018 {
 ///|
 /// Generate the PLR DGP from Chernozhukov et al. (2018) Figure 1.
 pub fn make_plr_CCDDHNR2018(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> PlrCcddhnr2018 {
   let a_0 = 1.0
   let a_1 = 0.25

@@ -17,10 +17,10 @@
 
 ///|
 pub fn make_did_SZ2020(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> DidCsData {
   // Reuse DidCsData struct shape (y, d, t, g, id, x, theta,
   // n_groups, n_periods). This DGP is the 2-cohort 2-period
@@ -95,9 +95,9 @@ pub fn make_did_SZ2020(
   }
   let y : Array[Double] = Array::make(true_n, 0.0)
   let d : Array[Double] = Array::make(true_n, 0.0)
-  let t : Array[Int] = Array::make(true_n, 0)
-  let g : Array[Int] = Array::make(true_n, 0)
-  let id : Array[Int] = Array::make(true_n, 0)
+  let t : Array[Int32] = Array::make(true_n, 0)
+  let g : Array[Int32] = Array::make(true_n, 0)
+  let id : Array[Int32] = Array::make(true_n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     let unit_in_cohort = u % n_per_cohort

@@ -87,7 +87,7 @@ fn expand_v089_psi(
   psi_a : Array[Double],
   psi_b : Array[Double],
   coef : Double,
-  n_obs : Int,
+  n_obs : Int32,
 ) -> Array[Double] {
   let psi : Array[Double] = Array::make(n_obs, 0.0)
   for i = 0; i < n_obs; i = i + 1 {
@@ -112,7 +112,7 @@ fn expand_v089_ref_hc0(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
-  n_obs : Int,
+  n_obs : Int32,
 ) -> Double {
   let _ = psi_a
   let mut acc = 0.0
@@ -138,8 +138,8 @@ fn expand_v089_ref_leverage(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
-  n_obs : Int,
-  power : Int,
+  n_obs : Int32,
+  power : Int32,
 ) -> Double {
   let _ = psi_a
   let eps : Double = 1.0e-10
@@ -172,7 +172,7 @@ fn expand_v089_ref_cluster(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   let _ = psi_a
   let n = psi.length()
@@ -184,7 +184,7 @@ fn expand_v089_ref_cluster(
   }
   let n_clusters = max_cid + 1
   let csum : Array[Double] = Array::make(n_clusters, 0.0)
-  let csize : Array[Int] = Array::make(n_clusters, 0)
+  let csize : Array[Int32] = Array::make(n_clusters, 0)
   for i = 0; i < n; i = i + 1 {
     let c = cluster_ids[i]
     csum[c] = csum[c] + psi[i]
@@ -219,14 +219,17 @@ fn expand_v089_ref_cluster(
 /// wide-format sample (`n_obs_subset()`) is exactly half the
 /// long-format panel. That pins the fact that the sandwich sample
 /// follows the inner DID's `psi_a`, not the raw panel width.
-fn expand_v089_did_binary_data(n_units : Int, p : Int) -> DoubleMLDIDBinaryData {
+fn expand_v089_did_binary_data(
+  n_units : Int32,
+  p : Int32,
+) -> DoubleMLDIDBinaryData {
   let n = n_units * 2
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(4242)
   for u = 0; u < n_units; u = u + 1 {
     let xu : Array[Double] = Array::make(p, 0.0)
@@ -267,7 +270,7 @@ fn expand_v089_did_binary_data(n_units : Int, p : Int) -> DoubleMLDIDBinaryData 
 /// inside `(0, 1)` away from the clip), `y = 1.0 + 0.4 x_0 +
 /// 0.2 x_1 + 2.0 d + noise`. The `treatment_level = 1` potential
 /// outcome is therefore around 3.0.
-fn expand_v089_apo_data(n : Int, p : Int) -> DoubleMLData {
+fn expand_v089_apo_data(n : Int32, p : Int32) -> DoubleMLData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   for i = 0; i < n * p; i = i + 1 {
     x_flat[i] = chacha8_rng(11 + i).double()
@@ -342,8 +345,8 @@ test "sandwich_expand_v089_ordering" {
   )
   // Singleton clusters are algebraically the HC0 accumulation;
   // pooled clusters pick up the cross terms and differ.
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 8
@@ -440,8 +443,8 @@ test "apo_sandwich_se_smoke" {
   // singleton jackknife clip makes it the same accumulation);
   // pooled clusters must differ, which is what proves
   // `cluster_ids` is consumed.
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -668,8 +671,8 @@ test "did_binary_sandwich_se_smoke" {
     content="true",
   )
   // Cluster path on the post-subset indexing.
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4

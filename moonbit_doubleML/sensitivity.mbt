@@ -150,7 +150,7 @@ pub fn sensitivity_from_variance_baselines(
   theta : Double,
   sigma2 : Double,
   nu2 : Double,
-  n : Int,
+  n : Int32,
   cf_y : Double,
   cf_d : Double,
 ) -> SensitivityResult raise {
@@ -235,10 +235,10 @@ pub fn irm_style_sensitivity_cluster_from_elements(
   residuals : Array[Double],
   nu2_score_element : Array[Double],
   riesz_rep : Array[Double],
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
   cf_y : Double,
   cf_d : Double,
-  kernel_weights? : Array[Double] = [],
+  kernel_weights~ : Array[Double] = [],
 ) -> SensitivityResult raise {
   let n = residuals.length()
   require(n == nu2_score_element.length())
@@ -318,10 +318,10 @@ pub fn irm_style_sensitivity_cluster(
   theta : Double,
   residuals : Array[Double],
   psi_a : Array[Double],
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
   cf_y : Double,
   cf_d : Double,
-  kernel_weights? : Array[Double] = [],
+  kernel_weights~ : Array[Double] = [],
 ) -> SensitivityResult raise {
   let n = residuals.length()
   require(n == psi_a.length())
@@ -449,7 +449,7 @@ pub fn irm_style_sensitivity_cluster_multi(
   theta_array : Array[Double],
   residuals_matrix : Array[Array[Double]],
   psi_a_matrix : Array[Array[Double]],
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
   cf_y : Double,
   cf_d : Double,
 ) -> Array[SensitivityResult] raise {
@@ -840,7 +840,7 @@ pub struct GainStatsSource {
   var_y_residuals : Array[Double]
   nu2 : Array[Double]
   all_coef : Array[Double]
-  n_rep : Int
+  n_rep : Int32
   var_y : Double
 } derive(Debug)
 
@@ -857,7 +857,7 @@ pub fn GainStatsSource::new(
   var_y_residuals : Array[Double],
   nu2 : Array[Double],
   all_coef : Array[Double],
-  n_rep : Int,
+  n_rep : Int32,
   var_y : Double,
 ) -> GainStatsSource {
   try {
@@ -901,7 +901,7 @@ pub fn GainStatsSource::new(
 /// elements).
 pub fn GainStatsSource::from_blp(
   blp : DoubleMLBLP,
-  n_rep? : Int = 1,
+  n_rep~ : Int32 = 1,
 ) -> GainStatsSource {
   try {
     require(blp.fitted)
@@ -970,8 +970,8 @@ pub fn GainStatsSource::from_blp(
 /// homoskedastic convention as `from_blp`).
 pub fn GainStatsSource::from_blp_cv(
   blp : DoubleMLBLP,
-  n_folds? : Int = 5,
-  seed? : Int = 3141,
+  n_folds~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> GainStatsSource {
   try {
     require(blp.fitted)
@@ -1090,9 +1090,9 @@ pub fn GainStatsSource::from_blp_cv(
 /// `R2_y` and `nu2` sensitivity benchmarks.
 pub fn GainStatsSource::from_blp_cv_repeated(
   blp : DoubleMLBLP,
-  n_folds? : Int = 5,
-  n_repeats? : Int = 10,
-  seed? : Int = 3141,
+  n_folds~ : Int32 = 5,
+  n_repeats~ : Int32 = 10,
+  seed~ : Int32 = 3141,
 ) -> GainStatsSource {
   try {
     require(blp.fitted)
@@ -1212,8 +1212,8 @@ pub fn GainStatsSource::from_blp_cv_repeated(
 /// `from_blp`.
 pub fn GainStatsSource::from_blp_hc0(
   blp : DoubleMLBLP,
-  n_folds? : Int = 5,
-  seed? : Int = 3141,
+  n_folds~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> GainStatsSource {
   try {
     require(blp.fitted)
@@ -1456,7 +1456,7 @@ pub struct JointSensitivityResult {
   per_estimator_rv : Array[Double]
   per_estimator_rv_q : Array[Double]
   bonferroni_alpha : Double
-  num_estimators : Int
+  num_estimators : Int32
 } derive(Debug)
 
 ///|

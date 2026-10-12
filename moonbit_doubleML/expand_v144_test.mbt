@@ -20,9 +20,9 @@
 /// Confounded PLR design. Seeded; `n = 500, seed 20261` reproduces the
 /// v0.144.0 measurement exactly.
 fn v1440_plr_fixture(
-  n : Int,
-  seed : Int,
-  p : Int,
+  n : Int32,
+  seed : Int32,
+  p : Int32,
 ) -> (Matrix, Array[Double], Array[Double]) {
   let rng = chacha8_rng(seed)
   let x = Matrix::zeros(n, p)
@@ -45,7 +45,7 @@ fn v1440_plr_fixture(
 }
 
 ///|
-fn v1440_plr_fit(n : Int, seed : Int, data_seed : Int) -> DoubleMLPLR {
+fn v1440_plr_fit(n : Int32, seed : Int32, data_seed : Int32) -> DoubleMLPLR {
   let (x, y, d) = v1440_plr_fixture(n, data_seed, 2)
   let data = DoubleMLData::new(x, y, d)
   DoubleMLPLR::new(data, n_folds=4, seed~).fit()
@@ -161,7 +161,7 @@ test "plr_sensitivity_nu2_formula_holds_on_a_second_seed" {
 test "plr_sensitivity_cluster_nu2_is_reciprocal_cluster_second_moment" {
   let (x, y, d) = v1440_plr_fixture(400, 4242, 2)
   // 10 clusters of 40.
-  let cluster_ids : Array[Int] = Array::make(400, 0)
+  let cluster_ids : Array[Int32] = Array::make(400, 0)
   for i = 0; i < 400; i = i + 1 {
     cluster_ids[i] = i / 40
   }

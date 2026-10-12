@@ -65,9 +65,9 @@ fn build_tune_grid() -> Array[TuneParam] {
 /// `d` is still drawn (these estimators need a treatment vector) but
 /// it is deliberately not a determinant of `y`.
 fn build_irm_tune_data(
-  n : Int,
-  p : Int,
-  seed : Int,
+  n : Int32,
+  p : Int32,
+  seed : Int32,
 ) -> (Matrix, Array[Double], Array[Double]) {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -181,7 +181,7 @@ test "irm_fit_cluster_produces_finite_estimates" {
   let x_flat : Array[Double] = Array::make(n * 2, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let x0 = rng.double() * 2.0 - 1.0
     let d_i = if rng.double() > 0.5 { 1.0 } else { 0.0 }
@@ -212,7 +212,7 @@ test "apo_fit_cluster_produces_finite_estimates" {
   let x_flat : Array[Double] = Array::make(n * 2, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let x0 = rng.double() * 2.0 - 1.0
     let d_i = if rng.double() > 0.5 { 1.0 } else { 0.0 }

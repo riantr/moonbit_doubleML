@@ -25,9 +25,9 @@ struct PlprData {
   /// True causal parameter (theta in upstream DGP).
   theta : Double
   /// Number of panel units.
-  n_units : Int
+  n_units : Int32
   /// Number of time periods.
-  n_periods : Int
+  n_periods : Int32
   /// Outcome vector (length n_units * n_periods).
   y : Array[Double]
   /// Treatment vector (continuous).
@@ -40,10 +40,10 @@ struct PlprData {
 /// Generate the PLPR DGP. `n_obs` is the *target* total sample
 /// size; the actual n is `n_units * n_periods`.
 pub fn make_plpr_CP2025(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> PlprData {
   let rng = chacha8_rng(seed)
   let n_periods = 4
@@ -161,11 +161,11 @@ pub fn PlprData::x_get(self : PlprData) -> Matrix {
 }
 
 ///|
-pub fn PlprData::n_units_get(self : PlprData) -> Int {
+pub fn PlprData::n_units_get(self : PlprData) -> Int32 {
   self.n_units
 }
 
 ///|
-pub fn PlprData::n_periods_get(self : PlprData) -> Int {
+pub fn PlprData::n_periods_get(self : PlprData) -> Int32 {
   self.n_periods
 }

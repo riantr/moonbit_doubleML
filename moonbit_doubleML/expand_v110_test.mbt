@@ -43,9 +43,9 @@
 /// and the size of that misspecification bias depends on the weighting
 /// kernel -- which is also why the kernel is worth choosing at all.
 fn v110_rdd_data(
-  n : Int,
+  n : Int32,
   theta : Double,
-  y_scale? : Double = 1.0,
+  y_scale~ : Double = 1.0,
 ) -> DoubleMLRDDData {
   let x = Matrix::zeros(n, 1)
   let y = Array::make(n, 0.0)

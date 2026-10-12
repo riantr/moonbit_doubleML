@@ -26,12 +26,12 @@ pub struct DoubleMLDIDMulti {
   // gt_combinations: list of `(g_value, t_value_pre, t_value_eval)`
   // triples. May be set explicitly or expanded from a keyword
   // string at construction time; canonical (sorted, deduped) form.
-  gt_combinations : Array[(Int, Int, Int)]
+  gt_combinations : Array[(Int32, Int32, Int32)]
   control_group : String
-  anticipation_periods : Int
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  anticipation_periods : Int32
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   ps_processor : PSProcessor
   in_sample_normalization : Bool
   // v0.60.0+: injected nuisance learners (forwarded to the
@@ -41,7 +41,7 @@ pub struct DoubleMLDIDMulti {
   ml_m : LearnerDispatch
   // Per-unit group sizes for aggregation weights. Filled in
   // `fit` from the data.
-  group_sizes : Array[Int]
+  group_sizes : Array[Int32]
   // The inner per-(g, t) estimator.
   inner : DoubleMLDIDCS
   // v0.15.0+: bootstrap state. `boot_t_stat` is a
@@ -52,10 +52,10 @@ pub struct DoubleMLDIDMulti {
   // until `bootstrap()` is called.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
+  n_rep_boot : Int32
   // v0.15.0+: bootstrap RNG seed. `bootstrap` accepts an
   // optional `seed` argument; the default is `2024`.
-  boot_seed : Int
+  boot_seed : Int32
   fitted : Bool
   // v0.82.0+: memoization flag. The wrapper's `fit()` forwards
   // this flag to the inner `DoubleMLDIDCS` so the aggregated
@@ -81,17 +81,17 @@ pub extend DoubleMLDIDMulti with @moonbitlang/core/debug.Debug::{to_repr}
 ///     cross sections, which this port does not implement).
 pub fn DoubleMLDIDMulti::new(
   data : DoubleMLDIDCSData,
-  gt_combinations? : Array[(Int, Int, Int)] = [],
-  gt_combinations_keyword? : String = "standard",
-  control_group? : String = "never_treated",
-  anticipation_periods? : Int = 0,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  ps_processor? : PSProcessor = PSProcessor::new(),
-  in_sample_normalization? : Bool = false,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  gt_combinations~ : Array[(Int32, Int32, Int32)] = [],
+  gt_combinations_keyword~ : String = "standard",
+  control_group~ : String = "never_treated",
+  anticipation_periods~ : Int32 = 0,
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  ps_processor~ : PSProcessor = PSProcessor::new(),
+  in_sample_normalization~ : Bool = false,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDMulti {
   try {
     require(n_folds >= 2)
@@ -159,7 +159,7 @@ pub fn DoubleMLDIDMulti::new(
     n_units = max_id + 1
     let base = n_units / n_groups
     let rem = n_units % n_groups
-    let group_sizes : Array[Int] = Array::make(n_groups, 0)
+    let group_sizes : Array[Int32] = Array::make(n_groups, 0)
     for i = 0; i < n_groups; i = i + 1 {
       group_sizes[i] = base + (if i < rem { 1 } else { 0 })
     }
@@ -209,13 +209,13 @@ pub fn DoubleMLDIDMulti::new(
 /// `(g, t_pre, t_eval)` triples over the `groups x times` grid.
 fn expand_gt_keyword(
   keyword : String,
-  groups : Array[Int],
-  times : Array[Int],
-  anticipation_periods : Int,
-) -> Array[(Int, Int, Int)] {
+  groups : Array[Int32],
+  times : Array[Int32],
+  anticipation_periods : Int32,
+) -> Array[(Int32, Int32, Int32)] {
   let n_groups = groups.length()
   let n_periods = times.length()
-  let out : Array[(Int, Int, Int)] = []
+  let out : Array[(Int32, Int32, Int32)] = []
   let mut out_acc = out
   for i = 0; i < n_groups; i = i + 1 {
     let g = groups[i]
@@ -252,9 +252,9 @@ fn expand_gt_keyword(
   // for different groups only if `g` and `t_pre` both vary; in
   // practice `t_pre = g` so the dedupe is a no-op, but keep it
   // for safety).
-  let seen : Array[(Int, Int, Int)] = []
+  let seen : Array[(Int32, Int32, Int32)] = []
   let mut seen_acc = seen
-  let dedup : Array[(Int, Int, Int)] = []
+  let dedup : Array[(Int32, Int32, Int32)] = []
   let mut dedup_acc = dedup
   for i = 0; i < out_acc.length(); i = i + 1 {
     let triple = out_acc[i]
@@ -276,7 +276,7 @@ fn expand_gt_keyword(
 
 ///|
 /// Number of `(g, t_pre, t_eval)` triples.
-pub fn DoubleMLDIDMulti::n_combinations(self : DoubleMLDIDMulti) -> Int {
+pub fn DoubleMLDIDMulti::n_combinations(self : DoubleMLDIDMulti) -> Int32 {
   self.gt_combinations.length()
 }
 
@@ -303,7 +303,7 @@ pub fn DoubleMLDIDMulti::learner_m(self : DoubleMLDIDMulti) -> LearnerDispatch {
 /// the canonical `gt_combinations[i]` ordering).
 pub fn DoubleMLDIDMulti::coef_at_idx(
   self : DoubleMLDIDMulti,
-  idx : Int,
+  idx : Int32,
 ) -> Double {
   try {
     require(self.fitted)
@@ -335,7 +335,7 @@ pub fn DoubleMLDIDMulti::coef_at_idx(
 /// The inner per-(g, t) SE at row-major index `idx`.
 pub fn DoubleMLDIDMulti::se_at_idx(
   self : DoubleMLDIDMulti,
-  idx : Int,
+  idx : Int32,
 ) -> Double {
   try {
     require(self.fitted)
@@ -377,7 +377,10 @@ pub fn DoubleMLDIDMulti::se_at_idx(
 /// unchanged, so nothing that already works can regress behind a
 /// refactor. The scan is duplicated in three places rather than
 /// extracted from two.
-fn did_multi_inner_cell_at_idx(est : DoubleMLDIDMulti, idx : Int) -> (Int, Int) {
+fn did_multi_inner_cell_at_idx(
+  est : DoubleMLDIDMulti,
+  idx : Int32,
+) -> (Int32, Int32) {
   try {
     let (g, t_pre, t_eval) = est.gt_combinations[idx]
     let mut gi = -1
@@ -454,7 +457,7 @@ fn did_multi_inner_cell_at_idx(est : DoubleMLDIDMulti, idx : Int) -> (Int, Int) 
 /// `mean(psi_a) != 0`, and `n_obs > n_params` for HC1 / HC2 / HC3.
 pub fn DoubleMLDIDMulti::sandwich_se_at_idx(
   self : DoubleMLDIDMulti,
-  idx : Int,
+  idx : Int32,
   kind : SandwichKind,
 ) -> Double {
   try {
@@ -510,8 +513,8 @@ pub fn DoubleMLDIDMulti::sandwich_se_at_idx(
 /// `cluster_ids.length() == n_wide`, all `cluster_ids[i] >= 0`.
 pub fn DoubleMLDIDMulti::cluster_sandwich_se_at_idx(
   self : DoubleMLDIDMulti,
-  idx : Int,
-  cluster_ids : Array[Int],
+  idx : Int32,
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)
@@ -555,7 +558,7 @@ pub fn DoubleMLDIDMulti::cluster_sandwich_se_at_idx(
 /// maps to an inner `(gi, pi)`.
 pub fn DoubleMLDIDMulti::bias_corrected_coef_at_idx(
   self : DoubleMLDIDMulti,
-  idx : Int,
+  idx : Int32,
 ) -> Double {
   try {
     require(self.fitted)
@@ -607,8 +610,8 @@ pub fn DoubleMLDIDMulti::has_cache(self : DoubleMLDIDMulti) -> Bool {
 /// iterates over every (g, t) cell.
 pub fn DoubleMLDIDMulti::fit(
   self : DoubleMLDIDMulti,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDMulti {
   let inner_pre = self.inner.fit(ml_g~, ml_m~)
   // v0.82.0+: forward the memoize flag to the inner
@@ -678,9 +681,9 @@ pub fn DoubleMLDIDMulti::fit(
 pub fn DoubleMLDIDMulti::tune(
   self : DoubleMLDIDMulti,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLDIDMulti {
   try {
     require(param_set.length() > 0)
@@ -728,9 +731,9 @@ pub fn DoubleMLDIDMulti::tune(
 /// for `confint(joint=true)`.
 pub fn DoubleMLDIDMulti::bootstrap(
   self : DoubleMLDIDMulti,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLDIDMulti {
   try {
     require(self.fitted)
@@ -938,7 +941,7 @@ pub fn norm_sf(x : Double) -> Double {
 /// two-sided normal approximation.
 pub fn DoubleMLDIDMulti::p_adjust(
   self : DoubleMLDIDMulti,
-  method_name? : String = "romano-wolf",
+  method_name~ : String = "romano-wolf",
 ) -> Array[Double] {
   try {
     require(self.fitted)
@@ -1026,8 +1029,8 @@ pub fn DoubleMLDIDMulti::p_adjust(
 /// `level` is the confidence level (default `0.95`).
 pub fn DoubleMLDIDMulti::confint(
   self : DoubleMLDIDMulti,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> Array[(Double, Double)] {
   try {
     require(self.fitted)
@@ -1123,9 +1126,9 @@ pub fn DoubleMLDIDMulti::confint(
 /// in `kfold.mbt` so the cluster helper stack can share it.
 pub fn draw_bootstrap_weights(
   method_name : String,
-  n_rep_boot : Int,
-  n_obs : Int,
-  seed : Int,
+  n_rep_boot : Int32,
+  n_obs : Int32,
+  seed : Int32,
 ) -> Array[Double] raise BootstrapMethodError {
   let out : Array[Double] = Array::make(n_rep_boot * n_obs, 0.0)
   let rng = chacha8_rng(seed)
@@ -1260,8 +1263,8 @@ pub fn DoubleMLDIDMulti::aggregate_event(
 /// aborts via `PreconditionError`.
 pub fn DoubleMLDIDMulti::sensitivity_analysis(
   self : DoubleMLDIDMulti,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   // Materialise the inner per-cell array once (length
@@ -1330,9 +1333,9 @@ pub fn DoubleMLDIDMulti::sensitivity_analysis(
 /// `gt_combinations.length()`.
 pub fn DoubleMLDIDMulti::sensitivity_analysis_cluster(
   self : DoubleMLDIDMulti,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   let all = self.inner.sensitivity_analysis_cluster(cluster_ids, cf_y~, cf_d~)

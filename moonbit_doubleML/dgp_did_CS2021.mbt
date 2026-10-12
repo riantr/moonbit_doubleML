@@ -18,19 +18,19 @@ struct DidMultiData {
   /// True ATT parameter.
   theta : Double
   /// Number of cohorts (groups).
-  n_groups : Int
+  n_groups : Int32
   /// Number of time periods.
-  n_periods : Int
+  n_periods : Int32
   /// Outcome vector.
   y : Array[Double]
   /// Treatment indicator.
   d : Array[Double]
   /// Time-period index.
-  t : Array[Int]
+  t : Array[Int32]
   /// Group/cohort index.
-  g : Array[Int]
+  g : Array[Int32]
   /// Unit id within cohort.
-  id : Array[Int]
+  id : Array[Int32]
   /// Covariate matrix (panel-level).
   x : Matrix
 }
@@ -41,10 +41,10 @@ struct DidMultiData {
 /// n_periods`. The function chooses `n_per_cohort` to match
 /// `n_obs`.
 pub fn make_did_CS2021(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> DidMultiData {
   let rng = chacha8_rng(seed)
   let n_periods = 4
@@ -143,9 +143,9 @@ pub fn make_did_CS2021(
   // treated at tau_g = g - 1 (so cohort 1 treated at t=1, etc.).
   let y : Array[Double] = Array::make(true_n, 0.0)
   let d : Array[Double] = Array::make(true_n, 0.0)
-  let t : Array[Int] = Array::make(true_n, 0)
-  let g : Array[Int] = Array::make(true_n, 0)
-  let id : Array[Int] = Array::make(true_n, 0)
+  let t : Array[Int32] = Array::make(true_n, 0)
+  let g : Array[Int32] = Array::make(true_n, 0)
+  let id : Array[Int32] = Array::make(true_n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     let unit_in_cohort = u % n_per_cohort
@@ -195,17 +195,17 @@ pub fn DidMultiData::d_get(self : DidMultiData) -> Array[Double] {
 }
 
 ///|
-pub fn DidMultiData::t_get(self : DidMultiData) -> Array[Int] {
+pub fn DidMultiData::t_get(self : DidMultiData) -> Array[Int32] {
   self.t
 }
 
 ///|
-pub fn DidMultiData::g_get(self : DidMultiData) -> Array[Int] {
+pub fn DidMultiData::g_get(self : DidMultiData) -> Array[Int32] {
   self.g
 }
 
 ///|
-pub fn DidMultiData::id_get(self : DidMultiData) -> Array[Int] {
+pub fn DidMultiData::id_get(self : DidMultiData) -> Array[Int32] {
   self.id
 }
 
@@ -215,11 +215,11 @@ pub fn DidMultiData::x_get(self : DidMultiData) -> Matrix {
 }
 
 ///|
-pub fn DidMultiData::n_groups_get(self : DidMultiData) -> Int {
+pub fn DidMultiData::n_groups_get(self : DidMultiData) -> Int32 {
   self.n_groups
 }
 
 ///|
-pub fn DidMultiData::n_periods_get(self : DidMultiData) -> Int {
+pub fn DidMultiData::n_periods_get(self : DidMultiData) -> Int32 {
   self.n_periods
 }

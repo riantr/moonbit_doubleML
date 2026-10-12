@@ -71,7 +71,7 @@ fn expand_v094_close(x : Double, y : Double) -> Bool {
 ///     default), which is what makes the Jacobian -- the treated
 ///     density of `y` at the median, `1 / width` -- decisively far
 ///     from `1` in magnitude. That is what makes test 3 bite.
-fn expand_v094_pq_data(n : Int) -> DoubleMLData {
+fn expand_v094_pq_data(n : Int32) -> DoubleMLData {
   expand_v094_pq_data_scaled(n, 6.0)
 }
 
@@ -79,7 +79,7 @@ fn expand_v094_pq_data(n : Int) -> DoubleMLData {
 /// The v0.94.0 DGP with a caller-chosen treated-outcome width, so
 /// `pq_jacobian_is_not_a_constant` can refit on a rescaled outcome
 /// and show the Jacobian tracks the data density.
-fn expand_v094_pq_data_scaled(n : Int, width : Double) -> DoubleMLData {
+fn expand_v094_pq_data_scaled(n : Int32, width : Double) -> DoubleMLData {
   let x_flat : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -111,7 +111,7 @@ fn expand_v094_pq_data_scaled(n : Int, width : Double) -> DoubleMLData {
 ///|
 /// The fitted PQ every test in this file shares. `coef` is the
 /// bisection root of the IPW quantile moment.
-fn expand_v094_fit(n : Int) -> DoubleMLPQ {
+fn expand_v094_fit(n : Int32) -> DoubleMLPQ {
   DoubleMLPQ::new(
     expand_v094_pq_data(n),
     treatment=1.0,
@@ -123,9 +123,9 @@ fn expand_v094_fit(n : Int) -> DoubleMLPQ {
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-4
 /// (`pooled[i] = i / 4`) cluster ids for a sample of `n`.
-fn expand_v094_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v094_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4

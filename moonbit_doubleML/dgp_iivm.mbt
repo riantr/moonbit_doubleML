@@ -38,10 +38,10 @@ struct IivmData {
 ///|
 /// Generate the IIVM DGP from Chernozhukov et al. (2018) Section 4.4.
 pub fn make_iivm_data(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> IivmData {
   let rng = chacha8_rng(seed)
   let beta_x = 0.5

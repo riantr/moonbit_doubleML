@@ -20,7 +20,7 @@ pub struct DoubleMLData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
-  cluster_vars : Array[Int]
+  cluster_vars : Array[Int32]
   // v0.55.0: optional instrument vector Z (length n_obs). Pass
   // a non-empty `z` to enable the IV-type DML score on
   // `DoubleMLPLR`; pass `[]` (the default) for the standard
@@ -42,8 +42,8 @@ pub fn DoubleMLData::new(
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
-  cluster_vars? : Array[Int] = [],
-  z? : Array[Double] = [],
+  cluster_vars~ : Array[Int32] = [],
+  z~ : Array[Double] = [],
 ) -> DoubleMLData {
   try {
     require(x.nrows == y.length())
@@ -63,13 +63,13 @@ pub fn DoubleMLData::new(
 
 ///|
 /// Number of observations in the data.
-pub fn DoubleMLData::n_obs(self : DoubleMLData) -> Int {
+pub fn DoubleMLData::n_obs(self : DoubleMLData) -> Int32 {
   self.x.nrows
 }
 
 ///|
 /// Number of features (columns of `X`).
-pub fn DoubleMLData::n_features(self : DoubleMLData) -> Int {
+pub fn DoubleMLData::n_features(self : DoubleMLData) -> Int32 {
   self.x.ncols
 }
 
@@ -82,7 +82,7 @@ pub fn DoubleMLData::is_cluster_data(self : DoubleMLData) -> Bool {
 
 ///|
 /// Length of the cluster_vars vector (0 when not clustered).
-pub fn DoubleMLData::n_cluster_vars(self : DoubleMLData) -> Int {
+pub fn DoubleMLData::n_cluster_vars(self : DoubleMLData) -> Int32 {
   self.cluster_vars.length()
 }
 

@@ -144,9 +144,9 @@ fn expand_v100_didcs_data() -> DoubleMLDIDCSData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(11)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
@@ -196,7 +196,7 @@ fn expand_v100_didcs() -> DoubleMLDIDCS {
 /// Flat cell index, mirroring the accessors' internal one so tests
 /// can reach the persisted per-cell rows (the fields are public;
 /// the private slice helpers are not, and are not needed).
-fn expand_v100_flat(f : DoubleMLDIDCS, g : Int, t : Int) -> Int {
+fn expand_v100_flat(f : DoubleMLDIDCS, g : Int32, t : Int32) -> Int32 {
   g * f.n_periods() + t
 }
 
@@ -225,8 +225,8 @@ fn expand_v100_didcs_close(x : Double, y : Double) -> Bool {
 /// every `(g, t)` the CS-DID convention actually estimates
 /// (`t_eval > g`). Returns the 3 pairs (0,2), (0,3), (1,3) on this
 /// DGP.
-fn expand_v100_live_cells(f : DoubleMLDIDCS) -> Array[(Int, Int)] {
-  let out : Array[(Int, Int)] = []
+fn expand_v100_live_cells(f : DoubleMLDIDCS) -> Array[(Int32, Int32)] {
+  let out : Array[(Int32, Int32)] = []
   let mut out_acc = out
   for gi = 0; gi < f.n_groups(); gi = gi + 1 {
     let g_value = f.group_at(gi)
@@ -244,9 +244,9 @@ fn expand_v100_live_cells(f : DoubleMLDIDCS) -> Array[(Int, Int)] {
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-4
 /// (`pooled[i] = i / 4`) cluster ids for a sample of `n`.
-fn expand_v100_didcs_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v100_didcs_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4

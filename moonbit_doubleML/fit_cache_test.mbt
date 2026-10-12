@@ -378,13 +378,13 @@ test "cache_invalidates_on_cluster_ids_change" {
   let data_iid = DoubleMLData::new(x, y, d)
   // Two clusterings: "by-row-index mod 4" vs "by-row-index mod 5".
   // Different partitions -> different hashes.
-  let cluster_a : Array[Int] = Array::makei(n, fn(i) { i % 4 })
-  let cluster_b : Array[Int] = Array::makei(n, fn(i) { i % 5 })
+  let cluster_a : Array[Int32] = Array::makei(n, fn(i) { i % 4 })
+  let cluster_b : Array[Int32] = Array::makei(n, fn(i) { i % 5 })
   let ha = hash_cluster_ids(cluster_a)
   let hb = hash_cluster_ids(cluster_b)
   inspect(ha != hb, content="true")
   // Empty vector -> 0 sentinel.
-  let empty : Array[Int] = []
+  let empty : Array[Int32] = []
   let h0 = hash_cluster_ids(empty)
   inspect(h0 == 0UL, content="true")
   // An estimator with no cluster_vars hashes to 0; one with

@@ -19,7 +19,7 @@
 ///|
 fn assert_bootstrap_finite(
   boot_t_stat : Array[Double],
-  expected_len : Int,
+  expected_len : Int32,
 ) -> Unit raise {
   assert_eq(boot_t_stat.length(), expected_len)
   let mut n_finite = 0
@@ -103,9 +103,9 @@ test "did_binary_bootstrap_populates_boot_t_stat" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let g_indicator : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let g_indicator : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n_units; i = i + 1 {
     for period = 0; period < n_periods; period = period + 1 {
       let row = i * n_periods + period
@@ -142,9 +142,9 @@ test "did_cs_binary_bootstrap_populates_boot_t_stat" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let g : Array[Int] = Array::make(n, 0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     let group_v = if rng.double() > 0.5 { 2 } else { 0 }
     let period_v = if rng.double() > 0.5 { 2 } else { 0 }
@@ -187,9 +187,9 @@ test "did_cs_bootstrap_populates_boot_t_stat" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let g : Array[Int] = Array::make(n, 0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n_units; i = i + 1 {
     let g_value = i % 3
     for period = 0; period < n_periods; period = period + 1 {

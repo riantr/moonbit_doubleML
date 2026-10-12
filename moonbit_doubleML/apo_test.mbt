@@ -19,7 +19,11 @@ test "apo_recovers_average_potential_outcome" {
 /// Test helper: count how many of the `indices` rows in `arr` equal
 /// `target`. Used by `kfold_stratified_balances_each_stratum` to
 /// verify the fold partition is balanced per stratum.
-fn count_eq(indices : Array[Int], arr : Array[Double], target : Double) -> Int {
+fn count_eq(
+  indices : Array[Int32],
+  arr : Array[Double],
+  target : Double,
+) -> Int32 {
   let mut n = 0
   for k = 0; k < indices.length(); k = k + 1 {
     if arr[indices[k]] == target {

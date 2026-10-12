@@ -79,7 +79,7 @@ fn json_to_doubles(node : Json, label : String) -> Array[Double] raise ApiError 
 fn json_to_matrix(
   node : Json,
   label : String,
-) -> (Array[Double], Int, Int) raise ApiError {
+) -> (Array[Double], Int32, Int32) raise ApiError {
   match node {
     Json::Array(rows) => {
       if rows.length() == 0 {
@@ -133,7 +133,7 @@ fn json_to_matrix(
 }
 
 ///|
-fn json_to_int(node : Json, label : String) -> Int raise ApiError {
+fn json_to_int(node : Json, label : String) -> Int32 raise ApiError {
   match node {
     Json::Number(n, ..) => n.to_int()
     _ =>
@@ -144,7 +144,11 @@ fn json_to_int(node : Json, label : String) -> Int raise ApiError {
 }
 
 ///|
-fn json_opt_int(obj : Json, key : String, default : Int) -> Int raise ApiError {
+fn json_opt_int(
+  obj : Json,
+  key : String,
+  default : Int32,
+) -> Int32 raise ApiError {
   match obj {
     Json::Object(map) =>
       match map.get(key) {
@@ -158,7 +162,16 @@ fn json_opt_int(obj : Json, key : String, default : Int) -> Int raise ApiError {
 ///|
 fn parse_fit_request(
   body : Json,
-) -> (Array[Double], Int, Int, Array[Double], Array[Double], Int, Int, Int) raise ApiError {
+) -> (
+  Array[Double],
+  Int32,
+  Int32,
+  Array[Double],
+  Array[Double],
+  Int32,
+  Int32,
+  Int32,
+) raise ApiError {
   match body {
     Json::Object(obj) => {
       let x_node = match obj.get("x") {
@@ -223,14 +236,14 @@ struct FitResponse {
   se : Double
   ci_lo : Double
   ci_hi : Double
-  n_obs : Int
-  n_features : Int
+  n_obs : Int32
+  n_features : Int32
 } derive(ToJson)
 
 ///|
 async fn write_json(
   conn : @http.ServerConnection,
-  code : Int,
+  code : Int32,
   reason : String,
   body : Json,
 ) -> Unit {
@@ -246,7 +259,7 @@ async fn write_json(
 ///|
 async fn write_text(
   conn : @http.ServerConnection,
-  code : Int,
+  code : Int32,
   reason : String,
   content_type : String,
   body : String,
@@ -480,7 +493,7 @@ pub async fn dispatch(
 // ============================================================
 
 ///|
-const DEFAULT_PORT : Int = 4000
+const DEFAULT_PORT : Int32 = 4000
 
 ///|
 async fn main {

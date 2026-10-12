@@ -40,9 +40,9 @@ pub extend DIDAggregationResult with @moonbitlang/core/debug.Debug::{to_repr}
 pub fn aggregate_group(
   coef_matrix : Array[Double],
   se_matrix : Array[Double],
-  groups : Array[Int],
-  periods : Array[Int],
-  group_sizes : Array[Int],
+  groups : Array[Int32],
+  periods : Array[Int32],
+  group_sizes : Array[Int32],
 ) -> DIDAggregationResult {
   try {
     let n_groups = groups.length()
@@ -106,9 +106,9 @@ pub fn aggregate_group(
 pub fn aggregate_time(
   coef_matrix : Array[Double],
   se_matrix : Array[Double],
-  groups : Array[Int],
-  periods : Array[Int],
-  group_sizes : Array[Int],
+  groups : Array[Int32],
+  periods : Array[Int32],
+  group_sizes : Array[Int32],
 ) -> DIDAggregationResult {
   try {
     let n_groups = groups.length()
@@ -167,9 +167,9 @@ pub fn aggregate_time(
 pub fn aggregate_event(
   coef_matrix : Array[Double],
   se_matrix : Array[Double],
-  groups : Array[Int],
-  periods : Array[Int],
-  group_sizes : Array[Int],
+  groups : Array[Int32],
+  periods : Array[Int32],
+  group_sizes : Array[Int32],
 ) -> DIDAggregationResult {
   try {
     let n_groups = groups.length()
@@ -178,7 +178,7 @@ pub fn aggregate_event(
     require(se_matrix.length() == n_groups * n_periods)
     require(group_sizes.length() == n_groups)
     // Collect unique event times (in ascending order).
-    let e_set : Array[Int] = []
+    let e_set : Array[Int32] = []
     let mut e_set_acc = e_set
     for i = 0; i < n_groups; i = i + 1 {
       let g_value = groups[i]

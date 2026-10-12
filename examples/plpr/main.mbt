@@ -7,16 +7,16 @@
 ///|
 fn build_panel(
   rng : @random.Rand,
-  n_units : Int,
-  n_periods : Int,
+  n_units : Int32,
+  n_periods : Int32,
 ) -> @moonbit_doubleML.DoubleMLPanelData {
   let p = 2
   let n = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let theta0 = 1.0
   for u = 0; u < n_units; u = u + 1 {
     let alpha = (rng.double() - 0.5) * 4.0

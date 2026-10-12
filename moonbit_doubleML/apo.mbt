@@ -3,9 +3,9 @@
 pub struct DoubleMLAPO {
   data : DoubleMLData
   treatment_level : Double
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, the IID `fit` path uses `smpls[r]` for
   // repetition `r` INSTEAD of calling `kfold`.
@@ -79,8 +79,8 @@ pub struct DoubleMLAPO {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.84.0+: memoization state. `memoize_enabled` is the
   // user-facing opt-in (set via `DoubleMLAPO::enable_memoize()`);
   // when true and `n_rep == 1`, `fit()` caches the LAST rep's
@@ -99,15 +99,15 @@ pub extend DoubleMLAPO with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLAPO::new(
   data : DoubleMLData,
-  treatment_level? : Double = 1.0,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  normalize_ipw? : Bool = false,
-  ps_processor_config? : PSProcessorConfig? = None,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+  treatment_level~ : Double = 1.0,
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  normalize_ipw~ : Bool = false,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(
     LogisticRegression::new(),
   ),
 ) -> DoubleMLAPO {
@@ -167,13 +167,13 @@ pub fn DoubleMLAPO::new(
 }
 
 ///|
-pub fn DoubleMLAPO::n_obs(self : DoubleMLAPO) -> Int {
+pub fn DoubleMLAPO::n_obs(self : DoubleMLAPO) -> Int32 {
   self.data.n_obs()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLAPO::n_features(self : DoubleMLAPO) -> Int {
+pub fn DoubleMLAPO::n_features(self : DoubleMLAPO) -> Int32 {
   self.data.n_features()
 }
 
@@ -335,8 +335,8 @@ fn cross_fit_apo(
 ///|
 pub fn DoubleMLAPO::fit(
   self : DoubleMLAPO,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLAPO {
   // v0.65.0+: cluster-data dispatch — when `cluster_vars` is
   // non-empty, route through `fit_cluster` (cluster-aware
@@ -409,7 +409,7 @@ pub fn DoubleMLAPO::fit(
   let m = Array::make(n, 0.0)
   // v0.84.0+: track the LAST rep's row-to-fold mapping for the
   // cache writeback.
-  let fold_ids : Array[Int] = Array::make(n, 0)
+  let fold_ids : Array[Int32] = Array::make(n, 0)
   for r = 0; r < self.n_rep; r = r + 1 {
     let (gr, mr) = if cache_hit && r == self.n_rep - 1 {
       // Reuse the cached LAST-rep nuisances. The
@@ -549,7 +549,7 @@ fn DoubleMLAPO::fit_cluster(
   self : DoubleMLAPO,
   ml_g~ : LearnerDispatch,
   ml_m~ : LearnerDispatch,
-  max_attempts? : Int = 1,
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLAPO {
   try {
     require(max_attempts >= 1)
@@ -567,8 +567,8 @@ fn DoubleMLAPO::fit_cluster(
           ")",
         )
     }
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n; i = i + 1 {
@@ -797,7 +797,7 @@ pub fn DoubleMLAPO::sandwich_se(
 /// `cluster_ids.length() == psi_a.length()`.
 pub fn DoubleMLAPO::cluster_sandwich_se(
   self : DoubleMLAPO,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)
@@ -893,9 +893,9 @@ pub fn DoubleMLAPO::bias_corrected_coef(self : DoubleMLAPO) -> Double {
 /// `n_thetas=1` case.
 pub fn DoubleMLAPO::bootstrap(
   self : DoubleMLAPO,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLAPO {
   try {
     require(self.fitted)
@@ -967,9 +967,9 @@ pub fn DoubleMLAPO::bootstrap(
 pub fn DoubleMLAPO::tune(
   self : DoubleMLAPO,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLAPO {
   try {
     require(param_set.length() > 0)
@@ -1023,9 +1023,9 @@ pub fn DoubleMLAPO::tune(
 pub fn DoubleMLAPOS::tune(
   self : DoubleMLAPOS,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLAPOS {
   try {
     require(param_set.length() > 0)
@@ -1123,8 +1123,8 @@ pub fn DoubleMLAPO::sensitivity_nu2_elements(
 ///|
 pub fn DoubleMLAPO::sensitivity_analysis(
   self : DoubleMLAPO,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g_hat = self.predictions_g()
@@ -1153,9 +1153,9 @@ pub fn DoubleMLAPO::sensitivity_analysis(
 /// `DoubleMLData::cluster_vars`.
 pub fn DoubleMLAPO::sensitivity_analysis_cluster(
   self : DoubleMLAPO,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g_hat = self.predictions_g()
@@ -1200,9 +1200,9 @@ pub fn DoubleMLAPO::sensitivity_analysis_cluster(
 pub struct DoubleMLAPOS {
   data : DoubleMLData
   treatment_levels : Array[Double]
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". APOS does not draw folds itself -- it builds one child
   // `DoubleMLAPO` per treatment level and calls `child.fit()` -- so
@@ -1235,8 +1235,8 @@ pub struct DoubleMLAPOS {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Array[Double]]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.84.0+: memoization state. `memoize_enabled` is the
   // user-facing opt-in (set via
   // `DoubleMLAPOS::enable_memoize()`); when true, each
@@ -1278,14 +1278,14 @@ pub extend DoubleMLAPOS with @moonbitlang/core/debug.Debug::{to_repr}
 pub fn DoubleMLAPOS::new(
   data : DoubleMLData,
   treatment_levels : Array[Double],
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  normalize_ipw? : Bool = false,
-  ps_processor_config? : PSProcessorConfig? = None,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  normalize_ipw~ : Bool = false,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(
     LogisticRegression::new(),
   ),
 ) -> DoubleMLAPOS {
@@ -1374,12 +1374,16 @@ pub fn DoubleMLAPOS::new(
 ///|
 pub fn DoubleMLAPOS::fit(
   self : DoubleMLAPOS,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLAPOS {
   try {
-    ignore(ml_g)
-    ignore(ml_m)
+    // v0.153.0: a vestigial `ignore(ml_g)` / `ignore(ml_m)` stood here.
+    // Both learners are consumed below (the outcome nuisances and the
+    // propensity respectively), so the line claimed a drop that does not
+    // exist. All 11 such lines were removed package-wide after an audit
+    // found every one of them misleading; see
+    // `_verify/_ignore_audit_1530.py`.
     require(self.treatment_levels.length() >= 1)
     let n_obs = self.data.n_obs()
     let n_levels = self.treatment_levels.length()
@@ -1711,7 +1715,7 @@ pub fn DoubleMLAPOS::treatment_levels(self : DoubleMLAPOS) -> Array[Double] {
 
 ///|
 /// v0.49.0: number of requested treatment levels.
-pub fn DoubleMLAPOS::n_treatment_levels(self : DoubleMLAPOS) -> Int {
+pub fn DoubleMLAPOS::n_treatment_levels(self : DoubleMLAPOS) -> Int32 {
   self.treatment_levels.length()
 }
 
@@ -1799,7 +1803,7 @@ pub fn DoubleMLAPOS::n_treatment_levels(self : DoubleMLAPOS) -> Int {
 /// (`bootstrap`, `enable_memoize`, ...) carry the field for free.
 fn DoubleMLAPOS::psi_b_row_at(
   self : DoubleMLAPOS,
-  treatment_index : Int,
+  treatment_index : Int32,
 ) -> Array[Double] {
   try {
     let n_levels = self.treatment_levels.length()
@@ -1829,7 +1833,7 @@ fn DoubleMLAPOS::psi_b_row_at(
 /// rather than persisted.
 fn DoubleMLAPOS::psi_a_row_at(
   self : DoubleMLAPOS,
-  treatment_index : Int,
+  treatment_index : Int32,
 ) -> Array[Double] {
   try {
     let n_levels = self.treatment_levels.length()
@@ -1859,7 +1863,7 @@ fn DoubleMLAPOS::psi_a_row_at(
 /// shape a reader of the fifteen other estimators expects.
 fn DoubleMLAPOS::m_inv_1x1_at(
   self : DoubleMLAPOS,
-  treatment_index : Int,
+  treatment_index : Int32,
 ) -> Matrix {
   try {
     let psi_a = self.psi_a_row_at(treatment_index)
@@ -1910,7 +1914,7 @@ fn DoubleMLAPOS::m_inv_1x1_at(
 /// `mean(psi_a) != 0`.
 pub fn DoubleMLAPOS::sandwich_se_at(
   self : DoubleMLAPOS,
-  treatment_index : Int,
+  treatment_index : Int32,
   kind : SandwichKind,
 ) -> Double {
   try {
@@ -1956,8 +1960,8 @@ pub fn DoubleMLAPOS::sandwich_se_at(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLAPOS::cluster_sandwich_se_at(
   self : DoubleMLAPOS,
-  treatment_index : Int,
-  cluster_ids : Array[Int],
+  treatment_index : Int32,
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)
@@ -2010,7 +2014,7 @@ pub fn DoubleMLAPOS::cluster_sandwich_se_at(
 /// `0 <= treatment_index < coefs.length()`.
 pub fn DoubleMLAPOS::bias_corrected_coef_at(
   self : DoubleMLAPOS,
-  treatment_index : Int,
+  treatment_index : Int32,
 ) -> Double {
   try {
     require(self.fitted)
@@ -2036,9 +2040,9 @@ pub fn DoubleMLAPOS::bias_corrected_coef_at(
 /// `n_rep_boot` defaults to 500; `seed` defaults to 2024.
 pub fn DoubleMLAPOS::bootstrap(
   self : DoubleMLAPOS,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLAPOS {
   try {
     require(self.fitted)
@@ -2085,8 +2089,8 @@ pub fn DoubleMLAPOS::bootstrap(
 /// 1.959963984540054 for the standard normal).
 pub fn DoubleMLAPOS::confint(
   self : DoubleMLAPOS,
-  level? : Double = 0.95,
-  joint? : Bool = false,
+  level~ : Double = 0.95,
+  joint~ : Bool = false,
 ) -> Array[(Double, Double)] {
   try {
     require(self.fitted)
@@ -2153,12 +2157,12 @@ pub fn DoubleMLAPOS::boot_method(self : DoubleMLAPOS) -> String {
 }
 
 ///|
-pub fn DoubleMLAPOS::n_rep_boot(self : DoubleMLAPOS) -> Int {
+pub fn DoubleMLAPOS::n_rep_boot(self : DoubleMLAPOS) -> Int32 {
   self.n_rep_boot
 }
 
 ///|
-pub fn DoubleMLAPOS::boot_seed(self : DoubleMLAPOS) -> Int {
+pub fn DoubleMLAPOS::boot_seed(self : DoubleMLAPOS) -> Int32 {
   self.boot_seed
 }
 
@@ -2204,7 +2208,7 @@ pub fn DoubleMLAPOS::causal_contrast(
       "precondition failed at DoubleMLAPOS::causal_contrast: reference_levels is empty",
     )
   }
-  let ref_indices : Array[Int] = []
+  let ref_indices : Array[Int32] = []
   for r = 0; r < reference_levels.length(); r = r + 1 {
     let ref_lvl = reference_levels[r]
     let mut found = false
@@ -2257,8 +2261,8 @@ pub fn DoubleMLAPOS::causal_contrast(
 /// results).
 pub fn DoubleMLAPOS::sensitivity_analysis(
   self : DoubleMLAPOS,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   let n_levels = self.treatment_levels.length()
@@ -2305,9 +2309,9 @@ pub fn DoubleMLAPOS::sensitivity_analysis(
 /// `cluster_ids` defaults to `DoubleMLData::cluster_vars`.
 pub fn DoubleMLAPOS::sensitivity_analysis_cluster(
   self : DoubleMLAPOS,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   let n_levels = self.treatment_levels.length()

@@ -80,7 +80,7 @@ fn expand_v093_close(x : Double, y : Double) -> Bool {
 ///     the treated-arm density at the median -- and hence `deriv` --
 ///     decisively far from `1` in magnitude. That is what makes
 ///     test 3 bite.
-fn expand_v093_lpq_data(n : Int) -> DoubleMLLPQData {
+fn expand_v093_lpq_data(n : Int32) -> DoubleMLLPQData {
   let x_flat : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let z : Array[Double] = Array::make(n, 0.0)
@@ -117,7 +117,7 @@ fn expand_v093_lpq_data(n : Int) -> DoubleMLLPQData {
 /// The fitted LPQ every test in this file shares. `n_rep` is
 /// implicitly 1 for LPQ (a single-pass bisection), so `coef` is the
 /// bisection root itself.
-fn expand_v093_fit(n : Int) -> DoubleMLLPQ {
+fn expand_v093_fit(n : Int32) -> DoubleMLLPQ {
   DoubleMLLPQ::new(
     expand_v093_lpq_data(n),
     treatment=1.0,
@@ -129,9 +129,9 @@ fn expand_v093_fit(n : Int) -> DoubleMLLPQ {
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-4
 /// (`pooled[i] = i / 4`) cluster ids for a sample of `n`.
-fn expand_v093_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v093_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -378,7 +378,7 @@ test "lpq_jacobian_is_not_minus_one" {
 /// The v0.93.0 DGP with a caller-chosen outcome width, so
 /// `lpq_jacobian_is_not_minus_one` can refit on a rescaled outcome
 /// and show the Jacobian is data-dependent.
-fn expand_v093_lpq_data_scaled(n : Int, width : Double) -> DoubleMLLPQData {
+fn expand_v093_lpq_data_scaled(n : Int32, width : Double) -> DoubleMLLPQData {
   let x_flat : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let z : Array[Double] = Array::make(n, 0.0)

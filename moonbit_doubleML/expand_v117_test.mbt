@@ -36,7 +36,7 @@
 /// should recover this exactly; a tree learner that cannot get a
 /// one-dimensional step right has a broken split search, whatever its
 /// accuracy on anything harder.
-fn v117_threshold_data(n : Int) -> (Matrix, Array[Double]) {
+fn v117_threshold_data(n : Int32) -> (Matrix, Array[Double]) {
   let x = Matrix::zeros(n, 1)
   let y = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
@@ -51,7 +51,7 @@ fn v117_threshold_data(n : Int) -> (Matrix, Array[Double]) {
 /// XOR on a 2x2 grid: label 1 when the two signs disagree. Linearly
 /// inseparable, so any learner that gets it right is doing nonlinear
 /// work.
-fn v117_xor_data(n : Int) -> (Matrix, Array[Double]) {
+fn v117_xor_data(n : Int32) -> (Matrix, Array[Double]) {
   let x = Matrix::zeros(n, 2)
   let y = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {

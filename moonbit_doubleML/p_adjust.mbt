@@ -29,9 +29,9 @@
 /// the permutation `order` such that `unadjusted[order[0]] <=
 /// unadjusted[order[1]] <= ...`. O(n^2); n is typically small
 /// (3-12 cells for DIDMulti) so this is fine.
-fn argsort_asc(unadjusted : Array[Double]) -> Array[Int] {
+fn argsort_asc(unadjusted : Array[Double]) -> Array[Int32] {
   let n = unadjusted.length()
-  let order : Array[Int] = Array::make(n, 0)
+  let order : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     order[i] = i
   }
@@ -77,7 +77,7 @@ pub fn romano_wolf_p_adjust(
     require(n_boot > 0)
     // Sort |t| descending. We use a simple O(n^2) selection
     // sort because n is typically small (3-12 cells).
-    let stepdown_ind : Array[Int] = Array::make(n, 0)
+    let stepdown_ind : Array[Int32] = Array::make(n, 0)
     for i = 0; i < n; i = i + 1 {
       stepdown_ind[i] = i
     }
@@ -99,7 +99,7 @@ pub fn romano_wolf_p_adjust(
     }
     // `ro` is the inverse permutation of `stepdown_ind`:
     // `ro[stepdown_ind[i]] = i`.
-    let ro : Array[Int] = Array::make(n, 0)
+    let ro : Array[Int32] = Array::make(n, 0)
     for i = 0; i < n; i = i + 1 {
       ro[stepdown_ind[i]] = i
     }
@@ -164,7 +164,7 @@ pub fn romano_wolf_p_adjust(
 pub fn holm_bonferroni_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let n = unadjusted.length()
   let order = argsort_asc(unadjusted)
-  let ro : Array[Int] = Array::make(n, 0)
+  let ro : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     ro[order[i]] = i
   }
@@ -228,7 +228,7 @@ pub fn bonferroni_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
 pub fn bh_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let n = unadjusted.length()
   let order = argsort_asc(unadjusted)
-  let ro : Array[Int] = Array::make(n, 0)
+  let ro : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     ro[order[i]] = i
   }
@@ -277,7 +277,7 @@ pub fn by_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
     c = c + 1.0 / i.to_double()
   }
   let order = argsort_asc(unadjusted)
-  let ro : Array[Int] = Array::make(n, 0)
+  let ro : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     ro[order[i]] = i
   }
@@ -367,7 +367,7 @@ pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let m0_hat = storey_m0_hat(unadjusted)
   // Standard sort + BH correction.
   let order = argsort_asc(unadjusted)
-  let ro : Array[Int] = Array::make(n, 0)
+  let ro : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     ro[order[i]] = i
   }
@@ -428,7 +428,7 @@ pub fn tsby_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let m0_hat = storey_m0_hat(unadjusted)
   // Standard sort + BY correction.
   let order = argsort_asc(unadjusted)
-  let ro : Array[Int] = Array::make(n, 0)
+  let ro : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     ro[order[i]] = i
   }
@@ -481,8 +481,8 @@ pub fn tsby_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
 pub fn p_adjust(
   method_name : String,
   unadjusted : Array[Double],
-  boot_t_stat? : Array[Double] = [],
-  t_stats? : Array[Double] = [],
+  boot_t_stat~ : Array[Double] = [],
+  t_stats~ : Array[Double] = [],
 ) -> Array[Double] {
   match method_name {
     "romano-wolf" | "rw" =>

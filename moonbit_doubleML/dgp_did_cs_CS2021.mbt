@@ -32,19 +32,19 @@ struct DidCsData {
   /// True ATT parameter.
   theta : Double
   /// Number of cohorts (groups) in the panel.
-  n_groups : Int
+  n_groups : Int32
   /// Number of time periods.
-  n_periods : Int
+  n_periods : Int32
   /// Outcome vector (length n_obs = n_groups * cohort_size * n_periods).
   y : Array[Double]
   /// Treatment indicator (length n_obs; binary).
   d : Array[Double]
   /// Time index (length n_obs; integer 0..n_periods-1).
-  t : Array[Int]
+  t : Array[Int32]
   /// Group/treatment-cohort index (length n_obs; integer 0..n_groups-1).
-  g : Array[Int]
+  g : Array[Int32]
   /// Unit id within cohort (length n_obs; integer 0..cohort_size-1).
-  id : Array[Int]
+  id : Array[Int32]
   /// Covariate matrix (n_obs x dim_x).
   x : Matrix
 }
@@ -54,10 +54,10 @@ struct DidCsData {
 /// `theta = 1.0`, balanced cohort sizes, `n_per_cohort = 200`,
 /// `dim_x = 3`.
 pub fn make_did_cs_CS2021(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> DidCsData {
   let rng = chacha8_rng(seed)
   // 2 cohorts, 2 periods, equal cohort sizes; cohort 0 = never-treated,
@@ -160,9 +160,9 @@ pub fn make_did_cs_CS2021(
   // 4. Build panel y, d, t, g, id. Layout: outer = unit, inner = period.
   let y : Array[Double] = Array::make(true_n, 0.0)
   let d : Array[Double] = Array::make(true_n, 0.0)
-  let t : Array[Int] = Array::make(true_n, 0)
-  let g : Array[Int] = Array::make(true_n, 0)
-  let id : Array[Int] = Array::make(true_n, 0)
+  let t : Array[Int32] = Array::make(true_n, 0)
+  let g : Array[Int32] = Array::make(true_n, 0)
+  let id : Array[Int32] = Array::make(true_n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     let unit_in_cohort = u % n_per_cohort
@@ -219,19 +219,19 @@ pub fn DidCsData::d_get(self : DidCsData) -> Array[Double] {
 
 ///|
 /// Get the time-period index.
-pub fn DidCsData::t_get(self : DidCsData) -> Array[Int] {
+pub fn DidCsData::t_get(self : DidCsData) -> Array[Int32] {
   self.t
 }
 
 ///|
 /// Get the group (cohort) index.
-pub fn DidCsData::g_get(self : DidCsData) -> Array[Int] {
+pub fn DidCsData::g_get(self : DidCsData) -> Array[Int32] {
   self.g
 }
 
 ///|
 /// Get the unit id (within cohort).
-pub fn DidCsData::id_get(self : DidCsData) -> Array[Int] {
+pub fn DidCsData::id_get(self : DidCsData) -> Array[Int32] {
   self.id
 }
 
@@ -243,12 +243,12 @@ pub fn DidCsData::x_get(self : DidCsData) -> Matrix {
 
 ///|
 /// Get the number of cohorts.
-pub fn DidCsData::n_groups_get(self : DidCsData) -> Int {
+pub fn DidCsData::n_groups_get(self : DidCsData) -> Int32 {
   self.n_groups
 }
 
 ///|
 /// Get the number of periods.
-pub fn DidCsData::n_periods_get(self : DidCsData) -> Int {
+pub fn DidCsData::n_periods_get(self : DidCsData) -> Int32 {
   self.n_periods
 }

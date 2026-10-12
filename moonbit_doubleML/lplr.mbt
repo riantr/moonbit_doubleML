@@ -72,7 +72,7 @@ fn prelim_beta_per_fold(
   m_inner : Array[Double],
   a_inner : Array[Double],
   d : Array[Double],
-  train_idx : Array[Int],
+  train_idx : Array[Int32],
 ) -> Double {
   try {
     let mut num = 0.0
@@ -232,8 +232,8 @@ pub fn newton_solve_score(
   theta_start : Double,
   psi : Array[Double],
   psi_deriv : Array[Double],
-  tol_theta? : Double = 1.0e-9,
-  max_iter? : Int = 50,
+  tol_theta~ : Double = 1.0e-9,
+  max_iter~ : Int32 = 50,
 ) -> (Double, Bool) {
   try {
     let n = psi.length()
@@ -277,10 +277,10 @@ pub fn newton_solve_score(
 pub struct DoubleMLLPLR {
   data : DoubleMLBinaryData
   score : String
-  n_folds : Int
-  n_folds_inner : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_folds_inner : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `kfold` for the OUTER partition, and the
@@ -327,8 +327,8 @@ pub struct DoubleMLLPLR {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.83.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.82.0
   // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
@@ -347,13 +347,13 @@ pub extend DoubleMLLPLR with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLLPLR::new(
   data : DoubleMLBinaryData,
-  score? : String = "nuisance_space",
-  n_folds? : Int = 2,
-  n_folds_inner? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  score~ : String = "nuisance_space",
+  n_folds~ : Int32 = 2,
+  n_folds_inner~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLLPLR {
   try {
     require(score == "nuisance_space" || score == "instrument")
@@ -637,8 +637,8 @@ fn concat_d_x(d : Array[Double], x : Matrix) -> Matrix {
 /// LPLR is *not* cluster data; `var_est` runs the row-level path.
 pub fn DoubleMLLPLR::fit(
   self : DoubleMLLPLR,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLLPLR {
   try {
     // v0.62.0+: route `ml_g` to the `ml_t` slot (W regressor) and
@@ -672,7 +672,7 @@ pub fn DoubleMLLPLR::fit(
     let mut last_beta_start : Double = 0.0
     // v0.83.0+: track the LAST rep's row-to-fold mapping for
     // the cache writeback.
-    let fold_ids : Array[Int] = Array::make(n, 0)
+    let fold_ids : Array[Int32] = Array::make(n, 0)
     // v0.75.0+: capture psi_a / psi_b from the LAST rep for the
     // multiplier bootstrap. Same convention as `t_pred` / `m_pred`:
     // each rep overwrites, so the post-loop values match the
@@ -1080,9 +1080,9 @@ pub fn DoubleMLLPLR::fit(
 /// `boot_method` / `n_rep_boot` / `boot_seed` populated.
 pub fn DoubleMLLPLR::bootstrap(
   self : DoubleMLLPLR,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLLPLR {
   try {
     require(self.fitted)
@@ -1164,9 +1164,9 @@ pub fn DoubleMLLPLR::bootstrap(
 pub fn DoubleMLLPLR::tune(
   self : DoubleMLLPLR,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLLPLR {
   try {
     require(param_set.length() > 0)
@@ -1368,8 +1368,8 @@ impl Learner for LogisticRegression with fn predict(
 /// is not comparable to `DoubleMLPLR`'s upstream-aligned `1 / mean(v^2)`.
 pub fn DoubleMLLPLR::sensitivity_analysis(
   self : DoubleMLLPLR,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let y = self.data.y
@@ -1400,9 +1400,9 @@ pub fn DoubleMLLPLR::sensitivity_analysis(
 /// `cluster_ids.length()` must equal `self.data.n_obs()`.
 pub fn DoubleMLLPLR::sensitivity_analysis_cluster(
   self : DoubleMLLPLR,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let y = self.data.y
@@ -1540,7 +1540,7 @@ pub fn DoubleMLLPLR::sandwich_se(
 /// `cluster_ids.length() == psi_b.length()`.
 pub fn DoubleMLLPLR::cluster_sandwich_se(
   self : DoubleMLLPLR,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

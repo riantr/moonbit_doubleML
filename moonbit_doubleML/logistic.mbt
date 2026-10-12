@@ -73,7 +73,7 @@ pub fn expit(x : Double) -> Double {
 /// stays finite; the LPLR score clips inner-fold `M` predictions
 /// to `[1e-8, 1 - 1e-8]` upstream before logit, mirroring scipy
 /// `logit(clip(p, 1e-8, 1 - 1e-8))`.
-pub fn logit(p : Double, eps? : Double = 1.0e-8) -> Double {
+pub fn logit(p : Double, eps~ : Double = 1.0e-8) -> Double {
   let plo = eps
   let phi = 1.0 - eps
   let pc = if p < plo { plo } else if p > phi { phi } else { p }
@@ -105,10 +105,10 @@ pub fn LogisticRegression::fit(
   self : LogisticRegression,
   x : Matrix,
   y : Array[Double],
-  max_iter? : Int = 25,
-  tol? : Double = 1.0e-8,
-  ridge? : Double = 1.0e-8,
-  sample_weight? : Array[Double] = [],
+  max_iter~ : Int32 = 25,
+  tol~ : Double = 1.0e-8,
+  ridge~ : Double = 1.0e-8,
+  sample_weight~ : Array[Double] = [],
 ) -> LogisticRegression {
   try {
     ignore(self)
@@ -250,7 +250,7 @@ pub fn LogisticRegression::predict(
 pub fn LogisticRegression::predict_class(
   self : LogisticRegression,
   x : Matrix,
-  threshold? : Double = 0.5,
+  threshold~ : Double = 0.5,
 ) -> Array[Double] {
   let p = self.predict(x)
   let n = p.length()

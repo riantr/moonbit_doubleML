@@ -18,9 +18,9 @@
 
 ///|
 pub fn make_plr_turrell2018(
-  n_obs : Int,
+  n_obs : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> IrmHeterogeneousData {
   // Reuse the IRM heterogeneous struct shape; we just compute
   // different D/Y. For brevity, the test path uses a fixed

@@ -17,9 +17,9 @@ test "did_cs_recovers_known_att_per_cell" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(11)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
@@ -107,9 +107,9 @@ test "did_cs_pre_treatment_cells_remain_zero" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
     for k = 0; k < n_periods; k = k + 1 {
@@ -161,9 +161,9 @@ test "did_cs_data_groups_excludes_never_treated" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   let d : Array[Double] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-  let t_arr : Array[Int] = [0, 1, 2, 0, 1, 2]
-  let g_arr : Array[Int] = [0, 0, 0, 2, 2, 2] // g=0 is never-treated; g=2 is treated
-  let id_arr : Array[Int] = [0, 0, 0, 1, 1, 1]
+  let t_arr : Array[Int32] = [0, 1, 2, 0, 1, 2]
+  let g_arr : Array[Int32] = [0, 0, 0, 2, 2, 2] // g=0 is never-treated; g=2 is treated
+  let id_arr : Array[Int32] = [0, 0, 0, 1, 1, 1]
   let data = DoubleMLDIDCSData::new(
     Matrix::from_array(x_flat, n, p),
     y,
@@ -190,9 +190,9 @@ test "panic_did_cs_data_rejects_non_binary_d" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = [0.0, 0.0]
   let d : Array[Double] = [0.0, 0.5] // not binary
-  let t_arr : Array[Int] = [0, 1]
-  let g_arr : Array[Int] = [0, 0]
-  let id_arr : Array[Int] = [0, 0]
+  let t_arr : Array[Int32] = [0, 1]
+  let g_arr : Array[Int32] = [0, 0]
+  let id_arr : Array[Int32] = [0, 0]
   let _ = DoubleMLDIDCSData::new(
     Matrix::from_array(x_flat, n, p),
     y,
@@ -212,9 +212,9 @@ test "panic_did_cs_rejects_invalid_control_group" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = [0.0, 0.0]
   let d : Array[Double] = [0.0, 0.0]
-  let t_arr : Array[Int] = [0, 1]
-  let g_arr : Array[Int] = [0, 0]
-  let id_arr : Array[Int] = [0, 0]
+  let t_arr : Array[Int32] = [0, 1]
+  let g_arr : Array[Int32] = [0, 0]
+  let id_arr : Array[Int32] = [0, 0]
   let data = DoubleMLDIDCSData::new(
     Matrix::from_array(x_flat, n, p),
     y,

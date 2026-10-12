@@ -46,12 +46,12 @@
 /// caller's hash, so a switch from IID to clustered (or a
 /// different cluster partition) invalidates the cache.
 pub struct FitCache {
-  fold_ids : Array[Int]
+  fold_ids : Array[Int32]
   predictions : Array[Array[Double]]
-  fold_split_seed : Int
-  n_folds : Int
-  n_rep : Int
-  n_obs : Int
+  fold_split_seed : Int32
+  n_folds : Int32
+  n_rep : Int32
+  n_obs : Int32
   data_hash : UInt64
   hyperparams_hash : UInt64
   cluster_ids_hash : UInt64
@@ -102,10 +102,10 @@ pub fn FitCache::is_empty(self : FitCache) -> Bool {
 /// IID to clustered (or a different cluster partition).
 pub fn FitCache::is_valid(
   self : FitCache,
-  fold_split_seed : Int,
-  n_folds : Int,
-  n_rep : Int,
-  n_obs : Int,
+  fold_split_seed : Int32,
+  n_folds : Int32,
+  n_rep : Int32,
+  n_obs : Int32,
   data_hash : UInt64,
   hyperparams_hash : UInt64,
   cluster_ids_hash : UInt64,
@@ -156,7 +156,7 @@ fn fold_mix_double(h : UInt64, v : Double) -> UInt64 {
 ///|
 /// Mix an Int into the hash. Two's complement bit pattern gives
 /// a stable mapping for all integer values (including negatives).
-fn fold_mix_int(h : UInt64, v : Int) -> UInt64 {
+fn fold_mix_int(h : UInt64, v : Int32) -> UInt64 {
   fold_mix(h, v.to_uint64())
 }
 
@@ -175,8 +175,8 @@ pub fn hash_data(
   x : Matrix,
   y : Array[Double],
   d : Array[Double],
-  z? : Array[Double] = [],
-  cluster_vars? : Array[Int] = [],
+  z~ : Array[Double] = [],
+  cluster_vars~ : Array[Int32] = [],
 ) -> UInt64 {
   let mut h : UInt64 = 0xcbf29ce484222325UL // FNV-1a 64-bit offset basis
   // Dimensions + vector lengths first so a dimension change
@@ -242,7 +242,7 @@ pub fn hash_hyperparams(
   ml_g : LearnerDispatch,
   ml_m : LearnerDispatch,
   propensity_clip : Double,
-  ps_processor_config? : PSProcessorConfig? = None,
+  ps_processor_config~ : PSProcessorConfig? = None,
 ) -> UInt64 {
   let mut h : UInt64 = 0x84222325cbf29ce4UL
   h = fold_mix_int(h, estimator_kind.length())
@@ -344,12 +344,12 @@ fn learner_dispatch_tag(l : LearnerDispatch) -> UInt64 {
 /// estimator (see the `FitCache` docstring for the per-kind
 /// layout).
 pub fn FitCache::from_fit(
-  fold_ids : Array[Int],
+  fold_ids : Array[Int32],
   predictions : Array[Array[Double]],
-  fold_split_seed : Int,
-  n_folds : Int,
-  n_rep : Int,
-  n_obs : Int,
+  fold_split_seed : Int32,
+  n_folds : Int32,
+  n_rep : Int32,
+  n_obs : Int32,
   data_hash : UInt64,
   hyperparams_hash : UInt64,
   cluster_ids_hash : UInt64,
@@ -378,7 +378,7 @@ pub fn FitCache::from_fit(
 /// cluster redefinition (e.g. a switch from individual-level
 /// clustering to individual-by-time or a different
 /// treatment-period partition).
-pub fn hash_cluster_ids(cluster_ids : Array[Int]) -> UInt64 {
+pub fn hash_cluster_ids(cluster_ids : Array[Int32]) -> UInt64 {
   if cluster_ids.length() == 0 {
     return 0UL
   }

@@ -41,7 +41,7 @@
 // Asymmetric quadrant values make every such corruption visible in
 // `leaf_assignment`, `leaf_signal_mean`, and `predict`.
 // n = 300.
-fn v085_policy_dgp(seed : Int) -> (Matrix, Array[Double]) {
+fn v085_policy_dgp(seed : Int32) -> (Matrix, Array[Double]) {
   let n = 300
   let p = 2
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -74,7 +74,7 @@ fn v085_policy_dgp(seed : Int) -> (Matrix, Array[Double]) {
 /// White-box helper: `true` iff the two `Int` arrays agree
 /// elementwise. Used by `policy_tree_enable_memoize_smoke` to
 /// compare `leaf_assignment` / `leaf_count` across the two fits.
-fn v085_int_array_eq(a : Array[Int], b : Array[Int]) -> Bool {
+fn v085_int_array_eq(a : Array[Int32], b : Array[Int32]) -> Bool {
   if a.length() != b.length() {
     return false
   }

@@ -36,7 +36,7 @@
 // DGP from v0.82.0+ tests: Bernoulli D, y = 1.0 * D + 0.5 *
 // x[1] + noise, theta = 1.0. Same data drives all four APO
 // / APOS / PQ / QTE smoke tests.
-fn v084_apo_dgp(seed : Int) -> DoubleMLData {
+fn v084_apo_dgp(seed : Int32) -> DoubleMLData {
   let n = 400
   let p = 3
   let x_flat : Array[Double] = Array::make(n * p, 0.0)

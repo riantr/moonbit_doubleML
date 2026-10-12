@@ -58,7 +58,7 @@
 /// The shared DGP for the single-coefficient binary-treatment
 /// estimators. Binary `d`, linear outcome, so `y = d + X'1 + noise`
 /// with a true ATE of 1.0. IRM / PLR / CVAR all consume this shape.
-fn v099_dgp(seed : Int, n : Int, p : Int) -> DoubleMLData {
+fn v099_dgp(seed : Int32, n : Int32, p : Int32) -> DoubleMLData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)

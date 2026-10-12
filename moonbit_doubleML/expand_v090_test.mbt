@@ -82,7 +82,7 @@ fn expand_v090_near_zero(x : Double) -> Bool {
 /// propensity learner stays inside `(0, 1)` away from the clip),
 /// `y = 1.0 + 0.4 x_0 + 0.1 * sum_{j>0} x_j + 2.0 d + noise`.
 /// True ATE = 2.0.
-fn expand_v090_data(n : Int, p : Int) -> DoubleMLData {
+fn expand_v090_data(n : Int32, p : Int32) -> DoubleMLData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   for i = 0; i < n * p; i = i + 1 {
     x_flat[i] = chacha8_rng(11 + i).double()
@@ -406,7 +406,7 @@ test "bias_corrected_coef_is_a_documented_noop" {
 /// These are properties of the accumulator, not of the score
 /// order, so v0.90.0 must not move them.
 fn expand_v090_hc_identities(
-  n : Int,
+  n : Int32,
   se_hc0 : Double,
   se_hc1 : Double,
   se_hc2 : Double,
@@ -444,8 +444,8 @@ test "hc_identities_constant_psi_a_irm" {
     n_rep=1,
     seed=3141,
   ).fit()
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -483,8 +483,8 @@ test "hc_identities_nonconstant_psi_a_plr" {
   }
   inspect(varies, content="true")
   inspect(mean(plr.psi_a) < 0.0, content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -569,8 +569,8 @@ test "hc_identities_nonconstant_psi_a_iivm" {
     }
   }
   inspect(varies, content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 10

@@ -10,8 +10,8 @@
 ///   y_i = d_i * t_i * att + x_i[0] + 0.5 * x_i[1] + noise
 /// so the true ATT = att. Returns the data container.
 fn build_cross_section_dgp(
-  n : Int,
-  p : Int,
+  n : Int32,
+  p : Int32,
   att : Double,
 ) -> DoubleMLDIDCrossSectionData {
   // Use a fixed-seed chacha8 RNG for reproducibility.
@@ -19,7 +19,7 @@ fn build_cross_section_dgp(
   let x = Matrix::zeros(n, p)
   let y : Array[Double] = []
   let d : Array[Double] = []
-  let t : Array[Int] = []
+  let t : Array[Int32] = []
   let mut y_acc = y
   let mut d_acc = d
   let mut t_acc = t

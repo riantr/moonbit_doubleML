@@ -48,9 +48,9 @@ fn v1500_conforming_data() -> DoubleMLDIDCSData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(11)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
@@ -189,7 +189,7 @@ test "didcs_live_boundary_is_t_at_least_g" {
 test "didcs_recovers_true_att_on_a_convention_conforming_panel" {
   let f = v1500_conforming()
   // (g, t) -> true ATT: the effect switches on at k = g + 1.
-  let truth : Array[(Int, Int, Double)] = [
+  let truth : Array[(Int32, Int32, Double)] = [
     (0, 1, 0.0),
     (0, 2, 1.0),
     (0, 3, 1.0),
@@ -266,9 +266,9 @@ fn v1500_no_base_period() -> DoubleMLDIDCS {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 1)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 1)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(3141)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort

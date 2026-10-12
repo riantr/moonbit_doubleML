@@ -202,14 +202,14 @@ pub(all) struct TuneGridScore {
   /// Raw score per candidate, in the caller's `learners` order.
   scores : Array[Double]
   /// Index of the winning candidate under the caller's scoring rule.
-  best_index : Int
+  best_index : Int32
 }
 
 ///|
 /// Selection rule: lower score wins, except under `NegMSE` where the
 /// sign is already flipped to higher-is-better and the comparison
 /// inverts. Private to this file; `tune_score_grid` is the only caller.
-fn tune_argmin(scores : Array[Double], scoring : TuneScoring) -> Int {
+fn tune_argmin(scores : Array[Double], scoring : TuneScoring) -> Int32 {
   let mut bi = 0
   let mut bv = scores[0]
   if scoring is NegMSE {
@@ -276,8 +276,8 @@ pub fn tune_score_grid(
   x : Matrix,
   y : Array[Double],
   learners : Array[LearnerDispatch],
-  n_folds_tune : Int,
-  seed : Int,
+  n_folds_tune : Int32,
+  seed : Int32,
   scoring : TuneScoring,
 ) -> TuneGridScore {
   let n = y.length()
@@ -349,10 +349,10 @@ pub fn tune_score_grid(
 pub fn DoubleMLPLR::tune(
   self : DoubleMLPLR,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
-  score? : String = "partialling-out",
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
+  score~ : String = "partialling-out",
 ) -> DoubleMLPLR {
   try {
     require(param_set.length() > 0)

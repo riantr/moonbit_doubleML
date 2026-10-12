@@ -32,7 +32,7 @@ pub struct DoubleMLBLP {
   // `GainStatsSource::from_blp` to auto-populate the
   // sensitivity parameter benchmarks. Initialised to
   // zero in `new`; filled in by `fit`.
-  n_obs : Int
+  n_obs : Int32
   rss : Double
   var_y : Double
   // v0.64.0+: per-observation residual vector at the fitted
@@ -46,8 +46,8 @@ pub struct DoubleMLBLP {
   // empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.83.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.82.0
   // behavior bit-for-bit). When true, `fit()` caches the
@@ -67,8 +67,8 @@ pub extend DoubleMLBLP with @moonbitlang/core/debug.Debug::{to_repr}
 pub fn DoubleMLBLP::new(
   basis : Matrix,
   orth_signal : Array[Double],
-  cov_type? : String = "HC0",
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  cov_type~ : String = "HC0",
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLBLP {
   try {
     require(basis.rows() == orth_signal.length())
@@ -104,7 +104,7 @@ pub fn DoubleMLBLP::new(
 ///|
 pub fn DoubleMLBLP::fit(
   self : DoubleMLBLP,
-  ml_g? : LearnerDispatch = self.ml_g,
+  ml_g~ : LearnerDispatch = self.ml_g,
 ) -> DoubleMLBLP {
   // v0.83.0+: memoize check. BLP is a single-pass OLS
   // projection (no `n_folds` / `n_rep`), so the cache stores
@@ -343,6 +343,15 @@ pub fn DoubleMLBLP::has_cache(self : DoubleMLBLP) -> Bool {
 }
 
 ///|
+/// v0.153.0: the outcome learner (`ml_g`) recorded at construction and used by
+/// `fit` when no explicit argument is given. `DoubleMLBLP` stores the single
+/// slot it has -- there is no `ml_m`, since the BLP policy score has no
+/// propensity term.
+pub fn DoubleMLBLP::learner_g(self : DoubleMLBLP) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
 pub fn DoubleMLBLP::coef(self : DoubleMLBLP) -> Array[Double] {
   try {
     require(self.fitted)
@@ -366,7 +375,7 @@ pub fn DoubleMLBLP::se(self : DoubleMLBLP) -> Array[Double] {
 
 ///|
 /// v0.19.0+: sample size used by the BLP fit.
-pub fn DoubleMLBLP::n_obs(self : DoubleMLBLP) -> Int {
+pub fn DoubleMLBLP::n_obs(self : DoubleMLBLP) -> Int32 {
   try {
     require(self.fitted)
     self.n_obs
@@ -398,9 +407,9 @@ pub fn DoubleMLBLP::n_obs(self : DoubleMLBLP) -> Int {
 /// an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLBLP::bootstrap(
   self : DoubleMLBLP,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLBLP {
   try {
     require(self.fitted)
@@ -487,8 +496,8 @@ pub fn DoubleMLBLP::rss(self : DoubleMLBLP) -> Double {
 /// Calling on an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLBLP::sensitivity_analysis(
   self : DoubleMLBLP,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   let n_obs = self.orth_signal.length()
@@ -553,9 +562,9 @@ pub fn DoubleMLBLP::sensitivity_analysis(
 /// via `PreconditionError`.
 pub fn DoubleMLBLP::sensitivity_analysis_cluster(
   self : DoubleMLBLP,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   let n_obs = self.orth_signal.length()
@@ -711,7 +720,7 @@ pub fn DoubleMLBLP::predictions(self : DoubleMLBLP) -> Array[Double] {
 pub fn DoubleMLBLP::confint_joint(
   self : DoubleMLBLP,
   contrast : Matrix,
-  level? : Double = 0.95,
+  level~ : Double = 0.95,
 ) -> Array[(Double, Double)] {
   try {
     require(self.fitted)
@@ -873,7 +882,7 @@ pub fn DoubleMLBLP::confint_joint(
 ///
 /// Available before `fit` (it is a property of the design, not of
 /// the fit), mirroring `DoubleMLRDD::n_local_params`.
-pub fn DoubleMLBLP::n_params(self : DoubleMLBLP) -> Int {
+pub fn DoubleMLBLP::n_params(self : DoubleMLBLP) -> Int32 {
   self.basis.cols() + 1
 }
 
@@ -955,7 +964,7 @@ pub fn DoubleMLBLP::leverage(self : DoubleMLBLP) -> Array[Double] {
 /// HC0 is deliberately NOT guarded: on such a fit `fit` itself still
 /// reports a number, and `hac_se(HC0) == se` is the anchor this API
 /// promises -- refusing HC0 would break the one identity it makes.
-fn blp_hac_require_df(kind_name : String, n : Int, p1 : Int) -> Unit {
+fn blp_hac_require_df(kind_name : String, n : Int32, p1 : Int32) -> Unit {
   if n <= p1 {
     abort(
       "DoubleMLBLP::hac_se(" +
@@ -1146,7 +1155,7 @@ pub fn DoubleMLBLP::hac_se(
 /// `PreconditionError`.
 pub fn DoubleMLBLP::cluster_hac_se(
   self : DoubleMLBLP,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Array[Double] {
   try {
     require(self.fitted)
@@ -1170,7 +1179,7 @@ pub fn DoubleMLBLP::cluster_hac_se(
     for c = 0; c < n_clusters; c = c + 1 {
       cluster_sum[c] = Array::make(p1, 0.0)
     }
-    let cluster_size : Array[Int] = Array::make(n_clusters, 0)
+    let cluster_size : Array[Int32] = Array::make(n_clusters, 0)
     let xa = augment_with_intercept(self.basis)
     let ols_model = LinearRegression::new().fit(self.basis, self.orth_signal)
     let beta = ols_model.coefficients()
@@ -1232,8 +1241,8 @@ pub fn DoubleMLBLP::cluster_hac_se(
 /// Internal-only (not exposed in the public API) so the public
 /// `DoubleMLPolicyTree` signature is unchanged from the depth-1 era.
 pub enum PolicyTreeNode {
-  Leaf(Int)
-  Split(Int, Double, PolicyTreeNode, PolicyTreeNode)
+  Leaf(Int32)
+  Split(Int32, Double, PolicyTreeNode, PolicyTreeNode)
 } derive(Debug)
 
 ///|
@@ -1247,7 +1256,7 @@ pub extend PolicyTreeNode with @moonbitlang/core/debug.Debug::{to_repr}
 fn policy_tree_build(
   features : Matrix,
   signal : Array[Double],
-  depth : Int,
+  depth : Int32,
 ) -> PolicyTreeNode {
   let n = signal.length()
   if n == 0 {
@@ -1325,8 +1334,8 @@ fn policy_tree_build(
   // Build left and right sub-feature matrices / sub-signal arrays
   let left_signal : Array[Double] = Array::make(bnl, 0.0)
   let right_signal : Array[Double] = Array::make(bnr, 0.0)
-  let left_idx : Array[Int] = []
-  let right_idx : Array[Int] = []
+  let left_idx : Array[Int32] = []
+  let right_idx : Array[Int32] = []
   for i = 0; i < n; i = i + 1 {
     if features.get(i, bf) < bv {
       left_signal[left_idx.length()] = signal[i]
@@ -1359,7 +1368,7 @@ fn policy_tree_build(
 
 ///|
 /// Walk the policy tree to find the leaf treatment for one row.
-fn policy_tree_predict(node : PolicyTreeNode, x : Matrix, row : Int) -> Int {
+fn policy_tree_predict(node : PolicyTreeNode, x : Matrix, row : Int32) -> Int32 {
   match node {
     Leaf(t) => t
     Split(feature, threshold, left, right) =>
@@ -1379,7 +1388,7 @@ fn policy_tree_predict(node : PolicyTreeNode, x : Matrix, row : Int) -> Int {
 pub struct DoubleMLPolicyTree {
   features : Matrix
   orth_signal : Array[Double]
-  depth : Int
+  depth : Int32
   // The fitted tree root. `Leaf(_)` means a single treatment for
   // all rows (depth=1 with no useful split, or depth exhaustion).
   root : PolicyTreeNode
@@ -1389,10 +1398,10 @@ pub struct DoubleMLPolicyTree {
   //   - `left_treatment` / `right_treatment` are the leaf treatments
   //     at the depth-1 layer; for depth > 1 they are the leaf
   //     treatments of the immediate left/right children.
-  split_feature : Int
+  split_feature : Int32
   split_value : Double
-  left_treatment : Int
-  right_treatment : Int
+  left_treatment : Int32
+  right_treatment : Int32
   // v0.69.0+: leaf index per observation (length `n_obs`),
   // populated by `fit`. Used by `sensitivity_analysis` to
   // bucket the residuals and the Riesz-representer rows
@@ -1400,7 +1409,7 @@ pub struct DoubleMLPolicyTree {
   // index is a flat 0-based offset into the tree's
   // depth-first leaf enumeration (matching
   // `policy_tree_walk_leaves`).
-  leaf_assignment : Array[Int]
+  leaf_assignment : Array[Int32]
   // v0.69.0+: leaf means of `orth_signal`, indexed by leaf
   // assignment. Length = number of leaves in the fitted
   // tree. The per-leaf nuisance-persistence residual is
@@ -1410,7 +1419,7 @@ pub struct DoubleMLPolicyTree {
   // v0.69.0+: leaf sizes (counts), indexed by leaf
   // assignment. Length = number of leaves in the fitted
   // tree.
-  leaf_count : Array[Int]
+  leaf_count : Array[Int32]
   // v0.98.0+: HONESTY (Athey & Imbens 2016, PNAS 113(27):
   // 7353-7358). `honest = true` splits the training sample in
   // two: `policy_tree_build` sees ONLY `split_indices` (the
@@ -1456,8 +1465,8 @@ pub struct DoubleMLPolicyTree {
   // `leaf_se`. Users who need the precision should treat the
   // single honest tree as a diagnostic.
   honest : Bool
-  split_seed : Int
-  min_leaf_n : Int
+  split_seed : Int32
+  min_leaf_n : Int32
   // v0.98.0+: ORIGINAL row indices of the estimation half
   // (length `n_est = ceil(n_obs / 2)` under honesty). These are
   // the indices into `features` / `orth_signal`, NOT positions
@@ -1465,11 +1474,11 @@ pub struct DoubleMLPolicyTree {
   // estimation sample is the whole sample in identity order --
   // keeping it empty is what leaves the default path's
   // allocations (and therefore its numbers) untouched.
-  est_indices : Array[Int]
+  est_indices : Array[Int32]
   // v0.98.0+: ORIGINAL row indices of the splitting half
   // (length `n_split = floor(n_obs / 2)`). EMPTY when
   // `honest = false`.
-  split_indices : Array[Int]
+  split_indices : Array[Int32]
   // v0.98.0+: per-leaf standard errors of `leaf_signal_mean`
   // measured ON THE ESTIMATION HALF, length `n_leaves`. EMPTY
   // when `honest = false` -- see `leaf_se()` for why the
@@ -1555,10 +1564,10 @@ pub extend DoubleMLPolicyTree with @moonbitlang/core/debug.Debug::{to_repr}
 pub fn DoubleMLPolicyTree::new(
   features : Matrix,
   orth_signal : Array[Double],
-  depth? : Int = 1,
-  honest? : Bool = false,
-  split_seed? : Int = 2024,
-  min_leaf_n? : Int = 5,
+  depth~ : Int32 = 1,
+  honest~ : Bool = false,
+  split_seed~ : Int32 = 2024,
+  min_leaf_n~ : Int32 = 5,
 ) -> DoubleMLPolicyTree {
   try {
     require(features.rows() == orth_signal.length())
@@ -1605,7 +1614,7 @@ pub fn DoubleMLPolicyTree::new(
 ///|
 /// Extract the depth-1 left/right leaf treatments from the root. If
 /// the root is itself a leaf, both sides get the same treatment.
-fn policy_root_lr_treatments(root : PolicyTreeNode) -> (Int, Int) {
+fn policy_root_lr_treatments(root : PolicyTreeNode) -> (Int32, Int32) {
   match root {
     Leaf(t) => (t, t)
     Split(_, _, left, right) =>
@@ -1623,7 +1632,7 @@ fn policy_root_lr_treatments(root : PolicyTreeNode) -> (Int, Int) {
 /// list of leaf treatments in DFS order. v0.69.0+ used by
 /// `DoubleMLPolicyTree::fit` to populate
 /// `leaf_assignment` / `leaf_signal_mean` / `leaf_count`.
-fn policy_tree_walk_leaves(node : PolicyTreeNode, out : Array[Int]) -> Unit {
+fn policy_tree_walk_leaves(node : PolicyTreeNode, out : Array[Int32]) -> Unit {
   match node {
     Leaf(t) => out.push(t)
     Split(_, _, left, right) => {
@@ -1641,9 +1650,9 @@ fn policy_tree_walk_leaves(node : PolicyTreeNode, out : Array[Int]) -> Unit {
 fn policy_tree_leaf_index(
   node : PolicyTreeNode,
   x : Matrix,
-  row : Int,
-  acc : Int,
-) -> Int {
+  row : Int32,
+  acc : Int32,
+) -> Int32 {
   match node {
     Leaf(_) => acc
     Split(feature, threshold, left, right) =>
@@ -1661,7 +1670,7 @@ fn policy_tree_leaf_index(
 ///|
 /// Count the leaves in a tree subtree. Internal helper
 /// for `policy_tree_leaf_index`.
-fn policy_tree_count_leaves(node : PolicyTreeNode) -> Int {
+fn policy_tree_count_leaves(node : PolicyTreeNode) -> Int32 {
   match node {
     Leaf(_) => 1
     Split(_, _, left, right) =>
@@ -1674,7 +1683,7 @@ fn policy_tree_count_leaves(node : PolicyTreeNode) -> Int {
 /// memoization layer so the `Int`-typed policy-tree statistics
 /// (`leaf_assignment`, `leaf_count`) fit into the
 /// `Array[Array[Double]]` payload shape of `FitCache`.
-fn policy_tree_ints_to_doubles(xs : Array[Int]) -> Array[Double] {
+fn policy_tree_ints_to_doubles(xs : Array[Int32]) -> Array[Double] {
   let n = xs.length()
   let out : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
@@ -1688,9 +1697,9 @@ fn policy_tree_ints_to_doubles(xs : Array[Int]) -> Array[Double] {
 /// exact small integers widened to `Double`, so `to_int()` recovers
 /// them without loss. Used on the v0.85.0+ cache-hit path to
 /// restore `leaf_assignment` / `leaf_count`.
-fn policy_tree_ints_from_doubles(xs : Array[Double]) -> Array[Int] {
+fn policy_tree_ints_from_doubles(xs : Array[Double]) -> Array[Int32] {
   let n = xs.length()
-  let out : Array[Int] = Array::make(n, 0)
+  let out : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     out[i] = xs[i].to_int()
   }
@@ -1717,7 +1726,10 @@ fn policy_tree_ints_from_doubles(xs : Array[Double]) -> Array[Int] {
 /// its parent's and `policy_tree_cache_decode` can walk the
 /// pre-order array without any extra bookkeeping. The root always
 /// lands at slot 0.
-fn policy_tree_cache_encode(node : PolicyTreeNode, out : Array[Double]) -> Int {
+fn policy_tree_cache_encode(
+  node : PolicyTreeNode,
+  out : Array[Double],
+) -> Int32 {
   let slot = out.length() / 5
   out.push(0.0)
   out.push(0.0)
@@ -1746,7 +1758,10 @@ fn policy_tree_cache_encode(node : PolicyTreeNode, out : Array[Double]) -> Int {
 /// v0.85.0+: inverse of `policy_tree_cache_encode`. Rebuilds the
 /// `PolicyTreeNode` rooted at `slot` from the flat pre-order
 /// encoding produced by `policy_tree_cache_encode`.
-fn policy_tree_cache_decode(flat : Array[Double], slot : Int) -> PolicyTreeNode {
+fn policy_tree_cache_decode(
+  flat : Array[Double],
+  slot : Int32,
+) -> PolicyTreeNode {
   let b = slot * 5
   if flat[b] == 0.0 {
     Leaf(flat[b + 1].to_int())
@@ -1802,10 +1817,10 @@ fn policy_tree_cache_decode(flat : Array[Double], slot : Int) -> PolicyTreeNode 
 /// reported by `unreliable_leaves()` because
 /// `min_leaf_n >= 2 > n_k`.
 fn policy_tree_honest_leaf_se(
-  leaf_count : Array[Int],
+  leaf_count : Array[Int32],
   leaf_mean : Array[Double],
   signal : Array[Double],
-  leaf_assignment : Array[Int],
+  leaf_assignment : Array[Int32],
 ) -> Array[Double] {
   let n_leaves = leaf_count.length()
   let n_est = signal.length()
@@ -1862,12 +1877,12 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   } else {
     []
   }
-  let split_rows : Array[Int] = if self.honest {
+  let split_rows : Array[Int32] = if self.honest {
     halves[0].train_indices()
   } else {
     []
   }
-  let est_rows : Array[Int] = if self.honest {
+  let est_rows : Array[Int32] = if self.honest {
     halves[0].test_indices()
   } else {
     []
@@ -1952,7 +1967,7 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   // partition-count analogue. An empty cache fails the
   // `fold_ids.length() == n_obs` check first, so a
   // wrong-shape payload can never reach the restore path.
-  let n_leaves_hint : Int = if self.fit_cache.is_empty() {
+  let n_leaves_hint : Int32 = if self.fit_cache.is_empty() {
     0
   } else {
     self.fit_cache.predictions[0].length()
@@ -1985,12 +2000,12 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     // `est_indices` under honesty (and `leaf_assignment` on the
     // default path, where it is left where it was).
     let cached_leaf_se : Array[Double] = if self.honest { preds[5] } else { [] }
-    let cached_split : Array[Int] = if self.honest {
+    let cached_split : Array[Int32] = if self.honest {
       policy_tree_ints_from_doubles(preds[6])
     } else {
       []
     }
-    let cached_est : Array[Int] = if self.honest {
+    let cached_est : Array[Int32] = if self.honest {
       self.fit_cache.fold_ids
     } else {
       []
@@ -2026,12 +2041,12 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
   let (lt, rt) = policy_root_lr_treatments(root)
   // v0.69.0+: enumerate leaves in DFS order, populate
   // per-row leaf_assignment + per-leaf means + count.
-  let leaf_treatments : Array[Int] = []
+  let leaf_treatments : Array[Int32] = []
   policy_tree_walk_leaves(root, leaf_treatments)
   let n_leaves = leaf_treatments.length()
   let leaf_signal_sum : Array[Double] = Array::make(n_leaves, 0.0)
-  let leaf_count_arr : Array[Int] = Array::make(n_leaves, 0)
-  let leaf_assignment : Array[Int] = Array::make(n_est, 0)
+  let leaf_count_arr : Array[Int32] = Array::make(n_leaves, 0)
+  let leaf_assignment : Array[Int32] = Array::make(n_est, 0)
   // v0.98.0+: the tree built on the SPLITTING half is applied to
   // the ESTIMATION half by the existing `policy_tree_leaf_index`
   // walk -- that walk is what makes honesty work, and it is the
@@ -2090,7 +2105,7 @@ pub fn DoubleMLPolicyTree::fit(self : DoubleMLPolicyTree) -> DoubleMLPolicyTree 
     // slot records), and two extra payload slots carry `leaf_se`
     // and the splitting half. The default payload is byte-for-
     // byte the v0.85.0 list.
-    let fold_ids_slot : Array[Int] = if self.honest {
+    let fold_ids_slot : Array[Int32] = if self.honest {
       est_rows
     } else {
       leaf_assignment
@@ -2178,7 +2193,7 @@ pub fn DoubleMLPolicyTree::enable_honesty(
 /// cache exactly like toggling `honest` does.
 pub fn DoubleMLPolicyTree::enable_split_seed(
   self : DoubleMLPolicyTree,
-  seed : Int,
+  seed : Int32,
 ) -> DoubleMLPolicyTree {
   { ..self, split_seed: seed, }
 }
@@ -2190,7 +2205,7 @@ pub fn DoubleMLPolicyTree::enable_split_seed(
 /// of the memoize key.
 pub fn DoubleMLPolicyTree::set_min_leaf_n(
   self : DoubleMLPolicyTree,
-  n : Int,
+  n : Int32,
 ) -> DoubleMLPolicyTree {
   try {
     require(n >= 2)
@@ -2253,7 +2268,7 @@ pub fn DoubleMLPolicyTree::has_cache(self : DoubleMLPolicyTree) -> Bool {
 pub fn DoubleMLPolicyTree::predict(
   self : DoubleMLPolicyTree,
   x : Matrix,
-) -> Array[Int] {
+) -> Array[Int32] {
   try {
     require(self.fitted)
     let out = Array::make(x.rows(), 0)
@@ -2268,7 +2283,7 @@ pub fn DoubleMLPolicyTree::predict(
 }
 
 ///|
-pub fn DoubleMLPolicyTree::split_feature(self : DoubleMLPolicyTree) -> Int {
+pub fn DoubleMLPolicyTree::split_feature(self : DoubleMLPolicyTree) -> Int32 {
   try {
     require(self.fitted)
     self.split_feature
@@ -2313,7 +2328,7 @@ pub fn DoubleMLPolicyTree::is_honest(self : DoubleMLPolicyTree) -> Bool {
 /// excluded from `policy_value_se()`. Default `5`; set via
 /// `new(min_leaf_n=...)`. Requires `>= 2`. Readable before
 /// `fit()`.
-pub fn DoubleMLPolicyTree::min_leaf_n(self : DoubleMLPolicyTree) -> Int {
+pub fn DoubleMLPolicyTree::min_leaf_n(self : DoubleMLPolicyTree) -> Int32 {
   self.min_leaf_n
 }
 
@@ -2325,7 +2340,7 @@ pub fn DoubleMLPolicyTree::min_leaf_n(self : DoubleMLPolicyTree) -> Int {
 /// exhaustive of `range_indices(n_obs)`.
 pub fn DoubleMLPolicyTree::split_indices(
   self : DoubleMLPolicyTree,
-) -> Array[Int] {
+) -> Array[Int32] {
   self.split_indices
 }
 
@@ -2340,7 +2355,9 @@ pub fn DoubleMLPolicyTree::split_indices(
 /// `n_obs`: position `j` of `leaf_assignment` describes row
 /// `est_indices()[j]`. `leaf_influence` returns arrays of the same
 /// length, indexed the same way.
-pub fn DoubleMLPolicyTree::est_indices(self : DoubleMLPolicyTree) -> Array[Int] {
+pub fn DoubleMLPolicyTree::est_indices(
+  self : DoubleMLPolicyTree,
+) -> Array[Int32] {
   self.est_indices
 }
 
@@ -2420,11 +2437,11 @@ pub fn DoubleMLPolicyTree::leaf_se_reliable(self : DoubleMLPolicyTree) -> Bool {
 /// sample variance has zero degrees of freedom and does not exist.
 pub fn DoubleMLPolicyTree::unreliable_leaves(
   self : DoubleMLPolicyTree,
-) -> Array[Int] {
+) -> Array[Int32] {
   try {
     require(self.fitted)
     require(self.honest)
-    let out : Array[Int] = []
+    let out : Array[Int32] = []
     for k = 0; k < self.leaf_count.length(); k = k + 1 {
       if self.leaf_count[k] < self.min_leaf_n {
         out.push(k)
@@ -2444,7 +2461,7 @@ pub fn DoubleMLPolicyTree::unreliable_leaves(
 /// `honest = true` AND a completed `fit()`.
 pub fn DoubleMLPolicyTree::smallest_leaf_count(
   self : DoubleMLPolicyTree,
-) -> Int {
+) -> Int32 {
   try {
     require(self.fitted)
     require(self.honest)
@@ -2629,7 +2646,7 @@ pub fn DoubleMLPolicyTree::policy_value_se(self : DoubleMLPolicyTree) -> Double 
 /// rows), so this accessor refuses rather than pretending.
 pub fn DoubleMLPolicyTree::leaf_influence(
   self : DoubleMLPolicyTree,
-  leaf : Int,
+  leaf : Int32,
 ) -> Array[Double] {
   try {
     require(self.fitted)
@@ -2670,7 +2687,7 @@ pub fn DoubleMLPolicyTree::leaf_influence(
 /// rows it is computed from.
 pub fn DoubleMLPolicyTree::leaf_psi_a(
   self : DoubleMLPolicyTree,
-  leaf : Int,
+  leaf : Int32,
 ) -> Array[Double] {
   try {
     require(self.fitted)
@@ -2746,8 +2763,8 @@ pub fn DoubleMLPolicyTree::leaf_psi_a(
 /// `PreconditionError`.
 pub fn DoubleMLPolicyTree::sensitivity_analysis(
   self : DoubleMLPolicyTree,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.fitted)
   // v0.98.0+: WHICH ROWS, and WHICH psi_a. See the docstring for
@@ -2790,7 +2807,7 @@ pub fn DoubleMLPolicyTree::sensitivity_analysis(
     leaf_mean_per_row[i] = self.leaf_signal_mean[self.leaf_assignment[i]]
   }
   let residuals_all : Array[Double] = vector_subtract(sig, leaf_mean_per_row)
-  let residual_fill : Array[Int] = Array::make(n_leaves, 0)
+  let residual_fill : Array[Int32] = Array::make(n_leaves, 0)
   // Bucket residuals and psi_a per leaf, then call
   // `irm_style_sensitivity` once per leaf.
   for l = 0; l < n_leaves; l = l + 1 {

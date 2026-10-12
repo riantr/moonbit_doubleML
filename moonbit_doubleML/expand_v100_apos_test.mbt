@@ -113,7 +113,7 @@ fn expand_v100_close(x : Double, y : Double) -> Bool {
 /// Seeds 9101 / 9102 are outside the 8000-range used by
 /// `expand_v084_test.mbt`, so the datasets do not collide with
 /// that suite's.
-fn expand_v100_apos(seed : Int) -> DoubleMLAPOS {
+fn expand_v100_apos(seed : Int32) -> DoubleMLAPOS {
   DoubleMLAPOS::new(v084_apo_dgp(seed), [0.0, 1.0], n_folds=2, n_rep=1, seed~).fit()
 }
 
@@ -121,7 +121,11 @@ fn expand_v100_apos(seed : Int) -> DoubleMLAPOS {
 /// Treatment level `j`'s persisted `psi_b` row, built independently
 /// of the production slice helper so the field layout itself is
 /// pinned.
-fn expand_v100_psi_b_row(m : DoubleMLAPOS, j : Int, n : Int) -> Array[Double] {
+fn expand_v100_psi_b_row(
+  m : DoubleMLAPOS,
+  j : Int32,
+  n : Int32,
+) -> Array[Double] {
   let row : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
     row[i] = m.psi_b_flat[j * n + i]
@@ -132,9 +136,9 @@ fn expand_v100_psi_b_row(m : DoubleMLAPOS, j : Int, n : Int) -> Array[Double] {
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-4
 /// (`pooled[i] = i / 4`) cluster ids for a sample of `n`.
-fn expand_v100_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v100_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4

@@ -27,15 +27,15 @@ test "expand_unit_folds_to_rows_partition_is_row_complete" {
   // kfold puts {u0, u1} in fold 0 and {u2, u3} in fold 1,
   // which at the row level becomes {r0, r1, r4, r5} in fold 0
   // and {r2, r3, r6, r7} in fold 1.
-  let cluster : Array[Int] = [0, 0, 1, 1, 2, 2, 3, 3]
-  let row_unit : Array[Int] = [0, 0, 1, 1, 2, 2, 3, 3]
+  let cluster : Array[Int32] = [0, 0, 1, 1, 2, 2, 3, 3]
+  let row_unit : Array[Int32] = [0, 0, 1, 1, 2, 2, 3, 3]
   let folds_u = kfold(4, 2, 3141)
   let (folds_row, _unit_fold, _fold_n_units) = expand_unit_folds_to_rows(
     cluster, folds_u, row_unit,
   )
   inspect(folds_row.length(), content="2")
   // Every row 0..7 must appear exactly once across all folds.
-  let seen : Array[Int] = Array::make(8, 0)
+  let seen : Array[Int32] = Array::make(8, 0)
   for fold in folds_row {
     for i in fold.test_indices() {
       seen[i] = seen[i] + 1
@@ -59,8 +59,8 @@ test "expand_unit_folds_to_rows_no_unit_straddles_split" {
   // side of every split. For each fold, for each unit, the
   // intersection of `row_unit == u` with `test_indices` is
   // either empty or all-of-u.
-  let cluster : Array[Int] = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0]
-  let row_unit : Array[Int] = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0]
+  let cluster : Array[Int32] = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0]
+  let row_unit : Array[Int32] = [0, 1, 2, 0, 1, 2, 0, 1, 2, 0]
   let folds_u = kfold(3, 3, 7)
   let (folds_row, _, _) = expand_unit_folds_to_rows(cluster, folds_u, row_unit)
   for fold in folds_row {
@@ -94,8 +94,8 @@ test "expand_unit_folds_to_rows_no_unit_straddles_split" {
 test "expand_unit_folds_to_rows_fold_n_units_matches_unit_fold" {
   // The third return value (fold_n_units) must equal the
   // number of units in each unit-level test fold.
-  let cluster : Array[Int] = [0, 1, 2, 3, 4, 5, 6, 7]
-  let row_unit : Array[Int] = [0, 1, 2, 3, 4, 5, 6, 7]
+  let cluster : Array[Int32] = [0, 1, 2, 3, 4, 5, 6, 7]
+  let row_unit : Array[Int32] = [0, 1, 2, 3, 4, 5, 6, 7]
   let folds_u = kfold(8, 4, 99)
   let (_folds_row, _unit_fold, fold_n_units) = expand_unit_folds_to_rows(
     cluster, folds_u, row_unit,
@@ -115,8 +115,8 @@ test "build_row_unit_map_non_contiguous_unit_ids" {
   // ids {3, 5, 7, 11}). The mapping is positional, so the
   // output must still be [0, 1, 2, 3] for rows in cluster-id
   // order.
-  let cluster : Array[Int] = [3, 3, 5, 7, 7, 7, 11, 5, 3]
-  let uniq : Array[Int] = [3, 5, 7, 11]
+  let cluster : Array[Int32] = [3, 3, 5, 7, 7, 7, 11, 5, 3]
+  let uniq : Array[Int32] = [3, 5, 7, 11]
   let row_unit = build_row_unit_map(cluster, uniq)
   // Expected: [0, 0, 1, 2, 2, 2, 3, 1, 0]
   inspect(row_unit.length(), content="9")
@@ -137,8 +137,8 @@ test "build_row_unit_map_raises_on_missing_unit" {
   // ClusterDataError::MissingUnit variant (introduced in
   // v0.36.0 to make this data-error path testable). The
   // pre-v0.36.0 behaviour was an `abort()`.
-  let cluster : Array[Int] = [0, 1, 99]
-  let uniq : Array[Int] = [0, 1]
+  let cluster : Array[Int32] = [0, 1, 99]
+  let uniq : Array[Int32] = [0, 1]
   let raised = try {
     ignore(build_row_unit_map(cluster, uniq))
     false

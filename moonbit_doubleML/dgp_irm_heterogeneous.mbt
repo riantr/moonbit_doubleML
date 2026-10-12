@@ -29,9 +29,9 @@ struct IrmHeterogeneousData {
 
 ///|
 pub fn make_irm_heterogeneous_data(
-  n_obs : Int,
-  dim_x : Int,
-  seed : Int,
+  n_obs : Int32,
+  dim_x : Int32,
+  seed : Int32,
 ) -> IrmHeterogeneousData {
   let rng = chacha8_rng(seed)
   // 1. Pre-draw X-draw normals.

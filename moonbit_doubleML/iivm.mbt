@@ -7,7 +7,7 @@ pub struct DoubleMLIIVMData {
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
-  cluster_vars : Array[Int]
+  cluster_vars : Array[Int32]
 } derive(Debug)
 
 ///|
@@ -19,7 +19,7 @@ pub fn DoubleMLIIVMData::new(
   y : Array[Double],
   d : Array[Double],
   z : Array[Double],
-  cluster_vars? : Array[Int] = [],
+  cluster_vars~ : Array[Int32] = [],
 ) -> DoubleMLIIVMData {
   try {
     require(x.nrows == y.length())
@@ -36,12 +36,12 @@ pub fn DoubleMLIIVMData::new(
 }
 
 ///|
-pub fn DoubleMLIIVMData::n_obs(self : DoubleMLIIVMData) -> Int {
+pub fn DoubleMLIIVMData::n_obs(self : DoubleMLIIVMData) -> Int32 {
   self.x.rows()
 }
 
 ///|
-pub fn DoubleMLIIVMData::n_features(self : DoubleMLIIVMData) -> Int {
+pub fn DoubleMLIIVMData::n_features(self : DoubleMLIIVMData) -> Int32 {
   self.x.cols()
 }
 
@@ -54,7 +54,7 @@ pub fn DoubleMLIIVMData::is_cluster_data(self : DoubleMLIIVMData) -> Bool {
 
 ///|
 /// Length of the cluster_vars vector (0 when not clustered).
-pub fn DoubleMLIIVMData::n_cluster_vars(self : DoubleMLIIVMData) -> Int {
+pub fn DoubleMLIIVMData::n_cluster_vars(self : DoubleMLIIVMData) -> Int32 {
   self.cluster_vars.length()
 }
 
@@ -99,9 +99,9 @@ pub fn DoubleMLIIVMData::n_cluster_vars(self : DoubleMLIIVMData) -> Int {
 ///     se        = sqrt(sigma2).
 pub struct DoubleMLIIVM {
   data : DoubleMLIIVMData
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `kfold`, and the repetition count comes from
@@ -156,8 +156,8 @@ pub struct DoubleMLIIVM {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.82.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.81.0
   // behavior bit-for-bit). When true, `fit()` caches the last
@@ -175,14 +175,14 @@ pub extend DoubleMLIIVM with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLIIVM::new(
   data : DoubleMLIIVMData,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor_config? : PSProcessorConfig? = None,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_r? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_r~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLIIVM {
   try {
     require(n_folds >= 2)
@@ -238,8 +238,32 @@ pub fn DoubleMLIIVM::new(
 }
 
 ///|
-pub fn DoubleMLIIVM::n_obs(self : DoubleMLIIVM) -> Int {
+pub fn DoubleMLIIVM::n_obs(self : DoubleMLIIVM) -> Int32 {
   self.data.n_obs()
+}
+
+///|
+/// v0.153.0: the outcome learner (`ml_g`) recorded at construction and used by
+/// `fit` when no explicit argument is given. `DoubleMLIIVM` stored all three
+/// slots since v0.60.0 but, unlike ten sibling estimators, never exposed them.
+pub fn DoubleMLIIVM::learner_g(self : DoubleMLIIVM) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// v0.153.0: the treatment-propensity learner (`ml_m`) recorded at
+/// construction. See `learner_g`.
+pub fn DoubleMLIIVM::learner_m(self : DoubleMLIIVM) -> LearnerDispatch {
+  self.ml_m
+}
+
+///|
+/// v0.153.0: the selection-propensity learner (`ml_r`) recorded at
+/// construction. `DoubleMLIIVM` is the only estimator in the package with an
+/// `ml_r` slot; v0.137.0 classified this score as carrying a reciprocal in
+/// both directions, which the measurement then refuted -- it measured harmless.
+pub fn DoubleMLIIVM::learner_r(self : DoubleMLIIVM) -> LearnerDispatch {
+  self.ml_r
 }
 
 ///|
@@ -269,8 +293,8 @@ pub fn DoubleMLIIVM::se(self : DoubleMLIIVM) -> Double {
 /// accepted for API parity.
 pub fn DoubleMLIIVM::confint(
   self : DoubleMLIIVM,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -352,11 +376,11 @@ pub fn DoubleMLIIVM::has_cache(self : DoubleMLIIVM) -> Bool {
 /// the desired value `target`. Used to build the conditional sample
 /// splits for `g0/g1/r0/r1`.
 pub fn filter_by_value(
-  idx : Array[Int],
+  idx : Array[Int32],
   cond : Array[Double],
   target : Double,
-) -> Array[Int] {
-  let out : Array[Int] = []
+) -> Array[Int32] {
+  let out : Array[Int32] = []
   for i in idx {
     if cond[i] == target {
       out.push(i)
@@ -492,19 +516,22 @@ fn cross_fit_iivm(
 /// choice in upstream `doubleml`), not a cross-rep average.
 pub fn DoubleMLIIVM::fit(
   self : DoubleMLIIVM,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
-  ml_r? : LearnerDispatch = self.ml_r,
-  max_attempts? : Int = 1,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
+  ml_r~ : LearnerDispatch = self.ml_r,
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLIIVM {
   try {
     require(max_attempts >= 1)
     if self.data.is_cluster_data() {
       return self.fit_cluster(ml_g~, ml_m~, ml_r~, max_attempts~)
     }
-    ignore(ml_g)
-    ignore(ml_m)
-    ignore(ml_r)
+    // v0.153.0: a vestigial `ignore(ml_g)` / `ignore(ml_m)` stood here.
+    // Both learners are consumed below (the outcome nuisances and the
+    // propensity respectively), so the line claimed a drop that does not
+    // exist. All 11 such lines were removed package-wide after an audit
+    // found every one of them misleading; see
+    // `_verify/_ignore_audit_1530.py`.
     let n = self.n_obs()
     // v0.109.0: true when the caller supplied the split through
     // `set_sample_splitting`. It gates the two places where behaviour
@@ -576,7 +603,7 @@ pub fn DoubleMLIIVM::fit(
     let mut m : Array[Double] = Array::make(n, 0.0)
     let mut r0 : Array[Double] = Array::make(n, 0.0)
     let mut r1 : Array[Double] = Array::make(n, 0.0)
-    let mut fold_ids : Array[Int] = []
+    let mut fold_ids : Array[Int32] = []
     for r = 0; r < nrep; r = r + 1 {
       let (g0_r, g1_r, m_r, r0_r, r1_r) = if cache_hit && r == nrep - 1 {
         // Reuse the cached LAST-rep predictions.
@@ -605,7 +632,7 @@ pub fn DoubleMLIIVM::fit(
         )
         if r == nrep - 1 {
           // Build the row -> fold_id map for the cache write below.
-          let fid : Array[Int] = Array::make(n, 0)
+          let fid : Array[Int32] = Array::make(n, 0)
           for f = 0; f < folds.length(); f = f + 1 {
             for i in folds[f].test_indices() {
               fid[i] = f
@@ -759,7 +786,7 @@ fn DoubleMLIIVM::fit_cluster(
   ml_g~ : LearnerDispatch,
   ml_m~ : LearnerDispatch,
   ml_r~ : LearnerDispatch,
-  max_attempts? : Int = 1,
+  max_attempts~ : Int32 = 1,
 ) -> DoubleMLIIVM {
   try {
     require(max_attempts >= 1)
@@ -780,8 +807,8 @@ fn DoubleMLIIVM::fit_cluster(
           ")",
         )
     }
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n; i = i + 1 {
@@ -974,9 +1001,9 @@ fn DoubleMLIIVM::fit_cluster(
 /// `n_thetas=1` case.
 pub fn DoubleMLIIVM::bootstrap(
   self : DoubleMLIIVM,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLIIVM {
   try {
     require(self.fitted)
@@ -1051,9 +1078,9 @@ pub fn DoubleMLIIVM::bootstrap(
 pub fn DoubleMLIIVM::tune(
   self : DoubleMLIIVM,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLIIVM {
   try {
     require(param_set.length() > 0)
@@ -1095,8 +1122,8 @@ pub fn DoubleMLIIVM::tune(
 /// `irm_style_sensitivity` helper.
 pub fn DoubleMLIIVM::sensitivity_analysis(
   self : DoubleMLIIVM,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g0 = self.predictions_g0()
@@ -1120,9 +1147,9 @@ pub fn DoubleMLIIVM::sensitivity_analysis(
 /// `DoubleMLIIVMData::cluster_vars`.
 pub fn DoubleMLIIVM::sensitivity_analysis_cluster(
   self : DoubleMLIIVM,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g0 = self.predictions_g0()
@@ -1197,7 +1224,7 @@ pub fn DoubleMLIIVM::sandwich_se(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLIIVM::cluster_sandwich_se(
   self : DoubleMLIIVM,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

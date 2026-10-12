@@ -56,8 +56,8 @@
 /// targets.
 fn build_ssm_dgp(
   rng : @random.Rand,
-  n : Int,
-  p : Int,
+  n : Int32,
+  p : Int32,
   theta0 : Double,
 ) -> @moonbit_doubleML.DoubleMLSSMData {
   // Box-Muller pool, drawn up front so the per-row loop below makes
@@ -107,10 +107,10 @@ fn build_ssm_dgp(
 /// they agree, and a validator can assert it.
 fn ssm_line(
   tag : String,
-  n : Int,
-  p : Int,
+  n : Int32,
+  p : Int32,
   theta0 : Double,
-  seed : Int,
+  seed : Int32,
 ) -> String {
   let data = build_ssm_dgp(@moonbit_doubleML.chacha8_rng(seed), n, p, theta0)
   let fitted = @moonbit_doubleML.DoubleMLSSM::new(

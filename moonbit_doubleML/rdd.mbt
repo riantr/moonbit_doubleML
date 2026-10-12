@@ -29,7 +29,7 @@ pub fn DoubleMLRDDData::new(
 }
 
 ///|
-pub fn DoubleMLRDDData::n_obs(self : DoubleMLRDDData) -> Int {
+pub fn DoubleMLRDDData::n_obs(self : DoubleMLRDDData) -> Int32 {
   self.y.length()
 }
 
@@ -65,7 +65,7 @@ pub struct DoubleMLRDD {
   ml_g : LearnerDispatch
   coef : Double
   se : Double
-  n_local : Int
+  n_local : Int32
   // v0.69.0+: outcome-model residuals on the bandwidth-
   // restricted sample (left side then right side,
   // concatenated). Length `n_local`. Persisted for the
@@ -136,8 +136,8 @@ pub struct DoubleMLRDD {
   // empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.84.0+: memoization state. RDD is fundamentally a
   // local-polynomial estimator (no folds / no k-fold cross-
   // fit), so the cache stores the entire `(coef, se,
@@ -157,15 +157,15 @@ pub extend DoubleMLRDD with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLRDD::new(
   data : DoubleMLRDDData,
-  cutoff? : Double = 0.0,
-  bandwidth? : Double = 1.0,
+  cutoff~ : Double = 0.0,
+  bandwidth~ : Double = 1.0,
   // v0.110.0+: kernel menu, mirroring `rdrobust`'s `kernelfunc`. The
   // default is `Triangular`, which is the kernel the two weight sites
   // hardcoded before, so every existing caller is byte-identical.
-  kernel? : RDDKernel = Triangular,
-  fuzzy? : Bool = false,
-  cov_type? : String = "homoskedastic",
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  kernel~ : RDDKernel = Triangular,
+  fuzzy~ : Bool = false,
+  cov_type~ : String = "homoskedastic",
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLRDD {
   try {
     require(bandwidth > 0.0)
@@ -325,7 +325,7 @@ pub fn RDDKernel::weight(self : RDDKernel, u : Double, h : Double) -> Double {
 /// currently buy: it keeps the key's documented contract true rather
 /// than fixing a reachable staleness bug, because no public API can
 /// currently change a fitted model's kernel.
-pub fn RDDKernel::tag(self : RDDKernel) -> Int {
+pub fn RDDKernel::tag(self : RDDKernel) -> Int32 {
   match self {
     Triangular => 1
     Normal => 2
@@ -355,9 +355,9 @@ fn rdd_design(
   h : Double,
   which : Bool,
   kernel : RDDKernel,
-  order? : Int = 1,
-) -> (Matrix, Array[Double], Array[Double], Array[Int]) {
-  let ids : Array[Int] = []
+  order~ : Int32 = 1,
+) -> (Matrix, Array[Double], Array[Double], Array[Int32]) {
+  let ids : Array[Int32] = []
   for i = 0; i < data.n_obs(); i = i + 1 {
     let u = data.score[i] - cutoff
     if (side < 0.0 && u < 0.0) || (side > 0.0 && u >= 0.0) {
@@ -463,11 +463,11 @@ fn rdd_side(
   which : Bool,
   cov_type : String,
   kernel : RDDKernel,
-  order? : Int = 1,
+  order~ : Int32 = 1,
 ) -> (
   Double,
   Double,
-  Int,
+  Int32,
   Array[Double],
   Array[Double],
   Array[Double],
@@ -656,7 +656,7 @@ fn rdd_side(
 ///|
 pub fn DoubleMLRDD::fit(
   self : DoubleMLRDD,
-  ml_g? : LearnerDispatch = self.ml_g,
+  ml_g~ : LearnerDispatch = self.ml_g,
 ) -> DoubleMLRDD {
   try {
     require(self.bandwidth > 0.0)
@@ -940,13 +940,13 @@ pub fn DoubleMLRDD::fit(
 
 ///|
 /// Number of observations.
-pub fn DoubleMLRDD::n_obs(self : DoubleMLRDD) -> Int {
+pub fn DoubleMLRDD::n_obs(self : DoubleMLRDD) -> Int32 {
   self.data.n_obs()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLRDD::n_features(self : DoubleMLRDD) -> Int {
+pub fn DoubleMLRDD::n_features(self : DoubleMLRDD) -> Int32 {
   self.data.x.cols()
 }
 
@@ -1162,7 +1162,7 @@ pub fn DoubleMLRDD::confint(self : DoubleMLRDD) -> (Double, Double) {
 /// correction. The point estimate reads only `beta[0] + beta[1] *
 /// u`, but every column enters the WLS normal equations, so the
 /// fitted parameter count is `p1`, not 2.
-pub fn DoubleMLRDD::n_local_params(self : DoubleMLRDD) -> Int {
+pub fn DoubleMLRDD::n_local_params(self : DoubleMLRDD) -> Int32 {
   self.data.x.cols() + 2
 }
 
@@ -1254,9 +1254,9 @@ fn rdd_hc0_term(w : Double, m : Double, e : Double) -> Double {
 /// break the one identity this API promises.
 fn rdd_hac_require_df(
   kind_name : String,
-  n_left : Int,
-  n_right : Int,
-  p1 : Int,
+  n_left : Int32,
+  n_right : Int32,
+  p1 : Int32,
 ) -> Unit {
   if n_left <= p1 {
     abort(
@@ -1455,7 +1455,7 @@ pub fn DoubleMLRDD::hac_se(self : DoubleMLRDD, kind : SandwichKind) -> Double {
 /// and on `fuzzy = true`.
 pub fn DoubleMLRDD::cluster_hac_se(
   self : DoubleMLRDD,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)
@@ -1481,7 +1481,7 @@ pub fn DoubleMLRDD::cluster_hac_se(
     require(max_cid >= 0)
     let n_clusters = max_cid + 1
     let cluster_sum : Array[Double] = Array::make(n_clusters, 0.0)
-    let cluster_size : Array[Int] = Array::make(n_clusters, 0)
+    let cluster_size : Array[Int32] = Array::make(n_clusters, 0)
     for k = 0; k < n; k = k + 1 {
       let c = cluster_ids[k]
       let s = w[k] * self.hc0_m[k] * self.hc0_e[k]
@@ -1549,8 +1549,8 @@ pub fn DoubleMLRDD::cluster_hac_se(
 /// `SensitivityResult`.
 pub fn DoubleMLRDD::sensitivity_analysis(
   self : DoubleMLRDD,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   irm_style_sensitivity(self.coef, self.residuals, self.psi_a, cf_y, cf_d)
@@ -1586,9 +1586,9 @@ pub fn DoubleMLRDD::sensitivity_analysis(
 /// `require(n > 0)`.
 pub fn DoubleMLRDD::sensitivity_analysis_cluster(
   self : DoubleMLRDD,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let n_local = self.n_local
@@ -1677,7 +1677,7 @@ fn rdd_local_side_count(
   cutoff : Double,
   h : Double,
   side : Double,
-) -> Int {
+) -> Int32 {
   let mut count = 0
   for i = 0; i < data.n_obs(); i = i + 1 {
     let u = data.score[i] - cutoff
@@ -1713,9 +1713,9 @@ fn rdd_local_side_count(
 /// `boot_method` / `n_rep_boot` / `boot_seed` populated.
 pub fn DoubleMLRDD::bootstrap(
   self : DoubleMLRDD,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLRDD {
   try {
     require(self.fitted)
@@ -1778,7 +1778,7 @@ pub fn DoubleMLRDD::learner_g(self : DoubleMLRDD) -> LearnerDispatch {
 }
 
 ///|
-pub fn DoubleMLRDD::n_local(self : DoubleMLRDD) -> Int {
+pub fn DoubleMLRDD::n_local(self : DoubleMLRDD) -> Int32 {
   self.n_local
 }
 
@@ -1825,9 +1825,9 @@ pub fn DoubleMLRDD::n_local(self : DoubleMLRDD) -> Int {
 pub fn DoubleMLRDD::tune(
   self : DoubleMLRDD,
   param_set~ : Array[LearnerDispatch],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLRDD {
   try {
     require(param_set.length() > 0)
@@ -1981,8 +1981,8 @@ pub fn DoubleMLRDD::pilot_bandwidth(self : DoubleMLRDD) -> Double {
 ///genuinely different functions and `b` is not a rescaling of `h`.
 pub fn DoubleMLRDD::optimal_bias_bandwidth(
   self : DoubleMLRDD,
-  nnmatch? : Int = 3,
-  q? : Int = 2,
+  nnmatch~ : Int32 = 3,
+  q~ : Int32 = 2,
 ) -> Double {
   let h_pilot = rdd_pilot_bandwidth(self.data)
   let l_min = 0.5
@@ -2012,7 +2012,12 @@ pub fn DoubleMLRDD::optimal_bias_bandwidth(
 /// entry points, and exposing a bare one-sided limit estimate would
 /// invite a caller to difference two of them and assume it had an RD
 /// interpretation, which needs the kernel weights and both sides.
-fn rdd_limit(m : DoubleMLRDD, side : Double, h : Double, order : Int) -> Double {
+fn rdd_limit(
+  m : DoubleMLRDD,
+  side : Double,
+  h : Double,
+  order : Int32,
+) -> Double {
   let (xi, _, _, _, _, _, _, _) = rdd_side(
     m.ml_g,
     m.data,
@@ -2077,10 +2082,10 @@ fn rdd_limit(m : DoubleMLRDD, side : Double, h : Double, order : Int) -> Double 
 /// being selected rather than defaulted.
 pub fn DoubleMLRDD::bias(
   self : DoubleMLRDD,
-  b? : Double = 0.0,
-  rho? : Double = 1.0,
-  p? : Int = 1,
-  q? : Int = 2,
+  b~ : Double = 0.0,
+  rho~ : Double = 1.0,
+  p~ : Int32 = 1,
+  q~ : Int32 = 2,
 ) -> (Double, Double) {
   try {
     require(p >= 1)
@@ -2108,8 +2113,8 @@ pub fn DoubleMLRDD::bias(
 fn rdd_xi_bc_pair(
   m : DoubleMLRDD,
   b : Double,
-  p : Int,
-  q : Int,
+  p : Int32,
+  q : Int32,
 ) -> (Double, Double) raise PreconditionError {
   let (_, xi_l) = rdd_rb_side(
     m.data,
@@ -2213,10 +2218,10 @@ fn rdd_xi_bc_pair(
 /// standard error see `tau_bc_se_rb`.
 pub fn DoubleMLRDD::tau_bc(
   self : DoubleMLRDD,
-  b? : Double = 0.0,
-  rho? : Double = 1.0,
-  p? : Int = 1,
-  q? : Int = 2,
+  b~ : Double = 0.0,
+  rho~ : Double = 1.0,
+  p~ : Int32 = 1,
+  q~ : Int32 = 2,
 ) -> Double {
   try {
     require(p >= 1)
@@ -2254,9 +2259,9 @@ pub fn DoubleMLRDD::tau_bc(
 /// than re-derived inside a test.
 pub fn DoubleMLRDD::tau_bc_collapsed(
   self : DoubleMLRDD,
-  b? : Double = 0.0,
-  rho? : Double = 1.0,
-  q? : Int = 2,
+  b~ : Double = 0.0,
+  rho~ : Double = 1.0,
+  q~ : Int32 = 2,
 ) -> Double {
   try {
     require(rho > 0.0)
@@ -2307,9 +2312,9 @@ pub fn DoubleMLRDD::tau_bc_collapsed(
 /// v0.115.0 no longer holds.
 pub fn DoubleMLRDD::tau_bc_se(
   self : DoubleMLRDD,
-  b? : Double = 0.0,
-  rho? : Double = 1.0,
-  q? : Int = 2,
+  b~ : Double = 0.0,
+  rho~ : Double = 1.0,
+  q~ : Int32 = 2,
 ) -> Double {
   try {
     require(rho > 0.0)
@@ -2379,8 +2384,8 @@ pub fn DoubleMLRDD::tau_bc_se(
 pub fn DoubleMLRDD::bandwidth_mse(
   self : DoubleMLRDD,
   h : Double,
-  nnmatch? : Int = 3,
-  order? : Int = 1,
+  nnmatch~ : Int32 = 3,
+  order~ : Int32 = 1,
 ) -> Double {
   try {
     let h_pilot = rdd_pilot_bandwidth(self.data)
@@ -2452,8 +2457,8 @@ pub fn DoubleMLRDD::bandwidth_mse(
 pub fn DoubleMLRDD::bandwidth_variance_term(
   self : DoubleMLRDD,
   h : Double,
-  nnmatch? : Int = 3,
-  order? : Int = 1,
+  nnmatch~ : Int32 = 3,
+  order~ : Int32 = 1,
 ) -> Double {
   try {
     let n = self.n_obs()
@@ -2522,8 +2527,8 @@ pub fn DoubleMLRDD::bandwidth_variance_term(
 /// same outcome the pilot stage already had.
 pub fn DoubleMLRDD::bandwidth_sigma4(
   self : DoubleMLRDD,
-  nnmatch? : Int = 3,
-  order? : Int = 1,
+  nnmatch~ : Int32 = 3,
+  order~ : Int32 = 1,
 ) -> Double {
   let (_, sigma4) = rdd_pilot_stage(self, nnmatch, order)
   sigma4
@@ -2544,8 +2549,8 @@ pub fn DoubleMLRDD::bandwidth_sigma4(
 /// deprecated method syntax and does not bind as one.
 fn rdd_pilot_stage(
   m : DoubleMLRDD,
-  nnmatch : Int,
-  order : Int,
+  nnmatch : Int32,
+  order : Int32,
 ) -> (Double, Double) {
   try {
     require(nnmatch >= 1)
@@ -2625,7 +2630,7 @@ fn rdd_nn_matched_sigma4(
   res_l : Array[Double],
   u_r : Array[Double],
   res_r : Array[Double],
-  nnmatch : Int,
+  nnmatch : Int32,
 ) -> Double raise PreconditionError {
   let n_l = u_l.length()
   let n_r = u_r.length()
@@ -2641,7 +2646,7 @@ fn rdd_nn_matched_sigma4(
     idx[i] = i
   }
   let keys = u_r.copy()
-  idx.sort_by(fn(a : Int, b : Int) {
+  idx.sort_by(fn(a : Int32, b : Int32) {
     let ka = keys[a].abs()
     let kb = keys[b].abs()
     if ka < kb {
@@ -2771,7 +2776,7 @@ fn rdd_nn_matched_sigma4(
 pub fn nn_residual(
   x : Array[Double],
   y : Array[Double],
-  nnmatch? : Int = 3,
+  nnmatch~ : Int32 = 3,
 ) -> Array[Double] {
   try {
     let n = x.length()
@@ -2950,10 +2955,10 @@ fn rdd_rb_side(
   cutoff : Double,
   h : Double,
   b : Double,
-  p : Int,
-  q : Int,
+  p : Int32,
+  q : Int32,
   kernel : RDDKernel,
-  nnmatch : Int,
+  nnmatch : Int32,
   nn_res : Bool,
   need_residual : Bool,
 ) -> (Double, Double) raise PreconditionError {
@@ -2965,7 +2970,7 @@ fn rdd_rb_side(
   // where the kernel is 0 but the observation is still a live neighbour
   // for `nn_residual`.
   let gov = if b > h { b } else { h }
-  let ids : Array[Int] = []
+  let ids : Array[Int32] = []
   for i = 0; i < data.n_obs(); i = i + 1 {
     let u = data.score[i] - cutoff
     if (side < 0.0 && u < 0.0) || (side > 0.0 && u >= 0.0) {
@@ -2982,7 +2987,7 @@ fn rdd_rb_side(
   // into sides; `nn_residual` walks neighbourhoods in x order, so the
   // window rows must be in x order too.
   let score_ref = data.score
-  ids.sort_by(fn(a : Int, c : Int) {
+  ids.sort_by(fn(a : Int32, c : Int32) {
     let ka = score_ref[a]
     let kc = score_ref[c]
     if ka < kc {
@@ -3163,11 +3168,11 @@ fn rdd_rb_side(
 /// `invG_p`) and 1092-1097 (the meat and bread).
 pub fn DoubleMLRDD::tau_bc_se_rb(
   self : DoubleMLRDD,
-  b? : Double = 0.0,
-  rho? : Double = 1.0,
-  q? : Int = 2,
-  vce? : String = "nn",
-  nnmatch? : Int = 3,
+  b~ : Double = 0.0,
+  rho~ : Double = 1.0,
+  q~ : Int32 = 2,
+  vce~ : String = "nn",
+  nnmatch~ : Int32 = 3,
 ) -> Double {
   try {
     require(rho > 0.0)

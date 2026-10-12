@@ -19,7 +19,7 @@
 // verdict was drawn across several alphas rather than from one probe.
 
 ///|
-fn v1450_lplr_fit(n : Int, alpha : Double, seed : Int) -> DoubleMLLPLR {
+fn v1450_lplr_fit(n : Int32, alpha : Double, seed : Int32) -> DoubleMLLPLR {
   let dgp = make_lplr_LZZ2020(n, alpha, seed)
   DoubleMLLPLR::new(dgp.data_get(), n_folds=2, n_folds_inner=2, seed~).fit()
 }

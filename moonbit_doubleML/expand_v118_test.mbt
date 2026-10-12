@@ -67,7 +67,7 @@
 /// estimated and the fit is a genuine average. Group A is rows
 /// `[0, n/2)` with mean `~1.934`, group B is `[n/2, n)` with mean
 /// `~10.147`.
-fn v118_data(n : Int) -> (Matrix, Array[Double]) {
+fn v118_data(n : Int32) -> (Matrix, Array[Double]) {
   let x = Matrix::zeros(n, 1)
   let y = Array::make(n, 0.0)
   let rng = chacha8_rng(9091)
@@ -81,7 +81,7 @@ fn v118_data(n : Int) -> (Matrix, Array[Double]) {
 
 ///|
 /// Group A gets `k`, group B gets 1.
-fn v118_weights(n : Int, k : Double) -> Array[Double] {
+fn v118_weights(n : Int32, k : Double) -> Array[Double] {
   let w = Array::make(n, 1.0)
   for i = 0; i < n / 2; i = i + 1 {
     w[i] = k
@@ -91,7 +91,7 @@ fn v118_weights(n : Int, k : Double) -> Array[Double] {
 
 ///|
 /// Mean over `p[lo, hi)`.
-fn v118_mean(p : Array[Double], lo : Int, hi : Int) -> Double {
+fn v118_mean(p : Array[Double], lo : Int32, hi : Int32) -> Double {
   let mut s = 0.0
   for i = lo; i < hi; i = i + 1 {
     s = s + p[i]
@@ -101,7 +101,7 @@ fn v118_mean(p : Array[Double], lo : Int, hi : Int) -> Double {
 
 ///|
 /// The closed-form weighted mean this fixture should produce.
-fn v118_exact(y : Array[Double], n : Int, k : Double) -> Double {
+fn v118_exact(y : Array[Double], n : Int32, k : Double) -> Double {
   let m_a = v118_mean(y, 0, n / 2)
   let m_b = v118_mean(y, n / 2, n)
   (k * m_a * (n / 2).to_double() + m_b * (n / 2).to_double()) /
@@ -111,7 +111,7 @@ fn v118_exact(y : Array[Double], n : Int, k : Double) -> Double {
 ///|
 /// Separable binary design on a constant feature: group A `y = 1`,
 /// group B `y = 0`, so the weighted base rate is exactly `k/(k+1)`.
-fn v118_clf_data(n : Int) -> (Matrix, Array[Double]) {
+fn v118_clf_data(n : Int32) -> (Matrix, Array[Double]) {
   let x = Matrix::zeros(n, 1)
   let y = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {

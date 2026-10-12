@@ -76,7 +76,7 @@ fn approx_eq(a : Double, b : Double, tol : Double) -> Bool {
 }
 
 ///|
-fn fuzz_padjust(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_padjust(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let m = rng.int(limit=40) + 1
     let ps : Array[Double] = []
@@ -131,7 +131,7 @@ fn fuzz_padjust(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_kfold(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_kfold(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let n_obs = rng.int(limit=200) + 2
     let n_folds = rng.int(limit=n_obs - 1) + 2
@@ -171,7 +171,7 @@ fn fuzz_kfold(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_matmul(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_matmul(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let n = rng.int(limit=6) + 1
     let m = rng.int(limit=6) + 1
@@ -208,7 +208,7 @@ fn fuzz_matmul(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_linear_exact(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_linear_exact(rng : @random.Rand, trials : Int32) -> Unit {
   // OLS normal-equations invariant on overdetermined,
   // well-conditioned random designs. `LinearRegression`
   // augments with an intercept internally, so the fitted
@@ -270,7 +270,7 @@ fn fuzz_linear_exact(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_norm_inverse(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_norm_inverse(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let p = 0.001 + rng.double() * 0.998
     let z = @moonbit_doubleML.norm_ppf(p)
@@ -283,7 +283,7 @@ fn fuzz_norm_inverse(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_romano_wolf(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_romano_wolf(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let k = rng.int(limit=20) + 2
     let ts : Array[Double] = []
@@ -312,16 +312,16 @@ fn fuzz_romano_wolf(rng : @random.Rand, trials : Int) -> Unit {
 /// panel plus the row count each approach must produce.
 fn fuzz_plpr_panel(
   rng : @random.Rand,
-  n_units : Int,
-  n_periods : Int,
+  n_units : Int32,
+  n_periods : Int32,
 ) -> @moonbit_doubleML.DoubleMLPanelData {
   let p = 2
   let n = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let theta_true = 1.0
   for u = 0; u < n_units; u = u + 1 {
     let alpha = (rng.double() - 0.5) * 4.0
@@ -352,7 +352,7 @@ fn fuzz_plpr_panel(
 }
 
 ///|
-fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_plpr(rng : @random.Rand, trials : Int32) -> Unit {
   let approaches = ["cre_general", "cre_normal", "fd_exact", "wg_approx"]
   for trial = 0; trial < trials; trial = trial + 1 {
     let n_units = rng.int(limit=25) + 6
@@ -407,7 +407,7 @@ fn fuzz_plpr(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_lplr(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let n = rng.int(limit=100) + 60
     let seed = rng.int(limit=100_000)
@@ -505,7 +505,7 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_cluster_plr(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let n_units = rng.int(limit=20) + 8
     let n_periods = rng.int(limit=4) + 2
@@ -514,7 +514,7 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
     let x_flat : Array[Double] = Array::make(n * p, 0.0)
     let y : Array[Double] = Array::make(n, 0.0)
     let d : Array[Double] = Array::make(n, 0.0)
-    let cluster : Array[Int] = Array::make(n, 0)
+    let cluster : Array[Int32] = Array::make(n, 0)
     let ch_rng = @moonbit_doubleML.chacha8_rng(rng.int(limit=100_000))
     let pool : Array[Double] = []
     while pool.length() < n * p + n {
@@ -616,7 +616,7 @@ fn fuzz_cluster_plr(rng : @random.Rand, trials : Int) -> Unit {
 ///   - finite coef (no divide-by-zero in `var_est`),
 ///   - finite positive SE,
 ///   - same-seed cluster refit is bit-exact.
-fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_cluster_iv(rng : @random.Rand, trials : Int32) -> Unit {
   for trial = 0; trial < trials; trial = trial + 1 {
     let n_units = rng.int(limit=20) + 8
     let n_periods = rng.int(limit=3) + 2
@@ -626,7 +626,7 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
     let y : Array[Double] = Array::make(n, 0.0)
     let d : Array[Double] = Array::make(n, 0.0)
     let z : Array[Double] = Array::make(n, 0.0)
-    let cluster : Array[Int] = Array::make(n, 0)
+    let cluster : Array[Int32] = Array::make(n, 0)
     let ch_rng = @moonbit_doubleML.chacha8_rng(rng.int(limit=100_000))
     let pool : Array[Double] = []
     while pool.length() < n * p + n {
@@ -792,7 +792,7 @@ fn fuzz_cluster_iv(rng : @random.Rand, trials : Int) -> Unit {
 }
 
 ///|
-fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int) -> Unit {
+fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int32) -> Unit {
   // Small n_units (4-9) is where the v0.34.0 J-floor fires most
   // often: with so few units, the kfold over 2 folds produces
   // imbalanced fold sizes and mean(psi_deriv) is more likely to

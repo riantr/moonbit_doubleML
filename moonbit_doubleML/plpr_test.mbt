@@ -10,11 +10,11 @@
 /// closed-form learner fits them exactly out-of-fold up to
 /// sampling noise).
 fn build_panel_dgp(
-  n_units : Int,
-  n_periods : Int,
+  n_units : Int32,
+  n_periods : Int32,
   theta0 : Double,
-  seed : Int,
-  alpha_scale? : Double = 1.0,
+  seed : Int32,
+  alpha_scale~ : Double = 1.0,
 ) -> DoubleMLPanelData {
   let p = 2
   let rng = chacha8_rng(seed)
@@ -22,8 +22,8 @@ fn build_panel_dgp(
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     // Unit fixed effect and a time-invariant unit trait.
     let alpha = (rng.double() - 0.5) * 4.0 * alpha_scale
@@ -179,10 +179,10 @@ test "panic_plpr_single_row_units" {
   let mut y_acc : Array[Double] = y
   let d : Array[Double] = []
   let mut d_acc : Array[Double] = d
-  let t : Array[Int] = []
-  let mut t_acc : Array[Int] = t
-  let id : Array[Int] = []
-  let mut id_acc : Array[Int] = id
+  let t : Array[Int32] = []
+  let mut t_acc : Array[Int32] = t
+  let id : Array[Int32] = []
+  let mut id_acc : Array[Int32] = id
   for i = 0; i < n; i = i + 1 {
     x_flat[i * 2] = i.to_double()
     x_flat[i * 2 + 1] = 1.0
@@ -267,8 +267,8 @@ test "plpr_est_coef_cluster_imbalanced_folds" {
 test "plpr_var_est_cluster_reference" {
   let psi : Array[Double] = [1.0, -1.0, 2.0, 0.0, -1.0, 1.0, 0.0, 3.0]
   let psi_deriv : Array[Double] = [1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0]
-  let unit_rows : Array[Array[Int]] = [[0, 1], [2, 3], [4, 5], [6, 7]]
-  let unit_fold : Array[Int] = [0, 0, 1, 1]
+  let unit_rows : Array[Array[Int32]] = [[0, 1], [2, 3], [4, 5], [6, 7]]
+  let unit_fold : Array[Int32] = [0, 0, 1, 1]
   let se = var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 2, 2) catch {
     _ => 0.0 // unreachable for this input
   }
@@ -308,8 +308,8 @@ test "plpr_var_est_cluster_reference" {
 test "plpr_var_est_cluster_raises_j_too_small_on_zero_j" {
   let psi : Array[Double] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
   let psi_deriv : Array[Double] = [1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
-  let unit_rows : Array[Array[Int]] = [[0, 1], [2, 3], [4, 5], [6, 7]]
-  let unit_fold : Array[Int] = [0, 0, 1, 1]
+  let unit_rows : Array[Array[Int32]] = [[0, 1], [2, 3], [4, 5], [6, 7]]
+  let unit_fold : Array[Int32] = [0, 0, 1, 1]
   // Expected: the J-floor raises VarEstClusterError::JTooSmall.
   // Migration pattern (MoonBit deprecates `try?`):
   //   try expr catch { e => inspect(e, content=...) } noraise {

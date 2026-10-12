@@ -73,7 +73,7 @@
 /// Saturated-but-legitimate propensity (clamped linear index running past
 /// [0,1], so a regressor fit to the 0/1 target cannot stay in range), wide
 /// uniform outcome noise so the tau-quantile has room to move.
-fn v1390_data(n : Int, seed : Int) -> DoubleMLData {
+fn v1390_data(n : Int32, seed : Int32) -> DoubleMLData {
   let rng = chacha8_rng(seed)
   let x = Matrix::zeros(n, 2)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -97,7 +97,7 @@ fn v1390_data(n : Int, seed : Int) -> DoubleMLData {
 /// estimate. This is the defect's signature: a healthy sweep changes nearly
 /// every step, a saturated one changes NONE. Counted by exact inequality,
 /// because the defect IS an exact tie and a tolerance would hide it.
-fn v1390_changed_steps(vals : Array[Double]) -> Int {
+fn v1390_changed_steps(vals : Array[Double]) -> Int32 {
   let mut n = 0
   for k = 1; k < vals.length(); k = k + 1 {
     if vals[k] != vals[k - 1] {

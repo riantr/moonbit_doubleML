@@ -72,13 +72,13 @@
 /// Gradient-boosting classifier (binary log loss). `predict` returns
 /// `P(y = 1 | x)`.
 pub struct GBClassifier {
-  n_trees : Int
+  n_trees : Int32
   learning_rate : Double
-  max_depth : Int
-  min_samples_leaf : Int
-  mtry : Int // -1 = floor(sqrt(n_features)) at fit time
+  max_depth : Int32
+  min_samples_leaf : Int32
+  mtry : Int32 // -1 = floor(sqrt(n_features)) at fit time
   subsample : Double
-  bootstrap_seed : Int
+  bootstrap_seed : Int32
   // Fitted state.
   initial : Double // log-odds of the base rate
   base_rate : Double // pbar, kept for the accessor's sake
@@ -96,13 +96,13 @@ pub extend GBClassifier with Learner::{predict}
 
 ///|
 pub fn GBClassifier::new(
-  n_trees? : Int = 100,
-  learning_rate? : Double = 0.1,
-  max_depth? : Int = 3,
-  min_samples_leaf? : Int = 5,
-  mtry? : Int = -1,
-  subsample? : Double = 1.0,
-  bootstrap_seed? : Int = 3141,
+  n_trees~ : Int32 = 100,
+  learning_rate~ : Double = 0.1,
+  max_depth~ : Int32 = 3,
+  min_samples_leaf~ : Int32 = 5,
+  mtry~ : Int32 = -1,
+  subsample~ : Double = 1.0,
+  bootstrap_seed~ : Int32 = 3141,
 ) -> GBClassifier {
   {
     n_trees,
@@ -120,7 +120,7 @@ pub fn GBClassifier::new(
 
 ///|
 /// Number of trees in the fitted ensemble; 0 before fit.
-pub fn GBClassifier::n_trees(self : GBClassifier) -> Int {
+pub fn GBClassifier::n_trees(self : GBClassifier) -> Int32 {
   self.trees.length()
 }
 
@@ -209,7 +209,7 @@ pub fn GBClassifier::fit_weighted(
         hess[i] = p * (1.0 - p)
       }
       // Optional row subsampling (Friedman 1999 stochastic GB).
-      let sample_idx : Array[Int] = if self.subsample < 1.0 {
+      let sample_idx : Array[Int32] = if self.subsample < 1.0 {
         let n_sub = (n_obs.to_double() * self.subsample).to_int()
         let n_sub_eff = if n_sub < 1 {
           1

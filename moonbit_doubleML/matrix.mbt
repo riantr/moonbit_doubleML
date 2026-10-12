@@ -6,8 +6,8 @@
 /// operations needed for the closed-form LinearRegression learner and the
 /// DML score have been implemented.
 struct Matrix {
-  nrows : Int
-  ncols : Int
+  nrows : Int32
+  ncols : Int32
   data : Array[Double] // length = nrows * ncols, row-major
 } derive(Debug)
 
@@ -16,14 +16,14 @@ pub extend Matrix with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Create a zero matrix of the given shape.
-pub fn Matrix::zeros(nrows : Int, ncols : Int) -> Matrix {
+pub fn Matrix::zeros(nrows : Int32, ncols : Int32) -> Matrix {
   let data = Array::make(nrows * ncols, 0.0)
   { nrows, ncols, data, }
 }
 
 ///|
 /// Create a matrix filled with ones.
-pub fn Matrix::ones(nrows : Int, ncols : Int) -> Matrix {
+pub fn Matrix::ones(nrows : Int32, ncols : Int32) -> Matrix {
   let data = Array::make(nrows * ncols, 1.0)
   { nrows, ncols, data, }
 }
@@ -33,8 +33,8 @@ pub fn Matrix::ones(nrows : Int, ncols : Int) -> Matrix {
 /// match `nrows * ncols`.
 pub fn Matrix::from_array(
   data : Array[Double],
-  nrows : Int,
-  ncols : Int,
+  nrows : Int32,
+  ncols : Int32,
 ) -> Matrix {
   try {
     require(data.length() == nrows * ncols)
@@ -47,7 +47,7 @@ pub fn Matrix::from_array(
 
 ///|
 /// Create an `n x n` identity matrix.
-pub fn Matrix::identity(n : Int) -> Matrix {
+pub fn Matrix::identity(n : Int32) -> Matrix {
   let m = Matrix::zeros(n, n)
   for i = 0; i < n; i = i + 1 {
     m.data[i * n + i] = 1.0
@@ -57,25 +57,25 @@ pub fn Matrix::identity(n : Int) -> Matrix {
 
 ///|
 /// Number of rows (accessor — `nrows` is a private field).
-pub fn Matrix::rows(self : Matrix) -> Int {
+pub fn Matrix::rows(self : Matrix) -> Int32 {
   self.nrows
 }
 
 ///|
 /// Number of columns (accessor — `ncols` is a private field).
-pub fn Matrix::cols(self : Matrix) -> Int {
+pub fn Matrix::cols(self : Matrix) -> Int32 {
   self.ncols
 }
 
 ///|
 /// Element access (get). Panics if indices are out of range.
-pub fn Matrix::get(self : Matrix, i : Int, j : Int) -> Double {
+pub fn Matrix::get(self : Matrix, i : Int32, j : Int32) -> Double {
   self.data[i * self.ncols + j]
 }
 
 ///|
 /// Element access (set). Panics if indices are out of range.
-pub fn Matrix::set(self : Matrix, i : Int, j : Int, v : Double) -> Unit {
+pub fn Matrix::set(self : Matrix, i : Int32, j : Int32, v : Double) -> Unit {
   self.data[i * self.ncols + j] = v
 }
 

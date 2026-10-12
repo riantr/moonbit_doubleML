@@ -41,7 +41,7 @@
 ///|
 /// `y = 3.0*x0 + 0.1*u`, d Bernoulli. Linear and well-conditioned, so a
 /// coefficient is a meaningful thing to compare bit-for-bit.
-fn v109_plr_data(n : Int, p : Int, seed : Int) -> (DoubleMLData, Int) {
+fn v109_plr_data(n : Int32, p : Int32, seed : Int32) -> (DoubleMLData, Int32) {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
@@ -62,10 +62,10 @@ fn v109_plr_data(n : Int, p : Int, seed : Int) -> (DoubleMLData, Int) {
 /// The exact folds the estimator's own draw would produce for `n_rep`
 /// repetitions at `n_folds` folds, given the estimator's `seed`.
 fn v109_drawn_reps(
-  n : Int,
-  n_folds : Int,
-  n_rep : Int,
-  seed : Int,
+  n : Int32,
+  n_folds : Int32,
+  n_rep : Int32,
+  seed : Int32,
 ) -> Array[Array[Fold]] {
   let out : Array[Array[Fold]] = []
   for r = 0; r < n_rep; r = r + 1 {

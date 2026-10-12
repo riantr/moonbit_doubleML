@@ -165,7 +165,7 @@ pub fn vector_multiply(a : Array[Double], b : Array[Double]) -> Array[Double] {
 pub fn vector_divide(
   a : Array[Double],
   b : Array[Double],
-  eps? : Double = 1.0e-12,
+  eps~ : Double = 1.0e-12,
 ) -> Array[Double] {
   try {
     let n = a.length()

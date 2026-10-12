@@ -873,7 +873,7 @@ test "panic_gain_stats_from_blp_cv_repeated_zero_repeats" {
 /// predictable from the basis and collapsed the
 /// OOF residual variance to ~1e-25 — a vacuous
 /// test DGP).
-fn rng_double2(i : Int) -> Double {
+fn rng_double2(i : Int32) -> Double {
   let r = @moonbit_doubleML.chacha8_rng(i + 1)
   r.double() - 0.5
 }

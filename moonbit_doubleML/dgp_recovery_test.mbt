@@ -171,8 +171,8 @@ test "PLPR_DGP_estimator_recovers_within_band" {
   // unit id; both length n = n_units * n_periods.
   let y = data.y_get()
   let d = data.d_get()
-  let t_arr : Array[Int] = Array::make(y.length(), 0)
-  let id_arr : Array[Int] = Array::make(y.length(), 0)
+  let t_arr : Array[Int32] = Array::make(y.length(), 0)
+  let id_arr : Array[Int32] = Array::make(y.length(), 0)
   let n_periods = data.n_periods_get()
   let mut idx = 0
   for u = 0; u < data.n_units_get(); u = u + 1 {

@@ -119,7 +119,7 @@ fn v120_means(
 /// coefficient VALUES it can be gated exactly. An earlier version of
 /// this helper returned the ZERO indices instead, which made its length
 /// `p - nnz` and quietly compared the wrong thing.
-fn v120_support(v : Array[Double]) -> Array[Int] {
+fn v120_support(v : Array[Double]) -> Array[Int32] {
   let idx = []
   for i = 0; i < v.length(); i = i + 1 {
     if v[i] != 0.0 {
@@ -6669,11 +6669,11 @@ fn v120_f6_scaled_data_with_enet() -> (
 
 ///|
 /// Number of Ridge reference cases per fixture.
-const N_RIDGE_CASES : Int = 3
+const N_RIDGE_CASES : Int32 = 3
 
 ///|
 /// Number of ElasticNet reference cases per fixture.
-const N_ENET_CASES : Int = 5
+const N_ENET_CASES : Int32 = 5
 
 ///|
 /// Solver tolerance sklearn was fitted with, and this package
@@ -6683,24 +6683,24 @@ const N_ENET_CASES : Int = 5
 const V120_TOL : Double = 1.0e-10
 
 ///|
-const V120_MAX_ITER : Int = 1000000
+const V120_MAX_ITER : Int32 = 1000000
 
 ///|
 /// `cross_fit_predict_dispatch` wants folds. A deterministic
 /// contiguous partition: enough to prove the plumbing, without
 /// depending on a shuffle whose seed is not part of this gate.
-fn v120_kfold_folds(n : Int, k : Int) -> Array[Fold] {
+fn v120_kfold_folds(n : Int32, k : Int32) -> Array[Fold] {
   let out : Array[Fold] = []
   for f = 0; f < k; f = f + 1 {
     let test_lo = n * f / k
     let test_hi = n * (f + 1) / k
-    let train_idx : Array[Int] = []
+    let train_idx : Array[Int32] = []
     for i = 0; i < n; i = i + 1 {
       if i < test_lo || i >= test_hi {
         train_idx.push(i)
       }
     }
-    let test_idx : Array[Int] = []
+    let test_idx : Array[Int32] = []
     for i = test_lo; i < test_hi; i = i + 1 {
       test_idx.push(i)
     }

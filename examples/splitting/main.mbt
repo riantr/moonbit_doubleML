@@ -21,7 +21,7 @@
 // path would pass against a `check_sample_splitting` that validated nothing.
 
 ///|
-fn idx_range(lo : Int, hi : Int) -> Array[Int] {
+fn idx_range(lo : Int32, hi : Int32) -> Array[Int32] {
   let out = Array::make(hi - lo, 0)
   for i = 0; i < hi - lo; i = i + 1 {
     out[i] = lo + i
@@ -30,7 +30,11 @@ fn idx_range(lo : Int, hi : Int) -> Array[Int] {
 }
 
 ///|
-fn build_data(n : Int, p : Int, seed : Int) -> @moonbit_doubleML.DoubleMLData {
+fn build_data(
+  n : Int32,
+  p : Int32,
+  seed : Int32,
+) -> @moonbit_doubleML.DoubleMLData {
   let rng = @moonbit_doubleML.chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)

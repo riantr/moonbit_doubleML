@@ -46,20 +46,20 @@
 /// byte-identical data.
 fn build_panel(
   rng : @random.Rand,
-  n_units : Int,
-  n_periods : Int,
+  n_units : Int32,
+  n_periods : Int32,
   theta0 : Double,
 ) -> (
   @moonbit_doubleML.DoubleMLData,
   @moonbit_doubleML.DoubleMLData,
-  Array[Int],
+  Array[Int32],
 ) {
   let p = 3
   let n = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     // Unit-level random effects: D and Y are correlated WITHIN a
     // unit, which is exactly why the row-level SE is too small.
@@ -94,7 +94,7 @@ fn build_panel(
 
 ///|
 /// All-singleton cluster ids: one cluster per observation.
-fn singleton_ids(n : Int) -> Array[Int] {
+fn singleton_ids(n : Int32) -> Array[Int32] {
   let ids = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     ids[i] = i
@@ -106,10 +106,10 @@ fn singleton_ids(n : Int) -> Array[Int] {
 /// The three PLR SEs (plus the singleton control) at one size.
 fn plr_line(
   tag : String,
-  n_units : Int,
-  n_periods : Int,
-  seed : Int,
-  fit_seed : Int,
+  n_units : Int32,
+  n_periods : Int32,
+  seed : Int32,
+  fit_seed : Int32,
 ) -> String {
   let (row_data, cluster_data, cluster) = build_panel(
     @moonbit_doubleML.chacha8_rng(seed),
@@ -148,10 +148,10 @@ fn plr_line(
 /// two-way accessor in this package.
 fn pliv_line(
   tag : String,
-  n_obs : Int,
-  dim_x : Int,
-  seed : Int,
-  fit_seed : Int,
+  n_obs : Int32,
+  dim_x : Int32,
+  seed : Int32,
+  fit_seed : Int32,
 ) -> String {
   let cd = @moonbit_doubleML.make_pliv_multiway_cluster(n_obs, dim_x, 1.0, seed)
   let x = cd.x_get()

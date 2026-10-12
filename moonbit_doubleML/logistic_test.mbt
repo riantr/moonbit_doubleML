@@ -20,7 +20,7 @@ fn fill_normal_pool(rng : @random.Rand, pool : Array[Double]) -> Unit {
 ///|
 /// Average of the entries of `v` whose indices are in `idx`. Returns
 /// 0.0 on an empty index list.
-fn mean_at(v : Array[Double], idx : Array[Int]) -> Double {
+fn mean_at(v : Array[Double], idx : Array[Int32]) -> Double {
   if idx.length() == 0 {
     return 0.0
   }
@@ -36,9 +36,9 @@ fn mean_at(v : Array[Double], idx : Array[Int]) -> Double {
 /// chacha8 RNG seeded from an integer seed. Mirrors `kfold`'s
 /// permutation primitive so the split does not depend on platform
 /// `Random`.
-fn permute(n : Int, seed : Int) -> Array[Int] {
+fn permute(n : Int32, seed : Int32) -> Array[Int32] {
   let rng = chacha8_rng(seed)
-  let perm : Array[Int] = Array::makei(n, fn(i) { i })
+  let perm : Array[Int32] = Array::makei(n, fn(i) { i })
   for i = n - 1; i > 0; i = i - 1 {
     let j = rng.int(limit=i + 1)
     perm.swap(i, j)
@@ -75,8 +75,8 @@ test "logistic_recovers_linear_separable" {
   // is the training set, second half the test set.
   let perm = permute(n, 17)
   let half = n / 2
-  let train_idx : Array[Int] = Array::make(half, 0)
-  let test_idx : Array[Int] = Array::make(n - half, 0)
+  let train_idx : Array[Int32] = Array::make(half, 0)
+  let test_idx : Array[Int32] = Array::make(n - half, 0)
   for k = 0; k < half; k = k + 1 {
     train_idx[k] = perm[k]
   }
@@ -94,8 +94,8 @@ test "logistic_recovers_linear_separable" {
   //    built into the *training subset* (length half), not the full
   //    data, so we can index `p_train` and `y_train` directly.
   let p_train = fitted.predict(x_train)
-  let d0_idx : Array[Int] = []
-  let d1_idx : Array[Int] = []
+  let d0_idx : Array[Int32] = []
+  let d1_idx : Array[Int32] = []
   for k = 0; k < train_idx.length(); k = k + 1 {
     if y_train[k] == 0.0 {
       d0_idx.push(k)
@@ -147,7 +147,7 @@ test "logistic_predict_matches_sigmoid_of_linear" {
   let p_pred = fitted.predict(x)
   // spot-check rows 0, 7, 13, 41, 199 — diverse enough to hit both
   // classes for any non-trivial split.
-  let spot : Array[Int] = [0, 7, 13, 41, 199]
+  let spot : Array[Int32] = [0, 7, 13, 41, 199]
   for k = 0; k < spot.length(); k = k + 1 {
     let i = spot[k]
     let eta = coef[0] + coef[1] * x.get(i, 0) + coef[2] * x.get(i, 1)

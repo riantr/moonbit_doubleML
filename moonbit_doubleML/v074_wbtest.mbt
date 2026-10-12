@@ -48,7 +48,7 @@ test "lpq_sensitivity_cluster_returns_finite_result" {
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let z : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -108,7 +108,7 @@ test "pq_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -164,7 +164,7 @@ test "qte_sensitivity_cluster_returns_per_quantile_results" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -219,7 +219,7 @@ test "apos_sensitivity_cluster_returns_per_level_results" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -274,7 +274,7 @@ test "ssm_sensitivity_cluster_returns_finite_result" {
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let s : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -326,7 +326,7 @@ test "blp_sensitivity_cluster_returns_per_coef_results" {
   let rng = chacha8_rng(206)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -379,7 +379,7 @@ test "cvar_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5

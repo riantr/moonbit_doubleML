@@ -87,9 +87,9 @@ fn v1480_corr(xs : Array[Double], ys : Array[Double]) -> Double {
 fn v1480_cell_fit(
   fitted : DoubleMLDIDCS,
   d_val : Double,
-  t_val : Int,
+  t_val : Int32,
   g : Array[Double],
-) -> (Double, Double, Int) {
+) -> (Double, Double, Int32) {
   let n = fitted.data.y.length()
   let mut yv = 0.0
   let mut cnt = 0

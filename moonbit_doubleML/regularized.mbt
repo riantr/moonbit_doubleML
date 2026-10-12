@@ -87,7 +87,7 @@
 /// Outcome of one coordinate-descent solve.
 priv struct EnetSolution {
   coef : Array[Double]
-  n_iter : Int
+  n_iter : Int32
 }
 
 ///|
@@ -149,7 +149,7 @@ fn reg_fit_means(
 /// handing the weights to its Cython kernel (`sample_weight = sample_weight * (n_samples / sum(sample_weight))`).
 ///
 /// Returns `[]` when `w` is empty, which the kernel reads as "all ones".
-fn reg_mean_one_weights(w : Array[Double], n : Int) -> Array[Double] {
+fn reg_mean_one_weights(w : Array[Double], n : Int32) -> Array[Double] {
   if w_is_unweighted(w) {
     return []
   }
@@ -206,7 +206,7 @@ fn enet_coordinate_descent(
   l1_reg : Double,
   l2_reg : Double,
   tol : Double,
-  max_iter : Int,
+  max_iter : Int32,
 ) -> EnetSolution {
   let n = x.nrows
   let p = x.ncols
@@ -307,11 +307,11 @@ fn enet_fit_tail(
   self_alpha : Double,
   l1_ratio : Double,
   self_tol : Double,
-  self_max_iter : Int,
+  self_max_iter : Int32,
   x : Matrix,
   y : Array[Double],
   w : Array[Double],
-) -> (Array[Double], Double, Int) {
+) -> (Array[Double], Double, Int32) {
   let n = x.nrows
   let p = x.ncols
   for wi in w {
@@ -353,7 +353,7 @@ pub struct Ridge {
   alpha : Double
   coef_ : Array[Double]
   intercept_ : Double
-  n_features_ : Int
+  n_features_ : Int32
   fitted : Bool
 } derive(Debug)
 
@@ -363,13 +363,13 @@ pub extend Ridge with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 /// Build an un-fitted `Ridge`. `alpha` defaults to `1.0`, matching
 /// scikit-learn's `Ridge`.
-pub fn Ridge::new(alpha? : Double = 1.0) -> Ridge {
+pub fn Ridge::new(alpha~ : Double = 1.0) -> Ridge {
   { alpha, coef_: [], intercept_: 0.0, n_features_: 0, fitted: false, }
 }
 
 ///|
 /// Number of features seen at fit time (excluding the intercept).
-pub fn Ridge::n_features(self : Ridge) -> Int {
+pub fn Ridge::n_features(self : Ridge) -> Int32 {
   self.n_features_
 }
 
@@ -522,11 +522,11 @@ impl Learner for Ridge with fn predict(self, x) {
 pub struct Lasso {
   alpha : Double
   tol : Double
-  max_iter : Int
+  max_iter : Int32
   coef_ : Array[Double]
   intercept_ : Double
-  n_iter_ : Int
-  n_features_ : Int
+  n_iter_ : Int32
+  n_features_ : Int32
   fitted : Bool
 } derive(Debug)
 
@@ -537,9 +537,9 @@ pub extend Lasso with @moonbitlang/core/debug.Debug::{to_repr}
 /// Build an un-fitted `Lasso`. Defaults match scikit-learn: `alpha =
 /// 1.0`, `tol = 1e-4`, `max_iter = 1000`.
 pub fn Lasso::new(
-  alpha? : Double = 1.0,
-  tol? : Double = 1.0e-4,
-  max_iter? : Int = 1000,
+  alpha~ : Double = 1.0,
+  tol~ : Double = 1.0e-4,
+  max_iter~ : Int32 = 1000,
 ) -> Lasso {
   {
     alpha,
@@ -555,7 +555,7 @@ pub fn Lasso::new(
 
 ///|
 /// Number of features seen at fit time (excluding the intercept).
-pub fn Lasso::n_features(self : Lasso) -> Int {
+pub fn Lasso::n_features(self : Lasso) -> Int32 {
   self.n_features_
 }
 
@@ -564,7 +564,7 @@ pub fn Lasso::n_features(self : Lasso) -> Int {
 /// Exposed because `max_iter` is a real failure mode: a silent cap
 /// would show up as a plausible-but-wrong model and nothing else in
 /// the API would say so.
-pub fn Lasso::iterations(self : Lasso) -> Int {
+pub fn Lasso::iterations(self : Lasso) -> Int32 {
   self.n_iter_
 }
 
@@ -697,11 +697,11 @@ pub struct ElasticNet {
   alpha : Double
   l1_ratio : Double
   tol : Double
-  max_iter : Int
+  max_iter : Int32
   coef_ : Array[Double]
   intercept_ : Double
-  n_iter_ : Int
-  n_features_ : Int
+  n_iter_ : Int32
+  n_features_ : Int32
   fitted : Bool
 } derive(Debug)
 
@@ -711,10 +711,10 @@ pub extend ElasticNet with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 /// Build an un-fitted `ElasticNet`.
 pub fn ElasticNet::new(
-  alpha? : Double = 1.0,
-  l1_ratio? : Double = 0.5,
-  tol? : Double = 1.0e-4,
-  max_iter? : Int = 1000,
+  alpha~ : Double = 1.0,
+  l1_ratio~ : Double = 0.5,
+  tol~ : Double = 1.0e-4,
+  max_iter~ : Int32 = 1000,
 ) -> ElasticNet {
   {
     alpha,
@@ -731,13 +731,13 @@ pub fn ElasticNet::new(
 
 ///|
 /// Number of features seen at fit time (excluding the intercept).
-pub fn ElasticNet::n_features(self : ElasticNet) -> Int {
+pub fn ElasticNet::n_features(self : ElasticNet) -> Int32 {
   self.n_features_
 }
 
 ///|
 /// Number of coordinate-descent sweeps performed by the last fit.
-pub fn ElasticNet::iterations(self : ElasticNet) -> Int {
+pub fn ElasticNet::iterations(self : ElasticNet) -> Int32 {
   self.n_iter_
 }
 

@@ -17,9 +17,9 @@
 /// repetition. For multi-repetition partitioning, wrap calls in a
 /// loop over the seed.
 pub fn stratified_kfold(
-  stratum : Array[Int],
-  n_folds : Int,
-  seed : Int,
+  stratum : Array[Int32],
+  n_folds : Int32,
+  seed : Int32,
 ) -> Array[Fold] {
   try {
     let n_obs = stratum.length()
@@ -28,13 +28,13 @@ pub fn stratified_kfold(
     require(n_folds <= n_obs)
     // Sort indices by stratum label, then walk to extract per-stratum
     // slices. Use a parallel sort by pairs.
-    let pairs : Array[(Int, Int)] = Array::makei(n_obs, fn(i) {
+    let pairs : Array[(Int32, Int32)] = Array::makei(n_obs, fn(i) {
       (stratum[i], i)
     })
     pairs.sort_by(fn(a, b) { a.0.compare(b.0) })
     // Walk and find each stratum's start/end indices in `pairs`.
-    let mut acc_s : Array[Int] = []
-    let mut acc_e : Array[Int] = []
+    let mut acc_s : Array[Int32] = []
+    let mut acc_e : Array[Int32] = []
     let mut i = 0
     while i < n_obs {
       let s = pairs[i].0
@@ -49,14 +49,14 @@ pub fn stratified_kfold(
     let n_strata = acc_s.length()
     // Per-stratum folds. Each entry is a list of `n_folds` test index
     // arrays (in observation-space coordinates).
-    let per_stratum_folds : Array[Array[Array[Int]]] = []
+    let per_stratum_folds : Array[Array[Array[Int32]]] = []
     let mut per_stratum_folds_acc = per_stratum_folds
     for s = 0; s < n_strata; s = s + 1 {
       let start = acc_s[s]
       let end = acc_e[s]
       let stratum_size = end - start
       // Build the per-stratum index list (in `pairs` coordinates).
-      let stratum_idx : Array[Int] = []
+      let stratum_idx : Array[Int32] = []
       let mut stratum_idx_acc = stratum_idx
       for k = start; k < end; k = k + 1 {
         stratum_idx_acc = stratum_idx_acc + [k]
@@ -65,11 +65,11 @@ pub fn stratified_kfold(
       // the per-stratum seed (so each stratum gets its own shuffle).
       let stratum_folds = kfold(stratum_size, n_folds, seed + s + 1)
       // Translate each fold's test indices back to observation space.
-      let fold_test : Array[Array[Int]] = []
+      let fold_test : Array[Array[Int32]] = []
       let mut fold_test_acc = fold_test
       for f = 0; f < n_folds; f = f + 1 {
         let test_local = stratum_folds[f].test_indices()
-        let test_global : Array[Int] = []
+        let test_global : Array[Int32] = []
         let mut test_global_acc = test_global
         for k = 0; k < test_local.length(); k = k + 1 {
           let loc = test_local[k]
@@ -87,7 +87,7 @@ pub fn stratified_kfold(
     let combined : Array[Fold] = []
     let mut combined_acc = combined
     for f = 0; f < n_folds; f = f + 1 {
-      let test_idx : Array[Int] = []
+      let test_idx : Array[Int32] = []
       let mut test_idx_acc = test_idx
       for s = 0; s < n_strata; s = s + 1 {
         let stratum_fold_test = per_stratum_folds_acc[s][f]
@@ -96,7 +96,7 @@ pub fn stratified_kfold(
         }
       }
       // Train = all - test.
-      let train_idx : Array[Int] = []
+      let train_idx : Array[Int32] = []
       let mut train_idx_acc = train_idx
       for k = 0; k < n_obs; k = k + 1 {
         let mut in_test = false
@@ -128,9 +128,9 @@ pub fn stratified_kfold(
 /// `doubleml.utils.resampling.DoubleMLResampling` with
 /// `RepeatedKFold` and `stratify=None`.
 pub fn repeated_kfold(
-  n_obs : Int,
-  n_folds : Int,
-  n_rep : Int,
+  n_obs : Int32,
+  n_folds : Int32,
+  n_rep : Int32,
 ) -> Array[Array[Fold]] {
   try {
     require(n_obs > 0)

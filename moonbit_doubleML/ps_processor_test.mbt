@@ -323,11 +323,14 @@ test "ps_processor_isotonic_cv_user_folds" {
   let ps = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
   let treatment = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
   // User-supplied CV: 2 folds, test sets cover {0..4, 5..9}.
-  let train1 : Array[Int] = [5, 6, 7, 8, 9]
-  let test1 : Array[Int] = [0, 1, 2, 3, 4]
-  let train2 : Array[Int] = [0, 1, 2, 3, 4]
-  let test2 : Array[Int] = [5, 6, 7, 8, 9]
-  let cv : Array[(Array[Int], Array[Int])] = [(train1, test1), (train2, test2)]
+  let train1 : Array[Int32] = [5, 6, 7, 8, 9]
+  let test1 : Array[Int32] = [0, 1, 2, 3, 4]
+  let train2 : Array[Int32] = [0, 1, 2, 3, 4]
+  let test2 : Array[Int32] = [5, 6, 7, 8, 9]
+  let cv : Array[(Array[Int32], Array[Int32])] = [
+    (train1, test1),
+    (train2, test2),
+  ]
   let out = psp.adjust_ps(ps, treatment, cv=Some(cv))
   inspect(out.length(), content="10")
   // Output must lie in [0.05, 0.95] after clip.
@@ -435,7 +438,7 @@ test "isotonic_calibrate_cv_raises_incomplete_partition" {
   // This is "valid" MoonBit syntax (fold covers some indices) but
   // triggers the IncompleteCVPartition path because index 4 is never
   // in any test_idx.
-  let malformed_cv : Array[(Array[Int], Array[Int])] = [([4], [0, 1, 2, 3])]
+  let malformed_cv : Array[(Array[Int32], Array[Int32])] = [([4], [0, 1, 2, 3])]
   try ignore(isotonic_calibrate_cv(x, y, Some(malformed_cv))) catch {
     CalibrationFittingError::IncompleteCVPartition => ()
   } noraise {

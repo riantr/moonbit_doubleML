@@ -26,10 +26,10 @@ struct PlivData {
 
 ///|
 pub fn make_pliv_CHS2015(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> PlivData {
   let rng = chacha8_rng(seed)
   // 1. Pre-draw X-draw normals.
@@ -129,10 +129,10 @@ pub fn PlivData::z_get(self : PlivData) -> Array[Double] {
 /// theta, seed)` but named for parity with the upstream
 /// factory helper.
 pub fn make_pliv_data(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> PlivData {
   make_pliv_CHS2015(n_obs, dim_x, theta, seed)
 }

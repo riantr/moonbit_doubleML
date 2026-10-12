@@ -49,9 +49,9 @@
 
 ///|
 fn v108_dgp(
-  n : Int,
-  p : Int,
-  seed : Int,
+  n : Int32,
+  p : Int32,
+  seed : Int32,
 ) -> (Matrix, Array[Double], Array[Double]) {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -324,8 +324,8 @@ test "v108_plpr_tune_winner_lands_in_learner" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     for k = 0; k < n_periods; k = k + 1 {
       let row = u * n_periods + k

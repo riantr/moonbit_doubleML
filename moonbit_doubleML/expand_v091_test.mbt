@@ -89,7 +89,7 @@ fn expand_v091_close(x : Double, y : Double) -> Bool {
 /// True ATE = 2.0. Identical to `expand_v090_data` (it must be:
 /// these two files bracket the same release and the numbers are
 /// comparable).
-fn expand_v091_data(n : Int, p : Int) -> DoubleMLData {
+fn expand_v091_data(n : Int32, p : Int32) -> DoubleMLData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   for i = 0; i < n * p; i = i + 1 {
     x_flat[i] = chacha8_rng(11 + i).double()
@@ -116,7 +116,7 @@ fn expand_v091_data(n : Int, p : Int) -> DoubleMLData {
 /// `d = 1{0.5 z + v > 0}`, `y = 1.0 * d + x @ 1 + eps`.
 /// A second non-constant-`psi_a` estimator, independent of the
 /// PLR learner path. True LATE = 1.0.
-fn expand_v091_iivm_data(n : Int, p : Int) -> DoubleMLIIVMData {
+fn expand_v091_iivm_data(n : Int32, p : Int32) -> DoubleMLIIVMData {
   let rng = chacha8_rng(1111)
   let pool : Array[Double] = []
   while pool.length() < n * p + 2 * n {
@@ -163,9 +163,9 @@ fn expand_v091_iivm_data(n : Int, p : Int) -> DoubleMLIIVMData {
 ///|
 /// All-singleton (`singleton[i] = i`) and pooled-in-blocks-of-4
 /// (`pooled[i] = i / 4`) cluster ids for a sample of `n`.
-fn expand_v091_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v091_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -184,7 +184,7 @@ fn expand_v091_old_accumulator(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
-  n_obs : Int,
+  n_obs : Int32,
 ) -> Double {
   let mut acc = 0.0
   for i = 0; i < n_obs; i = i + 1 {

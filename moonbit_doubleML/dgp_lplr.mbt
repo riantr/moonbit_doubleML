@@ -34,7 +34,7 @@ struct LplrData {
 
 ///|
 /// Generate the LPLR LZZ2020 DGP.
-pub fn make_lplr_LZZ2020(n : Int, alpha : Double, seed : Int) -> LplrData {
+pub fn make_lplr_LZZ2020(n : Int32, alpha : Double, seed : Int32) -> LplrData {
   let p = 6
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)

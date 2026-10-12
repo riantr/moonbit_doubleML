@@ -68,7 +68,7 @@ pub fn ConstantLearner::fit(
   // shape on `self` so subsequent `predict` calls can short-circuit
   // (no actual training occurs; the predictor is constant).
   // For now, we just consume the inputs and return self.
-  let _n : Int = x.rows() * y.length()
+  let _n : Int32 = x.rows() * y.length()
   let _ = _n
   self
 }
@@ -116,7 +116,7 @@ pub fn NoopLearner::fit(
   // Same as ConstantLearner::fit: touch the inputs so the
   // compiler doesn't flag the impl body as unused, then
   // return self.
-  let _n : Int = x.rows() * y.length()
+  let _n : Int32 = x.rows() * y.length()
   let _ = _n
   self
 }
@@ -318,7 +318,7 @@ pub fn cross_fit_predict_dispatch(
   x : Matrix,
   y : Array[Double],
   folds : Array[Fold],
-  sample_weight? : Array[Double] = [],
+  sample_weight~ : Array[Double] = [],
 ) -> Array[Double] {
   match learner {
     LinearRegression(lr) => cross_fit_predict(lr, x, y, folds, sample_weight~)
@@ -344,7 +344,7 @@ pub fn cross_fit_predict_dispatch(
 ///
 /// No public row-subset matrix helper existed, and building one would be a
 /// wider API change than this needs; the gather is two lines and stays local.
-fn gather_rows(x : Matrix, indices : Array[Int], p : Int) -> Array[Double] {
+fn gather_rows(x : Matrix, indices : Array[Int32], p : Int32) -> Array[Double] {
   let out : Array[Double] = Array::make(indices.length() * p, 0.0)
   for k = 0; k < indices.length(); k = k + 1 {
     let r = indices[k]
@@ -382,7 +382,7 @@ pub fn cross_fit_predict_conditional_dispatch(
   x : Matrix,
   y : Array[Double],
   folds : Array[Fold],
-  train_cond : Array[Int],
+  train_cond : Array[Int32],
 ) -> Array[Double] {
   let n = y.length()
   let p = x.cols()
@@ -397,7 +397,7 @@ pub fn cross_fit_predict_conditional_dispatch(
       continue
     }
     let tr_all = folds[f].train_indices()
-    let mut tr_idx : Array[Int] = []
+    let mut tr_idx : Array[Int32] = []
     for i in tr_all {
       if cond[i] {
         tr_idx = tr_idx + [i]

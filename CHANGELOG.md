@@ -9,6 +9,143 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.153.0] — every learner default in the package is now observable
+
+The `ml_m` default queue is closed: v0.132.0 / v0.134.0 / v0.135.0 migrated
+`DoubleMLIRM` / `DoubleMLAPO` / `DoubleMLAPOS`, v0.136.0 abandoned
+`DoubleMLDIDBinary` on measurement, v0.137.0 measured all eleven remaining
+defaults one by one, and v0.138.0 acted on the only measured hazard
+(`DoubleMLSSM`). So this release starts from a fresh question: **if a caller
+passes no learner at all, can they find out what they got?**
+
+### Measured, not assumed
+
+`_verify/_enum_defaults_1530.py` parses every `DoubleMLXxx::new` signature
+(balanced-paren slicing, not grep) across 213 `.mbt` files: 34 constructors,
+27 learner default sites. Auditing those against a third axis — does the struct
+*store* the learner, does the estimator *expose* it — split the 14
+learner-taking estimators three ways:
+
+| group | count | estimators |
+|---|---|---|
+| stores **and** exposes | 10 | APO, APOS, CVAR, DIDCrossSection, DIDMulti, IRM, LPLR, PQ, QTE, RDD |
+| stores, never exposes | 4 | BLP, DID, IIVM, SSM |
+| **neither** | 3 | DIDCS, DIDCSBinary, DIDBinary |
+
+The bottom row had **no `ml_g` / `ml_m` field on the struct at all**. The
+learner existed only as a `::fit` argument defaulting to OLS on every call, so
+a fitted `DoubleMLDIDCS` could not report which learners produced it, and a
+constructor-level audit of learner defaults was structurally blind to exactly
+those three.
+
+### Fixed
+
+`DoubleMLDIDCS`, `DoubleMLDIDCSBinary` and `DoubleMLDIDBinary` now take
+`ml_g` / `ml_m` in `::new`, store them, expose `learner_g()` / `learner_m()`,
+and default `fit`'s parameters to `self.ml_g` / `self.ml_m`. `DoubleMLBLP`,
+`DoubleMLDID`, `DoubleMLIIVM` and `DoubleMLSSM` gain the accessors they never
+had, plus `learner_r` on IIVM — the package's only third slot.
+
+**The default values are unchanged (OLS for both), so no existing call site
+moves.** That is a gate, not a claim: `v1530_default_path_is_identical_to_an_explicit_ols_pair`
+compares the implicit default path against an explicitly-OLS pair and fails if
+the `::new` default is moved.
+
+The census now reads **15 `ml_g` + 15 `ml_m` + 2 `ml_l` + 1 `ml_r` = 33 slots,
+33 accessors, no exceptions**. The `ml_g` / `ml_m` counts moving from 12 / 12
+to 15 / 15 *is* the three DID constructors acquiring the parameter they never
+had.
+
+### Three comments that asserted things the code contradicted
+
+The same audit surfaced documentation that misdescribes its own function.
+`ignore` is a no-op, so nothing breaks — but each of these claims a dropped
+parameter or a hardcoded learner when the opposite is true:
+
+- **`did_cs.mbt:1129`** — a vestigial `ignore(ml_g)` sat directly above the
+  v0.146.0 note explaining that `ml_m` had *stopped* being ignored, so the pair
+  read as "both learners are discarded here". `ml_g` is used four times later
+  in the same function. This one had already produced a phantom audit finding
+  during this release before it was removed.
+- **`did_cs_binary.mbt:11-23`** — the header's "Simplifications vs. upstream"
+  bullet claimed `ml_g` / `ml_m` "are both collapsed to the same closed-form
+  `LinearRegression` learner ... pluggable learners can be added in a later
+  release". True at v0.51.0, stale from **v0.62.0**, which made both slots
+  pluggable — the file's own comments at `:271-273` and `:288-290` already said
+  so. The stale header is also what makes the OLS default look like a
+  deliberate design choice instead of the observability hole above.
+- **11 `ignore(ml_g)` / `ignore(ml_m)` lines** across `apo.mbt`, `did.mbt`,
+  `did_binary.mbt`, `iivm.mbt`, `ssm.mbt`. `_verify/_ignore_audit_1530.py`
+  counts identifier uses after each one: **all 11 are misleading**, every one
+  used 1-4 times later in the same function. All removed.
+
+### `moon fmt`: 156 files, and the gate that forced the question
+
+`moon fmt --check` was failing on **committed** files this release never
+touched — 9 under `examples/` plus `apo_test.mbt` — because moon
+`0.1.20261012` rewrites `Int` to `Int32`, and CI installs unpinned `latest`.
+Since those files sit at their v0.152.0 committed state, **the released tag
+fails this gate today**: v0.152.0 shipped green hours before that formatter
+change landed.
+
+The `--check` output showed 10 files. Running `moon fmt` touched **156** — the
+check output was capped and was never the real blast radius. Measured around
+the rewrite (`_verify/_fmt_snapshot_1530.py`, SHA-256 per file):
+**0 CRLF line-ends introduced, 0 BOMs introduced**, 249 `.mbt` files
+compared. The formatter also canonicalised optional parameters
+(`ml_m?` -> `ml_m~`) across the tree.
+
+Nothing moved: `moon check` exit 0, and all four targets report their
+pre-rewrite counts exactly.
+
+### Gates: 11 new, both arms always explicit
+
+`expand_v153_test.mbt` (7) and `expand_v153b_test.mbt` (4). Every contrast
+names **both** arms explicitly — the v0.136.0 mechanism probe compared a value
+against "the default" and so compared a value with itself, which cannot fail
+and is therefore not evidence.
+
+Two gate designs were **discarded on measurement** rather than kept:
+
+- GATE 7 first ran on the 4-unit fixture from `did_binary_test.mbt`, where
+  treatment is deterministic (units 0-2 `d=1`, unit 3 `d=0`). The propensity
+  has nothing to learn, so `m_hat` is a clean 1/0 either way and OLS and
+  logistic agree exactly. Adding covariate spread did **not** help — the defect
+  was the deterministic assignment. A fixture that cannot discriminate is
+  indistinguishable from a gate that cannot fail.
+- The `v153b` gates first fitted each estimator and compared coefficients, but
+  fitting `DoubleMLSSM` at `n=400, p=5` aborts at `logistic.mbt:134` — they
+  were measuring the optimiser. Rewritten to pattern-match the
+  `LearnerDispatch` enum directly: no fit, no fragile fixture.
+
+### Mutation: 5 / 5 killed, 0 survived, 0 inconclusive
+
+| mutant | gates fired | as declared? |
+|---|---|---|
+| `DoubleMLDIDCS::fit` hardcoded OLS default | GATE 1, GATE 2, GATE 5 | yes, after correction |
+| `learner_m()` returns hardcoded OLS | GATE 5 | yes |
+| `::new` default `ml_m` silently changed | GATE 4 | yes |
+| `DoubleMLDIDCSBinary::fit` hardcoded OLS | GATE 6 | yes |
+| `DoubleMLDIDBinary::fit` hardcoded OLS | GATE 7 | yes |
+
+The first declaration for M1 predicted `{GATE 1, GATE 2, GATE 3}`. Measurement
+corrected it to `{GATE 1, GATE 2, GATE 5}`: GATE 3 contrasts two arms that both
+pass `ml_m` explicitly, so an *implicit*-default mutant cannot separate them.
+GATE 3 is retained — it covers the `tune` override path, which no mutant
+exercises — but not for the reason first claimed.
+
+The harness also caught two of its own bugs, which is the only reason the
+table means anything: a malformed mutation pattern reported `HARNESS-FAIL /
+NO-OP` rather than a kill, and `subprocess` decoded with the **locale codec**
+(GBK on this machine), losing the output the verdict is parsed from.
+
+### Still open
+
+`DoubleMLDIDMulti` ignores `t_pre` entirely, and `expand_gt_keyword` still
+encodes the pre-v0.150.0 convention, so `"standard"` aborts on the canonical
+2-period fixture. The port's `DoubleMLDIDCS` `(group, period)` cell grid vs.
+upstream's panel-level, group-less shape is unchanged.
+
 ## [0.152.0] — the recovery tolerance, and the `t_pre` defect it uncovered
 
 v0.150.0 made `dgp_recovery_test` non-vacuous but left its band untouched: an

@@ -19,9 +19,9 @@
 
 ///|
 fn build_dgp_data(
-  n : Int,
-  p : Int,
-  seed : Int,
+  n : Int32,
+  p : Int32,
+  seed : Int32,
 ) -> (Matrix, Array[Double], Array[Double]) {
   let rng = chacha8_rng(seed)
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
@@ -120,9 +120,9 @@ test "did_binary_sensitivity_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n_units; i = i + 1 {
     for period = 0; period < n_periods; period = period + 1 {
       let row = i * n_periods + period
@@ -154,9 +154,9 @@ test "did_cs_binary_sensitivity_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let g : Array[Int] = Array::make(n, 0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     let group_v = if rng.double() > 0.5 { 2 } else { 0 }
     let period_v = if rng.double() > 0.5 { 2 } else { 0 }
@@ -228,9 +228,9 @@ test "did_cs_joint_confint_wider_than_wald" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let g : Array[Int] = Array::make(n, 0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n_units; i = i + 1 {
     let gv = i % 3
     for period = 0; period < n_periods; period = period + 1 {

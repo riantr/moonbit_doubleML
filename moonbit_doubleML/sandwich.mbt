@@ -273,8 +273,8 @@ pub fn sandwich_variance_hc0(
   psi_a : Array[Double],
   psi : Array[Double],
   m_inv : Matrix,
-  n_obs : Int,
-  n_params : Int,
+  n_obs : Int32,
+  n_params : Int32,
 ) -> Double {
   try {
     require(psi_a.length() == psi.length())
@@ -317,8 +317,8 @@ pub fn sandwich_variance_hc1(
   psi_a : Array[Double],
   psi : Array[Double],
   m_inv : Matrix,
-  n_obs : Int,
-  n_params : Int,
+  n_obs : Int32,
+  n_params : Int32,
 ) -> Double {
   try {
     require(psi_a.length() == psi.length())
@@ -366,8 +366,8 @@ pub fn sandwich_variance_hc2(
   psi_a : Array[Double],
   psi : Array[Double],
   m_inv : Matrix,
-  n_obs : Int,
-  n_params : Int,
+  n_obs : Int32,
+  n_params : Int32,
 ) -> Double {
   try {
     require(psi_a.length() == psi.length())
@@ -416,8 +416,8 @@ pub fn sandwich_variance_hc3(
   psi_a : Array[Double],
   psi : Array[Double],
   m_inv : Matrix,
-  n_obs : Int,
-  n_params : Int,
+  n_obs : Int32,
+  n_params : Int32,
 ) -> Double {
   try {
     require(psi_a.length() == psi.length())
@@ -474,8 +474,8 @@ pub fn sandwich_variance(
   psi_a : Array[Double],
   psi : Array[Double],
   m_inv : Matrix,
-  n_obs : Int,
-  n_params : Int,
+  n_obs : Int32,
+  n_params : Int32,
 ) -> Double {
   match kind {
     HC0 => sandwich_variance_hc0(psi_a, psi, m_inv, n_obs, n_params)
@@ -534,8 +534,8 @@ pub fn cluster_sandwich_variance(
   psi_a : Array[Double],
   psi : Array[Double],
   m_inv : Matrix,
-  cluster_ids : Array[Int],
-  n_params : Int,
+  cluster_ids : Array[Int32],
+  n_params : Int32,
 ) -> Double {
   try {
     require(psi_a.length() == psi.length())
@@ -556,7 +556,7 @@ pub fn cluster_sandwich_variance(
     let n_clusters = max_cid + 1
     // Per-cluster sums of psi[i] and per-cluster sizes.
     let cluster_sum : Array[Double] = Array::make(n_clusters, 0.0)
-    let cluster_size : Array[Int] = Array::make(n_clusters, 0)
+    let cluster_size : Array[Int32] = Array::make(n_clusters, 0)
     for i = 0; i < n; i = i + 1 {
       let c = cluster_ids[i]
       cluster_sum[c] = cluster_sum[c] + psi[i]

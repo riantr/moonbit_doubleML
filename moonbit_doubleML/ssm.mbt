@@ -32,12 +32,12 @@ pub fn DoubleMLSSMData::new(
 }
 
 ///|
-pub fn DoubleMLSSMData::n_obs(self : DoubleMLSSMData) -> Int {
+pub fn DoubleMLSSMData::n_obs(self : DoubleMLSSMData) -> Int32 {
   self.x.rows()
 }
 
 ///|
-pub fn DoubleMLSSMData::n_features(self : DoubleMLSSMData) -> Int {
+pub fn DoubleMLSSMData::n_features(self : DoubleMLSSMData) -> Int32 {
   self.x.cols()
 }
 
@@ -86,9 +86,9 @@ pub fn DoubleMLSSMData::n_features(self : DoubleMLSSMData) -> Int {
 /// and the nonignorable-nonresponse case are out of scope.
 pub struct DoubleMLSSM {
   data : DoubleMLSSMData
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `kfold`. `set_sample_splitting` also DERIVES
@@ -129,8 +129,8 @@ pub struct DoubleMLSSM {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.83.0+: memoization state. `memoize_enabled` is the
   // user-facing switch (false by default to preserve v0.82.0
   // behavior bit-for-bit). When true and `n_rep == 1`, `fit()`
@@ -149,13 +149,13 @@ pub extend DoubleMLSSM with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLSSM::new(
   data : DoubleMLSSMData,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor_config? : PSProcessorConfig? = None,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(
     LogisticRegression::new(),
   ),
 ) -> DoubleMLSSM {
@@ -260,8 +260,24 @@ pub fn DoubleMLSSM::has_cache(self : DoubleMLSSM) -> Bool {
 }
 
 ///|
-pub fn DoubleMLSSM::n_obs(self : DoubleMLSSM) -> Int {
+pub fn DoubleMLSSM::n_obs(self : DoubleMLSSM) -> Int32 {
   self.data.n_obs()
+}
+
+///|
+/// v0.153.0: the outcome learner (`ml_g`) recorded at construction and used by
+/// `fit` when no explicit argument is given. Exposes the pair that v0.60.0
+/// stored but kept private; `ml_m` is the classifier migrated in v0.138.0.
+pub fn DoubleMLSSM::learner_g(self : DoubleMLSSM) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// v0.153.0: the propensity / selection learner (`ml_m`) recorded at
+/// construction. This is the slot whose default moved from OLS to logistic in
+/// v0.138.0 -- the one measured hazard in the package. See `learner_g`.
+pub fn DoubleMLSSM::learner_m(self : DoubleMLSSM) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -337,9 +353,9 @@ pub fn DoubleMLSSM::predictions_g_d0(self : DoubleMLSSM) -> Array[Double] {
 /// Calling on an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLSSM::bootstrap(
   self : DoubleMLSSM,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLSSM {
   try {
     require(self.fitted)
@@ -420,9 +436,9 @@ pub fn DoubleMLSSM::bootstrap(
 pub fn DoubleMLSSM::tune(
   self : DoubleMLSSM,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLSSM {
   try {
     require(param_set.length() > 0)
@@ -479,8 +495,8 @@ pub fn DoubleMLSSM::psi_b(self : DoubleMLSSM) -> Array[Double] {
 /// through the shared `irm_style_sensitivity` helper.
 pub fn DoubleMLSSM::sensitivity_analysis(
   self : DoubleMLSSM,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g_d1 = self.predictions_g_d1()
@@ -507,9 +523,9 @@ pub fn DoubleMLSSM::sensitivity_analysis(
 /// number of clusters.
 pub fn DoubleMLSSM::sensitivity_analysis_cluster(
   self : DoubleMLSSM,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g_d1 = self.predictions_g_d1()
@@ -550,13 +566,13 @@ pub fn augment_one_col(x : Matrix, extra : Array[Double]) -> Matrix {
 /// `mask2[i]` equal the given values. Used to build
 /// `train_d{s_value}_s1` for the conditional-outcome learners.
 pub fn filter_two_values(
-  idx : Array[Int],
+  idx : Array[Int32],
   m1 : Array[Double],
   v1 : Double,
   m2 : Array[Double],
   v2 : Double,
-) -> Array[Int] {
-  let out : Array[Int] = []
+) -> Array[Int32] {
+  let out : Array[Int32] = []
   for i in idx {
     if m1[i] == v1 && m2[i] == v2 {
       out.push(i)
@@ -673,12 +689,16 @@ fn cross_fit_ssm(
 /// Run the SSM estimation.
 pub fn DoubleMLSSM::fit(
   self : DoubleMLSSM,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
-  ml_pi? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
+  ml_pi~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLSSM {
-  ignore(ml_g)
-  ignore(ml_m)
+  // v0.153.0: a vestigial `ignore(ml_g)` / `ignore(ml_m)` stood here.
+  // Both learners are consumed below (the outcome nuisances and the
+  // propensity respectively), so the line claimed a drop that does not
+  // exist. All 11 such lines were removed package-wide after an audit
+  // found every one of them misleading; see
+  // `_verify/_ignore_audit_1530.py`.
   ignore(ml_pi)
   try {
     require(self.n_obs() >= self.n_folds) // kfold precondition
@@ -748,7 +768,7 @@ pub fn DoubleMLSSM::fit(
     let m_hat : Array[Double] = Array::make(n, 0.0)
     let g_d1 : Array[Double] = Array::make(n, 0.0)
     let g_d0 : Array[Double] = Array::make(n, 0.0)
-    let fold_ids : Array[Int] = Array::make(n, 0)
+    let fold_ids : Array[Int32] = Array::make(n, 0)
     if cache_hit {
       // Reuse the cached LAST-rep (= only rep for nrep == 1)
       // nuisances. The per-rep averaging loop is skipped.
@@ -965,7 +985,7 @@ pub fn DoubleMLSSM::sandwich_se(
 /// `cluster_ids.length() == psi_a.length()`.
 pub fn DoubleMLSSM::cluster_sandwich_se(
   self : DoubleMLSSM,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)

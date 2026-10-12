@@ -59,12 +59,12 @@ pub fn DoubleMLDIDData::new(
 }
 
 ///|
-pub fn DoubleMLDIDData::n_obs(self : DoubleMLDIDData) -> Int {
+pub fn DoubleMLDIDData::n_obs(self : DoubleMLDIDData) -> Int32 {
   self.x.rows()
 }
 
 ///|
-pub fn DoubleMLDIDData::n_features(self : DoubleMLDIDData) -> Int {
+pub fn DoubleMLDIDData::n_features(self : DoubleMLDIDData) -> Int32 {
   self.x.cols()
 }
 
@@ -121,9 +121,9 @@ pub fn DoubleMLDIDData::n_features(self : DoubleMLDIDData) -> Int {
 /// implemented in this port.
 pub struct DoubleMLDID {
   data : DoubleMLDIDData
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[r]` for repetition `r`
   // INSTEAD of calling `stratified_kfold` / `kfold` -- the external
@@ -183,7 +183,7 @@ pub struct DoubleMLDID {
   // `G_indicator + 2 * t_indicator` to balance treated/control ×
   // pre/post cells across folds (matching upstream's
   // `self._strata`).
-  strata : Array[Int]
+  strata : Array[Int32]
   g0_hat : Array[Double]
   g1_hat : Array[Double]
   m_hat : Array[Double]
@@ -204,8 +204,8 @@ pub struct DoubleMLDID {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.82.0+: memoization state. Mirrors the IRM / PLR / IIVM /
   // PLIV plumbing.
   memoize_enabled : Bool
@@ -218,21 +218,21 @@ pub extend DoubleMLDID with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLDID::new(
   data : DoubleMLDIDData,
-  n_folds? : Int = 2,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor? : PSProcessor = PSProcessor::new(),
+  n_folds~ : Int32 = 2,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor~ : PSProcessor = PSProcessor::new(),
   // v0.127.0: upstream's `ps_processor_config` (`did_binary.py:124`).
   // The CONFIG WINS OUTRIGHT (`init_ps_processor`); `ps_processor` is read
   // only when no config is supplied. See the struct-field comment for why the
   // fallback is `ps_processor.config` and not `propensity_clip`.
-  ps_processor_config? : PSProcessorConfig? = None,
-  score? : String = "observational",
-  in_sample_normalization? : Bool = false,
-  strata? : Array[Int] = [],
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ps_processor_config~ : PSProcessorConfig? = None,
+  score~ : String = "observational",
+  in_sample_normalization~ : Bool = false,
+  strata~ : Array[Int32] = [],
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDID {
   // v0.127.0: the config wins outright; the deprecated `ps_processor`
   // parameter supplies the config only when none is given.
@@ -288,8 +288,24 @@ pub fn DoubleMLDID::new(
 }
 
 ///|
-pub fn DoubleMLDID::n_obs(self : DoubleMLDID) -> Int {
+pub fn DoubleMLDID::n_obs(self : DoubleMLDID) -> Int32 {
   self.data.n_obs()
+}
+
+///|
+/// v0.153.0: the outcome learner (`ml_g`) recorded at construction and used by
+/// `fit` when no explicit argument is given. `DoubleMLDID` stored the pair
+/// since v0.60.0 but, unlike ten sibling estimators, never exposed it, so a
+/// fitted model could not report which learners produced it.
+pub fn DoubleMLDID::learner_g(self : DoubleMLDID) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// v0.153.0: the propensity learner (`ml_m`) recorded at construction. See
+/// `learner_g`.
+pub fn DoubleMLDID::learner_m(self : DoubleMLDID) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -319,8 +335,8 @@ pub fn DoubleMLDID::se(self : DoubleMLDID) -> Double {
 /// accepted for API parity.
 pub fn DoubleMLDID::confint(
   self : DoubleMLDID,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -433,11 +449,15 @@ fn cross_fit_did(
 /// Run the DID estimation.
 pub fn DoubleMLDID::fit(
   self : DoubleMLDID,
-  ml_g? : LearnerDispatch = self.ml_g,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDID {
-  ignore(ml_g)
-  ignore(ml_m)
+  // v0.153.0: a vestigial `ignore(ml_g)` / `ignore(ml_m)` stood here.
+  // Both learners are consumed below (the outcome nuisances and the
+  // propensity respectively), so the line claimed a drop that does not
+  // exist. All 11 such lines were removed package-wide after an audit
+  // found every one of them misleading; see
+  // `_verify/_ignore_audit_1530.py`.
   let n = self.n_obs()
   // v0.109.0: true when the caller supplied the split through
   // `set_sample_splitting`. It gates the two places where behaviour
@@ -500,7 +520,7 @@ pub fn DoubleMLDID::fit(
   let g0_acc : Array[Double] = Array::make(n, 0.0)
   let g1_acc : Array[Double] = Array::make(n, 0.0)
   let m_acc : Array[Double] = Array::make(n, 0.0)
-  let mut fold_ids : Array[Int] = []
+  let mut fold_ids : Array[Int32] = []
   for r = 0; r < nrep; r = r + 1 {
     let (g0, g1, m) = if cache_hit && r == nrep - 1 {
       // Reuse the cached LAST-rep predictions.
@@ -539,7 +559,7 @@ pub fn DoubleMLDID::fit(
       )
       if r == nrep - 1 {
         // Build the row -> fold_id map for the cache write below.
-        let fid : Array[Int] = Array::make(n, 0)
+        let fid : Array[Int32] = Array::make(n, 0)
         for f = 0; f < folds.length(); f = f + 1 {
           for i in folds[f].test_indices() {
             fid[i] = f
@@ -739,9 +759,9 @@ pub fn DoubleMLDID::fit(
 /// Calling on an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLDID::bootstrap(
   self : DoubleMLDID,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLDID {
   try {
     require(self.fitted)
@@ -886,8 +906,8 @@ pub fn DoubleMLDID::sensitivity_nu2_elements(
 /// `DoubleMLDID::sensitivity_nu2_elements`.
 pub fn DoubleMLDID::sensitivity_analysis(
   self : DoubleMLDID,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g0 = self.predictions_g0()
@@ -921,9 +941,9 @@ pub fn DoubleMLDID::sensitivity_analysis(
 /// `self.data.n_obs()`.
 pub fn DoubleMLDID::sensitivity_analysis_cluster(
   self : DoubleMLDID,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let g0 = self.predictions_g0()
@@ -1003,7 +1023,7 @@ pub fn DoubleMLDID::sandwich_se(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLDID::cluster_sandwich_se(
   self : DoubleMLDID,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)
@@ -1143,9 +1163,9 @@ pub fn DoubleMLDID::bias_corrected_coef(self : DoubleMLDID) -> Double {
 pub fn DoubleMLDID::tune(
   self : DoubleMLDID,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLDID {
   try {
     require(param_set.length() > 0)

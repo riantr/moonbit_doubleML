@@ -8,7 +8,7 @@
 ///|
 fn build_dgp(
   rng : @random.Rand,
-  n : Int,
+  n : Int32,
   alpha : Double,
 ) -> @moonbit_doubleML.DoubleMLBinaryData {
   let p = 6

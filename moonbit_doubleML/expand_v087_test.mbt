@@ -100,7 +100,7 @@ fn expand_v087_psi(
   psi_a : Array[Double],
   psi_b : Array[Double],
   coef : Double,
-  n_obs : Int,
+  n_obs : Int32,
 ) -> Array[Double] {
   let psi : Array[Double] = Array::make(n_obs, 0.0)
   for i = 0; i < n_obs; i = i + 1 {
@@ -134,7 +134,7 @@ fn expand_v087_ref_hc0(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
-  n_obs : Int,
+  n_obs : Int32,
 ) -> Double {
   let _ = psi_a
   let mut acc = 0.0
@@ -167,8 +167,8 @@ fn expand_v087_ref_leverage(
   psi_a : Array[Double],
   psi : Array[Double],
   m_val : Double,
-  n_obs : Int,
-  power : Int,
+  n_obs : Int32,
+  power : Int32,
 ) -> Double {
   let _ = psi_a
   let eps : Double = 1.0e-10
@@ -204,7 +204,7 @@ fn expand_v087_close(x : Double, y : Double) -> Bool {
 /// `DoubleMLSSM`: `d ~ Bernoulli(1/2)`,
 /// `s = 1{d + 0.3 x_0 + v > 0}`, `y = d + 0.3 x . d + noise`,
 /// with `y` only meaningful where `s = 1`. True ATT = 1.
-fn expand_v087_ssm_data(n : Int, p : Int) -> DoubleMLSSMData {
+fn expand_v087_ssm_data(n : Int32, p : Int32) -> DoubleMLSSMData {
   let rng = chacha8_rng(2222)
   let pool : Array[Double] = []
   while pool.length() < n * p + n {
@@ -257,16 +257,19 @@ fn expand_v087_ssm_data(n : Int, p : Int) -> DoubleMLSSMData {
 /// post-subset sample (2 / 3 of the panel) is strictly smaller
 /// than `n_obs_panel()`. That pins the fact that the sandwich
 /// sample follows `psi_a.length()`, not the raw panel width.
-fn expand_v087_cs_binary_data(n_per_cohort : Int, p : Int) -> DoubleMLDIDCSData {
+fn expand_v087_cs_binary_data(
+  n_per_cohort : Int32,
+  p : Int32,
+) -> DoubleMLDIDCSData {
   let n_units = n_per_cohort * 2
   let n_periods = 3
   let n_rows = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n_rows * p, 0.0)
   let y : Array[Double] = Array::make(n_rows, 0.0)
   let d : Array[Double] = Array::make(n_rows, 0.0)
-  let t_arr : Array[Int] = Array::make(n_rows, 0)
-  let id_arr : Array[Int] = Array::make(n_rows, 0)
-  let g_arr : Array[Int] = Array::make(n_rows, 0)
+  let t_arr : Array[Int32] = Array::make(n_rows, 0)
+  let id_arr : Array[Int32] = Array::make(n_rows, 0)
+  let g_arr : Array[Int32] = Array::make(n_rows, 0)
   let rng = chacha8_rng(7)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
@@ -360,8 +363,8 @@ test "sandwich_expand_v087_ordering" {
   )
   // Singleton clusters are algebraically the HC0 accumulation;
   // pooled clusters are strictly larger (cross terms).
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 8
@@ -438,8 +441,8 @@ test "ssm_sandwich_se_smoke" {
   inspect(se_hc2 > se_hc0, content="true")
   inspect(se_hc3 > se_hc2, content="true")
   inspect(expand_v087_close(se_hc2, se_hc1), content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -528,8 +531,8 @@ test "plpr_sandwich_se_smoke" {
   inspect(se_hc3 > se_hc2, content="true")
   inspect(expand_v087_close(se_hc2, se_hc1), content="true")
   inspect(expand_v087_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -604,8 +607,8 @@ test "did_cross_section_sandwich_se_smoke" {
   inspect(se_hc3 > se_hc2, content="true")
   inspect(expand_v087_close(se_hc2, se_hc1), content="true")
   inspect(expand_v087_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4
@@ -685,8 +688,8 @@ test "did_cs_binary_sandwich_se_smoke" {
   inspect(se_hc3 > se_hc2, content="true")
   inspect(expand_v087_close(se_hc2, se_hc1), content="true")
   inspect(expand_v087_close(se_hc3, se_hc1 * se_hc1 / se_hc0), content="true")
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4

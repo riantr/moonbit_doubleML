@@ -125,9 +125,9 @@ fn expand_v100_didmulti_data() -> DoubleMLDIDCSData {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(11)
   for u = 0; u < n_units; u = u + 1 {
     let cohort = u / n_per_cohort
@@ -195,7 +195,10 @@ fn expand_v100_didmulti(keyword : String) -> DoubleMLDIDMulti {
 /// the test independently believes `idx` names. A production mapping
 /// that scanned the wrong axis, or matched on `t_pre` instead of
 /// `t_eval`, would fail that assertion rather than pass it.
-fn expand_v100_didmulti_cell(m : DoubleMLDIDMulti, idx : Int) -> (Int, Int) {
+fn expand_v100_didmulti_cell(
+  m : DoubleMLDIDMulti,
+  idx : Int32,
+) -> (Int32, Int32) {
   let (g, _t_pre, t_eval) = m.gt_combinations[idx]
   let mut gi = -1
   let mut pi = -1
@@ -216,8 +219,8 @@ fn expand_v100_didmulti_cell(m : DoubleMLDIDMulti, idx : Int) -> (Int, Int) {
 /// Combination indices whose `(g, t_eval)` is a cell the inner
 /// actually estimated. v0.150.0: the inner's live boundary moved from
 /// `t_eval > g` to `t_eval >= g`, so this moved with it. Measured 2026-10-12.
-fn expand_v100_didmulti_live_idx(m : DoubleMLDIDMulti) -> Array[Int] {
-  let out : Array[Int] = []
+fn expand_v100_didmulti_live_idx(m : DoubleMLDIDMulti) -> Array[Int32] {
+  let out : Array[Int32] = []
   let mut out_acc = out
   for i = 0; i < m.n_combinations(); i = i + 1 {
     let (g, _t_pre, t_eval) = m.gt_combinations[i]
@@ -233,9 +236,9 @@ fn expand_v100_didmulti_live_idx(m : DoubleMLDIDMulti) -> Array[Int] {
 /// (`pooled[i] = i / 4`) cluster ids for a cell of `n` rows. The
 /// length is the cell's own `n_wide`, NOT the long-format panel
 /// length -- the inner requires `cluster_ids.length() == n_wide`.
-fn expand_v100_didmulti_cluster_ids(n : Int) -> (Array[Int], Array[Int]) {
-  let singleton : Array[Int] = Array::make(n, 0)
-  let pooled : Array[Int] = Array::make(n, 0)
+fn expand_v100_didmulti_cluster_ids(n : Int32) -> (Array[Int32], Array[Int32]) {
+  let singleton : Array[Int32] = Array::make(n, 0)
+  let pooled : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     singleton[i] = i
     pooled[i] = i / 4

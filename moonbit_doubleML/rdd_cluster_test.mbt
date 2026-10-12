@@ -38,7 +38,7 @@ test "rdd_sensitivity_cluster_returns_finite_result" {
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let score : Array[Double] = Array::make(n, 0.0)
-  let cluster_id : Array[Int] = Array::make(n, 0)
+  let cluster_id : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(78001)
   let cluster_effect : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
@@ -63,7 +63,7 @@ test "rdd_sensitivity_cluster_returns_finite_result" {
   // concatenated, matching the ordering of `residuals` /
   // `psi_a` on the fitted RDD.
   let n_local = fitted.n_local()
-  let local_cluster : Array[Int] = Array::make(n_local, 0)
+  let local_cluster : Array[Int32] = Array::make(n_local, 0)
   let mut k = 0
   // Left side: u < 0.
   for i = 0; i < n; i = i + 1 {
@@ -108,7 +108,7 @@ test "rdd_sensitivity_cluster_sigma2_differs_from_iid" {
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let score : Array[Double] = Array::make(n, 0.0)
-  let cluster_id : Array[Int] = Array::make(n, 0)
+  let cluster_id : Array[Int32] = Array::make(n, 0)
   let rng = chacha8_rng(78002)
   let cluster_effect : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
@@ -125,7 +125,7 @@ test "rdd_sensitivity_cluster_sigma2_differs_from_iid" {
   let data = DoubleMLRDDData::new(x_mat, y, d, score)
   let fitted = DoubleMLRDD::new(data, bandwidth=h).fit()
   let n_local = fitted.n_local()
-  let local_cluster : Array[Int] = Array::make(n_local, 0)
+  let local_cluster : Array[Int32] = Array::make(n_local, 0)
   let mut k = 0
   for i = 0; i < n; i = i + 1 {
     let u = score[i]
@@ -182,7 +182,7 @@ test "panic_rdd_sensitivity_cluster_cluster_ids_length_mismatch" {
   // Wrong-length cluster_ids (5 vs n_local which is
   // much larger). The helper raises via
   // `require(cluster_ids.length() == n_local)`.
-  let wrong_cluster : Array[Int] = [0, 0, 0, 0, 0]
+  let wrong_cluster : Array[Int32] = [0, 0, 0, 0, 0]
   let _ = fitted.sensitivity_analysis_cluster(wrong_cluster)
 }
 
@@ -206,7 +206,7 @@ test "panic_rdd_sensitivity_cluster_no_valid_cluster" {
   let data = DoubleMLRDDData::new(x_mat, y, d, score)
   let fitted = DoubleMLRDD::new(data, bandwidth=0.8).fit()
   let n_local = fitted.n_local()
-  let bad : Array[Int] = Array::make(n_local, -1)
+  let bad : Array[Int32] = Array::make(n_local, -1)
   let _ = fitted.sensitivity_analysis_cluster(bad)
 }
 
@@ -226,6 +226,6 @@ test "panic_rdd_sensitivity_cluster_before_fit" {
   }
   let data = DoubleMLRDDData::new(x_mat, y, d, score)
   let model = DoubleMLRDD::new(data, bandwidth=0.8)
-  let cluster : Array[Int] = Array::makei(600, fn(i) { i / 20 })
+  let cluster : Array[Int32] = Array::makei(600, fn(i) { i / 20 })
   let _ = model.sensitivity_analysis_cluster(cluster)
 }

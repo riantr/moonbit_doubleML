@@ -39,10 +39,10 @@ struct IrmData {
 ///|
 /// Generate the IRM DGP from Chernozhukov et al. (2018) Section 4.2.
 pub fn make_irm_data(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> IrmData {
   let rng = chacha8_rng(seed)
   // 1. Pre-draw n_obs * dim_x standard normals via Box-Muller.

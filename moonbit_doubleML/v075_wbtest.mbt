@@ -35,8 +35,8 @@ test "plpr_bootstrap_populates_boot_t_stat" {
   let y = dgp.y_get()
   let d = dgp.d_get()
   let n = y.length()
-  let t : Array[Int] = Array::makei(n, fn(i) { i % dgp.n_periods_get() })
-  let id : Array[Int] = Array::makei(n, fn(i) { i / dgp.n_periods_get() })
+  let t : Array[Int32] = Array::makei(n, fn(i) { i % dgp.n_periods_get() })
+  let id : Array[Int32] = Array::makei(n, fn(i) { i / dgp.n_periods_get() })
   let panel = DoubleMLPanelData::new(dgp.x_get(), y, d, t, id)
   let fitted = DoubleMLPLPR::new(
     panel,

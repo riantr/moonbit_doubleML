@@ -125,16 +125,16 @@ fn main {
 /// Factored out in v0.103.0 so the scale and noise checks reuse
 /// it verbatim rather than restating it.
 fn build_dgp(
-  n : Int,
-  p : Int,
+  n : Int32,
+  p : Int32,
   theta0 : Double,
-  seed : Int,
+  seed : Int32,
   noise_amp : Double,
-) -> (Array[Double], Array[Double], Array[Double], Array[Int]) {
+) -> (Array[Double], Array[Double], Array[Double], Array[Int32]) {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
   let rng = @moonbit_doubleML.chacha8_rng(seed)
   for i = 0; i < n; i = i + 1 {
     for j = 0; j < p; j = j + 1 {

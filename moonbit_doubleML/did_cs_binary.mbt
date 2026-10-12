@@ -9,18 +9,32 @@
 /// a v0.52.0+ target).
 ///
 /// **Simplifications vs. upstream `DoubleMLDIDCSBinary`**:
-///   - `ml_g` and `ml_m` are both collapsed to the same
-///     closed-form `LinearRegression` learner. The upstream
-///     supports an arbitrary `ml_g` regressor / classifier
-///     plus an `ml_m` classifier; we treat the binary
-///     outcome `Y` as a regression on `E[Y | D=d, X] ∈ [0, 1]`
-///     (closed-form OLS + clip is the standard
-///     "frequentist" trick that `R::predict.lm` uses for
-///     binary outcomes) and treat the propensity as a
-///     regression on `E[1{D=1} | X]` clipped to
-///     `[clip, 1 - clip]`. This is a v0.51.0 design
-///     choice; pluggable learners can be added in a later
-///     release by porting `_dml_cv_predict`.
+///   - v0.153.0: this bullet used to read "`ml_g` and `ml_m` are
+///     both collapsed to the same closed-form `LinearRegression`
+///     learner ... pluggable learners can be added in a later
+///     release". That was true of v0.51.0 and went stale at
+///     v0.62.0, which made both slots pluggable. `fit` takes them
+///     (below), routes `ml_g` through `fit_cs_bin_g` for the four
+///     conditional `(d, t)` outcome nuisances and `ml_m` through
+///     `fit_predict_one_dispatch` for the propensity, and `tune`
+///     forwards the grid's best pair. The default is still OLS, but
+///     it is now a *default*, not a hardcode.
+///   - What is still simplified is the default modelling choice:
+///     the binary outcome `Y` is modelled as a regression on
+///     `E[Y | D=d, X] ∈ [0, 1]` (closed-form OLS + clip is the
+///     standard "frequentist" trick that `R::predict.lm` uses for
+///     binary outcomes) and the propensity as a regression on
+///     `E[1{D=1} | X]` clipped to `[clip, 1 - clip]`. Upstream
+///     instead takes an arbitrary `ml_g` regressor / classifier
+///     plus an `ml_m` *classifier*; passing
+///     `LearnerDispatch::logistic_regression(...)` for `ml_m` is
+///     the faithful choice and is supported.
+///   - v0.153.0: unlike every sibling estimator, `::new` accepts NO
+///     `ml_g` / `ml_m` parameter at all -- they are `::fit`
+///     parameters only, and this estimator does not store them, so a
+///     fitted `DoubleMLDIDCSBinary` cannot report which learners
+///     produced it. `DoubleMLDIDCS` and `DoubleMLDIDBinary` share
+///     that gap. See `_verify/LEARNER_DEFAULTS_1530.md`.
 ///   - `score = "experimental"` is **not** ported in
 ///     v0.51.0. The `new` constructor accepts only
 ///     `score = "observational"`. Experimental support
@@ -81,12 +95,12 @@ pub extend CSBinPanelRow with @moonbitlang/core/debug.Debug::{to_repr}
 /// `mean(d)` of the propensity.
 fn cs_bin_panel_subset(
   data : DoubleMLDIDCSData,
-  g_value : Int,
-  t_value_pre : Int,
-  t_value_eval : Int,
+  g_value : Int32,
+  t_value_pre : Int32,
+  t_value_eval : Int32,
   control_group : String,
-  anticipation_periods : Int,
-) -> (Array[CSBinPanelRow], Int, Int, Int) {
+  anticipation_periods : Int32,
+) -> (Array[CSBinPanelRow], Int32, Int32, Int32) {
   try {
     let n = data.y.length()
     let p = data.x.cols()
@@ -203,10 +217,10 @@ fn cs_bin_panel_subset(
 /// with the panel DID family.
 fn cs_bin_crossfit_nuisance(
   rows : Array[CSBinPanelRow],
-  p : Int,
+  p : Int32,
   folds : Array[Fold],
-  n_rep : Int,
-  seed : Int,
+  n_rep : Int32,
+  seed : Int32,
   propensity_clip : Double,
   ps_processor : PSProcessor,
   ml_g : LearnerDispatch,
@@ -599,14 +613,14 @@ fn cs_bin_score_obs(
 /// the file-level docstring.
 pub struct DoubleMLDIDCSBinary {
   data : DoubleMLDIDCSData
-  g_value : Int
-  t_value_pre : Int
-  t_value_eval : Int
+  g_value : Int32
+  t_value_pre : Int32
+  t_value_eval : Int32
   control_group : String
-  anticipation_periods : Int
-  n_folds : Int
-  n_rep : Int
-  seed : Int
+  anticipation_periods : Int32
+  n_folds : Int32
+  n_rep : Int32
+  seed : Int32
   propensity_clip : Double
   // v0.128.0: the RESOLVED CONCRETE propensity config, matching upstream
   // `init_ps_processor` (`did_cs_binary.py:230`). Same DID rule as
@@ -661,26 +675,32 @@ pub struct DoubleMLDIDCSBinary {
   subset_g : Array[Double]
   subset_t : Array[Double]
   // Effective sample size after panel subsetting.
-  n_obs_subset : Int
+  n_obs_subset : Int32
   // Number of treated (G_indicator=1) rows in the
   // post-subset panel; used by the
   // `did_cs_binary_panel_subset_shape` test.
-  n_g_subset : Int
+  n_g_subset : Int32
   // Number of control (C_indicator=1) rows in the
   // post-subset panel.
-  n_c_subset : Int
+  n_c_subset : Int32
   fitted : Bool
   // v0.64.0+: multiplier bootstrap state. `boot_t_stat` is a
   // length-`n_rep_boot` array of t-statistics for `coef`.
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.82.0+: memoization flag. The wrapper's `fit()` forwards
   // this flag to the inner `DoubleMLDIDBinary` so the
   // cross-fits honour `.enable_memoize()` uniformly.
   memoize_enabled : Bool
+  // v0.153.0: the learner pair. Before this, `ml_g` / `ml_m` existed only as
+  // `fit` parameters defaulting to OLS -- never stored, never exposed -- so a
+  // fitted `DoubleMLDIDCSBinary` could not report which learners produced it,
+  // despite routing both through `LearnerDispatch` since v0.62.0.
+  ml_g : LearnerDispatch
+  ml_m : LearnerDispatch
 } derive(Debug)
 
 ///|
@@ -695,21 +715,26 @@ pub extend DoubleMLDIDCSBinary with @moonbitlang/core/debug.Debug::{to_repr}
 /// v0.52.0+ target).
 pub fn DoubleMLDIDCSBinary::new(
   data : DoubleMLDIDCSData,
-  g_value : Int,
-  t_value_pre : Int,
-  t_value_eval : Int,
-  control_group? : String = "never_treated",
-  anticipation_periods? : Int = 0,
-  n_folds? : Int = 5,
-  n_rep? : Int = 1,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor? : PSProcessor = PSProcessor::new(),
+  g_value : Int32,
+  t_value_pre : Int32,
+  t_value_eval : Int32,
+  control_group~ : String = "never_treated",
+  anticipation_periods~ : Int32 = 0,
+  n_folds~ : Int32 = 5,
+  n_rep~ : Int32 = 1,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor~ : PSProcessor = PSProcessor::new(),
   // v0.128.0: upstream's `ps_processor_config` (`did_cs_binary.py:124`).
   // Wins outright over `ps_processor`; see the struct-field comment.
-  ps_processor_config? : PSProcessorConfig? = None,
-  score? : String = "observational",
-  in_sample_normalization? : Bool = false,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  score~ : String = "observational",
+  in_sample_normalization~ : Bool = false,
+  // v0.153.0: the nuisance learners, recorded at construction rather than taken
+  // implicitly at `fit` time. Defaults are unchanged -- OLS for both -- so an
+  // existing caller that never mentions them gets the identical fit.
+  ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLDIDCSBinary {
   // v0.128.0: the config wins outright; `ps_processor` supplies the config
   // only when none is given.
@@ -743,6 +768,8 @@ pub fn DoubleMLDIDCSBinary::new(
       ps_processor_config,
       score,
       in_sample_normalization,
+      ml_g,
+      ml_m,
       coef: 0.0,
       se: 0.0,
       psi_a: [],
@@ -802,8 +829,8 @@ pub fn DoubleMLDIDCSBinary::se(self : DoubleMLDIDCSBinary) -> Double {
 /// v0.67.0+: `joint` is a no-op for single-theta estimators.
 pub fn DoubleMLDIDCSBinary::confint(
   self : DoubleMLDIDCSBinary,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -828,21 +855,21 @@ pub fn DoubleMLDIDCSBinary::confint(
 ///|
 /// v0.51.0: the `g_value` constructor argument (the
 /// treated group in the `(g, t)` DID setup).
-pub fn DoubleMLDIDCSBinary::g_value(self : DoubleMLDIDCSBinary) -> Int {
+pub fn DoubleMLDIDCSBinary::g_value(self : DoubleMLDIDCSBinary) -> Int32 {
   self.g_value
 }
 
 ///|
 /// v0.51.0: the `t_value_pre` constructor argument
 /// (the baseline pre-treatment period).
-pub fn DoubleMLDIDCSBinary::t_value_pre(self : DoubleMLDIDCSBinary) -> Int {
+pub fn DoubleMLDIDCSBinary::t_value_pre(self : DoubleMLDIDCSBinary) -> Int32 {
   self.t_value_pre
 }
 
 ///|
 /// v0.51.0: the `t_value_eval` constructor argument
 /// (the evaluation period).
-pub fn DoubleMLDIDCSBinary::t_value_eval(self : DoubleMLDIDCSBinary) -> Int {
+pub fn DoubleMLDIDCSBinary::t_value_eval(self : DoubleMLDIDCSBinary) -> Int32 {
   self.t_value_eval
 }
 
@@ -852,29 +879,49 @@ pub fn DoubleMLDIDCSBinary::t_value_eval(self : DoubleMLDIDCSBinary) -> Int {
 /// This is the post-subset count, NOT the full panel
 /// `n_obs`. Matches the upstream
 /// `DoubleMLDIDCSBinary.n_obs_subset` attribute.
-pub fn DoubleMLDIDCSBinary::n_obs(self : DoubleMLDIDCSBinary) -> Int {
+pub fn DoubleMLDIDCSBinary::n_obs(self : DoubleMLDIDCSBinary) -> Int32 {
   self.n_obs_subset
 }
 
 ///|
 /// v0.51.0: number of treated (`G_indicator = 1`) rows
 /// in the post-subset panel.
-pub fn DoubleMLDIDCSBinary::n_g_subset(self : DoubleMLDIDCSBinary) -> Int {
+pub fn DoubleMLDIDCSBinary::n_g_subset(self : DoubleMLDIDCSBinary) -> Int32 {
   self.n_g_subset
 }
 
 ///|
 /// v0.51.0: number of control (`C_indicator = 1`) rows
 /// in the post-subset panel.
-pub fn DoubleMLDIDCSBinary::n_c_subset(self : DoubleMLDIDCSBinary) -> Int {
+pub fn DoubleMLDIDCSBinary::n_c_subset(self : DoubleMLDIDCSBinary) -> Int32 {
   self.n_c_subset
 }
 
 ///|
 /// v0.51.0: total number of observations in the
 /// original (pre-subset) panel.
-pub fn DoubleMLDIDCSBinary::n_obs_panel(self : DoubleMLDIDCSBinary) -> Int {
+pub fn DoubleMLDIDCSBinary::n_obs_panel(self : DoubleMLDIDCSBinary) -> Int32 {
   self.data.y.length()
+}
+
+///|
+/// v0.153.0: the outcome learner (`ml_g`) recorded at construction and used by
+/// `fit` when no explicit argument is given. Reports the DEFAULT, not
+/// necessarily the learner of the current fit: an explicit `fit(ml_g = ...)`
+/// overrides it for that call only and is not recorded.
+pub fn DoubleMLDIDCSBinary::learner_g(
+  self : DoubleMLDIDCSBinary,
+) -> LearnerDispatch {
+  self.ml_g
+}
+
+///|
+/// v0.153.0: the propensity learner (`ml_m`) recorded at construction. See
+/// `learner_g` for the same default-vs-current-fit caveat.
+pub fn DoubleMLDIDCSBinary::learner_m(
+  self : DoubleMLDIDCSBinary,
+) -> LearnerDispatch {
+  self.ml_m
 }
 
 ///|
@@ -1035,8 +1082,12 @@ pub fn DoubleMLDIDCSBinary::has_cache(self : DoubleMLDIDCSBinary) -> Bool {
 ///      `var_est(psi_a, psi_b)` helper.
 pub fn DoubleMLDIDCSBinary::fit(
   self : DoubleMLDIDCSBinary,
-  ml_g? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::linear_regression(),
+  // v0.153.0: these defaulted to `LearnerDispatch::linear_regression()` on every
+  // call, discarding whatever the constructor recorded. They now default to the
+  // stored pair -- an explicit argument still wins, an omitted one reuses the
+  // constructor's choice. The defaults themselves are unchanged.
+  ml_g~ : LearnerDispatch = self.ml_g,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLDIDCSBinary {
   // Step 1: panel subset.
   let p = self.data.x.cols()
@@ -1139,9 +1190,9 @@ pub fn DoubleMLDIDCSBinary::fit(
 /// Calling on an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLDIDCSBinary::bootstrap(
   self : DoubleMLDIDCSBinary,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLDIDCSBinary {
   try {
     require(self.fitted)
@@ -1385,8 +1436,8 @@ fn DoubleMLDIDCSBinary::cs_bin_sensitivity_residuals(
 /// happened to be length 720, which is exactly how the misalignment hid.
 pub fn DoubleMLDIDCSBinary::sensitivity_analysis(
   self : DoubleMLDIDCSBinary,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   let residuals = self.cs_bin_sensitivity_residuals()
   let (nu2_elem, rr) = self.cs_bin_sensitivity_nu2_elements()
@@ -1411,9 +1462,9 @@ pub fn DoubleMLDIDCSBinary::sensitivity_analysis(
 /// `self.n_obs()` (the post-subset count).
 pub fn DoubleMLDIDCSBinary::sensitivity_analysis_cluster(
   self : DoubleMLDIDCSBinary,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   let residuals = self.cs_bin_sensitivity_residuals()
   let (nu2_elem, rr) = self.cs_bin_sensitivity_nu2_elements()
@@ -1500,7 +1551,7 @@ pub fn DoubleMLDIDCSBinary::sandwich_se(
 /// (the post-subset count).
 pub fn DoubleMLDIDCSBinary::cluster_sandwich_se(
   self : DoubleMLDIDCSBinary,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     require(self.fitted)
@@ -1651,9 +1702,9 @@ pub fn DoubleMLDIDCSBinary::bias_corrected_coef(
 pub fn DoubleMLDIDCSBinary::tune(
   self : DoubleMLDIDCSBinary,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLDIDCSBinary {
   try {
     require(param_set.length() > 0)

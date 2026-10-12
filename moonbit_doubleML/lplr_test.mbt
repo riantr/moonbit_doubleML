@@ -18,7 +18,11 @@
 /// keeps the asymptotic SE nonzero — so the recovered
 /// `theta_hat` is in `[0.3, 0.8]` on most seeds, and the 95% CI
 /// covers 0.5 on a longer run.
-fn build_lzz2020_dgp(n : Int, alpha : Double, seed : Int) -> DoubleMLBinaryData {
+fn build_lzz2020_dgp(
+  n : Int32,
+  alpha : Double,
+  seed : Int32,
+) -> DoubleMLBinaryData {
   let p = 6
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)

@@ -43,7 +43,7 @@ test "plr_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   // Per-cluster intercepts so sigma2_cluster != IID sigma2.
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
@@ -97,7 +97,7 @@ test "irm_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -143,7 +143,7 @@ test "pliv_sensitivity_cluster_returns_finite_result" {
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let z : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -199,7 +199,7 @@ test "iivm_sensitivity_cluster_returns_finite_result" {
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let z : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -255,7 +255,7 @@ test "apo_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -303,7 +303,7 @@ test "did_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -376,9 +376,9 @@ test "did_binary_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -437,7 +437,7 @@ test "did_binary_sensitivity_cluster_returns_finite_result" {
   let n_wide = fitted.n_obs_subset()
   // Approximate cluster mapping: cycle cluster ids across
   // the wide-format rows (each unit contributes 1 wide row).
-  let cluster_wide : Array[Int] = Array::make(n_wide, 0)
+  let cluster_wide : Array[Int32] = Array::make(n_wide, 0)
   for i = 0; i < n_wide; i = i + 1 {
     cluster_wide[i] = i % n_clusters
   }
@@ -473,9 +473,9 @@ test "did_cs_binary_sensitivity_cluster_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t_arr : Array[Int] = Array::make(n, 0)
-  let g_arr : Array[Int] = Array::make(n, 0)
-  let id_arr : Array[Int] = Array::make(n, 0)
+  let t_arr : Array[Int32] = Array::make(n, 0)
+  let g_arr : Array[Int32] = Array::make(n, 0)
+  let id_arr : Array[Int32] = Array::make(n, 0)
   let cluster_intercept : Array[Double] = Array::make(n_clusters, 0.0)
   for c = 0; c < n_clusters; c = c + 1 {
     cluster_intercept[c] = (rng.double() - 0.5) * 1.5
@@ -536,7 +536,7 @@ test "did_cs_binary_sensitivity_cluster_returns_finite_result" {
   // Approximate cluster mapping: cycle cluster ids across
   // the post-subset rows (4 rows per unit in the
   // never_treated control group setup).
-  let cluster_subset : Array[Int] = Array::make(n_subset, 0)
+  let cluster_subset : Array[Int32] = Array::make(n_subset, 0)
   for i = 0; i < n_subset; i = i + 1 {
     cluster_subset[i] = i % n_clusters
   }

@@ -4,7 +4,7 @@
 /// `n_obs = 20` (10 in stratum 0, 10 in stratum 1) and `n_folds = 2`,
 /// each fold's test set should contain exactly 5 from each stratum.
 test "stratified_kfold_balanced_test_sets" {
-  let stratum : Array[Int] = Array::makei(20, fn(i) {
+  let stratum : Array[Int32] = Array::makei(20, fn(i) {
     if i < 10 {
       0
     } else {
@@ -32,7 +32,7 @@ test "stratified_kfold_balanced_test_sets" {
 ///|
 /// Train + test must cover `[0, n_obs)` with disjoint indices.
 test "stratified_kfold_train_test_disjoint" {
-  let stratum : Array[Int] = Array::makei(10, fn(i) { i % 3 })
+  let stratum : Array[Int32] = Array::makei(10, fn(i) { i % 3 })
   let folds = stratified_kfold(stratum, 2, 3141)
   for f = 0; f < folds.length(); f = f + 1 {
     let train = folds[f].train_indices()

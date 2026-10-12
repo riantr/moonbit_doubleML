@@ -17,8 +17,8 @@
 
 ///|
 fn make_simple_plr_data(
-  n : Int,
-  seed : Int,
+  n : Int32,
+  seed : Int32,
 ) -> (Matrix, Array[Double], Array[Double]) {
   let rng = chacha8_rng(seed)
   let p = 2
@@ -41,7 +41,7 @@ fn make_simple_plr_data(
 ///|
 fn assert_bootstrap_t_stat_basic(
   boot_t_stat : Array[Double],
-  n_rep_boot : Int,
+  n_rep_boot : Int32,
 ) -> Unit raise Error {
   assert_eq(boot_t_stat.length(), n_rep_boot)
   let mut sum = 0.0

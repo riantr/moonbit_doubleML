@@ -35,10 +35,10 @@ pub extend PSProcessorConfig with @moonbitlang/core/debug.Debug::{to_repr}
 /// process (they are central `require` checks; refactoring
 /// them is out of scope for this surgical release).
 pub fn PSProcessorConfig::new(
-  clipping_threshold? : Double = 1.0e-2,
-  extreme_threshold? : Double = 1.0e-12,
-  calibration_method? : String = "none",
-  cv_calibration? : Bool = false,
+  clipping_threshold~ : Double = 1.0e-2,
+  extreme_threshold~ : Double = 1.0e-12,
+  calibration_method~ : String = "none",
+  cv_calibration~ : Bool = false,
 ) -> PSProcessorConfig raise PSConfigError {
   // v0.48.0: per-call wrap on each `require` because the body also
   // raises PSConfigError::InconsistentCVCalibration; a block-level
@@ -118,7 +118,7 @@ pub extend PSProcessor with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 pub fn PSProcessor::new(
-  config? : PSProcessorConfig = PSProcessorConfig::default(),
+  config~ : PSProcessorConfig = PSProcessorConfig::default(),
 ) -> PSProcessor {
   { config, }
 }
@@ -190,8 +190,8 @@ pub fn PSProcessor::cv_calibration(self : PSProcessor) -> Bool {
 /// `PSProcessorConfig::new`, so it fires on the `Some` arm before this
 /// function ever sees it.
 pub fn resolve_ps_processor(
-  ps_processor_config? : PSProcessorConfig? = None,
-  trimming_threshold? : Double = 1.0e-2,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  trimming_threshold~ : Double = 1.0e-2,
 ) -> PSProcessor {
   PSProcessor::from_config(
     resolve_ps_processor_config(ps_processor_config~, trimming_threshold~),
@@ -207,8 +207,8 @@ pub fn resolve_ps_processor(
 ///
 /// The single definition of the precedence rule lives here.
 pub fn resolve_ps_processor_config(
-  ps_processor_config? : PSProcessorConfig? = None,
-  trimming_threshold? : Double = 1.0e-2,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  trimming_threshold~ : Double = 1.0e-2,
 ) -> PSProcessorConfig {
   match ps_processor_config {
     Some(cfg) => cfg
@@ -247,7 +247,7 @@ pub fn PSProcessor::adjust_ps(
   self : PSProcessor,
   ps : Array[Double],
   treatment : Array[Double],
-  cv? : Array[(Array[Int], Array[Int])]? = None,
+  cv~ : Array[(Array[Int32], Array[Int32])]? = None,
 ) -> Array[Double] {
   try {
     // The binary-treatment requirement, UNCONDITIONALLY, matching
@@ -327,7 +327,7 @@ pub fn apply_calibration(
   config : PSProcessorConfig,
   ps : Array[Double],
   treatment : Array[Double],
-  cv : Array[(Array[Int], Array[Int])]?,
+  cv : Array[(Array[Int32], Array[Int32])]?,
 ) -> Array[Double] raise Error {
   match config.calibration_method {
     "none" => ps
@@ -404,7 +404,7 @@ fn validate_treatment(treatment : Array[Double]) -> Unit {
 /// The input MUST be sorted by `x` in non-decreasing order. Use
 /// `fit_isotonic` for the public entry point that sorts and
 /// returns the fitted model.
-pub fn pava(y : Array[Double], weights? : Array[Double] = []) -> Array[Double] {
+pub fn pava(y : Array[Double], weights~ : Array[Double] = []) -> Array[Double] {
   try {
     let n = y.length()
     if n == 0 {
@@ -422,7 +422,7 @@ pub fn pava(y : Array[Double], weights? : Array[Double] = []) -> Array[Double] {
     // updates all three in lockstep.
     let block_sum : Array[Double] = []
     let block_w : Array[Double] = []
-    let block_size : Array[Int] = []
+    let block_size : Array[Int32] = []
     for i = 0; i < n; i = i + 1 {
       // v0.104.0: this seeded the block's weighted sum with the
       // RAW `y[i]`, so a block's mean came out as
@@ -502,7 +502,7 @@ pub fn fit_isotonic(
     require(y.length() == n)
     require(n > 0)
     // Sort indices by x.
-    let order : Array[Int] = Array::makei(n, fn(i) { i })
+    let order : Array[Int32] = Array::makei(n, fn(i) { i })
     order.sort_by(fn(a, b) { x[a].compare(x[b]) })
     let sorted_x : Array[Double] = Array::make(n, 0.0)
     let sorted_y : Array[Double] = Array::make(n, 0.0)
@@ -635,10 +635,10 @@ fn predict_isotonic_from_fit(
 pub fn isotonic_calibrate_cv(
   x : Array[Double],
   y : Array[Double],
-  cv : Array[(Array[Int], Array[Int])]?,
+  cv : Array[(Array[Int32], Array[Int32])]?,
 ) -> Array[Double] raise CalibrationFittingError {
   let n = x.length()
-  let folds : Array[(Array[Int], Array[Int])] = match cv {
+  let folds : Array[(Array[Int32], Array[Int32])] = match cv {
     Some(f) => f
     None => default_5fold(n)
   }
@@ -716,23 +716,23 @@ pub fn isotonic_calibrate_cv(
 ///
 /// Callers who want a different partition still pass `cv` explicitly;
 /// that path is unchanged.
-fn default_5fold(n : Int) -> Array[(Array[Int], Array[Int])] {
+fn default_5fold(n : Int32) -> Array[(Array[Int32], Array[Int32])] {
   let k = 5
   let base = n / k
   let rem = n % k
-  let out : Array[(Array[Int], Array[Int])] = []
+  let out : Array[(Array[Int32], Array[Int32])] = []
   let mut out_acc = out
   let mut start = 0
   for f = 0; f < k; f = f + 1 {
     let size = base + (if f < rem { 1 } else { 0 })
-    let test_idx : Array[Int] = []
+    let test_idx : Array[Int32] = []
     let mut test_acc = test_idx
     let mut i = start
     while i < start + size {
       test_acc = test_acc + [i]
       i = i + 1
     }
-    let train_idx : Array[Int] = []
+    let train_idx : Array[Int32] = []
     let mut train_acc = train_idx
     let mut j = 0
     while j < n {
@@ -847,7 +847,7 @@ pub fn normalize_ipw(
 pub fn propensity_score_adjustment(
   propensity : Array[Double],
   treatment : Array[Double],
-  do_normalize? : Bool = false,
+  do_normalize~ : Bool = false,
 ) -> Array[Double] {
   // v0.119.0: the parameter is deliberately NOT named `normalize_ipw`.
   // That would shadow the function of the same name, turning the call

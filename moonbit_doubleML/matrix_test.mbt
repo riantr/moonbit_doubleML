@@ -103,7 +103,7 @@ test "matvec_t_kahan_matches_matvec" {
   //             = 0   (sign-cancelling perfect cancellation).
   // With Kahan this is exactly 0.0; without Kahan the result is
   // O(n * eps) ≈ 1.0e-12 for n=10_000, which `1.0e-10` catches.
-  let n : Int = 10000
+  let n : Int32 = 10000
   let mat_data : Array[Double] = Array::makei(n, fn(i) {
     if i % 2 == 0 {
       0.5

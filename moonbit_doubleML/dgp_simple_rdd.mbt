@@ -40,9 +40,9 @@ struct RddSimpleData {
 ///|
 /// Generate the simple RDD DGP.
 pub fn make_simple_rdd_dgp(
-  n_obs : Int,
+  n_obs : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> RddSimpleData {
   let rng = chacha8_rng(seed)
   // 1. Pre-draw v ~ N(0, 1) (outcome noise).

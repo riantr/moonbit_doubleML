@@ -22,7 +22,7 @@
 /// point. It supersedes the earlier 7-bit-tiling helper that
 /// existed in `irm_test.mbt` and `cmd/main/main.mbt` and produced
 /// non-portable encodings.
-pub fn seed_to_bytes(seed : Int) -> Array[Byte] {
+pub fn seed_to_bytes(seed : Int32) -> Array[Byte] {
   let b0 : Byte = (seed & 0xff).to_byte()
   let b1 : Byte = ((seed >> 8) & 0xff).to_byte()
   let b2 : Byte = ((seed >> 16) & 0xff).to_byte()
@@ -51,7 +51,7 @@ pub fn seed_to_bytes(seed : Int) -> Array[Byte] {
 /// `Rand::chacha8(seed=Bytes::from_array(seed_to_bytes(seed)))`.
 /// Use this anywhere the package's tests / demos need a
 /// deterministic RNG keyed by an integer seed.
-pub fn chacha8_rng(seed : Int) -> @random.Rand {
+pub fn chacha8_rng(seed : Int32) -> @random.Rand {
   @random.Rand::chacha8(seed=Bytes::from_array(seed_to_bytes(seed)))
 }
 

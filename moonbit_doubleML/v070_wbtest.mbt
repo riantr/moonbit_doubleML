@@ -36,7 +36,7 @@ test "didcs_cross_section_sensitivity_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     x_flat[i * p + 0] = rng.double() * 2.0 - 1.0
     x_flat[i * p + 1] = rng.double() * 2.0 - 1.0
@@ -87,9 +87,9 @@ test "didmulti_sensitivity_returns_per_combination_results" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let x0 = rng.double() * 2.0 - 1.0
     let x1 = rng.double() * 2.0 - 1.0
@@ -153,8 +153,8 @@ test "plpr_sensitivity_returns_finite_result" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let x0 = rng.double() * 2.0 - 1.0
     let x1 = rng.double() * 2.0 - 1.0

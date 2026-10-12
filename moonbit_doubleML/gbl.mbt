@@ -47,13 +47,13 @@
 ///|
 /// Gradient boosting learner (regression).
 pub struct GBLearner {
-  n_trees : Int
+  n_trees : Int32
   learning_rate : Double
-  max_depth : Int
-  min_samples_leaf : Int
-  mtry : Int // -1 = floor(sqrt(n_features)) at fit time
+  max_depth : Int32
+  min_samples_leaf : Int32
+  mtry : Int32 // -1 = floor(sqrt(n_features)) at fit time
   subsample : Double // row subsampling fraction per tree (default 1.0)
-  bootstrap_seed : Int
+  bootstrap_seed : Int32
   // Fitted state (empty until `fit` is called).
   initial : Double // = mean(y) at fit time
   trees : Array[CART] // CART tree per boosting round
@@ -72,13 +72,13 @@ pub extend GBLearner with Learner::{predict}
 
 ///|
 pub fn GBLearner::new(
-  n_trees? : Int = 100,
-  learning_rate? : Double = 0.1,
-  max_depth? : Int = 3,
-  min_samples_leaf? : Int = 5,
-  mtry? : Int = -1,
-  subsample? : Double = 1.0,
-  bootstrap_seed? : Int = 3141,
+  n_trees~ : Int32 = 100,
+  learning_rate~ : Double = 0.1,
+  max_depth~ : Int32 = 3,
+  min_samples_leaf~ : Int32 = 5,
+  mtry~ : Int32 = -1,
+  subsample~ : Double = 1.0,
+  bootstrap_seed~ : Int32 = 3141,
 ) -> GBLearner {
   {
     n_trees,
@@ -96,7 +96,7 @@ pub fn GBLearner::new(
 ///|
 /// Number of trees in the fitted ensemble. Returns 0 if not
 /// yet fit.
-pub fn GBLearner::n_trees(self : GBLearner) -> Int {
+pub fn GBLearner::n_trees(self : GBLearner) -> Int32 {
   self.trees.length()
 }
 
@@ -158,7 +158,7 @@ pub fn GBLearner::fit_weighted(
       // (Friedman 1999). With subsample=1.0 (default), all rows
       // participate. With subsample<1.0, take a bootstrap-style
       // random subset of size floor(n_obs * subsample).
-      let sample_idx : Array[Int] = if self.subsample < 1.0 {
+      let sample_idx : Array[Int32] = if self.subsample < 1.0 {
         let n_sub = (n_obs.to_double() * self.subsample).to_int()
         let n_sub_eff = if n_sub < 1 {
           1

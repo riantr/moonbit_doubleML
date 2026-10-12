@@ -51,16 +51,16 @@
 /// clustered twin built from the same arrays.
 fn v106_build_panel(
   rng : @random.Rand,
-  n_units : Int,
-  n_periods : Int,
+  n_units : Int32,
+  n_periods : Int32,
   theta0 : Double,
-) -> (DoubleMLData, DoubleMLData, Array[Int]) {
+) -> (DoubleMLData, DoubleMLData, Array[Int32]) {
   let p = 3
   let n = n_units * n_periods
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
-  let cluster : Array[Int] = Array::make(n, 0)
+  let cluster : Array[Int32] = Array::make(n, 0)
   for u = 0; u < n_units; u = u + 1 {
     let alpha = (rng.double() - 0.5) * 4.0
     let unit_trait = rng.double() * 2.0 - 1.0
@@ -89,7 +89,7 @@ fn v106_build_panel(
 }
 
 ///|
-fn v106_singletons(n : Int) -> Array[Int] {
+fn v106_singletons(n : Int32) -> Array[Int32] {
   let ids = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {
     ids[i] = i

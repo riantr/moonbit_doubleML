@@ -82,7 +82,7 @@
 /// `hac_se` silently returned the homoskedastic number. `z` is a
 /// deterministic sawtooth in `i` (no RNG), so every number below
 /// is reproducible byte-for-byte on every backend.
-fn v096_dgp(n : Int) -> (Matrix, Array[Double], Array[Double], Array[Double]) {
+fn v096_dgp(n : Int32) -> (Matrix, Array[Double], Array[Double], Array[Double]) {
   let xd = Array::make(n, 0.0)
   let y = Array::make(n, 0.0)
   let d = Array::make(n, 0.0)
@@ -122,7 +122,7 @@ fn v096_dgp(n : Int) -> (Matrix, Array[Double], Array[Double], Array[Double]) {
 /// the reason `rdd_hac_se_dgp_sanity` below checks the scale of the
 /// answer rather than only its sign.
 fn v096_dgp_lopsided(
-  n : Int,
+  n : Int32,
 ) -> (Matrix, Array[Double], Array[Double], Array[Double]) {
   let xd = Array::make(n, 0.0)
   let y = Array::make(n, 0.0)
@@ -171,8 +171,8 @@ fn v096_side_wls(
   h : Double,
   side : Double,
   ridge : Double,
-) -> (Int, Array[Double], Array[Double], Array[Double], Array[Double]) {
-  let idx : Array[Int] = []
+) -> (Int32, Array[Double], Array[Double], Array[Double], Array[Double]) {
+  let idx : Array[Int32] = []
   for i = 0; i < score.length(); i = i + 1 {
     let u = score[i] - cutoff
     if (side < 0.0 && u < 0.0) || (side > 0.0 && u >= 0.0) {

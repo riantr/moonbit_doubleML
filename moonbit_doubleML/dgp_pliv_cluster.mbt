@@ -27,16 +27,16 @@ struct PlivClusterData {
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
-  cluster_a : Array[Int]
-  cluster_b : Array[Int]
+  cluster_a : Array[Int32]
+  cluster_b : Array[Int32]
 }
 
 ///|
 pub fn make_pliv_multiway_cluster(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> PlivClusterData {
   let rng = chacha8_rng(seed)
   let n_clusters_a = 50
@@ -104,8 +104,8 @@ pub fn make_pliv_multiway_cluster(
     }
   }
   // Build cluster ids + z, d, y.
-  let cluster_a : Array[Int] = Array::make(n_obs, 0)
-  let cluster_b : Array[Int] = Array::make(n_obs, 0)
+  let cluster_a : Array[Int32] = Array::make(n_obs, 0)
+  let cluster_b : Array[Int32] = Array::make(n_obs, 0)
   let z : Array[Double] = Array::make(n_obs, 0.0)
   let d : Array[Double] = Array::make(n_obs, 0.0)
   let y : Array[Double] = Array::make(n_obs, 0.0)
@@ -154,11 +154,11 @@ pub fn PlivClusterData::z_get(self : PlivClusterData) -> Array[Double] {
 }
 
 ///|
-pub fn PlivClusterData::cluster_a_get(self : PlivClusterData) -> Array[Int] {
+pub fn PlivClusterData::cluster_a_get(self : PlivClusterData) -> Array[Int32] {
   self.cluster_a
 }
 
 ///|
-pub fn PlivClusterData::cluster_b_get(self : PlivClusterData) -> Array[Int] {
+pub fn PlivClusterData::cluster_b_get(self : PlivClusterData) -> Array[Int32] {
   self.cluster_b
 }

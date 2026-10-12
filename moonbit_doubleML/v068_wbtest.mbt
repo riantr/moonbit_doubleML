@@ -159,9 +159,9 @@ test "didcs_sensitivity_returns_per_cell_results" {
   let x_flat : Array[Double] = Array::make(n * p, 0.0)
   let y : Array[Double] = Array::make(n, 0.0)
   let d : Array[Double] = Array::make(n, 0.0)
-  let t : Array[Int] = Array::make(n, 0)
-  let id : Array[Int] = Array::make(n, 0)
-  let g : Array[Int] = Array::make(n, 0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
   // Balanced panel: each unit observed in all 3 periods;
   // unit-level cohort g drawn once and replicated across
   // periods. Time-invariant covariates x_v[0, 1]; time-varying
@@ -209,8 +209,8 @@ test "didcs_sensitivity_returns_per_cell_results" {
   //    correct behaviour, not a regression: the old rule silently used t = 1 as
   //    the base for g = 1, which is cohort 1's FIRST TREATED period.
   // 2. Cohort g=2 gains its treatment-period cell (g=2, t=2) -> flat=4.
-  let fitted_cells : Array[Int] = [4, 5]
-  let zero_cells : Array[Int] = [0, 1, 2, 3]
+  let fitted_cells : Array[Int32] = [4, 5]
+  let zero_cells : Array[Int32] = [0, 1, 2, 3]
   for k in fitted_cells {
     assert_true(results[k].rv.is_nan() == false)
     assert_true(results[k].sigma2.is_nan() == false)

@@ -23,10 +23,10 @@ struct PlrConfoundedData {
 
 ///|
 pub fn make_confounded_plr_data(
-  n_obs : Int,
-  dim_x : Int,
+  n_obs : Int32,
+  dim_x : Int32,
   theta : Double,
-  seed : Int,
+  seed : Int32,
 ) -> PlrConfoundedData {
   let rng = chacha8_rng(seed)
   let n_normals_x = n_obs * dim_x

@@ -92,8 +92,8 @@ pub struct DoubleMLLPQ {
   data : DoubleMLLPQData
   treatment : Double
   quantile : Double
-  n_folds : Int
-  seed : Int
+  n_folds : Int32
+  seed : Int32
   propensity_clip : Double
   // v0.125.0: the RESOLVED CONCRETE propensity config, from upstream's
   // `init_ps_processor` (`lpq.py:163`). Stored concrete so it survives
@@ -159,8 +159,8 @@ pub struct DoubleMLLPQ {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.82.0+: memoization state. LPQ does not use multi-rep
   // (n_rep is implicit 1) -- the cross-fit is a single-pass
   // bisection over the IPW-QTE score. Mirrors the IRM /
@@ -175,12 +175,12 @@ pub extend DoubleMLLPQ with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLLPQ::new(
   data : DoubleMLLPQData,
-  treatment? : Double = 1.0,
-  quantile? : Double = 0.5,
-  n_folds? : Int = 2,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor_config? : PSProcessorConfig? = None,
+  treatment~ : Double = 1.0,
+  quantile~ : Double = 0.5,
+  n_folds~ : Int32 = 2,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor_config~ : PSProcessorConfig? = None,
 ) -> DoubleMLLPQ {
   try {
     require(n_folds >= 2)
@@ -274,12 +274,12 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     let folds = kfold(n, self.n_folds, self.seed)
     // v0.82.0+: if memoize is on and the cache is valid, the
     // fold_ids, g0, g1, m are all reusable.
-    let mut fold_ids : Array[Int] = []
+    let mut fold_ids : Array[Int32] = []
     if cache_hit {
       fold_ids = self.fit_cache.fold_ids
     } else {
       // Build the row -> fold_id map for the cache write below.
-      let fid : Array[Int] = Array::make(n, 0)
+      let fid : Array[Int32] = Array::make(n, 0)
       for f = 0; f < folds.length(); f = f + 1 {
         for i in folds[f].test_indices() {
           fid[i] = f
@@ -531,9 +531,9 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
 /// Calling on an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLLPQ::bootstrap(
   self : DoubleMLLPQ,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLLPQ {
   try {
     require(self.fitted)
@@ -575,8 +575,8 @@ pub fn DoubleMLLPQ::bootstrap(
 /// sensitivity.mbt).
 pub fn DoubleMLLPQ::sensitivity_analysis(
   self : DoubleMLLPQ,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   single_psi_sensitivity(self.coef, self.psi, self.data.y, cf_y, cf_d)
@@ -603,9 +603,9 @@ pub fn DoubleMLLPQ::sensitivity_analysis(
 /// number of clusters.
 pub fn DoubleMLLPQ::sensitivity_analysis_cluster(
   self : DoubleMLLPQ,
-  cluster_ids : Array[Int],
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids : Array[Int32],
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let n = self.data.y.length()
@@ -634,13 +634,13 @@ pub fn DoubleMLLPQ::sensitivity_analysis_cluster(
 
 ///|
 /// Number of observations.
-pub fn DoubleMLLPQ::n_obs(self : DoubleMLLPQ) -> Int {
+pub fn DoubleMLLPQ::n_obs(self : DoubleMLLPQ) -> Int32 {
   self.data.x.rows()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLLPQ::n_features(self : DoubleMLLPQ) -> Int {
+pub fn DoubleMLLPQ::n_features(self : DoubleMLLPQ) -> Int32 {
   self.data.x.cols()
 }
 
@@ -650,8 +650,8 @@ pub fn DoubleMLLPQ::n_features(self : DoubleMLLPQ) -> Int {
 /// v0.67.0+: `joint` is a no-op for single-theta estimators.
 pub fn DoubleMLLPQ::confint(
   self : DoubleMLLPQ,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -906,7 +906,7 @@ pub fn DoubleMLLPQ::sandwich_se(
 /// `cluster_ids.length() == psi.length()`.
 pub fn DoubleMLLPQ::cluster_sandwich_se(
   self : DoubleMLLPQ,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     let m_inv = self.m_inv_1x1()

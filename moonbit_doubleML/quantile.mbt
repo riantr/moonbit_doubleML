@@ -58,7 +58,7 @@ fn outcome_indicator(y : Array[Double], theta : Double) -> Array[Double] {
 /// within a single fit. The counter is exposed via
 /// `reset_g_cross_fit_count()` / `g_cross_fit_calls()` for tests
 /// to bracket a `fit()` call.
-let g_cross_fit_count : Ref[Int] = { val: 0, }
+let g_cross_fit_count : Ref[Int32] = { val: 0, }
 
 ///|
 /// Reset the g cross-fit counter to 0. Public so blackbox tests
@@ -69,7 +69,7 @@ pub fn reset_g_cross_fit_count() -> Unit {
 
 ///|
 /// Read the current g cross-fit count. Public for tests.
-pub fn g_cross_fit_calls() -> Int {
+pub fn g_cross_fit_calls() -> Int32 {
   g_cross_fit_count.val
 }
 
@@ -154,7 +154,7 @@ fn fit_propensity(
   treated : Array[Double],
   folds : Array[Fold],
   clip : Double,
-  ps_processor_config? : PSProcessorConfig? = None,
+  ps_processor_config~ : PSProcessorConfig? = None,
 ) -> Array[Double] {
   let m = Array::make(x.rows(), 0.0)
   for fold in folds {
@@ -199,11 +199,11 @@ pub fn solve_pq(
   data : DoubleMLData,
   treatment : Double,
   q : Double,
-  n_folds : Int,
-  seed : Int,
+  n_folds : Int32,
+  seed : Int32,
   clip : Double,
-  folds? : Array[Fold] = [],
-  ps_processor_config? : PSProcessorConfig? = None,
+  folds~ : Array[Fold] = [],
+  ps_processor_config~ : PSProcessorConfig? = None,
 ) -> (Double, Array[Double], Double) raise BracketSignError {
   let treated = indicator_level(data.d, treatment)
   let folds = if folds.length() == 0 {
@@ -308,8 +308,8 @@ pub struct DoubleMLPQ {
   data : DoubleMLData
   treatment : Double
   quantile : Double
-  n_folds : Int
-  seed : Int
+  n_folds : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[0]` for its cross-fit
   // INSTEAD of calling `kfold`. PQ is a SINGLE-FIT estimator (there
@@ -361,8 +361,8 @@ pub struct DoubleMLPQ {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.84.0+: memoization state. `memoize_enabled` is the
   // user-facing opt-in (set via `DoubleMLPQ::enable_memoize()`);
   // when true, `fit()` caches the LAST solve_pq's `(theta,
@@ -382,14 +382,14 @@ pub extend DoubleMLPQ with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLPQ::new(
   data : DoubleMLData,
-  treatment? : Double = 1.0,
-  quantile? : Double = 0.5,
-  n_folds? : Int = 2,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ps_processor_config? : PSProcessorConfig? = None,
-  ml_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+  treatment~ : Double = 1.0,
+  quantile~ : Double = 0.5,
+  n_folds~ : Int32 = 2,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ps_processor_config~ : PSProcessorConfig? = None,
+  ml_l~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(
     LogisticRegression::new(),
   ),
 ) -> DoubleMLPQ {
@@ -439,8 +439,8 @@ pub fn DoubleMLPQ::new(
 ///|
 pub fn DoubleMLPQ::fit(
   self : DoubleMLPQ,
-  ml_l? : LearnerDispatch = self.ml_l,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_l~ : LearnerDispatch = self.ml_l,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLPQ {
   // v0.67.0+: cluster-data dispatch -- when `cluster_vars` is
   // non-empty, route through `fit_cluster` (cluster-aware
@@ -520,7 +520,7 @@ pub fn DoubleMLPQ::fit(
     // `fold_ids.length() == n_obs`).
     let preds = self.fit_cache.predictions
     let cached_fold_ids = self.fit_cache.fold_ids
-    let local_fold_ids : Array[Int] = Array::make(n, 0)
+    let local_fold_ids : Array[Int32] = Array::make(n, 0)
     for i = 0; i < n; i = i + 1 {
       local_fold_ids[i] = cached_fold_ids[i]
     }
@@ -551,7 +551,7 @@ pub fn DoubleMLPQ::fit(
           "solve_pq: upper bracket sign failed after 20 widens (q too close to 1 with sparse treatment, or quantile is non-monotonic in this data)",
         )
     }
-    let local_fold_ids : Array[Int] = Array::make(n, 0)
+    let local_fold_ids : Array[Int32] = Array::make(n, 0)
     for f = 0; f < folds.length(); f = f + 1 {
       for i in folds[f].test_indices() {
         local_fold_ids[i] = f
@@ -679,8 +679,8 @@ fn DoubleMLPQ::fit_cluster(
           ")",
         )
     }
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n; i = i + 1 {
@@ -803,13 +803,13 @@ pub fn DoubleMLPQ::learner_m(self : DoubleMLPQ) -> LearnerDispatch {
 
 ///|
 /// Number of observations.
-pub fn DoubleMLPQ::n_obs(self : DoubleMLPQ) -> Int {
+pub fn DoubleMLPQ::n_obs(self : DoubleMLPQ) -> Int32 {
   self.data.n_obs()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLPQ::n_features(self : DoubleMLPQ) -> Int {
+pub fn DoubleMLPQ::n_features(self : DoubleMLPQ) -> Int32 {
   self.data.n_features()
 }
 
@@ -879,8 +879,8 @@ pub fn DoubleMLPQ::has_cache(self : DoubleMLPQ) -> Bool {
 /// accepted for API parity.
 pub fn DoubleMLPQ::confint(
   self : DoubleMLPQ,
-  joint? : Bool = false,
-  level? : Double = 0.95,
+  joint~ : Bool = false,
+  level~ : Double = 0.95,
 ) -> (Double, Double) {
   try {
     require(self.fitted)
@@ -909,9 +909,9 @@ pub fn DoubleMLPQ::confint(
 /// Calling on an un-fit model aborts via `PreconditionError`.
 pub fn DoubleMLPQ::bootstrap(
   self : DoubleMLPQ,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLPQ {
   try {
     require(self.fitted)
@@ -953,8 +953,8 @@ pub fn DoubleMLPQ::bootstrap(
 /// sensitivity.mbt).
 pub fn DoubleMLPQ::sensitivity_analysis(
   self : DoubleMLPQ,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   single_psi_sensitivity(self.coef, self.psi, self.data.y, cf_y, cf_d)
@@ -975,9 +975,9 @@ pub fn DoubleMLPQ::sensitivity_analysis(
 /// to produce a meaningful cluster-robust estimate).
 pub fn DoubleMLPQ::sensitivity_analysis_cluster(
   self : DoubleMLPQ,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> SensitivityResult raise {
   require(self.fitted)
   let y = self.data.y
@@ -1161,7 +1161,7 @@ pub fn DoubleMLPQ::sandwich_se(
 /// `cluster_ids.length() == psi.length()`.
 pub fn DoubleMLPQ::cluster_sandwich_se(
   self : DoubleMLPQ,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     let m_inv = self.m_inv_1x1()
@@ -1246,9 +1246,9 @@ pub fn DoubleMLPQ::bias_corrected_coef(self : DoubleMLPQ) -> Double {
 pub fn DoubleMLPQ::tune(
   self : DoubleMLPQ,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLPQ {
   try {
     require(param_set.length() > 0)
@@ -1361,8 +1361,8 @@ pub fn DoubleMLPQ::sample_splitting(self : DoubleMLPQ) -> SampleSplitting? {
 pub struct DoubleMLQTE {
   data : DoubleMLData
   quantiles : Array[Double]
-  n_folds : Int
-  seed : Int
+  n_folds : Int32
+  seed : Int32
   // v0.109.0+: caller-supplied sample splitting; `[]` means "draw my
   // own". When non-empty, `fit` uses `smpls[0]` for its nuisance
   // cross-fit INSTEAD of calling `kfold`. The partitioning is SHARED
@@ -1415,8 +1415,8 @@ pub struct DoubleMLQTE {
   // Populated by `bootstrap(...)`; empty until then.
   boot_t_stat : Array[Double]
   boot_method : String
-  n_rep_boot : Int
-  boot_seed : Int
+  n_rep_boot : Int32
+  boot_seed : Int32
   // v0.84.0+: memoization state. `memoize_enabled` is the
   // user-facing opt-in (set via `DoubleMLQTE::enable_memoize()`);
   // when true, `fit()` caches per-quantile `(theta1, psi1, deriv1,
@@ -1436,12 +1436,12 @@ pub extend DoubleMLQTE with @moonbitlang/core/debug.Debug::{to_repr}
 ///|
 pub fn DoubleMLQTE::new(
   data : DoubleMLData,
-  quantiles? : Array[Double] = [0.5],
-  n_folds? : Int = 2,
-  seed? : Int = 3141,
-  propensity_clip? : Double = 1.0e-6,
-  ml_l? : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m? : LearnerDispatch = LearnerDispatch::logistic_regression(
+  quantiles~ : Array[Double] = [0.5],
+  n_folds~ : Int32 = 2,
+  seed~ : Int32 = 3141,
+  propensity_clip~ : Double = 1.0e-6,
+  ml_l~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(
     LogisticRegression::new(),
   ),
 ) -> DoubleMLQTE {
@@ -1477,8 +1477,8 @@ pub fn DoubleMLQTE::new(
 ///|
 pub fn DoubleMLQTE::fit(
   self : DoubleMLQTE,
-  ml_l? : LearnerDispatch = self.ml_l,
-  ml_m? : LearnerDispatch = self.ml_m,
+  ml_l~ : LearnerDispatch = self.ml_l,
+  ml_m~ : LearnerDispatch = self.ml_m,
 ) -> DoubleMLQTE {
   // v0.67.0+: cluster-data dispatch -- when `cluster_vars` is
   // non-empty, route through `fit_cluster` (cluster-aware
@@ -1585,10 +1585,10 @@ pub fn DoubleMLQTE::fit(
   // Row-to-fold mapping: drawn once per `n_folds` for the
   // IID path (used for the cache-key contract that
   // `fold_ids.length() == n_obs`).
-  let fold_ids : Array[Int] = if cache_hit {
+  let fold_ids : Array[Int32] = if cache_hit {
     self.fit_cache.fold_ids
   } else {
-    let local_fold_ids : Array[Int] = Array::make(n_obs, 0)
+    let local_fold_ids : Array[Int32] = Array::make(n_obs, 0)
     for f = 0; f < folds.length(); f = f + 1 {
       for i in folds[f].test_indices() {
         local_fold_ids[i] = f
@@ -1767,8 +1767,8 @@ fn DoubleMLQTE::fit_cluster(
           ")",
         )
     }
-    let unit_rows : Array[Array[Int]] = Array::makei(n_units, fn(_) {
-      let rows : Array[Int] = []
+    let unit_rows : Array[Array[Int32]] = Array::makei(n_units, fn(_) {
+      let rows : Array[Int32] = []
       rows
     })
     for i = 0; i < n_obs; i = i + 1 {
@@ -1906,13 +1906,13 @@ pub fn DoubleMLQTE::learner_m(self : DoubleMLQTE) -> LearnerDispatch {
 
 ///|
 /// Number of observations.
-pub fn DoubleMLQTE::n_obs(self : DoubleMLQTE) -> Int {
+pub fn DoubleMLQTE::n_obs(self : DoubleMLQTE) -> Int32 {
   self.data.n_obs()
 }
 
 ///|
 /// Number of features (covariate columns).
-pub fn DoubleMLQTE::n_features(self : DoubleMLQTE) -> Int {
+pub fn DoubleMLQTE::n_features(self : DoubleMLQTE) -> Int32 {
   self.data.n_features()
 }
 
@@ -1977,8 +1977,8 @@ pub fn DoubleMLQTE::has_cache(self : DoubleMLQTE) -> Bool {
 /// are wider.
 pub fn DoubleMLQTE::confint(
   self : DoubleMLQTE,
-  level? : Double = 0.95,
-  joint? : Bool = false,
+  level~ : Double = 0.95,
+  joint~ : Bool = false,
 ) -> Array[(Double, Double)] {
   try {
     require(self.coefs.length() > 0)
@@ -2039,9 +2039,9 @@ pub fn DoubleMLQTE::confint(
 /// model aborts via `PreconditionError`.
 pub fn DoubleMLQTE::bootstrap(
   self : DoubleMLQTE,
-  method_name? : String = "normal",
-  n_rep_boot? : Int = 500,
-  seed? : Int = 2024,
+  method_name~ : String = "normal",
+  n_rep_boot~ : Int32 = 500,
+  seed~ : Int32 = 2024,
 ) -> DoubleMLQTE {
   try {
     require(self.coefs.length() > 0)
@@ -2117,8 +2117,8 @@ pub fn DoubleMLQTE::bootstrap(
 /// the convention used by `DoubleMLQTE::bootstrap`).
 pub fn DoubleMLQTE::sensitivity_analysis(
   self : DoubleMLQTE,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   // QTE does not persist a `fitted : Bool` field (its
   // bootstrap uses the same `coefs.length() > 0` proxy); the
@@ -2173,9 +2173,9 @@ pub fn DoubleMLQTE::sensitivity_analysis(
 /// via `PreconditionError`.
 pub fn DoubleMLQTE::sensitivity_analysis_cluster(
   self : DoubleMLQTE,
-  cluster_ids? : Array[Int] = self.data.cluster_vars,
-  cf_y? : Double = 0.05,
-  cf_d? : Double = 0.05,
+  cluster_ids~ : Array[Int32] = self.data.cluster_vars,
+  cf_y~ : Double = 0.05,
+  cf_d~ : Double = 0.05,
 ) -> Array[SensitivityResult] raise {
   require(self.coefs.length() > 0)
   let n_quantiles = self.quantiles.length()
@@ -2344,7 +2344,7 @@ pub fn DoubleMLQTE::sensitivity_analysis_cluster(
 /// Jacobians, since `ses[j]` uses the unclipped value.
 fn DoubleMLQTE::m_inv_1x1_at(
   self : DoubleMLQTE,
-  quantile_index : Int,
+  quantile_index : Int32,
 ) -> Matrix {
   try {
     let n_q = self.quantiles.length()
@@ -2372,7 +2372,7 @@ fn DoubleMLQTE::m_inv_1x1_at(
 /// slice `psi_flat[j * n_obs .. (j + 1) * n_obs]` of a fresh array.
 fn DoubleMLQTE::psi_row(
   self : DoubleMLQTE,
-  quantile_index : Int,
+  quantile_index : Int32,
 ) -> Array[Double] {
   try {
     let n_q = self.quantiles.length()
@@ -2438,7 +2438,7 @@ fn DoubleMLQTE::psi_row(
 /// `|derivs1[j]| >= 1e-12`, `|derivs0[j]| >= 1e-12`.
 pub fn DoubleMLQTE::sandwich_se_at(
   self : DoubleMLQTE,
-  quantile_index : Int,
+  quantile_index : Int32,
   kind : SandwichKind,
 ) -> Double {
   try {
@@ -2476,8 +2476,8 @@ pub fn DoubleMLQTE::sandwich_se_at(
 /// `cluster_ids.length() == n_obs`.
 pub fn DoubleMLQTE::cluster_sandwich_se_at(
   self : DoubleMLQTE,
-  quantile_index : Int,
-  cluster_ids : Array[Int],
+  quantile_index : Int32,
+  cluster_ids : Array[Int32],
 ) -> Double {
   try {
     let m_inv = self.m_inv_1x1_at(quantile_index)
@@ -2530,7 +2530,7 @@ pub fn DoubleMLQTE::cluster_sandwich_se_at(
 /// Preconditions: `0 <= quantile_index < coefs.length()`.
 pub fn DoubleMLQTE::bias_corrected_coef_at(
   self : DoubleMLQTE,
-  quantile_index : Int,
+  quantile_index : Int32,
 ) -> Double {
   try {
     require(self.coefs.length() > 0)
@@ -2556,7 +2556,7 @@ pub fn DoubleMLQTE::bias_corrected_coef_at(
 /// `n / (n - 1)` instead is algebraically the same number but differs
 /// in the last ulp, which would cost this API the bit-identical
 /// diagonal the rest of the package pins.
-fn qte_leverage_divisor(kind : SandwichKind, n_obs : Int) -> Double {
+fn qte_leverage_divisor(kind : SandwichKind, n_obs : Int32) -> Double {
   let eps = 1.0e-10
   let n_d = n_obs.to_double()
   let h_ii = 1.0 / n_d
@@ -2579,7 +2579,7 @@ fn qte_leverage_divisor(kind : SandwichKind, n_obs : Int) -> Double {
 /// with `k = 1`), and `1.0` for the other kinds. HC2 and HC3 are
 /// `0.0` here because their correction already went into the
 /// accumulator; adding it twice would be wrong.
-fn qte_post_scale(kind : SandwichKind, n_obs : Int) -> Double {
+fn qte_post_scale(kind : SandwichKind, n_obs : Int32) -> Double {
   let n_d = n_obs.to_double()
   match kind {
     HC0 => 1.0
@@ -2716,7 +2716,7 @@ pub fn DoubleMLQTE::joint_covariance(
 /// `expand_v101_test.mbt::qte_cluster_joint_collapses_to_iid`.
 pub fn DoubleMLQTE::cluster_joint_covariance(
   self : DoubleMLQTE,
-  cluster_ids : Array[Int],
+  cluster_ids : Array[Int32],
 ) -> Matrix {
   try {
     let n_q = self.quantiles.length()
@@ -2734,7 +2734,7 @@ pub fn DoubleMLQTE::cluster_joint_covariance(
     }
     require(max_cid >= 0)
     let n_clusters = max_cid + 1
-    let cluster_size : Array[Int] = Array::make(n_clusters, 0)
+    let cluster_size : Array[Int32] = Array::make(n_clusters, 0)
     // Per-cluster, per-quantile sums, flat `[n_clusters * n_q]`.
     let cluster_psi : Array[Double] = Array::make(n_clusters * n_q, 0.0)
     for i = 0; i < n_obs; i = i + 1 {
@@ -2804,9 +2804,9 @@ pub fn DoubleMLQTE::cluster_joint_covariance(
 pub fn DoubleMLQTE::tune(
   self : DoubleMLQTE,
   param_set~ : Array[TuneParam],
-  scoring_method? : String = "MSE",
-  n_folds_tune? : Int = 5,
-  seed? : Int = 3141,
+  scoring_method~ : String = "MSE",
+  n_folds_tune~ : Int32 = 5,
+  seed~ : Int32 = 3141,
 ) -> DoubleMLQTE {
   try {
     require(param_set.length() > 0)

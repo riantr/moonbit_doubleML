@@ -154,8 +154,8 @@ test "plpr_enable_memoize_smoke" {
   let dgp = make_plpr_CP2025(800, 3, 1.0, 8304)
   let y = dgp.y_get()
   let d = dgp.d_get()
-  let t_arr : Array[Int] = Array::make(y.length(), 0)
-  let id_arr : Array[Int] = Array::make(y.length(), 0)
+  let t_arr : Array[Int32] = Array::make(y.length(), 0)
+  let id_arr : Array[Int32] = Array::make(y.length(), 0)
   let n_periods = dgp.n_periods_get()
   let mut idx = 0
   for u = 0; u < dgp.n_units_get(); u = u + 1 {

@@ -49,8 +49,8 @@ fn generic_bootstrap_t_stat(
   psi_b : Array[Double],
   coef : Double,
   method_name : String,
-  n_rep_boot : Int,
-  seed : Int,
+  n_rep_boot : Int32,
+  seed : Int32,
 ) -> Array[Double] raise BootstrapMethodError {
   let n_obs = psi_a.length()
   if n_obs != psi_b.length() {
@@ -104,8 +104,8 @@ fn generic_bootstrap_t_stat(
 fn generic_bootstrap_single_psi(
   psi : Array[Double],
   method_name : String,
-  n_rep_boot : Int,
-  seed : Int,
+  n_rep_boot : Int32,
+  seed : Int32,
 ) -> Array[Double] raise BootstrapMethodError {
   let n_obs = psi.length()
   let mut ss_psi = 0.0
@@ -139,10 +139,10 @@ fn generic_bootstrap_psi_matrix(
   psi_flat : Array[Double],
   se_flat : Array[Double],
   method_name : String,
-  n_rep_boot : Int,
-  n_obs : Int,
-  n_thetas : Int,
-  seed : Int,
+  n_rep_boot : Int32,
+  n_obs : Int32,
+  n_thetas : Int32,
+  seed : Int32,
 ) -> Array[Double] raise BootstrapMethodError {
   let weights = draw_bootstrap_weights(method_name, n_rep_boot, n_obs, seed)
   did_bootstrap_t_stat(weights, psi_flat, se_flat, n_rep_boot, n_obs, n_thetas)
@@ -168,8 +168,8 @@ fn generic_bootstrap_ols_per_coef(
   xtx_inv : Matrix,
   se_flat : Array[Double],
   method_name : String,
-  n_rep_boot : Int,
-  seed : Int,
+  n_rep_boot : Int32,
+  seed : Int32,
 ) -> Array[Double] raise BootstrapMethodError {
   let n_obs = basis.rows()
   let p = xtx_inv.rows()
