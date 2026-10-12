@@ -351,10 +351,27 @@ pub fn DoubleMLCVAR::predictions_m(self : DoubleMLCVAR) -> Array[Double] {
 /// where `g_target = max(coef, (y - q*coef) / (1 - q))` and
 /// `q = self.quantile`. The constant `psi_a = -1` and the
 /// residual `y - g_hat` let us reuse the shared
-/// `irm_style_sensitivity` helper (see `sensitivity.mbt`):
-/// `cf_y` / `cf_d` are the confounding-strength upper bounds
-/// (defaults 0.05) and are passed through to the result for
-/// upstream parity.
+/// `irm_style_sensitivity` helper (see `sensitivity.mbt`).
+///
+/// v0.157.0: the previous wording here ended "...and are passed through to the
+/// result for upstream parity". That was wrong, and measurement replaced it.
+///
+/// - `cf_y` / `cf_d` ARE stored, so a caller can read back what was asked for
+///   -- but they reach NO computation. Measured across cf = 0.00 / 0.03 / 0.05
+///   / 0.10 / 0.20: `rv`, `max_bias`, `sigma2` and `nu2` are all bit-identical
+///   (delta = 0 on every field). Only the stored `cf_y`/`cf_d` round-trip.
+/// - Upstream uses `cf` to set the WIDTH of the theta band (measured there:
+///   +/-6.88 SE at cf=0.20). This port's `SensitivityResult`
+///   (`sensitivity.mbt:534`) has no band, no CI and no `rva`, so it
+///   STRUCTURALLY cannot carry the quantity `cf` moves upstream. That is the
+///   real sense in which there is no parity here, and it is not fixable by
+///   plumbing.
+/// - The default is `0.05`, where upstream's is `0.03` at all 17 of its
+///   estimators. So even the stored value diverges.
+///
+/// Evidence: `_verify/PARITY_COMMENTS_1570.md`, `_verify/_cvar_cf_1570.txt`.
+/// (The premise of this whole block -- constant `psi_a` -- is confirmed:
+/// `nu2` comes back as exactly 1.)
 pub fn DoubleMLCVAR::sensitivity_analysis(
   self : DoubleMLCVAR,
   cf_y~ : Double = 0.05,

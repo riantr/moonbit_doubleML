@@ -9,6 +9,68 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.157.0] — two more comments corrected by measurement, no behaviour change
+
+Tests 1115 -> 1115 (all four targets): **zero delta**. Comment-only.
+
+Both were on the outstanding list as *possibly false* comments asserting upstream
+parity. One holds; one does not — and the false one turns out not to be fixable
+by plumbing, which is the useful part.
+
+### 1. `cvar.mbt` — "passed through to the result for upstream parity" was wrong
+
+`cf_y` / `cf_d` ARE stored, so a caller can read back what was requested — but
+they reach **no computation**. Measured across cf = 0.00 / 0.03 / 0.05 / 0.10 /
+0.20, `rv`, `max_bias`, `sigma2` and `nu2` are all **bit-identical** (delta = 0 on
+every field). Only the stored pair round-trips.
+
+The real limitation is structural. Upstream uses `cf` to set the **width of the
+theta band** (+/-6.88 SE at cf = 0.20, measured on its own DGP). This port's
+`SensitivityResult` (`sensitivity.mbt:534`) has **no band, no CI and no `rva`**, so
+it structurally cannot carry the quantity `cf` moves upstream. The comment now
+says that instead of presenting storage as fidelity.
+
+The comment's *premise* is sound and is now measured rather than asserted:
+constant `psi_a` implies `nu2 = 1`, and `nu2` does come back as exactly 1.
+
+It also recorded "(defaults 0.05)" without marking it as the divergence from
+upstream's 0.03.
+
+### 2. `iivm.mbt` — the `ml_r` default is the learner class upstream rejects
+
+```
+iivm.py:164    self._check_learner(ml_r, "ml_r", regressor=False, classifier=True)
+iivm.mbt:185   ml_r~ : LearnerDispatch = LearnerDispatch::linear_regression()
+```
+
+`LearnerDispatch::linear_regression().is_classifier()` is false where the
+logistic arm is true, and on `make_iivm_data` the two arms **disagree on the
+reported LATE** — up to 1.52 absolute, up to **1.23 SE** across 8 fits.
+
+One of those 8 fits is excluded from the effect size: `n=500, seed=11` returns
+`se_reg = 1.79e-4` and `se_cls = 1.56e-4`, i.e. the variance estimate collapses
+under **either** learner. Its 371-SE ratio is a degenerate denominator, not a
+measure of the learner choice — quoting it would repeat the unseeded-arm
+mistake in a new costume. The collapse itself is a separate observation worth a
+tripwire: this port's `DoubleMLIIVM` can return a near-zero SE on this DGP.
+
+`mean |error|` is 1.521 (regressor) vs 1.630 (classifier), so on this sample the
+port's default is marginally *better*. **Contract divergence, not a defect** —
+and changing it is a behaviour change, so it is left as the user's call. The
+comment now records the divergence, the measurement, and why a regressor is
+arguably defensible here (`ml_r` models E[D|X,Z] with binary D; what OLS lacks is
+the [0,1] constraint).
+
+### Not changed
+
+`apo.mbt:52-60` was checked against the same standard and is **accurate** —
+upstream `apo.py:120` is literally `regressor=False, classifier=True`, `:131`
+gives `ml_m` `predict_proba`, and `:107` computes `treated` the same way the
+port does. Exact match on all three claims. Left alone.
+
+Evidence in `_verify/` (untracked): `PARITY_COMMENTS_1570.md`,
+`_cvar_cf_1570.txt`, `_iivm_mlr_1570.txt`.
+
 ## [0.156.0] — two source comments corrected by measurement, no behaviour change
 
 Tests 1115 -> 1115 (all four targets): **zero delta**. Comment-only. No reported

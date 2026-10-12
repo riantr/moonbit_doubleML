@@ -182,6 +182,26 @@ pub fn DoubleMLIIVM::new(
   ps_processor_config~ : PSProcessorConfig? = None,
   ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
   ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  // MEASURED (v0.157.0, `_verify/_iivm_mlr_1570.txt`): this default is a
+  // REGRESSOR, and upstream REJECTS a regressor here --
+  //   iivm.py:164  self._check_learner(ml_r, "ml_r", regressor=False, classifier=True)
+  //   iivm.py:43-45 docstring: "ml_r : classifier implementing fit() and
+  //                predict_proba() ... for r_0(Z,X) = E[D|X,Z]"
+  // Measured consequence on `make_iivm_data`: `LearnerDispatch::
+  // linear_regression().is_classifier()` is false where the logistic arm is
+  // true, and the two arms DISAGREE on the reported LATE -- up to 1.52 in
+  // absolute terms and up to 1.23 SE on the 7 of 8 fits whose SE is not
+  // degenerate. (The 8th, n=500/seed=11, returns a near-zero SE of ~1.8e-4
+  // under BOTH learners, so its 371-SE ratio is a degenerate-variance
+  // artifact and says nothing about the learner choice.)
+  // Neither arm is clearly more accurate on 8 fits: mean |error| 1.521
+  // (regressor) vs 1.630 (classifier).
+  //
+  // Why a regressor is defensible here even though upstream forbids it:
+  // `ml_r` models E[D | X, Z] and D is binary, so least squares estimates the
+  // same conditional mean. What OLS does NOT have is the [0,1] constraint.
+  // Whether to align with upstream's contract is an open decision, not a
+  // bug fix -- see `PARITY_COMMENTS_1570.md`.
   ml_r~ : LearnerDispatch = LearnerDispatch::linear_regression(),
 ) -> DoubleMLIIVM {
   try {
