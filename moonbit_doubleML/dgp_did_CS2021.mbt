@@ -99,6 +99,46 @@ pub fn make_did_CS2021(
       eps[idx_b] = z2
     }
   }
+  // v0.151.0: the unit intercept, PRE-DRAWN per unit.
+  //
+  // This used to be `let alpha_i = 0.5 * unit_in_cohort.to_double()`, a
+  // deterministic ramp 0 .. 49.5 that is IDENTICAL for a given position in
+  // every cohort -- not cohort-specific noise, a positional ramp. Measured on
+  // make_did_CS2021(1600, 3, 1.0, 3141):
+  //
+  //   var(y)                                   206.75   (SD 14.38)
+  //   corr(id, y)                               0.975
+  //   r^2 X_0 / X_1 / X_2 vs y      1.0e-5 / 2.6e-3 / 9.2e-3
+  //   share of var(y) that is time-invariant    99.65 %
+  //   var(within unit)                           1.11
+  //
+  // i.e. 0.25 * var(0..99) = 208.3 of the 206.75 total: the ramp WAS the
+  // variance. Covariates carried under 1% of it, so E[Y|D,T,X] held almost no
+  // covariate signal and no conditional nuisance could meaningfully beat a
+  // constant -- the same defect v0.148.0 removed from `make_did_cs_CS2021`,
+  // never applied here.
+  //
+  // A per-unit N(0,1) draw rather than deleting the term: unobserved unit
+  // heterogeneity IS the hidden confounding `nu2` prices, so removing it
+  // outright would leave the fixture unable to represent what it is for. SD 1
+  // puts it on the true effect's scale (theta = 1.0) as a minority of the
+  // covariate signal instead of a majority that drowns everything.
+  //
+  // Drawn AFTER `eps`, so X and the noise stream are bit-identical to before
+  // and the r^2 columns below move only through alpha's own contribution.
+  let alpha : Array[Double] = Array::make(n_units, 0.0)
+  let half_alpha = (n_units + 1) / 2
+  for i = 0; i < half_alpha; i = i + 1 {
+    let (z1, z2) = box_muller_pair(rng)
+    let idx_a = 2 * i
+    let idx_b = 2 * i + 1
+    if idx_a < n_units {
+      alpha[idx_a] = z1
+    }
+    if idx_b < n_units {
+      alpha[idx_b] = z2
+    }
+  }
   // Build panel. Cohort g=0 is never-treated; cohort g>=1 is
   // treated at tau_g = g - 1 (so cohort 1 treated at t=1, etc.).
   let y : Array[Double] = Array::make(true_n, 0.0)
@@ -117,7 +157,7 @@ pub fn make_did_CS2021(
       for k = 0; k < dim_x; k = k + 1 {
         x_dot_gamma = x_dot_gamma + x_unit[u * dim_x + k]
       }
-      let alpha_i = 0.5 * unit_in_cohort.to_double()
+      let alpha_i = alpha[u]
       let beta_t = 0.3 * period.to_double()
       y[idx] = alpha_i + beta_t + theta * d[idx] + x_dot_gamma + eps[idx]
       t[idx] = period

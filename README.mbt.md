@@ -25,13 +25,13 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.150.0** |
+| `moon.mod` version | **0.151.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **211** `.mbt` files (**65** production + **121** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **212** `.mbt` files (**65** production + **122** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1075 / 1075 / 1075** |
-| Tests (wasm-gc) | **1081 / 1081** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1083 / 1083 / 1083** |
+| Tests (wasm-gc) | **1089 / 1089** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -440,6 +440,85 @@ function at all**. `irm_style_sensitivity`'s `require(n == psi_a.length())`
 guard passed throughout, because both arrays were length 720 while describing
 different observations. Fixed, and both entry points now share one builder
 (`cs_bin_sensitivity_residuals`) so they cannot drift apart again.
+
+**THE `alpha_i` RAMP IN `make_did_CS2021` -- the one v0.148.0 missed** -- v0.151.0.
+v0.148.0 removed `alpha_i = 0.5 * unit_in_cohort` from `make_did_cs_CS2021` and
+never applied the fix to its 4-cohort sibling. Same defect, same reasoning,
+different file.
+
+Measured before, on `make_did_CS2021(1600, 3, 1.0, 3141)` where
+`n_per_cohort = 1600/4/4 = 100`:
+
+    var(y)                                  206.75   (SD 14.38)
+    corr(id, y)                               0.975
+    r^2 X_0 / X_1 / X_2 vs y     1.0e-5 / 2.6e-3 / 9.2e-3
+    share of var(y) that is time-invariant     99.65 %
+    var(within unit)                            1.11
+
+`0.25 * var(0..99) = 208.3` against a total of 206.75: THE RAMP WAS THE
+VARIANCE. It is not even cohort-specific noise -- `unit_in_cohort` repeats in
+every cohort, so it is a positional ramp. Covariates carried under 1% of the
+outcome, exactly the condition v0.148.0 called out as making the did_cs
+sensitivity migration untestable. After the fix: `var(y)` 11.06,
+`corr(id, y)` -0.108, `r^2` 0.423 / 0.647 / 0.560.
+
+A per-unit N(0,1) DRAW rather than deletion: unobserved unit heterogeneity IS the
+hidden confounding `nu2` exists to price, so removing the term outright would
+leave the fixture unable to represent what it is for. The draw is taken AFTER
+the noise stream, so X and `eps` are untouched -- and the evidence that this
+worked is that `var(within unit)` is BIT-IDENTICAL across the change
+(1.1087561532787724 -> 1.1087561532787722), so the `r^2` columns moved only
+through alpha's own contribution.
+
+**8 gates added (`expand_v151_test.mbt`), and three of them exist only because
+mutants survived.** GATE 0 asserts the correlation helper returns 1.0 against a
+variable and itself, since every correlation gate is worthless if the measuring
+routine is broken. GATE 1 pins covariate `r^2 > 0.35`; GATE 2 pins
+`|corr(id, y)| < 0.25`; GATE 3 states the ramp's absence on the quantity the ramp
+keyed on, the unit-level mean of `y` not being monotone in `unit_in_cohort`;
+GATE 4 pins the outcome scale and the PRESENCE of heterogeneity; GATE 5 proves
+the fix touched `y` and nothing else, without which the `r^2` gain could equally
+mean the treatment effect had been shrunk.
+
+GATE 4's presence check was BLIND, and the mutation run said so. With six gates
+written the first run scored 2/5 killed: M1 (`alpha_i = 0.0`, deleted),
+M4 (`alpha * 0.15`) and M5 (`alpha[u / 100]`, one intercept per cohort) all
+SURVIVED. The reason is structural and is the same masking that caused the
+original bug: X is ITSELF unit-level and time-invariant in this DGP, so it
+supplies the time-invariant share and the variance floor on its own. Any gate
+reading `corr(id, y)` or a variance band cannot tell "the unit intercept is
+present" from "the unit intercept is gone but X is doing its job".
+
+GATE 6 projects X out of the unit-level outcome and looks at what is left. Since
+`alpha` is drawn independently of X, that residual IS alpha (plus `eps` averaged
+over four periods): measured 1.279 against the predicted
+`var(alpha) + var(eps)/4 = 1.25`. That kills M1 and M4.
+
+GATE 7 handles M5, whose TOTAL heterogeneity is unchanged and so is invisible to
+GATE 6. Its first version SURVIVED M5 as well: it asserted
+`within_cohort_var > 0.2` on the reasoning that a constant-per-cohort intercept
+drives it to zero. It does not -- the residual floor is ~0.27 from `eps/4` and
+projection error, and the mutant walked straight through. The scale-free
+statement is the real one, and it is a RATIO: under a per-unit intercept the
+within-cohort spread equals the overall spread, because units within a cohort
+are exchangeable. Measured 1.009 / 1.279 = 0.789, against ~0.21 under M5.
+
+Final 5/5 killed, 0 survivors, 0 inconclusive, baseline 8/8.
+
+Blast radius: 3 sites, all value pins on this fixture -- `expand_v146_test.mbt`
+GATE 5, the v0.147.0 additivity gate, and that file's four-accessor mean gate.
+Every number re-measured, none guessed. Exactness was re-established per
+quantity rather than assumed: `g_d1t1`'s mean is 0.7510479216157833 on all four
+backends and keeps its `==`; the other three differ in the last one or two digits
+and take 1e-12 relative.
+
+Tests: 1083 native / 1083 wasm / 1089 wasm-gc / 1083 js, all four green.
+212 .mbt files (65 production + 122 blackbox test + 25 whitebox test).
+
+Still open, unchanged: DIDCS has a `(group, period)` cell grid upstream lacks, and
+`make_did_CS2021` sets `tau_g = cohort - 1`, so it does not satisfy DIDCS's
+g-is-treatment-period convention under either base period rule. An explicit
+`tau_g` on the estimator would remove that inference.
 
 **THE ESTIMAND FIX -- base period `g - 1`, so `ATT(g, g)` exists** -- v0.150.0.
 This is the first release in this thread that CHANGES REPORTED NUMBERS; every one

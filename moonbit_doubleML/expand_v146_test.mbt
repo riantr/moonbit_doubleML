@@ -162,12 +162,12 @@ test "didcs_stage_1a_does_not_move_any_estimate" {
   // therefore does not satisfy DIDCS's g-is-tau convention under either base
   // period rule, and its cells are not CS ATT(g, t). The fixtures that DO
   // satisfy it recover ATT to ~0.4% -- see `expand_v150_test.mbt` GATE 3.
-  assert_true(rel(fitted.coef_at(0, 2), 0.45314982908769347) < 1.0e-12)
-  assert_true(rel(fitted.se_at(0, 2), 1.4998819531988425) < 1.0e-12)
-  assert_true(rel(fitted.coef_at(0, 3), 0.08931822547434981) < 1.0e-12)
-  assert_true(rel(fitted.se_at(0, 3), 1.389494533829865) < 1.0e-12)
-  assert_true(rel(fitted.coef_at(1, 3), -0.7057449656908239) < 1.0e-12)
-  assert_true(rel(fitted.se_at(1, 3), 1.2517201629194283) < 1.0e-12)
+  assert_true(rel(fitted.coef_at(0, 2), 0.6790989134518333) < 1.0e-12)
+  assert_true(rel(fitted.se_at(0, 2), 1.576530184609983) < 1.0e-12)
+  assert_true(rel(fitted.coef_at(0, 3), 0.3152673098384928) < 1.0e-12)
+  assert_true(rel(fitted.se_at(0, 3), 1.5401197678254355) < 1.0e-12)
+  assert_true(rel(fitted.coef_at(1, 3), -1.2811615117010642) < 1.0e-12)
+  assert_true(rel(fitted.se_at(1, 3), 1.38899147615608) < 1.0e-12)
 }
 
 ///|

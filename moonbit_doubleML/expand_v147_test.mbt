@@ -217,12 +217,12 @@ test "didcs_stage_1b_does_not_move_any_estimate" {
   // Same caveat as `expand_v146_test.mbt` GATE 5: `make_did_CS2021` sets
   // `tau_g = g - 1`, so `g` is a cohort LABEL there, not a treatment period,
   // and these are regression locks rather than ATT recoveries.
-  assert_true(v1470_rel(fitted.coef_at(0, 2), 0.45314982908769347) < 1.0e-12)
-  assert_true(v1470_rel(fitted.se_at(0, 2), 1.4998819531988425) < 1.0e-12)
-  assert_true(v1470_rel(fitted.coef_at(0, 3), 0.08931822547434981) < 1.0e-12)
-  assert_true(v1470_rel(fitted.se_at(0, 3), 1.389494533829865) < 1.0e-12)
-  assert_true(v1470_rel(fitted.coef_at(1, 3), -0.7057449656908239) < 1.0e-12)
-  assert_true(v1470_rel(fitted.se_at(1, 3), 1.2517201629194283) < 1.0e-12)
+  assert_true(v1470_rel(fitted.coef_at(0, 2), 0.6790989134518333) < 1.0e-12)
+  assert_true(v1470_rel(fitted.se_at(0, 2), 1.576530184609983) < 1.0e-12)
+  assert_true(v1470_rel(fitted.coef_at(0, 3), 0.3152673098384928) < 1.0e-12)
+  assert_true(v1470_rel(fitted.se_at(0, 3), 1.5401197678254355) < 1.0e-12)
+  assert_true(v1470_rel(fitted.coef_at(1, 3), -1.2811615117010642) < 1.0e-12)
+  assert_true(v1470_rel(fitted.se_at(1, 3), 1.38899147615608) < 1.0e-12)
 }
 
 ///|
@@ -322,18 +322,25 @@ test "didcs_four_g_are_empty_before_fit" {
 /// fourth (see below), so nothing is loosened further than it must be.
 ///
 /// EXACTNESS IS RESTORED WHERE IT IS AVAILABLE, per the same rule as
-/// `expand_v146_test.mbt` GATE 5b. Run on all four backends, the means of
-/// `g_d0t1`, `g_d1t0` and `g_d1t1` are BIT-IDENTICAL, so those three are
-/// asserted with `==`. Only `g_d0t0` differs -- js ends `...4715` where the
-/// other three end `...472`, about 2e-16 relative -- and only that one is
-/// asserted with a tolerance.
+/// `expand_v146_test.mbt` GATE 5b. Re-measured on all four backends for
+/// v0.151.0: the mean of `g_d1t1` is `0.7510479216157833` on native, wasm,
+/// wasm-gc AND js -- bit for bit -- so that one is asserted with `==`. The other
+/// three differ from native in the last one or two digits (worst case
+/// `g_d0t0`: `...719974` on native vs `...71996` elsewhere, about 3.7e-16
+/// relative) and are asserted with a tolerance.
 test "didcs_four_g_accessors_each_carry_their_own_measured_mean" {
   let fitted = v1470_four_period_fit()
   assert_true(
-    v1470_rel(v1470_mean(fitted.predictions_g_d0_t0()), 24.49384281440472) <
+    v1470_rel(v1470_mean(fitted.predictions_g_d0_t0()), -0.37832303330719974) <
     1.0e-12,
   )
-  assert_true(v1470_mean(fitted.predictions_g_d0_t1()) == 24.953959534582523)
-  assert_true(v1470_mean(fitted.predictions_g_d1_t0()) == 26.16197119942422)
-  assert_true(v1470_mean(fitted.predictions_g_d1_t1()) == 25.55760704456009)
+  assert_true(
+    v1470_rel(v1470_mean(fitted.predictions_g_d0_t1()), 0.07138677844604216) <
+    1.0e-12,
+  )
+  assert_true(
+    v1470_rel(v1470_mean(fitted.predictions_g_d1_t0()), 0.8106089238918825) <
+    1.0e-12,
+  )
+  assert_true(v1470_mean(fitted.predictions_g_d1_t1()) == 0.7510479216157833)
 }

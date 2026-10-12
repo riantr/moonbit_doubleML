@@ -9,6 +9,111 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.151.0] — the `alpha_i` ramp in `make_did_CS2021`: the one v0.148.0 missed
+
+v0.148.0 removed `alpha_i = 0.5 * unit_in_cohort` from `make_did_cs_CS2021` and
+never applied the fix to its 4-cohort sibling `make_did_CS2021`. This release
+does. Same defect, same reasoning, different file.
+
+### Measured before
+
+On `make_did_CS2021(1600, 3, 1.0, 3141)`, `n_per_cohort = 1600 / 4 / 4 = 100`:
+
+```
+var(y)                                     206.75   (SD 14.38)
+corr(id, y)                                 0.975
+r^2 X_0 / X_1 / X_2 vs y        1.0e-5 / 2.6e-3 / 9.2e-3
+share of var(y) that is time-invariant     99.65 %
+var(within unit)                             1.11
+```
+
+`0.25 * var(0..99) = 208.3` against a total of `206.75`: **the ramp was the
+variance**. It is not even cohort-specific noise — `unit_in_cohort` repeats in
+every cohort, so it is a positional ramp. Covariates carried under 1 % of the
+outcome, which is exactly the condition v0.148.0 called out as making the
+`did_cs` sensitivity migration untestable: `E[Y | D, T, X]` held no usable
+covariate signal.
+
+### Measured after
+
+```
+var(y)                                      11.06
+corr(id, y)                                 -0.108
+r^2 X_0 / X_1 / X_2 vs y        0.423 / 0.647 / 0.560
+```
+
+### A draw, not a deletion
+
+Unobserved unit heterogeneity IS the hidden confounding `nu2` exists to price,
+so removing the term outright would leave the fixture unable to represent what
+it is for. SD 1 puts it on the true effect's scale (`theta = 1.0`) as a minority
+of the covariate signal rather than a majority that drowns everything.
+
+The draw is taken **after** the noise stream, so X and `eps` are untouched. The
+evidence that this worked: `var(within unit)` is bit-identical across the change
+(`1.1087561532787724` → `1.1087561532787722`), so the `r²` columns moved only
+through alpha's own contribution.
+
+### Gates — 8 added, and three of them exist only because mutants survived
+
+`expand_v151_test.mbt`. GATE 0 asserts the correlation helper returns 1.0
+against a variable and itself — every correlation gate is worthless if the
+measuring routine is broken. GATE 1 pins covariate `r² > 0.35`. GATE 2 pins
+`|corr(id, y)| < 0.25`. GATE 3 states the ramp's absence on the quantity the
+ramp keyed on: the unit-level mean of `y` is not monotone in `unit_in_cohort`.
+GATE 4 pins the outcome scale and the *presence* of heterogeneity. GATE 5 proves
+the fix touched `y` and nothing else — occupancy and `theta` unchanged — without
+which the `r²` gain could equally mean the treatment effect had been shrunk.
+
+**GATE 4's presence check was blind, and the mutation run said so.** With six
+gates written, the first run scored **2/5 killed**:
+
+| Mutant | first verdict |
+|---|---|
+| M1 `alpha_i = 0.0` (deleted) | **SURVIVED** |
+| M2 the ramp restored | KILLED |
+| M3 heterogeneity ×5 | KILLED |
+| M4 heterogeneity ×0.15 | **SURVIVED** |
+| M5 `alpha[u / 100]` (per cohort) | **SURVIVED** |
+
+The reason is structural, and it is the same masking that caused the original
+bug: **X is itself unit-level and time-invariant in this DGP**, so it supplies
+the time-invariant share and the variance floor on its own. Any gate reading
+`corr(id, y)` or a variance band cannot distinguish "the unit intercept is
+present" from "the unit intercept is gone but X is doing its job".
+
+GATE 6 therefore projects X out of the unit-level outcome and looks at what is
+left — and since `alpha` is drawn independently of X, that residual IS alpha
+(plus `eps` averaged over four periods). Measured `1.279` against the predicted
+`var(alpha) + var(eps)/4 = 1.25`. That kills M1 and M4.
+
+GATE 7 handles M5, whose total heterogeneity is unchanged and therefore invisible
+to GATE 6. Its **first version survived M5 too**: it asserted
+`within_cohort_var > 0.2` on the reasoning that a constant-per-cohort intercept
+drives it to zero. It does not — the residual floor is ~0.27 from `eps/4` and
+projection error, and the mutant walked straight through. The scale-free
+statement is the real one, and it is a **ratio**: under a per-unit intercept the
+within-cohort spread equals the overall spread, because units within a cohort are
+exchangeable. Measured `1.009 / 1.279 = 0.789`, against `~0.21` under M5.
+
+Final: **5/5 killed, 0 survivors, 0 inconclusive, baseline 8/8.**
+
+### Blast radius — 3 sites, all value pins on this fixture
+
+`expand_v146_test.mbt` GATE 5 and `expand_v147_test.mbt`'s additivity gate, plus
+that file's four-accessor mean gate. Every number was re-measured, none guessed.
+Exactness was re-established per quantity rather than assumed: `g_d1t1`'s mean
+is `0.7510479216157833` on all four backends and keeps its `==`; the other three
+differ in the last one or two digits and take 1e-12 relative.
+
+### Still open
+
+Unchanged by this release: the port's `DoubleMLDIDCS` has a `(group, period)`
+cell grid upstream's does not, and `make_did_CS2021` sets `tau_g = cohort - 1`,
+so it does not satisfy DIDCS's g-is-treatment-period convention under either
+base period rule. An explicit `tau_g` on the estimator would remove that
+inference.
+
 ## [0.150.0] — the estimand fix: base period `g − 1`, so `ATT(g, g)` exists
 
 **This release changes reported numbers.** It is the first in this thread that
