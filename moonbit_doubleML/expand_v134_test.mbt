@@ -8,7 +8,7 @@
 //
 //| APO has the simpler structural story of the two migrated estimators, for a
 //| reason worth recording: its `ml_m` is fitted against `treated` -- the
-//| `indicator_level(d, treatment_level)` 0/1 VECTOR (apo.mbt:343, :1087) --
+//| `indicator_level(d, treatment_level)` 0/1 VECTOR (apo.mbt:355, :577) --
 //| NOT raw `d`. The target is therefore binary for ANY treatment level, so a
 //| classifier is correct by construction rather than by convention. (Contrast
 //| `DoubleMLDID`, whose treatment can be continuous, and where a logistic

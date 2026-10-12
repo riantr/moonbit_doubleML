@@ -9,6 +9,69 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.158.0] — two stale self-citations, and an open question closed against the port
+
+Tests 1115 -> 1115 (`moon test`, wasm-gc; native reports "no test entry
+found", exit 0): **zero delta**. Comment-only.
+
+Two comments pointed at `apo.mbt:343, :1087` for the `indicator_level` call
+sites. The sites are `:355` and `:577` (`:250` is the definition) — the claim
+was right, the address was wrong, in both places it appeared
+(`apo.mbt:56` and `expand_v134_test.mbt:11`).
+
+### ROW R: APO `ml_m` target — no divergence, the pending question is refuted
+
+This was carried as "pending confirmation of upstream's raw-`d` target". Settled
+against the port: **upstream does not use raw `d`.**
+
+```
+apo.py:107   self._treated = self._dml_data.d == self._treatment_level
+apo.py:317   m_hat = _dml_cv_predict(self._learner["ml_m"], x, treated, ...)
+apo.mbt:355  let treated = indicator_level(self.data.d, self.treatment_level)
+apo.mbt:305  ... slice_vector(treated, tr) ...        (the ml_m target)
+```
+
+`apo.py:107` is byte-for-byte the same construction as `indicator_level`, and
+`apo.py:317` passes `treated`, not `d`. So `apo.mbt:52-60` is substantively
+correct and stands unchanged. The target is binary by construction for any
+treatment level, which is what makes a classifier the right default.
+
+### ROW T: both of upstream's `_check_data` guards are absent
+
+`apo.py:541-552` has two checks; the port has neither. The first
+(`apo.py:542`, `np.sum(self.treated) < 5` -> raise) is **ROW D**, already
+measured, still awaiting a decision. The second (`apo.py:548`,
+`np.mean(self.treated) <= 0.05` -> warn) is recorded rather than fixed: the
+library has no warning channel at all — every `println` in the package is in
+a `_test.mbt` — and its only library-side diagnostic is `require`/abort.
+Using `require` here would *diverge* from upstream, which deliberately only
+warns.
+
+### A linter for the mechanical half of this
+
+`_verify/_verify_citations_1570.py` resolves every `<file>.mbt:<line>` citation
+in the package's comments and checks that the line exists, is non-blank, and is
+not the citing line. It reports **64 resolved citations, 0 problems** across 218
+files. It is deliberately mechanical and does **not** decide whether a line is
+the *right* line — `expand_v134_test.mbt:11` is in range and would always have
+passed it. The semantic half is the part that found this release's fix.
+
+Two bugs in that linter were found by planting defects in it first, and both are
+worth recording because both produced a confident **false green**:
+
+* a 1-based/0-based mix made `lines[-1:5]` an empty slice, so the first comment
+  block of every file was never checked — the apparent 570 citations were 1035
+  once fixed, and 64 once double-counting was also removed;
+* the bare `:NNN` shorthand was resolved against the *citing* file instead of
+  the *cited* one, so every cross-file shorthand looked out-of-range.
+
+A gate that reports "0 problems" has not been tested until something is planted
+in it.
+
+Evidence in `_verify/` (untracked): `DEFAULT_CENSUS_1570.md` (ROW R, ROW T),
+`_verify_citations_1570.py`, `_verify_comment_only_1570.py`,
+`_verify_strip_sound_1570.py`.
+
 ## [0.157.0] — two more comments corrected by measurement, no behaviour change
 
 Tests 1115 -> 1115 (all four targets): **zero delta**. Comment-only.

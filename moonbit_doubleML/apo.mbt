@@ -53,7 +53,7 @@ pub struct DoubleMLAPO {
   //   `ml_g` models `E[Y | X]`        -> stays OLS
   //   `ml_m` models `P(D = lvl | X)`  -> LogisticRegression
   // APO's `ml_m` is fitted against `treated` -- the
-  // `indicator_level(d, treatment_level)` 0/1 VECTOR (apo.mbt:343, :1087),
+  // `indicator_level(d, treatment_level)` 0/1 VECTOR (apo.mbt:355, :577),
   // NOT raw `d` -- so the target is binary by construction for ANY
   // treatment level, and a classifier is structurally the right learner.
   // Upstream agrees: `regressor=False, classifier=True` plus
