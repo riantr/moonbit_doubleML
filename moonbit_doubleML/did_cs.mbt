@@ -613,6 +613,35 @@ pub fn DoubleMLDIDCS::predictions_g_d1_t0(
 /// uses `irm_style_sensitivity` over the DML score element. The two disagree
 /// by construction and both are exposed.
 ///
+/// **v0.154.0 RESTRICTION -- THIS PATH IS 2-PERIOD PANELS ONLY.** All five
+/// `sensitivity_*` accessors assume the treatment variable `t` is a BINARY
+/// post-treatment indicator taking values `{0, 1}`. They are correct only when
+/// the panel's period labels are exactly `[0, 1]`, which is the canonical
+/// `make_did_cs_CS2021` fixture.
+///
+/// On a MULTI-PERIOD panel they are wrong, in two independent ways, both
+/// measured (`_verify/PORT_VS_UPSTREAM_DEFAULTS_1540.md`):
+///
+///   1. The four g-function condition masks are built hardcoded to period
+///      labels 0 and 1 (`did_cs.mbt`, the `cond_d0_t0` .. `cond_d1_t1` loop),
+///      so **every row with `t >= 2` is silently discarded** from all four
+///      `g_hat_dXtY` nuisances. On the 4-period fixture that is 800 of 1600
+///      rows -- exactly half, matching the v0.147.0 cell-occupancy census.
+///   2. `t` is then used as a 0/1 INDICATOR, so `1 - t` is negative for
+///      `t >= 2`. That makes `mean(d * (1 - t))` negative -- measured `-0.5`
+///      on the 4-period fixture -- which is a denominator, not a frequency.
+///
+/// Consequence: on a multi-period panel these accessors return a number
+/// computed from half the rows with a malformed indicator. It is not NaN, so
+/// nothing signals the problem. **The ATT path is unaffected** and needs no
+/// caveat; see GATE 4 in `expand_v154b_test.mbt`.
+///
+/// No guard is raised today: adding one changes reported values, so it is
+/// scoped as its own change rather than slipped in here. Until then, treat a
+/// multi-period `sigma2` / `nu2` as NOT IMPLEMENTED. Five tripwires in
+/// `expand_v154b_test.mbt` pin the current defective behaviour -- invert them,
+/// do not delete them, when this is fixed.
+///
 /// `0.0` before `fit`.
 pub fn DoubleMLDIDCS::sensitivity_sigma2(self : DoubleMLDIDCS) -> Double {
   self.sigma2_panel
@@ -632,12 +661,19 @@ pub fn DoubleMLDIDCS::sensitivity_sigma2(self : DoubleMLDIDCS) -> Double {
 ///
 /// PANEL-LEVEL, like `sensitivity_sigma2`.
 ///
-/// MAY BE NaN, AND THAT IS CORRECT. The `in_sample_normalization = true`
-/// branch divides by `mean(d1t0)`, which is `0.0` on the canonical 2-period
-/// fixture because nobody is treated in the pre-period -- the `(d=1, t=0)` cell
-/// is structurally empty. Upstream's arithmetic on the same input produces the
-/// same Inf/NaN, and no fallback is substituted, because a quiet replacement
-/// number would be indistinguishable from a correct one.
+/// MAY BE NaN, AND THAT IS CORRECT -- **on a 2-period panel**. The
+/// `in_sample_normalization = true` branch divides by `mean(d1t0)`, which is
+/// `0.0` on the canonical 2-period fixture because nobody is treated in the
+/// pre-period -- the `(d=1, t=0)` cell is structurally empty. Upstream's
+/// arithmetic on the same input produces the same Inf/NaN, and no fallback is
+/// substituted, because a quiet replacement number would be indistinguishable
+/// from a correct one.
+///
+/// On a MULTI-PERIOD panel this accessor is NOT correct, and does not merely
+/// go NaN -- it returns a large negative value (measured `-112652.99`) built
+/// from a negative denominator. See the v0.154.0 RESTRICTION note on
+/// `sensitivity_sigma2`, which governs all five `sensitivity_*` accessors.
+/// This paragraph's "that is correct" claim holds ONLY for 2-period panels.
 ///
 /// Which branch runs is `self.in_sample_normalization`, whose port default
 /// (`false`) differs from upstream's (`true`).
@@ -651,6 +687,10 @@ pub fn DoubleMLDIDCS::sensitivity_nu2(self : DoubleMLDIDCS) -> Double {
 /// Per-row `psi_sigma2 = (y - g_hat)^2 - sigma2`. Upstream's convention is the
 /// DEVIATION from the scalar (`did_cs.py:464`), so this array has mean exactly
 /// zero -- it is not the raw element. Length `n_obs`; empty before `fit`.
+///
+/// **v0.154.0: 2-PERIOD PANELS ONLY.** See the RESTRICTION note on
+/// `sensitivity_sigma2` -- on a multi-period panel every row with `t >= 2` is
+/// discarded from the g-functions this deviation is built from.
 pub fn DoubleMLDIDCS::sensitivity_psi_sigma2(
   self : DoubleMLDIDCS,
 ) -> Array[Double] {
@@ -663,6 +703,9 @@ pub fn DoubleMLDIDCS::sensitivity_psi_sigma2(
 /// mean exactly zero and `sensitivity_nu2` is NOT its mean -- recovering the
 /// element itself needs `psi_nu2[i] + nu2`. Length `n_obs`; empty before
 /// `fit`.
+///
+/// **v0.154.0: 2-PERIOD PANELS ONLY.** See the RESTRICTION note on
+/// `sensitivity_sigma2`.
 pub fn DoubleMLDIDCS::sensitivity_psi_nu2(
   self : DoubleMLDIDCS,
 ) -> Array[Double] {
@@ -671,6 +714,10 @@ pub fn DoubleMLDIDCS::sensitivity_psi_nu2(
 
 ///|
 /// Per-row Riesz representer `rr`. Length `n_obs`; empty before `fit`.
+///
+/// **v0.154.0: 2-PERIOD PANELS ONLY.** See the RESTRICTION note on
+/// `sensitivity_sigma2` -- `rr` is built from the same `mean(d * (1 - t))`
+/// denominator that goes negative on a multi-period panel.
 pub fn DoubleMLDIDCS::sensitivity_riesz_rep(
   self : DoubleMLDIDCS,
 ) -> Array[Double] {

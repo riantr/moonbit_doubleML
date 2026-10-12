@@ -9,6 +9,111 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.154.0] — the sensitivity elements are 2-period panels only
+
+Docs-only plus tripwires. **No behaviour change.** Tests 1098 -> 1106 (native /
+wasm / js), 1104 -> 1112 (wasm-gc): exactly +8, eight new tripwire gates, every
+pre-existing count unchanged.
+
+This release does not fix anything. It makes a **live correctness defect
+impossible to discover twice**, and corrects a doc comment that was actively
+misleading about it.
+
+### The defect
+
+All five `DoubleMLDIDCS::sensitivity_*` accessors assume the treatment
+variable `t` is a **binary post-treatment indicator** taking values `{0, 1}`.
+They are correct only when the panel's period labels are exactly `[0, 1]` --
+the canonical `make_did_cs_CS2021` fixture.
+
+On a **multi-period** panel they are wrong in two independent ways, both
+measured:
+
+1. **Half the panel is silently discarded.** The four g-function condition
+   masks are built hardcoded to period labels 0 and 1, so every row with
+   `t >= 2` enters no condition and is dropped from all four
+   `g_hat_dXtY` nuisances. On the 4-period fixture that is **800 of 1600
+   rows** -- exactly half, independently corroborated by the v0.147.0
+   cell-occupancy census (300 / 200 / 100 / 200).
+2. **`t` is then used as an indicator, so `1 - t` is negative** for `t >= 2`.
+   That makes `mean(d * (1 - t))` a *negative* denominator where a positive
+   frequency was assumed -- measured **−0.5**.
+
+Direct accumulation from the panel's `d` and `t` (no fitting, so pure
+arithmetic):
+
+| panel | `t` range | `_m11` | `_m10` | `1/_m11` | `1/_m10` |
+|---|---|---|---|---|---|
+| 4-period | **[0, 3]** | 1.0625 | **−0.5** | 0.9412 | **−2** |
+| 2-period | [0, 1] | 0.25 | **0** | 4 | **Infinity** |
+
+### Why it matters more than the `in_sample_normalization` default
+
+`sigma2` feeds the sensitivity interval, so this is a wrong number for any
+staggered-adoption user. Measured on `make_did_CS2021(1600, 3, 1.0, 3141)`:
+
+| | `nu2` | `ATT(0,1)` |
+|---|---|---|
+| `in_sample_normalization = false` (port default) | −60.07 | 1.4166 |
+| `in_sample_normalization = true` (upstream default) | **−112652.99** | 1.1541 |
+
+The ATT path is **unaffected** and needs no caveat (GATE 4). That is what makes
+a 2-period restriction a small, non-behavioural change rather than a redesign.
+
+### The doc comment that had to be corrected
+
+`sensitivity_nu2` previously read:
+
+> MAY BE NaN, AND THAT IS CORRECT.
+
+That is true for 2-period panels. On a multi-period panel it does not go NaN at
+all -- it returns **−112652.99** from a negative denominator. The old wording
+would lead a reader to conclude the multi-period case was "correctly NaN"
+rather than silently wrong. It now states that the claim holds **only** for
+2-period panels and points at the restriction note.
+
+### Two hypotheses measurement REFUTED
+
+* **`propensity_clip`.** The first guess was that `1e-6` drives the scale via a
+  heavy-tailed `pw = m/(1−m)`, which would have tied this to the other measured
+  divergence (upstream `trimming_threshold = 0.01`) and explained both with one
+  root cause. **Wrong** -- `nu2` is bit-identical at `-112652.99406321559` for
+  `propensity_clip` in `{1e-6, 1e-3, 0.01, 0.05}`.
+* **A one-line fix.** An intermediate report here called the fix "narrow -- make
+  `t[i]` yield a 0/1 indicator". Reading the condition-mask construction
+  refuted it: the masks are hardcoded to periods 0/1, so this is a
+  **redesign** (per-cell conditions on `t == t_value_pre` / `t == t_value_eval`),
+  not a substitution.
+
+### Gates: 8 new, all tripwires
+
+`expand_v154_test.mbt` (3) pins the `DoubleMLDIDMulti` convention defect:
+`"standard"` yields 3 cells with `t_eval == g` in **0 of 3**, and the corrected
+convention would give 6 including the three `ATT(g, g)` cells v0.150.0 made
+estimable. On a 2-period panel `"all"` returns exactly one cell, `(1, 1, 0)` --
+a **pre-treatment placebo**, since `t_eval = 0 < t_pre = 1` -- while
+`"standard"` returns zero and **aborts** at `did_multi.mbt:117`. The abort is
+not catchable: MoonBit's `require` calls `abort`, it does not raise.
+
+`expand_v154b_test.mbt` (5) pins the sensitivity defect: `nu2` is NaN on the
+2-period panel under the upstream branch, large-and-negative on the 4-period
+panel, the exact `-112652.99406321559` signature is pinned, the ATT path is
+proven unaffected, and -- the subtle one -- **`sigma2` cannot be validated by
+the `in_sample_normalization` contrast**, because it does not read the flag.
+"The two arms agree" there is not evidence; the contrast is simply blind to it.
+
+Every tripwire says **invert, do not delete**, and states what the corrected
+assertion should be.
+
+### Not done here, on purpose
+
+No runtime guard. Turning "returns a wrong number" into "raises" is a real
+behaviour change and is scoped as its own decision rather than slipped in here.
+Until then a multi-period `sigma2` / `nu2` should be treated as **not
+implemented**. The `in_sample_normalization` default flip is likewise on hold:
+it trades a bad ATT for a broken variance element, so the correctness problem
+has to be resolved before the tuning question is worth revisiting.
+
 ## [0.153.0] — every learner default in the package is now observable
 
 The `ml_m` default queue is closed: v0.132.0 / v0.134.0 / v0.135.0 migrated
