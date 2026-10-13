@@ -418,6 +418,10 @@ test "v124_qte_propensity_clip_is_live" {
     seed=3141,
     propensity_clip=0.05,
   ).fit()
-  // measured 0.901
+  // v0.159.0: the clip's QTE sensitivity DROPPED when the reported estimate
+  // became the root of the orthogonal score (measured absdiff 0.063 under the
+  // first, incorrect bisection solver). With the corrected Newton + KDE-deriv
+  // solver it is 0.248, so the 0.1 gate below still holds without re-pinning.
+  // Measured: dflt 2.6769234202980465, clipped 2.925164677492298.
   assert_true((dflt.coefs()[0] - clipped.coefs()[0]).abs() > 0.1)
 }

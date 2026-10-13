@@ -309,6 +309,37 @@ pub fn PSProcessor::adjust_ps(
 }
 
 ///|
+/// Adapt an estimator's `Array[Fold]` to the `cv` partition shape that
+/// `adjust_ps` / `isotonic_calibrate_cv` take.
+///
+/// v0.159.0: `adjust_ps` declares a `cv` parameter and upstream passes
+/// `cv=smpls` at every call site (`did_binary.py:537`, `iivm.py:371`,
+/// `cvar.py:343`, ...). Before this, NO estimator passed it -- the parameter
+/// was reachable only from tests -- so a configured
+/// `cv_calibration=true` silently calibrated on `default_5fold(n)`, a
+/// DIFFERENT partition (five contiguous blocks) from the estimator's own
+/// cross-fitting folds. The calibration folds are supposed to BE the
+/// cross-fitting folds.
+///
+/// `kfold`'s `Fold` guarantees that the test indices are disjoint and together
+/// cover `[0, n_obs)` (`kfold.mbt`), which is exactly the precondition
+/// `isotonic_calibrate_cv` enforces before it raises
+/// `CalibrationFittingError::IncompleteCVPartition` -- so passing an
+/// estimator's own folds cannot trip that guard.
+pub fn folds_to_cv_partition(
+  folds : Array[Fold],
+) -> Array[(Array[Int32], Array[Int32])] {
+  let out : Array[(Array[Int32], Array[Int32])] = Array::make(
+    folds.length(),
+    ([], []),
+  )
+  for i = 0; i < folds.length(); i = i + 1 {
+    out[i] = (folds[i].train_indices(), folds[i].test_indices())
+  }
+  out
+}
+
+///|
 /// Apply the configured calibration method to a propensity-score
 /// vector. Returns `Array[Double] raise InvalidCalibrationError`:
 /// the v0.37.0 extraction lifts the previous `abort()` call from
@@ -485,10 +516,62 @@ pub fn pava(y : Array[Double], weights~ : Array[Double] = []) -> Array[Double] {
 }
 
 ///|
-/// Sort `(x, y)` pairs by `x` and apply PAVA to the sorted `y`.
+/// Pool observations that share the same `x` into a single group and take
+/// each group's mean, mirroring what sklearn's `IsotonicRegression.fit` does
+/// before it hands the sequence to the pool-adjacent-violators step.
+///
+/// v0.159.0: `fit_isotonic` used to run `pava` over the RAW sorted sequence.
+/// An isotonic regression is a FUNCTION of `x`, so two observations sharing
+/// an `x` must receive the same fitted value; PAVA alone does not enforce
+/// that, because its monotonicity constraint is over sequence position rather
+/// than over `x`. sklearn groups equal `x` first (its `X_thresholds_`
+/// collapses them to a single entry), so the tie is pooled into the group
+/// mean before any pooling of adjacent violators happens.
+///
+/// Measured symptom of the omission, on `x=[0.5,0.5]`, `y=[0,1]`:
+/// sklearn predicts `[0.5, 0.5]`; this port predicted `[1, 1]` at the fit
+/// stage, which the `[0.01, 0.99]` clip then reported as `[0.99, 0.99]`.
+///
+/// `sorted_x` MUST be sorted in non-decreasing order. Returns the unique
+/// group `x`, each group's mean `y`, and each group's size. `pava` is
+/// deliberately NOT modified -- it is a correct pool-adjacent-violators over
+/// a sequence, and its own contract (and its v0.104.0 tests) depend on that.
+fn pool_tied_x(
+  sorted_x : Array[Double],
+  sorted_y : Array[Double],
+) -> (Array[Double], Array[Double], Array[Int32]) {
+  let n = sorted_x.length()
+  let gx : Array[Double] = []
+  let gy : Array[Double] = []
+  let gn : Array[Int32] = []
+  let mut i = 0
+  while i < n {
+    let mut j = i + 1
+    let mut sum = sorted_y[i]
+    while j < n && sorted_x[j] == sorted_x[i] {
+      sum = sum + sorted_y[j]
+      j = j + 1
+    }
+    let size = j - i
+    gx.push(sorted_x[i])
+    gy.push(sum / size.to_double())
+    gn.push(size)
+    i = j
+  }
+  (gx, gy, gn)
+}
+
+///|
+/// Sort `(x, y)` pairs by `x`, pool observations that share an `x`, and apply
+/// PAVA to the pooled sequence.
 /// Returns `(sorted_x, sorted_y_hat)` where `sorted_y_hat` is the
 /// isotonic regression of `y` on `x`. The two arrays have the
 /// same length as the input.
+///
+/// v0.159.0: tied `x` values are pooled into their group mean BEFORE the
+/// pool-adjacent-violators step, so the fitted curve is a function of `x`.
+/// With all-distinct `x` every group has size 1 and the pooling is exactly
+/// the identity, so this changes nothing on tie-free data.
 ///
 /// Use `predict_isotonic` to apply the fitted model to new `x`
 /// values (or to the same `x` for in-sample predictions, which
@@ -511,7 +594,35 @@ pub fn fit_isotonic(
       sorted_x[k] = x[i]
       sorted_y[k] = y[i]
     }
-    let sorted_y_hat = pava(sorted_y)
+    let (_group_x, group_mean, group_size) = pool_tied_x(sorted_x, sorted_y)
+    // v0.159.0: the group SIZE must be handed to `pava` as the weight.
+    // Pooling the ties is only half the job: the L2 objective is over
+    // OBSERVATIONS, so a group of three counts three times a group of one.
+    // Dropping the sizes made the fitted value the unweighted mean of the
+    // group means. Measured against sklearn 1.9.0 on
+    // x=[0.1,0.5,0.1,0.5,0.3], y=[0,0,1,1,1] (groups: (0.1,[0,1]),
+    // (0.3,[1]), (0.5,[0,1]) -> group means [0.5, 1, 0.5] of sizes
+    // [2,1,2]): with sizes, PAVA pools the last two groups to
+    // (1*1 + 2*0.5)/3 = 2/3 and returns sklearn's
+    // [0.5, 0.666667, 0.666667, 0.666667, 0.666667]; without them it
+    // returned [0.5, 0.75, 0.75] -> the wrong number.
+    let group_w = Array::make(group_size.length(), 0.0)
+    for gi = 0; gi < group_size.length(); gi = gi + 1 {
+      group_w[gi] = group_size[gi].to_double()
+    }
+    let group_fit = pava(group_mean, weights=group_w)
+    // Expand the per-group fit back to one value per observation so the
+    // returned vector still lines up element-for-element with `sorted_x`.
+    let sorted_y_hat : Array[Double] = Array::make(n, 0.0)
+    let mut k = 0
+    for g = 0; g < group_size.length(); g = g + 1 {
+      let mut m = 0
+      while m < group_size[g] {
+        sorted_y_hat[k] = group_fit[g]
+        k = k + 1
+        m = m + 1
+      }
+    }
     (sorted_x, sorted_y_hat)
   } catch {
     PreconditionError::Violated(loc) =>

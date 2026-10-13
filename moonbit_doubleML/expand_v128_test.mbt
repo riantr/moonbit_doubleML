@@ -160,7 +160,16 @@ test "v128_cs_binary_isotonic_reaches_the_transform" {
     }
   }
   assert_true(moved > 0)
-  assert_true(iso.coef() == 0.9931792566957861)
+  // v0.159.0 RE-PINNED: was 0.9931792566957861. That value was a fingerprint of
+  // the BUGGY isotonic path -- `fit_isotonic` ran PAVA over the raw sorted
+  // sequence without first pooling observations that share an x, so an isotonic
+  // regression was being fitted to something that was not a function of x. The
+  // fit itself is now matched to sklearn's `IsotonicRegression` to the last
+  // digit on the tied-x fixture (see `ps_processor_test::ps_processor_isotonic_pooling`),
+  // so this downstream fingerprint moved with it. `base` (no calibration) is
+  // unchanged at 0.9909760034277681, which is the control that says only the
+  // isotonic path moved.
+  assert_true(iso.coef() == 0.9931681980068351)
   assert_true(base.coef() != iso.coef())
 }
 
@@ -667,9 +676,13 @@ test "v128_did_cs_forwards_the_config" {
   // because the default clipping threshold is also 1e-2.
   assert_true(a.coef_at(gi, pi) != c.coef_at(gi, pi))
   assert_true(a.coef_at(gi, pi) != iso.coef_at(gi, pi))
+  // v0.159.0: `iso` re-pinned for the isotonic tied-x pooling fix; it was
+  // 0.9991226924315058 under the un-pooled PAVA path. `a` and `c` (the clip
+  // ladder) are byte-identical to their pre-fix pins, so only the isotonic
+  // branch moved.
   assert_true(a.coef_at(gi, pi) == 0.9968362069375236)
   assert_true(c.coef_at(gi, pi) == 0.9966438106273696)
-  assert_true(iso.coef_at(gi, pi) == 0.9991226924315058)
+  assert_true(iso.coef_at(gi, pi) == 0.99910048954314)
   // stored config survives the rebuild
   let m = DoubleMLDIDCS::new(
     data,

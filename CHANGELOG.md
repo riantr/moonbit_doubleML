@@ -9,6 +9,186 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.159.0] — four reported defects, root-caused against upstream and fixed
+
+Tests 1115 -> 1120 (`moon test`, wasm-gc; native reports "no test entry
+found", exit 0): **+5**, one new regression test file
+(`expand_v159_test.mbt`). All four defects were reproduced, root-caused
+against an upstream oracle, fixed, and measured before and after.
+
+### 1. Isotonic calibration collapsed on tied x
+
+**Reported:** PAVA-family predictions `[0.5, 0.5]` against labels `[0, 1]`
+returned `[0.99, 0.99]` instead of `[0.5, 0.5]`.
+
+**Root cause:** `fit_isotonic` ran PAVA over the raw sorted sequence without
+first pooling observations that share an x. An isotonic regression is a
+FUNCTION of x, so ties must receive one shared fitted value.
+`predict_isotonic` then resolved each tie to the LAST index of the run, and
+the `[0.01, 0.99]` clip turned the stray `1.0` into `0.99`.
+
+**Oracle (sklearn 1.9.0):** `IsotonicRegression(out_of_bounds='clip', y_min=0,
+y_max=1).fit([0.5, 0.5], [0, 1])` gives `y_thresholds_ = [0.5]`.
+
+**Fix:** new `pool_tied_x` helper; `fit_isotonic` fits per pooled group and
+expands back per observation. Group SIZE is passed to `pava` as a weight --
+the L2 objective is over observations, so the group statistic is a
+size-weighted mean. `pava` itself is deliberately unchanged.
+
+**Measured:** `[0.99, 0.99]` -> `[0.5, 0.5]`; three ties `y=[0,1,0]` ->
+`1/3` on all three; a tie-free monotone control is unchanged. On the pinned
+fixture `ps=[0.1,0.5,0.1,0.5,0.3]` the port now matches sklearn to the last
+digit (`[0.5, 0.6666666666666666, ...]`, was `[0.667, 0.95, 0.667, 0.95, 0.667]`).
+
+### 2. `adjust_ps`'s `cv` was never forwarded by any estimator
+
+**Reported:** "IRM/IIVM has no PSProcessor hookup".
+
+**Measured first, and the report was too strong:** the isotonic config DID
+already reach both fits (IRM maxdiff 0.0459, IIVM 0.3679). The real defect is
+narrower and worse: `adjust_ps` DECLARES a `cv` parameter and upstream passes
+`cv=smpls` at every site (`pq.py:410`, `did_binary.py:537`, `iivm.py:371`,
+`cvar.py:343`), but in this port NO estimator ever passed it. With
+`cv_calibration=true` the processor silently calibrated on its own
+`default_5fold(n)` -- five CONTIGUOUS blocks -- instead of the estimator's
+`n_folds` partition.
+
+**Fix:** new `folds_to_cv_partition(folds : Array[Fold])`, wired at
+`irm.mbt:417` and `iivm.mbt:513`. Sound because `kfold`'s `Fold` guarantees
+disjoint test indices covering `[0, n_obs)` (`kfold.mbt:199`) -- the exact
+precondition `isotonic_calibrate_cv` enforces; pinned by
+`v1590_folds_to_cv_partition_is_a_real_partition`.
+
+**Measured:** the cv-vs-isotonic comparison moved 0.1219 -> 0.4357, now using
+`n_folds=2` splits. Every non-cv path is bit-identical.
+
+Still missing `cv` (reported, deliberately not changed this round):
+`apo.mbt:320`, `did.mbt:628`, `did_cross_section.mbt:615`,
+`did_cs_binary.mbt:374`, `cvar.mbt:736`, `cvar.mbt:1005`.
+
+### 3. PQ reported the IPW root while publishing the orthogonal score
+
+**Reported:** on a continuous-confounding DGP with true `q_0.6 = 2.2`, PQ
+returned `0.7515` and the mean of its own orthogonal score was `-0.224968`.
+
+**Root cause:** `solve_pq` bisected the IPW score and RETURNED that root as the
+coefficient, then built `psi` from the `g` cross-fit. Two different
+functionals of the data, so the reported coefficient did not satisfy the
+estimating equation the estimator publishes. (The repo documented this at
+`expand_v094_test.mbt:525` without fixing it.)
+
+**Oracle (doubleml 0.11.3):** the IPW root is PRELIMINARY. `pq.py:378` solves
+it only to build `g`'s target (`pq.py:390` fits
+`ml_g(x_treat, y_treat <= ipw_est)`); `pq.py:423` then sets
+`_coef_start_val = mean(ipw_vec)` and `double_ml_score_mixins.py:149` runs
+NEWTON from there against the orthogonal score `pq.py:268`. QTE reuses the same
+path.
+
+**Fix:** new `pub fn pq_score_orthogonal(...)` mirroring `pq.py:268`; the IPW
+root is kept as `theta_prelim` (it builds `g`'s target, as upstream does);
+Newton refines `theta_prelim` against the orthogonal score; `psi` is rebuilt at
+the final theta.
+
+**A bisection was tried FIRST and was wrong, twice over.** Recorded because the
+shape of the error is the useful part:
+
+1. `1{y <= theta}` is a STEP function, so `mean(score)` is piecewise constant
+   and a bisection converges onto a JUMP, not a zero. Measured: it placed
+   q=0.9 at `theta = 3.005` with `mean(psi) = -0.161`, and q=0.1 at
+   `theta = -2.070` -- BELOW `min(y)` entirely.
+2. The `deriv` was a central difference of that step function, so it was
+   identically ZERO whenever no observation lay within `+/- h` of theta --
+   exactly the out-of-support case above. `DoubleMLQTE::fit` scales `psi` by
+   `1 / deriv` with no guard (`quantile.mbt:2411-2415` documents this), so
+   `0/0 = NaN` reached `ses[j]`: measured
+   `ses = [NaN, 0.3019, 0.1758, 0.1994, 1.6937]`.
+
+That NaN was caught by the pre-existing gate
+`v1390_qte_multi_quantile_fit_returns_distinct_estimates` (`assert se > 0.0`).
+It was a REAL defect, not a stale pin, and was deliberately NOT re-pinned.
+
+**Fix for the derivative:** upstream's `_compute_score_deriv` is a Silverman
+Gaussian KDE, `deriv = (1/n) * sum_i (ind_d/m)_i * K_h(y_i - theta)`
+(`_default_kde`: `kernel="gau"`, `bw="silverman"`). Reusing the KDE helpers
+already in this package (`kde.mbt:14`, `kde.mbt:125`) makes the NaN
+STRUCTURALLY unreachable -- a Gaussian never evaluates to zero -- and drops
+the two extra `g` cross-fits per quantile the difference needed.
+
+**Measured** (binary treatment, continuous confounders, n=1200, q=0.6, on a
+DGP whose `Q_0.6(Y(1)) = 2.2` holds BY CONSTRUCTION):
+
+```
+theta_prelim (IPW root)  = 2.2329845377162956
+theta (reported)         = 2.230920809568266     <- true value 2.2
+mean(psi)                = -0.003207544756000814  <- was -0.224968
+deriv                    = 0.49539607450278865
+se                       = 0.044753173108603286
+|theta - 2.2| = 0.0309 < se = 0.0448   (covered)
+```
+
+Newton moves theta only 0.0021 from the IPW root, consistent with the IPW root
+being a START VALUE rather than the answer. The invariant the defect violated
+now holds: the reported theta is a root of the score the estimator publishes.
+
+### 4. BLP's joint confint ignored `level`
+
+**Reported:** the 50% and 95% joint intervals were identical.
+
+**Root cause:** `blp_policy.mbt:746` hardcoded
+`let z = 1.959963984540054` while `level` was accepted, range-checked at line
+727, and then never used.
+
+**Fix:** follow the convention already in this package
+(`did_cross_section.mbt:485`) -- the exact constant at `level == 0.95`, which
+keeps the default bit-exact, and `norm_ppf((1 + level) / 2)` otherwise.
+
+**Measured** (n=400, contrast on the (intercept, x) basis):
+width@0.50 = 0.03691929183204845, width@0.95 = 0.10728184750635172,
+width@0.99 = 0.1409923584966286. The 95/50 ratio is 2.9058479234757097
+against `1.959963984540054 / norm_ppf(0.75)` = 2.905847923475711, agreeing to
+1.3e-15. Note the numerator is the HARDCODED 95% constant, NOT
+`norm_ppf(0.975)`: this package's `norm_ppf` returns 1.9599627869916687 there
+(accurate to ~6e-7 relative), which is exactly why the special case exists.
+
+### Tests re-pinned, and why each one is honest
+
+Every changed expectation was checked against an oracle first, and each is
+recorded in place.
+
+- `expand_v128_test.mbt` (x2) -- isotonic coefficients re-pinned. The old
+  values were fingerprints of the BUGGY un-pooled PAVA path. The clip-ladder
+  assertions in the same tests are byte-identical, which is the control saying
+  only the isotonic branch moved.
+- `expand_v124_test.mbt::v124_qte_propensity_clip_is_live` -- NOT re-pinned.
+  Its sensitivity to the propensity clip DROPPED to 0.063 under the wrong
+  bisection (the gate failed, the clip had gone nearly inert); with the
+  corrected Newton + KDE derivative it is 0.248, so the original `> 0.1` gate
+  holds untouched.
+- `expand_v139_test.mbt` (x2) -- the NaN SE is fixed by the code, not re-pinned.
+  In the second, the shipped-vs-regressor comparison moves `>` to `>=` because
+  it is now a 4-vs-4 TIE rather than a loss; the assertion that actually
+  carries the gate (`shipped_steps >= 3`) is unchanged, and a
+  `regressor_steps > 0` control was added so the `>=` cannot pass vacuously.
+- `quantile_test.mbt::qte_se_hand_computation` -- the COEFFICIENT tolerance
+  moves 1e-12 -> 1e-9 for a structural reason, not a loosening: the score is a
+  step function, so theta is identified only up to the gap between adjacent
+  order statistics. Measured, the hand and framework thetas differ by 8.1e-11
+  while `psi` -- and therefore the SE, which is what the test is about -- agree
+  to 1.6e-14. The SE assertion stays at 1e-9 and passes at 1.6e-14.
+- `ps_processor_test.mbt::ps_processor_isotonic_pooling` -- re-pinned to the
+  sklearn oracle, with the size-weighting explained in place. An earlier
+  version of the fix omitted the group weights and gave 0.75 instead of 2/3;
+  the oracle caught it, reading would not have.
+
+### Known gaps recorded, not fixed
+
+- The five other `adjust_ps` call sites listed under item 2 still do not
+  forward `cv`.
+- `expand_v159_test.mbt` asserts the BLP ratio against the HARDCODED 95%
+  constant, because that is the contract `confint_joint` implements. This
+  package's `norm_ppf` is accurate to ~6e-7 relative, which is a separate
+  issue from the reported defect and is not addressed here.
+
 ## [0.158.0] — two stale self-citations, and an open question closed against the port
 
 Tests 1115 -> 1115 (`moon test`, wasm-gc; native reports "no test entry

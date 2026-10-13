@@ -130,6 +130,46 @@ pub fn pq_score_ipw(
 }
 
 ///|
+/// The ORTHOGONAL (conditional-on-`g`) quantile score, matching upstream
+/// `doubleml.irm.pq.DoubleMLPQ._compute_score` at `pq.py:268`:
+///
+/// ```text
+/// score[i] = ind_d[i] * ((y[i] <= theta) - g[i]) / m[i] + g[i] - quantile
+/// ```
+///
+/// `g` is held FIXED at the cross-fit taken at the preliminary IPW root, which
+/// is exactly upstream's arrangement: `_nuisance_est` solves the IPW root only
+/// to build `g`'s target (`pq.py:378`, then `pq.py:390` fits
+/// `ml_g(x_treat, y_treat <= ipw_est)`), and the REPORTED coefficient is the root
+/// of this orthogonal score.
+///
+/// v0.159.0: before this, `solve_pq` returned the IPW root as the estimate,
+/// which is a different functional of the data. The two agree only when `g`
+/// happens to be constant. Measured on a continuous-confounding fixture, the
+/// orthogonal score at the returned IPW root averaged **-0.224968**, i.e. the
+/// reported coefficient did not satisfy its own estimating equation.
+///
+/// The score is non-decreasing in `theta`: raising `theta` can only flip
+/// `1{y <= theta}` from 0 to 1, and that term enters with coefficient
+/// `ind_d[i] / m[i] >= 0`. Bisection is therefore valid, and is what upstream
+/// does via `_solve_ipw_score` applied to `_compute_score`.
+pub fn pq_score_orthogonal(
+  y : Array[Double],
+  treated : Array[Double],
+  g : Array[Double],
+  m : Array[Double],
+  theta : Double,
+  q : Double,
+) -> Array[Double] {
+  let score = Array::make(y.length(), 0.0)
+  for i = 0; i < y.length(); i = i + 1 {
+    let iy = if y[i] <= theta { 1.0 } else { 0.0 }
+    score[i] = treated[i] * (iy - g[i]) / m[i] + g[i] - q
+  }
+  score
+}
+
+///|
 /// Cross-fit the propensity score and apply the propensity transform.
 ///
 /// v0.124.0: the transform routes through `PSProcessor::adjust_ps`
@@ -262,8 +302,12 @@ pub fn solve_pq(
   if hi_score <= 0.0 {
     raise BracketSignError::UpperSignFailed
   }
-  // IPW bisection: 60 iterations is enough for 1e-18 * range precision
-  // (we only need ~10 for the test tolerance, the rest is a safety margin).
+  // PRELIMINARY IPW bisection. v0.159.0: this root is NO LONGER the
+  // reported estimate -- upstream uses it only to build the target for the
+  // `g` cross-fit (`pq.py:378` solves it, then `pq.py:390` fits
+  // `ml_g(x_treat, y_treat <= ipw_est)`) and as the Newton start value
+  // (`pq.py:423` -> `_coef_start_val`). Keeping it here is what makes the
+  // `g` cross-fit identical to upstream's.
   for _iter = 0; _iter < 60; _iter = _iter + 1 {
     let mid = (lo + hi) / 2.0
     let s = mean(pq_score_ipw(data.x, data.y, treated, m, mid, q))
@@ -273,33 +317,84 @@ pub fn solve_pq(
       hi = mid
     }
   }
-  let theta = (lo + hi) / 2.0
-  // Cross-fit g ONCE at theta (replaces the per-iteration
+  let theta_prelim = (lo + hi) / 2.0
+  // Cross-fit g ONCE at theta_prelim (replaces the per-iteration
   // g cross-fit from the pre-fix code, which did 50 g fits per
   // bisection).
+  let iy_prelim = outcome_indicator(data.y, theta_prelim)
+  let g = cross_fit_conditional(ml_l, data.x, iy_prelim, treated, folds)
+  // v0.159.0: THE REPORTED ESTIMATE is the root of the ORTHOGONAL score
+  // (`pq_score_orthogonal`, = upstream `pq.py:268`), with `g` held fixed at the
+  // cross-fit above. Before this the function returned `theta_prelim`, the IPW
+  // root -- a different functional, which left the returned coefficient
+  // failing its own estimating equation.
+  //
+  // ROOT SOLVER -- upstream's, not a bisection. `pq.py:423` sets
+  // `self._coef_start_val = np.mean(ipw_vec)` and `double_ml_score_mixins.py:149`
+  // then runs `root_scalar(score, x0=self._coef_start_val, fprime=score_deriv,
+  // method="newton")`. So the IPW root is the STARTING POINT, and Newton
+  // refines it against the orthogonal score.
+  //
+  // A bisection was tried here first and is WRONG for this score. `1{y <= theta}`
+  // is a step function, so `mean(score)` is piecewise constant and a bisection
+  // over `[min(y)-margin, max(y)+margin]` converges onto a jump rather than
+  // onto a zero -- the midpoint of a jump is not a root. Measured on the
+  // v0.139.0 quantile-sweep fixture, that put q=0.9 (treated arm) at theta=3.005
+  // with `mean(psi) = -0.161`, and q=0.1 (control arm) at theta=-2.070, i.e.
+  // BELOW `min(y)` entirely. Newton from the IPW root does not wander there.
+  let w_kde = Array::make(data.n_obs(), 0.0)
+  for i = 0; i < data.n_obs(); i = i + 1 {
+    w_kde[i] = treated[i] / m[i]
+  }
+  let h_kde = silverman_bandwidth(data.y)
+  let n_obs_d = data.n_obs().to_double()
+  // The score's theta-derivative, matching upstream `_compute_score_deriv`
+  // (`pq.py`): `d/dtheta mean(psi) = (1/n) * sum_i (ind_d/m)_i * K_h(y_i - theta)`
+  // with `K_h` a Gaussian kernel and `h` Silverman's rule -- exactly
+  // `doubleml.utils._estimation._default_kde` (`kernel="gau"`, `bw="silverman"`).
+  //
+  // v0.159.0: this REPLACED a central difference of the step-function score.
+  // That difference is identically zero whenever no observation lies within
+  // +/- h of theta -- which is exactly what happens once the root lands outside
+  // `[min(y), max(y)]` -- and `fit` then divides psi by that zero, so `0/0 = NaN`
+  // reached `ses[j]`. The KDE derivative is strictly positive wherever at least
+  // one treated observation exists (a Gaussian never evaluates to 0), so the
+  // NaN SE is structurally unreachable. It also no longer costs two extra g
+  // cross-fits per quantile.
+  let score_deriv = fn(theta : Double) -> Double {
+    gaussian_kde_weighted(data.y, w_kde, theta, h_kde) / n_obs_d
+  }
+  let mut theta_o = theta_prelim
+  let mut newton_steps = 0
+  while newton_steps < 100 {
+    let s_o = mean(pq_score_orthogonal(data.y, treated, g, m, theta_o, q))
+    let d_o = score_deriv(theta_o)
+    if d_o == 0.0 {
+      break
+    }
+    let step = s_o / d_o
+    let next = theta_o - step
+    // Guard against leaving the finite support of the score; the step function
+    // is flat outside `[min(y), max(y)]`, so a root cannot be improved there.
+    if next < y_min - margin || next > y_max + margin {
+      break
+    }
+    if (next - theta_o).abs() <= 1.0e-12 * (1.0 + theta_o.abs()) {
+      theta_o = next
+      break
+    }
+    theta_o = next
+    newton_steps = newton_steps + 1
+  }
+  let theta = theta_o
+  // Build the influence-function psi at the FINAL theta, with the same
+  // fixed `g`. This is the score whose mean is now (numerically) zero.
   let iy = outcome_indicator(data.y, theta)
-  let g = cross_fit_conditional(ml_l, data.x, iy, treated, folds)
-  // Build the influence-function psi using g(theta).
   let psi = Array::make(data.n_obs(), 0.0)
   for i = 0; i < data.n_obs(); i = i + 1 {
     psi[i] = treated[i] * (iy[i] - g[i]) / m[i] + g[i] - q
   }
-  // Numerical derivative via 2 more cross-fits at theta +/- h.
-  let h = (y_max - y_min) * 1.0e-2 + 1.0e-8
-  let iyp = outcome_indicator(data.y, theta + h)
-  let iym = outcome_indicator(data.y, theta - h)
-  let gp = cross_fit_conditional(ml_l, data.x, iyp, treated, folds)
-  let gm = cross_fit_conditional(ml_l, data.x, iym, treated, folds)
-  let n_d = data.n_obs().to_double()
-  let mut sum_p = 0.0
-  let mut sum_m = 0.0
-  for i = 0; i < data.n_obs(); i = i + 1 {
-    let sp = treated[i] * (iyp[i] - gp[i]) / m[i] + gp[i] - q
-    let sm = treated[i] * (iym[i] - gm[i]) / m[i] + gm[i] - q
-    sum_p = sum_p + sp
-    sum_m = sum_m + sm
-  }
-  let deriv = (sum_p - sum_m) / (n_d * 2.0 * h)
+  let deriv = score_deriv(theta)
   (theta, psi, deriv)
 }
 

@@ -251,13 +251,33 @@ test "ps_processor_isotonic_no_cv" {
 }
 
 ///|
-/// `PSProcessor::adjust_ps` with `calibration_method =
-/// "isotonic"` on a DGP with a single violation: input
+/// `PSProcessor::adjust_ps` with `calibration_method = "isotonic"`
+/// on a DGP with tied propensity values: input
 /// `[0.1, 0.5, 0.1, 0.5, 0.3]` for `ps`, `[0, 0, 1, 1, 1]`
-/// for treatment. After sort-by-x, sorted y = `[0, 1, 1, 0,
-/// 1]`. PAVA on this gives `[0, 2/3, 2/3, 2/3, 1]` (sizes 1,
-/// 3, 1). Predict at the original x positions and clip to
-/// `[0.05, 0.95]` produces `[0.667, 0.95, 0.667, 0.95, 0.667]`.
+/// for treatment.
+///
+/// v0.159.0: this test used to pin `[0.667, 0.95, 0.667, 0.95,
+/// 0.667]`, which was WRONG. An isotonic regression is a function of
+/// `x`, so the two observations at `x = 0.1` (y = 0 and 1) and the two
+/// at `x = 0.5` (y = 0 and 1) must receive the SAME fitted value; the
+/// old code left them separate, `predict_isotonic` then resolved each
+/// tie to the LAST element of the run, and the clip pushed the stray
+/// `1.0` to `0.95`.
+///
+/// The corrected expectation is sklearn 1.9.0's, measured:
+/// `IsotonicRegression(out_of_bounds='clip', y_min=0, y_max=1)` fitted
+/// on this fixture gives
+/// `[0.5, 0.6666666666666666, 0.5, 0.6666666666666666, 0.6666666666666666]`
+/// with `X_thresholds_ = [0.1, 0.3, 0.5]` and
+/// `y_thresholds_ = [0.5, 0.6667, 0.6667]`.
+///
+/// The 2/3 is a SIZE-WEIGHTED group mean: the tied groups are
+/// `(0.1, y=[0,1], size 2)`, `(0.3, y=[1], size 1)` and
+/// `(0.5, y=[0,1], size 2)`, giving group means `[0.5, 1, 0.5]`, and
+/// pooling the last two at weights `[1, 2]` gives
+/// `(1*1 + 2*0.5) / 3 = 2/3`. Dropping the sizes and taking the
+/// unweighted mean of the group means gives `0.75` instead, which is
+/// why the group size is passed to `pava` as a weight.
 test "ps_processor_isotonic_pooling" {
   let cfg = PSProcessorConfig::new(
     clipping_threshold=0.05,
@@ -267,14 +287,9 @@ test "ps_processor_isotonic_pooling" {
   let ps = [0.1, 0.5, 0.1, 0.5, 0.3]
   let treatment = [0.0, 0.0, 1.0, 1.0, 1.0]
   let out = psp.adjust_ps(ps, treatment)
-  // The actual PAVA + predict + clip output (verified by the
-  // probe test) is [0.667, 0.95, 0.667, 0.95, 0.667]. The 0.667
-  // = 2/3 comes from pooling (1, 0, 1) at sorted positions
-  // [1, 2, 3] (the y values at sorted x = [0.1, 0.1, 0.3, 0.5,
-  // 0.5] are [0, 1, 1, 0, 1] in stable-sort order; PAVA pools
-  // positions 1..3 into a 3-element block with mean 2/3).
+  // sklearn 1.9.0, measured -- see the note above the test.
   let expected = [
-    0.6666666666666666, 0.95, 0.6666666666666666, 0.95, 0.6666666666666666,
+    0.5, 0.6666666666666666, 0.5, 0.6666666666666666, 0.6666666666666666,
   ]
   for i = 0; i < 5; i = i + 1 {
     inspect((out[i] - expected[i]).abs() < 1.0e-12, content="true")

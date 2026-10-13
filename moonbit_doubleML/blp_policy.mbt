@@ -739,11 +739,29 @@ pub fn DoubleMLBLP::confint_joint(
         variance = variance + cv * cv * sv * sv
       }
       let se = variance.sqrt()
-      // chi2(1, level) = (z_{1 - level/2})^2 ; for level=0.95 this
-      // is z^2 = 1.959963984540054^2 ≈ 3.841458820694125
-      // (the same value as `statsmodels.OLS.conf_int(joint=True)`
-      // critical-value adjustment before v0.11.4).
-      let z = 1.959963984540054
+      // The joint critical value is the chi2(1 df) quantile at `level`,
+      // and `chi2(1, p) = z_{(1+p)/2}^2`, so the HALF-WIDTH multiplier is
+      // `sqrt(chi2(1, level)) = z_{(1+level)/2}` -- the same value
+      // `statsmodels.OLS.conf_int(joint=True)` applies (3.841458820694125
+      // squared, i.e. z = 1.959963984540054, at the default level 0.95).
+      //
+      // v0.159.0: `z` was a HARD-CODED `1.959963984540054` -- the 95%
+      // value -- while `level` was accepted, range-checked, and then
+      // ignored. `confint_joint(level=0.5)` and `confint_joint(level=0.95)`
+      // therefore returned byte-identical intervals, which is the whole
+      // point of the `level` argument. `norm_ppf((1 + level) / 2)`
+      // reproduces the old number exactly at level = 0.95 (it is the same
+      // quantile the rest of the package uses for `confint`), so the
+      // default path is unchanged.
+      let z = if (level - 0.95).abs() < 1.0e-12 {
+        // Same convention as `did_cross_section.mbt:485`: keep the
+        // canonical 95% value bit-exact so the default path (and the
+        // test contract) are unchanged, and use `norm_ppf` for every
+        // other level.
+        1.959963984540054
+      } else {
+        norm_ppf((1.0 + level) / 2.0)
+      }
       let half = se * z
       out = out + [(theta - half, theta + half)]
     }

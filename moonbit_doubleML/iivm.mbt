@@ -510,8 +510,19 @@ fn cross_fit_iivm(
     // continuous-treatment cluster fixture (`pliv_cluster_test.mbt::
     // build_iv_clustered_dgp`) builds a continuous `d`, and passing it
     // here is what aborted v0.122.0's attempt to wire this site.
+    //
+    // v0.159.0: `cv` is now passed, which is what upstream's
+    // `adjust_ps(m_hat["preds"], z, cv=smpls)` at `iivm.py:371` does.
+    // Before this, `cv` was declared on `adjust_ps` but supplied by NO
+    // estimator, so `cv_calibration=true` silently calibrated on the
+    // processor's own `default_5fold(n)` -- five contiguous blocks,
+    // unrelated to the estimator's `n_folds` splits. Under
+    // `calibration_method = "none"` the `cv` argument is ignored, so the
+    // default path is bit-identical to before.
     let m_clipped = PSProcessor::from_config(ps_processor_config).adjust_ps(
-      m, z,
+      m,
+      z,
+      cv=Some(folds_to_cv_partition(folds)),
     )
     (g0, g1, m_clipped, r0, r1)
   } catch {

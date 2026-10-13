@@ -414,8 +414,20 @@ fn cross_fit_irm(
     // exactly that (the calibration is the identity when no method is
     // set), so routing through it is behaviour-preserving -- and it is
     // what makes isotonic / CV calibration reachable here at all.
+    //
+    // v0.159.0: `cv` is now passed, matching upstream's
+    // `adjust_ps(m_hat["preds"], d, cv=smpls)`. Before this, `cv` was
+    // declared on `adjust_ps` but supplied by NO estimator, so a
+    // configured `cv_calibration=true` silently calibrated on the
+    // processor's own `default_5fold(n)` -- five contiguous blocks,
+    // unrelated to the estimator's `n_folds` splits. The calibration
+    // folds are supposed to BE the cross-fitting folds. Under
+    // `calibration_method = "none"` the `cv` argument is ignored, so the
+    // default path is bit-identical to before.
     let m_clipped = PSProcessor::from_config(ps_processor_config).adjust_ps(
-      m, d,
+      m,
+      d,
+      cv=Some(folds_to_cv_partition(folds)),
     )
     (g0, g1, m_clipped, m)
   } catch {

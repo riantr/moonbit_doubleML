@@ -362,16 +362,19 @@ test "pq_jacobian_is_not_a_constant" {
     n_folds=2,
   ).fit()
   inspect(scaled.psi_a[0] != deriv, content="true")
-  // The wide-outcome Jacobian is ~half the narrow one (1.75x
-  // measured, against an ideal 2x). The shortfall is structural,
-  // not noise: the central-difference step is
-  // `h = 0.01 * (y_max - y_min)`, so doubling the outcome width
-  // also doubles the difference window, and a wider window over a
-  // uniform density picks up more of the g-crossfit term. The band
-  // is deliberately loose for that reason -- what it rules out is a
-  // Jacobian that does not move with the data at all.
+  // v0.159.0: measured 1.934083994366598 (was ~1.75 before the PQ root
+  // fix). The orthogonal-root estimate lands closer to the IDEAL 2x than
+  // the IPW root did, which is the expected direction: the IPW root
+  // ignores the g term entirely, so its finite-difference window sees a
+  // differently-shaped density.
+  // The shortfall from exactly 2x is structural, not noise: the
+  // central-difference step is `h = 0.01 * (y_max - y_min)`, so doubling
+  // the outcome width also doubles the difference window, and a wider
+  // window over a uniform density picks up more of the g-crossfit term.
+  // The band is deliberately loose -- what it rules out is a Jacobian
+  // that does not move with the data at all.
   let width_ratio = deriv / scaled.psi_a[0]
-  inspect(width_ratio > 1.6 && width_ratio < 1.9, content="true")
+  inspect(width_ratio > 1.8 && width_ratio < 2.05, content="true")
   // Each fit carries its OWN Jacobian: the second model does not
   // inherit the first's.
   inspect(

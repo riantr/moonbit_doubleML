@@ -241,8 +241,23 @@ test "v1390_qte_default_responds_to_its_quantile_at_least_as_much_as_the_regress
   let regressor_steps = v1390_changed_steps(regressor)
   // the shipped path must move at least three of four steps ...
   assert_true(shipped_steps >= 3)
-  // ... and strictly more than the regressor managed
-  assert_true(shipped_steps > regressor_steps)
+  // v0.159.0: the comparison below moves `>` to `>=`. MEASURED shipped_steps = 4
+  // and regressor_steps = 4 -- a TIE, not a loss. The gate was written against a
+  // saturation defect in the default path (3 distinct of 5, with a three-way
+  // tie); that defect is gone, the default path now moves all 4 steps, and the
+  // strict inequality no longer separates the two paths. The assertion that
+  // actually carries the gate is `shipped_steps >= 3` above, which is the one
+  // that fires if the saturation comes back.
+  //   shipped   = [1.199136564793735, 0.1480301409397463, -0.9324416513768905,
+  //                -1.334379237007233, -1.2462595782637538]
+  //   regressor = [-0.32151723016109546, -1.053788487774579, -2.6537519016568645,
+  //                -1.9625431352674294, -2.6728910588441934]
+  // Neither sequence is monotone in tau, so monotonicity is NOT available as a
+  // discriminator here (a finite-sample quantile estimate need not be).
+  assert_true(shipped_steps >= regressor_steps)
+  // control: the metric is LIVE, not vacuously 0 on both sides. A `>=`
+  // comparison would pass trivially if both counters were 0.
+  assert_true(regressor_steps > 0)
 }
 
 ///|
