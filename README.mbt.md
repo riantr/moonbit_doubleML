@@ -3,11 +3,15 @@
 A pure-MoonBit port of the
 [`doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py) Python
 package -- the Python ecosystem's most mature Double / Debiased Machine
-Learning implementation -- covering **all 22 models** in upstream.
-`DoubleMLPLPR` (static panel data), `DoubleMLLPLR` (binary outcomes)
-and `DoubleMLDIDCSBinary` (binary-outcome CS-DID) were for several
-releases described here as MoonBit-specific extras; they ship upstream
-too, and the *Estimator table* below marks all 22 as *(upstream)*.
+Learning implementation -- 22 estimators in total. **20** match a
+class of the same name in upstream; `DoubleMLRDD` is upstream's RDD
+estimator renamed (upstream calls it `RDFlex`); and
+`DoubleMLDIDCrossSection` has no upstream counterpart at all. Those
+provenance labels are re-measured against the published `doubleml`
+0.11.4 sdist, not asserted -- see the estimator table below.
+`DoubleMLPLPR`, `DoubleMLLPLR` and `DoubleMLDIDCSBinary` were for
+several releases described here as MoonBit-specific extras; all three
+ship upstream and the table marks them *(upstream)*.
 
 Targets library authors and tool developers who need causal inference,
 panel data estimation, instrumental variable estimation, regression
@@ -46,11 +50,13 @@ estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,
 `DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
 `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
 `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
-in 19 source files. All 22 are marked *(upstream)* and mirror the
-`doubleml-for-py` API. Three -- `DoubleMLDIDCSBinary`, `DoubleMLLPLR`,
-`DoubleMLPLPR` -- were previously marked *(extra)*, which was wrong:
-all three ship upstream, so they had a reference implementation all
-along. The labels are corrected in the estimator table below.
+in 19 source files. **20** are marked *(upstream)* and mirror a
+name-identical `doubleml-for-py` class. `DoubleMLRDD` is marked
+*(upstream, renamed)* -- upstream calls it `RDFlex`. One row,
+`DoubleMLDIDCrossSection`, is marked *(no upstream counterpart)*.
+Three rows -- `DoubleMLDIDCSBinary`, `DoubleMLLPLR`, `DoubleMLPLPR`
+-- were previously marked *(extra)*, which was wrong: all three ship
+upstream, so they had a reference implementation all along.
 
 **Unified API surface** -- every estimator follows the same
 `DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` shape and returns
@@ -1364,8 +1370,10 @@ one struct each, and three holding two (`apo.mbt`: `DoubleMLAPO` +
 `DoubleMLPolicyTree`; `quantile.mbt`: `DoubleMLPQ` + `DoubleMLQTE`) --
 out of 219 `.mbt` files in the package (65 production, 129 blackbox
 test, 25 whitebox test). All are reachable through the same
-`DoubleMLXxx::new(...).fit()` interface, and all 22 are marked
-*(upstream)* and mirror the `doubleml-for-py` API surface:
+`DoubleMLXxx::new(...).fit()` interface. 20 are marked *(upstream)*
+against a name-identical `doubleml-for-py` class, `DoubleMLRDD` is
+marked *(upstream, renamed)* because upstream calls it `RDFlex`, and
+`DoubleMLDIDCrossSection` is marked *(no upstream counterpart)*:
 
 | Model | Score | Description |
 |-------|-------|-------------|
@@ -1378,7 +1386,7 @@ test, 25 whitebox test). All are reachable through the same
 | `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(upstream)* |
 | `DoubleMLDIDCSBinary` | observational | CS-DID with binary outcome *(upstream)* |
 | `DoubleMLDIDMulti` | observational | multi-period DID with group-time ATT aggregation *(upstream)* |
-| `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(upstream)* |
+| `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(no upstream counterpart)* -- port-only |
 | `DoubleMLSSM` | MAR | sample selection (missing-at-random) *(upstream)* |
 | `DoubleMLAPO` | policy score | average prescriptive effect *(upstream)* |
 | `DoubleMLAPOS` | policy score | APO with stratified treatment *(upstream)* |
@@ -1387,7 +1395,7 @@ test, 25 whitebox test). All are reachable through the same
 | `DoubleMLLPQ` | local polynomial | local potential quantile *(upstream)* |
 | `DoubleMLLPLR` | partialling-out | partially logistic regression, Liu-Zhang-Zhou 2021 *(upstream)* |
 | `DoubleMLCVAR` | CVaR | conditional value-at-risk *(upstream)* |
-| `DoubleMLRDD` | observational | regression discontinuity *(upstream)* |
+| `DoubleMLRDD` | observational | regression discontinuity *(upstream, renamed)* -- upstream `RDFlex` |
 | `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(upstream)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)*, + v0.98.0 honest split (`honest = true`) with `leaf_se` / `policy_value_se` |
@@ -1399,13 +1407,20 @@ GitHub tree, so this is the shipped artefact. Modules:
 `did/{did,did_binary,did_cs,did_cs_binary,did_multi}.py`, `rdd/rdd.py`
 (the class there is `RDFlex`), `utils/{blp,policytree}.py`.
 
+Provenance was re-measured against the **0.11.4 sdist** itself
+(`_verify/doubleml-0.11.4.tar.gz`, 388 members) rather than read off a
+table. Result: **20** rows have a name-identical `class DoubleMLXxx`
+upstream; `DoubleMLRDD` corresponds to upstream's `RDFlex`; and
+`DoubleMLDIDCrossSection` has **no** counterpart -- no class, no
+`did_cross_section*` module, and no textual occurrence anywhere in the
+sdist. It is a genuine port-only estimator and is labelled as one.
+
 Three rows were previously marked *(extra)* -- `DoubleMLDIDCSBinary`,
 `DoubleMLLPLR`, `DoubleMLPLPR`. That was wrong: all three ship
 upstream, so they had a reference implementation all along and
-simply were not being compared against it. The labels are corrected
-here. `DoubleMLDIDCSBinary` and `DoubleMLDIDBinary` are absent from
-upstream's `__all__` but present as importable classes in their
-modules.
+simply were not being compared against it. `DoubleMLDIDCSBinary`,
+`DoubleMLDIDBinary` and `DoubleMLDIDMulti` are additionally absent from
+upstream's `__all__` while still being importable from their modules.
 
 ### Honest policy trees (v0.98.0)
 
@@ -1584,11 +1599,14 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 
 `moonbit_doubleML` is a port of the upstream
 [`DoubleML/doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py)
-package (BSD 3-Clause License). All 19 upstream models are faithfully
-re-implemented in pure MoonBit with the same score formulae and
-variance estimators; the 3 MoonBit-only additions (`DoubleMLPLPR`,
-`DoubleMLLPLR`, `DoubleMLDIDCSBinary`) are extensions beyond the
-upstream scope.
+package (BSD 3-Clause License). Upstream's 20 name-matched estimator
+classes are re-implemented in pure MoonBit with the same score
+formulae and variance estimators, as is its RDD implementation
+(`RDFlex` upstream, `DoubleMLRDD` here). `DoubleMLPLPR`,
+`DoubleMLLPLR` and `DoubleMLDIDCSBinary` are **not** MoonBit-only -- all
+three ship upstream, and are compared against it. The one genuinely
+port-only estimator is `DoubleMLDIDCrossSection`, which has no
+upstream counterpart in 0.11.4.
 
 #### Differences from upstream `doubleml-for-py`
 

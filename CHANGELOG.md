@@ -143,6 +143,64 @@ method -- enumeration rather than execution. The "+6 doc tutorials" is exactly
 Separately, all **3** test names the README cites were checked to exist as real
 `test` declarations.
 
+### The provenance labels were wrong twice, and this audit caused the second one
+
+A verifier flagged that `DoubleMLDIDCrossSection` has no upstream counterpart
+while the README asserted all 22 estimators are `(upstream)`. Re-measured
+against the **published `doubleml` 0.11.4 sdist**
+(`_verify/doubleml-0.11.4.tar.gz`, 388 members) rather than the installed
+0.11.3 wheel:
+
+| | count | detail |
+|---|---|---|
+| name-identical `class DoubleMLXxx` upstream | **20** | incl. `plpr`, `lplr`, `did_cs_binary` |
+| renamed | **1** | `DoubleMLRDD` is upstream's **`RDFlex`** (`doubleml/rdd/rdd.py`, whose only class it is) |
+| no counterpart at all | **1** | `DoubleMLDIDCrossSection` -- no class, no `did_cross_section*` module, zero textual occurrences in the sdist |
+
+`DoubleMLDIDCrossSection` is therefore a **genuinely port-only** estimator and
+is now labelled as one, in six places.
+
+**This audit's own earlier edit over-corrected.** It replaced "19 upstream + 3
+MoonBit-specific extras" with "all 22 are upstream". That removed a real error
+-- the three named extras all do ship upstream -- but installed a new one,
+because it trusted the estimator table's own labels instead of re-measuring
+them. The correct statement is the 20 / 1 / 1 split above.
+
+Two further points the re-measurement exposed:
+
+- the same stale "19 + 3 extras" claim had survived in the **Attribution**
+  section ("All 19 upstream models ... the 3 MoonBit-only additions ... are
+  extensions beyond the upstream scope"). The audit's pattern matched the
+  estimator table's phrasing and never saw it. A search for a wrong claim has
+  to cover the vocabulary of every place it appears, not the first match.
+- of the 20 name-identical classes, `DoubleMLDIDCSBinary`, `DoubleMLDIDBinary`
+  and `DoubleMLDIDMulti` are additionally absent from upstream's `__all__`
+  while still being importable from their modules.
+
+### New gate: `_verify/_gate_provenance_1160.py`
+
+Measures provenance from the sdist, parses the README's 22 table rows, and
+fails if any label disagrees or if a flat "all 22 ... upstream" assertion
+survives anywhere. Two design points earned the hard way:
+
+- it locates its inputs by walking up to `moon.mod` from its own path. The
+  first version hardcoded `ROOT`, so a copy in a temp dir still read the real
+  README -- the positive control reported both mutations MISSED *and* the
+  correct file PASSING, which is the signature of a gate that never looked at
+  its input.
+- it aborts if fewer than 22 rows parse, rather than reporting agreement on an
+  empty set. Its first row regex expected 4 table columns against a 3-column
+  table, parsed 0/22, and the abort is what stopped that being reported as
+  "all rows agree".
+
+`_verify/_gate_provenance_control_1160.py` is its positive control: it mutates
+one label in a throwaway copy and requires the gate to fail. Both mutations
+are detected; the unmutated README passes.
+
+Not wired into CI: the gate needs the 1.1 MB `doubleml-0.11.4.tar.gz`, which is
+currently untracked. Committing a binary that size is a repository decision,
+not something to slip into a documentation commit.
+
 ### Method note
 
 Three apparent defects were **probe** errors, not README errors, and are worth
