@@ -9,6 +9,84 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [Unreleased] — README revised against a QA-gate inventory
+
+Tests **1114 / 1120 / 1114 / 1114** (native / wasm-gc / wasm / js), re-measured
+this cycle: **zero delta**. Documentation only.
+
+A 21-point QA inventory (format, static analysis, duplicate code, dependency
+audit, unit / integration / API / E2E / contract / component tests, Gherkin,
+fuzz, mutation, coverage, benchmark, load, SAST, DAST) was run against the
+tree and the CI definitions. It produced two README corrections, both in
+sections written as authoritative.
+
+### 1. The dependency rule was not being met
+
+`README.mbt.md` § *Dependency rule* — and `skills/moonbit_doubleML.md`,
+which it cites — both state "only official `moonbitlang/*` packages".
+`moonbit_doubleML/moon.mod` declares:
+
+```moonbit
+import {
+  "moonbit-community/sqlite3@0.2.3",   // NOT moonbitlang/*
+  "moonbitlang/async@0.20.3",
+}
+```
+
+and **neither is imported by any `.mbt` in the library** (0 references each,
+measured). `async` is used only by `examples/api_server/main.mbt`, which
+declares it in its own `moon.mod`. `sqlite3` was added in v0.85.0 for
+`DoubleMLPolicyTree` memoisation; that path now uses an in-memory
+`FitCache`.
+
+So the library has no runtime third-party dependency today while `moon.mod`
+carries two dead entries, one of which does not satisfy the documented rule.
+The README now states this rather than leaving the rule as an unqualified
+claim. **The underlying fix — deleting both lines — is not made here**;
+it is a `moon.mod` change and is called out as the thing that would make the
+section true.
+
+### 2. The validation section never said what CI gates
+
+`§ *Determinism & validation*` listed the determinism rules and then a
+run-on of per-release historical counts, with no statement of the current gate
+set. Added: the seven measured gates (README sync, build+test x4 backends,
+format check, `moon check --deny-warn` x4, generated-interface drift, `typos`,
+23 Python cross-checks) plus the nightly-toolchain canary.
+
+Two of those gates are weaker than the list implies, and are now said so:
+
+- **`moon fmt --check` has never been shown able to fail.** On `moon
+  0.1.20261012` it exits 0 on a package containing a deliberately
+  mis-formatted file, silently. CI installs the *latest* `moon` from
+  `cli.moonbitlang.com` rather than pinning, and its run log needs
+  authentication, so CI-side behaviour is unverified. The step reports
+  success; "format is clean" should be read as unproven.
+- **`validate_splitting_contract.py` never executes.** It is tracked but does
+  not match CI's `validate_*_with_python.py` glob.
+
+### Also recorded, so absence is explicit
+
+`features/moonbit_doubleML_acceptance.feature` is a real traceability matrix
+(6 Feature / 24 Scenario / 80 steps, each scenario annotated
+`# mapped to: <test>`; 23 of 27 named tests resolve). There is **no** coverage
+report, benchmark baseline, load/stress harness, duplicate-code detection,
+dependency-vulnerability scan, SAST or DAST. `examples/fuzz/` is tracked and in
+`moon.work` but no CI job runs it and it has no crash corpus. Mutation testing
+ran per-release as ad-hoc `_verify/` scripts, not as a gated runner.
+
+### Method note
+
+Six of the inventory's own first-pass verdicts were wrong and were corrected
+before anything was written to the README: the unit-test count printed `~0`
+from a malformed generator (actually 1114); `loader.mbt` matched a "load"
+regex but is a data loader; `linalg_gpu/` has **0 tracked files**, so its
+benchmark is not repo content; the benchmark regex wanted `bench_` and missed
+`spd_bench.mbt`; the Gherkin `.feature` was nearly written off as absent; and
+`fn main(` missed MoonBit's parameterless `fn main` and the `async fn main`
+in `examples/api_server`, turning "0 of 19 examples have an entry" out of
+what is actually 19 of 19.
+
 ## [0.161.0] — README claim audit: stale claims corrected across the
 README, the shipped docs, and estimator provenance
 

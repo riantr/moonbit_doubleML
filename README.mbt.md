@@ -1505,7 +1505,66 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
   `moonbitlang/async`'s raw `Server` API. No third-party HTTP
   framework is allowed.
 
+**Current state: the rule is not met, by one line.** `moonbit_doubleML/moon.mod`
+declares two packages, and **neither is imported by any `.mbt` in the library**
+(measured: 0 references each):
+
+| declared | imported by the library? | note |
+|---|---|---|
+| `moonbitlang/async@0.20.3` | no | used only by `examples/api_server/main.mbt`, which declares it in its own `moon.mod` |
+| `moonbit-community/sqlite3@0.2.3` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
+
+So the library has no runtime third-party dependency today, while `moon.mod`
+carries two dead entries -- one of which does not satisfy the rule above.
+Deleting both lines is the change that would make this section true.
+
 ##Determinism & validation
+
+### What CI actually gates
+
+Measured from `.github/workflows/` and confirmed against the run list. Seven
+checks, all of which run on push to `master` and again before publishing:
+
+| Gate | Where | Scope |
+|---|---|---|
+| Shipped README == edited README | `check.yml` `readme-sync` | `moonbit_doubleML/README.mbt.md` byte-identity |
+| `moon build` + `moon test --deny-warn` | `check.yml` x4 matrix | `native`, `wasm-gc`, `wasm`, `js` |
+| `moon fmt --check` | `check.yml` "Format check" x4, `publish.yml` | see caveat below |
+| `moon check --deny-warn` x4 | `publish.yml` | warnings are errors |
+| Generated-interface drift | `publish.yml` | public surface |
+| `typos` (pinned 1.19.0) | `publish.yml` | prose |
+| 23 `validate_*_with_python.py` | `check.yml` | parity against the real `doubleml` wheel |
+
+`nightly.yml` additionally runs the package against the MoonBit **nightly**
+toolchain, so a breaking upstream change surfaces before it reaches stable.
+
+**Two of these are weaker than the table makes them look, and both are stated
+here rather than left for a reader to assume.**
+
+- **`moon fmt --check` has not been shown to be able to fail.** On the local
+  toolchain (`moon 0.1.20261012`) it exits 0 on a package containing a
+  deliberately mis-formatted file, silently. CI installs the *latest* `moon`
+  from `cli.moonbitlang.com` rather than a pinned version, and its run log is
+  not readable without authentication, so its behaviour there is unverified.
+  The step reports success; treat "format is clean" as unproven until a
+  mis-formatted file is shown to turn it red.
+- **`validate_splitting_contract.py` never runs.** It is tracked, but does not
+  match CI's `validate_*_with_python.py` glob, so no workflow executes it.
+
+**Acceptance-criteria traceability** lives in
+`features/moonbit_doubleML_acceptance.feature`: 6 `Feature`, 24 `Scenario`, 80
+Given/When/Then steps, each scenario annotated `# mapped to: <test name>`. 23
+of the 27 named tests resolve to real `test` declarations; the other four are
+descriptive prose. The MoonBit tests are the executable form -- there is no
+separate Gherkin runner.
+
+**Not covered, so not claimed.** There is no coverage report, no benchmark or
+performance baseline, no load/stress harness, no duplicate-code detection, no
+dependency-vulnerability scan (`moon update` is not an audit), and no SAST or
+DAST. `examples/fuzz/` exists and is a declared `moon.work` member, but no CI
+job runs it and there is no crash-regression corpus. Mutation testing was run
+per-release as ad-hoc scripts under `_verify/`, not as a gated runner with a
+surviving-mutant ledger.
 
 - All randomness flows through `chacha8_rng(seed)` (`seed.mbt`).
   Default `seed=3141`; same seed => byte-identical DGP outputs.
