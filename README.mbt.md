@@ -1400,20 +1400,31 @@ marked *(upstream, renamed)* because upstream calls it `RDFlex`, and
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(upstream)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)*, + v0.98.0 honest split (`honest = true`) with `leaf_se` / `policy_value_se` |
 
-**Provenance (v0.103.0).** Every one of the 22 has a counterpart in
-`doubleml` 0.11.4 -- verified against the published sdist, not the
-GitHub tree, so this is the shipped artefact. Modules:
-`plm/{plr,pliv,lplr,plpr}.py`, `irm/{irm,iivm,apo,apos,pq,qte,lpq,cvar,ssm}.py`,
+**Provenance (v0.103.0, re-measured).** The counterpart modules in
+`doubleml` 0.11.4 are `plm/{plr,pliv,lplr,plpr}.py`,
+`irm/{irm,iivm,apo,apos,pq,qte,lpq,cvar,ssm}.py`,
 `did/{did,did_binary,did_cs,did_cs_binary,did_multi}.py`, `rdd/rdd.py`
-(the class there is `RDFlex`), `utils/{blp,policytree}.py`.
+(the class there is `RDFlex`), and `utils/{blp,policytree}.py` --
+verified against the published sdist, not the GitHub tree, so this is
+the shipped artefact. **Not** all 22 have a counterpart: see the
+measurement below.
 
 Provenance was re-measured against the **0.11.4 sdist** itself
 (`_verify/doubleml-0.11.4.tar.gz`, 388 members) rather than read off a
 table. Result: **20** rows have a name-identical `class DoubleMLXxx`
 upstream; `DoubleMLRDD` corresponds to upstream's `RDFlex`; and
-`DoubleMLDIDCrossSection` has **no** counterpart -- no class, no
-`did_cross_section*` module, and no textual occurrence anywhere in the
-sdist. It is a genuine port-only estimator and is labelled as one.
+`DoubleMLDIDCrossSection` has **no upstream estimator**.
+
+For that last one the scan is specific, because "not upstream" and
+"nothing upstream" are different claims. Over the sdist's 322 `.py`
+members: `class DoubleMLDIDCrossSection` 0 hits, the bare identifier 0,
+`did_cross_section` as a module name 0, any `class *CrossSection` 0. But
+`cross_sectional_data` appears 25 times and `Sant'Anna` 13 -- upstream
+ships `make_did_SZ2020` in `doubleml/did/datasets/dgp_did_SZ2020.py`,
+"Generates data from a difference-in-differences model used in Sant'Anna
+and Zhao (2020)". So the **design is known upstream and the DGP ships
+there**; it is the *estimator* that is not ported. Labelled
+`*(no upstream counterpart)*`, which refers to the estimator class.
 
 Three rows were previously marked *(extra)* -- `DoubleMLDIDCSBinary`,
 `DoubleMLLPLR`, `DoubleMLPLPR`. That was wrong: all three ship

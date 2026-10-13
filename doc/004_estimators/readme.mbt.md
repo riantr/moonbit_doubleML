@@ -28,11 +28,15 @@
 | `DoubleMLBLP` | BLP | best linear predictor | `blp_policy.mbt` |
 | `DoubleMLPolicyTree` | (depth-N) | policy tree | `blp_policy.mbt` |
 
-All 22 have an upstream `doubleml.DoubleML*` counterpart; the package
-README's estimator table records each one's provenance and notes the few
-that are importable but absent from upstream's `__all__`. Several here
-(e.g. `DoubleMLDID` and its 4 variants) live in separate `.mbt` files
-for parallel maintainability.
+Of the 22, **20** match a class of the same name upstream,
+`DoubleMLRDD` is upstream's `RDFlex` renamed, and
+`DoubleMLDIDCrossSection` has no upstream estimator -- though upstream
+does ship the Sant'Anna-Zhao (2020) DGP (`make_did_SZ2020`), so the
+design is upstream and only the estimator is port-only. The package
+README's estimator table records the provenance of each row and notes
+the few that are importable but absent from upstream's `__all__`.
+Several here (e.g. `DoubleMLDID` and its 4 variants) live in separate
+`.mbt` files for parallel maintainability.
 
 ## Constructor signature
 

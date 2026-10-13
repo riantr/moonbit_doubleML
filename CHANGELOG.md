@@ -201,6 +201,52 @@ Not wired into CI: the gate needs the 1.1 MB `doubleml-0.11.4.tar.gz`, which is
 currently untracked. Committing a binary that size is a repository decision,
 not something to slip into a documentation commit.
 
+### Provenance, second pass: three overstatements, two of them mine
+
+The 20 / 1 / 1 split was right; three sentences around it were not.
+
+- **`doc/004_estimators/readme.mbt.md` claimed "All 22 have an upstream
+  `doubleml.DoubleML*` counterpart."** That sentence was added by *this
+  audit* in `6f584cd`, disproved by `4141bab`, and never propagated. It was
+  false for `DoubleMLDIDCrossSection` **and** for `DoubleMLRDD`, whose
+  counterpart is `RDFlex` -- not a `DoubleML*` name at all.
+- **The README's v0.103.0 provenance note claimed "Every one of the 22 has a
+  counterpart in `doubleml` 0.11.4"**, directly contradicting the paragraph
+  immediately below it. Pre-existing text the audit never touched.
+- **"no textual occurrence anywhere in the sdist"** -- written by this audit,
+  and false. Scanning the sdist's 322 `.py` members:
+
+  | needle | hits |
+  |---|---|
+  | `class DoubleMLDIDCrossSection` | **0** |
+  | identifier `DoubleMLDIDCrossSection` | **0** |
+  | `did_cross_section` (module name) | **0** |
+  | any `class *CrossSection` | **0** |
+  | `cross_sectional_data` | **25** |
+  | `Sant'Anna` | **13** |
+  | `zhao` | **11** (`dgp_did_SZ2020.py`) |
+
+  Upstream ships **`make_did_SZ2020`** in `doubleml/did/datasets/dgp_did_SZ2020.py`,
+  "Generates data from a difference-in-differences model used in Sant'Anna and
+  Zhao (2020)". So the **design is upstream and the DGP ships there**; it is
+  the *estimator* that is not ported.
+
+**⇒ The lesson is the difference between two claims that look alike.**
+"No upstream estimator" and "nothing upstream" are not the same statement, and
+a scan of 4 specific needles does not license the broader one. Reaching for
+the strongest available wording turned a true sentence into a false one --
+twice in this file, once inherited and once written here.
+
+The wording now states the narrow, measured claim, and the gate re-measures
+`make_did_SZ2020` and the `cross_sectional_data` count so the sentence cannot
+quietly become untrue.
+
+`_verify/_gate_provenance_1160.py` now also scans both files for six
+overstatement patterns -- including the three that survived here -- and the
+positive control mutates **seven** ways (two table markers, five prose
+assertions). All seven are detected; both files unmutated pass.
+GATE DISCRIMINATES.
+
 ### Method note
 
 Three apparent defects were **probe** errors, not README errors, and are worth
