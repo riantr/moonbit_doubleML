@@ -9,6 +9,83 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.160.0] — docs-only: the README that actually ships is now the one that is edited
+
+Tests 1115 -> 1120 (`moon test`, wasm-gc; native/wasm/js 1114): **zero
+delta**. No library code changed. This release exists for one reason: to get
+the corrected README onto mooncakes.io.
+
+### The defect
+
+There are TWO files named `README.mbt.md`:
+
+```
+README.mbt.md                     94,865 bytes   v0.159.0 / 1120 tests
+moonbit_doubleML/README.mbt.md     59,981 bytes   v0.115.0 /  855 tests
+```
+
+`moon.mod` sits in `moonbit_doubleML/` and declares
+`readme = "README.mbt.md"`, which resolves **relative to the package dir**.
+So `moon publish` ships `moonbit_doubleML/README.mbt.md`, and that is the file
+mooncakes.io renders. The root copy is what a human edits and what GitHub
+renders.
+
+They drifted for **44 versions**. Verified directly at the v0.159.0 tag:
+
+```
+git show v0.159.0:moonbit_doubleML/README.mbt.md   ->  0.115.0, 855 / 855
+git show v0.159.0:README.mbt.md                    ->  0.159.0, 1120 / 1120
+```
+
+Nothing failed, because nothing compared them. `moon test`, `moon fmt`,
+`typos` and all 23 Python cross-checks pass on a repository whose published
+README is wrong -- every one of those checks is blind to a file that is not
+compiled, formatted or spell-checked in the failing direction.
+
+### The fix
+
+1. The shipped copy is synced from the edited one, byte-exact (same SHA-256).
+2. New `.github/scripts/check_readme_sync.py`, wired into BOTH workflows:
+
+   - `check.yml` gains a `readme-sync` job that needs nothing but python3 and
+     runs alongside the toolchain jobs.
+   - `publish.yml` runs it immediately **before** `moon publish`, so a
+     diverged README blocks the release instead of shipping.
+
+   It checks that moon.mod's `readme` resolves to a non-empty file, that the
+   shipped file is non-empty, and that the two are byte-identical. On
+   divergence it prints the FIRST differing line and which way to copy,
+   because "they differ" is not actionable when the delta is a whole stale
+   version.
+
+   Three notes on how it was built, all of which are corrections of my own
+   first attempt:
+
+   - It is **python3, not shell**, on purpose. `publish.yml` records that this
+     repository has no bash or git-bash locally, so shell written into the
+     release path cannot be verified before it ships -- the exact failure mode
+     behind the 7186945 disablement. The script was verified locally in both
+     directions instead: exits 0 in sync, exits 1 on divergence, exits 1 when
+     moon.mod points at a missing file.
+   - Its output goes through a UTF-8 stdout because the first version raised
+     `UnicodeEncodeError` printing a non-ASCII diff line under a GBK console
+     and exited on a **traceback** rather than on the check. A gate whose
+     failure output is a stack trace is not a gate.
+   - Root detection walks up to the directory containing
+     `moonbit_doubleML/moon.mod` rather than assuming a parent-of-parent, so
+     moving the file cannot silently compute the wrong root -- the same class
+     of bug it exists to catch.
+
+### Verified
+
+The guard was confirmed running in real CI on commit `028e9d8`, where the
+`README sync` job reports `completed / success` alongside all four backend test
+jobs.
+
+Note for readers auditing older releases: v0.157.0 and v0.158.0 have **no
+GitHub Release** at all, and every published version up to and including
+v0.159.0 rendered the stale README.
+
 ## [0.159.0] — four reported defects, root-caused against upstream and fixed
 
 Tests 1115 -> 1120 (`moon test`, wasm-gc; native reports "no test entry
