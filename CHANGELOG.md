@@ -9,7 +9,8 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-## [Unreleased] — README claim audit: 15 stale statements corrected
+## [0.161.0] — README claim audit: stale claims corrected across the
+README, the shipped docs, and estimator provenance
 
 Tests **1114 / 1120 / 1114 / 1114** (native / wasm-gc / wasm / js), re-measured
 this cycle: **zero delta**. No library code changed; this entry is
