@@ -3,10 +3,11 @@
 A pure-MoonBit port of the
 [`doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py) Python
 package -- the Python ecosystem's most mature Double / Debiased Machine
-Learning implementation -- covering **all 19 models** in upstream
-plus **3 MoonBit-specific extras** (`DoubleMLPLPR` for static panel
-data, `DoubleMLLPLR` for binary outcomes, `DoubleMLDIDCSBinary` for
-binary-outcome CS-DID).
+Learning implementation -- covering **all 22 models** in upstream.
+`DoubleMLPLPR` (static panel data), `DoubleMLLPLR` (binary outcomes)
+and `DoubleMLDIDCSBinary` (binary-outcome CS-DID) were for several
+releases described here as MoonBit-specific extras; they ship upstream
+too, and the *Estimator table* below marks all 22 as *(upstream)*.
 
 Targets library authors and tool developers who need causal inference,
 panel data estimation, instrumental variable estimation, regression
@@ -45,10 +46,11 @@ estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,
 `DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
 `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
 `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
-in 19 source files. The 19 marked *(upstream)* mirror the upstream
-`doubleml-for-py` API; the 3 marked *(extra)* are MoonBit-specific
-additions for static-panel PLR, partially-logistic regression, and
-binary-outcome CS-DID.
+in 19 source files. All 22 are marked *(upstream)* and mirror the
+`doubleml-for-py` API. Three -- `DoubleMLDIDCSBinary`, `DoubleMLLPLR`,
+`DoubleMLPLPR` -- were previously marked *(extra)*, which was wrong:
+all three ship upstream, so they had a reference implementation all
+along. The labels are corrected in the estimator table below.
 
 **Unified API surface** -- every estimator follows the same
 `DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` shape and returns
@@ -140,7 +142,7 @@ Migrating `DoubleMLDIDBinary` was attempted and abandoned on the evidence:
 across four probe designs and ~14 configurations its OLS default matched a
 logistic one to within ~1e-4, and where they differed the OLS default was the
 BETTER of the pair. The reason is structural. In the observational DID score
-(`did.mbt:655-660`) `w_d = d_i / m_i`, so `1 / m` enters **only for treated
+(`did.mbt:708`) `w_d = d_i / m_i`, so `1 / m` enters **only for treated
 rows** (controls get `w_d = 0`), and the score is **doubly robust** -- a
 correct `g` carries identification, leaving `m` second-order. IRM and APO need
 `m` for the estimand itself, which is why they showed a ~200-point error and
@@ -259,7 +261,7 @@ more.
 > a root. That is what upstream's Newton avoids. The `deriv` likewise must not
 > be a central difference of a step: it is identically zero wherever no
 > observation lies within `+/- h`, `fit` scales `psi` by `1/deriv` unguarded
-> (`quantile.mbt:2411-2415`), and `0/0 = NaN` reaches `ses`. Measured
+> (`quantile.mbt:2427-2429`), and `0/0 = NaN` reaches `ses`. Measured
 > `ses = [NaN, 0.3019, 0.1758, 0.1994, 1.6937]`. Upstream's `_compute_score_deriv`
 > is a **Silverman-bandwidth weighted Gaussian KDE**, which is positive
 > everywhere, so this is structurally unreachable rather than merely unlikely.
@@ -303,11 +305,13 @@ moves (hit four times across v0.134.0-v0.136.0).
 >
 > 1. `prelim_beta_per_fold` (`lplr.mbt:71-95`) returns `beta` built from
 >    `w = ln(m / (1 - m))` -- the logit of the fitted propensity. As the effect
->    grows, `w` grows and `exp(r)` in the score (`lplr.mbt:200-204`) reaches
+>    grows, `w` grows and `exp(r_hat)` in the score (`lplr.mbt:198-204`) reaches
 >    `O(1e3)`. Measured at `alpha = 1.25`: `mean(psi) = 1097.07` and
 >    `mean(psi_deriv) = -1097.07` -- the same order on BOTH arms, cancelling.
-> 2. The Newton convergence flag is computed and **discarded** --
->    `let _ = converged` at `lplr.mbt:866`. With the step clamped to `0.25`
+> 2. The Newton convergence flag WAS computed and **discarded** --
+>    `let _ = converged`, now only documented at `lplr.mbt:885`; v0.145.0
+>    replaced the bare flag with a `stop_reason` string (`lplr.mbt:887`).
+>    With the step clamped to `0.25`
 >    (`:853-854`), 50 iterations cannot span an arbitrary distance, so the loop
 >    can stop away from the root, and `fit` computes a coefficient and a
 >    variance there with no error raised.
@@ -363,15 +367,15 @@ moves (hit four times across v0.134.0-v0.136.0).
 > **Port-vs-upstream (v0.142.0), recorded because fidelity alone would mislead:**
 > the score formula is byte-identical to upstream (`lplr.mbt:194-204` vs
 > `lplr.py:401-418`, including `exp(-coef*d)`), but two things differ.
-> Upstream keeps `beta` **row-wise** (`lplr.py:314-345`) while this port folds it
-> to one scalar (`lplr.mbt:782-801`). That is a real divergence -- but adopting
+> Upstream keeps `beta` **row-wise** (`lplr.py:315-346`) while this port folds it
+> to one scalar (`lplr.mbt:866`). That is a real divergence -- but adopting
 > upstream's per-row shape makes the root **worse** (1 -> 0 sign changes at
 > `alpha = 1.0`), so it is not the cause and must not be changed on fidelity
 > grounds. Upstream also handles solve failure in
 > `double_ml_score_mixins.py:143-162` (brentq fallback on bounds; a warning or
 > `ValueError` on non-convergence). This port omits that path entirely --
-> `let _ = converged` at `lplr.mbt:866` -- which is the one clear, low-risk
-> divergence available to fix.
+> `let _ = converged` (`lplr.mbt:885`) -- which was the one clear, low-risk
+> divergence available to fix, and which v0.145.0 took.
 
 **`DoubleMLAPOS` honoured a configured `ml_m` everywhere except where it
 counted (fixed in v0.133.0).** Its `fit` path built each child
@@ -409,7 +413,7 @@ calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 > `iivm.py:371`, `cvar.py:343`), but in this port **no estimator ever passed
 > it**. With `cv_calibration=true` the processor silently calibrated on its own
 > `default_5fold(n)` -- five *contiguous* blocks -- instead of the estimator's
-> `n_folds` partition. Now wired at `irm.mbt:417` and `iivm.mbt:513` via
+> `n_folds` partition. Now wired at `irm.mbt:430` and `iivm.mbt:525` via
 > `folds_to_cv_partition`, which is sound because `kfold`'s `Fold` guarantees
 > disjoint test indices covering `[0, n_obs)` (`kfold.mbt:199`).
 >
@@ -504,7 +508,7 @@ used to read `self.data.y[i]` and `self.data.d[i]` — the **full 1080-row
 panel**, indexed at **subset** positions, with the per-period treatment rather
 than `G`, and with a 2-way `y - g00 - (g10 - g00)*d` form that always used the
 `T = 0` g-function. Upstream uses the subset's own `y`/`G`/`T_indicator`
-(`did_cs_binary.py:846-867`) and mixes the four `(G, T)` cells. Measured, **240
+(`did_cs_binary.py:845-866`) and mixes the four `(G, T)` cells. Measured, **240
 of the 720 rows read had `t == 1`** — a period the subset never contains, and
 the one in which `y` carries the treatment effect. `sigma2` came out **583x**
 too large (1.1473 vs 0.00197), and **no test in the package exercised the
@@ -868,7 +872,7 @@ period), so `dgp_recovery_test`'s `max_abs_err < 5.0` against a true effect of
 FOUR NAMED accessors `predictions_g_d0_t0()` / `_d0_t1()` / `_d1_t0()` /
 `_d1_t1()` on `DoubleMLDIDCS`, plus `cross_fit_predict_conditional_dispatch` in
 `learner.mbt` mirroring upstream's `fit_predict(..., train_cond=...)`
-(`did/tests/_utils.py:33-45`). Upstream's `sigma2` needs `g_hat` assembled from
+(`doubleml/tests/_utils.py:33-45`). Upstream's `sigma2` needs `g_hat` assembled from
 all four (`did_cs.py:445-449`, `456-461`); the port had two, split by `d` alone
 and taken from each cell's child `DoubleMLDIDBinary` restricted to its own
 subset -- a different object that cannot be reassembled on the full panel.
@@ -887,7 +891,7 @@ four names the permutation is not expressible.
 to later periods would be a NEW modelling decision, not a port.
 `did/tests/_utils_did_cs_manual.py` selects `intersect1d(where(d == 0), where(t
 == 0))` and three siblings; `dgp_did_CS2021.py:309` sets `"t":
-time_matrix.flatten()`, so upstream's `t` IS the period; and `_utils.py:33-45`
+time_matrix.flatten()`, so upstream's `t` IS the period; and `doubleml/tests/_utils.py:33-45`
 intersects the condition with the training index and then predicts on the whole
 test fold, so the condition gates FITTING, not prediction. Upstream's
 `DoubleMLDIDCS` is therefore the 2x2 repeated-cross-section design (its
@@ -987,7 +991,7 @@ degenerate case; the scalar is transcribed instead, and the new shared
 directly. `pliv` was added to the unsupported list in the same release --
 upstream never sets `_sensitivity_implemented = True` for it either. Separately, upstream defaults
 `in_sample_normalization` to `True` (`did_cs_binary.py:121`) and this port to
-`false` (`did_cs_binary.mbt:712`) -- **uniformly across all six DID
+`false` (`did_cs_binary.mbt:732`) -- **uniformly across all six DID
 estimators**, upstream being `True` in all five of its own. This is a
 deliberate backward-compatibility choice, not a transcription slip: v0.8.0
 picked `false` so the default stayed "byte-equal to the pre-0.8.0 port". Both
@@ -1046,13 +1050,16 @@ in v0.55.0.
 `bias_corrected_theta`, all driven by the `SandwichKind` enum. From
 v0.86.0 they are reachable through ONE shared
 `sandwich_variance(kind, psi_a, psi, m_inv, n_obs, n_params)`
-dispatch, and **12 of the 22** `DoubleML*` estimators expose the
+dispatch, and **15 of the 22** `DoubleML*` estimators expose the
 estimator-level triple `sandwich_se(kind)` /
 `cluster_sandwich_se(cluster_ids)` / `bias_corrected_coef()`:
 `DoubleMLIRM`, `DoubleMLPLR`, `DoubleMLIIVM`, `DoubleMLPLIV`,
 `DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`,
 `DoubleMLDIDCSBinary`, `DoubleMLCVAR`, `DoubleMLSSM`,
-`DoubleMLAPO`, `DoubleMLPLPR`. (`DoubleMLRDD` and `DoubleMLBLP`
+`DoubleMLAPO`, `DoubleMLPLPR`, `DoubleMLPQ`, `DoubleMLLPQ`,
+`DoubleMLLPLR`. (Re-measured: the quantile trio was missing from this
+list while the Status table already counted all 15, so the two
+disagreed inside one file.) (`DoubleMLRDD` and `DoubleMLBLP`
 already emit HC0 intervals by calling
 `LinearRegression::sandwich_se` internally.)
 
@@ -1351,13 +1358,14 @@ no third-party HTTP framework is pulled in.
 
 ##Models
 
-22 estimators (`DoubleML*` structs) in 22 files (one struct per file,
-plus the supporting DGPs and score / nuisance kernels in 129 files
-total), all reachable through the same `DoubleMLXxx::new(...).fit()`
-interface. The 19 marked *(upstream)* mirror the upstream
-`doubleml-for-py` API surface; the 3 *(extra)* rows are MoonBit
-additions for static-panel PLR, partially-logistic regression, and
-binary-outcome CS-DID:
+22 estimators (`DoubleML*` structs) in 19 production files -- 16 with
+one struct each, and three holding two (`apo.mbt`: `DoubleMLAPO` +
+`DoubleMLAPOS`; `blp_policy.mbt`: `DoubleMLBLP` +
+`DoubleMLPolicyTree`; `quantile.mbt`: `DoubleMLPQ` + `DoubleMLQTE`) --
+out of 219 `.mbt` files in the package (65 production, 129 blackbox
+test, 25 whitebox test). All are reachable through the same
+`DoubleMLXxx::new(...).fit()` interface, and all 22 are marked
+*(upstream)* and mirror the `doubleml-for-py` API surface:
 
 | Model | Score | Description |
 |-------|-------|-------------|

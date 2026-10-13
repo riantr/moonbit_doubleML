@@ -9,6 +9,90 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [Unreleased] — README claim audit: 15 stale statements corrected
+
+Tests **1114 / 1120 / 1114 / 1114** (native / wasm-gc / wasm / js), re-measured
+this cycle: **zero delta**. No library code changed; this entry is
+documentation-only.
+
+Every claim in `README.mbt.md` was resolved against the tree rather than
+eyeballed: 70 `file:line` citations, 22 estimators, the sandwich-variance
+coverage split, the `.mbt` file census, version references, and the float
+literals in the v0.159.0 defect blocks.
+
+### Corrected — 15 statements
+
+**11 `file:line` citations.** All were off by the drift accumulated since they
+were written; each was re-checked to confirm the cited line is *live code* and
+not a stale comment before rewriting.
+
+| Was | Now | Why |
+|---|---|---|
+| `did.mbt:655-660` | `did.mbt:708` | 708 is live `let w_d = d_i / m_i`; 655-660 is the `mean_d` branch |
+| `quantile.mbt:2411-2415` | `quantile.mbt:2427-2429` | +16 from the v0.159.0 rewrite |
+| `lplr.mbt:866` (x2) | `lplr.mbt:885` | `let _ = converged` survives only in comments; live code uses `stop_reason` (887) since v0.145.0 |
+| `did_cs_binary.mbt:712` | `did_cs_binary.mbt:732` | live `in_sample_normalization~ : Bool = false,` |
+| `irm.mbt:417` | `irm.mbt:430` | live `cv=Some(folds_to_cv_partition(folds)),` |
+| `iivm.mbt:513` | `iivm.mbt:525` | same |
+| `lplr.py:314-345` | `lplr.py:315-346` | 315 is `beta = np.zeros(d.shape...)` |
+| `did_cs_binary.py:846-867` | `did_cs_binary.py:845-866` | the `def` is at 845 |
+| `did/tests/_utils.py:33-45` | `doubleml/tests/_utils.py:33-45` | `did/tests/_utils.py` does not exist |
+| `_utils.py:33-45` | `doubleml/tests/_utils.py:33-45` | resolver had collided with `rdd/_utils.py` (7 lines) |
+| `lplr.mbt:200-204` (`exp(r)`) | `lplr.mbt:198-204` (`exp(r_hat)`) | `exp(r_hat)` is at 199, **outside** the cited range |
+| `lplr.mbt:782-801` | `lplr.mbt:866` | 782-801 is the `a_pred` alias divergence; the fold average is `beta_acc / beta_count.to_double()` at 866 |
+
+**4 structural statements.**
+
+1. `19 marked *(upstream)* ... 3 marked *(extra)*` — wrong in **three**
+   places, not two. All 22 estimators ship upstream; the three former extras
+   (`DoubleMLDIDCSBinary`, `DoubleMLLPLR`, `DoubleMLPLPR`) were reclassified
+   as upstream already, and the README's own estimator table (L1396-1401)
+   records that. The prose at the **opening paragraph**, the Features list
+   (L48) and the estimator-table preamble (L1359) had all been left behind.
+2. `**12 of the 22**` estimators expose the `sandwich_se` /
+   `cluster_sandwich_se` / `bias_corrected_coef` triple — measured **15**.
+   The list omitted `DoubleMLPQ`, `DoubleMLLPQ`, `DoubleMLLPLR`, so the prose
+   and the Status table contradicted each other inside one file.
+3. `22 estimators in 22 files (one struct per file)` — measured **19**
+   production files: 16 single-struct, and `apo.mbt` (APO+APOS),
+   `blp_policy.mbt` (BLP+PolicyTree) and `quantile.mbt` (PQ+QTE) hold two each.
+4. `in 129 files total` — 129 is the *blackbox test* count, not the total.
+   Stated as 219 `.mbt` files (65 production, 129 blackbox, 25 whitebox),
+   matching the Status table's own census.
+
+### Verified correct, not changed
+
+- 22 estimators / 34 `DoubleML*` structs less 12 `*Data`; the 15 / 4 / 3
+  sandwich split (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD` expose
+  none; `DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`
+  expose per-cell `_at` / `_at_idx` variants instead).
+- 219 `.mbt` files; 19 `examples/<bin>/` members in `moon.work`; 23
+  `validate_*_with_python.py` scripts, all run by `check.yml`.
+- Test counts **1114 / 1120 / 1114 / 1114**, re-run on all four backends.
+- The v0.159.0 defect numbers, each traced to its saved probe output:
+  isotonic `[0.99, 0.99]` → `[0.5, 0.5]` against sklearn 1.9.0;
+  PQ `theta = 2.230920809568266`, `se = 0.044753173108603286`,
+  `mean(psi)` `-0.224968` → `-0.0032` on a `Q_0.6(Y(1)) = 2.2` DGP;
+  BLP width ratio 2.9058 matching `z_0.975 / z_0.75` to the last digit.
+
+### Method note
+
+Three apparent defects were **probe** errors, not README errors, and are worth
+recording because the direction was wrong each time:
+
+- MoonBit defines methods as `pub fn DoubleMLXxx::sandwich_se(`, not
+  `fn sandwich_se(`. A first regex matched **zero of all 22** estimators, which
+  read as "the README lies about all 22" until the qualified form was matched.
+- The 15 / 4 / 3 split is *disjoint* and the README says `4 **more**`.
+  `DoubleMLAPO` and `DoubleMLPQ` expose both the scalar triple and per-cell
+  variants, so a naive "has per-cell → bucket 2" rule misfiles them.
+- The 23 Python cross-check scripts also exist vendored under
+  `examples/api_server/.mooncakes/`, so a naive walk counts 46.
+
+A probe miss is not a defect: classify the target as live code vs comment, and
+check the classifier on a case already known to work, before calling anything
+stale.
+
 ## [0.160.0] — docs-only: the README that actually ships is now the one that is edited
 
 Tests 1115 -> 1120 (`moon test`, wasm-gc; native/wasm/js 1114): **zero
