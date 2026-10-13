@@ -74,6 +74,20 @@ not a stale comment before rewriting.
   PQ `theta = 2.230920809568266`, `se = 0.044753173108603286`,
   `mean(psi)` `-0.224968` → `-0.0032` on a `Q_0.6(Y(1)) = 2.2` DGP;
   BLP width ratio 2.9058 matching `z_0.975 / z_0.75` to the last digit.
+- **All 411 float literals in the README** (249 distinct), each classified
+  against the saved evidence in `_verify/`: **407 appear verbatim** in a
+  recorded probe output, and the remaining **4** are correctly-rounded
+  renderings, checked with `decimal` rather than assumed:
+
+  | README | recorded | rounds to |
+  |---|---|---|
+  | `3.3028` | `3.30275229357797` | `3.3028` |
+  | `26.7189` | `26.718919562055802` | `26.7189` |
+  | `12.2969` | `12.296893946098622` | `12.2969` |
+  | `4.3234` | `4.323385709026423` | `4.3234` |
+
+  and the `(8.1x)` factor on the same line reproduces: `26.7189... / 3.3027...
+  = 8.089895`, rounding to `8.1`. Source: `_verify/_changelog_1310.md:48-50`.
 
 ### Method note
 
@@ -92,6 +106,26 @@ recording because the direction was wrong each time:
 A probe miss is not a defect: classify the target as live code vs comment, and
 check the classifier on a case already known to work, before calling anything
 stale.
+
+The float audit failed the same way twice more, and both failures pointed at
+the tooling rather than the README:
+
+- **A gate that searches a corpus it belongs to finds its own constants.** The
+  evidence corpus is `_verify/`, which is where the audit scripts live, so a
+  probe holding `"3.3028"` as a search target satisfied itself. Control values
+  are now generated at runtime from a fixed seed, and every artifact this audit
+  writes carries a `1610` filename stamp that the corpus builder excludes.
+- **A matcher whose rule excludes correct values reclassifies them as defects,
+  silently.** Requiring "no digit follows the value" made every correctly
+  rounded rendering unmatchable, so four good numbers were reported as
+  unbacked. The extractor also ended in `(?![\w.])`, which rejects a float
+  followed by a sentence-ending period — so `4.3234.` was never examined at
+  all, and the float count was 400 instead of 411.
+
+Both self-tests now run before any result is believed: an extractor self-test
+over six shapes that discriminate it (sentence-final period, `x.y.z` version,
+IP address, mid-line, mid-number), and a runtime control arm that must classify
+3/3 invented values as absent.
 
 ## [0.160.0] — docs-only: the README that actually ships is now the one that is edited
 
