@@ -1,6 +1,6 @@
 # Estimators
 
-17 estimators, all reachable through the same
+22 estimators, all reachable through the same
 `DoubleMLXxx::new(...).fit()` interface:
 
 | Estimator | Score | Description | Upstream file |
@@ -14,20 +14,25 @@
 | `DoubleMLDIDCS` | observational | staggered CS-DID | `did_cs.mbt` |
 | `DoubleMLDIDMulti` | observational | top-level multi-period DID | `did_multi.mbt` |
 | `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao CS-DID | `did_cross_section.mbt` |
+| `DoubleMLDIDCSBinary` | observational | CS-DID with binary outcome | `did_cs_binary.mbt` |
 | `DoubleMLSSM` | MAR | sample selection (missing-at-random) | `ssm.mbt` |
 | `DoubleMLAPO` | APO | average potential outcome | `apo.mbt` |
-| `DoubleMLAPOS` | APOS | APO share | `blp_policy.mbt` |
+| `DoubleMLAPOS` | APOS | APO share | `apo.mbt` |
 | `DoubleMLPQ` | PQ | potential quantile | `quantile.mbt` |
 | `DoubleMLQTE` | PQ | quantile treatment effect | `quantile.mbt` |
 | `DoubleMLLPQ` | LPQ | local potential quantile (compliers) | `lpq.mbt` |
+| `DoubleMLLPLR` | partialling-out | partially logistic regression, Liu-Zhang-Zhou 2021 | `lplr.mbt` |
+| `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 | `plpr.mbt` |
 | `DoubleMLCVAR` | CVaR | conditional value-at-risk | `cvar.mbt` |
 | `DoubleMLRDD` | (sharp / fuzzy) | regression discontinuity | `rdd.mbt` |
 | `DoubleMLBLP` | BLP | best linear predictor | `blp_policy.mbt` |
 | `DoubleMLPolicyTree` | (depth-N) | policy tree | `blp_policy.mbt` |
 
-All 19 names map to one of the 17 upstream `doubleml.DoubleML*`
-classes — some (e.g. `DoubleMLDID` and its 4 variants) live in
-separate `.mbt` files for parallel maintainability.
+All 22 have an upstream `doubleml.DoubleML*` counterpart; the package
+README's estimator table records each one's provenance and notes the few
+that are importable but absent from upstream's `__all__`. Several here
+(e.g. `DoubleMLDID` and its 4 variants) live in separate `.mbt` files
+for parallel maintainability.
 
 ## Constructor signature
 
@@ -44,7 +49,7 @@ let fitted = @moonbit_doubleML.DoubleMLXxx::new(
 ```
 
 `fit()` mutates the estimator in place and returns it; accessors
-(`coef_get()`, `se_get()`, `confint()`, etc.) read back the
+(`coef()`, `se()`, `confint()`, etc.) read back the
 fitted state.
 
 ## Estimator-specific arguments

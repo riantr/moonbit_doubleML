@@ -89,6 +89,60 @@ not a stale comment before rewriting.
   and the `(8.1x)` factor on the same line reproduces: `26.7189... / 3.3027...
   = 8.089895`, rounding to `8.1`. Source: `_verify/_changelog_1310.md:48-50`.
 
+### The shipped docs were staler than the README
+
+`doc/004_estimators/` is user-facing and ships with the package, and it had
+drifted further than `README.mbt.md` had:
+
+- it advertised **17 estimators** while the source defines **22**, and the
+  prose contradicted its own table as well ("17" up top, then "All 19 names");
+- **three estimators were missing from the table entirely** --
+  `DoubleMLDIDCSBinary`, `DoubleMLLPLR`, `DoubleMLPLPR`. These are the same
+  three the package README once mislabelled as MoonBit-specific extras, so
+  they were doubly undocumented;
+- one of 19 rows in its *Upstream file* column was **wrong**:
+  `DoubleMLAPOS` says `blp_policy.mbt`, but the struct is declared in
+  `apo.mbt`;
+- it cited accessors **`coef_get()` and `se_get()`**, neither of which exists
+  anywhere in the package (0 files). The real ones are `coef()` and `se()` --
+  which is what the package's own doc tests call;
+- its closing sentence asserted "17 upstream `doubleml.DoubleML*` classes",
+  a count that is not reproducible: `DoubleMLRDD` is not even in
+  `dir(doubleml)` for the installed 0.11.3. Replaced with a pointer to the
+  package README's audited provenance table rather than an invented number.
+
+The doc now agrees with the source exactly: 22 rows, 22 estimators, 0 missing,
+0 file disagreements, and "22" as the only count in the prose.
+
+The *Estimator-specific arguments* section was left alone -- verified correct
+(`DoubleMLLPQ::new` does take `quantile~`, `lpq.mbt:179`).
+
+### A vacuous test, renamed rather than pretended away
+
+`doc/004_estimators/using_test.mbt` was named
+`"... 19 estimators are importable"` and its comment promised to verify "each
+type is reachable" -- but the body constructs exactly one estimator,
+`DoubleMLPLR`. It could not fail for the other 21 names it claimed to cover.
+
+Renamed to `DoubleMLPLR constructs and fits`, with the scope stated in the
+comment. It is **not** rewritten to build all 22 here: that needs
+estimator-specific data for `DoubleMLDIDMulti` (panel), `DoubleMLRDD`
+(`DoubleMLRDDData`), `DoubleMLBLP` (IV) and the DID cross-section variants, so
+it is real work with its own failure modes, not a rename. Recorded here rather
+than silently expanded.
+
+### Test counts, confirmed twice
+
+The Status table's counts now have an independent second method. Statically
+enumerating `test "..."` declarations gives **1114** in `moonbit_doubleML/` and
+**6** in `doc/` = **1120**. That matches the runtime counts measured this
+cycle (native / wasm / js = 1114, wasm-gc = 1120) by a completely different
+method -- enumeration rather than execution. The "+6 doc tutorials" is exactly
+6, and all six are in `doc/00N_*/using_test.mbt`.
+
+Separately, all **3** test names the README cites were checked to exist as real
+`test` declarations.
+
 ### Method note
 
 Three apparent defects were **probe** errors, not README errors, and are worth
