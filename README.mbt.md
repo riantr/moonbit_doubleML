@@ -27,10 +27,10 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
 | `moon.mod` version | **0.159.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
-| `.mbt` file count | **218** `.mbt` files (**65** production + **128** blackbox test + **25** whitebox test) |
+| `.mbt` file count | **219** `.mbt` files (**65** production + **129** blackbox test + **25** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1109 / 1109 / 1109** |
+| Tests (native / wasm / js) | **1114 / 1114 / 1114** |
 | Tests (wasm-gc) | **1120 / 1120** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
@@ -235,6 +235,47 @@ more.
 > This is NOT the v0.137.0 defect, which froze the coefficient at **every** tau
 > (`0 of 4` distinct steps) and is fixed.
 
+> **`DoubleMLPQ` reported the IPW root while publishing the orthogonal score --
+> fixed in v0.159.0.** A different defect from the two above, and the only one
+> that made the estimator *silently self-inconsistent*.
+>
+> `solve_pq` bisected the **IPW** score and returned that root as the
+> coefficient, then built `psi` from the `g` cross-fit. Those are two different
+> functionals of the data, so the number reported did not satisfy the estimating
+> equation the estimator itself publishes. Measured on a continuous-confounding
+> DGP: the reported coefficient's own orthogonal score averaged **`-0.224968`**.
+>
+> Upstream (`doubleml` 0.11.3) is explicit that the IPW root is PRELIMINARY.
+> `pq.py:378` solves it **only** to build `g`'s target (`pq.py:390` fits
+> `ml_g(x_treat, y_treat <= ipw_est)`); `pq.py:423` then sets
+> `_coef_start_val = mean(ipw_vec)`, and `double_ml_score_mixins.py:149` runs
+> **Newton from there** against the orthogonal score `pq.py:268`. The reported
+> coefficient is that root. `DoubleMLQTE` shares `solve_pq` and inherits it.
+>
+> Both halves matter, and the second half is the one that bites. The score
+> contains `1{y <= theta}` -- the same step function the plateau collision
+> above is built from -- so `mean(score)` is piecewise constant and **a
+> bisection converges onto a jump, not a zero**; the midpoint of a jump is not
+> a root. That is what upstream's Newton avoids. The `deriv` likewise must not
+> be a central difference of a step: it is identically zero wherever no
+> observation lies within `+/- h`, `fit` scales `psi` by `1/deriv` unguarded
+> (`quantile.mbt:2411-2415`), and `0/0 = NaN` reaches `ses`. Measured
+> `ses = [NaN, 0.3019, 0.1758, 0.1994, 1.6937]`. Upstream's `_compute_score_deriv`
+> is a **Silverman-bandwidth weighted Gaussian KDE**, which is positive
+> everywhere, so this is structurally unreachable rather than merely unlikely.
+>
+> | | before | after |
+> |---|---|---|
+> | reported root | IPW | orthogonal (Newton from IPW root) |
+> | `mean(psi)` at reported theta | `-0.224968` | **`-0.0032`** |
+> | `deriv` | central difference, can be `0` | Silverman KDE, strictly positive |
+>
+> On a DGP whose `Q_0.6(Y(1)) = 2.2` holds **by construction** (confounding
+> enters `Y(0)` only), `theta = 2.230920809568266` with `se = 0.044753173108603286`,
+> so the error `0.0309` is inside one SE. Newton moves theta only `0.0021` from
+> the IPW root, which is the point: upstream treats that root as a **start
+> value**, not the answer.
+
 When you pass a classifier explicitly, name it on BOTH sides of any comparison: a
 gate phrased against "the default" silently changes subject when the default
 moves (hit four times across v0.134.0-v0.136.0).
@@ -346,6 +387,37 @@ attributed to one or the other.
 clipping, isotonic (PAVA) calibration, K-fold cross-validated (CV)
 calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 `DoubleMLDID` and the rest of the IPW-based models.
+
+> **Two PSProcessor defects fixed in v0.159.0.** Both were silent.
+>
+> **Isotonic calibration collapsed on tied `x`.** `fit_isotonic` ran PAVA over
+> the raw sorted sequence **without first pooling observations that share an
+> `x`**. An isotonic regression is a *function of x*, so ties must receive one
+> shared fitted value; instead `predict_isotonic` resolved each tie to the LAST
+> index of the run, and the `[0.01, 0.99]` clip turned the stray `1.0` into
+> `0.99`. The reported case -- predictions `[0.5, 0.5]`, labels `[0, 1]` --
+> returned `[0.99, 0.99]` where sklearn 1.9.0's `IsotonicRegression` gives
+> `[0.5, 0.5]` with `y_thresholds_ = [0.5]`. The fix adds `pool_tied_x` and
+> passes the group **size** to `pava` as a weight, because the L2 objective is
+> over observations and the group statistic is therefore a size-weighted mean.
+> `pava` itself is unchanged. A tie-free control is unchanged, which is what
+> shows the pooling is what moved the tied case.
+>
+> **`cv` was never forwarded, so `cv_calibration=true` calibrated on the wrong
+> split.** `adjust_ps` *declares* a `cv` parameter and upstream passes
+> `cv=smpls` at every call site (`pq.py:410`, `did_binary.py:537`,
+> `iivm.py:371`, `cvar.py:343`), but in this port **no estimator ever passed
+> it**. With `cv_calibration=true` the processor silently calibrated on its own
+> `default_5fold(n)` -- five *contiguous* blocks -- instead of the estimator's
+> `n_folds` partition. Now wired at `irm.mbt:417` and `iivm.mbt:513` via
+> `folds_to_cv_partition`, which is sound because `kfold`'s `Fold` guarantees
+> disjoint test indices covering `[0, n_obs)` (`kfold.mbt:199`).
+>
+> Note this is **narrower than "IRM/IIVM has no hookup"**, which was measured
+> and found too strong: the isotonic config *did* already reach both fits. The
+> five remaining `adjust_ps` call sites (`apo.mbt:320`, `did.mbt:628`,
+> `did_cross_section.mbt:615`, `did_cs_binary.mbt:374`, `cvar.mbt:736` and
+> `:1005`) still do not forward `cv`.
 
 **`ps_processor_config` is reachable (v0.121.0+, IRM v0.122.0, IIVM and SSM
 v0.123.0, PQ v0.124.0, LPQ v0.125.0, CVaR v0.126.0, DID v0.127.0, CS-DID
@@ -982,7 +1054,32 @@ estimator-level triple `sandwich_se(kind)` /
 `DoubleMLDIDCSBinary`, `DoubleMLCVAR`, `DoubleMLSSM`,
 `DoubleMLAPO`, `DoubleMLPLPR`. (`DoubleMLRDD` and `DoubleMLBLP`
 already emit HC0 intervals by calling
-`LinearRegression::sandwich_se` internally.) Note the convention:
+`LinearRegression::sandwich_se` internally.)
+
+> **`DoubleMLBLP::confint_joint` ignored `level` -- fixed in v0.159.0.** It
+> hardcoded `let z = 1.959963984540054` (`blp_policy.mbt:746`) while `level` was
+> accepted, range-checked at line 727, and then never used -- so `level=0.50`
+> and `level=0.95` returned byte-identical intervals, which removes the entire
+> point of the argument. Now level-aware, following the convention already used
+> in this package (`did_cross_section.mbt:485`): the exact constant at
+> `level == 0.95`, so the default stays bit-exact, and `norm_ppf` otherwise.
+> The multiplier is `sqrt(chi2(1, level)) = z_{(1+level)/2}`, the same value
+> `statsmodels.OLS.conf_int(joint=True)` applies. Because the interval is
+> symmetric, the width is exactly `2 * z * se`, so **width ratios are
+> data-independent** and can be pinned without hard-coding a fitted number:
+>
+> | level | width (n=400, contrast on (intercept, x)) |
+> |---|---|
+> | 0.50 | `0.03691929183204845` |
+> | 0.95 | `0.10728184750635172` |
+> | 0.99 | `0.1409923584966286` |
+>
+> `width(0.95)/width(0.50)` measured `2.9058479234757097` against
+> `1.959963984540054 / norm_ppf(0.75)` = `2.905847923475711`, agreeing to
+> `1.3e-15`. Note the numerator is the **hardcoded** 95% constant, not
+> `norm_ppf(0.975)`: this package's `norm_ppf` returns `1.9599627869916687`
+> there (accurate to ~6e-7 relative), which is exactly why the special case
+> exists. Note the convention:
 the per-observation score is `psi[i] = psi_at(coef, psi_a, psi_b)[i]`
 = `coef * psi_a[i] + psi_b[i]` -- the estimating function
 `f(theta) = E[theta * psi_a + psi_b]` that `var_est` inverts, whose
