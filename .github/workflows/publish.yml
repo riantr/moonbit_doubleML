@@ -121,6 +121,22 @@ jobs:
       - name: Check typos
         run: typos
 
+      # Runs immediately before the publish step, because the publish step is
+      # the ONLY thing that puts the README in front of users: `readme` in
+      # moon.mod resolves relative to the package dir, so it ships
+      # moonbit_doubleML/README.mbt.md, not the root copy a human edits. Those
+      # two drifted unnoticed for 44 versions (published page stuck at v0.115.0
+      # / 855 tests while the repo was at v0.159.0 / 1120) precisely because no
+      # release-time check existed.
+      #
+      # Added as python3 rather than a shell snippet on purpose: publish.yml
+      # records that this repository has no bash/git-bash locally, so shell
+      # written here could not be verified before entering the release path
+      # (see the note above). The script IS verified locally in both
+      # directions -- it exits 1 with a line-level diff when the two differ.
+      - name: Check shipped README matches the edited README
+        run: python3 .github/scripts/check_readme_sync.py
+
       - name: Publish to Mooncakes
         run: |
           # moon publish exits 255 for "secret missing", "secret has the

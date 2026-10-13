@@ -13,6 +13,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # This runs BEFORE everything else and needs no toolchain, because the thing
+  # it protects against is invisible to every other check.
+  #
+  # `moon.mod` sits in moonbit_doubleML/ and declares `readme = "README.mbt.md"`,
+  # which resolves RELATIVE TO THE PACKAGE DIR -- so moon publish, and therefore
+  # the mooncakes.io page, renders moonbit_doubleML/README.mbt.md, NOT the
+  # README.mbt.md a human edits at the repo root.
+  #
+  # Those two files drifted for 44 versions: the shipped one was still at
+  # v0.115.0 / 855 tests while the repo was at v0.159.0 / 1120. Nothing failed,
+  # because nothing compared them -- tests, fmt, typos and the Python
+  # cross-checks all pass on a repo whose published README is wrong.
+  readme-sync:
+    name: README sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Shipped README matches the edited README
+        run: python3 .github/scripts/check_readme_sync.py
+
   moon-test:
     name: moon test --deny-warn
     runs-on: ubuntu-latest
