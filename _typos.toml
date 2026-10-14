@@ -80,6 +80,21 @@ Complier = "Complier"
 iy = "iy"
 lik = "lik"
 
+# `pn` is the panel size as a Double -- `n_panel.to_double()` at
+# did_cs.mbt:1415 -- and is the denominator of every term in the cluster
+# sandwich variance below it. The dictionary reads it as a typo for "on";
+# it is an intentional short name for "panel n", the same category as `iy`
+# and `lik` above. Renaming it would churn numeric code that is correct.
+pn = "pn"
+
+# `hom` is the homoskedastic RDD fit in expand_v096_test.mbt, and it appears as
+# the paired `hom` / `fz_hom` against the `hc0` / `fz_hc0` robust fits -- the
+# same deliberate pairing style as `levl` / `levr` above. Spelling it out
+# ("homoskedastic") sixteen times in one test file would make the pairs harder
+# to scan, not easier. The dictionary reads it as a typo for "home".
+hom = "hom"
+fz_hom = "fz_hom"
+
 # `levl` / `levr` are the left / right leverage profiles returned by the
 # WLS side fit and are always written as a PAIR. Spelling them out
 # would break the symmetry that makes the pair readable, and "level" is

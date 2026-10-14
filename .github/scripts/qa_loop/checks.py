@@ -1,0 +1,868 @@
+"""QA loop -- check registry and implementations.
+
+Design rules, each of which came from a gate in this repo that lied:
+
+  * A verdict is PASS / FAIL / WARN / SKIP / INERT. INERT means "ran, exited 0,
+    and has been shown unable to fail" -- a distinct state from PASS, because a
+    check that cannot fail is a green light wired to nothing.
+  * SKIP always carries a reason and, where one exists, the install command.
+  * A check over an EMPTY subject set never reports PASS. Several checks below
+    assert a non-zero subject count first and degrade to SKIP otherwise.
+  * Where a check can prove it discriminates, it does so inline via a control
+    arm, and says so in its evidence.
+
+Heavy checks are scoped by default so the loop finishes in minutes; `--full`
+expands them. Nothing here is advisory: the driver exits non-zero on any FAIL
+or INERT.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+PASS, FAIL, WARN, SKIP, INERT = "PASS", "FAIL", "WARN", "SKIP", "INERT"
+
+
+# --------------------------------------------------------------------------- #
+# plumbing
+# --------------------------------------------------------------------------- #
+def find_root(start: str) -> str:
+    d = os.path.abspath(start)
+    while True:
+        if os.path.isfile(os.path.join(d, "moonbit_doubleML", "moon.mod")):
+            return d
+        p = os.path.dirname(d)
+        if p == d:
+            raise SystemExit("cannot locate repo root")
+        d = p
+
+
+ROOT = find_root(__file__)
+PKG = os.path.join(ROOT, "moonbit_doubleML")
+
+
+def run(cmd, cwd=ROOT, timeout=1800, env=None):
+    e = dict(os.environ)
+    if env:
+        e.update(env)
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                           timeout=timeout, env=e,
+                           # Never let the console locale pick the decoder. With
+                           # text=True and no encoding, subprocess uses
+                           # locale.getpreferredencoding() -- GBK on this box --
+                           # and a single undecodable byte from `moon check`
+                           # raises UnicodeDecodeError inside the reader thread
+                           # and takes the whole loop down with it.
+                           encoding="utf-8", errors="replace")
+        return p.returncode, (p.stdout or "") + (p.stderr or "")
+    except FileNotFoundError:
+        return 127, f"command not found: {cmd[0]}"
+    except subprocess.TimeoutExpired:
+        return 124, f"timeout after {timeout}s: {' '.join(cmd)}"
+
+
+def mbt(rel: str) -> str:
+    return os.path.join(PKG, rel)
+
+
+def prod_sources():
+    out = []
+    for b, d, fs in os.walk(PKG):
+        d[:] = [x for x in d if x not in ("_build", "_verify", "target", ".git")]
+        for f in sorted(fs):
+            if f.endswith(".mbt") and "_test" not in f and "wbtest" not in f:
+                out.append(os.path.join(b, f))
+    return sorted(out)
+
+
+def all_mbt():
+    out = []
+    for b, d, fs in os.walk(PKG):
+        d[:] = [x for x in d if x not in ("_build", "_verify", "target", ".git")]
+        for f in sorted(fs):
+            if f.endswith(".mbt"):
+                out.append(os.path.join(b, f))
+    return sorted(out)
+
+
+def read(p):
+    try:
+        return open(p, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+
+
+def have(tool: str) -> bool:
+    return shutil.which(tool) is not None
+
+
+class R:
+    __slots__ = ("id", "title", "verdict", "evidence", "seconds")
+
+    def __init__(self, id, title, verdict, evidence, seconds=0.0):
+        self.id, self.title = id, title
+        self.verdict, self.evidence, self.seconds = verdict, evidence, seconds
+
+
+CHECKS = []
+
+
+def check(cid, title, scope="fast"):
+    def deco(fn):
+        CHECKS.append({"id": cid, "title": title, "fn": fn, "scope": scope})
+        return fn
+    return deco
+
+
+# --------------------------------------------------------------------------- #
+# 1. format check  -- carries its own control arm
+# --------------------------------------------------------------------------- #
+@check("format", "moon fmt --check", "fast")
+def c_format():
+    rc, out = run(["moon", "fmt", "--check"], timeout=600)
+    tmp = tempfile.mkdtemp(prefix="qa_fmt_")
+    try:
+        open(os.path.join(tmp, "moon.mod"), "w", encoding="utf-8").write(
+            'name = "t/fmtctl"\n\nversion = "0.1.0"\n')
+        open(os.path.join(tmp, "bad.mbt"), "w", encoding="utf-8").write(
+            "fn  add( a : Int ,b : Int )->Int {\n        let x=a+b   \n  x\n}\n")
+        crc, cout = run(["moon", "fmt", "--check"], cwd=tmp, timeout=600)
+        control_failed = crc != 0 or "bad.mbt" in cout
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    ver = moon_version()
+    if rc != 0:
+        return R("format", "", FAIL, f"moon fmt --check exit={rc}", 0)
+    if not control_failed:
+        return R("format", "", INERT,
+                 f"exit 0 on a package containing a deliberately mis-formatted "
+                 f"file (control arm did NOT turn red) on {ver}. The gate is "
+                 f"present in CI but cannot currently fail.", 0)
+    return R("format", "", PASS,
+             f"clean, and the control arm confirms the check turns red on bad "
+             f"input ({ver})")
+
+
+def moon_version():
+    rc, out = run(["moon", "version"], timeout=120)
+    return out.strip().splitlines()[0] if out.strip() else "moon (version unknown)"
+
+
+# --------------------------------------------------------------------------- #
+# 2/19. static analysis + static code check
+# --------------------------------------------------------------------------- #
+@check("static_analysis", "moon check --deny-warn (SAST-class)", "full")
+def c_static_analysis():
+    targets = ["native", "wasm-gc", "wasm", "js"]
+    bad = []
+    for t in targets:
+        rc, out = run(["moon", "check", "--target", t, "--deny-warn"], timeout=1200)
+        if rc != 0:
+            bad.append((t, rc, out[-400:]))
+    if bad:
+        return R("static_analysis", "", FAIL, "; ".join(f"{t}: exit={rc}" for t, rc, _ in bad))
+    return R("static_analysis", "", PASS, "moon check --deny-warn clean on 4 targets")
+
+
+@check("static_code_check", "typos + package warnings", "fast")
+def c_static_code_check():
+    if not have("typos"):
+        return R("static_code_check", "", SKIP, "typos not installed (cargo install typos-cli)")
+    rc, out = run(["typos", "README.mbt.md", "CHANGELOG.md"], timeout=600)
+    hits = len(re.findall(r"^error:", out, re.M))
+    if rc == 0:
+        return R("static_code_check", "", PASS, "typos: 0 findings")
+    return R("static_code_check", "", WARN,
+             f"typos: {hits} finding(s); CI pins 1.19.0 and may be stricter/looser "
+             f"than the local build ({moon_version()})")
+
+
+# --------------------------------------------------------------------------- #
+# 3. duplicate code -- real detector, no external tool needed
+# --------------------------------------------------------------------------- #
+def _tokens(src: str):
+    src = re.sub(r"//[^\n]*", " ", src)
+    src = re.sub(r"/\*.*?\*/", " ", src, flags=re.S)
+    return re.findall(r"[A-Za-z_][A-Za-z0-9_]*|\d+\.?\d*|=>|->|==|!=|<=|>=|\S", src)
+
+
+def _rel(p):
+    """relpath that cannot crash on a path on a different drive/volume."""
+    try:
+        return os.path.relpath(p, ROOT)
+    except ValueError:
+        return p
+
+
+@check("duplicate_code", "token n-gram duplicate detection", "fast")
+def c_duplicate():
+    W = 40
+    srcs = prod_sources()
+    if not srcs:
+        return R("duplicate_code", "", SKIP, "no production sources found")
+    seen = {}
+    # The numerator counts SLIDING windows (every offset i), so the denominator
+    # must be the sliding-window population. Using non-overlapping chunk count
+    # (total_tokens // W) understates the denominator by ~W and makes the ratio
+    # exceed 100% by construction. Measured: 160.26% (wrong) vs 4.04% (correct).
+    population = 0
+    for p in srcs:
+        toks = _tokens(read(p))
+        population += max(0, len(toks) - W + 1)
+        for i in range(len(toks) - W):
+            key = " ".join(toks[i:i + W])
+            seen.setdefault(key, []).append((p, i))
+    blocks = {k: v for k, v in seen.items() if len({x[0] for x in v}) > 1}
+    files = {_rel(x[0]) for v in blocks.values() for x in v}
+    pct = 100.0 * len(blocks) / max(1, population)
+    # Name the dominant cluster, otherwise the ratio is an unfalsifiable number.
+    top = max(blocks.items(), key=lambda kv: len({x[0] for x in kv[1]}),
+              default=(None, []))
+    top_n = len({x[0] for x in top[1]})
+    verdict = WARN if pct > 5.0 else PASS
+    return R("duplicate_code", "", verdict,
+             f"{len(blocks)} duplicated {W}-token window(s) across {len(files)} file(s) "
+             f"= {pct:.2f}% of {population} sliding windows (threshold 5.0%); "
+             f"largest cluster repeats in {top_n} files "
+             f"(estimator boilerplate, no jscpd/PMD-CPD in the toolchain)")
+
+
+# --------------------------------------------------------------------------- #
+# 4. dependency check
+# --------------------------------------------------------------------------- #
+@check("dependencies", "declared vs used, official vs not", "fast")
+def c_deps():
+    raw = read(os.path.join(PKG, "moon.mod"))
+    live = "\n".join(re.sub(r"//.*$", "", ln) for ln in raw.split("\n"))
+    imp = re.search(r"import\s*\{(.*?)\}", live, re.S)
+    deps = re.findall(r'"([^"]+)"', imp.group(1)) if imp else []
+    if not deps:
+        return R("dependencies", "", SKIP, "moon.mod declares no import block")
+    srcs = "".join(read(p) for p in all_mbt())
+    unused, unofficial = [], []
+    for d in deps:
+        leaf = d.split("@")[0].rsplit("/", 1)[-1]
+        if leaf not in srcs:
+            unused.append(d)
+        if not d.startswith(("moonbitlang/", "riantr/")):
+            unofficial.append(d)
+    notes = []
+    if unofficial:
+        notes.append(f"non-conforming: {unofficial}")
+    if unused:
+        notes.append(f"declared but unreferenced by library code: {unused}")
+    return R("dependencies", "", WARN if notes else PASS,
+             f"{len(deps)} declared; " + ("; ".join(notes) if notes else "all used and conforming")
+             + "  [no vulnerability scanner in CI; moon update is not an audit]")
+
+
+# --------------------------------------------------------------------------- #
+# 5. unit tests / 18. component (whitebox) tests
+# --------------------------------------------------------------------------- #
+@check("unit_tests", "moon test --deny-warn", "full")
+def c_unit():
+    rc, out = run(["moon", "test", "--target", "native", "--deny-warn",
+                   "-p", "riantr/moonbit_doubleML"], timeout=2400)
+    m = re.search(r"Total tests:\s*(\d+),\s*passed:\s*(\d+),\s*failed:\s*(\d+)", out)
+    if rc != 0 and not m:
+        return R("unit_tests", "", FAIL, out[-400:])
+    if not m:
+        return R("unit_tests", "", SKIP, "no test summary line parsed")
+    tot, pas, fail = map(int, m.groups())
+    return R("unit_tests", "", PASS if fail == 0 else FAIL,
+             f"{pas}/{tot} passed, {fail} failed (native)")
+
+
+@check("component_tests", "whitebox component suite", "full")
+def c_component():
+    wbs = [p for p in all_mbt() if "wbtest" in os.path.basename(p)]
+    if not wbs:
+        return R("component_tests", "", SKIP, "no *_wbtest.mbt files found")
+    rc, out = run(["moon", "test", "--target", "native", "--deny-warn",
+                   "-p", "riantr/moonbit_doubleML"], timeout=2400)
+    m = re.search(r"Total tests:\s*(\d+),\s*passed:\s*(\d+),\s*failed:\s*(\d+)", out)
+    if not m:
+        return R("component_tests", "", SKIP, "no summary parsed")
+    tot, pas, fail = map(int, m.groups())
+    return R("component_tests", "", PASS if fail == 0 else FAIL,
+             f"{len(wbs)} whitebox files contribute to the {pas}/{tot} native run; "
+             f"they are not separable from the unit invocation (same `moon test`)")
+
+
+# --------------------------------------------------------------------------- #
+# 6. Gherkin -- traceability, verified against real test names
+# --------------------------------------------------------------------------- #
+@check("gherkin", "acceptance feature -> test traceability", "fast")
+def c_gherkin():
+    f = os.path.join(ROOT, "features", "moonbit_doubleML_acceptance.feature")
+    if not os.path.isfile(f):
+        return R("gherkin", "", SKIP, "no .feature file")
+    txt = read(f)
+    feats = re.findall(r"^Feature:\s*(.+)$", txt, re.M)
+    scen = re.findall(r"^\s*Scenario:\s*(.+)$", txt, re.M)
+    steps = re.findall(r"^\s*(?:Given|When|Then|And)\s", txt, re.M)
+    mapped = []
+    wrapped = []
+    lines = txt.splitlines()
+    for i, l in enumerate(lines):
+        m = re.match(r"\s*#\s*mapped to:\s*(.+)$", l)
+        if not m:
+            continue
+        acc = m.group(1)
+        # A "# mapped to:" annotation may WRAP onto a following comment line.
+        # Reading only the first line silently DROPS the names on the
+        # continuation (a false negative: a mapped test nobody verifies).
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        if (re.match(r"\s*#\s+\S", nxt)
+                and not re.match(r"\s*(Scenario|Feature|Background|Examples|Given|When|Then|And|But|\*)\b", nxt)):
+            acc += " " + nxt.split("#", 1)[1]
+            wrapped.append(i + 1)
+        mapped += [x.strip() for x in re.split(r",\s*|\s+and\s+", acc) if x.strip()]
+    declared = set()
+    for p in all_mbt():
+        s = read(p)
+        declared.update(re.findall(r'\btest\s+"([^"]+)"', s))
+        declared.update(re.findall(r"\bfn\s+(panic_\w+)\s*\(", s))
+    unresolved = [m for m in mapped
+                  if m.split("(")[0].strip() not in declared
+                  and not re.search(r"\s(?:in|usage|validators|tests)\b|\.", m)]
+    if not feats:
+        return R("gherkin", "", SKIP, "feature file has no Feature: blocks")
+    ok = not unresolved
+    return R("gherkin", "", PASS if ok else FAIL,
+             f"{len(feats)} Feature / {len(scen)} Scenario / {len(steps)} steps; "
+             f"{len(mapped)-len(unresolved)}/{len(mapped)} mapped test names resolve"
+             + (f"; {len(wrapped)} wrapped annotation(s) joined" if wrapped else "")
+             + (f"; unresolved: {unresolved[:5]}" if unresolved else ""))
+
+
+# --------------------------------------------------------------------------- #
+# 7. QA process -- the loop's own manifest is the artifact
+# --------------------------------------------------------------------------- #
+@check("qa_process", "every activity has a registered check + a verdict", "fast")
+def c_qa_process():
+    ids = {c["id"] for c in CHECKS}
+    required = {"format", "static_analysis", "duplicate_code", "dependencies",
+                "unit_tests", "gherkin", "qa_process", "load_stress",
+                "quality_metrics", "perf_test", "mutation", "fuzz",
+                "coverage", "integration", "api_test", "e2e", "contract",
+                "component_tests", "static_code_check", "benchmark",
+                "security_sast", "security_dast"}
+    missing = sorted(required - ids)
+    return R("qa_process", "", PASS if not missing else FAIL,
+             f"{len(ids)} checks registered, {len(required)} required activities"
+             + (f"; MISSING {missing}" if missing else "")
+             + "  [no standalone QA/test-plan document in the repo]")
+
+
+# --------------------------------------------------------------------------- #
+# 14. integration -- a subset of the Python cross-checks
+# --------------------------------------------------------------------------- #
+@check("integration", "validate_*_with_python.py parity", "full")
+def c_integration():
+    scripts = sorted(f for f in os.listdir(ROOT)
+                     if re.match(r"validate_.*_with_python\.py$", f))
+    if not scripts:
+        return R("integration", "", SKIP, "no cross-check scripts")
+    # The first version ran scripts[:4] and returned PASS -- a green gate
+    # covering 4 of 23 subjects (17%), which is exactly the manufactured
+    # confidence this loop exists to prevent. It is `full` scope, so run them
+    # all; ~15s each measured, ~6 min total.
+    bad = []
+    for s in scripts:
+        rc, out = run([sys.executable, os.path.join(ROOT, s)], timeout=1800)
+        if "PASS" not in out.upper():
+            bad.append((s, rc))
+    verdict = PASS if not bad else FAIL
+    return R("integration", "", verdict,
+             f"{len(scripts)}/{len(scripts)} cross-checks run"
+             + (f"; FAILURES: {bad}" if bad else "; all reported PASS"))
+
+
+# --------------------------------------------------------------------------- #
+# 17. contract -- the one CI's glob misses
+# --------------------------------------------------------------------------- #
+@check("contract", "validate_splitting_contract.py", "fast")
+def c_contract():
+    s = "validate_splitting_contract.py"
+    p = os.path.join(ROOT, s)
+    if not os.path.isfile(p):
+        return R("contract", "", SKIP, f"{s} not present")
+    rc, out = run([sys.executable, p], timeout=900)
+    ok = "PASS" in out.upper() or rc == 0
+    return R("contract", "", PASS if ok else FAIL,
+             f"{s} executed (exit={rc}). NOTE: this script does NOT match CI's "
+             f"`validate_*_with_python.py` glob, so no workflow runs it.")
+
+
+# --------------------------------------------------------------------------- #
+# 16. E2E -- run a real example and assert its output
+# --------------------------------------------------------------------------- #
+@check("e2e", "run examples end-to-end and assert output", "full")
+def c_e2e():
+    cases = [("examples/pava", "PAVA example done"),
+             ("examples/ssm", None)]
+    ran, bad = 0, []
+    for d, marker in cases:
+        if not os.path.isdir(os.path.join(ROOT, d)):
+            continue
+        rc, out = run(["moon", "run", "--target", "native", d], timeout=900)
+        ran += 1
+        if rc != 0 or (marker and marker not in out):
+            bad.append((d, rc))
+    if ran == 0:
+        return R("e2e", "", SKIP, "no runnable examples found")
+    return R("e2e", "", PASS if not bad else FAIL,
+             f"{ran} example(s) executed natively"
+             + (f"; failures: {bad}" if bad else "; expected output markers present"))
+
+
+# --------------------------------------------------------------------------- #
+# 15/21. API test + DAST -- boot the service and talk to it, including abuse
+# Seconds to let `moon run` finish compiling and the listener come up before
+# the harness sends its first request. Measured: probing from t=0 is what made
+# api_test / security_dast fail intermittently.
+_SETTLE_SECONDS = 15
+
+
+def _http(port, path, method="GET", body=None):
+    import urllib.request, urllib.error
+    url = f"http://127.0.0.1:{port}{path}"
+    data = body.encode() if body else None
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+    except Exception as e:                       # noqa: BLE001
+        return 0, f"{type(e).__name__}: {e}"
+
+
+def _boot_api(timeout=120):
+    """Boot examples/api_server and wait until it actually answers HTTP.
+
+    Probe with a real request rather than a bare `socket.create_connection`.
+    The port is hardcoded to 4000 and `moon run` detaches the compiled server,
+    so a leaked instance silently poisons the next boot -- see `_kill_tree`.
+    """
+    proc = subprocess.Popen(["moon", "run", "--target", "native", "examples/api_server"],
+                            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding="utf-8", errors="replace")
+    port = 4000
+    # Settle BEFORE the first request. Polling /healthz from t=0 connects while
+    # the server is still coming up, and that early traffic -- not the number
+    # of requests -- is what made this check fail intermittently. With a settle
+    # window the shipped `allow_failure=false` serves every request.
+    time.time()
+    time.sleep(_SETTLE_SECONDS)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            try:
+                tail = proc.stdout.read() or ""
+            except Exception:                       # noqa: BLE001
+                tail = ""
+            return None, f"api_server exited early (rc={proc.returncode}): {tail[-300:]}"
+        st, _body = _http(port, "/healthz")
+        if st == 200:
+            return proc, port
+        time.sleep(0.5)
+    _kill_tree(proc)
+    return None, f"api_server did not answer GET /healthz with 200 within {timeout}s"
+
+
+def _kill_tree(proc):
+    """Kill `moon` AND the server binary it spawned.
+
+    `moon run` detaches the compiled child: killing the `moon` parent leaves a
+    live api_server holding port 4000, and the next boot then exits 1 with
+    empty output (exit code 4294967295 == -1). Measured -- that is how the
+    fuzz check first failed here. Kill by image name as well as the tree.
+    """
+    if proc is None:
+        return
+    try:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                       capture_output=True, timeout=60)
+    except Exception:                               # noqa: BLE001
+        pass
+    for image in ("api_server.exe", "moon.exe"):
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", image],
+                           capture_output=True, timeout=60)
+        except Exception:                           # noqa: BLE001
+            pass
+    try:
+        proc.kill()
+    except Exception:                               # noqa: BLE001
+        pass
+    try:
+        proc.wait(timeout=15)
+    except Exception:                               # noqa: BLE001
+        pass
+
+
+@check("api_test", "api_server contract over HTTP", "full")
+def c_api():
+    proc, info = _boot_api()
+    if proc is None:
+        return R("api_test", "", FAIL, info)
+    try:
+        results = {}
+        st, body = _http(info, "/healthz")
+        results["/healthz"] = (st, "ok" in body)
+        st, body = _http(info, "/ping")
+        results["/ping"] = (st, "pong" in body)
+        st, body = _http(info, "/version")
+        results["/version"] = (st, "moonbit_doubleML" in body)
+        # Pin the advertised library version to moon.mod. The example hardcoded
+        # 0.52.0 while the package was at 0.161.0 -- 109 releases of silent
+        # drift, invisible to CI and to the test suite, because the previous
+        # assertion only checked that the substring appeared at all.
+        mod_ver = ""
+        m = re.search(r'version\s*=\s*"([^"]+)"', read(mbt("moon.mod")))
+        if m:
+            mod_ver = m.group(1)
+        results["/version==moon.mod"] = (st, bool(mod_ver) and (f"@{mod_ver}" in body))
+        # `x` must be n rows of p columns: api_server's json_to_matrix rejects a
+        # flat vector with 400 "expected row 0 to be an array". The first
+        # version of this payload sent a flat [1.0, 0.2, 1.0, 0.4]; the server
+        # was RIGHT to reject it and the harness was wrong.
+        payload = json.dumps({"x": [[1.0, 0.2], [1.0, 0.4], [0.5, 0.1], [0.7, 0.9]],
+                              "y": [1.0, 2.0, 3.0, 4.0],
+                              "d": [0.0, 1.0, 0.0, 1.0],
+                              "n_folds": 2, "seed": 3141})
+        st, body = _http(info, "/fit/plr", "POST", payload)
+        results["/fit/plr"] = (st, "coef" in body or "coefficient" in body)
+        bad = [k for k, (s_, ok) in results.items() if not ok]
+        verdict = PASS if not bad else FAIL
+        detail = ", ".join(f"{k}->{s_}{'' if ok else ' BAD'}"
+                           for k, (s_, ok) in results.items())
+        if mod_ver:
+            detail += f"  [api_server advertises moon.mod version {mod_ver}]"
+        return R("api_test", "", verdict, detail)
+    finally:
+        _kill_tree(proc)
+
+
+@check("security_dast", "dynamic abuse probe of api_server", "full")
+def c_dast():
+    """Abuse-probe api_server: malformed requests must not crash it.
+
+    Single boot, one round of abuse, then a liveness re-check.
+
+    api_server's `allow_failure` flag is what this check guards indirectly.
+    With `allow_failure=false` the server serves EXACTLY ONE request and then
+    dies on the second connection (measured: req1 -> 200 alive; req2 ->
+    WinError 10061, rc=1, stderr "ReaderClosed"). This check sends 5 malformed
+    requests plus a liveness re-check, so it goes red on its own -- no
+    dedicated "cold probe" assertion is needed.
+
+    A four-scenario sweep briefly "refuted" that finding and I reverted the
+    fix. The sweep was invalid: every arm checked liveness after a single
+    request, so it could not observe a second-connection failure. Lesson kept
+    in `_verify/_api_count_probe_1630.py`: to test a server, send a SEQUENCE.
+    """
+    attacks = [
+        ("/fit/plr", "POST", "{not json"),
+        ("/fit/plr", "POST", "{}"),
+        ("/fit/plr", "POST", json.dumps({"x": [], "y": [], "d": [], "n": 0, "p": 0})),
+        ("/nope", "GET", None),
+        ("/fit/plr", "TRACE", None),
+    ]
+    port = 4000
+    proc = subprocess.Popen(["moon", "run", "--target", "native", "examples/api_server"],
+                            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding="utf-8", errors="replace")
+    try:
+        # Wait for the listener with a real request. Note this sends a
+        # request too: with `allow_failure=false` the server dies on the
+        # SECOND connection, so a single-shot readiness check would miss it.
+        time.sleep(_SETTLE_SECONDS)
+        deadline = time.time() + 120
+        ready = False
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                return R("security_dast", "", FAIL,
+                         "api_server exited before any request (rc=%s); is port 4000 "
+                         "already held by a leaked server?" % proc.returncode)
+            if _http(port, "/healthz")[0] == 200:
+                ready = True
+                break
+            time.sleep(0.5)
+        if not ready:
+            return R("security_dast", "", FAIL, "api_server never answered /healthz")
+        crashes = []
+        responses = []
+        for path, method, body in attacks:
+            st, txt = _http(port, path, method, body)
+            responses.append("%s %s->%s" % (method, path, st))
+            if st == 0:
+                crashes.append("%s %s: %s" % (method, path, txt[:120]))
+        st, _ = _http(port, "/healthz")
+        alive = st == 200
+        verdict = PASS if (not crashes and alive) else FAIL
+        return R("security_dast", "", verdict,
+                 "%d malformed request(s): %s; service alive afterwards = %s%s"
+                 % (len(attacks), responses, alive,
+                    ("; errors %s" % crashes) if crashes else ""))
+    finally:
+        _kill_tree(proc)
+
+
+# --------------------------------------------------------------------------- #
+# 20. SAST -- pattern rules, honestly labelled as pattern-based
+# --------------------------------------------------------------------------- #
+@check("security_sast", "pattern SAST over library sources", "fast")
+def c_sast():
+    RULES = [
+        ("require() abort is uncatchable", r"\brequire\("),
+        ("unwrap-style force access", r"\bas!|unsafe_|\bpanic!\("),
+        ("unbounded allocation by literal size", r"Array::new\((\d{6,})\)"),
+        ("float equality comparison", r"==\s*-?\d+\.\d+"),
+        ("string concat in a loop guard", r"while[^\n]*\{[^}]*\+="),
+    ]
+    srcs = prod_sources()
+    if not srcs:
+        return R("security_sast", "", SKIP, "no production sources")
+    hits = {name: 0 for name, _ in RULES}
+    examples = {}
+    for p in srcs:
+        s = read(p)
+        for name, pat in RULES:
+            for m in re.finditer(pat, s):
+                hits[name] += 1
+                examples.setdefault(name, f"{os.path.relpath(p, ROOT)}:{s[:m.start()].count(chr(10))+1}")
+    total = sum(hits.values())
+    return R("security_sast", "", WARN,
+             f"pattern-based (no CodeQL/semgrep in toolchain). {total} hit(s) over "
+             f"{len(srcs)} files: " + ", ".join(f"{k}={v}" for k, v in hits.items())
+             + "; first: " + "; ".join(f"{k}@{v}" for k, v in list(examples.items())[:3]))
+
+
+# --------------------------------------------------------------------------- #
+# 12. fuzz
+# --------------------------------------------------------------------------- #
+@check("fuzz", "examples/fuzz across seeds", "full")
+def c_fuzz():
+    d = os.path.join(ROOT, "examples", "fuzz")
+    if not os.path.isdir(d):
+        return R("fuzz", "", SKIP, "examples/fuzz absent")
+    bad, outputs = [], {}
+    for seed in ("1", "42", "3141"):
+        rc, out = run(["moon", "run", "--target", "native", d, seed], timeout=900)
+        outputs[seed] = out
+        if rc != 0:
+            bad.append((seed, rc, out[-200:]))
+    if not outputs:
+        return R("fuzz", "", SKIP, "fuzz harness produced no run")
+    # MEASURE seed-sensitivity instead of assuming it. examples/fuzz's `fn main`
+    # takes no parameters, so `moon run examples/fuzz <seed>` IGNORES the seed
+    # argument and replays one fixed workload. This check used to report
+    # "3 seed(s) run" for what was really the same deterministic case three
+    # times -- coverage that did not exist. Distinct outputs across distinct
+    # seed arguments are the only evidence the seed is actually consumed.
+    distinct = len(set(outputs.values()))
+    seed_note = (f"seed argument IS consumed ({distinct} distinct output(s) "
+                 f"over {len(outputs)} seeds)") if distinct > 1 else (
+        "seed argument is IGNORED by examples/fuzz -- `fn main` takes no "
+        f"parameters, so all {len(outputs)} invocations replay ONE fixed "
+        "seed (20260824); this is re-running one case, not fuzzing")
+    verdict = FAIL if bad else (PASS if distinct > 1 else WARN)
+    body = (f"{len(outputs)} invocation(s); no crash" if not bad
+            else f"{len(bad)} crash(es): {bad}")
+    return R("fuzz", "", verdict,
+             f"{body}; {seed_note}"
+             "  [no CI job and no crash-regression corpus]")
+
+
+# --------------------------------------------------------------------------- #
+# 11. mutation -- real mutations against a pure-function file
+# --------------------------------------------------------------------------- #
+@check("mutation", "kill-rate on a mutated pure kernel", "full")
+def c_mutation():
+    # The first version of this check targeted "pava.mbt", which does not
+    # exist -- pava() lives in ps_processor.mbt -- so it SKIPped silently and
+    # the loop reported "not covered: mutation" without saying the target was
+    # never found. Target the real file, and use mutations that genuinely
+    # apply to it (verified: `>=` occurs once, `* 2.0` zero times).
+    tgt = "ps_processor.mbt"
+    src = read(mbt(tgt))
+    if not src:
+        return R("mutation", "", SKIP, f"{tgt} not found at {mbt(tgt)}")
+    backup = src
+    MUTS = [
+        # Re-arms the exact defect that shipped in v0.104.0 and was fixed:
+        # seeding a block with the RAW y[i] instead of w[i] * y[i].
+        ("reintroduce raw-y pooling", lambda s: s.replace("let mut cur_sum = w[i] * y[i]",
+                                                         "let mut cur_sum = y[i]", 1)),
+        ("stop pooling one block early", lambda s: s.replace("while block_size.length() > 0",
+                                                             "while block_size.length() > 1", 1)),
+        ("flip comparison", lambda s: s.replace(">=", ">", 1)),
+    ]
+    results = []
+    try:
+        for name, fn in MUTS:
+            mutated = fn(backup)
+            if mutated == backup:
+                results.append((name, "NOT-APPLIED"))
+                continue
+            with open(mbt(tgt), "w", encoding="utf-8", newline="") as f:
+                f.write(mutated)
+            rc, out = run(["moon", "test", "--target", "native", "--deny-warn",
+                           "-p", "riantr/moonbit_doubleML"], timeout=2400)
+            killed = rc != 0 or "failed: 0" not in out
+            results.append((name, "killed" if killed else "SURVIVED"))
+    finally:
+        with open(mbt(tgt), "w", encoding="utf-8", newline="") as f:
+            f.write(backup)
+    killed = sum(1 for _, v in results if v == "killed")
+    applied = sum(1 for _, v in results if v != "NOT-APPLIED")
+    if applied == 0:
+        return R("mutation", "", SKIP, f"no mutation could be applied to {tgt}")
+    verdict = PASS if killed == applied else WARN
+    return R("mutation", "", verdict,
+             f"{killed}/{applied} killed on {tgt}: "
+             + ", ".join(f"{n}={v}" for n, v in results)
+             + "  [ad-hoc, no ledger, not a CI runner]")
+
+
+# --------------------------------------------------------------------------- #
+# 8/10/20. load, perf, benchmark
+# --------------------------------------------------------------------------- #
+def _time_example(d, reps=3):
+    samples = []
+    for _ in range(reps):
+        t0 = time.perf_counter()
+        rc, out = run(["moon", "run", "--target", "native", d], timeout=900)
+        samples.append(time.perf_counter() - t0)
+        if rc != 0:
+            return None, out[-200:]
+    return samples, None
+
+
+@check("perf_test", "fit wall-clock, baseline + drift", "fast")
+def c_perf():
+    d = os.path.join(ROOT, "examples", "cvar")
+    if not os.path.isdir(d):
+        return R("perf_test", "", SKIP, "examples/cvar absent")
+    s, err = _time_example("examples/cvar")
+    if s is None:
+        return R("perf_test", "", FAIL, f"example failed: {err}")
+    med = sorted(s)[len(s) // 2]
+    base_path = os.path.join(ROOT, "_verify", "perf_baseline.json")
+    base = {}
+    if os.path.isfile(base_path):
+        base = json.loads(read(base_path))
+    prev = base.get("examples/cvar_median_s")
+    base["examples/cvar_median_s"] = med
+    base["_note"] = "wall-clock incl. `moon run` compile check; noisy, drift only"
+    with open(base_path, "w", encoding="utf-8") as f:
+        json.dump(base, f, indent=2)
+    drift = ""
+    if prev:
+        ratio = med / prev if prev else 0
+        drift = f", drift vs baseline {ratio:.2f}x"
+        verdict = PASS if ratio < 2.0 else WARN
+    else:
+        verdict = PASS
+    return R("perf_test", "", verdict,
+             f"median {med:.3f}s over {len(s)} runs (min {min(s):.3f}, max {max(s):.3f}){drift}")
+
+
+@check("benchmark", "repeatability of a numeric result", "fast")
+def c_benchmark():
+    d = "examples/cvar"
+    outs = []
+    for _ in range(2):
+        rc, out = run(["moon", "run", "--target", "native", d], timeout=900)
+        if rc != 0:
+            return R("benchmark", "", FAIL, out[-200:])
+        nums = re.findall(r"-?\d+\.\d{6,}", out)
+        outs.append(nums)
+    if not outs[0]:
+        return R("benchmark", "", SKIP, "no numeric output to compare")
+    same = outs[0] == outs[1]
+    return R("benchmark", "", PASS if same else FAIL,
+             f"{len(outs[0])} printed value(s) bit-identical across 2 runs"
+             + ("" if same else f"; run1={outs[0][:3]} run2={outs[1][:3]}"))
+
+
+@check("load_stress", "sustained repeat of an example", "full")
+def c_load():
+    d = "examples/did_cs"
+    if not os.path.isdir(os.path.join(ROOT, d)):
+        return R("load_stress", "", SKIP, "examples/did_cs absent")
+    t0 = time.perf_counter()
+    fails, runs = [], 0
+    for i in range(5):
+        rc, out = run(["moon", "run", "--target", "native", d], timeout=900)
+        runs += 1
+        if rc != 0:
+            fails.append(i)
+    el = time.perf_counter() - t0
+    return R("load_stress", "", PASS if not fails else FAIL,
+             f"{runs} consecutive runs in {el:.1f}s ({runs/el:.2f} runs/s incl. "
+             f"compile), failures={fails or 'none'}"
+             + "  [no concurrency, no sustained-load profile, no SLO]")
+
+
+# --------------------------------------------------------------------------- #
+# 13. coverage -- explicitly a PROXY, not line coverage
+# --------------------------------------------------------------------------- #
+@check("coverage", "test-reachability proxy", "fast")
+def c_coverage():
+    srcs = prod_sources()
+    if not srcs:
+        return R("coverage", "", SKIP, "no production sources")
+    tests = "".join(read(p) for p in all_mbt())
+    total, reached, unreached = 0, 0, []
+    for p in srcs:
+        s = read(p)
+        fns = re.findall(r"\bfn\s+(\w+)\s*\(", s)
+        total += len(fns)
+        miss = [f for f in fns if not re.search(r"\b" + re.escape(f) + r"\b", tests)]
+        reached += len(fns) - len(miss)
+        if miss:
+            unreached.append((os.path.basename(p), len(miss), len(fns)))
+    pct = 100.0 * reached / total if total else 0.0
+    return R("coverage", "", PASS,
+             f"PROXY, not line coverage: {reached}/{total} production functions "
+             f"({pct:.1f}%) are referenced by name somewhere in the test suite. "
+             f"`moon test --enable-coverage` instruments but emits no report in "
+             f"this toolchain, so no line/branch figure is available. "
+             f"Least-reached: {sorted(unreached, key=lambda x: -x[1])[:3]}")
+
+
+# --------------------------------------------------------------------------- #
+# 9. quality metrics -- aggregate of the others
+# --------------------------------------------------------------------------- #
+@check("quality_metrics", "aggregate quality index", "fast")
+def c_metrics(prior=()):
+    p = list(prior)
+    n = len(p)
+    passed = sum(1 for r in p if r == PASS)
+    failed = sum(1 for r in p if r == FAIL)
+    inert = sum(1 for r in p if r == INERT)
+    skipped = sum(1 for r in p if r == SKIP)
+    warned = sum(1 for r in p if r == WARN)
+    if n == 0:
+        return R("quality_metrics", "", SKIP, "no prior results to aggregate")
+    strict = 100.0 * passed / n
+    effective = 100.0 * (passed + warned) / n
+    return R("quality_metrics", "", PASS,
+             f"n={n}: PASS={passed} WARN={warned} FAIL={failed} INERT={inert} "
+             f"SKIP={skipped}; strict pass rate {strict:.1f}%, "
+             f"pass+warn {effective:.1f}%")

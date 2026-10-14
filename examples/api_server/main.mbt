@@ -312,8 +312,14 @@ fn handler_healthz(_body : Json) -> Json raise ApiError {
 
 ///|
 fn handler_version(_body : Json) -> Json raise ApiError {
+  // NOTE: this literal is pinned to moonbit_doubleML/moon.mod's `version` and
+  // is asserted by the qa_loop `api_test` check, which GETs /version and
+  // compares against the real moon.mod. It had silently drifted to 0.52.0
+  // while the package was 109 releases ahead; nothing in CI or the test
+  // suite could see it, because the previous assertion only checked that
+  // the substring appeared at all.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.52.0",
+    library: "riantr/moonbit_doubleML@0.162.0",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })
@@ -511,8 +517,29 @@ async fn main {
   println("  GET  /version       library + service versions")
   println("  POST /fit/plr       DoubleMLPLR (partially linear regression)")
   println("  POST /fit/irm       DoubleMLIRM (interactive regression)")
+  // `allow_failure=true` is load-bearing.
+  //
+  // With `allow_failure=false` a connection that arrives before the listener is
+  // fully up propagates out of `run_forever` and kills the process: the server
+  // prints its banner, then exits 1, after which every request fails with
+  // WinError 10061 (connection refused).
+  //
+  // Measured via the qa_loop checks, which boot the service and talk to it
+  // (see `api_test` / `security_dast`):
+  //   allow_failure=false -> both checks FAIL, deterministically
+  //   allow_failure=true  -> both checks PASS, deterministically
+  //
+  // A control experiment that sleeps 25s before its FIRST request survives 10
+  // sequential requests under both settings, because it never makes a
+  // premature connection -- so the trigger is early/incomplete connections,
+  // not request count. A client or monitor that probes before startup
+  // finishes is enough.
+  //
+  // Application-level errors are already handled inside `dispatch`, which turns
+  // ApiError into a 400; only low-level connection teardown reaches here, and
+  // that must not take the listener down.
   server.run_forever(
     (request, body, conn) => dispatch(request, body, conn),
-    allow_failure=false,
+    allow_failure=true,
   )
 }

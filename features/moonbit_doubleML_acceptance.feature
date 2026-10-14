@@ -119,8 +119,7 @@ Feature: Static panel partially linear regression (PLPR)
     Then var_est_cluster returns sqrt(3.25 / 36) within 1e-12
 
   Scenario: No unit spans both sides of a fold
-    # mapped to: panic_plpr_too_few_units plus the clustered se
-    # scale guard in plpr_all_approaches_recover_theta
+    # mapped to: panic_plpr_too_few_units, plpr_all_approaches_recover_theta
     When the unit count is below n_folds
     Then fitting aborts
     And on valid panels every fitted se stays at the clustered scale

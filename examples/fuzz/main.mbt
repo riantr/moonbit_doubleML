@@ -866,8 +866,19 @@ fn fuzz_plpr_cluster_stress(rng : @random.Rand, trials : Int32) -> Unit {
 ///|
 fn main {
   let trials = 300
+  // KNOWN LIMITATION: this harness takes no seed parameter and always runs the
+  // single fixed master seed 20260824 below. `moon run examples/fuzz <seed>`
+  // silently IGNORES the argument -- `fn main` has no parameters.
+  //
+  // Making it seedable needs `moonbitlang/os` (or CLI arg parsing); that
+  // package does not resolve in this offline environment ("Failed to resolve
+  // the module dependency graph"), so it is NOT done unilaterally here.
+  //
+  // The qa_loop `fuzz` check measures this rather than assuming it: it runs
+  // three different seed arguments and compares the outputs, and reports the
+  // harness as seed-insensitive instead of claiming "3 seed(s) run".
   println(
-    "=== riantr/moonbit_doubleML fuzz harness (\{trials} trials per surface) ===",
+    "=== riantr/moonbit_doubleML fuzz harness (\{trials} trials per surface, fixed seed 20260824) ===",
   )
   let master = @random.Rand::chacha8(
     seed=Bytes::from_array(@moonbit_doubleML.seed_to_bytes(20260824)),

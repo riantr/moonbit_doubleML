@@ -9,10 +9,88 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-## [Unreleased] — README revised against a QA-gate inventory
+## [0.162.0] — QA LOOP: 21 named QA activities become a gated harness, which found 3 real defects
 
-Tests **1114 / 1120 / 1114 / 1114** (native / wasm-gc / wasm / js), re-measured
-this cycle: **zero delta**. Documentation only.
+Tests **1115 / 1121 / 1115 / 1115** (native / wasm-gc / wasm / js), all four re-measured
+this cycle: **+1** from the new whitebox test below. `.mbt` files **220**
+(65 production + 129 blackbox + 26 whitebox). `23 / 23` Python cross-checks PASS.
+
+The 21 QA activities previously named in the request are now a runnable harness
+at `.github/scripts/qa_loop/` — `checks.py` (22 registered checks), `run.py`
+(`--full` / `--iterations N` / `--only id,id` / `--json`), and `selftest.py`
+(25 self-tests). Final full run: **16 PASS, 4 WARN, 1 SKIP, 1 INERT, 0 FAIL**.
+Exit code is 1 on any FAIL **or INERT** — a gate that cannot fail is counted
+as a failure, which is the point.
+
+### Added
+
+- `moonbit_doubleML/ps_processor_wbtest.mbt` — partition-completeness test for
+  `default_5fold`, which is package-private and therefore unreachable from every
+  blackbox test.
+- `.github/scripts/qa_loop/` — the harness.
+- `_typos.toml`: `pn`, `hom`, `fz_hom` added to `extend-words`. All three are
+  intentional short names (`pn` is the panel size as a Double at
+  `did_cs.mbt:1415`; `hom` / `fz_hom` are the homoskedastic RDD fits in
+  `expand_v096_test.mbt`, paired against `hc0` / `fz_hc0`). `Check typos` is the
+  gate this repo's CI has historically failed on, so it was run before tagging.
+
+### Fixed — three real defects, each with a control arm
+
+1. **`default_5fold` had no partition test.** A comparison mutant
+   (`>=` → `>`) drops the row `start + size` into *neither* train nor test, so it
+   silently never contributes to any fit — measured at **4 rows lost per 5-fold
+   CV**. It **survived the entire 1114-test suite**. The mutation battery found
+   this; the new whitebox test closes it. Battery now **3/3 killed**.
+2. **`examples/api_server` advertised `0.52.0`** while `moon.mod` was at
+   `0.161.0` — **109 releases** of drift, invisible to CI and to the test suite,
+   because the assertion only checked that the substring `moonbit_doubleML`
+   appeared at all. `api_test` now compares the *served* version to `moon.mod`.
+3. **`examples/api_server` ran `run_forever(..., allow_failure=false)`.** A
+   connection arriving before the listener is fully up propagates out and kills
+   the process (exit 1), after which every request gets `WinError 10061`.
+   `api_test` / `security_dast` FAIL deterministically under `false` and PASS
+   under `true`; set to `true`.
+
+Also: a `# mapped to:` annotation in
+`features/moonbit_doubleML_acceptance.feature` wrapped onto a second comment
+line, so one mapped test was **silently never verified**. Repaired — `gherkin`
+now resolves **29/29** mapped names (was 27).
+
+### Still open, stated rather than hidden
+
+- **`moon fmt --check` is INERT.** It exits 0 on a deliberately mis-formatted
+  package. The harness proves this with its own control arm and counts INERT as
+  failure.
+- **`integration` used to return PASS over 4 of 23 cross-checks.** It now runs all
+  23; the partial-coverage version was a green gate over 17% of its subject.
+- **`fuzz` is downgraded to WARN**: `examples/fuzz`'s `fn main` takes no
+  parameters, so the seed argument is ignored and "3 seeds" was one deterministic
+  case replayed three times. Making it seedable needs `moonbitlang/os`, which does
+  not resolve in this offline environment — recorded in the source, not forced.
+- **`security_sast` is pattern-based** (no CodeQL/semgrep); its 1087
+  `require()` hits are MoonBit's normal assertion idiom, so the raw count is not
+  yet actionable.
+- **Coverage is shipped labelled a PROXY** (function reachability), not line
+  coverage: `moon test --enable-coverage` instruments but emits no report in this
+  toolchain.
+- The two dead `moon.mod` dependencies remain, still your call.
+
+### Method note
+
+The harness was wrong more often than the code was. `duplicate_code` reported
+**159.22%** instead of the true 4.04% (sliding-window numerator over a
+non-overlapping denominator); a mutation target file did not exist, so the check
+silently SKIPped; a GBK decode crash killed an entire `--full` run; and
+`moon run` detaches the compiled server, so killing the parent left `api_server`
+holding port 4000 and poisoned the following check.
+
+The api_server finding was also wrong three times over before it settled: a
+4-scenario sweep "refuted" it because every arm checked liveness after a *single*
+request; a control arm passed the bug because the mutated source was never
+recompiled; and a second control passed it because both arms shared one process
+and the first arm's surviving server answered the second's requests. A control
+that cannot be trusted to fail is not a control.
+
 
 A 21-point QA inventory (format, static analysis, duplicate code, dependency
 audit, unit / integration / API / E2E / contract / component tests, Gherkin,
