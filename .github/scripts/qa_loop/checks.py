@@ -403,9 +403,84 @@ def c_qa_process():
 
 
 # --------------------------------------------------------------------------- #
-# 14. integration -- a subset of the Python cross-checks
+# 14. integration -- the Python cross-checks, AND proof they ran MoonBit
 # --------------------------------------------------------------------------- #
-@check("integration", "validate_*_with_python.py parity", "full")
+# Each validator is launched through `_boot.py`, which wraps
+# `subprocess.run` / `subprocess.Popen` in-process and appends every command
+# whose executable looks like `moon` to a marker file. A validator that never
+# spawned MoonBit leaves the marker absent.
+#
+# This is the gate that was missing. Ten of the twenty-three cross-checks
+# imported no `subprocess` at all, computed a Python-only reference, and printed
+# a trailing PASS -- and BOTH this check and CI's `python-cross-check` were
+# satisfied by that, because a PASS-looking line is all either of them ever
+# looked for. Nothing in the loop could tell "checked the port" from "checked a
+# formula it typed out itself".
+#
+# Why behavioural rather than a static `import subprocess` scan: a scan passes
+# a validator that imports `subprocess` and never calls it, which is the same
+# failure wearing a hat. This observes the actual invocation.
+#
+# Why an in-process wrapper rather than a `sitecustomize.py` on PYTHONPATH:
+# that was the first attempt and it did not load -- `sitecustomize` is imported
+# by the `site` module at startup, and in this interpreter it never appeared in
+# `sys.modules`, so the probe silently did nothing and the gate flagged all 25
+# validators, not the one control. A wrapper that runs in the same process is
+# deterministic and cannot half-load. (A gate that fails for the wrong reason
+# is worse than no gate, because it looks like a finding.)
+#
+# It costs nothing extra -- `integration` already runs every validator; this
+# only changes how they are launched and adds a file-existence test.
+_BOOT = r'''
+import os, runpy, subprocess, sys
+
+marker, script = sys.argv[1], sys.argv[2]
+sys.argv = [script] + sys.argv[3:]
+
+
+def _is_moon(cmd):
+    try:
+        head = cmd[0]
+    except (TypeError, IndexError, KeyError):
+        return False
+    if not isinstance(head, str):
+        head = getattr(head, "__file__", "") or ""
+    return os.path.basename(str(head)).lower() in (
+        "moon", "moon.exe", "moon.cmd", "moon.bat")
+
+
+def _note(cmd):
+    if not _is_moon(cmd):
+        return
+    try:
+        with open(marker, "a", encoding="utf-8") as fh:
+            fh.write(str(cmd[0]) + "\n")
+    except OSError:
+        pass
+
+
+_run, _Popen = subprocess.run, subprocess.Popen
+
+
+def _run_wrapped(cmd, *a, **k):
+    _note(cmd)
+    return _run(cmd, *a, **k)
+
+
+class _PopenWrapped(_Popen):
+    def __init__(self, cmd, *a, **k):
+        _note(cmd)
+        super().__init__(cmd, *a, **k)
+
+
+subprocess.run, subprocess.Popen = _run_wrapped, _PopenWrapped
+
+runpy.run_path(script, run_name="__main__")
+'''
+
+
+@check("integration",
+       "validate_*_with_python.py parity, each proven to spawn MoonBit", "full")
 def c_integration():
     scripts = sorted(f for f in os.listdir(ROOT)
                      if re.match(r"validate_.*_with_python\.py$", f))
@@ -414,16 +489,38 @@ def c_integration():
     # The first version ran scripts[:4] and returned PASS -- a green gate
     # covering 4 of 23 subjects (17%), which is exactly the manufactured
     # confidence this loop exists to prevent. It is `full` scope, so run them
-    # all; ~15s each measured, ~6 min total.
-    bad = []
-    for s in scripts:
-        rc, out = run([sys.executable, os.path.join(ROOT, s)], timeout=1800)
-        if "PASS" not in out.upper():
-            bad.append((s, rc))
-    verdict = PASS if not bad else FAIL
-    return R("integration", "", verdict,
-             f"{len(scripts)}/{len(scripts)} cross-checks run"
-             + (f"; FAILURES: {bad}" if bad else "; all reported PASS"))
+    # all.
+    #
+    # CI's `python-cross-check` additionally requires the TRAILING line to
+    # contain PASS. Checking only that PASS appears *somewhere* is weaker, so
+    # both conditions are enforced here.
+    bad, blind = [], []
+    tmp = tempfile.mkdtemp(prefix="moonprobe_")
+    try:
+        boot = os.path.join(tmp, "_boot.py")
+        with open(boot, "w", encoding="utf-8") as fh:
+            fh.write(_BOOT)
+        for s in scripts:
+            marker = os.path.join(tmp, s + ".marker")
+            rc, out = run([sys.executable, boot, marker,
+                           os.path.join(ROOT, s)], timeout=1800)
+            tail = out.strip().splitlines()[-1] if out.strip() else ""
+            if rc != 0 or "PASS" not in tail.upper():
+                bad.append((s, rc, tail.strip()[:60]))
+            if not os.path.exists(marker):
+                blind.append(s)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    verdict = PASS if not bad and not blind else FAIL
+    parts = ["%d cross-checks run" % len(scripts)]
+    if bad:
+        parts.append("FAILURES: %s" % bad)
+    if blind:
+        parts.append("NEVER SPAWNED MOONBIT: %s" % blind)
+    if not bad and not blind:
+        parts.append("all reported PASS on the trailing line AND invoked moon")
+    return R("integration", "", verdict, "; ".join(parts))
 
 
 # --------------------------------------------------------------------------- #
