@@ -58,6 +58,16 @@ fn sz2020_d() -> Array[Double] {
 }
 
 ///|
+/// Its own sentinel, deliberately NOT `pyexample_generated()`. The two gates
+/// share one fixture file and splice disjoint halves, so a shared sentinel
+/// would mean the SZ2020 writer's value decides whether the CS2021 half runs:
+/// measured, that made this gate report "fixture not generated" while the data
+/// was sitting right there. Separate sentinels make each half self-contained.
+fn cs2021_generated() -> Int32 {
+  0
+}
+
+///|
 fn cs2021_n_obs() -> Int32 {
   3
 }
@@ -95,4 +105,30 @@ fn cs2021_id() -> Array[Int32] {
 ///|
 fn cs2021_g() -> Array[Int32] {
   [1, 1, 1]
+}
+
+///|
+/// The comparable (g, t_pre, t_eval) cells, one triple per index. A zero cell
+/// count is what keeps the placeholder inert: `sec_did_pyexample_cs2021` loops
+/// over `cs2021_n_cells()`, which is 0 here, so nothing is fitted.
+fn cs2021_n_cells() -> Int32 {
+  0
+}
+
+///|
+fn cs2021_cell_g(i : Int32) -> Int32 {
+  let _ = i
+  0
+}
+
+///|
+fn cs2021_cell_t_pre(i : Int32) -> Int32 {
+  let _ = i
+  0
+}
+
+///|
+fn cs2021_cell_t_eval(i : Int32) -> Int32 {
+  let _ = i
+  0
 }

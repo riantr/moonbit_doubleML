@@ -34,37 +34,44 @@ upstream under 20 different fold seeds (`_verify/_se_noise_1660.py`):
     coef  upstream over 20 seeds: min 0.019404  max 0.157364  sd 0.034670
     se    upstream over 20 seeds: min 0.140516  max 0.151343  sd 0.002994
 
-    port coef 0.083893902916250457   -> 0.75 sd from the mean, INSIDE the range
-    port se   0.13835043175681036    -> 2.26 sd from the mean, OUTSIDE the range
+An earlier revision of this file read an 8% SE gap there as an OPEN PORT
+DEFECT. It was not a port defect -- it was this fixture misconfiguring the
+port. Upstream defaults to `in_sample_normalization=True` and refuses an
+`ml_m` without `.predict_proba()`; the port defaults to `false` and a linear
+regression. Four-way measurement on the generated dataset:
 
-So the coefficient is gated at 3 sd = 0.104011 and passes comfortably, and
-the standard error is NOT fold noise -- the port's `se` is systematically
-about 0.0022 smaller than anything upstream produced. That is an OPEN
-DEFECT, pinned below so it stays visible and so drift on either side turns
-this gate red. It is recorded rather than tolerated silently.
+    ml_m=reg  norm=False -> se 0.0756218   <- the port's defaults
+    ml_m=reg  norm=True  -> se 0.0742462
+    ml_m=cls  norm=False -> se 0.0720907
+    ml_m=cls  norm=True  -> se 0.0708030   <- upstream's configuration
+    upstream              -> se 0.0700322
 
-WHY THERE IS NO CS2021 HALF HERE
-================================
-`make_did_CS2021` was tried and rejected, on evidence:
+94% of the gap was the fixture. With upstream's actual configuration the port
+lands 0.03 sd from upstream on the coefficient and 0.89 sd on the standard
+error, so BOTH rows are now hard 3-sd gates and the pinned-ratio row is gone.
+`main.mbt`'s `sec_did_pyexample` carries the same measurement next to the
+settings that produce it.
 
-  * Upstream ships the CS2021 DGP but NOT a CS2021 estimator. `DoubleMLDID`
-    and `DoubleMLDIDCS` are both binary-treatment -- `DoubleMLDID` raises
-    "exactly one binary variable with values 0 and 1" when handed group
-    labels. So there is no upstream estimator to match the port's
-    multi-cohort `DoubleMLDIDCS` against.
-  * Dropping never-treated (to dodge the `inf` label) removes the control
-    group, and the port identifies DID-CS by taking the SMALLEST `g` as
-    control (`discover_groups_times`, `did_cs.mbt:77`). Upstream marks
-    never-treated as `inf`, the LARGEST label. The two conventions disagree,
-    so the port used a treated cohort as its control: ATT(g=2, t<=2) came
-    back exactly 0, as it must when the "control" is itself treated, and
-    ATT(g=2, t=4) came back -12.96 against a realised truth of +2.96.
+THE CS2021 HALF LIVES NEXT DOOR, AND THE REASON IT WAS SKIPPED WAS WRONG
+========================================================================
+This file covers `DoubleMLDID` (single cohort, SZ2020). The multi-cohort half
+is `pyexample_did_cs2021.py`, on upstream's `DoubleMLDIDMulti`. It did not
+exist when this note was first written, and the two reasons given for skipping
+it were both measured FALSE:
 
-Relabelling never-treated to the smallest integer would reconcile the two
-conventions (ATT is invariant to the labelling), and that is the obvious next
-step -- but it is a real piece of work on the comparison, and shipping a gate
-built on a labelling convention I have not yet validated would be worse than
-shipping the half that is sound.
+  * "Upstream ships the CS2021 DGP but no CS2021 estimator." Upstream ships
+    `DoubleMLDIDMulti`. It is in `doubleml.did.__all__` and its own docstring
+    example is built on `make_did_CS2021`.
+  * "The never-treated conventions disagree, so the port treats a cohort as its
+    own control." They agree for INTEGER `g`. `_get_never_treated_value` is
+    dtype-dependent -- `0` for integer, `inf` for floating, `NaT` for datetime
+    -- and `0` is exactly this port's rule (`discover_groups_times`,
+    `did_cs.mbt:89-95`). The `inf` that broke the attempt came from
+    `time_type="float"`; recoding to integer reconciles them.
+
+Both claims were refuted by running the thing rather than reading the module
+list. A refusal to build something should never rest on a claim that a five-line
+probe would have settled.
 
 USAGE
 =====
@@ -203,13 +210,32 @@ fn sz2020_d() -> Array[Double] {
 """
 
 
+# The anchor of the CS2021 half. Both gates write the SAME fixture file and
+# splice DISJOINT halves around this line, because one MoonBit build serves both
+# and a second placeholder would need a second symbol set for no benefit.
+#
+# This was measured the hard way: this writer used to emit the whole file from
+# `HEADER`, which silently truncated the `cs2021_*` block that the other gate
+# owns. `main.mbt` still referenced those symbols, so `moon run` died with
+# Error 4021 (undefined identifier) -- and the failure pointed at `main.mbt`,
+# which is nowhere near the file that was actually wrong.
+CS2021_ANCHOR = "\nfn cs2021_generated() -> Int32 {"
+
+
 def write_fixture(sz):
+    """Replace the SZ2020 half only; leave the CS2021 half byte-identical."""
+    with io.open(FIXTURE, "r", encoding="utf-8", newline="") as fh:
+        text = fh.read()
+    _head, sep, tail = text.partition(CS2021_ANCHOR)
+    if not sep:
+        raise SystemExit("could not find the cs2021 anchor in %s" % FIXTURE)
     body = HEADER % (sz["x"].shape[0], sz["x"].shape[1],
                      fmt_doubles(sz["x"].ravel()),
                      fmt_doubles(sz["y"]),
                      fmt_doubles(sz["d"]))
-    io.open(FIXTURE, "w", encoding="utf-8", newline="\n").write(body)
-    return len(body)
+    out = body + sep + tail
+    io.open(FIXTURE, "w", encoding="utf-8", newline="\n").write(out)
+    return len(out)
 
 
 def restore_fixture():

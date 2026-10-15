@@ -1174,6 +1174,27 @@ outputs. CI runs each script and requires **both** a zero exit code and a
 trailing `PASS` line -- the second condition alone used to be the only one
 checked, and it is trivially satisfied by a script that never ran MoonBit.
 
+**Two gates whose reference is UPSTREAM, not ours** -- `pyexample_did.py` and
+`pyexample_did_cs2021.py`. Every script above compares the port against a
+second implementation written in this repository, which can only catch a
+disagreement someone already thought to look for. These two regenerate
+`doubleml.did.datasets.make_did_SZ2020` and `make_did_CS2021`, run upstream's
+own `DoubleMLDID` and `DoubleMLDIDMulti` on them, and compare the port to that:
+not "does the port agree with our second implementation" but "does the port
+agree with upstream, on upstream's data".
+
+The multi-cohort half is the one worth reading the CHANGELOG for. It was
+absent for a release cycle on a documented refusal whose two reasons were both
+**false**: upstream does ship `DoubleMLDIDMulti`, and the never-treated
+conventions do not disagree -- `_get_never_treated_value` returns `0` for
+integer `g`, which is exactly this port's own rule, and the `inf` that broke
+the earlier attempt came only from `time_type="float"`. Upstream's 12-cell
+`"standard"` grid maps onto 6 cells the port can express, all of them
+post-treatment cells of all cohorts, each gated at a **per-cell measured**
+3-sd band (signal is 12-57x the fold noise). `DoubleMLDIDMulti`'s `ignore(t_pre)`
+is a real divergence from upstream and is not fixed; it is unreachable on those
+6 cells, which is what makes the comparison sound rather than lucky.
+
 **An upstream ORACLE for RDD (v0.116.0)** -- the scripts above check
 against hand-written reference outputs, which can only catch a
 disagreement someone already thought to look for. RDD now also has a real

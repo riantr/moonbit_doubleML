@@ -115,17 +115,36 @@ def report(title: str, rows: list, ok: bool) -> int:
     """Print the per-row evidence and the trailing verdict line CI greps for.
 
     `rows` is [(label, moonbit_repr, python_repr, passed_bool)].
+
+    AN EMPTY ROW LIST IS A FAILURE, NOT A PASS. Measured: mutating a gate to
+    pass `rows=[]` still printed PASS and exited 0, because `ok and not bad` is
+    trivially true when there is nothing to disagree. That makes every
+    "compare nothing" validator indistinguishable from a working one, which is
+    the exact failure mode this module was written to prevent (see the module
+    docstring). A gate that checked nothing now fails loudly instead.
     """
     print("=" * 74)
     print(title)
     print("=" * 74)
+    if not rows:
+        print("  NO ROWS COMPARED -- this gate compared nothing and CANNOT pass.")
+        print()
+        print("checked 0 item(s) against the MoonBit build")
+        print("FAIL: %s: no rows were compared" % title)
+        return 1
     bad = []
+    # The label column is sized to the longest label, not a fixed 22: the CS2021
+    # gate's labels carry a `(g,t_pre,t_eval)` triple and were being truncated
+    # into "cs_coef ATT(2,1,3) vs u", which made it impossible to tell which
+    # cell a failure belonged to.
+    width = max([len(r[0]) for r in rows] + [12])
+    width = min(width, 56)
     for label, mb, py, good in rows:
         mark = "MATCH " if good else "DIFFER"
         if not good:
             bad.append(label)
-        print("  %-6s %-22s moonbit=%-24s python=%s"
-              % (mark, label, mb, py))
+        print("  %-6s %-*s moonbit=%-24s python=%s"
+              % (mark, width, label, mb, py))
     print()
     print("checked %d item(s) against the MoonBit build" % len(rows))
     if bad:

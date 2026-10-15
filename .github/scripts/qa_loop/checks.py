@@ -591,6 +591,68 @@ def c_pyexample():
                 fh.write(before)
 
 
+# --------------------------------------------------------------------------- #
+# pyexample_cs2021 -- the MULTI-COHORT port against upstream's own CS2021 data
+# --------------------------------------------------------------------------- #
+#
+# Same contract as `pyexample` above, on upstream's `DoubleMLDIDMulti` and
+# `make_did_CS2021`. It is registered separately rather than folded into the
+# SZ2020 check because they are different gates against different estimators,
+# and a merge would hide which one broke.
+#
+# It writes the SAME tracked fixture (`examples/parity/pyexample_data.mbt`) as
+# `pyexample`, splicing only the `cs2021_*` half. So the two checks must never
+# run concurrently against one working tree, and this one carries the same
+# independent byte-snapshot guard: the failure being defended against is "the
+# gate's own restore did not run", which is precisely when its restore would be
+# the thing that is missing.
+@check("pyexample_cs2021",
+       "port vs upstream make_did_CS2021 (DoubleMLDIDMulti) on upstream data",
+       "fast")
+def c_pyexample_cs2021():
+    fixture = os.path.join(ROOT, "examples", "parity", "pyexample_data.mbt")
+    gate = os.path.join(ROOT, "pyexample_did_cs2021.py")
+    if not os.path.isfile(gate):
+        return R("pyexample_cs2021", "", SKIP, "pyexample_did_cs2021.py is not present")
+    if not os.path.isfile(fixture):
+        return R("pyexample_cs2021", "", SKIP, "%s is not present"
+                 % os.path.relpath(fixture, ROOT))
+    try:
+        with open(fixture, "rb") as fh:
+            before = fh.read()
+    except OSError as e:
+        return R("pyexample_cs2021", "", SKIP, "cannot read the fixture: %s" % e)
+    try:
+        rc, out = run([sys.executable, "pyexample_did_cs2021.py", "--check"],
+                      cwd=ROOT, timeout=2400)
+        verdict = PASS if rc == 0 else FAIL
+        evidence = ""
+        for line in out.splitlines():
+            s = line.strip()
+            if s.startswith("pyexample: port vs upstream make_did_CS2021"):
+                evidence = s
+        if not evidence:
+            tail = out.strip().splitlines()[-1] if out.strip() else ""
+            evidence = tail.strip()[:110]
+        # The number that decides whether this gate can bite: how many of
+        # upstream's 12 standard cells it actually compares. 6 is the
+        # structural maximum (see the gate's docstring); a drop to 3 would
+        # mean the `"standard"` keyword had replaced the explicit cell list.
+        for line in out.splitlines():
+            if "are comparable with the port" in line:
+                evidence += " | " + line.strip()
+        return R("pyexample_cs2021", "", verdict, evidence)
+    finally:
+        try:
+            with open(fixture, "rb") as fh:
+                after = fh.read()
+        except OSError:
+            after = b"<unreadable>"
+        if after != before:
+            with open(fixture, "wb") as fh:
+                fh.write(before)
+
+
 
 # --------------------------------------------------------------------------- #
 # 17. contract -- the one CI's glob misses

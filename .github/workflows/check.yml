@@ -161,6 +161,26 @@ jobs:
           set -e
           python pyexample_did.py --check
 
+      # The MULTI-COHORT half, on upstream's `DoubleMLDIDMulti` and
+      # `make_did_CS2021`. This is where the port's DID-CS machinery lives;
+      # the step above covers the single-cohort `DoubleMLDID`.
+      #
+      # This step did not exist until v0.164.0 because an earlier revision of
+      # `pyexample_did.py` documented two reasons to skip CS2021 -- "upstream
+      # has no CS2021 estimator" and "the never-treated conventions disagree" --
+      # and BOTH were measured false. Upstream ships `DoubleMLDIDMulti`, and
+      # `_get_never_treated_value` returns `0` for integer `g`, which is exactly
+      # this port's own rule. The refusal cost real coverage: 6 post-treatment
+      # ATT cells per cohort, on upstream's dataset, were ungated.
+      #
+      # Same structural constraints as the step above: separate step (it
+      # writes a generated panel into the shared fixture and restores it),
+      # restore from an in-memory byte snapshot, no git-status guard.
+      - name: Compare the multi-cohort port against upstream's CS2021 example
+        run: |
+          set -e
+          python pyexample_did_cs2021.py --check
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.

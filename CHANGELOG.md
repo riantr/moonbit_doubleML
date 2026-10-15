@@ -9,6 +9,158 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [Unreleased] — the multi-cohort port is now graded against upstream's own CS2021 data
+
+No `moon.mod` bump yet: this adds gates and corrects documented claims, and
+no reported estimator number moves. The test counts are untouched
+(**1115 / 1121 / 1115 / 1115**).
+
+Why: v0.163.0 added the first gate whose reference is upstream's rather than
+ours, but only for the single-cohort `DoubleMLDID`. The multi-cohort
+`DoubleMLDIDMulti` -- where the port's DID-CS machinery actually lives -- was
+carrying a documented refusal, and **both reasons for that refusal were false**.
+The refusal had cost real coverage: every post-treatment ATT of every cohort,
+on upstream's own dataset, was ungated.
+
+### Fixed
+
+- **`parity_helper.report` returned PASS for a gate that compared nothing.**
+  Measured by mutation: patching a gate to pass `rows=[]` still printed `PASS`
+  and exited 0, because `ok and not bad` is trivially true when there is
+  nothing to disagree. An empty row list is now an explicit failure. This is
+  the exact failure mode `parity_helper`'s own docstring exists to prevent, and
+  it was present in the helper that all 25 cross-checks depend on.
+- **`pyexample_did.py`'s module docstring still described an 8% SE gap as an
+  OPEN DEFECT.** That gap was root-caused in v0.163.0 as a misconfigured
+  fixture (upstream defaults `in_sample_normalization=True` and requires a
+  classifier `ml_m`; the port defaults the opposite). Both rows are now hard
+  3-sd gates and the pinned-ratio row is gone, but the prose had not been
+  updated to match.
+
+### Added
+
+- `pyexample_did_cs2021.py` - the second upstream-reference gate. Regenerates
+  `doubleml.did.datasets.make_did_CS2021`, runs upstream's `DoubleMLDIDMulti`
+  on it, and compares the port's multi-cohort `DoubleMLDIDMulti` cell by cell.
+  Wired into `.github/workflows/check.yml` as its own `python-cross-check`
+  step and into the QA LOOP as `pyexample_cs2021` (`fast` scope).
+- `examples/parity/main.mbt::sec_did_pyexample_cs2021` - the emitter half.
+
+### The two refuted claims, with the measurements that killed them
+
+1. **"Upstream ships the CS2021 DGP but no CS2021 estimator."** False.
+   `doubleml.did.DoubleMLDIDMulti` exists, is exported in `__all__`, and its
+   own docstring example is built on `make_did_CS2021`. It was missed by
+   checking `DoubleMLDID` and `DoubleMLDIDCS` -- the two classes that *are*
+   binary-treatment -- and never listing the module.
+2. **"The never-treated conventions disagree, so the port treats a cohort as
+   its own control."** True only for FLOATING `g`.
+   `_get_never_treated_value` is dtype-dependent -- `0` for integer, `inf` for
+   floating, `NaT` for datetime64 -- and `0` is exactly this port's own rule
+   (`discover_groups_times`, `did_cs.mbt:89-95`). The `inf` that produced the
+   broken ATT came from `time_type="float"`; recoding `g` to integer maps
+   never-treated to 0 and the conventions reconcile. Measured after the recode:
+   `_get_never_treated_value(g) == 0 == min(g)`, and every `_is_never_treated`
+   verdict then agrees with the port's.
+
+A claim that a five-line probe would have settled cost a full release cycle of
+missing coverage. The lesson is recorded rather than just fixed.
+
+### 6 comparable cells, and why not 12
+
+Upstream's `"standard"` yields 12 `(g, t_pre, t_eval)` cells; the port can
+express 6. The split is structural and measured, not chosen:
+
+- the port fixes its base period at `g_value - 1` (`did_cs.mbt:1563`) and
+  restricts the panel to `(g == g_value) U (g == never_treated)`
+  (`did_cs.mbt:1589`);
+- upstream picks `t_pre = t_values[t_values < g][-1]`, then
+  `min(t_values[i], t_pre)`;
+- so the two agree exactly on the cells where upstream landed on `t_pre == g - 1`
+  -- every post-treatment cell of every cohort -- and cannot be asked about the
+  other 6, which are earlier-base cells.
+
+Those 6 are passed as an explicit `gt_combinations` list rather than via the
+`"standard"` keyword, because the keyword yields only 3 of them.
+
+`DoubleMLDIDMulti`'s `ignore(t_pre)` (`did_multi.mbt:326`) is a real divergence
+from upstream and is **not** fixed here. It is unreachable on these 6 cells,
+which is what makes the gate sound rather than lucky: the requested `t_pre` is
+the period the inner estimator picks anyway.
+
+### Tolerances, measured per cell
+
+Upstream draws folds from numpy's global RNG and the port from `seed=`, so bit
+equality is impossible and the band must come from the fold noise. Measured
+over 12 upstream fold seeds at n_obs=1000, DGP seed 7:
+
+    cell        coef     fold_sd   |coef|/sd    3 sd
+    (2,1,2)   1.1284     0.05094      22.2     0.1528
+    (2,1,3)   1.9093     0.03828      49.9     0.1148
+    (2,1,4)   2.9072     0.05118      56.8     0.1535
+    (3,2,3)   0.8757     0.03028      28.9     0.0908
+    (3,2,4)   1.6710     0.04076      41.0     0.1223
+    (4,3,4)   0.8869     0.07496      11.8     0.2249
+
+Every cell is measured individually. A first version of this table covered 3
+of the 6 and let the rest inherit a neighbour's number, which is the
+"never ship an unmeasured number" rule broken inside a tolerance -- the least
+visible and most consequential place to break it. `main` now refuses to start
+if any derived cell lacks its own measured band. Observed port-vs-upstream
+offsets are 0.12-0.63 sd, so the band has roughly 5x of headroom before it
+turns red on fold noise alone.
+
+SE is gated on the *same* band rather than a separately measured one. That is
+deliberately loose and is recorded as such: the measured SE noise is an order
+of magnitude smaller (0.0024-0.0109), so an 8% SE divergence -- the size that
+surfaced the SZ2020 fixture misconfiguration -- would be caught, but a ~30%
+divergence on one cell would not.
+
+### Mutation battery: 7/7, and the two survivors explained
+
+    M1  scale every y by 1.10                          KILLED
+    M2  permute g (the load-bearing cohort column)     KILLED
+    M3  never-treated recode to the LARGEST label      KILLED
+    M4  nonlinear x perturbation                       KILLED
+    M5  gate compares nothing (rows = [])              KILLED
+    M6  MoonBit side: request 1 of the 6 cells         KILLED
+    M7  MoonBit side: report the wrong control index   KILLED
+
+The control arm earned its place twice. The first battery reported 7/7 killed
+while the *unmutated* gate was returning `rc=1` -- a `NameError` I had
+introduced by deleting `DEFAULT_TOL` and leaving its `.get()` fallback behind.
+Every mutation was "killed" by a gate that could not pass at all. Re-run with
+a green control, two mutations genuinely survived, and one of them (M5) was a
+real hole in `parity_helper` that the battery found and that is now fixed.
+
+**A documented equivalent, not a survivor to fix.** Permuting the caller's `d`
+leaves every coefficient bit-identical, because `did_cs.mbt:1592-1600`
+*recomputes* the sub-DID indicator from the panel itself
+(`if gv == g_value && tv == eval_period`) and overwrites whatever `d` the
+caller passed. So the `d` column handed to `DoubleMLDIDCSData` is decorative
+for this estimator. M2 was therefore rewritten to permute `g`, which is the
+column the fit actually depends on. The gate still round-trips `d`, because
+it proves the port received the right data -- but `cs_g` and `cs_t` are the
+rows carrying the weight, and that distinction is now written down rather than
+left for a reader to infer from output.
+
+### Fixture sharing
+
+Both gates write `examples/parity/pyexample_data.mbt`, splicing disjoint
+halves, because one MoonBit build serves both and a second placeholder would
+need a second symbol set for no benefit. Two consequences, both measured:
+
+- each half carries its **own** sentinel (`pyexample_generated` /
+  `cs2021_generated`). Sharing one meant the SZ2020 writer's value decided
+  whether the CS2021 half ran, and the gate reported "fixture not generated"
+  with the data sitting right there;
+- the splice anchor is the FIRST symbol of the CS2021 block. Anchoring one
+  symbol later emitted the sentinel twice and failed to compile.
+
+The QA LOOP check carries its own byte-snapshot guard, independently of the
+gate's, for the same reason the SZ2020 one does: the failure being defended
+against is "the gate's own restore did not run", so relying on it is circular.
+
 ## [0.163.0] — the cross-checks can see the port, and `tsbh` now matches statsmodels bit for bit
 
 `moon.mod` moves 0.162.0 -> 0.163.0. The test counts are untouched

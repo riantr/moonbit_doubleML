@@ -37,6 +37,7 @@ fn main {
   sec_did_binary()
   sec_did_cs()
   sec_did_pyexample()
+  sec_did_pyexample_cs2021()
   sec_bootstrap()
   sec_padjust()
   sec_cv_repeated()
@@ -423,15 +424,11 @@ fn sec_did_cs() -> Unit {
 /// implementation of the same idea". This one answers "does the port agree
 /// with upstream, on upstream's dataset". Nothing here is ours.
 ///
-/// There is deliberately no CS2021 half. Upstream ships the CS2021 DGP but no
-/// CS2021 estimator (both `DoubleMLDID` and `DoubleMLDIDCS` are
-/// binary-treatment), and the never-treated group is labelled `inf` upstream
-/// while this port identifies DID-CS by the SMALLEST `g`
-/// (`discover_groups_times`, `did_cs.mbt:77`), so the two conventions
-/// disagree and the port ends up treating a cohort as its own control. That is
-/// a real piece of work still to do; shipping a comparison built on an
-/// unvalidated labelling would be worse than shipping the sound half alone.
-/// `pyexample_did.py` records the numbers.
+/// The CS2021 half (`sec_did_pyexample_cs2021`, below) covers upstream's
+/// MULTI-COHORT estimator. An earlier revision of this file carried a note
+/// saying no such comparison was possible, on two grounds. Both were measured
+/// and both were FALSE -- see `sec_did_pyexample_cs2021` and
+/// `pyexample_did_cs2021.py` for the measurements.
 ///
 /// SAMPLE SPLITTING IS THE KNOWN CONFOUNDER
 /// =========================================
@@ -507,6 +504,148 @@ fn sec_did_pyexample() -> Unit {
   // fitted the rows it was handed, not some other panel.
   data_out("sz_y", sz2020_y())
   data_out("sz_d", sz2020_d())
+  end()
+}
+
+// --------------------------------------------------------------------------- //
+// 6c. did_pyexample_cs2021 -- the MULTI-COHORT port on PYTHON-GENERATED data
+// --------------------------------------------------------------------------- //
+
+///|
+/// Upstream's `DoubleMLDIDMulti` on `make_did_CS2021`, which is where this
+/// port's DID-CS machinery actually lives (`sec_did_pyexample` covers the
+/// single-cohort `DoubleMLDID`).
+///
+/// THE "NO CS2021 COMPARISON IS POSSIBLE" NOTE WAS WRONG. Twice.
+///
+/// The first claim was that upstream ships the CS2021 DGP but no CS2021
+/// estimator. It ships `DoubleMLDIDMulti`, and its own docstring example is
+/// built on this DGP. The second was that the never-treated conventions
+/// disagree, so the port would treat a cohort as its own control. They agree
+/// for INTEGER `g`: `_get_never_treated_value` returns `0` for integer dtype
+/// and `inf` only for floating dtype, and `0` is precisely this port's rule
+/// (`discover_groups_times`, `did_cs.mbt:89-95`). The `inf` that broke the
+/// earlier attempt came from `time_type="float"`; `pyexample_did_cs2021.py`
+/// recodes to integer and the conventions reconcile.
+///
+/// WHY 6 CELLS, NOT 12
+/// ===================
+/// Upstream's `"standard"` yields 12 `(g, t_pre, t_eval)` triples; this port
+/// can express 6. The split is structural and measured, not chosen:
+///
+///   * this port fixes its base period at `g_value - 1` (`did_cs.mbt:1563`)
+///     and restricts the panel to `(g == g_value) U (g == never_treated)`
+///     (`did_cs.mbt:1589`);
+///   * upstream picks `t_pre = t_values[t_values < g][-1]`, then
+///     `min(t_values[i], t_pre)`;
+///   * the two therefore agree EXACTLY on the cells where upstream landed on
+///     `t_pre == g - 1`, and cannot be asked about the rest.
+///
+/// Those 6 are every post-treatment cell of every cohort. They are passed
+/// explicitly as `gt_combinations` rather than via the `"standard"` keyword,
+/// because the keyword yields only 3 of the 6 -- asking explicitly is the
+/// stronger comparison.
+///
+/// `DoubleMLDIDMulti`'s `ignore(t_pre)` (`did_multi.mbt:326`) is a real
+/// divergence from upstream, and it is NOT fixed here. It is unreachable on
+/// these cells, and that is the reason the gate is sound rather than lucky: the
+/// requested `t_pre` is the period the inner estimator picks anyway. The other
+/// 6 cells stay outside the comparison and are counted in the output.
+///
+/// `cs2021_never_treated` is emitted as a real read of `data.groups`, not a
+/// hard-coded 0, so the assertion that the two conventions coincide is checked
+/// against what the port actually inferred.
+fn sec_did_pyexample_cs2021() -> Unit {
+  section("did_pyexample_cs2021")
+  // Its OWN sentinel, not `pyexample_generated()`: the two gates share one
+  // fixture file and splice disjoint halves, so a shared sentinel would let the
+  // SZ2020 writer's value decide whether this half runs.
+  let generated = cs2021_generated() != 0
+  val("cs_generated", if generated { 1.0 } else { 0.0 })
+  if !generated {
+    end()
+    return
+  }
+
+  let n_cs = cs2021_n_obs()
+  let p_cs = cs2021_n_feat()
+  let x_cs = @moonbit_doubleML.Matrix::from_array(cs2021_x(), n_cs, p_cs)
+  let y_cs = cs2021_y()
+  let d_cs = cs2021_d()
+  let t_cs = cs2021_t()
+  let id_cs = cs2021_id()
+  let g_cs = cs2021_g()
+
+  // `DoubleMLDIDCSData::new` does not declare `raise DIDDataError` on this
+  // build -- it `abort`s instead (its own `catch` turns the precondition into
+  // an abort, `did_cs.mbt:69-72`), so a `catch` here would be an `unused_try`.
+  let cs_data = @moonbit_doubleML.DoubleMLDIDCSData::new(
+    x_cs, y_cs, d_cs, t_cs, id_cs, g_cs,
+  )
+
+  // `discover_groups_times` DROPS the never-treated sentinel (the minimum `g`)
+  // from `groups`, so `groups` starts at the SECOND-smallest label. Emitting
+  // it is the non-circular half of the convention check: if the port had
+  // picked any cohort other than 0 as its control, `groups` would begin
+  // somewhere else and this row would move. The circular half -- "min(g) is the
+  // control" -- is a rule, not a measurement, so it is deliberately NOT what
+  // this row asserts; the ATT rows are what actually detect a wrong control,
+  // because a treated cohort used as its own control returns ~0 or a sign
+  // flip (measured on this DGP before the recode: ATT(g=2, t=4) came back
+  // -12.96 against a realised truth of +2.96).
+  let groups = cs_data.groups
+  val(
+    "cs_min_group_excluded",
+    if groups.length() > 0 {
+      groups[0].to_double()
+    } else {
+      -1.0
+    },
+  )
+  val("cs_n_groups", groups.length().to_double())
+  val("cs_n_periods", cs_data.times.length().to_double())
+
+  // The 6 comparable cells, in the order `pyexample_did_cs2021.py` emits them.
+  let n_cells = cs2021_n_cells()
+  let combos : Array[(Int32, Int32, Int32)] = []
+  for i = 0; i < n_cells; i = i + 1 {
+    combos.push((cs2021_cell_g(i), cs2021_cell_t_pre(i), cs2021_cell_t_eval(i)))
+  }
+
+  let fitted_cs = @moonbit_doubleML.DoubleMLDIDMulti::new(
+    cs_data,
+    gt_combinations=combos,
+    control_group="never_treated",
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    // MATCHED TO UPSTREAM, and this was measured rather than assumed -- the
+    // same two settings the SZ2020 section needs, for the same two reasons
+    // (upstream defaults `in_sample_normalization=True` and requires an `ml_m`
+    // with `.predict_proba()`; this port defaults the opposite).
+    ml_g=@moonbit_doubleML.LearnerDispatch::linear_regression(),
+    ml_m=@moonbit_doubleML.LearnerDispatch::logistic_regression(
+      @moonbit_doubleML.LogisticRegression::new(),
+    ),
+    in_sample_normalization=true,
+  ).fit()
+  val("cs_n_cells", fitted_cs.n_combinations().to_double())
+  for i = 0; i < n_cells; i = i + 1 {
+    val("cs_coef_" + i.to_string(), fitted_cs.coef_at_idx(i))
+    val("cs_se_" + i.to_string(), fitted_cs.se_at_idx(i))
+  }
+  // The panel travels with the estimate so the validator can confirm the port
+  // fitted the rows it was handed, not some other panel.
+  data_out("cs_y", y_cs)
+  data_out("cs_d", d_cs)
+  let g_dbl = Array::make(n_cs, 0.0)
+  let t_dbl = Array::make(n_cs, 0.0)
+  for i = 0; i < n_cs; i = i + 1 {
+    g_dbl[i] = g_cs[i].to_double()
+    t_dbl[i] = t_cs[i].to_double()
+  }
+  data_out("cs_g", g_dbl)
+  data_out("cs_t", t_dbl)
   end()
 }
 
