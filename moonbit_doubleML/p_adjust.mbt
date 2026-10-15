@@ -9,40 +9,62 @@
 // ========================================
 // `validate_padjust_with_python.py` runs the real
 // `statsmodels.stats.multitest.multipletests` against this
-// module on a fixed p-vector and reports:
+// module on TWO fixed p-vectors and reports, per method,
+// `max |moonbit - statsmodels|`:
 //
-//   holm         max |diff| = 0
-//   bonferroni   max |diff| = 0
-//   bh           max |diff| = 0
-//   by           max |diff| = 1.11e-16
-//   tsbh         max |diff| = 0.108      <-- NOT equal
-//   tsby         (same code path as tsbh; same `m0_hat`)
+//                   vector a   vector b
+//   holm               0          0
+//   bonferroni         0          0
+//   bh                 0       1.11e-16
+//   by              1.11e-16   1.11e-16
+//   tsbh               0          0
 //
-// `tsbh` / `tsby` differ from statsmodels by a CONSTANT
-// factor on every cell: `4 * (1 - alpha) / 3` = 1.26666...
-// on the vector [0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9].
+//   a = [0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9]
+//   b = [0.07, 0.11, 0.19, 0.23, 0.41, 0.53, 0.71]
 //
-// A constant factor means both sides run the same algorithm
-// -- BH, then a global `m0_hat / m` rescale -- and pick
-// different `m0_hat`:
+// 108 comparison rows in all.
 //
-//   this module   #{p > alpha} / (1 - alpha) = 3 / 0.95
-//   statsmodels   4, via Storey's lambda-optimisation
+// `holm`, `bonferroni` and `tsbh` come out BIT-IDENTICAL on both
+// vectors, so the validator gates them at exact equality, not at a
+// tolerance. That is a demand the code can meet because these
+// algorithms use only +, -, * and / on the p-values: no
+// transcendentals, therefore no libm, therefore IEEE-754 arithmetic
+// that is identical on every platform.
 //
-// This module is internally exact: a line-by-line
-// transcription of the code below reproduces its output to
-// 0.0 on all seven cells. So the difference is a choice of
-// `m0_hat` ESTIMATOR, not an arithmetic defect. It is still
-// a real parity gap, because upstream `doubleml.p_adjust`
-// delegates to statsmodels and a user porting numbers
-// across WILL see different values.
+// WHY TWO VECTORS
+// ---------------
+// Vector `b` exists for a measured reason, not for coverage. The
+// step-up factor can be applied as `p / ((k+1) / n)` (what
+// statsmodels does, and what `bh_step_up_sorted` does) or as the
+// algebraically equal `p * n / (k + 1)` (what `bh_fdr_p_adjust`
+// still does). They differ only in rounding, by at most 1 ULP.
+// Vector `a` does not expose that difference anywhere -- 0 of 7
+// cells -- so on vector `a` alone an exact gate cannot tell the two
+// forms apart. Vector `b` does: cell 5 differs by 1.11e-16. That is
+// what makes the `bh` row above 1.11e-16 instead of 0, and it is why
+// changing `bh_fdr_p_adjust` to the division form would move `bh` to
+// 0 on both.
 //
-// If that is ever reconciled -- by adopting statsmodels'
-// lambda search, or by arguing this estimator is the
-// intended one -- `TSBH_STATS_RATIO` in
-// `validate_padjust_with_python.py` and the two "matches
-// statsmodels" claims on `tsbh_p_adjust` / `tsby_p_adjust`
-// must change together.
+// TSBH WAS RECONCILED; TSBY WAS NOT
+// ================================
+// `tsbh` used to be the one real parity gap. It ran BH and then a
+// global rescale by the Storey 2002 null count
+// `m0_hat = #{p > 0.05} / (1 - 0.05) = 3 / 0.95`, while statsmodels'
+// `fdr_tsbh` re-levels `alpha` from its own stage-1 rejection count.
+// `statsmodels / port` was the CONSTANT 1.2666666666666667 on every
+// cell of vector `a`, and this header used to advertise a
+// byte-compatibility that did not hold.
+//
+// `tsbh_p_adjust` now runs statsmodels' lambda search; see its
+// docstring. On vector `a` that gives `r1 = 3`, `n0 = 4`, and cell 0
+// moves 0.0031578947368421056 -> 0.004.
+//
+// `tsby_p_adjust` still uses the old estimator and still diverges
+// from `fdr_tsbky` -- but NOT by a constant factor: measured
+// `max |port - statsmodels| = 0.1595` with the ratio running
+// 0.5129 ... 1.1970. It was left alone because the fix was scoped to
+// `tsbh`. `validate_padjust_with_python.py` has no `tsby` rows, so
+// nothing in CI would catch a drift in it. See its docstring.
 //
 // Algorithms:
 //   - romano_wolf_p_adjust     (stepdown bootstrap, NOT in statsmodels)
@@ -339,54 +361,185 @@ pub fn by_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
 }
 
 // ---------------------------------------------------------------------------
-// Two-stage BH / BY (Storey 2002)
+// Two-stage BH (statsmodels `fdrcorrection_twostage`, method='bh', maxiter=1)
 // ---------------------------------------------------------------------------
 
 ///|
-/// v0.24.0+ two-stage Benjamini-Hochberg FDR
-/// correction. First applies the standard BH
-/// adjustment, then scales by `m0_hat / m` where
-/// `m0_hat` is the estimated number of true nulls
-/// (the Storey 2002 / BH-BKY 2006 estimator
-/// `m0_hat = #{p > alpha} / (1 - alpha)`).
+/// One Benjamini-Hochberg step-up pass over ALREADY-SORTED ascending
+/// p-values, reproducing `statsmodels.stats.multitest.fdrcorrection`
+/// with `method='indep', is_sorted=True`.
 ///
-/// Algorithm. Structurally the same two-stage procedure as
-/// `statsmodels.stats.multitest.multipletests` with
-/// `method='fdr_tsbh'`, but NOT numerically identical: the two
-/// use different `m0_hat` estimators and this one is fixed at
-/// `alpha = 0.05`. Measured on the vector
-/// `[0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9]`, statsmodels
-/// returns `1.26666...` times this function's value on EVERY
-/// cell -- the constant is `4 * (1 - alpha) / 3`, the ratio of
-/// `m0_hat = 4` (statsmodels' lambda search) to
-/// `m0_hat = 3 / 0.95 = 3.1579...` (here). The file header
-/// documents this; `validate_padjust_with_python.py` pins the
-/// ratio as a constant so a drift on either side turns that
-/// validator red.
-///   1. Apply BH:
-///      `p_bh_sorted[k] = min(1, p_sorted[k] * m / (k+1))`.
-///   2. Estimate `m0_hat = #{unadjusted > alpha} / (1 -
-///      alpha)` (clamped to `[1, m]`).
-///   3. Apply correction:
-///      `p_adj_sorted[k] = min(1, p_bh_sorted[k] * m0_hat /
-///      m)`.
-///   4. Enforce monotonicity from the largest rank
-///      downward.
-///   5. Re-order to original cell order via `ro`.
+/// Returns `(p_corrected_sorted, n_rejected)`.
 ///
-/// The two-stage correction is more powerful than
-/// the basic BH when a non-trivial fraction of
-/// hypotheses are truly non-null (which is the
-/// common case for DID with multiple (g, t) cells:
-/// the post-treatment cells are non-null, the
-/// pre-treatment cells are null). The corrected
-/// p-values are smaller than the BH p-values (by a
-/// factor of `m0_hat / m <= 1`).
+/// Two details are load-bearing and were transcribed rather than
+/// re-derived:
+///   * the ECDF factor is applied as a DIVISION,
+///     `p_sorted[k] / ((k + 1) / n)`, not as the algebraically
+///     equal `p_sorted[k] * n / (k + 1)`. The two differ by up to
+///     1 ULP and only the first reproduces statsmodels bit for bit.
+///   * `n_rejected` is counted AFTER the step-up closure. BH
+///     rejects a prefix, so once any rank rejects, every smaller
+///     rank does too (statsmodels: `reject[:rejectmax] = True`).
+///     Counting the raw `p <= ecdf * alpha` hits instead would
+///     under-count and feed the lambda search a wrong `n0`.
 ///
-/// Shared `m0_hat` estimator: Storey 2002 /
-/// BH-BKY 2006 with `alpha = 0.05` hard-coded:
-///   `m0_hat = #{unadjusted > alpha} / (1 - alpha)`
-/// clamped to `[1, m]`.
+/// `alpha` is a parameter because that is what makes the two-stage
+/// search expressible as two calls to this one pass.
+fn bh_step_up_sorted(
+  p_sorted : Array[Double],
+  alpha : Double,
+) -> (Array[Double], Int32) {
+  let n = p_sorted.length()
+  let n_d = n.to_double()
+  let corrected : Array[Double] = Array::make(n, 1.0)
+  // Largest rank whose raw comparison rejects; -1 means none do.
+  let mut rejectmax = -1
+  for i = 0; i < n; i = i + 1 {
+    let ecdf = (i + 1).to_double() / n_d
+    if p_sorted[i] <= ecdf * alpha {
+      rejectmax = i
+    }
+    let raw = p_sorted[i] / ecdf
+    corrected[i] = if raw > 1.0 { 1.0 } else { raw }
+  }
+  let n_rejected = if rejectmax < 0 { 0 } else { rejectmax + 1 }
+  // `np.minimum.accumulate(corr[::-1])[::-1]`: running minimum
+  // taken from the largest rank downward (this is the BH
+  // direction; Holm goes the other way).
+  let mut k = n - 2
+  while k >= 0 {
+    if corrected[k] > corrected[k + 1] {
+      corrected[k] = corrected[k + 1]
+    }
+    k = k - 1
+  }
+  (corrected, n_rejected)
+}
+
+///|
+/// v0.24.0+ two-stage Benjamini-Hochberg FDR correction.
+///
+/// Reproduces `statsmodels.stats.multitest.multipletests` with
+/// `method='fdr_tsbh'` at its default `maxiter=1` -- the
+/// Benjamini-Hochberg two-stage method -- INCLUDING the
+/// lambda search that re-levels `alpha` in terms of the
+/// stage-1 rejections. Measured BIT-EXACT against
+/// statsmodels (`max |diff| = 0.0`, not merely inside a
+/// tolerance) on nine vectors covering both early-return
+/// branches, tied p-values, unsorted input and `n = 1`;
+/// `validate_padjust_with_python.py` gates it.
+///
+/// `alpha = 0.05` is fixed here only because this signature
+/// carries no alpha parameter; the search itself is
+/// statsmodels'.
+///
+/// Two vectors are gated: `a = [0.001, 0.008, 0.02, 0.04,
+/// 0.2, 0.5, 0.9]` (spans three orders of magnitude, crosses
+/// BH's threshold) and `b = [0.07, 0.11, 0.19, 0.23, 0.41,
+/// 0.53, 0.71]`. Between them they cover both branches: on `a`
+/// `r1 = 3` so the search runs, on `b` `r1 = 0` so statsmodels'
+/// short-circuit returns stage 1 untouched.
+///
+/// Algorithm (`fdrcorrection_twostage`, `method='bh'`,
+/// `maxiter=1`), over the sorted p-vector `p` of length `m`:
+///   1. Stage 1: `r1 = ` number of BH rejections at `alpha`.
+///   2. If `r1 == 0` or `r1 == m`, return the stage-1 corrected
+///      p-values UNCHANGED. statsmodels short-circuits here: if
+///      nothing or everything rejected there is no fraction to
+///      estimate, so no lambda search runs.
+///   3. Otherwise `n0 = m - r1` (the estimated number of true
+///      nulls) and `alpha_star = alpha * m / n0`.
+///   4. Stage 2: a BH pass at `alpha_star`. Its corrected
+///      p-values are `p_adj`.
+///   5. Rescale for the estimated null fraction:
+///      `p_adj[k] = min(1, p_adj[k] * n0 / m)`.
+///   6. Re-order to original cell order via `ro`.
+///
+/// Step 5 is the whole of the two-stage correction: it shrinks
+/// the adjusted p-values by the estimated fraction of truly null
+/// hypotheses, which is what makes the two-stage procedure more
+/// powerful than plain BH when a non-trivial fraction of
+/// hypotheses are non-null -- the common case for DID across
+/// many (g, t) cells, where post-treatment cells are non-null
+/// and pre-treatment ones are null.
+///
+/// Only `r1`, the STAGE-1 count, reaches the p-values.
+/// statsmodels also derives a stage-2 count for its own `m0`
+/// return value, but `multipletests` discards it, and at
+/// `maxiter=1` it never influences the corrected values.
+///
+/// CONSEQUENCE, WORTH KNOWING BEFORE YOU "SIMPLIFY" THIS:
+/// because the stage-2 rejection count is dropped, `alpha_star`
+/// currently cannot change what this function returns -- the
+/// corrected array a BH pass produces depends only on the sorted
+/// p-values and `n`. Measured: mutating `alpha_star` to `alpha * m`
+/// leaves all fourteen outputs (two vectors x seven cells)
+/// bit-identical. The lambda search that matters is the one that
+/// produced `n0`, not the one that re-levels `alpha`. The call is
+/// kept because it mirrors statsmodels line for line and because
+/// that equivalence stops holding the moment this module starts
+/// returning a rejection array. Mutation M1 in
+/// `_verify/_tsbh_mutation_1660.py` is recorded as a documented
+/// equivalent for exactly this reason.
+pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
+  let n = unadjusted.length()
+  let alpha = 0.05
+  let order = argsort_asc(unadjusted)
+  let ro : Array[Int32] = Array::make(n, 0)
+  for i = 0; i < n; i = i + 1 {
+    ro[order[i]] = i
+  }
+  let p_sorted : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    p_sorted[i] = unadjusted[order[i]]
+  }
+  // Stage 1: plain BH at `alpha`.
+  let (stage1, r1) = bh_step_up_sorted(p_sorted, alpha)
+  let adjusted = if r1 == 0 || r1 == n {
+    stage1
+  } else {
+    // The lambda search: re-level alpha by the estimated null
+    // fraction, then rescale by that same fraction.
+    let n_d = n.to_double()
+    let n0 = 1.0 * n_d - r1.to_double()
+    let alpha_star = alpha * n_d / n0
+    // The stage-2 rejection count is deliberately dropped:
+    // statsmodels returns it as `m0`, but `multipletests` keeps
+    // only `[:2]`, so it cannot reach the corrected p-values.
+    let stage2 = bh_step_up_sorted(p_sorted, alpha_star).0
+    let scale = n0 * 1.0 / n_d
+    for i = 0; i < n; i = i + 1 {
+      let raw = stage2[i] * scale
+      stage2[i] = if raw > 1.0 { 1.0 } else { raw }
+    }
+    stage2
+  }
+  let out : Array[Double] = Array::make(n, 1.0)
+  for i = 0; i < n; i = i + 1 {
+    out[i] = adjusted[ro[i]]
+  }
+  out
+}
+
+///|
+/// Storey 2002 / BH-BKY 2006 null-count estimator,
+/// `m0_hat = #{p > alpha} / (1 - alpha)` clamped to
+/// `[1, n]`, with `alpha` fixed at 0.05.
+///
+/// SCOPE: this estimator is now used by `tsby_p_adjust`
+/// ONLY. It was previously shared with `tsbh_p_adjust`,
+/// and sharing it was the entire reason `tsbh` diverged
+/// from statsmodels -- `tsbh_p_adjust` now runs
+/// statsmodels' own lambda search instead (see its
+/// docstring). `tsby_p_adjust` still diverges from
+/// `multipletests(method='fdr_tsbky')` for the same
+/// historical reason, and that gap is deliberately left
+/// in place rather than changed unannounced.
+///
+/// Do NOT re-share this with `tsbh_p_adjust`: the two
+/// estimators are not interchangeable, and
+/// `validate_padjust_with_python.py` gates `tsbh`
+/// against statsmodels but does not gate `tsby`.
 fn storey_m0_hat(unadjusted : Array[Double]) -> Double {
   let n = unadjusted.length()
   let alpha = 0.05
@@ -407,59 +560,43 @@ fn storey_m0_hat(unadjusted : Array[Double]) -> Double {
 }
 
 ///|
-pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
-  let n = unadjusted.length()
-  // Estimate `m0_hat` using the Storey 2002 /
-  // BH-BKY 2006 estimator with `alpha = 0.05`.
-  let m0_hat = storey_m0_hat(unadjusted)
-  // Standard sort + BH correction.
-  let order = argsort_asc(unadjusted)
-  let ro : Array[Int32] = Array::make(n, 0)
-  for i = 0; i < n; i = i + 1 {
-    ro[order[i]] = i
-  }
-  let p_sorted : Array[Double] = Array::make(n, 1.0)
-  let n_d = n.to_double()
-  for i = 0; i < n; i = i + 1 {
-    let raw = unadjusted[order[i]] * n_d / (i + 1).to_double()
-    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
-  }
-  // Two-stage correction: scale by `m0_hat / m`.
-  let scale = m0_hat / n_d
-  for i = 0; i < n; i = i + 1 {
-    let raw = p_sorted[i] * scale
-    p_sorted[i] = if raw > 1.0 { 1.0 } else { raw }
-  }
-  // Enforce monotonicity from the largest rank downward.
-  let mut k = n - 2
-  while k >= 0 {
-    if p_sorted[k] > p_sorted[k + 1] {
-      p_sorted[k] = p_sorted[k + 1]
-    }
-    k = k - 1
-  }
-  let out : Array[Double] = Array::make(n, 1.0)
-  for i = 0; i < n; i = i + 1 {
-    out[i] = p_sorted[ro[i]]
-  }
-  out
-}
-
-///|
 /// v0.24.0+ two-stage Benjamini-Yekutieli FDR
 /// correction. Combines the two-stage `m0_hat`
-/// adjustment (from `tsbh_p_adjust`) with the
+/// adjustment (from `storey_m0_hat`) with the
 /// harmonic-sum `c` factor (from `by_fdr_p_adjust`)
 /// to handle arbitrary dependence between tests.
 ///
-/// Algorithm. As with `tsbh_p_adjust`, this is structurally
+/// Algorithm. Structurally
 /// `statsmodels.stats.multitest.multipletests` with
-/// `method='fdr_tsbky'` but NOT numerically identical to it,
-/// for the same reason and with the same measured constant:
-/// both run BY then a global `m0_hat / m` rescale, but this
-/// module fixes `alpha = 0.05` where statsmodels searches
-/// lambda. See the file header and
-/// `validate_padjust_with_python.py`.
+/// `method='fdr_tsbky'`, but NOT numerically identical to
+/// it: both run BY then a global `m0_hat / m` rescale,
+/// but this module fixes `alpha = 0.05` where statsmodels
+/// searches lambda.
+///
+/// MEASURED on `[0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9]`:
+/// `max |port - statsmodels| = 0.1595`. Unlike the `tsbh`
+/// gap this one was, it is NOT a constant factor -- the
+/// ratio runs 0.5129 ... 1.1970, spread 0.684 -- so no
+/// single multiplicative constant describes it. The
+/// largest cells saturate: this function clips at 1.0
+/// BEFORE the rescale while statsmodels applies
+/// `fact = 1 + alpha` AFTER it, so the two clip at
+/// different points and cells 5 and 6 come back identical
+/// here (0.45112781954887221 twice).
+///
+/// KNOWN DIVERGENCE, LEFT IN PLACE DELIBERATELY:
+/// `tsbh_p_adjust` was reconciled with statsmodels'
+/// lambda search; this one was not, because the
+/// reconciliation was scoped to `tsbh` and changing a
+/// second published method's numbers unannounced would
+/// be worse than leaving the gap documented. Note that
+/// `validate_padjust_with_python.py` does NOT gate
+/// `tsby` against statsmodels -- it has no `tsby` rows
+/// -- so nothing there would catch a silent drift.
+/// Reconciling it means porting the BKY two-stage
+/// search (`fact = 1 + alpha`, `alpha_prime = alpha /
+/// fact`, `pvalscorr *= (1 + alpha)` after the rescale)
+/// and adding `tsby` to that validator.
 ///   1. Compute `c = sum_{i=1}^{n} 1/i`.
 ///   2. Apply BY:
 ///      `p_by_sorted[k] = min(1, p_sorted[k] * m * c / (k+1))`.

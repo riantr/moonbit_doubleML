@@ -466,16 +466,38 @@ fn sec_bootstrap() -> Unit {
 
 ///|
 fn sec_padjust() -> Unit {
-  let p = [0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9]
   section("padjust")
+  // Vector `a` spans three orders of magnitude and crosses BH's rejection
+  // threshold, so `bh` is not trivially the identity and the monotone
+  // step-down structure is actually exercised.
+  emit_padjust("a", [0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9])
+  // Vector `b` exists for ONE measured reason, not for coverage.
+  //
+  // `tsbh_p_adjust` applies the BH step-up factor as a division,
+  // `p / ((k+1)/n)`, because that is what statsmodels does. The
+  // algebraically equal `p * n / (k+1)` is a different sequence of
+  // roundings and can differ in the last bit. Vector `a` does NOT
+  // expose that difference anywhere in the final output (measured: 0
+  // of 7 cells), so with only vector `a` the validator's 0.0
+  // tolerance cannot tell the two forms apart and the bit-exactness
+  // claim would be ungated -- mutation M4 in
+  // `_verify/_tsbh_mutation_1660.py` survives without it.
+  //
+  // Vector `b` is the smallest vector found that does expose it: cell 5
+  // differs by 1.11e-16 (0.6183333333333334 vs 0.61833333333333329).
+  emit_padjust("b", [0.07, 0.11, 0.19, 0.23, 0.41, 0.53, 0.71])
+  end()
+}
+
+///|
+fn emit_padjust(tag : String, p : Array[Double]) -> Unit {
   for m in ["holm", "bonferroni", "bh", "by", "tsbh"] {
     let adj = @moonbit_doubleML.p_adjust(m, p)
     for i = 0; i < p.length(); i = i + 1 {
-      val(m + "_" + i.to_string(), adj[i])
+      val(m + tag + "_" + i.to_string(), adj[i])
     }
   }
-  data_out("unadjusted_p", p)
-  end()
+  data_out("unadjusted_p" + tag, p)
 }
 
 // --------------------------------------------------------------------------- //

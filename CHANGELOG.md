@@ -9,10 +9,11 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-## [Unreleased] - local GitHub CI simulator (`.github/scripts/ci_local.py`)
+## [0.163.0] — the cross-checks can see the port, and `tsbh` now matches statsmodels bit for bit
 
-No change to the package: `moon.mod` stays at 0.162.0 and the test counts are
-untouched (**1115 / 1121 / 1115 / 1115**). What is new is a tool that runs this
+`moon.mod` moves 0.162.0 -> 0.163.0. The test counts are untouched
+(**1115 / 1121 / 1115 / 1115**); the numbers that change are the parity ones
+below. The headline tool is a way to run this
 repository's CI jobs locally, on WSL Ubuntu, by executing the `run:` steps
 straight out of `.github/workflows/*.yml` - not a hand-maintained copy, which
 would drift the first time someone edited a workflow.
@@ -88,9 +89,9 @@ checked.
 ### Fixed: all 24 cross-checks now observe the port
 
 The ten validators listed above were rewritten. Each now runs MoonBit and
-compares its output against a CPython reference, over **194 comparison rows**:
+compares its output against a CPython reference, over **248 comparison rows**:
 
-    gain_statistics  39   padjust            54   bootstrap   18
+    gain_statistics  39   padjust           108   bootstrap   18
     rdd              14   blp_policy         12   quantile     8
     did_binary        8   cv_repeated        10   cvar         5
     did_cs           26   (6 valid + 6 empty cells, each valid cell also
@@ -122,7 +123,7 @@ What each is measured against, and why:
   `chacha8`, so it takes the outcome data the port actually used and computes
   the estimand by a different route, which removes the PRNG as a confounder.
 
-### Measured: `tsbh` does not match statsmodels, and did not
+### Measured, then fixed: `tsbh` did not match statsmodels
 
     holm        0        bonferroni  0        bh   0        by   1.11e-16
     tsbh        0.108    <- a constant factor on every cell
@@ -137,9 +138,74 @@ reproduces it to `0.0` on all seven cells -- so this is a spec difference, not
 an arithmetic defect, but it is a real parity gap for anyone porting numbers
 from upstream.
 
-The three claims in `p_adjust.mbt` are corrected, and
-`validate_padjust_with_python.py` pins the ratio as a constant so that a drift
-in *either* implementation turns the validator red.
+**Resolved in this release.** `tsbh_p_adjust` now runs statsmodels' lambda
+search rather than the fixed-`alpha` Storey rescale:
+
+    r1       = stage-1 BH rejections at alpha
+    n0       = m - r1
+    alpha*   = alpha * m / n0
+    p_adj    = clip(BH(p, alpha*) * n0 / m, 0, 1)
+
+with stage 1 returned unchanged when `r1 == 0` or `r1 == m`, mirroring
+statsmodels' own short-circuit. Measured after the change, on two p-value
+vectors:
+
+                   vector a   vector b
+    holm               0          0
+    bonferroni         0          0
+    bh                 0       1.11e-16
+    by              1.11e-16   1.11e-16
+    tsbh               0          0
+
+`tsbh` is now bit-identical on both vectors, so the validator gates it at exact
+equality instead of at a tolerance -- along with `holm` and `bonferroni`. On
+vector `a`, `r1 = 3` so the search runs; on vector `b`, `r1 = 0` so the
+short-circuit fires and stage 1 is returned untouched. Between them the two
+vectors cover both branches.
+
+**Vector `b` exists to kill one specific mutation.** The BH step-up factor can
+be applied as `p / ((k+1)/n)` (statsmodels, and now this port) or as the
+algebraically equal `p * n / (k+1)` (what `bh_fdr_p_adjust` still does). They
+differ only in rounding, by at most 1 ULP -- and vector `a` exposes that
+nowhere: 0 of 7 cells. On vector `a` alone an exact gate could not tell the two
+forms apart. Vector `b` does, at cell 5, by 1.11e-16. That is the only reason
+it is there.
+
+**What was NOT changed.** `tsby_p_adjust` keeps the old Storey estimator. It is
+still divergent from `multipletests(method='fdr_tsbky')` -- but not by a
+constant factor, as `tsbh` was: measured `max |port - statsmodels| = 0.1595`,
+ratio spanning 0.5129 ... 1.1970. The reason is that this module clips at 1.0
+*before* the rescale while statsmodels applies `fact = 1 + alpha` *after* it,
+so the two saturate at different points and the two largest cells come back
+identical here (0.45112781954887221 twice). It was left alone because the fix
+was scoped to `tsbh`, and changing a second published method's numbers
+unannounced would be worse than a documented gap. `validate_padjust_with_python.py`
+has no `tsby` rows, so nothing in CI would catch a drift in it.
+
+### Mutation-tested: the λ search, in both directions
+
+`_verify/_tsbh_mutation_1660.py` perturbs the new code once per mutation and
+requires `validate_padjust_with_python.py` to go red. **5 of 6 killed**, restore
+verified by sha256:
+
+    M1  drop /n0 from alpha_star          SURVIVED  <- documented equivalent
+    M2  n0 = m instead of m - r1          killed
+    M3  drop the n0/m rescale             killed
+    M4  ULP: *n/(k+1) instead of /ecdf    killed   (needs vector b)
+    M5  off-by-one rejection count        killed
+    M6  count raw comparisons, not the
+        step-up closure                   killed
+
+**M1 is a true equivalent, and the reason is structural.** In `bh_step_up_sorted`
+the `alpha` parameter feeds exactly one thing: `rejectmax`, and so
+`n_rejected`. The stage-2 call discards that count, so `alpha_star` cannot reach
+the returned p-values -- the corrected array a BH pass produces depends only on
+the sorted p-values and `n`. Measured: the corrected array is bit-identical at
+`alpha_star = 0.0875` and at `0.35`. It is recorded rather than tolerated because
+it stops being equivalent the moment this module returns a rejection array; the
+docstring says so, and the battery says so.
+
+### Measured, then corrected: the DID-CS "sign bug" was the fixture
 
 ### Measured, then corrected: the DID-CS "sign bug" was the fixture
 

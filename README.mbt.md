@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.162.0** |
+| `moon.mod` version | **0.163.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1558,11 +1558,12 @@ here rather than left for a reader to assume.**
 check, and saying "24 / 24 PASS" without saying that would overstate what
 passed.**
 
-- **All 24 spawn MoonBit and compare its output**, over **194 comparison rows**
+- **All 24 spawn MoonBit and compare its output**, over **248 comparison rows**
   across the ten that were rewritten. `validate_quantile_with_python.py` used to
   print `reference checks PASS` having never run MoonBit; `validate_rdd_with_python.py`
   used to `assert abs(2.0 - 2) < 1e-12`, which is `assert abs(0.0)` and cannot
-  fail. Both now run the port.
+  fail. Both now run the port. (`padjust` is 108 of the 248 -- it runs two
+  p-value vectors through five methods since v0.163.0, up from one vector.)
 - **The references are not equally strong, so neither is the claim:**
   - `padjust` runs `statsmodels.stats.multitest.multipletests` -- the *actual*
     upstream library the port delegates to. `rdd` reimplements the
@@ -1574,13 +1575,16 @@ passed.**
 - **None of them compare against the real `doubleml` wheel**; most restate the
   upstream formula in Python. The wheel is what `doubleml-for-py` is, and
   matching it is stricter than what is actually being done.
-- **One known parity gap, measured:** `p_adjust`'s `tsbh` / `tsby` differ from
-  statsmodels by a constant `4 * (1 - alpha) / 3 = 1.26666...` on every cell --
-  the same two-stage algorithm with a different `m0_hat` estimator (this port
-  fixes `alpha = 0.05`; statsmodels searches lambda). `p_adjust.mbt` no longer
-  claims byte-compatibility it does not have, and
-  `validate_padjust_with_python.py` pins the ratio as a constant so a drift in
-  either implementation turns the validator red.
+- **One parity gap closed, one still open.** `tsbh` now matches statsmodels
+  **bit for bit**: `tsbh_p_adjust` runs statsmodels' own lambda search
+  (`n0 = m - r1` from the stage-1 rejections, `alpha_star = alpha*m/n0`, then
+  rescale by `n0/m`) instead of a global Storey-2002 rescale. Measured
+  `max |moonbit - statsmodels| = 0` on both fixture vectors, so the validator
+  gates it at exact equality rather than at a tolerance. `tsby` still uses the
+  old estimator and still diverges from `fdr_tsbky` -- but **not** by a constant
+  factor: measured `max |port - statsmodels| = 0.1595`, ratio spanning
+  0.5129 ... 1.1970. It has no validator rows, so nothing in CI would catch a
+  drift in it.
 
 **Each rewritten validator has been observed failing.**
 `_verify/_parity_mutation_1650.py` perturbs the emitter once per validator and
@@ -1657,7 +1661,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.162.0
+python .github/scripts/ci_local.py run --all --release-tag v0.163.0
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 

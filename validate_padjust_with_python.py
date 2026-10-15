@@ -21,7 +21,7 @@ WHAT IT IS NOW
 `examples/parity` feeds a FIXED p-value vector through the port's
 `p_adjust`, and this script runs the identical vector through
 `statsmodels.stats.multitest.multipletests` -- the exact function upstream
-`DoubleMLFramework.p_adjust` falls back to. Thirty-five comparisons, one per
+`DoubleMLFramework.p_adjust` falls back to. One comparison per
 (method, p-value) cell, on identical inputs. No RNG is involved anywhere, so
 any difference is a difference in the algorithms.
 
@@ -35,40 +35,41 @@ be non-decreasing in the unadjusted p-value for every step-down method, and
 every value must lie in [0, 1]. Those hold independently of statsmodels, so
 they survive a statsmodels version change.
 
-TSBH IS A KNOWN, MEASURED DIVERGENCE -- AND THIS SCRIPT IS WHAT FOUND IT
-======================================================================
-Four of the five methods agree with statsmodels to 1e-12. `tsbh` does not,
-and it never did:
+TSBH NOW MATCHES STATSMODELS
+=============================
+This file is what found the one real gap, and the gap has since been closed.
 
-    i  moonbit                statsmodels fdr_tsbh
-    0  0.0031578947368421056   0.004
-    6  0.406015037593985       0.5142857142857142
+`tsbh` used to run BH and then a global rescale by the Storey 2002
+null-count `m0_hat = #{p > 0.05} / (1 - 0.05) = 3 / 0.95`, while
+statsmodels' `fdr_tsbh` re-levels `alpha` from its own stage-1 rejection
+count. `statsmodels / port` was the CONSTANT 1.2666666666666667 on every
+cell, and `p_adjust.mbt` claimed byte-compatibility it did not have.
 
-`statsmodels / moonbit` is the CONSTANT 1.2666666666666667 on every cell. A
-constant factor means both implementations run the same algorithm -- BH, then a
-global `m0_hat / m` rescale -- and pick different `m0_hat`:
+`tsbh_p_adjust` now runs statsmodels' lambda search:
 
-    port:          m0_hat = #{p > 0.05} / (1 - 0.05) = 3 / 0.95 = 3.1579...
-    statsmodels:   m0_hat = 4  (Storey's lambda-optimisation, which picks a
-                    different lambda rather than fixing alpha = 0.05)
-    ratio:         (4 / 7) / (3.1579... / 7) = 4 * 0.95 / 3 = 1.26666...
+    r1       = stage-1 BH rejections at alpha
+    n0       = m - r1
+    alpha*   = alpha * m / n0
+    p_adj    = clip(BH(p, alpha*) * n0 / m, 0, 1)
 
-The port is internally exact: reimplementing its documented algorithm in
-CPython reproduces its output to 0.0 on all seven cells
-(`_verify/_tsbh_probe_1650.py`). So this is a specification difference in the
-`m0_hat` estimator, not an arithmetic bug.
+and returns stage 1 unchanged when `r1 == 0` or `r1 == m`, matching
+statsmodels' own short-circuit. On this vector `r1 = 3` and `n0 = 4`, so
+cell 0 moves 0.0031578947368421056 -> 0.004 and the constant ratio is gone.
 
-It is nonetheless a real parity gap, because `p_adjust.mbt`'s header claims the
-outputs are "byte-comparable to `statsmodels` reference" and `tsbh_p_adjust`'s
-own docstring claims it "matches `multipletests(method='fdr_tsbh')`". Neither
-claim holds for this method.
+So `tsbh` is gated like the other four exact methods: per-cell against
+statsmodels, AND against `port_tsbh` below, a line-by-line transcription of
+the MoonBit source. Those are two independent implementations of the same
+specification, so they disagree if either one drifts -- the statsmodels row
+catches a drift in the port, the transcription row catches a drift in the
+transcription of it.
 
-So tsbh is gated on TWO rows instead of one:
-  * against the port's own documented algorithm, at 1e-12 (catches a drift);
-  * against the EXACT constant 4 * 0.95 / 3 vs statsmodels (catches a drift in
-    EITHER implementation, and goes red the moment someone fixes the port to
-    match statsmodels -- at which point this row and the two comments in
-    `p_adjust.mbt` need updating together).
+`tsby` IS STILL GATEED BY NOTHING
+=================================
+`tsby_p_adjust` keeps the old estimator and remains divergent: measured
+`max |port - statsmodels fdr_tsbky| = 0.1595`, and NOT by a constant factor
+(the ratio spans 0.5129 ... 1.1970). It was left alone because the fix was
+scoped to `tsbh`. There are no `tsby` rows here, so nothing in CI would
+catch a drift in it. See the `tsby_p_adjust` docstring in `p_adjust.mbt`.
 
 RUN
 ===
@@ -94,119 +95,190 @@ SM_METHOD = {
     "by": "fdr_by",
     "tsbh": "fdr_tsbh",
 }
-# The four that match statsmodels exactly.
-STATS_EXACT = ("holm", "bonferroni", "bh", "by")
+# All five agree with statsmodels. `tsbh` joined this tuple when it adopted
+# statsmodels' lambda search; before that it was gated on a pinned ratio
+# constant instead, which is why the module docstring above is so long.
+STATS_EXACT = ("holm", "bonferroni", "bh", "by", "tsbh")
 
-# Both sides compute the same closed-form ratios on the same 7 inputs; the only
-# freedom is the order of operations, and nothing here is ill-conditioned.
-TOL = 1e-12
+# Tolerance per method, MEASURED across BOTH fixture vectors rather than
+# assumed. A method is gated at 0.0 only when it came out of the comparison
+# bit-identical on both; that is what lets `p_adjust.mbt` claim
+# bit-compatibility instead of merely "close".
+#
+# Safe to demand at 0.0 because every one of these algorithms is built from
+# +, -, * and / on the input p-values only: no transcendentals, therefore no
+# libm, therefore correctly-rounded IEEE-754 arithmetic that is identical on
+# every platform CI runs.
+#
+# `bh` and `by` are the exceptions, and for a reason worth recording:
+#   * `by` accumulates a harmonic sum, and the port and statsmodels sum it in
+#     a different order -> 1.11e-16 on both vectors.
+#   * `bh` is exact on vector `a` but 1.11e-16 off on vector `b`, because
+#     `bh_fdr_p_adjust` applies the step-up factor as `p * n / (k + 1)` while
+#     statsmodels divides by `((k + 1) / n)`. The two are algebraically equal
+#     and differ only in rounding. `tsbh_p_adjust` was changed to statsmodels'
+#     form and is exact on both; `bh` still carries the old form. That
+#     remainder is not fixed here because this change was scoped to `tsbh`.
+TOL_BY_METHOD = {
+    "holm": 0.0,         # exact on a and b
+    "bonferroni": 0.0,   # exact on a and b
+    "bh": 1e-12,         # exact on a, 1.11e-16 on b (old *n/(k+1) form)
+    "by": 1e-12,         # 1.11e-16 on a and b (harmonic-sum order)
+    "tsbh": 0.0,         # exact on a and b
+}
+TOL = 1e-12  # default for the checks below that are not per-method
 
 ALPHA = 0.05
-# See the module docstring: measured, constant on all 7 cells, and equal to
-# the ratio of the two m0_hat estimates.
-TSBH_STATS_RATIO = 4.0 * (1.0 - ALPHA) / 3.0  # = 1.2666666666666667
+
+# The two p-value vectors, tagged to match the emitter's `unadjusted_pa` /
+# `unadjusted_pb`. See `sec_padjust` in `examples/parity/main.mbt` for why
+# vector `b` exists at all.
+VECTORS = (
+    ("a", [0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9]),
+    ("b", [0.07, 0.11, 0.19, 0.23, 0.41, 0.53, 0.71]),
+)
+
+
+def _bh_step_up_sorted(p_sorted, alpha):
+    """statsmodels `fdrcorrection(method='indep', is_sorted=True)`."""
+    n = len(p_sorted)
+    corrected = [0.0] * n
+    rejectmax = -1
+    for i in range(n):
+        # ECDF factor is a DIVISION target, not a multiplier:
+        # statsmodels does `p / ((i+1)/n)`, and the algebraically equal
+        # `p * n / (i+1)` differs by up to 1 ULP.
+        ecdf = float(i + 1) / float(n)
+        if p_sorted[i] <= ecdf * alpha:
+            rejectmax = i
+        v = p_sorted[i] / ecdf
+        corrected[i] = 1.0 if v > 1.0 else v
+    n_rejected = 0 if rejectmax < 0 else rejectmax + 1
+    for k in range(n - 2, -1, -1):
+        if corrected[k] > corrected[k + 1]:
+            corrected[k] = corrected[k + 1]
+    return corrected, n_rejected
 
 
 def port_tsbh(unadjusted):
-    """`tsbh_p_adjust` transcribed from `p_adjust.mbt`:343-399."""
+    """`tsbh_p_adjust` transcribed from `p_adjust.mbt` (bh_step_up_sorted +
+    the lambda search)."""
     n = len(unadjusted)
-    n_above = sum(1 for p in unadjusted if p > ALPHA)
-    m0 = min(max(n_above / (1.0 - ALPHA), 1.0), float(n))
     order = sorted(range(n), key=lambda i: unadjusted[i])
-    p_sorted = [min(1.0, unadjusted[order[i]] * n / (i + 1)) for i in range(n)]
-    scale = m0 / n
-    p_sorted = [min(1.0, v * scale) for v in p_sorted]
-    for k in range(n - 2, -1, -1):
-        if p_sorted[k] > p_sorted[k + 1]:
-            p_sorted[k] = p_sorted[k + 1]
+    p_sorted = [unadjusted[order[i]] for i in range(n)]
+    stage1, r1 = _bh_step_up_sorted(p_sorted, ALPHA)
+    if r1 == 0 or r1 == n:
+        adjusted = stage1
+    else:
+        n0 = 1.0 * float(n) - float(r1)
+        alpha_star = ALPHA * float(n) / n0
+        stage2, _ri = _bh_step_up_sorted(p_sorted, alpha_star)
+        scale = n0 * 1.0 / float(n)
+        adjusted = [1.0 if v * scale > 1.0 else v * scale for v in stage2]
     ro = [0] * n
     for i in range(n):
         ro[order[i]] = i
-    return np.array([p_sorted[ro[i]] for i in range(n)]), m0
+    return np.array([adjusted[ro[i]] for i in range(n)]), float(n - r1), r1
 
 
 def main() -> int:
     sec = ph.section("padjust")
-    p = np.array(ph.data(sec, "unadjusted_p"))
 
-    if p.size != 7:
-        print("expected 7 p-values, emitter sent %d" % p.size)
-        return 1
+    rows = []
+    got_all = {}     # (tag, method) -> what MoonBit emitted
+    sm_all = {}      # (tag, method) -> what statsmodels returned
+    r1_all = {}      # tag -> (r1, n0)
 
-    rows = [("data unadjusted_p", len(p), 7, True)]
+    for tag, expect_p in VECTORS:
+        p = np.array(ph.data(sec, "unadjusted_p" + tag))
+        if p.size != len(expect_p):
+            print("vector %s: expected %d p-values, emitter sent %d"
+                  % (tag, len(expect_p), p.size))
+            return 1
+        if not np.array_equal(p, np.array(expect_p)):
+            # The emitter is what actually ran. If it drifts from this file,
+            # the Python side would be grading a different vector than the one
+            # it believes it is grading.
+            print("vector %s: emitter sent %s, this file expects %s"
+                  % (tag, np.array2string(p, precision=17),
+                     np.array2string(np.array(expect_p), precision=17)))
+            return 1
+        rows.append(("data unadjusted_p%s" % tag, len(p), len(expect_p), True))
 
-    per_method = {}
-    for m in STATS_EXACT:
-        _, adj, _, _ = multipletests(p, method=SM_METHOD[m])
-        per_method[m] = adj
+        for m in STATS_EXACT:
+            _, adj, _, _ = multipletests(p, method=SM_METHOD[m])
+            adj = np.asarray(adj, dtype=float)
+            got = np.array([ph.val(sec, "%s%s_%d" % (m, tag, i))
+                            for i in range(p.size)])
+            sm_all[(tag, m)] = adj
+            got_all[(tag, m)] = got
+            tol = TOL_BY_METHOD[m]
+            for i in range(p.size):
+                if tol == 0.0:
+                    ok = bool(got[i] == adj[i])
+                else:
+                    ok = abs(got[i] - adj[i]) <= tol
+                rows.append(("%s[%d] on %s" % (m, i, tag),
+                             float(got[i]), float(adj[i]), ok))
+
+        # Second witness for tsbh: a transcription of the MoonBit source,
+        # independent of the statsmodels rows above. Measured exactly equal on
+        # both vectors, so gated at exact equality.
+        port_adj, n0, r1 = port_tsbh(list(p))
+        r1_all[tag] = (r1, n0, len(p))
         for i in range(p.size):
-            got = ph.val(sec, "%s_%d" % (m, i))
-            want = float(adj[i])
-            rows.append(("%s[%d]" % (m, i), got, want,
-                         abs(got - want) <= TOL))
+            got = float(got_all[(tag, "tsbh")][i])
+            rows.append(("tsbh[%d] on %s (port spec)" % (i, tag), got,
+                         float(port_adj[i]), got == float(port_adj[i])))
 
-    # tsbh, row 1 of 2: against the port's OWN documented algorithm.
-    port_adj, m0 = port_tsbh(list(p))
-    moon_tsbh = np.array([ph.val(sec, "tsbh_%d" % i) for i in range(p.size)])
-    for i in range(p.size):
-        got = ph.val(sec, "tsbh_%d" % i)
-        rows.append(("tsbh[%d] (port spec)" % i, got, float(port_adj[i]),
-                     abs(got - float(port_adj[i])) <= TOL))
+        # Method-independent properties. These never reference statsmodels, so
+        # they survive a statsmodels version change.
+        for m in METHODS:
+            got = got_all[(tag, m)]
+            mono = bool(np.all(np.diff(got) >= -1e-15))
+            rows.append(("%s monotone on %s" % (m, tag), mono, "True", mono))
+            inrange = bool(np.all((got >= 0) & (got <= 1)))
+            rows.append(("%s in [0,1] on %s" % (m, tag), inrange, "True", inrange))
 
-    # tsbh, row 2 of 2: the statsmodels gap, pinned as an exact constant. This
-    # goes red the moment either side drifts, INCLUDING the day someone fixes
-    # the port to match statsmodels -- at which point this constant, the module
-    # docstring, and the two comments in `p_adjust.mbt` all need updating
-    # together.
-    _, sm_tsbh, _, _ = multipletests(p, method="fdr_tsbh")
-    ratios = []
-    for i in range(p.size):
-        r = float(sm_tsbh[i]) / float(moon_tsbh[i])
-        ratios.append(r)
-        rows.append(("tsbh[%d] ratio to sm" % i, r, TSBH_STATS_RATIO,
-                     abs(r - TSBH_STATS_RATIO) <= TOL))
+        # Bonferroni's closed form: multiply every p by the number of
+        # hypotheses and take the running minimum from the largest rank down,
+        # then clip to 1. Note the multiplier is the CONSTANT n, not Holm's
+        # (n - i) -- an earlier draft of this file used (n - i) and was wrong
+        # by 0.4 on vector a, which is Holm's first stage rather than
+        # Bonferroni's.
+        manual = np.array([float(p.size) * float(p[i]) for i in range(p.size)])
+        for i in range(p.size - 2, -1, -1):
+            manual[i] = min(manual[i], manual[i + 1])
+        manual = np.minimum(1.0, manual)
+        bonf = got_all[(tag, "bonferroni")]
+        rows.append(("bonferroni closed form (n*p) on %s" % tag,
+                     float(np.max(np.abs(manual - bonf))), 0.0,
+                     bool(np.all(np.abs(manual - bonf) <= TOL))))
 
-    # Method-independent properties. These do not reference statsmodels, so
-    # they remain meaningful if the dependency's behaviour ever shifts.
-    for m in METHODS:
-        got = np.array([ph.val(sec, "%s_%d" % (m, i)) for i in range(p.size)])
-        rows.append(("%s monotone" % m, bool(np.all(np.diff(got) >= -1e-15)),
-                     "True", bool(np.all(np.diff(got) >= -1e-15))))
-        rows.append(("%s in [0,1]" % m, bool(np.all((got >= 0) & (got <= 1))),
-                     "True", bool(np.all((got >= 0) & (got <= 1)))))
-
-    # Bonferroni's closed form: multiply every p by the number of hypotheses
-    # and take the running minimum from the largest rank down, then clip to 1.
-    # Note the multiplier is the CONSTANT n, not Holm's (n - i) -- an earlier
-    # draft of this file used (n - i) and was wrong by 0.4 on this vector,
-    # which is Holm's first stage rather than Bonferroni's.
-    bonf = np.array([ph.val(sec, "bonferroni_%d" % i) for i in range(p.size)])
-    manual = np.array([float(p.size) * float(p[i]) for i in range(p.size)])
-    for i in range(p.size - 2, -1, -1):
-        manual[i] = min(manual[i], manual[i + 1])
-    manual = np.minimum(1.0, manual)
-    rows.append(("bonferroni closed form (n*p)",
-                 float(np.max(np.abs(manual - bonf))), 0.0,
-                 bool(np.all(np.abs(manual - bonf) <= TOL))))
-
-    print("p-vector: %s" % np.array2string(p, precision=6))
     print("statsmodels-exact methods: %s" % (STATS_EXACT,))
-    print("tolerance %g" % TOL)
-    for m in STATS_EXACT:
-        got = np.array([ph.val(sec, "%s_%d" % (m, i)) for i in range(p.size)])
-        print("  %-11s max |moonbit - statsmodels| = %.3g"
-              % (m, float(np.max(np.abs(got - per_method[m])))))
+    for tag, p in VECTORS:
+        print("vector %s: %s" % (tag, np.array2string(np.array(p), precision=6)))
     print()
-    print("DIVERGENCE -- see the module docstring before touching this:")
-    print("  tsbh port m0_hat     = #{p > %.2f} / (1 - %.2f) = %d / %.2f = %.17g"
-          % (ALPHA, ALPHA, int((p > ALPHA).sum()), 1.0 - ALPHA, m0))
-    print("  port vs its own spec = %.3g   (the port implements what it "
-          "documents)" % float(np.max(np.abs(moon_tsbh - port_adj))))
-    print("  statsmodels / port   = min %.17g, max %.17g (pinned constant %r)"
-          % (min(ratios), max(ratios), TSBH_STATS_RATIO))
-    print("  port vs statsmodels  = %.3g   (a REAL parity gap: p_adjust.mbt "
-          "claims byte-compatibility that does not hold here)"
-          % float(np.max(np.abs(moon_tsbh - sm_tsbh))))
+    for m in STATS_EXACT:
+        for tag, _ in VECTORS:
+            d = float(np.max(np.abs(got_all[(tag, m)] - sm_all[(tag, m)])))
+            print("  %-11s on %s   max |moonbit - statsmodels| = %-10.3g"
+                  "  gated at %g" % (m, tag, d, TOL_BY_METHOD[m]))
+    print()
+    print("tsbh lambda search:")
+    for tag, _ in VECTORS:
+        r1, n0, m = r1_all[tag]
+        if r1 == 0 or r1 == m:
+            note = "stage 1 returned unchanged (statsmodels' short-circuit)"
+        else:
+            note = "stage 2 ran at alpha* = alpha*m/n0 = %.17g" % (
+                ALPHA * m / n0)
+        print("  vector %s: r1 = %-2d  n0 = %.1f  %s" % (tag, r1, n0, note))
+    print()
+    print("NOT GATED HERE: tsby_p_adjust still uses the old Storey estimator.")
+    print("  measured max |port - statsmodels fdr_tsbky| = 0.1595, ratio span")
+    print("  0.5129...1.1970 (not a constant factor). No tsby rows exist, so")
+    print("  CI cannot see a drift there.")
     print()
 
     return ph.report("p_adjust parity vs statsmodels", rows, ok=True)
