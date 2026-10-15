@@ -318,8 +318,19 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // while the package was 109 releases ahead; nothing in CI or the test
   // suite could see it, because the previous assertion only checked that
   // the substring appeared at all.
+  //
+  // It then drifted AGAIN, to 0.162.0, on the v0.163.0 bump -- and again
+  // nothing caught it, for a different reason: `api_test` is a FULL-scope
+  // check and neither `check.yml` nor `publish.yml` passes `--full`, so the
+  // only gate that can see this drift is one no workflow runs. Found by
+  // running the full scope by hand, not by a red build.
+  //
+  // That is why `check.yml` now has an explicit step for the two service
+  // checks: a check nobody runs is not a gate, and the cost of running these
+  // two is ~16s each, against the full scope's re-running of `moon test` and
+  // all 24 cross-checks.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.162.0",
+    library: "riantr/moonbit_doubleML@0.163.0",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })

@@ -242,3 +242,25 @@ jobs:
 
       - name: QA loop (fast scope)
         run: python3 .github/scripts/qa_loop/run.py --allow-inert --json qa_loop.json
+
+      # The two SERVICE checks, pulled out of the full scope explicitly.
+      #
+      # `api_test` and `security_dast` are the only checks that boot
+      # `examples/api_server` and speak HTTP to it, so they are the only ones
+      # that can catch drift in what the service advertises. They are full
+      # scope, and NEITHER this workflow nor publish.yml passes `--full` -- so
+      # they were running nowhere.
+      #
+      # Measured consequence: `api_test` was FAILING on this tree. The service
+      # advertised `riantr/moonbit_doubleML@0.162.0` while moon.mod said
+      # 0.163.0, i.e. the v0.163.0 version bump had missed the literal in
+      # `examples/api_server/main.mbt`, and no red build said so.
+      #
+      # This is NOT `--full`. Full re-runs `moon test` several more times and
+      # all 24 Python cross-checks, which the two jobs above already do on four
+      # backends. These two checks cost ~16s each and cover a surface nothing
+      # else in this workflow touches.
+      - name: QA loop (service checks)
+        run: |
+          python3 .github/scripts/qa_loop/run.py --allow-inert --full \
+            --only api_test,security_dast --json qa_loop_services.json
