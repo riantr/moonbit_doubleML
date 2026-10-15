@@ -146,17 +146,20 @@ jobs:
       # it. A mutating step inside a read-only loop would leave the checkout
       # dirty for every subsequent iteration if it died mid-run.
       #
-      # The step after it asserts the checkout is clean, which is the only way
-      # "and then it put the fixture back" is actually checked.
+      # There is deliberately NO `git status --porcelain` guard here. An
+      # earlier version had one and it was the thing that failed: the CI
+      # simulator materialises this tree with `git archive`, which has no
+      # `.git`, so the guard had nothing to ask and went red on a run whose
+      # gate had passed. The gate already restores the fixture from an
+      # in-memory byte snapshot and asserts the bytes match, exiting non-zero
+      # if they do not -- a strictly stronger check than a dirty-tree string,
+      # and one that does not care whether a VCS is present. Duplicating a
+      # strong check with a weaker, environment-dependent one only adds a
+      # failure mode and no signal.
       - name: Compare the port against upstream's own Python example
         run: |
           set -e
           python pyexample_did.py --check
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::the pyexample run left the checkout dirty:"
-            git status --porcelain
-            exit 1
-          fi
 
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
