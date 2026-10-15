@@ -178,13 +178,50 @@ def c_static_analysis():
 def c_static_code_check():
     if not have("typos"):
         return R("static_code_check", "", SKIP, "typos not installed (cargo install typos-cli)")
-    rc, out = run(["typos", "README.mbt.md", "CHANGELOG.md"], timeout=600)
+    # Run it the way the gate runs it: bare `typos`, no path arguments.
+    #
+    # This used to pass `README.mbt.md CHANGELOG.md` explicitly, which was a
+    # false WARN on every platform. Naming a file bypasses `extend-exclude`, and
+    # `_typos.toml` deliberately excludes CHANGELOG.md because it preserves
+    # historical entries verbatim -- including upstream's `agregate`, which that
+    # config's own comments discuss at length. So the check reported 3 findings
+    # (`ba`, 2x `agregate`) that the real gate never reports: on a pristine
+    # checkout `typos` exits 0 with v1.19.0 (CI's pinned version) while the
+    # named-file run exits 2.
+    #
+    # A check must measure the same thing as the gate it models, or it is
+    # reporting its own disagreement as a defect in the code.
+    rc, out = run(["typos"], timeout=600)
     hits = len(re.findall(r"^error:", out, re.M))
+    # Name the first findings: a bare count is not actionable.
+    where = re.findall(r"^error:[^\n]*\n\s*-->\s*([^\n]+)", out, re.M)
+    files = {w.strip().split(":")[0].replace("\\", "/").lstrip("./") for w in where}
     if rc == 0:
         return R("static_code_check", "", PASS, "typos: 0 findings")
+    # Separate what the GATE sees from what only exists in a dirty local tree.
+    # CI checks out tracked files only; `_verify/` scratch scripts are untracked
+    # and never ship, so a finding there cannot fail a release. Without this
+    # split the check WARNs forever on any working tree with scratch in it,
+    # which is the "permanently-red build everyone ignores" failure mode.
+    tracked = set()
+    trc, tout = run(["git", "ls-files"], timeout=120)
+    if trc == 0:
+        tracked = {t.strip().replace("\\", "/") for t in tout.splitlines() if t.strip()}
+    flagged = sorted(f for f in files if f in tracked)
+    if not flagged and files:
+        untracked_n = len(files)
+        sample = ", ".join(sorted(files)[:2])
+        return R("static_code_check", "", PASS,
+                 f"typos: {hits} finding(s) in {untracked_n} UNTRACKED file(s) "
+                 f"({sample}) -- none are tracked, so the release gate is clean; "
+                 f"this working tree has scratch files CI will not check")
+    first = "; ".join(flagged[:3])
+    detail = f"typos: {hits} finding(s) in {len(flagged)} tracked file(s)"
+    if first:
+        detail += f" [{first}]"
     return R("static_code_check", "", WARN,
-             f"typos: {hits} finding(s); CI pins 1.19.0 and may be stricter/looser "
-             f"than the local build ({moon_version()})")
+             detail + f"; CI pins 1.19.0 and may differ from the local build "
+                      f"({moon_version()})")
 
 
 # --------------------------------------------------------------------------- #
