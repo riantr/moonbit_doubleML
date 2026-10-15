@@ -405,62 +405,63 @@ fn sec_did_cs() -> Unit {
 // --------------------------------------------------------------------------- //
 
 ///|
-/// Everything else in this emitter builds its OWN data. This section does
-/// not: `pyexample_data.mbt` is written by `pyexample_did.py` from the real
-/// upstream DGPs (`make_did_SZ2020` and `make_did_CS2021`, both from
-/// `doubleml.did.datasets`), and restored to its placeholder afterwards.
+/// The one section that runs on data Python generated, rather than data this
+/// package made up. `pyexample_data.mbt` is written by `pyexample_did.py`
+/// from the real upstream example
+///
+///     np.random.seed(42)
+///     data = make_did_SZ2020(n_obs=500, return_type="DataFrame")
+///     obj  = dml.DoubleMLDIDData(data, "y", "d")
+///     dml.DoubleMLDID(obj, ml_g, ml_m, n_folds=2, n_rep=1).fit()
+///
+/// -- lifted from the `DoubleMLDID` docstring -- and restored to a committed
+/// placeholder afterwards.
 ///
 /// WHY THIS IS A DIFFERENT KIND OF CHECK
 /// =====================================
 /// Every other section answers "is the port self-consistent with a second
-/// implementation of the same idea". This one answers "does the port produce
-/// what the upstream Python example produces, on the upstream Python
-/// example's own dataset". Nothing about the data is ours: `make_did_SZ2020`
-/// and `make_did_CS2021` are upstream functions, called with upstream's own
-/// seed, so a discrepancy can only come from the estimator.
+/// implementation of the same idea". This one answers "does the port agree
+/// with upstream, on upstream's dataset". Nothing here is ours.
 ///
-/// The committed placeholder holds 3 stub rows. This section therefore
-/// ALWAYS emits; it is `pyexample_did.py` that checks the row count and
-/// refuses to grade a run against a stub.
+/// There is deliberately no CS2021 half. Upstream ships the CS2021 DGP but no
+/// CS2021 estimator (both `DoubleMLDID` and `DoubleMLDIDCS` are
+/// binary-treatment), and the never-treated group is labelled `inf` upstream
+/// while this port identifies DID-CS by the SMALLEST `g`
+/// (`discover_groups_times`, `did_cs.mbt:77`), so the two conventions
+/// disagree and the port ends up treating a cohort as its own control. That is
+/// a real piece of work still to do; shipping a comparison built on an
+/// unvalidated labelling would be worse than shipping the sound half alone.
+/// `pyexample_did.py` records the numbers.
 ///
 /// SAMPLE SPLITTING IS THE KNOWN CONFOUNDER
 /// =========================================
-/// Upstream draws its folds from numpy's global RNG; the port draws its own
-/// from `seed=`. The two splits are different partitions of the same rows,
-/// so the coefficients agree only up to the Monte-Carlo spread of a resample,
-/// NOT bit for bit. That is why the validator gates this section on a
-/// tolerance rather than at 0.0. Tightening it means passing upstream's
-/// actual fold assignment to the port's `set_sample_splitting`, which is a
-/// separate piece of work and is recorded rather than faked.
+/// Upstream draws folds from numpy's global RNG; this port draws its own from
+/// `seed=`. Different partitions of the same rows, so the numbers cannot be
+/// bit-equal. `pyexample_did.py` measures that band rather than guessing it:
+/// upstream's coefficient varies with sd 0.0347 across 20 fold seeds, and the
+/// port lands 0.75 sd from upstream's mean -- inside the noise. Its standard
+/// error does NOT: the port's `se` is ~0.0022 below anything upstream
+/// produced, which is recorded as an open defect rather than folded into the
+/// tolerance.
 fn sec_did_pyexample() -> Unit {
   section("did_pyexample")
-  // Emitted BEFORE anything else, and it is what decides whether the rest of
-  // this section runs at all. `pyexample_generated()` is 0 in the committed
-  // placeholder and 1 once `pyexample_did.py` has written the real dataset.
-  //
-  // The first version fitted unconditionally and died: n_folds=2 on the stub's
-  // 3 rows panicked at `did_cs.mbt:1263`. An emitter that crashes is worse
-  // than one that says "not generated", because the crash takes the other
-  // ten sections' output down with it.
+  // Emitted first, and it gates everything below. The first version fitted
+  // unconditionally and panicked at `did_cs.mbt:1263` on the 3-row stub --
+  // n_folds=2 on three observations. An emitter that crashes takes the other
+  // ten sections' output with it, so a clean "not generated" is strictly
+  // better than a stack trace.
   let generated = pyexample_generated() != 0
   val("sz_generated", if generated { 1.0 } else { 0.0 })
-  val("cs_generated", if generated { 1.0 } else { 0.0 })
   if !generated {
     end()
     return
   }
 
-  // --- upstream make_did_SZ2020 -> upstream DoubleMLDID -> port DoubleMLDID
-  //
-  // This is upstream's OWN documented example, from the `DoubleMLDID`
-  // docstring: make_did_SZ2020 -> DoubleMLDIDData(data, 'y', 'd') ->
-  // DoubleMLDID(obj, ml_g, ml_m). Data and estimator are both upstream's.
-  //
+  let n_sz = sz2020_n_obs()
+  let p_sz = sz2020_n_feat()
   // `DoubleMLDIDData::new` is declared `raise DIDDataError` (it rejects a
   // non-binary `d`), so it may only be called from a raising function or
   // inside try/catch. `main` is not one.
-  let n_sz = sz2020_n_obs()
-  let p_sz = sz2020_n_feat()
   let fitted_sz = @moonbit_doubleML.DoubleMLDID::new(
     @moonbit_doubleML.DoubleMLDIDData::new(
       @moonbit_doubleML.Matrix::from_array(sz2020_x(), n_sz, p_sz),
@@ -480,66 +481,10 @@ fn sec_did_pyexample() -> Unit {
   val("sz_coef", fitted_sz.coef())
   val("sz_se", fitted_sz.se())
   val("sz_n_obs", fitted_sz.data.n_obs().to_double())
+  // The data travels with the estimate so the validator can confirm the port
+  // fitted the rows it was handed, not some other panel.
   data_out("sz_y", sz2020_y())
   data_out("sz_d", sz2020_d())
-
-  // --- upstream make_did_CS2021 -> realised truth -> port DoubleMLDIDCS
-  //
-  // Upstream ships the CS2021 DGP but NOT a CS2021 estimator: its
-  // `DoubleMLDID` and `DoubleMLDIDCS` are both binary-treatment, and
-  // `DoubleMLDID` raises "exactly one binary variable with values 0 and 1"
-  // when handed group labels. So there is no upstream estimator to match the
-  // port's multi-cohort `DoubleMLDIDCS` against -- that is a property of
-  // upstream, not a gap in the port.
-  //
-  // What the DGP does provide is `y0` and `y1`, so the realised ATT(g,t) is a
-  // property of the data itself. The validator compares the port's ATT(g,t)
-  // against the mean of y1 - y0 over the same units in the same cell.
-  let n_cs = cs2021_n_obs()
-  let p_cs = cs2021_n_feat()
-  let fitted_cs = @moonbit_doubleML.DoubleMLDIDCS::new(
-    @moonbit_doubleML.DoubleMLDIDCSData::new(
-      @moonbit_doubleML.Matrix::from_array(cs2021_x(), n_cs, p_cs),
-      cs2021_y(),
-      cs2021_d(),
-      cs2021_t(),
-      cs2021_id(),
-      cs2021_g(),
-    ),
-    n_folds=2,
-    n_rep=1,
-    seed=3141,
-  ).fit()
-  let n_g = fitted_cs.n_groups()
-  let n_t = fitted_cs.n_periods()
-  for gi = 0; gi < n_g; gi = gi + 1 {
-    for ti = 0; ti < n_t; ti = ti + 1 {
-      val(
-        "cs_att_g" + gi.to_string() + "_t" + ti.to_string(),
-        fitted_cs.coef_at(gi, ti),
-      )
-      val(
-        "cs_se_g" + gi.to_string() + "_t" + ti.to_string(),
-        fitted_cs.se_at(gi, ti),
-      )
-    }
-  }
-  val("cs_n_groups", n_g.to_double())
-  val("cs_n_periods", n_t.to_double())
-  // The panel structure travels with the estimates so the validator can
-  // rebuild each (g, t) cell's membership itself rather than trusting a rule
-  // it has no way to check.
-  let cs_t = Array::make(n_cs, 0.0)
-  let cs_id = Array::make(n_cs, 0.0)
-  let cs_g = Array::make(n_cs, 0.0)
-  for i = 0; i < n_cs; i = i + 1 {
-    cs_t[i] = cs2021_t()[i].to_double()
-    cs_id[i] = cs2021_id()[i].to_double()
-    cs_g[i] = cs2021_g()[i].to_double()
-  }
-  data_out("cs_t", cs_t)
-  data_out("cs_id", cs_id)
-  data_out("cs_g", cs_g)
   end()
 }
 
