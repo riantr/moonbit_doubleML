@@ -24,6 +24,31 @@ on upstream's own dataset, was ungated.
 
 ### Fixed
 
+- **`examples/api_server` advertised `0.162.0` while `moon.mod` said `0.163.0`.**
+  The v0.163.0 version bump missed a hardcoded literal in
+  `examples/api_server/main.mbt`, and no red build noticed: `api_test` is the
+  only check that compares the served version against the real `moon.mod`,
+  it is registered as a **full-scope** check, and **neither `check.yml` nor
+  `publish.yml` passes `--full`**. So the one gate that could see the drift was
+  running in no workflow at all -- and it was *failing* on a tree CI reported
+  green. Found by auditing "do the examples work", not by a build.
+- **`qa_loop/_kill_tree` only worked on Windows, so every `api_server` boot
+  leaked a process on Linux.** It called `taskkill` twice and swallowed every
+  exception; on Linux those calls raise `FileNotFoundError` into a bare
+  `except: pass`, so the only thing that killed anything was `proc.kill()` on
+  the `moon` parent -- and `moon run` *detaches* the compiled server. Measured:
+
+      alone,   api_test        -> PASS
+      alone,   security_dast   -> PASS
+      together, api_test       -> PASS
+      together, security_dast  -> FAIL "is port 4000 already held by a leaked
+                                        server?"
+
+  The teardown now kills the POSIX process group (`os.killpg`, the analogue of
+  `taskkill /T`) with a `pkill` fallback, and both `Popen` call sites start the
+  child in its own session so the group kill can reach the detached server.
+  The Windows branch is unchanged. Verified on both platforms with both checks
+  in one invocation.
 - **`parity_helper.report` returned PASS for a gate that compared nothing.**
   Measured by mutation: patching a gate to pass `rows=[]` still printed `PASS`
   and exited 0, because `ok and not bad` is trivially true when there is
@@ -45,6 +70,37 @@ on upstream's own dataset, was ungated.
   Wired into `.github/workflows/check.yml` as its own `python-cross-check`
   step and into the QA LOOP as `pyexample_cs2021` (`fast` scope).
 - `examples/parity/main.mbt::sec_did_pyexample_cs2021` - the emitter half.
+- `check.yml` gained a `QA loop (service checks)` step running
+  `--full --only api_test,security_dast`. Deliberately NOT `--full`: full
+  re-runs `moon test` several more times and all 24 cross-checks, which the
+  `moon-test` and `python-cross-check` jobs already do. These two cost ~16s
+  each and cover a surface nothing else in the workflow touches.
+
+### WHAT IS STILL UNGATED, measured rather than assumed
+
+Ten of the twenty-four registered checks are full-scope, and **no workflow runs
+full scope**:
+
+    static_analysis  unit_tests  component_tests  integration  e2e
+    api_test  security_dast  fuzz  mutation  load_stress
+
+Four are covered by OTHER jobs in `check.yml` despite the harness not running
+them: `unit_tests` / `component_tests` / `static_analysis` by `moon test
+--deny-warn` on four backends, and `integration` by the `python-cross-check`
+job. The changes above close `api_test` and `security_dast`.
+
+**The remaining five have no coverage in any workflow: `e2e`, `fuzz`,
+`mutation`, `load_stress`, and the service checks outside the new step.**
+
+- `e2e` runs 2 of the 20 examples and asserts ONE output marker. So "the
+  examples' outputs are gated" is **not** true, and this entry does not imply
+  it. Measured separately: `moon run examples/*` is clean on all 20 runnable
+  packages (`api_server` is a `run_forever` service, not a demo).
+- `fuzz` measured at 4.5s and printing `ALL FUZZ SURFACES PASSED` -- cheap
+  enough to wire, currently invisible.
+- `examples/fuzz`, `mutation` and `load_stress` are worth wiring; they were
+  left out here because that is a release-time policy decision, not a defect,
+  and it is recorded rather than implied done.
 
 ### The two refuted claims, with the measurements that killed them
 
