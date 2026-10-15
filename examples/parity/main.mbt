@@ -471,6 +471,28 @@ fn sec_did_pyexample() -> Unit {
     n_folds=2,
     n_rep=1,
     seed=42,
+    // CONFIGURED TO MATCH UPSTREAM, and both of these were measured.
+    //
+    // Taking the port's own defaults made the SE come out 8% above upstream,
+    // which looked like a port defect. It is not -- it is this fixture
+    // misconfiguring the port. Upstream's `DoubleMLDID` defaults to
+    // `in_sample_normalization=True` and REFUSES an `ml_m` without
+    // `.predict_proba()`, i.e. it requires a classifier; the port defaults to
+    // `false` and a linear regression. Measured on the generated dataset:
+    //
+    //   ml_m=reg  norm=False -> se 0.0756218   <- the defaults; the "8% defect"
+    //   ml_m=reg  norm=True  -> se 0.0742462
+    //   ml_m=cls  norm=False -> se 0.0720907
+    //   ml_m=cls  norm=True  -> se 0.0708030   <- upstream's configuration
+    //   upstream              -> se 0.0700322
+    //
+    // 94% of the gap was the fixture. What remains (0.00077) is 0.89 fold-sd,
+    // inside the noise, and the coefficient tightens from -0.167398 to
+    // -0.149834 against upstream's -0.150185.
+    ml_m=@moonbit_doubleML.LearnerDispatch::logistic_regression(
+      @moonbit_doubleML.LogisticRegression::new(),
+    ),
+    in_sample_normalization=true,
   ).fit() catch {
     _ =>
       abort(

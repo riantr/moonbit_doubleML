@@ -119,9 +119,7 @@ N_FOLDS, N_REP = 2, 1
 COEF_SD = 0.01128          # upstream coef, sd over 10 fold seeds at 2000/7
 COEF_TOL = 3 * COEF_SD      # = 0.03384
 SE_SD = 0.000865          # upstream se, sd over 10 fold seeds at 2000/7
-SE_RANGE = (0.069212, 0.071908)
-SE_RATIO = 1.0798139124963189   # measured: port_se / upstream_se
-SE_RATIO_TOL = 0.01              # catches drift on either side
+SE_TOL = 3 * SE_SD        # = 0.002595
 
 
 # --------------------------------------------------------------------------- #
@@ -215,6 +213,7 @@ def write_fixture(sz):
 
 
 def restore_fixture():
+    """Restore via git. Only for the standalone `--restore` mode."""
     rel = os.path.relpath(FIXTURE, ROOT)
     if not os.path.isfile(FIXTURE):
         raise SystemExit("fixture missing; restore with: git checkout -- " + rel)
@@ -222,6 +221,26 @@ def restore_fixture():
     if r.returncode != 0:
         raise SystemExit("could not restore the placeholder via git (is it "
                          "committed?): %s" % (r.stderr or b"").decode("utf-8", "replace"))
+
+
+def snapshot_fixture():
+    with open(FIXTURE, "rb") as fh:
+        return fh.read()
+
+
+def restore_fixture_bytes(blob):
+    """Restore from bytes, with no dependency on git.
+
+    This is what `--check` uses, and the difference is not cosmetic: the CI
+    simulator materialises the tree with `git archive`, which contains no
+    `.git` directory at all, so a git-based restore cannot work there. The
+    first version of this gate used git and the simulator failed it in 8.7s
+    with an exit code that said nothing about why. The in-memory snapshot is
+    also the honest dependency: the gate's contract is "put back what you
+    found", not "ask a version control system for it".
+    """
+    with open(FIXTURE, "wb") as fh:
+        fh.write(blob)
 
 
 # --------------------------------------------------------------------------- #
@@ -250,6 +269,9 @@ def main(argv):
           % (sz["coef"], sz["se"]))
     print()
 
+    # Snapshot BEFORE writing. Restoring from these bytes rather than from git
+    # is what makes this work in a `git archive` tree, which has no .git.
+    snapshot = snapshot_fixture()
     nbytes = write_fixture(sz)
     if mode == "--write":
         print("wrote %d bytes to %s (leave with --restore)"
@@ -259,7 +281,7 @@ def main(argv):
     try:
         sec = run_emitter()
     finally:
-        restore_fixture()
+        restore_fixture_bytes(snapshot)
 
     if sec["val"].get("sz_generated") != 1.0:
         print("FAIL: the emitter did not see the generated fixture")
@@ -268,18 +290,20 @@ def main(argv):
     import parity_helper as ph
     coef = sec["val"]["sz_coef"]
     se = sec["val"]["sz_se"]
-    se_ratio = se / sz["se"] if sz["se"] else float("inf")
     rows = [
         # HARD GATE. The effect is -0.150 and the band is 0.034, so this row
         # bites: a corrupted panel cannot pass it.
         ("sz_coef vs upstream (3sd=%.6f)" % COEF_TOL, coef, sz["coef"],
          abs(coef - sz["coef"]) <= COEF_TOL),
-        # NOT a parity claim. The port's SE is a real, unexplained 8%
-        # disagreement, so it is pinned rather than gated at parity: the row
-        # goes red if EITHER side drifts, but it does not pretend the gap is
-        # closed. See OPEN FINDING below.
-        ("sz_se ratio (KNOWN GAP, pinned)", se_ratio, SE_RATIO,
-         abs(se_ratio - SE_RATIO) <= SE_RATIO_TOL),
+        # Also a hard gate now. This row used to be a pinned-ratio excuse for
+        # an "8% SE defect" that turned out to be THIS FIXTURE misconfiguring
+        # the port: upstream defaults to in_sample_normalization=True and
+        # refuses an ml_m without .predict_proba(), while the port defaults to
+        # false and a linear regression. With upstream's actual configuration
+        # the two SEs agree to 0.00077, which is 0.89 fold-sd -- inside the
+        # noise. See the four-way measurement in main.mbt's docstring.
+        ("sz_se vs upstream (3sd=%.6f)" % SE_TOL, se, sz["se"],
+         abs(se - sz["se"]) <= SE_TOL),
         ("sz_n_obs", sec["val"]["sz_n_obs"], float(sz["y"].shape[0]),
          sec["val"]["sz_n_obs"] == float(sz["y"].shape[0])),
     ]
@@ -289,24 +313,20 @@ def main(argv):
     print("  se  : sd %.6f  ->  port is %.2f sd from upstream"
           % (SE_SD, abs(se - sz["se"]) / SE_SD))
     print()
-    print("OPEN FINDING: the port's SE is %+.2f%% off upstream, %.1f fold-sd away,"
-          % (100.0 * (se_ratio - 1.0),
-             abs(se - sz["se"]) / SE_SD))
-    print("outside upstream's whole 10-seed range %.6f..%.6f. It is NOT fold"
-          % SE_RANGE)
-    print("noise, and the sign of the gap flipped between two fixtures, so it is")
-    print("not a constant scale factor. Pinned at ratio %.10f +/- %.3f."
-          % (SE_RATIO, SE_RATIO_TOL))
-    print()
 
     rc = ph.report("pyexample: port vs upstream make_did_SZ2020", rows, ok=True)
-    # The fixture must be back to the placeholder even on failure.
-    dirty = subprocess.run(["git", "status", "--porcelain", "--",
-                            os.path.relpath(FIXTURE, ROOT)],
-                           cwd=ROOT, capture_output=True).stdout.decode()
+    # The fixture must be back to the placeholder even on failure. This is a
+    # byte comparison, not a git-status string: right CRLF, BOM or trailing
+    # newline would still be a dirty tree, and this repo has been bitten by
+    # exactly that. A git-free tree (the CI simulator materialises one with
+    # `git archive`) has no status to ask about, so the bytes are the only
+    # honest test.
+    with open(FIXTURE, "rb") as fh:
+        after = fh.read()
+    same = after == snapshot
     print()
-    print("fixture restored, tree clean: %s" % (dirty.strip() == ""))
-    return rc if dirty.strip() == "" else 1
+    print("fixture restored byte for byte: %s" % same)
+    return rc if same else 1
 
 
 if __name__ == "__main__":
