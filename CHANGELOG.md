@@ -55,6 +55,19 @@ on upstream's own dataset, was ungated.
   nothing to disagree. An empty row list is now an explicit failure. This is
   the exact failure mode `parity_helper`'s own docstring exists to prevent, and
   it was present in the helper that all 25 cross-checks depend on.
+- **The `format` check's own control arm was measuring nothing.** `format`
+  reports INERT -- "this gate is present in CI but cannot currently fail" --
+  when a deliberately misformatted probe file does not turn `moon fmt --check`
+  red. It has said so on every run. The probe built a temp directory with
+  `moon.mod` and `bad.mbt` and **no `moon.pkg`**, so there was no package for
+  `moon fmt` to format: it printed "ran 1 task, now up to date", exited 0, and
+  left the file untouched. The tool works fine -- `moon fmt --check` on the
+  real repo fails on bad formatting (measured this cycle, exit 4294967295) --
+  so the harness was crying wolf on a healthy check, and `--allow-inert` was
+  downgrading it to a warning each run. The probe now writes a real
+  `moon.pkg`, `format` reports PASS with "the control arm confirms the check
+  turns red on bad input", and **no check reports INERT any more**, so
+  `--allow-inert` masks nothing.
 - **`pyexample_did.py`'s module docstring still described an 8% SE gap as an
   OPEN DEFECT.** That gap was root-caused in v0.163.0 as a misconfigured
   fixture (upstream defaults `in_sample_normalization=True` and requires a
