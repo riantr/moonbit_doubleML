@@ -137,6 +137,27 @@ jobs:
             exit 1
           fi
 
+      # The only cross-check whose reference is UPSTREAM's rather than ours:
+      # it regenerates `doubleml.did.datasets.make_did_SZ2020`, runs upstream's
+      # own `DoubleMLDID` on it, and compares the MoonBit port to that.
+      #
+      # Separate step, and NOT part of the loop above, because it writes a
+      # generated dataset into examples/parity/pyexample_data.mbt and restores
+      # it. A mutating step inside a read-only loop would leave the checkout
+      # dirty for every subsequent iteration if it died mid-run.
+      #
+      # The step after it asserts the checkout is clean, which is the only way
+      # "and then it put the fixture back" is actually checked.
+      - name: Compare the port against upstream's own Python example
+        run: |
+          set -e
+          python pyexample_did.py --check
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::the pyexample run left the checkout dirty:"
+            git status --porcelain
+            exit 1
+          fi
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.

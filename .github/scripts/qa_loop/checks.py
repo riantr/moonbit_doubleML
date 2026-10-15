@@ -522,6 +522,66 @@ def c_integration():
         parts.append("all reported PASS on the trailing line AND invoked moon")
     return R("integration", "", verdict, "; ".join(parts))
 
+# --------------------------------------------------------------------------- #
+# pyexample -- the port against UPSTREAM's own Python example
+# --------------------------------------------------------------------------- #
+#
+# This is the only check in the harness whose reference is not ours. Every
+# other one compares the port against a second implementation written here;
+# this one regenerates `doubleml.did.datasets.make_did_SZ2020` and runs
+# upstream's `DoubleMLDID` on it, then compares the port to that.
+#
+# WHY IT NEEDS ITS OWN TREE GUARD
+# ===============================
+# `pyexample_did.py` overwrites a TRACKED file (`examples/parity/pyexample_data.mbt`)
+# for the duration of one comparison and restores it with git. Every other
+# check in this harness is read-only. So this check snapshots the bytes
+# before and restores them after, independently of whether the gate did.
+# The failure being defended against is precisely "the gate's own restore
+# did not run", so relying on the gate's own restore would be circular.
+#
+# Byte comparison, not a git-status string: a fixture that came back with the
+# right content but the wrong bytes (CRLF, BOM, trailing newline) would still
+# be a dirty tree, and this repo has been bitten by exactly that.
+@check("pyexample",
+       "port vs upstream make_did_SZ2020 on upstream-generated data", "fast")
+def c_pyexample():
+    fixture = os.path.join(ROOT, "examples", "parity", "pyexample_data.mbt")
+    gate = os.path.join(ROOT, "pyexample_did.py")
+    if not os.path.isfile(gate):
+        return R("pyexample", "", SKIP, "pyexample_did.py is not present")
+    if not os.path.isfile(fixture):
+        return R("pyexample", "", SKIP, "%s is not present"
+                 % os.path.relpath(fixture, ROOT))
+    try:
+        with open(fixture, "rb") as fh:
+            before = fh.read()
+    except OSError as e:
+        return R("pyexample", "", SKIP, "cannot read the fixture: %s" % e)
+    try:
+        rc, out = run([sys.executable, "pyexample_did.py", "--check"],
+                      cwd=ROOT, timeout=2400)
+        verdict = PASS if rc == 0 else FAIL
+        tail = out.strip().splitlines()[-1] if out.strip() else ""
+        evidence = tail.strip()[:110]
+        # Carry the two numbers a reader needs to judge the gate: how far the
+        # coefficient sat from upstream in units of the measured fold noise,
+        # and whether the fixture came back clean.
+        for line in out.splitlines():
+            if "coef: sd" in line or "fixture restored" in line:
+                evidence += " | " + line.strip()
+        return R("pyexample", "", verdict, evidence)
+    finally:
+        try:
+            with open(fixture, "rb") as fh:
+                after = fh.read()
+        except OSError:
+            after = b"<unreadable>"
+        if after != before:
+            with open(fixture, "wb") as fh:
+                fh.write(before)
+
+
 
 # --------------------------------------------------------------------------- #
 # 17. contract -- the one CI's glob misses
