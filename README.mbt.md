@@ -1164,13 +1164,15 @@ CCT delta-method terms are not ported.
   `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLCVAR`,
   `DoubleMLBLP`, `DoubleMLPolicyTree`.
 
-**Reproducible DGPs + Python reference validation** -- 23 Python
-scripts (`validate_*_with_python.py`) drive 23 DGPs
+**Reproducible DGPs + Python reference validation** -- 24 Python
+scripts (`validate_*_with_python.py`) drive the DGPs
 (`plr_CCDDHNR`, `plr_turrell`, `plr_confounded`, `irm_discrete`,
 `irm_heterogeneous`, `irm_confounded`, `iivm`, `pliv` /
 `pliv_cluster`, `SSM`, `simple_rdd`, `DID SZ2020` / `CS2021`, etc.)
 and check within-tolerance equivalence against the upstream Python
-outputs. CI greps the trailing `PASS` line from each script.
+outputs. CI runs each script and requires **both** a zero exit code and a
+trailing `PASS` line -- the second condition alone used to be the only one
+checked, and it is trivially satisfied by a script that never ran MoonBit.
 
 **An upstream ORACLE for RDD (v0.116.0)** -- the scripts above check
 against hand-written reference outputs, which can only catch a
@@ -1628,7 +1630,7 @@ publishing, and **10 in `full` scope**, which is release-time.
   `api_test`, `security_dast`, `fuzz`, `mutation`, `load_stress`, `e2e`
 
 CI deliberately runs **fast only**: the full scope re-runs `moon test` several
-more times and all 23 Python cross-checks, which `moon-test` (x4 backends) and
+more times and all 24 Python cross-checks, which `moon-test` (x4 backends) and
 `python-cross-check` already do. Re-measuring them would multiply release time
 for no new information.
 
@@ -1715,8 +1717,8 @@ close to `ubuntu-latest`, but not equal to it).
 - All randomness flows through `chacha8_rng(seed)` (`seed.mbt`).
   Default `seed=3141`; same seed => byte-identical DGP outputs.
 - Python reference scripts `validate_*_with_python.py` reproduce
-  the upstream `doubleml-for-py` numbers. CI greps the trailing
-  `PASS` line from each script.
+  the upstream `doubleml-for-py` numbers. CI runs each one and requires both a
+  zero exit code and a trailing `PASS` line on stdout.
 - `dgp_recovery_test.mbt` enforces `|coef - theta| < MAX(MODEL_TOL=0.1,
   2.0 * handrolled_se)`. The tolerance is contractual.
 - v0.62.0 verified counts: `moon test` 485 / 485 (native & wasm &
@@ -1834,7 +1836,7 @@ upstream counterpart in 0.11.4.
   MoonBit-idiomatic API, with optional JSON in/out for native /
   wasm-gc / wasm / js backends (Serverless / Wasm / edge
   deployments).
-- Behaviour-level parity check via the 23 Python reference scripts:
+- Behaviour-level parity check via the 24 Python reference scripts:
   `within-tolerance equivalence` rather than bit-exact re-implementation.
   This keeps the port resilient to upstream refactors.
 - Strict dependency rule (see above): only `moonbitlang/*` official

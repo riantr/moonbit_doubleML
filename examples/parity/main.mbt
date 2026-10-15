@@ -26,9 +26,9 @@
 /// IDENTICAL values. That turns "two different random datasets happen to land
 /// near each other" into a real comparison.
 ///
-/// Where the DGP is deterministic (`i % 2`, `i % 100`, `arange`) the Python side
-/// regenerates it itself, which is the stronger test: two independent
-/// constructions of the same data, not one copied from the other.
+/// Where the DGP is deterministic (`i % 2`, `i % 100`, a linear index ramp)
+/// the Python side regenerates it itself, which is the stronger test: two
+/// independent constructions of the same data, not one copied from the other.
 fn main {
   sec_quantile()
   sec_rdd()

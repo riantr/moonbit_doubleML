@@ -189,6 +189,48 @@ is given". The battery refuses to accept an equivalent mutation without a
 written justification of at least 60 characters, so one cannot be quietly
 retired by listing it.
 
+### Fixed: a CI-only failure, and a gate weaker than it looked
+
+Found by running `.github/scripts/ci_local.py` against the commit above - the
+first use of the phase-1 simulator on work it was itself part of. It runs the
+real `check.yml` steps on WSL Ubuntu and reported:
+
+    FAIL Run all 23 validate_*_with_python.py scripts  114.2s  exit=1
+    ::error::validate_rdd_with_python.py trailing line did not contain PASS
+
+Every row matched and the exit code was 0. The step failed anyway, because it
+greps each script's **trailing line** for `PASS` and `validate_rdd_with_python.py`
+printed two SE rows after the verdict. Its last line read
+`MATCH fuzzy_se ...`.
+
+The emitter was not involved. `moon run examples/parity` under WSL produces
+byte-identical output to Windows - `sharp_coef 2.0000000000241958` on both - so
+the plausible explanations (FMA contraction changing the last bit, a differing
+`to_string`) were both wrong, and checking them was cheaper than assuming.
+A local run that inspects only the exit code is structurally unable to see this.
+
+Two weaknesses in the step itself, fixed alongside:
+
+- The step name said "Run all 23 ..." while the glob ran 24. A hardcoded count
+  that goes stale is worse than no count, because it looks maintained. The
+  name is now "Run every validate_*_with_python.py script", and the count is
+  printed from the loop.
+- `line="$(python "$s" | tail -1)"` left the trailing-PASS line as the **only**
+  gate: under a bare `set -e` a pipeline's status is its last command's, so
+  python's non-zero exit was discarded by `tail` and never examined. That is a
+  weaker gate than it appears - all ten scripts that could not spawn MoonBit
+  printed a PASS-looking line and satisfied it, which is precisely the failure
+  the step appeared to exist to prevent. It now captures stdout and the exit
+  code separately, and fails on either.
+
+`_verify/_all_validators_1650.py` reproduces **both** of the step's conditions
+rather than only the first, so this class of bug appears locally too.
+
+Measured after the fix, on WSL Ubuntu via the simulator:
+
+    PASS Run every validate_*_with_python.py script  114.0s  ran 24 validator(s)
+    RESULT: all executed steps passed
+
 ### Fixed
 
 Eight simulator bugs, each of which reported itself as a defect in the package:
