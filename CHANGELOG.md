@@ -9,6 +9,243 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [Unreleased] - local GitHub CI simulator (`.github/scripts/ci_local.py`)
+
+No change to the package: `moon.mod` stays at 0.162.0 and the test counts are
+untouched (**1115 / 1121 / 1115 / 1115**). What is new is a tool that runs this
+repository's CI jobs locally, on WSL Ubuntu, by executing the `run:` steps
+straight out of `.github/workflows/*.yml` - not a hand-maintained copy, which
+would drift the first time someone edited a workflow.
+
+Why: a Windows box cannot faithfully answer questions about `ubuntu-latest`.
+That gap already cost a full cycle, when a check reported three `typos` findings
+on ubuntu that did not exist locally and the real cause was that the check
+measured something the gate never measures.
+
+### Added
+
+- `python .github/scripts/ci_local.py list` - jobs, their step counts, `needs:`.
+- `python .github/scripts/ci_local.py run [--jobs a,b] [--all]` - executes the
+  jobs against `git archive <ref>` (a pristine tracked checkout, what
+  `actions/checkout` produces), each step through `bash -e`.
+- `python .github/scripts/ci_local.py provision` - rootless Python (via
+  `get-pip.py`) and Node toolchains under the guest `$HOME`. No sudo, no apt;
+  both are downloaded. Needed because the guest ships neither `python` nor
+  `node`, and `moon test --target js` shells out to the latter. Under `$HOME`
+  and not `/tmp`: measured, `/tmp` does not survive a WSL restart.
+- `--release-tag vX.Y.Z` sets `$GITHUB_REF_NAME`, which `publish.yml` reads to
+  decide what it is about to publish.
+- `python .github/scripts/ci_local.py selftest` - **20 self-tests**, every
+  discriminating rule paired with a control arm.
+
+- `examples/bitexact/` + `validate_bitexact_with_python.py` - a second, stronger
+  parity tier that compares MoonBit against CPython **by IEEE-754 bit pattern**
+  instead of under a tolerance. 25 items and 6 RNG keys, all currently identical.
+  A tolerance cannot tell "the port is arithmetically identical to the
+  reference" apart from "the port lands within 1e-4 of it"; a bit comparison
+  can.
+
+### Measured, not assumed: what can be bit-exact
+
+    sqrt  6/6 bit-exact     guaranteed by IEEE-754 correct rounding
+    cos   6/6 bit-exact     agreement observed, NOT guaranteed
+    sin   6/6 bit-exact     agreement observed, NOT guaranteed
+    ln    5/6 bit-exact     ln(3.0) differs by exactly 1 ULP
+                            moon  1.0986122886681096
+                            python 1.0986122886681098
+
+`box_muller_pair` uses `ln`, `cos` and `sin`, so **no random-number DGP in this
+package can be bit-exact against CPython**, and neither can anything routed
+through BLAS/LAPACK. The check therefore asserts the surface where bit-exactness
+is guaranteed and prints the rest as deliberately not asserted, so the absence
+is not read as an oversight.
+
+Its control arm (`--self-test`) perturbs every item by one ULP and requires the
+comparator to notice, and `_verify/_bitexact_mutation_1640.py` mutates the
+emitter itself: all four mutations killed, including a truncated and a mis-tiled
+ChaCha8 key.
+
+One mutation was *removed* rather than fixed. Changing the seed list from 3141
+to 3142 survived, and the survival was correct: the seed set is the check's
+input, not its expected value. That is an equivalent mutation, and writing a
+test for it would have been testing a behaviour that does not exist.
+
+### Measured: 10 of the 24 Python cross-checks cannot run MoonBit
+
+14 of `validate_*_with_python.py` spawn a MoonBit process and compare its
+output. **10 cannot spawn anything at all** - no `subprocess`, no `os.system`.
+They compute a Python-only reference and print a trailing `PASS` that CI greps
+for, so no change to the MoonBit code can turn them red.
+`validate_quantile_with_python.py` is one: it prints `reference checks PASS`
+having never run MoonBit. The other nine are `blp_policy`, `bootstrap`, `cvar`,
+`cv_repeated`, `did_binary`, `did_cs`, `gain_statistics`, `padjust`, `rdd`.
+
+Separately: none of them compare against the **real `doubleml` wheel** - most
+restate the upstream formula in Python. "24 / 24 parity with the real
+`doubleml` wheel" was never true and the README now says what is actually
+checked.
+
+### Fixed: all 24 cross-checks now observe the port
+
+The ten validators listed above were rewritten. Each now runs MoonBit and
+compares its output against a CPython reference, over **194 comparison rows**:
+
+    gain_statistics  39   padjust            54   bootstrap   18
+    rdd              14   blp_policy         12   quantile     8
+    did_binary        8   cv_repeated        10   cvar         5
+    did_cs           26   (6 valid + 6 empty cells, each valid cell also
+                          checked against the true effect, + structure)
+
+Support: `examples/parity/` (10 sections, a deliberately trivial line format)
+and `parity_helper.py`. The helper **raises** on a missing section or value.
+A helper that returns an empty dict on failure is precisely how ten checks end
+up unable to fail.
+
+What each is measured against, and why:
+
+- **Deterministic DGPs** (`quantile`, `rdd`, `cvar`, `blp_policy`,
+  `cv_repeated`): CPython rebuilds the data itself and, where the estimator is
+  defined, reimplements it. `rdd` is the strongest of these -- a local-linear
+  WLS written from `rdd.mbt`'s definition agrees with the port to **4.8e-15**.
+- **`padjust`**: `statsmodels.stats.multitest.multipletests`, the actual
+  upstream library the port delegates to. Not a restatement of the formula.
+- **`gain_statistics`**: two independent references (a transcription of
+  `sensitivity.mbt` and the upstream numpy form) on a fixture built so that
+  **all six branches** are taken. Random inputs hit the `sqrt`-of-negative
+  branch about once in twenty runs; this one always does.
+- **`bootstrap`**: distribution theory. Mean and variance are identical across
+  `normal` / `Bayes` / `wild`, so a check on those two would pass even if every
+  method returned N(0,1). The third and fourth central moments are what
+  separate them, and the emitter was raised to 100_000 draws so the
+  Monte-Carlo error (0.63) is narrower than the gap between methods (2.6).
+- **RNG-driven DGPs** (`did_binary`, `did_cs`): CPython cannot reproduce
+  `chacha8`, so it takes the outcome data the port actually used and computes
+  the estimand by a different route, which removes the PRNG as a confounder.
+
+### Measured: `tsbh` does not match statsmodels, and did not
+
+    holm        0        bonferroni  0        bh   0        by   1.11e-16
+    tsbh        0.108    <- a constant factor on every cell
+
+`p_adjust.mbt` claimed its outputs were "byte-comparable to `statsmodels`
+reference" and that `tsbh_p_adjust` "matches `multipletests(method='fdr_tsbh')`".
+Both claims are false. `statsmodels / port` is the constant
+`4 * (1 - alpha) / 3 = 1.26666...`: the same algorithm, a different `m0_hat`
+(this module: `3 / 0.95`, fixed at `alpha = 0.05`; statsmodels: `4`, via
+lambda search). The port is internally exact -- a line-by-line transcription
+reproduces it to `0.0` on all seven cells -- so this is a spec difference, not
+an arithmetic defect, but it is a real parity gap for anyone porting numbers
+from upstream.
+
+The three claims in `p_adjust.mbt` are corrected, and
+`validate_padjust_with_python.py` pins the ratio as a constant so that a drift
+in *either* implementation turns the validator red.
+
+### Measured, then corrected: the DID-CS "sign bug" was the fixture
+
+An intermediate run of `validate_did_cs_with_python.py` reported
+`coef_at(0, 1) = -1.493` against an effect of `+1.5` -- a sign error, on a
+panel with no confounding. It was not a port bug. `discover_groups_times`
+(`did_cs.mbt`:77-78) takes the **control group to be the minimum `g` label**,
+and the fixture had the control at the *last* label while cohort 0 -- the
+minimum -- was treated from t = 1. The port was using a treated group as its
+control. With the control at cohort 0 and untreated throughout, all six valid
+cells return `+1.5` and all six empty cells return `0.0`.
+
+Recording this because the alternative -- keeping the first result and
+reporting a DID-CS sign bug -- would have been a confident, well-formatted,
+wrong report produced entirely by a bad fixture.
+
+Also fixed in the same pass, each found by running the new checks:
+
+- The "fuzzy" RDD in the emitter never set `fuzzy=true`, so it was returning
+  the raw outcome jump (0.12) rather than the Wald ratio (0.6).
+- The RDD and repeated-CV fixtures passed rank-deficient covariate matrices,
+  which made the ridge rather than the data determine the answer.
+- `bootstrap` previously reported `mean ~ 0, var ~ 1`, identical for all three
+  methods, so it could not distinguish a correct draw from a stub that ignores
+  its argument.
+- `validate_blp_policy_with_python.py` documented a "bisection" that does not
+  exist: `policy_tree_build` thresholds each feature at its own **mean**.
+- `DoubleMLBLP::se()` is the **HC0 sandwich**, not
+  `sqrt(sigma^2 (X'X)^-1_jj)`; the OLS form is 1.33x smaller here, so a
+  validator written from the textbook formula would have failed against a
+  correct port.
+
+### Measured: the rewritten validators can go red
+
+`_verify/_parity_mutation_1650.py` perturbs the emitter once per validator and
+requires a non-zero exit. **11 of 11 killed**, tree restore verified by sha256.
+An emitter-level mutation -- `val()` printing a constant instead of its
+argument -- is killed too, which is what rules out the comparator silently
+ignoring a line.
+
+One mutation **survived and was documented, not fixed**: changing the
+`padjust` p-vector's first entry from 0.001 to 0.003. The validator reads that
+vector *from* the emitter and feeds it to statsmodels itself, so both sides
+move together. The vector is the check's input, not its expected value; the
+contract under test is "p_adjust implements multipletests on whatever vector it
+is given". The battery refuses to accept an equivalent mutation without a
+written justification of at least 60 characters, so one cannot be quietly
+retired by listing it.
+
+### Fixed
+
+Eight simulator bugs, each of which reported itself as a defect in the package:
+
+- **`text=True` on stdin put a `\r` on every line.** CPython translates `\n`
+  to `\r\n` on Windows and bash does not strip it, so `export GITHUB_PATH=...`
+  produced a value ending in `\r` and `>> $GITHUB_PATH` wrote to a file named
+  `<path>\r\r`. The write **succeeded** - rc 0, empty stderr - and was then
+  invisible to the reader, so every later step failed on a tool the previous
+  step had provably installed. Script bodies now go over stdin as bytes.
+- **`to_wsl` was not idempotent**, turning a guest path `/mnt/c/...` into
+  `/mnt/d/mnt/c/...` when a `$GITHUB_PATH` entry was read back. Every PATH
+  entry silently stopped resolving.
+- **`${{ matrix.target }}` was never expanded.** All four backends ran the
+  literal text and bash reported "bad substitution" - four FAILs that read like
+  the package was built for the wrong target. Unresolved `${{ }}` in a
+  modelled context is now a hard `SIMULATOR BUG` failure.
+- **`git archive` gave files, not a repository.** `publish.yml` gates on
+  `moon info --target js` then `git diff --exit-code`; with no `.git`, git
+  exited 129 with a usage dump naming `--output`, which reads as the moon
+  command having the wrong flags.
+- **The index was written by Windows git and read by Linux git.**
+  `core.autocrlf=true` normalized `CHANGELOG.md` to LF in the index while the
+  worktree stayed CRLF, so a *pristine* checkout reported a diff - an
+  interface-drift gate measuring the harness instead of the code.
+- **`$GITHUB_REF_NAME` was never set**, so `Resolve release version` resolved an
+  empty tag and failed on `Release tag must use the v* format, got:`.
+- **`publish.yml` could have published a release.** `moon publish` and
+  `Create GitHub Release` are plain `run:` steps, so nothing structural stopped
+  a local `run --all` from shipping one. Such steps are now refused and
+  reported SKIP, with a self-test for the refusal and a control asserting that
+  prose merely mentioning "publish" still runs.
+- **`--engine none`** was advertised by `--help` and rejected by `plan()`.
+
+### Changed
+
+- A step that fails because **this machine** lacks a tool now reports `BLOCKED`,
+  not `FAIL`, cross-checked with `command -v` in the guest so a command the
+  guest *does* have and that fails anyway still reports `FAIL`. "The runner has
+  `python` and this box does not" is not a red build; reporting it as one is a
+  false accusation, and quietly passing it would claim coverage that does not
+  exist.
+- `${{ steps.*.outputs }}` is reported SKIP rather than failed: it depends on
+  outputs from steps this runner skipped, and calling that a defect would be a
+  false accusation.
+- `~/.cargo/bin` is on the guest PATH, as it is on `ubuntu-latest`. Without it
+  the typos download succeeded and the next step was BLOCKED - honest, but the
+  harness's gap rather than the runner's.
+- Matrix jobs whose `name:` carries no `${{ }}` are rendered `<name> (<value>)`,
+  as GitHub does, so the four backends are individually selectable.
+- A passing step reports its `Total tests:` line when it has one, instead of the
+  trailing source snippet `moon test` prints on native.
+- README: the "What CI actually gates" table was stale - it predated the QA LOOP
+  and still said "Seven checks". Now eight, with the `qa-loop` gate listed, the
+  fast/full split spelled out (12 fast / 10 full of 22 registered checks), and a
+  new "Reproducing CI locally" section.
+
 ## [0.162.0] — QA LOOP: 21 named QA activities become a gated harness, which found 3 real defects
 
 Tests **1115 / 1121 / 1115 / 1115** (native / wasm-gc / wasm / js), all four re-measured

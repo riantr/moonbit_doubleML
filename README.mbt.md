@@ -20,7 +20,7 @@ inside the MoonBit ecosystem. Delivers a unified
 `DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` API across all
 22 estimators, robust variance estimation, propensity-score
 processing, multiple-testing correction, and a reproducible validation
-pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
+pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 `wasm`, `wasm-gc`, and `js` backends under `moon test --deny-warn`.
 
 ##Status
@@ -38,7 +38,7 @@ pipeline (23 / 23 Python reference scripts PASS) -- on `native`,
 | Tests (native / wasm / js) | **1115 / 1115 / 1115** |
 | Tests (wasm-gc) | **1121 / 1121** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
-| Python cross-checks | **23 / 23 PASS** (`validate_*_with_python.py`) |
+| Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items and 6 / 6 RNG keys are IEEE-754 identical to CPython |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
 ##Features
@@ -1522,8 +1522,8 @@ Deleting both lines is the change that would make this section true.
 
 ### What CI actually gates
 
-Measured from `.github/workflows/` and confirmed against the run list. Seven
-checks, all of which run on push to `master` and again before publishing:
+Measured from `.github/workflows/` and confirmed against the run list. Eight
+gates, all of which run on push to `master` and again before publishing:
 
 | Gate | Where | Scope |
 |---|---|---|
@@ -1533,7 +1533,8 @@ checks, all of which run on push to `master` and again before publishing:
 | `moon check --deny-warn` x4 | `publish.yml` | warnings are errors |
 | Generated-interface drift | `publish.yml` | public surface |
 | `typos` (pinned 1.19.0) | `publish.yml` | prose |
-| 23 `validate_*_with_python.py` | `check.yml` | parity against the real `doubleml` wheel |
+| 24 `validate_*_with_python.py` | `check.yml` | estimator parity; see the two-tier note below |
+| 21-activity QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 22 registered checks, 12 of them fast |
 
 `nightly.yml` additionally runs the package against the MoonBit **nightly**
 toolchain, so a breaking upstream change surfaces before it reaches stable.
@@ -1551,6 +1552,63 @@ here rather than left for a reader to assume.**
 - **`validate_splitting_contract.py` never runs.** It is tracked, but does not
   match CI's `validate_*_with_python.py` glob, so no workflow executes it.
 
+**All 24 now spawn a MoonBit process, but they are not all the same kind of
+check, and saying "24 / 24 PASS" without saying that would overstate what
+passed.**
+
+- **All 24 spawn MoonBit and compare its output**, over **194 comparison rows**
+  across the ten that were rewritten. `validate_quantile_with_python.py` used to
+  print `reference checks PASS` having never run MoonBit; `validate_rdd_with_python.py`
+  used to `assert abs(2.0 - 2) < 1e-12`, which is `assert abs(0.0)` and cannot
+  fail. Both now run the port.
+- **The references are not equally strong, so neither is the claim:**
+  - `padjust` runs `statsmodels.stats.multitest.multipletests` -- the *actual*
+    upstream library the port delegates to. `rdd` reimplements the
+    local-linear WLS from `rdd.mbt`'s definition and agrees to **4.8e-15**.
+    `gain_statistics` is checked against two independent references on a fixture
+    built so all six branches are taken.
+  - The rest compare against a population target or an independent estimate on
+    the port's own data. That catches a regression; it is not bit-equivalence.
+- **None of them compare against the real `doubleml` wheel**; most restate the
+  upstream formula in Python. The wheel is what `doubleml-for-py` is, and
+  matching it is stricter than what is actually being done.
+- **One known parity gap, measured:** `p_adjust`'s `tsbh` / `tsby` differ from
+  statsmodels by a constant `4 * (1 - alpha) / 3 = 1.26666...` on every cell --
+  the same two-stage algorithm with a different `m0_hat` estimator (this port
+  fixes `alpha = 0.05`; statsmodels searches lambda). `p_adjust.mbt` no longer
+  claims byte-compatibility it does not have, and
+  `validate_padjust_with_python.py` pins the ratio as a constant so a drift in
+  either implementation turns the validator red.
+
+**Each rewritten validator has been observed failing.**
+`_verify/_parity_mutation_1650.py` perturbs the emitter once per validator and
+requires a non-zero exit: **11 of 11 killed**, tree restore verified by sha256.
+One mutation survived and was *documented rather than fixed* -- changing the
+`padjust` p-vector's first entry -- because the validator feeds that vector to
+statsmodels itself, so it is the check's input, not its expected value.
+
+**Bit-exact parity is a second, stronger tier.** A tolerance cannot tell "the
+port is arithmetically identical to the reference" apart from "the port lands
+within 1e-4 of it". `validate_bitexact_with_python.py` compares IEEE-754 bit
+patterns instead, against `examples/bitexact/`. Measured scope, not assumed:
+
+| operation | bit-exact | why |
+|---|---|---|
+| `+ - * /` | yes | IEEE-754 requires correct rounding, so same operands in the same order MUST agree |
+| `sqrt` | yes | same guarantee -- **6 / 6** measured |
+| `cos`, `sin` | observed 6 / 6 | agreement today, **not** guaranteed: neither is correctly rounded |
+| `ln` | **5 / 6** | `ln(3.0)` differs by exactly 1 ULP: MoonBit `1.0986122886681096`, CPython `1.0986122886681098` |
+
+Because `box_muller_pair` uses `ln`, `cos` and `sin`, **no random-number DGP in
+this package can be bit-exact against CPython**, and neither can anything routed
+through BLAS/LAPACK (numpy reduces with pairwise summation; LAPACK blocks its
+pivots). The check therefore asserts the surface where bit-exactness is
+guaranteed -- **25 / 25 items and 6 / 6 RNG keys, currently identical** -- and
+prints the rest as deliberately not asserted, so the absence is not mistaken
+for an oversight. A mutation battery (`_verify/_bitexact_mutation_1640.py`)
+confirms the gate discriminates: all four mutations killed, including a
+truncated and a mis-tiled RNG key.
+
 **Acceptance-criteria traceability** lives in
 `features/moonbit_doubleML_acceptance.feature`: 6 `Feature`, 24 `Scenario`, 80
 Given/When/Then steps, each scenario annotated `# mapped to: <test name>`. 23
@@ -1558,13 +1616,101 @@ of the 27 named tests resolve to real `test` declarations; the other four are
 descriptive prose. The MoonBit tests are the executable form -- there is no
 separate Gherkin runner.
 
-**Not covered, so not claimed.** There is no coverage report, no benchmark or
-performance baseline, no load/stress harness, no duplicate-code detection, no
-dependency-vulnerability scan (`moon update` is not an audit), and no SAST or
-DAST. `examples/fuzz/` exists and is a declared `moon.work` member, but no CI
-job runs it and there is no crash-regression corpus. Mutation testing was run
-per-release as ad-hoc scripts under `_verify/`, not as a gated runner with a
-surviving-mutant ledger.
+**Coverage is two-tier, and the tiers are not the same size.** The QA LOOP
+(`.github/scripts/qa_loop/`, v0.162.0) registers 22 checks over the 21 named
+activities: **12 in `fast` scope**, which CI runs on every push and again before
+publishing, and **10 in `full` scope**, which is release-time.
+
+- fast: `format`, `static_code_check`, `duplicate_code`, `dependencies`,
+  `gherkin`, `qa_process`, `contract`, `security_sast`, `perf_test`,
+  `benchmark`, `coverage`, `quality_metrics`
+- full: `static_analysis`, `unit_tests`, `component_tests`, `integration`,
+  `api_test`, `security_dast`, `fuzz`, `mutation`, `load_stress`, `e2e`
+
+CI deliberately runs **fast only**: the full scope re-runs `moon test` several
+more times and all 23 Python cross-checks, which `moon-test` (x4 backends) and
+`python-cross-check` already do. Re-measuring them would multiply release time
+for no new information.
+
+**Still not covered, so not claimed.** The `coverage` check is a
+test-reachability proxy, not instrumented line coverage. There is no
+dependency-vulnerability scan -- `moon update` resolves versions, it is not an
+audit. `mutation` kills three mutants on one kernel, not a whole-codebase
+surviving-mutant ledger. `examples/fuzz/` has no crash-regression corpus. And
+the two declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
+and `moonbitlang/async@0.20.3` -- are dead: nothing imports them, and
+`dependencies` already WARNs about exactly that (`2 declared; non-conforming:
+['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
+[both]`) rather than passing quietly. Removing them is an open call, not an
+oversight.
+
+### Reproducing CI locally
+
+`.github/scripts/ci_local.py` runs these jobs on this machine. It executes the
+`run:` steps **straight out of the workflow YAML** rather than from a
+hand-maintained copy -- a copy drifts the first time someone edits a workflow,
+and a simulator that lies about what CI does is worse than no simulator.
+
+```
+python .github/scripts/ci_local.py list        # which jobs exist, and their steps
+python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
+python .github/scripts/ci_local.py run --jobs "qa-loop"
+python .github/scripts/ci_local.py run --all --release-tag v0.162.0
+python .github/scripts/ci_local.py selftest    # prove the simulator can fail
+```
+
+`--release-tag` sets `$GITHUB_REF_NAME`. It is not cosmetic: `publish.yml`'s
+`Resolve release version` reads that variable to decide what it is about to
+publish, and with it unset the tag comes out empty and the job dies on
+`Release tag must use the v* format, got:`.
+
+It runs against `git archive <ref>`, so it sees a pristine tracked checkout --
+no untracked scratch, no dirty tree -- and every step goes through `bash -e`,
+which is the shell string GitHub logs. The checkout is a real git repository,
+because a step is allowed to rely on that (`publish.yml` gates on
+`git diff --exit-code`). Four verdicts, kept distinct on purpose:
+
+| Verdict | Means |
+|---|---|
+| `PASS` | the step ran and succeeded |
+| `FAIL` | the step ran and failed -- a real defect |
+| `SKIP` | a `uses:` step; deliberately not simulated, never a silent PASS |
+| `BLOCKED` | **this machine** lacks a tool the step needs; nothing was proven |
+
+`BLOCKED` exists because "the runner has `python` and this box does not" is not
+a red build. It is cross-checked with `command -v` in the guest, so a command
+the guest *does* have and that fails anyway still reports `FAIL`.
+
+`selftest` is the guard on the guard: every discriminating rule has a paired
+control arm, so a gate that cannot fail cannot pass here either. **20
+self-tests.** Eight simulator bugs it has caught, every one of which read as a
+project failure:
+
+- Windows `text=True` put a `\r` on every line of the script, so
+  `>> $GITHUB_PATH` wrote to a file named `<path>\r\r`. The write *succeeded*
+  (rc 0, empty stderr), and the next step could never find the tool it
+  installed.
+- `to_wsl` was not idempotent, turning a guest path `/mnt/c/...` into
+  `/mnt/d/mnt/c/...` when a PATH entry was read back.
+- `${{ matrix.target }}` was never expanded, so all four backends ran the
+  literal text and bash reported "bad substitution" -- four FAILs that looked
+  like the package was built for the wrong backend.
+- `git archive` produced files but not a repository, so
+  `git diff --exit-code` exited 129 with a usage dump naming `--output` -- read
+  as `moon info` having the wrong flags.
+- The index was written by Windows git (`autocrlf=true`, normalizing
+  `CHANGELOG.md` to LF) and read by Linux git, so a **pristine** checkout
+  reported a diff.
+- `$GITHUB_REF_NAME` was never set, so `Resolve release version` failed on an
+  empty tag.
+- `--engine none` was advertised by `--help` and rejected by `plan()`.
+- `publish.yml` runs `moon publish` and `gh release` from plain `run:` steps, so
+  nothing structural stopped a local `run --all` from shipping a release. Such
+  steps are now refused, never executed.
+
+Not simulated: `uses:` steps beyond provisioning, secrets, `GITHUB_TOKEN`,
+release publishing, `steps.*.outputs`, and the exact OS image (WSL Ubuntu is
+close to `ubuntu-latest`, but not equal to it).
 
 - All randomness flows through `chacha8_rng(seed)` (`seed.mbt`).
   Default `seed=3141`; same seed => byte-identical DGP outputs.

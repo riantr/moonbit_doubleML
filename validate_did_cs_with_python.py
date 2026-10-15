@@ -1,208 +1,189 @@
-"""
-Sanity-check for the MoonBit `DoubleMLDIDCS` (Callaway-Sant'Anna
-staggered DID) estimator. We build the same multi-cohort panel
-DGP as `did_cs_test.mbt`, run a hand-rolled CS-DID reference
-implementation that mirrors the MoonBit `DoubleMLDIDBinary` per-
-cell estimator, and verify (a) the per-(g, t) ATT estimates
-recover the true treatment effect of 1.0, and (b) the per-cell
-SEs are positive.
+"""Staggered DID (Callaway-Sant'Anna) checked cell by cell against CPython.
 
-The hand-rolled reference uses the same Cholesky-based OLS
-learner + observational Sant'Anna-Zhao score as the MoonBit
-`DoubleMLDIDBinary::fit` path.
-"""
+WHAT THIS USED TO BE
+====================
+The old file ran a hand-rolled numpy CS-DID on its own `default_rng` draw,
+checked each cell was "within 0.5 of true", printed
 
-import sys
+    print("Reference: run `moon run examples/did_cs` for the MoonBit output.")
+    print("PASS: did_cs reference")
+
+and exited 0. As with `did_binary`, running MoonBit was an instruction in a
+print statement.
+
+THE CELL SEMANTICS, AND WHY THEY HAD TO BE MEASURED
+====================================================
+Two facts about `did_cs.mbt` determine what every cell means, and both are
+load-bearing enough that guessing them produces a convincing false alarm:
+
+1. **The control group is the MINIMUM group label.** `discover_groups_times`
+   (`did_cs.mbt`:77-78) builds `groups` as "the sorted list of unique `g`
+   values EXCLUDING the never-treated sentinel (the minimum of `g`)". So
+   `group_idx` indexes `groups` (the adopting cohorts), and the control is
+   whichever cohort label happens to be smallest -- which the caller must
+   make genuinely untreated.
+
+2. **`pre_period = g_value - 1`, fixed per group**, and every eval period
+   `> pre_period` is compared against that one baseline (`did_cs.mbt`:1552-1568).
+   So the six valid cells here are, with adoption at `k >= cohort`:
+
+       g=0 (label 1, base 0):  t=1, t=2, t=3
+       g=1 (label 2, base 1):             t=2, t=3
+       g=2 (label 3, base 2):                     t=3
+
+   Cells at or before the baseline are empty and documented to return 0.0.
+
+HOW THAT WAS ESTABLISHED
+========================
+By getting it wrong twice and reading the numbers, not the source. A first
+DGP put the never-treated cohort at the LAST label, so the port used a cohort
+that that DGP treated as its control and returned `coef_at(0, 1) = -1.493`
+against an effect of `+1.5` -- a sign error that looked exactly like a port
+bug. Shifting adoption by one period did not fix it, because the mislabelled
+control was still the minimum label. The port was right in both cases.
+
+That is worth stating plainly, because the alternative -- keeping the first
+"finding" and reporting a DID-CS sign bug -- would have been a confident,
+well-formatted, wrong report produced entirely by a bad fixture.
+
+WHAT IS COMPARED
+================
+For each valid cell, the reference is the plain difference in mean outcome
+change between the adopting cohort and the control, over the same
+`(base, eval)` period pair, computed on the outcome data the port itself used.
+No model, no cross-fitting. MoonBit's number comes from a 2-fold cross-fit
+with regression adjustment, so the two agree closely but not identically --
+that residual gap IS the cross-fitting's contribution, and it is reported.
+
+RUN
+===
+    python validate_did_cs_with_python.py
+"""
 import os
-import numpy as np
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import parity_helper as ph  # noqa: E402
 
-PROPENSITY_CLIP = 1.0e-6
+import numpy as np  # noqa: E402
 
-
-def _cholesky_solve(a, b):
-    try:
-        L = np.linalg.cholesky(a)
-        y = np.linalg.solve(L, b)
-        return np.linalg.solve(L.T, y)
-    except np.linalg.LinAlgError:
-        return np.linalg.solve(a, b)
-
-
-def fit_one_cell(x_train, y_train, d_train, x_test, p1, p_train):
-    """Per-cell 2-fold OLS DML with the observational Sant'Anna-
-    Zhao (2020) score. `d_train` and `d_test` are 0/1; `p1` is the
-    number of pre-treatment features; `p_train` is the propensity
-    clip."""
-    # Cross-fit by half-split.
-    n = len(y_train)
-    half = n // 2
-    perm = np.random.default_rng(3141).permutation(n)
-    g0_pred = np.zeros(n)
-    g1_pred = np.zeros(n)
-    m_pred = np.zeros(n)
-    for f in range(2):
-        test_idx = perm[f * half : (f + 1) * half] if f == 0 else perm[half:]
-        train_idx = np.setdiff1d(np.arange(n), test_idx)
-        # g0 on D == 0
-        train_d0 = train_idx[d_train[train_idx] == 0.0]
-        if len(train_d0) > 0:
-            xt = np.hstack(
-                [np.ones((len(train_d0), 1)), x_train[train_d0, :p1]]
-            )
-            yt = y_train[train_d0]
-            beta0 = _cholesky_solve(
-                xt.T @ xt + 1e-10 * np.eye(xt.shape[1]),
-                xt.T @ yt,
-            )
-            xs = np.hstack(
-                [np.ones((len(test_idx), 1)), x_test[test_idx, :p1]]
-            )
-            g0_pred[test_idx] = xs @ beta0
-        # g1 on D == 1
-        train_d1 = train_idx[d_train[train_idx] == 1.0]
-        if len(train_d1) > 0:
-            xt = np.hstack(
-                [np.ones((len(train_d1), 1)), x_train[train_d1, :p1]]
-            )
-            yt = y_train[train_d1]
-            beta1 = _cholesky_solve(
-                xt.T @ xt + 1e-10 * np.eye(xt.shape[1]),
-                xt.T @ yt,
-            )
-            xs = np.hstack(
-                [np.ones((len(test_idx), 1)), x_test[test_idx, :p1]]
-            )
-            g1_pred[test_idx] = xs @ beta1
-        # m on all train
-        xt = np.hstack([np.ones((len(train_idx), 1)), x_train[train_idx, :p1]])
-        dt = d_train[train_idx]
-        beta_m = _cholesky_solve(
-            xt.T @ xt + 1e-10 * np.eye(xt.shape[1]),
-            xt.T @ dt,
-        )
-        xs = np.hstack([np.ones((len(test_idx), 1)), x_test[test_idx, :p1]])
-        m_pred[test_idx] = np.clip(
-            xs @ beta_m, p_train, 1.0 - p_train,
-        )
-    return g0_pred, g1_pred, m_pred
+N_PER_COHORT = 20
+N_PERIODS = 4
+N_UNITS = N_PER_COHORT * N_PERIODS
+N = N_UNITS * N_PERIODS
+TRUE_ATT = 1.5
+ATT_TOL = 0.05
 
 
-def fit_did_cs_panel(
-    n_per_cohort,
-    p,
-    theta0,
-    n_periods,
-    seed_x,
-    seed_noise,
-):
-    """Hand-rolled CS-DID: for each (g, t_eval) cell with t_eval >
-    g, restrict the long-format panel to (g == g_value) ∪
-    (g == never_treated), then call the per-cell DML binary DID
-    estimator. Returns a dict {(g, t_eval): (theta_hat, se, n_sub)}.
+def panel_index():
+    return lambda u, k: u * N_PERIODS + k  # noqa: E731
+
+
+def independent_att(y, g, base_period, eval_period, g_label, g_control):
+    """Difference in mean outcome change, adopting cohort vs control.
+
+    The unit list is built by scanning unit indices and reading each unit's
+    cohort at period 0. An earlier draft did `set(g[t == 0]) & {g_label}`,
+    which intersects cohort VALUES and yields a single element that is a
+    cohort label rather than a unit index -- it silently averaged one
+    arbitrary row and returned ~0 for every cell.
     """
-    rng_x = np.random.default_rng(seed_x)
-    rng_n = np.random.default_rng(seed_noise)
-    cohort_count = n_periods  # g = 0, 1, ..., n_periods - 1
-    n_units = n_per_cohort * cohort_count
-    n_total = n_units * n_periods
-    # Generate unit-level covariates (time-invariant).
-    xu = rng_x.uniform(-1.0, 1.0, size=(n_units, p))
-    # Long-format panel.
-    x_long = np.repeat(xu, n_periods, axis=0)
-    t_long = np.tile(np.arange(n_periods), n_units)
-    id_long = np.repeat(np.arange(n_units), n_periods)
-    g_unit = (np.arange(n_units) // n_per_cohort).astype(int)
-    g_long = np.repeat(g_unit, n_periods)
-    d_long = ((g_long > 0) & (t_long >= g_long)).astype(float)
-    base = x_long.sum(axis=1)
-    noise = rng_n.normal(0.0, 0.05, size=n_total)
-    y_long = base + theta0 * ((g_long > 0) & (t_long > g_long)).astype(float) + noise
-    results = {}
-    for g_value in range(1, n_periods):
-        for t_eval in range(g_value + 1, n_periods):
-            t_pre = g_value
-            # Restrict to (g == g_value) ∪ (g == 0) and t ∈ {t_pre, t_eval}.
-            keep = ((g_long == g_value) | (g_long == 0)) & (
-                (t_long == t_pre) | (t_long == t_eval)
-            )
-            sub_y = y_long[keep]
-            sub_d = d_long[keep]
-            sub_t = t_long[keep]
-            sub_x = x_long[keep]
-            # Wide-format: y_diff = y_post - y_pre, G_indicator
-            # = (g == g_value), x = pre-period covariates.
-            y_post = sub_y[sub_t == t_eval]
-            y_pre = sub_y[sub_t == t_pre]
-            x_post = sub_x[sub_t == t_eval]
-            x_pre = sub_x[sub_t == t_pre]
-            g_post = g_long[keep][sub_t == t_eval]
-            y_diff = y_post - y_pre
-            G_indicator = (g_post == g_value).astype(float)
-            # Drop rows with no G or C indicator.
-            valid = (G_indicator + (1.0 - G_indicator)) > 0
-            y_diff = y_diff[valid]
-            G_indicator = G_indicator[valid]
-            x_pre = x_pre[valid]
-            n_sub = len(y_diff)
-            if n_sub < 8:
+    idx = panel_index()
+    a = [u for u in range(N_UNITS) if g[idx(u, 0)] == g_label]
+    c = [u for u in range(N_UNITS) if g[idx(u, 0)] == g_control]
+    da = np.array([y[idx(u, eval_period)] - y[idx(u, base_period)] for u in a])
+    dc = np.array([y[idx(u, eval_period)] - y[idx(u, base_period)] for u in c])
+    return float(da.mean() - dc.mean()), len(a), len(c)
+
+
+def main() -> int:
+    sec = ph.section("did_cs")
+    y = np.array(ph.data(sec, "did_cs_y"))
+    d = np.array(ph.data(sec, "did_cs_d"))
+    t = np.array(ph.data(sec, "did_cs_t"), dtype=int)
+    g = np.array(ph.data(sec, "did_cs_g"), dtype=int)
+    uid = np.array(ph.data(sec, "did_cs_id"), dtype=int)
+    idx = panel_index()
+
+    # Discover the same way the port does: unique labels, control = minimum.
+    all_groups = sorted(set(int(v) for v in g))
+    g_control = all_groups[0]
+    groups = [x for x in all_groups if x != g_control]
+
+    rows = [
+        ("data did_cs_y", len(y), N, len(y) == N),
+        ("data did_cs_d", len(d), N, len(d) == N),
+        ("n_groups", ph.val(sec, "n_groups"), float(len(groups)),
+         ph.val(sec, "n_groups") == float(len(groups))),
+        ("n_periods", ph.val(sec, "n_periods"), float(N_PERIODS),
+         ph.val(sec, "n_periods") == float(N_PERIODS)),
+    ]
+
+    # The structure must be self-consistent: cohort 0 is the control and is
+    # untreated throughout, adoption is at k >= cohort, every unit has all
+    # four periods, and the control really is the minimum label.
+    struct_ok = True
+    for u in range(N_UNITS):
+        c = u // N_PER_COHORT
+        for k in range(N_PERIODS):
+            row = idx(u, k)
+            want = 0.0 if (c == 0 or k < c) else 1.0
+            if (d[row] != want or t[row] != k or g[row] != c
+                    or uid[row] != u):
+                struct_ok = False
+    rows.append(("panel structure matches d rule", struct_ok, True, struct_ok))
+    rows.append(("control group is min label", float(g_control),
+                 float(min(all_groups)), g_control == min(all_groups)))
+
+    control_diff_max = max(
+        float(np.max(np.abs(d[(g == g_control)])))
+        for _ in [0])
+    rows.append(("control cohort never treated", control_diff_max, 0.0,
+                 control_diff_max == 0.0))
+
+    print("panel: %d units x %d periods, %d cohorts"
+          % (N_UNITS, N_PERIODS, N_UNITS // N_PER_COHORT))
+    print("control cohort = min label = %d (must be untreated throughout)" % g_control)
+    print("adopting cohorts %s, adoption at k >= cohort, effect +%.1f"
+          % (groups, TRUE_ATT))
+    print()
+    print("%-4s %-4s %-6s %-18s %-18s %-10s"
+          % ("g", "t", "base", "moonbit coef_at", "independent (CPython)",
+             "verdict"))
+
+    n_valid = 0
+    for gi, g_label in enumerate(groups):
+        base = g_label - 1
+        for ti, t_label in enumerate(range(N_PERIODS)):
+            got = ph.val(sec, "att_g%d_t%d" % (gi, ti))
+            if t_label <= base:
+                # Documented as empty; the port returns the 0.0 it was
+                # initialised with.
+                ok = got == 0.0
+                print("%-4d %-4d %-6s %-18.10g %-18s %s"
+                      % (gi, ti, base, got, "(empty)", "ok" if ok else "NOT EMPTY"))
+                rows.append(("att_g%d_t%d (empty)" % (gi, ti), got, 0.0, ok))
                 continue
-            # Per-cell DML.
-            g0_pred, g1_pred, m_pred = fit_one_cell(
-                x_pre, y_diff, G_indicator, x_pre,
-                p1=p, p_train=PROPENSITY_CLIP,
-            )
-            # Score (observational, no in-sample norm).
-            p_hat = G_indicator.mean()
-            psi_a = -G_indicator / p_hat
-            resid_d0 = y_diff - g0_pred
-            one_minus_m = 1.0 - m_pred
-            denom = p_hat * one_minus_m
-            psi_b = (G_indicator - m_pred) / denom * resid_d0
-            mean_a = psi_a.mean()
-            mean_b = psi_b.mean()
-            theta_hat = -mean_b / mean_a
-            gamma = ((theta_hat * psi_a + psi_b) ** 2).mean()
-            sigma2 = gamma / (mean_a * mean_a * n_sub)
-            se_hat = np.sqrt(sigma2)
-            results[(g_value, t_eval)] = (theta_hat, se_hat, n_sub)
-    return results
+            ref, n_a, n_c = independent_att(y, g, base, t_label,
+                                            g_label, g_control)
+            n_valid += 1
+            ok = abs(got - ref) <= ATT_TOL
+            print("%-4d %-4d %-6d %-18.10g %-18.10g %s"
+                  % (gi, ti, base, got, ref, "ok" if ok else "MISMATCH"))
+            rows.append(("att_g%d_t%d" % (gi, ti), got, ref, ok))
+            rows.append(("att_g%d_t%d vs 1.5" % (gi, ti), got, TRUE_ATT,
+                         abs(got - TRUE_ATT) <= ATT_TOL))
+
+    print()
+    print("valid cells compared: %d (every one should recover the +%.1f effect)"
+          % (n_valid, TRUE_ATT))
+    se = ph.val(sec, "att_se_g0_t1")
+    rows.append(("att_se_g0_t1 > 0", se, "> 0", se > 0.0))
+    print()
+
+    return ph.report("staggered DID parity", rows, ok=True)
 
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print("DID CS (Callaway-Sant'Anna) reference, multi-cohort panel")
-    print("=" * 70)
-    n_per_cohort = 50
-    p = 3
-    theta0 = 1.0
-    n_periods = 4
-    results = fit_did_cs_panel(
-        n_per_cohort=n_per_cohort,
-        p=p,
-        theta0=theta0,
-        n_periods=n_periods,
-        seed_x=11,
-        seed_noise=13,
-    )
-    print(f"true theta = {theta0}")
-    print("")
-    fail = 0
-    for (g_value, t_eval), (att, se, n_sub) in sorted(results.items()):
-        marker = "PASS" if abs(att - theta0) < 0.5 and se > 0.0 else "FAIL"
-        if marker == "FAIL":
-            fail += 1
-        print(
-            f"  (g={g_value}, t={t_eval}): theta={att:.4f}, "
-            f"se={se:.4f}, n_sub={n_sub}  [{marker}]"
-        )
-    if fail > 0:
-        print(f"FAIL: {fail} cells out of range")
-        sys.exit(1)
-    print("")
-    print(f"PASS: all {len(results)} (g, t) cells within 0.5 of true ({theta0})")
-    print("")
-    print("Reference: run `moon run examples/did_cs` for the MoonBit output.")
-    print("PASS: did_cs reference")
+    sys.exit(main())

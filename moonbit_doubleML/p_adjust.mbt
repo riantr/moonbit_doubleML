@@ -3,9 +3,46 @@
 //
 // Extracted from `did_multi.mbt` in v0.54.0 so that the 7
 // algorithms are reusable across all estimators (not just
-// DIDMulti). Each function matches the corresponding upstream
-// `statsmodels.stats.multitest.multipletests` semantics so the
-// outputs are byte-comparable to `statsmodels` reference.
+// DIDMulti).
+//
+// UPSTREAM PARITY -- MEASURED, NOT ASSUMED
+// ========================================
+// `validate_padjust_with_python.py` runs the real
+// `statsmodels.stats.multitest.multipletests` against this
+// module on a fixed p-vector and reports:
+//
+//   holm         max |diff| = 0
+//   bonferroni   max |diff| = 0
+//   bh           max |diff| = 0
+//   by           max |diff| = 1.11e-16
+//   tsbh         max |diff| = 0.108      <-- NOT equal
+//   tsby         (same code path as tsbh; same `m0_hat`)
+//
+// `tsbh` / `tsby` differ from statsmodels by a CONSTANT
+// factor on every cell: `4 * (1 - alpha) / 3` = 1.26666...
+// on the vector [0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9].
+//
+// A constant factor means both sides run the same algorithm
+// -- BH, then a global `m0_hat / m` rescale -- and pick
+// different `m0_hat`:
+//
+//   this module   #{p > alpha} / (1 - alpha) = 3 / 0.95
+//   statsmodels   4, via Storey's lambda-optimisation
+//
+// This module is internally exact: a line-by-line
+// transcription of the code below reproduces its output to
+// 0.0 on all seven cells. So the difference is a choice of
+// `m0_hat` ESTIMATOR, not an arithmetic defect. It is still
+// a real parity gap, because upstream `doubleml.p_adjust`
+// delegates to statsmodels and a user porting numbers
+// across WILL see different values.
+//
+// If that is ever reconciled -- by adopting statsmodels'
+// lambda search, or by arguing this estimator is the
+// intended one -- `TSBH_STATS_RATIO` in
+// `validate_padjust_with_python.py` and the two "matches
+// statsmodels" claims on `tsbh_p_adjust` / `tsby_p_adjust`
+// must change together.
 //
 // Algorithms:
 //   - romano_wolf_p_adjust     (stepdown bootstrap, NOT in statsmodels)
@@ -13,8 +50,8 @@
 //   - bonferroni_p_adjust      ("bonferroni")
 //   - bh_fdr_p_adjust          ("fdr_bh" / "bh")
 //   - by_fdr_p_adjust          ("fdr_by" / "by")
-//   - tsbh_p_adjust            ("fdr_tsbh" / "tsbh")
-//   - tsby_p_adjust            ("fdr_tsbky" / "tsby")
+//   - tsbh_p_adjust            ("fdr_tsbh" / "tsbh")   -- see above
+//   - tsby_p_adjust            ("fdr_tsbky" / "tsby") -- see above
 //
 // All output arrays are clipped to `[0, 1]`. Order matches the
 // order of the input array (no sort-then-unsort dance in the
@@ -313,9 +350,19 @@ pub fn by_fdr_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
 /// (the Storey 2002 / BH-BKY 2006 estimator
 /// `m0_hat = #{p > alpha} / (1 - alpha)`).
 ///
-/// Algorithm (matches
+/// Algorithm. Structurally the same two-stage procedure as
 /// `statsmodels.stats.multitest.multipletests` with
-/// `method='fdr_tsbh'`):
+/// `method='fdr_tsbh'`, but NOT numerically identical: the two
+/// use different `m0_hat` estimators and this one is fixed at
+/// `alpha = 0.05`. Measured on the vector
+/// `[0.001, 0.008, 0.02, 0.04, 0.2, 0.5, 0.9]`, statsmodels
+/// returns `1.26666...` times this function's value on EVERY
+/// cell -- the constant is `4 * (1 - alpha) / 3`, the ratio of
+/// `m0_hat = 4` (statsmodels' lambda search) to
+/// `m0_hat = 3 / 0.95 = 3.1579...` (here). The file header
+/// documents this; `validate_padjust_with_python.py` pins the
+/// ratio as a constant so a drift on either side turns that
+/// validator red.
 ///   1. Apply BH:
 ///      `p_bh_sorted[k] = min(1, p_sorted[k] * m / (k+1))`.
 ///   2. Estimate `m0_hat = #{unadjusted > alpha} / (1 -
@@ -405,9 +452,14 @@ pub fn tsbh_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
 /// harmonic-sum `c` factor (from `by_fdr_p_adjust`)
 /// to handle arbitrary dependence between tests.
 ///
-/// Algorithm (matches
+/// Algorithm. As with `tsbh_p_adjust`, this is structurally
 /// `statsmodels.stats.multitest.multipletests` with
-/// `method='fdr_tsbky'`):
+/// `method='fdr_tsbky'` but NOT numerically identical to it,
+/// for the same reason and with the same measured constant:
+/// both run BY then a global `m0_hat / m` rescale, but this
+/// module fixes `alpha = 0.05` where statsmodels searches
+/// lambda. See the file header and
+/// `validate_padjust_with_python.py`.
 ///   1. Compute `c = sum_{i=1}^{n} 1/i`.
 ///   2. Apply BY:
 ///      `p_by_sorted[k] = min(1, p_sorted[k] * m * c / (k+1))`.

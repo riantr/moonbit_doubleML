@@ -1,175 +1,167 @@
-"""
-Sanity-check for the MoonBit `DoubleMLDIDBinary` estimator. The
-hand-rolled reference implements the same long→wide preprocessing
-followed by a 2-fold OLS cross-fit (matching the MoonBit
-`LinearRegression::fit` semantics), but uses its own RNG seed.
-We compare the *qualitative* agreement: both estimators should
-land within ~0.2 of the true ATT = 1.0 on the canonical synthetic
-panel DGP (n_units = 400, p = 3, half treated, half never-treated).
+"""Binary DID on a two-period panel, checked against CPython on the emitted data.
 
-For a tighter bit-equal comparison, run the MoonBit demo:
-    `moon run examples/did_binary`
-and compare its ATT_hat to this script's `handrolled_theta`.
-"""
+WHAT THIS USED TO BE
+====================
+The old file ran a hand-rolled numpy re-implementation of the estimator on its
+OWN `np.random.default_rng(7)` / `(13)` draw, compared that against the true
+ATT, printed
 
-import sys
+    print("Reference: run `moon run examples/did_binary` for the MoonBit output.")
+    print("PASS: did_binary reference")
+
+and exited 0. The instruction to run MoonBit was text in a print statement.
+The script never ran it. It was a reference for a human to check by eye, wired
+into CI as if it were an automated comparison.
+
+WHY THE DATA IS EMITTED RATHER THAN REGENERATED
+===============================================
+The DGP is drawn from `chacha8`, which CPython cannot reproduce -- it is a
+different cipher from `default_rng`, and the port's `box_muller_pair` uses
+`ln`/`cos`/`sin`, which are not correctly rounded (measured in
+`validate_bitexact_with_python.py`: `ln(3.0)` differs from CPython by exactly
+1 ULP). So Python cannot rebuild the panel.
+
+What it CAN do is take the outcome data the port actually used and compute the
+estimand on it by a different route. That is stronger than regenerating
+similar data: it removes the PRNG as a confounder entirely.
+
+THE INDEPENDENT ESTIMATE
+========================
+For each unit, `y_diff = y_post - y_pre`. The unit-level term `base` is
+time-invariant, so it cancels, and
+
+    y_diff = theta0 * (d_post - d_pre) + (noise_post - noise_pre)
+
+A treated unit has `d_pre = 0, d_post = 1`; a never-treated unit has both 0.
+So the difference in mean `y_diff` between the two groups IS the ATT, with no
+model needed at all. MoonBit's estimate comes from a 2-fold cross-fit with
+regression adjustment, so the two should agree closely but not identically --
+the gap between them is the cross-fitting's contribution, and is reported.
+
+RUN
+===
+    python validate_did_binary_with_python.py
+"""
 import os
-import numpy as np
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import parity_helper as ph  # noqa: E402
 
-def _cholesky_solve(a, b):
-    try:
-        L = np.linalg.cholesky(a)
-        y = np.linalg.solve(L, b)
-        return np.linalg.solve(L.T, y)
-    except np.linalg.LinAlgError:
-        return np.linalg.solve(a, b)
+import numpy as np  # noqa: E402
+
+N_PER_COHORT = 120
+N_UNITS = N_PER_COHORT
+P = 3
+N = N_UNITS * 2
+TRUE_ATT = 1.0
+
+ATT_TOL = 0.05
 
 
-PROPENSITY_CLIP = 1.0e-6
+def build_structure():
+    """Rebuild the documented panel structure: id, period t, group g, and d.
 
+    The emitter's DGP is, row by row:
+        u  = row // 2            (unit index)
+        k  = row % 2             (period)
+        g  = 1 if u % 2 == 0 else 0
+        d  = 1 if (g == 1 and k == 1) else 0
 
-def fit_did_binary_panel(
-    n_units,
-    p,
-    theta0,
-    seed_x,
-    seed_noise,
-    fold_seed=3141,
-):
-    """Hand-rolled reference for `DoubleMLDIDBinary::fit`.
-
-    Returns (theta_hat, se, n_sub) for the binary DID estimator on
-    the panel DGP described in the module docstring.
+    Rebuilding it here is a real check, not a formality: the emitted `d` must
+    equal the `d` this rule implies, so changing the panel structure in the
+    emitter without changing this file turns the validator red.
     """
-    rng_x = np.random.default_rng(seed_x)
-    rng_n = np.random.default_rng(seed_noise)
-    rng_f = np.random.default_rng(fold_seed)
-    # Generate unit-level covariates (time-invariant).
-    xu = rng_x.uniform(-1.0, 1.0, size=(n_units, p))
-    g_unit = (np.arange(n_units) % 2).astype(int)
-    n_total = n_units * 2
-    x_long = np.repeat(xu, 2, axis=0)
-    t_long = np.tile(np.array([0, 1]), n_units)
-    id_long = np.repeat(np.arange(n_units), 2)
-    g_long = np.repeat(g_unit, 2)
-    d_long = ((g_long == 1) & (t_long == 1)).astype(float)
-    base = x_long.sum(axis=1)
-    noise = rng_n.normal(0.0, 0.05, size=n_total)
-    y_long = base + theta0 * d_long + noise
-    # Wide-format preprocessing.
-    wide_y, wide_d, wide_x = [], [], []
-    for u in range(n_units):
-        pre_idx_arr = np.where((id_long == u) & (t_long == 0))[0]
-        post_idx_arr = np.where((id_long == u) & (t_long == 1))[0]
-        if len(pre_idx_arr) == 0 or len(post_idx_arr) == 0:
-            continue
-        g_u = g_long[pre_idx_arr[0]]
-        g_indicator = 1.0 if g_u == 1 else 0.0
-        c_indicator = 1.0 if g_u == 0 else 0.0
-        if g_indicator + c_indicator != 1.0:
-            continue
-        wide_y.append(y_long[post_idx_arr[0]] - y_long[pre_idx_arr[0]])
-        wide_d.append(g_indicator)
-        wide_x.append(xu[u])
-    wide_y = np.array(wide_y)
-    wide_d = np.array(wide_d)
-    wide_x = np.array(wide_x)
-    n_sub = len(wide_y)
-    # 2-fold OLS cross-fit (matches LinearRegression::fit).
-    perm = rng_f.permutation(n_sub)
-    base_fold = n_sub // 2
-    rem = n_sub - base_fold * 2
-    fold_sizes = [base_fold + (1 if f < rem else 0) for f in range(2)]
-    offsets = np.cumsum([0] + fold_sizes[:-1])
-    g0_pred = np.zeros(n_sub)
-    g1_pred = np.zeros(n_sub)
-    m_pred = np.zeros(n_sub)
-    for f in range(2):
-        test_idx = perm[offsets[f] : offsets[f] + fold_sizes[f]]
-        train_mask = np.ones(n_sub, dtype=bool)
-        train_mask[test_idx] = False
-        train_idx = np.where(train_mask)[0]
-        # g0 on D == 0
-        train_d0 = train_idx[wide_d[train_idx] == 0.0]
-        if len(train_d0) > 0:
-            xt_train = wide_x[train_d0]
-            xt_train1 = np.hstack([np.ones((len(xt_train), 1)), xt_train])
-            yt_train = wide_y[train_d0]
-            beta0 = _cholesky_solve(
-                xt_train1.T @ xt_train1 + 1e-10 * np.eye(xt_train1.shape[1]),
-                xt_train1.T @ yt_train,
-            )
-            xt_test = wide_x[test_idx]
-            xt_test1 = np.hstack([np.ones((len(xt_test), 1)), xt_test])
-            g0_pred[test_idx] = xt_test1 @ beta0
-        # g1 on D == 1
-        train_d1 = train_idx[wide_d[train_idx] == 1.0]
-        if len(train_d1) > 0:
-            xt_train = wide_x[train_d1]
-            xt_train1 = np.hstack([np.ones((len(xt_train), 1)), xt_train])
-            yt_train = wide_y[train_d1]
-            beta1 = _cholesky_solve(
-                xt_train1.T @ xt_train1 + 1e-10 * np.eye(xt_train1.shape[1]),
-                xt_train1.T @ yt_train,
-            )
-            xt_test = wide_x[test_idx]
-            xt_test1 = np.hstack([np.ones((len(xt_test), 1)), xt_test])
-            g1_pred[test_idx] = xt_test1 @ beta1
-        # m on all train
-        xt_train = wide_x[train_idx]
-        xt_train1 = np.hstack([np.ones((len(xt_train), 1)), xt_train])
-        dt_train = wide_d[train_idx]
-        beta_m = _cholesky_solve(
-            xt_train1.T @ xt_train1 + 1e-10 * np.eye(xt_train1.shape[1]),
-            xt_train1.T @ dt_train,
-        )
-        xt_test = wide_x[test_idx]
-        xt_test1 = np.hstack([np.ones((len(xt_test), 1)), xt_test])
-        m_pred[test_idx] = np.clip(
-            xt_test1 @ beta_m, PROPENSITY_CLIP, 1.0 - PROPENSITY_CLIP,
-        )
-    # Score (observational, no in-sample normalisation).
-    p_hat = wide_d.mean()
-    psi_a = -wide_d / p_hat
-    resid_d0 = wide_y - g0_pred
-    one_minus_m = 1.0 - m_pred
-    denom = p_hat * one_minus_m
-    psi_b = (wide_d - m_pred) / denom * resid_d0
-    # Variance.
-    mean_a = psi_a.mean()
-    mean_b = psi_b.mean()
-    theta_hat = -mean_b / mean_a
-    gamma = ((theta_hat * psi_a + psi_b) ** 2).mean()
-    sigma2 = gamma / (mean_a * mean_a * n_sub)
-    se_hat = np.sqrt(sigma2)
-    return theta_hat, se_hat, n_sub
+    unit = np.empty(N, dtype=int)
+    t = np.empty(N, dtype=int)
+    g = np.empty(N, dtype=int)
+    d = np.empty(N)
+    for row in range(N):
+        u = row // 2
+        k = row % 2
+        unit[row] = u
+        t[row] = k
+        g[row] = 1 if u % 2 == 0 else 0
+        d[row] = 1.0 if (g[row] == 1 and k == 1) else 0.0
+    return unit, t, g, d
+
+
+def wide_panel(y, unit, t, g):
+    """Long -> wide: one row per unit with y_diff and the G indicator."""
+    diffs = np.zeros(N_UNITS)
+    g_ind = np.zeros(N_UNITS)
+    seen = np.zeros(N_UNITS, dtype=int)
+    for row in range(N):
+        u = unit[row]
+        if t[row] == 0:
+            diffs[u] = -y[row]
+        else:
+            diffs[u] += y[row]
+        g_ind[u] = g[row]
+        seen[u] += 1
+    return diffs, g_ind, seen
+
+
+def main() -> int:
+    sec = ph.section("did_binary")
+    y = np.array(ph.data(sec, "did_binary_y"))
+    d_emit = np.array(ph.data(sec, "did_binary_d"))
+
+    unit, t, g, d_rebuilt = build_structure()
+
+    rows = [
+        ("data did_binary_y", len(y), N, len(y) == N),
+        ("data did_binary_d", len(d_emit), N, len(d_emit) == N),
+        # The structure the panel actually used, bit-for-bit.
+        ("d matches documented rule", float(np.max(np.abs(d_emit - d_rebuilt))),
+         0.0, bool(np.all(d_emit == d_rebuilt))),
+    ]
+
+    diffs, g_ind, seen = wide_panel(y, unit, t, g)
+
+    # Units usable for the ATT: both periods present, and a well-defined group.
+    usable = seen == 2
+    n_sub_expected = int(usable.sum())
+    n_sub_reported = int(ph.val(sec, "n_obs_subset"))
+    rows.append(("n_obs_subset", n_sub_reported, float(n_sub_expected),
+                 n_sub_reported == n_sub_expected))
+
+    treated = usable & (g_ind == 1)
+    control = usable & (g_ind == 0)
+    att_independent = float(diffs[treated].mean() - diffs[control].mean())
+
+    att_mb = ph.val(sec, "att")
+    se_mb = ph.val(sec, "att_se")
+
+    rows += [
+        ("att vs independent estimate", att_mb, att_independent,
+         abs(att_mb - att_independent) <= ATT_TOL),
+        ("att vs true 1.0", att_mb, TRUE_ATT,
+         abs(att_mb - TRUE_ATT) <= ATT_TOL),
+        ("independent vs true 1.0", att_independent, TRUE_ATT,
+         abs(att_independent - TRUE_ATT) <= ATT_TOL),
+        ("att_se > 0", se_mb, "> 0", se_mb > 0.0),
+    ]
+
+    print("panel: %d units x 2 periods, p = %d, half treated / half never"
+          % (N_UNITS, P))
+    print("units used for the ATT: %d (all have both periods)" % n_sub_expected)
+    print()
+    print("independent estimate, no model, on the port's own y:")
+    print("  mean y_diff among treated  = %.15g  (n = %d)"
+          % (diffs[treated].mean(), int(treated.sum())))
+    print("  mean y_diff among controls = %.15g  (n = %d)"
+          % (diffs[control].mean(), int(control.sum())))
+    print("  ATT = %.15g" % att_independent)
+    print()
+    print("moonbit ATT = %.15g   se = %.15g" % (att_mb, se_mb))
+    print("cross-fitting contribution (moonbit - independent) = %+.6g"
+          % (att_mb - att_independent))
+    print()
+
+    return ph.report("binary DID parity", rows, ok=True)
 
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print("DID Binary reference (panel, 400 units × 2 periods)")
-    print("=" * 70)
-    n_units = 400
-    p = 3
-    theta0 = 1.0
-    theta_hat, se_hat, n_sub = fit_did_binary_panel(
-        n_units=n_units,
-        p=p,
-        theta0=theta0,
-        seed_x=7,
-        seed_noise=13,
-    )
-    print(f"hand-rolled DIDBinary: theta={theta_hat:.6f}, se={se_hat:.6f}, n_sub={n_sub}")
-    print(f"true theta = {theta0}")
-    if abs(theta_hat - theta0) > 0.3:
-        print(f"FAIL: |theta - {theta0}| = {abs(theta_hat - theta0):.4f} > 0.3")
-        sys.exit(1)
-    print(f"PASS: hand-rolled DID Binary theta within 0.3 of true ({theta0})")
-    # Reference for MoonBit comparison.
-    print("")
-    print("Reference: run `moon run examples/did_binary` for the MoonBit output.")
-    print("PASS: did_binary reference")
-print("PASS: did_binary reference")
+    sys.exit(main())
