@@ -2,16 +2,22 @@
 
     python .github/scripts/qa_loop/run.py [--iterations N] [--full]
                                           [--only id,id] [--json out.json]
+                                          [--allow-inert]
 
 Runs the registered checks in order, one pass per iteration, and prints a
 per-iteration table plus an aggregate. Exit code:
 
-    0  no FAIL and no INERT
-    1  at least one FAIL or INERT
+    0  no FAIL (and no INERT, unless --allow-inert)
+    1  at least one FAIL, or any INERT without --allow-inert
 
-INERT is treated as failure deliberately: a gate that cannot fail is not a
+INERT is treated as failure by default: a gate that cannot fail is not a
 passing gate, and this repo has shipped a green format check that could not
 turn red.
+
+--allow-inert downgrades INERT to a loud non-fatal warning. It exists for CI,
+where `moon fmt --check` is INERT on this toolchain for a reason unrelated to
+the code under test -- gating on it would fail every run forever and train
+everyone to ignore a red build. The verdict is still printed either way.
 """
 from __future__ import annotations
 
@@ -58,6 +64,10 @@ def main(argv=None):
                     help="also run slow checks (full test suites, api, fuzz, mutation)")
     ap.add_argument("--only", default="", help="comma-separated check ids")
     ap.add_argument("--json", default="", help="write the report here")
+    ap.add_argument("--allow-inert", action="store_true",
+                    help="report INERT but do not exit non-zero for it (used by "
+                         "CI, where a permanently-INERT gate would otherwise fail "
+                         "every run for reasons unrelated to the code)")
     args = ap.parse_args(argv)
 
     selected = C.CHECKS
@@ -120,6 +130,7 @@ def main(argv=None):
         payload = {
             "tool": tool, "mode": "full" if args.full else "fast",
             "iterations": args.iterations,
+            "allow_inert": args.allow_inert,
             "runs": [[{"id": r.id, "verdict": r.verdict, "seconds": round(r.seconds, 2),
                        "evidence": r.evidence} for r in run] for run in all_runs],
             "tally": tally,
@@ -128,7 +139,19 @@ def main(argv=None):
             json.dump(payload, f, indent=2, ensure_ascii=False)
         print(f"report -> {args.json}")
 
-    return 1 if (failed or inert) else 0
+    if args.allow_inert and inert:
+        # Loud on purpose: this is the one place a real defect is deliberately
+        # not blocking, so it must be impossible to miss in the log.
+        print()
+        print("::warning::%d check(s) are INERT and were NOT treated as "
+              "failures because --allow-inert was passed: %s" % (len(inert), ", ".join(inert)))
+        print("::warning::An INERT check cannot fail, so it protects nothing. "
+              "Either fix the gate or stop treating it as coverage.")
+    if failed:
+        print()
+        print("::error::QA loop FAILED: %s" % ", ".join(failed))
+
+    return 1 if (failed or (inert and not args.allow_inert)) else 0
 
 
 if __name__ == "__main__":

@@ -21,6 +21,9 @@ its verdicts are trusted:
   T16 duplicate rate <= 100% (sliding/non-overlapping denominator invariant)
   T17 duplicate_code finds an injected duplicate block
   T18 run() survives undecodable subprocess bytes (GBK-locale regression)
+  T19/T20 --allow-inert tolerates INERT but MUST NOT tolerate FAIL -- that
+      flag is what CI gates on, so a failure slipping through it would make
+      the whole CI gate decorative
 
 Run:  python .github/scripts/qa_loop/selftest.py
 """
@@ -120,6 +123,18 @@ try:
     rc = D.main(["--only", "t_pass", "--iterations", "2"])
     D.one_pass = real_one_pass
     ok("T4d verdict flip across iterations -> exit 1", rc == 1, f"exit={rc}")
+
+    # --allow-inert is what CI uses, so its blast radius must be pinned: it may
+    # tolerate INERT, and it must NOT tolerate FAIL. If a real failure could
+    # slip through this flag the CI gate would be decorative.
+    C.CHECKS = synth(("t_inert", C.INERT))
+    ok("T19 INERT + --allow-inert -> exit 0",
+       D.main(["--only", "t_inert", "--allow-inert"]) == 0)
+    C.CHECKS = synth(("t_inert", C.INERT), ("t_fail", C.FAIL))
+    ok("T20 INERT + FAIL + --allow-inert -> exit 1 (flag cannot mask a failure)",
+       D.main(["--only", "t_inert,t_fail", "--allow-inert"]) == 1)
+    ok("T20b FAIL + --allow-inert -> exit 1",
+       D.main(["--only", "t_fail", "--allow-inert"]) == 1)
 finally:
     C.CHECKS = real_checks
 

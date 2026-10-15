@@ -115,3 +115,65 @@ jobs:
             echo "One or more validators did not emit a trailing PASS line."
             exit 1
           fi
+
+  # The 21 QA activities were, until v0.162.0, an inventory rather than
+  # something you could run. This job runs the fast scope of that harness on
+  # every push and PR.
+  #
+  # It is deliberately NOT --full. The full scope runs `moon test` several more
+  # times (unit_tests, component_tests, and mutation's 3 mutants) and re-runs
+  # all 23 Python cross-checks -- all of which the moon-test and
+  # python-cross-check jobs above already do, on 4 backends. Re-doing them here
+  # would multiply release time to re-measure what is already measured.
+  #
+  # What this job adds that nothing else covers: duplicate-code detection, the
+  # dependency audit, Gherkin -> test traceability, validate_splitting_contract
+  # (tracked but matched by no CI glob until now), a test-coverage proxy, and
+  # the harness's own self-test.
+  #
+  # --allow-inert: `moon fmt --check` cannot fail on this toolchain, and the
+  # harness proves that with a control arm rather than asserting it. Gating on
+  # INERT would turn every run red for a reason unrelated to the code, and a
+  # permanently-red build is a build everyone learns to ignore. The verdict is
+  # still printed, and selftest T20 pins that --allow-inert can never mask a
+  # real FAIL.
+  qa-loop:
+    name: QA loop
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      TYPOS_VERSION: v1.19.0
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      # Pinned to the same version publish.yml uses, so the spell-check verdict
+      # in this job and the release gate come from one dictionary.
+      - name: Install typos
+        run: |
+          mkdir -p "${CARGO_HOME:-$HOME/.cargo}/bin"
+          curl -LsSf "https://github.com/crate-ci/typos/releases/download/${TYPOS_VERSION}/typos-${TYPOS_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar zxf - -C "${CARGO_HOME:-$HOME/.cargo}/bin"
+          echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> $GITHUB_PATH
+
+      - name: Update dependencies
+        run: |
+          moon version --all
+          moon update
+
+      # The harness must be able to fail before its verdict is worth anything,
+      # so the self-test gates this job too.
+      - name: Self-test the harness
+        run: python3 .github/scripts/qa_loop/selftest.py
+
+      - name: QA loop (fast scope)
+        run: python3 .github/scripts/qa_loop/run.py --allow-inert --json qa_loop.json

@@ -137,6 +137,25 @@ jobs:
       - name: Check shipped README matches the edited README
         run: python3 .github/scripts/check_readme_sync.py
 
+      # The 21 QA activities, as a runnable harness. Fast scope only, for the
+      # same reason check.yml does not use --full: `moon test` already ran on
+      # 4 backends two steps above, and the mutation battery would run it again
+      # three more times. What this adds is the set nothing else gates --
+      # duplicate code, dependency audit, Gherkin traceability, the coverage
+      # proxy, and validate_splitting_contract.py, which is tracked but matched
+      # by no CI glob and so had never run.
+      #
+      # --allow-inert keeps `moon fmt --check` (INERT: this toolchain cannot
+      # make it fail, proven by the harness's own control arm) from turning
+      # every release red. A gate that cannot fail protects nothing, so blocking
+      # on it would only cost signal. selftest T20 pins that this flag can never
+      # mask a real FAIL.
+      - name: QA loop (fast scope)
+        run: python3 .github/scripts/qa_loop/run.py --allow-inert --json qa_loop.json
+
+      - name: Self-test the QA harness
+        run: python3 .github/scripts/qa_loop/selftest.py
+
       - name: Publish to Mooncakes
         run: |
           # moon publish exits 255 for "secret missing", "secret has the
