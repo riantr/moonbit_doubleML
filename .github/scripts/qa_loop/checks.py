@@ -21,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -724,7 +725,11 @@ def _boot_api(timeout=120):
     """
     proc = subprocess.Popen(["moon", "run", "--target", "native", "examples/api_server"],
                             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace")
+                            text=True, encoding="utf-8", errors="replace",
+                            # Its own session so `_kill_tree` can killpg the
+                            # whole group, which is the only thing that reaches
+                            # the server `moon run` detaches. See _kill_tree.
+                            start_new_session=(os.name == "posix"))
     port = 4000
     # Settle BEFORE the first request. Polling /healthz from t=0 connects while
     # the server is still coming up, and that early traffic -- not the number
@@ -749,26 +754,68 @@ def _boot_api(timeout=120):
 
 
 def _kill_tree(proc):
-    """Kill `moon` AND the server binary it spawned.
+    """Kill `moon` AND the server binary it spawned, on Windows AND on POSIX.
 
     `moon run` detaches the compiled child: killing the `moon` parent leaves a
     live api_server holding port 4000, and the next boot then exits 1 with
     empty output (exit code 4294967295 == -1). Measured -- that is how the
-    fuzz check first failed here. Kill by image name as well as the tree.
+    fuzz check first failed here.
+
+    THE POSIX BRANCH IS NOT OPTIONAL. This function was Windows-only for its
+    whole life: `taskkill` does not exist on Linux, so both of those calls
+    raised FileNotFoundError into a bare `except Exception: pass`, and the only
+    thing that actually killed anything was `proc.kill()` on the detached
+    parent. Every api_server boot on Linux therefore LEAKED.
+
+    Measured consequence, and the reason this is a fix rather than a cleanup:
+    `api_test` and `security_dast` each passed when run alone on WSL and the
+    SECOND one failed when run in the same invocation, with its own diagnostic
+    naming the cause --
+
+        api_server exited before any request (rc=1); is port 4000 already
+        held by a leaked server?
+
+    Nothing in CI showed it, because both checks are full-scope and no workflow
+    ran full scope. They passed on Windows for the whole time because
+    `taskkill /IM api_server.exe` was doing the work the POSIX branch lacked.
+
+    Killing the whole PROCESS GROUP is the POSIX analogue of `taskkill /T`, and
+    it is what makes the detached grandchild reachable. It requires the child
+    to have been started in its own session -- hence `start_new_session=True`
+    at both Popen call sites.
     """
     if proc is None:
         return
-    try:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                       capture_output=True, timeout=60)
-    except Exception:                               # noqa: BLE001
-        pass
-    for image in ("api_server.exe", "moon.exe"):
+    if os.name == "posix":
         try:
-            subprocess.run(["taskkill", "/F", "/IM", image],
+            pgid = os.getpgid(proc.pid)
+        except Exception:                           # noqa: BLE001
+            pgid = None
+        if pgid is not None:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except Exception:                       # noqa: BLE001
+                pass
+        # Belt and braces: `moon run` may have re-parented the server, in which
+        # case the group kill above can miss it. Match on the image name.
+        for image in ("api_server", "moon"):
+            try:
+                subprocess.run(["pkill", "-9", "-f", image],
+                               capture_output=True, timeout=60)
+            except Exception:                       # noqa: BLE001
+                pass
+    else:
+        try:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
                            capture_output=True, timeout=60)
         except Exception:                           # noqa: BLE001
             pass
+        for image in ("api_server.exe", "moon.exe"):
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", image],
+                               capture_output=True, timeout=60)
+            except Exception:                       # noqa: BLE001
+                pass
     try:
         proc.kill()
     except Exception:                               # noqa: BLE001
@@ -850,7 +897,11 @@ def c_dast():
     port = 4000
     proc = subprocess.Popen(["moon", "run", "--target", "native", "examples/api_server"],
                             cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace")
+                            text=True, encoding="utf-8", errors="replace",
+                            # Same reason as _boot_api: its own session, so the
+                            # group kill in _kill_tree reaches the detached
+                            # server. Without it every boot leaks on POSIX.
+                            start_new_session=(os.name == "posix"))
     try:
         # Wait for the listener with a real request. Note this sends a
         # request too: with `allow_failure=false` the server dies on the
