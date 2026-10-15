@@ -562,13 +562,22 @@ def c_pyexample():
         rc, out = run([sys.executable, "pyexample_did.py", "--check"],
                       cwd=ROOT, timeout=2400)
         verdict = PASS if rc == 0 else FAIL
-        tail = out.strip().splitlines()[-1] if out.strip() else ""
-        evidence = tail.strip()[:110]
-        # Carry the two numbers a reader needs to judge the gate: how far the
-        # coefficient sat from upstream in units of the measured fold noise,
-        # and whether the fixture came back clean.
+        # Prefer the gate's own verdict line over the process tail: `run()`
+        # merges stderr, and doubleml's DeprecationWarning quotes its own
+        # source line, so the tail is frequently a fragment of a warning
+        # rather than anything the gate said about itself.
+        evidence = ""
         for line in out.splitlines():
-            if "coef: sd" in line or "fixture restored" in line:
+            s = line.strip()
+            if s.startswith("pyexample: port vs upstream"):
+                evidence = s
+        if not evidence:
+            tail = out.strip().splitlines()[-1] if out.strip() else ""
+            evidence = tail.strip()[:110]
+        # Carry the one number a reader needs to judge the gate: how far the
+        # coefficient sat from upstream in units of the measured fold noise.
+        for line in out.splitlines():
+            if "coef: sd" in line:
                 evidence += " | " + line.strip()
         return R("pyexample", "", verdict, evidence)
     finally:
