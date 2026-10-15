@@ -134,6 +134,21 @@ def c_format():
     try:
         open(os.path.join(tmp, "moon.mod"), "w", encoding="utf-8").write(
             'name = "t/fmtctl"\n\nversion = "0.1.0"\n')
+        # The moon.pkg is LOAD-BEARING, and it was missing. Measured: without
+        # it `moon fmt` prints "ran 1 task, now up to date", exits 0, and does
+        # NOT rewrite the badly formatted file -- a directory with no package
+        # definition is not a package, so there is nothing to format. The
+        # control arm was therefore measuring nothing, reporting INERT on every
+        # single run, and `--allow-inert` was quietly downgrading a check that
+        # in fact works.
+        #
+        # `moon fmt --check` on the real repo demonstrably DOES fail: measured
+        # on unformatted code earlier in this cycle, exit 4294967295. So the
+        # INERT verdict was a false alarm, produced by a probe that never
+        # pointed the tool at anything it could see. The fix is to make the
+        # probe point at a real package, so the verdict means what it claims.
+        open(os.path.join(tmp, "moon.pkg"), "w", encoding="utf-8").write(
+            'pkgtype(kind: "executable")\n\nsupported_targets = "native"\n')
         open(os.path.join(tmp, "bad.mbt"), "w", encoding="utf-8").write(
             "fn  add( a : Int ,b : Int )->Int {\n        let x=a+b   \n  x\n}\n")
         crc, cout = run(["moon", "fmt", "--check"], cwd=tmp, timeout=600)
