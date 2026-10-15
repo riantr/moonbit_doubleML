@@ -213,17 +213,22 @@ def main() -> int:
           % (COEF_TOL, abs(sharp_np - sharp_ch), abs(ratio_np - ratio_ch)))
     print()
 
-    rc = ph.report("sharp / fuzzy RD parity", rows, ok=True)
-    ok = (rc == 0) and all(r[3] for r in data_rows)
-    # SE has no external reference; a non-positive one means the influence
-    # function collapsed.
+    # The SE rows MUST go into the same table as everything else. Printing them
+    # after `report()` was a REAL CI FAILURE, not a style point: the
+    # `python-cross-check` step in `check.yml` greps each script's TRAILING
+    # line for `PASS`, so a last line reading `MATCH fuzzy_se ...` fails the
+    # build even when every row matched and the exit code was 0. This file was
+    # the only validator that did it, and a local run that checks only the exit
+    # code cannot see it -- `moon run examples/parity` under WSL produced
+    # byte-identical output, so the emitter was never the problem.
     for label in ("sharp_se", "fuzzy_se"):
-        s = ph.val(sec, label)
-        print("  %-6s %-22s moonbit=%-24s %s"
-              % ("MATCH " if s > 0.0 else "DIFFER", label, repr(s),
-                 "(must be > 0)"))
-        ok = ok and s > 0.0
-    return 0 if ok else 1
+        got = ph.val(sec, label)
+        rows.append((label, got, "must be > 0", got > 0.0))
+
+    # One report call, and it is the last statement: the verdict line must be
+    # the final thing on stdout.
+    return ph.report("sharp / fuzzy RD parity", rows,
+                     ok=all(r[3] for r in data_rows))
 
 
 if __name__ == "__main__":

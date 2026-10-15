@@ -98,21 +98,42 @@ jobs:
           # doubleml + numpy + pandas + statsmodels + scikit-learn
           pip install doubleml numpy pandas statsmodels scikit-learn
 
-      - name: Run all 23 validate_*_with_python.py scripts
+      # No count in the step name: the glob below is the source of truth, and
+      # a hardcoded count went stale twice (23 -> 24) while the run itself was
+      # unaffected -- which is worse than no number at all, because it looks
+      # maintained.
+      - name: Run every validate_*_with_python.py script
         run: |
           set -e
           fail=0
+          count=0
           for s in validate_*_with_python.py; do
             echo "=== $s ==="
-            line="$(python "$s" | tail -1)"
+            count=$((count + 1))
+            # Capture stdout AND the exit code separately.
+            #
+            # The previous form was `line="$(python "$s" | tail -1)"`. Under a
+            # bare `set -e`, a pipeline's status is its LAST command's, so
+            # python's non-zero exit was invisible and the trailing-PASS line
+            # was the only gate. That is a weaker gate than it looks: all ten
+            # scripts that could not spawn MoonBit printed a PASS-looking line
+            # and passed it, which is exactly the failure this step appeared
+            # to be protecting against.
+            out="$(python "$s")" || {
+              echo "::error::${s} exited non-zero"
+              fail=1
+              continue
+            }
+            line="$(printf '%s\n' "$out" | tail -1)"
             echo "$line"
             case "$line" in
               *PASS*) ;;
               *) echo "::error::${s} trailing line did not contain PASS"; fail=1 ;;
             esac
           done
+          echo "ran ${count} validator(s)"
           if [ "$fail" -ne 0 ]; then
-            echo "One or more validators did not emit a trailing PASS line."
+            echo "One or more validators failed."
             exit 1
           fi
 
