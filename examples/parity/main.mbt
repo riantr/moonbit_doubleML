@@ -46,6 +46,7 @@ fn main {
   sec_cv_repeated()
   sec_gain_statistics()
   sec_lplr_upstream()
+  sec_pq_qte()
 }
 
 // --------------------------------------------------------------------------- //
@@ -1525,6 +1526,148 @@ fn sec_lplr_upstream() -> Unit {
       .set_sample_splitting([outer])
       .fit()
     val("lplr_match_in_seed" + probe[i].to_string(), f4.coef())
+  }
+  end()
+}
+
+// --------------------------------------------------------------------------- //
+// 16. pq_qte -- the quantile family against upstream, on an integer-only DGP
+// --------------------------------------------------------------------------- //
+
+///|
+/// WHY THIS SECTION, and why it needs no data emission
+/// ===================================================
+/// RDD, PQ, QTE, LPQ and PolicyTree are five estimator slots on
+/// `examples/main` that carried an ANALYTIC oracle only -- no upstream gate
+/// at all. This covers the two quantile estimators. LPQ, RDD and PolicyTree
+/// are still open.
+///
+/// Unlike the LPLR section above, NOTHING is emitted and no partition is
+/// pinned, because the DGP is integer arithmetic only and CPython
+/// rebuilds it independently from the same formulas. Per the header of
+/// this file that is the STRONGER shape: two independent constructions of
+/// the same numbers, not one copied from the other.
+///
+/// Every draw is a modulo, so there is no RNG library and no cross-language
+/// stream mismatch to align. The formulas were settled in
+/// `_verify/PQ_QTE_GATE_DESIGN_1680.md`, together with two DGP facts that
+/// had to be measured rather than assumed:
+///
+///   * `1.0 * d` in `y` is LOAD-BEARING. Without it the true effect is zero,
+///     `DoubleMLQTE` correctly returns ~0, and that reads as "broken".
+///   * the first uniform draw, `(i * 48271) % 2147483647`, never wraps for
+///     i < 1000 and is correlated with the `x` columns, so a fold held a
+///     single class and every upstream fit raised. The replacement below
+///     gives 447 treated / 553 control.
+///
+/// The propensities are deliberately confined to [0.15, 0.85]: in that
+/// regime the port-vs-upstream `normalize_ipw` gap was measured at 3.8e-13,
+/// so the gate tests the ESTIMATOR rather than the known flag gap.
+///
+/// BOTH learners are set to a classifier on both sides. Upstream's
+/// `pq.py:174-175` checks BOTH `ml_g` and `ml_m` with `classifier=True`,
+/// and the argument NAMES are inherited from the PLR family where `ml_g` is
+/// the outcome learner -- in the quantile estimators the roles are swapped
+/// and the names did not follow. The port's `ml_l` defaults to a REGRESSOR,
+/// so leaving it alone would not even fit the same problem.
+fn sec_pq_qte() -> Unit {
+  section("pq_qte")
+  let n = 1000
+  let p = 2
+  let x_flat = Array::make(n * p, 0.0)
+  let d = Array::make(n, 0.0)
+  let y = Array::make(n, 0.0)
+  let mut treated = 0
+  for i = 0; i < n; i = i + 1 {
+    let ii = i.to_int64()
+    let x1 = (ii * 7919 % 1000).to_double() / 500.0 - 1.0
+    let x2 = (ii * 6271 % 997).to_double() / 498.5 - 1.0
+    let ps = 0.5 + 0.20 * x1 + 0.15 * x2
+    let u = (ii * 104729 + 12345) % 999983
+    let ut = u.to_double() / 999983.0
+    let di = if ut < ps { 1.0 } else { 0.0 }
+    let e = (ii * 130363 + 777) % 262139
+    x_flat[i * p] = x1
+    x_flat[i * p + 1] = x2
+    d[i] = di
+    if di == 1.0 {
+      treated = treated + 1
+    }
+    y[i] = 1.0 * di +
+      0.5 * x1 +
+      0.3 * x2 +
+      0.25 * (e.to_double() / 131069.5 - 1.0)
+  }
+  val("pq_treated", treated.to_double())
+  val("pq_n", n.to_double())
+  val("pq_p", p.to_double())
+  // A DATA FINGERPRINT, not just a class count. A battery arm that changed
+  // the `x2` divisor left `pq_treated` at 447 -- the check passed, the gate
+  // compared the port's correct rows against upstream's perturbed rows, and
+  // the coefficient difference stayed inside the band. A count only says
+  // "roughly the right number of treated"; sums over every column say the
+  // rows are the rows. Exact to machine precision on both sides, because
+  // both build the arrays from the same integer formulas.
+  let mut sx1 = 0.0
+  let mut sx2 = 0.0
+  let mut sy = 0.0
+  for i = 0; i < n; i = i + 1 {
+    sx1 = sx1 + x_flat[i * p]
+    sx2 = sx2 + x_flat[i * p + 1]
+    sy = sy + y[i]
+  }
+  val("pq_sum_x1", sx1)
+  val("pq_sum_x2", sx2)
+  // `sum(d)` is the TREATED count, not the control one. The first version
+  // emitted `d.length() - treated` and the gate refused to compare -- which
+  // is the fingerprint working, catching a real slip on its first run.
+  val("pq_sum_d", treated.to_double())
+  val("pq_sum_y", sy)
+  let data = @moonbit_doubleML.DoubleMLData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
+    y,
+    d,
+  )
+  let clog = @moonbit_doubleML.LearnerDispatch::logistic_regression(
+    @moonbit_doubleML.LogisticRegression::new(),
+  )
+  // Re-seeded across a spread of values so the PORT side's spread is
+  // measured here rather than assumed. Upstream is seeded with
+  // `np.random.seed` on the other side of the gate.
+  // Twelve seeds, not five. A band built from a 5-sample sd is a poor
+  // estimate of the spread itself, and at five seeds `qte[0]_coef` landed
+  // at 92% of its band -- which is a coin flip dressed as a gate. Twelve
+  // matches the spread measured in `_verify/PQ_QTE_GATE_DESIGN_1680.md`.
+  let seeds = [
+    3141, 3142, 3143, 3144, 3145, 3146, 3147, 3148, 3149, 3150, 3151, 3152,
+  ]
+  for i = 0; i < seeds.length(); i = i + 1 {
+    let sd = seeds[i]
+    let pq = @moonbit_doubleML.DoubleMLPQ::new(
+      data,
+      treatment=1.0,
+      quantile=0.5,
+      n_folds=2,
+      seed=sd,
+      ml_l=clog,
+      ml_m=clog,
+    ).fit()
+    val("pq_coef_s" + sd.to_string(), pq.coef())
+    val("pq_se_s" + sd.to_string(), pq.se())
+    let qte = @moonbit_doubleML.DoubleMLQTE::new(
+      data,
+      quantiles=[0.25, 0.5, 0.75],
+      n_folds=2,
+      seed=sd,
+      ml_l=clog,
+      ml_m=clog,
+    ).fit()
+    let coefs = qte.coefs()
+    let ses = qte.ses()
+    for k = 0; k < coefs.length(); k = k + 1 {
+      val("qte_coef_s" + sd.to_string() + "_" + k.to_string(), coefs[k])
+      val("qte_se_s" + sd.to_string() + "_" + k.to_string(), ses[k])
+    }
   }
   end()
 }

@@ -270,6 +270,30 @@ jobs:
           set -e
           python pyexample_lplr.py --check
 
+      # PQ / QTE -- the quantile estimators on `examples/main`, which carried
+      # an ANALYTIC oracle only until now.
+      #
+      # A different comparison SHAPE from the six gates above: nothing is
+      # emitted and no partition is pinned, because the DGP is integer
+      # arithmetic only. Both sides build the arrays from the same modulo
+      # formulas and a per-column fingerprint is compared, so this is two
+      # independent constructions of the same rows -- the stronger shape the
+      # parity emitter's header describes. A transcription slip on either
+      # side shows up as a mismatch instead of cancelling out.
+      #
+      # Coefficients are gated on the measured seed spread. The standard
+      # errors are gated on a RATIO envelope instead, and the reason is
+      # measured rather than stylistic: the port reports every QTE `se` about
+      # 10% below upstream, consistently in one direction across four
+      # quantities whose seed spread is ~1e-4. Both candidate causes were
+      # measured and ruled out -- `trimming` does not bind on this DGP, and
+      # `normalize_ipw` moves the gap the WRONG way. Details in
+      # `pyexample_pq.py` and `_verify/PQ_QTE_SE_GAP_1680.md`.
+      - name: Compare the quantile port against upstream
+        run: |
+          set -e
+          python pyexample_pq.py --check
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.

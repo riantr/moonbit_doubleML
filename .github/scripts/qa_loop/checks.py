@@ -823,6 +823,43 @@ def c_pyexample_lplr():
 
 
 # --------------------------------------------------------------------------- #
+# pyexample_pq -- the quantile estimators (PQ / QTE) against upstream
+# --------------------------------------------------------------------------- #
+#
+# No byte-snapshot guard and no emitted data, for the same reason as
+# `pyexample_lplr`: this gate reads only stdout. Its comparison shape is
+# different again -- the DGP is integer-only, so both sides build the rows
+# independently and a per-column fingerprint is compared.
+#
+# Coefficients ride the measured seed-spread band; standard errors ride a
+# ratio envelope, because the port sits ~10% below upstream on every QTE SE
+# and both candidate causes were measured and ruled out. A seed-spread band
+# would be red on every run, which is a permanently failing CI, not a gate.
+@check("pyexample_pq",
+       "port vs upstream DoubleMLPQ / DoubleMLQTE, independently rebuilt integer DGP",
+       "fast")
+def c_pyexample_pq():
+    gate = os.path.join(ROOT, "pyexample_pq.py")
+    if not os.path.isfile(gate):
+        return R("pyexample_pq", "", SKIP, "pyexample_pq.py is not present")
+    try:
+        rc, out = run([sys.executable, "pyexample_pq.py", "--check"],
+                      cwd=ROOT, timeout=3600)
+    except Exception as e:  # noqa: BLE001 - any failure is a FAIL, never a PASS
+        return R("pyexample_pq", "", FAIL, "could not run the gate: %s" % e)
+    verdict = PASS if rc == 0 else FAIL
+    evidence = []
+    for line in out.splitlines():
+        s = line.strip()
+        if s.startswith(("pq_coef ", "qte[", "agree:")):
+            evidence.append(s)
+    if not evidence:
+        tail = out.strip().splitlines()[-1] if out.strip() else ""
+        evidence = [tail.strip()[:110]]
+    return R("pyexample_pq", "", verdict, " | ".join(evidence)[:300])
+
+
+# --------------------------------------------------------------------------- #
 # pyexample_cs2021 -- the MULTI-COHORT port against upstream's own CS2021 data
 # --------------------------------------------------------------------------- #
 #
