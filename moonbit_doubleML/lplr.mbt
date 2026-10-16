@@ -808,23 +808,37 @@ pub fn DoubleMLLPLR::fit(
         // is its own change with its own evidence, and it does not
         // belong inside a fix for the inert `score` parameter.
         m_pred = a_pred
-        // MEASURED 1680-series: implementing the filter above (upstream's
-        // `Y == 0` subsample restriction) collapses the gap to upstream on
-        // the shared-rows / shared-partition gate from 0.113896 to 0.005995
-        // -- 19x -- and moves the SE ratio from 1.3256 to 1.0979. It also
-        // moves this estimator's non-convergence cliff outward, from alpha
-        // 1.25 to between 1.7 and 1.8 (n=1000, seed 11; measured with and
-        // without). So the "tried and reverted" note above describes a real
-        // attempt whose blocker was the OLS DEFAULT learner, not the filter
-        // itself: with a logistic `ml_m` -- which is what upstream uses, and
-        // which `pyexample_lplr.py` compares against -- the filtered fit is
-        // well behaved.
+        // MEASURED 1680-series, and then NOT shipped. On the
+        // MATCHED-LEARNER configuration (ml_m = logistic, the only one
+        // upstream can mirror -- it rejects a regressor for `ml_M`) the
+        // filter collapses the gap to upstream on the shared-rows /
+        // shared-partition gate from 0.113896 to 0.005995, 19x, and moves the
+        // SE ratio from 1.3256 to 1.0979. `pyexample_lplr.py` measures both
+        // numbers on every run.
         //
-        // NOT applied here because it moves the example's published numbers,
-        // the generated e2e table and four `expand_v145_test.mbt` gates
-        // (2/3/4/6, all of which fixture alpha = 1.25/1.5, now on the
-        // healthy side of the moved cliff). That is its own change with its
-        // own evidence. Full measurements: `_verify/LPLR_GATE_BLINDNESS_1680.md`.
+        // It does not ship, because that configuration is not the one the
+        // estimator uses by default. With the default `ml_m` here --
+        // `linear_regression()` -- the filter makes the fit nearly
+        // unidentified on some fixtures: `examples/fuzz` trial 5 returns
+        // `se = 1.3e7`. That is the same mechanism the note above describes
+        // (beta_start -4.75, mean(psi_deriv) -3.2e-8), so the earlier
+        // revert was correct.
+        //
+        // Note also that the note above's justification is slightly off in a
+        // way that matters: upstream has NO default `ml_m` at all -- it is a
+        // required argument, and every upstream call site in this repo
+        // passes a classifier. "Upstream's default is a LogisticRegression"
+        // describes this repo's validator, not upstream.
+        //
+        // Re-fixturing the warning gates for the filter's moved cliff was
+        // also measured and then discarded with it. For the record, the
+        // cliff moves outward but NOT by one constant: it is past 1.50 and
+        // warning from 1.75 at (n=1000, seed=11), and still silent at 2.50
+        // and only warning from 3.00 at (n=800, seed=17).
+        //
+        // Enabling it requires changing the default `ml_m` to a bounded
+        // learner first -- a separate change, affecting every LPLR caller.
+        // Full measurements: `_verify/LPLR_GATE_BLINDNESS_1680.md`.
         // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
         // row positions recorded by the outer fold's training set
         // (upstream's behaviour: `M_iteration = M_hat_inner[i][train]`

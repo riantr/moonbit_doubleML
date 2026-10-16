@@ -88,17 +88,16 @@ binary-classification slots"). It is not faithful on `ml_m`: the port sets
 `m_pred = a_pred` (`lplr.mbt:810`) where upstream fits `ml_m` separately on
 the `Y == 0` subsample (`lplr.py:247-252`). **That is D1.**
 
-## 5. D1 measured, not assumed
+## 5. D1 measured, not assumed — and then measured again
 
 The in-body note says this "was tried and reverted", citing a collapse
 (`beta_start` reaching -4.75, `mean(psi_deriv)` -3.2e-8, Newton
 non-convergence, `se` -2.4e6) on `lplr_test`'s n=120 fixture. The note also
 says why upstream is immune: **its default `ml_m` is a `LogisticRegression`**.
-That is the same learner mismatch as §3 — so the blocker was the OLS
-default, not the filter.
 
-Implementing the filter behind `if kind == NuisanceSpace` and re-measuring,
-same rows, same outer partition, 5 inner seeds each side:
+Implementing the filter behind `match kind { NuisanceSpace => ... }` and
+re-measuring on the MATCHED-LEARNER configuration, same rows, same outer
+partition, 5 inner seeds each side:
 
 | | port (matched) | upstream | gap | port inner sd | SE ratio |
 |---|---|---|---|---|---|
@@ -112,6 +111,68 @@ not move at all (0.436704 before and after) — correct, because upstream
 applies the `Y == 0` filter only under `nuisance_space`; under `instrument`
 it uses `weights = M*(1-M)` with `filtered_smpls = smpls`. A mutation that
 moved both arms would have been a different defect.
+
+The non-convergence cliff moves outward, and it moves **differently for each
+of the two fixtures the v1450 gates use**, which is why it had to be
+measured twice rather than once:
+
+| alpha | 1.0 | 1.25 | 1.5 | 1.75 | 2.0 | 2.5 | 3.0 |
+|---|---|---|---|---|---|---|---|
+| n=1000, seed=11 (gates 2–5) | 0 | 0 | 0 | **1** | 1 | 1 | 1 |
+| n=800, seed=17 (gate 6) | 0 | 0 | 0 | 0 | 0 | 0 | **1** |
+
+The cliff is not a constant of the estimator — it moves with n and seed.
+Re-fixturing the gates from either fixture's value alone would have asserted
+a property of neither.
+
+## 5b. CORRECTION: the 19x does not license shipping D1
+
+The table above is real, and it is **not** sufficient grounds to ship. It
+was measured on the *matched-learner* configuration. The estimator's
+*default* configuration is a different thing, and it was checked only on the
+example's own n=500 fixture — which D1 handles fine (`lplr_ns_theta`
+0.464110 → 0.393779, `lplr_ns_se` 0.271114 → 0.225975).
+
+Running the full example corpus found it:
+
+```
+[8/11] DoubleMLLPLR nonlinear fit invariants ...
+FUZZ FAIL: lplr CI identity (trial=5, se=13072741.313829884)
+```
+
+`se = 1.3e7` on fuzz trial 5. That passes the corpus's own declared bound
+(`se < 1.0e10`, `examples/fuzz/main.mbt:478`), and the CI-identity check
+fails only because it compares against an **absolute** `1e-9` on a quantity
+of magnitude `z*se = 2.6e7`, where double rounding is already ~5.6e-9. But
+the SE itself being 1.3e7 on a binary-outcome partially-logistic model is
+the real finding: the fit is nearly unidentified there.
+
+Mechanism — and it vindicates the original revert. The port's `ml_m`
+defaults to **`linear_regression()`**, and D1 fits that OLS on the `Y == 0`
+subsample; the in-body note recorded exactly this (`beta_start` -4.75,
+`mean(psi_deriv)` -3.2e-8, `se` -2.4e6). The note's explanation is right in
+substance but wrong in a way that matters: **upstream has no default `ml_m`
+at all** — it is a required argument, and every upstream call site in this
+repo passes a classifier. The logistic learner in the 19x table was a choice
+this repo's validator made, not an upstream default.
+
+So the two configurations genuinely diverge under D1, and the measured 19x
+belongs to the one the example does *not* use.
+
+⇒ **D1 is not shipped.** It requires first changing the port's default
+`ml_m` to a bounded (logistic) learner — a separate behavioural change
+affecting every LPLR caller, with its own evidence.
+
+Two lessons, both of which cost a cycle here:
+
+1. **A tight band on a matched configuration says nothing about the
+   configuration that ships.** This gate compares matched learners *by
+   necessity* (upstream rejects a regressor for `ml_M`), which makes it a
+   poor instrument for a question about defaults.
+2. **The test suite was green (1115/1115) while the estimator was broken.**
+   The LPLR invariants live in `examples/fuzz`, not in `moon test`, so
+   `moon test` cannot see them. Regenerating the e2e table — which runs
+   every example — is what surfaced it.
 
 ## 6. Band, measured from both sides
 
