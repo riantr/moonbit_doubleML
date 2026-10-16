@@ -49,7 +49,11 @@ BLOCKED  THIS MACHINE lacks a tool the step needs; nothing was proven either
          way. Never counted as coverage, never merged into "all passed".
 
 BLOCKED is cross-checked with `command -v` inside the guest, so a command the
-guest does have and that fails anyway still reports FAIL.
+guest does have and that fails anyway still reports FAIL. A step whose entire
+body is PROVISIONING a named tool is also BLOCKED when it fails: it downloads
+tools and asserts nothing about the repository, so its outcome is a fact about
+this machine's network, not about the ref. `Install typos` is the real case --
+see `unprovisionable_tool`.
 
 Provisioning
 ------------
@@ -365,6 +369,21 @@ def provision(engine, verbose=True):
 MISSING_RE = re.compile(r"(?:^|\n)\s*bash:\s+line\s+\d+:\s+(\S+):\s+"
                         r"command not found")
 
+# A step that DOWNLOADS a tool rather than invoking one. Anchored on the real
+# workflow text, not on a generic "curl", so this cannot match an ordinary step
+# that happens to fetch something.
+#
+# `check.yml`'s "Install typos" step is `curl ... | tar zxf -`, and it has no
+# `--max-time`/`--retry`. Measured on this machine (2026-10): the asset CDN
+# release-assets.githubusercontent.com delivered 4,350,067 of 6,365,610 bytes
+# and then timed out, so `curl` exited non-zero and piped a TRUNCATED stream
+# into `tar` -- which is the whole of `tar: Error is not recoverable`. That is
+# a transfer failure wearing the costume of a code failure.
+INSTALL_TARGETS = (
+    (re.compile(r"crate-ci/typos/releases"), "typos"),
+    (re.compile(r"cli\.moonbitlang\.com/install"), "moon"),
+)
+
 # Steps this tool must refuse to execute, ever.
 #
 # `publish.yml` runs `moon publish` and `Create GitHub Release` from plain `run:`
@@ -404,6 +423,45 @@ def missing_tool(engine, tree, text):
             continue
         if not (p.stdout or "").strip():
             return name
+    return None
+
+
+def unprovisionable_tool(engine, tree, body):
+    """The tool a step exists to PROVISION, when that step failed.
+
+    The same false accusation as `missing_tool`, reached the other way round.
+    `missing_tool` catches a step that *invokes* an absent command and bash says
+    so. An install step never gets that far: it fails during the transfer, so
+    the error text is a curl/tar complaint with no command in it, and the step
+    lands on FAIL -- which this file defines as "a real defect in the ref under
+    test". Measured (2026-10), the "Install typos" step burned 807s and then
+    reported exactly that on a tree whose every code gate was green.
+
+    WHY THE MARKER ALONE DECIDES. The step is matched by an INSTALL_TARGETS
+    regex, i.e. its entire body is provisioning a named tool: `mkdir`, `curl`,
+    `tar`, `echo >> $GITHUB_PATH`. Nothing in such a body asserts anything
+    about the repository, so its failure cannot be a defect in the ref whatever
+    the cause -- a throttled CDN, a blocked host, a truncated transfer. Real
+    GitHub Actions runs this step on a runner that fetches it fine.
+
+    Note what the obvious guard gets WRONG here. "Downgrade only when the tool
+    is still absent" looks safer and is not: this guest already had `typos` from
+    an earlier successful run, so that rule would keep reporting FAIL for a
+    transfer the gate does not even need. The `command -v` probe is therefore
+    used for the DETAIL only -- it says whether the gate downstream can still
+    run -- never to decide the verdict.
+    """
+    for rx, tool in INSTALL_TARGETS:
+        if not rx.search(body or ""):
+            continue
+        present = False
+        try:
+            p = engine.run("command -v %s || true" % shlex.quote(tool),
+                           tree, {}, 60)
+            present = bool((p.stdout or "").strip())
+        except Exception:                            # noqa: BLE001
+            present = False
+        return tool, present
     return None
 
 
@@ -805,8 +863,25 @@ def run_job(workflow_file, job_id, job, matrix_ctx, engine, tree, timeout,
                     "not verified: local engine has no %r "
                     "(a CI runner does)" % miss, dt))
             else:
-                results.append(StepResult(name, "FAIL",
-                                          "exit=%s %s" % (rc, detail), dt))
+                # A step whose whole body is provisioning a tool is not a
+                # verdict about the ref, whatever the cause. See the
+                # function's docstring for the measurement and for why the
+                # obvious "only if the tool is absent" guard is wrong.
+                prov = unprovisionable_tool(engine, tree, body)
+                if prov:
+                    tool, present = prov
+                    results.append(StepResult(
+                        name, "BLOCKED",
+                        "not verified: provisioning step for %r failed, and it "
+                        "only downloads tools, so it proves nothing about the "
+                        "ref (a CI runner fetches it). %r is %s here. %s"
+                        % (tool, tool,
+                           "already present from an earlier run" if present
+                           else "NOT available in this guest",
+                           detail), dt))
+                else:
+                    results.append(StepResult(name, "FAIL",
+                                              "exit=%s %s" % (rc, detail), dt))
         else:
             results.append(StepResult(name, "PASS", detail, dt))
     return results
@@ -1070,6 +1145,43 @@ def cmd_selftest(args):
         check("ST6c control: tool EXISTS and fails -> still FAIL",
               len(res5) == 1 and res5[0].status == "FAIL",
               res5[0].status if res5 else "?")
+
+        # A step that only PROVISIONS a tool cannot testify about the ref. Real
+        # instance: `Install typos` failed twice in a row here with
+        # `tar: Error is not recoverable` -- a transfer that delivered 68% of
+        # the tarball and then timed out -- on a tree whose every code gate was
+        # green. It was reported as FAIL, which is a false accusation.
+        #
+        # Network-free on purpose: `mkdir -p /nonexistent-parent-xyz` fails
+        # instantly, so the arm measures the VERDICT, not this machine's CDN.
+        # ST12, not ST8: ST8/ST8c are already the publish-refusal pair below.
+        # Duplicate self-test ids are not a cosmetic problem -- if either ST8
+        # ever goes red you could not tell which one from the report.
+        wf8 = {"p.yml": {"jobs": {"prov": {"steps": [
+            {"name": "install",
+             "run": "mkdir -p /nonexistent-parent-xyz && "
+                    "curl -LsSf https://github.com/crate-ci/typos/releases/"
+                    "download/v1.19.0/typos-v1.19.0-x86_64-unknown-linux-musl.tar.gz"
+                    " | tar zxf - -C /nonexistent-parent-xyz"},
+        ]}}}}
+        res8 = run_job("p.yml", "prov", wf8["p.yml"]["jobs"]["prov"], {},
+                       engine, tree, 120)
+        check("ST12 provisioning step fails -> BLOCKED, not FAIL",
+              len(res8) == 1 and res8[0].status == "BLOCKED",
+              res8[0].status if res8 else "?")
+
+        # The control that keeps ST12 honest: a failing step that merely CONTAINS
+        # a curl, but provisions nothing, must still be FAIL. Without this the
+        # downgrade would be reachable by any step mentioning a download.
+        wf8c = {"p.yml": {"jobs": {"notprov": {"steps": [
+            {"name": "curl but no provisioning target",
+             "run": "curl --help > /dev/null && exit 7"},
+        ]}}}}
+        res8c = run_job("p.yml", "notprov", wf8c["p.yml"]["jobs"]["notprov"], {},
+                        engine, tree, 120)
+        check("ST12c control: a curl step that provisions nothing -> still FAIL",
+              len(res8c) == 1 and res8c[0].status == "FAIL",
+              res8c[0].status if res8c else "?")
 
         # Matrix expansion. This regressed silently: `${{ matrix.target }}` was
         # never resolved, so all four jobs ran the literal text and bash reported

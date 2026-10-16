@@ -1727,9 +1727,21 @@ because a step is allowed to rely on that (`publish.yml` gates on
 a red build. It is cross-checked with `command -v` in the guest, so a command
 the guest *does* have and that fails anyway still reports `FAIL`.
 
+A step whose entire body is **provisioning a named tool** is also `BLOCKED`
+when it fails, because it downloads tools and asserts nothing about the
+repository -- so its outcome is a fact about this machine's network, not about
+the ref. The real case is `Install typos`: it is `curl ... | tar zxf -` with
+no `--max-time`, and on this machine the asset CDN delivered 4,350,067 of
+6,365,610 bytes and then timed out, so `curl` exited non-zero and piped a
+truncated stream into `tar`. That reported `tar: Error is not recoverable` and
+was scored `FAIL` twice on a tree whose every code gate was green. The obvious
+guard -- "downgrade only when the tool is still absent" -- is *wrong*: the guest
+already had `typos` from an earlier successful run, so that rule would have kept
+reporting red for a transfer the gate does not need.
+
 `selftest` is the guard on the guard: every discriminating rule has a paired
-control arm, so a gate that cannot fail cannot pass here either. **20
-self-tests.** Eight simulator bugs it has caught, every one of which read as a
+control arm, so a gate that cannot fail cannot pass here either. **22
+self-tests.** Nine simulator bugs it has caught, every one of which read as a
 project failure:
 
 - Windows `text=True` put a `\r` on every line of the script, so
