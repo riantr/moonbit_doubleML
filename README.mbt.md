@@ -1174,14 +1174,32 @@ outputs. CI runs each script and requires **both** a zero exit code and a
 trailing `PASS` line -- the second condition alone used to be the only one
 checked, and it is trivially satisfied by a script that never ran MoonBit.
 
-**Two gates whose reference is UPSTREAM, not ours** -- `pyexample_did.py` and
-`pyexample_did_cs2021.py`. Every script above compares the port against a
-second implementation written in this repository, which can only catch a
-disagreement someone already thought to look for. These two regenerate
-`doubleml.did.datasets.make_did_SZ2020` and `make_did_CS2021`, run upstream's
-own `DoubleMLDID` and `DoubleMLDIDMulti` on them, and compare the port to that:
-not "does the port agree with our second implementation" but "does the port
-agree with upstream, on upstream's data".
+**Eight gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
+family. Every script above compares the port against a second implementation
+written in this repository, which can only catch a disagreement someone already
+thought to look for. The `pyexample_*` scripts instead run upstream's own code
+on the port's rows and compare that: not "does the port agree with our second
+implementation" but "does the port agree with upstream". Measured designs, one
+script per upstream class:
+
+| script | upstream class | how the two sides get their rows |
+|---|---|---|
+| `pyexample_did.py` | `DoubleMLDID` on `make_did_SZ2020` | upstream's own DGP |
+| `pyexample_did_cs2021.py` | `DoubleMLDIDMulti` on `make_did_CS2021` | upstream's own DGP |
+| `pyexample_did_binary.py` | `DoubleMLDIDBinary` | shared rows |
+| `pyexample_did_cs_binary.py` | `DoubleMLDIDCSBinary` | shared rows |
+| `pyexample_lplr.py` | `DoubleMLLPLR` | shared rows + pinned outer partition |
+| `pyexample_pq.py` | `DoubleMLPQ` / `DoubleMLQTE` / `DoubleMLLPQ` | integer-only DGP, rebuilt independently on both sides |
+| `pyexample_policytree.py` | `DoubleMLPolicyTree` | integer-only DGP; the **label vector over every row** is compared, because the port's builder and upstream's `DecisionTreeClassifier` differ in threshold convention, criterion and leaf rule |
+| `pyexample_suite.py` | the core estimator family | mixed |
+
+**`DoubleMLRDD` is deliberately the one absence.** It is **measured
+divergent**, not gated: its SE differs from `rdrobust`'s by 3.3x and no bandwidth
+repairs both sides at once, so a gate here would be permanently red. The
+measurement is `_verify/RDD_PARITY_1680.md`. That is the standing rule -- a
+recorded defect beats a gate that cannot pass. With RDD recorded and the other
+four gated, every estimator slot on `examples/main` that once had an analytic
+oracle only is now either gated against upstream or measured.
 
 The multi-cohort half is the one worth reading the CHANGELOG for. It was
 absent for a release cycle on a documented refusal whose two reasons were both
@@ -1545,7 +1563,7 @@ Deleting both lines is the change that would make this section true.
 
 ### What CI actually gates
 
-Measured from `.github/workflows/` and confirmed against the run list. Eight
+Measured from `.github/workflows/` and confirmed against the run list. Nine
 gates, all of which run on push to `master` and again before publishing:
 
 | Gate | Where | Scope |
@@ -1557,7 +1575,8 @@ gates, all of which run on push to `master` and again before publishing:
 | Generated-interface drift | `publish.yml` | public surface |
 | `typos` (pinned 1.19.0) | `publish.yml` | prose |
 | 24 `validate_*_with_python.py` | `check.yml` | estimator parity; see the two-tier note below |
-| 21-activity QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 22 registered checks, 12 of them fast |
+| 8 `pyexample_*` upstream gates | `check.yml` `python-cross-check` | the port against **upstream's own code**; see the table below |
+| QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 28 registered checks, 19 of them fast |
 
 `nightly.yml` additionally runs the package against the MoonBit **nightly**
 toolchain, so a breaking upstream change surfaces before it reaches stable.
