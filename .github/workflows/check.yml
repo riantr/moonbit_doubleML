@@ -181,6 +181,24 @@ jobs:
           set -e
           python pyexample_did_cs2021.py --check
 
+      # The core estimator family: PLR, IRM, SSM, BLP, PLIV and IIVM on three
+      # numpy datasets. Before this step, six estimators shipped with no
+      # upstream comparison at all -- the two steps above are both DID.
+      #
+      # Same structural constraints: separate step, because it writes a
+      # generated dataset into `examples/parity/suite_data.mbt` and restores it,
+      # restore from an in-memory byte snapshot, no git-status guard.
+      #
+      # Every fit is re-seeded immediately before it is built. Upstream calls
+      # `check_random_state(None)`, which returns the PROCESS-global
+      # `np.random.mtrand._rand`, so a single per-batch seed would tie each
+      # fold draw to every random number consumed before it -- an unrelated
+      # estimator being added or removed would move this gate's reference.
+      - name: Compare the core estimator family against upstream
+        run: |
+          set -e
+          python pyexample_suite.py --check
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.

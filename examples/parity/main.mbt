@@ -38,6 +38,7 @@ fn main {
   sec_did_cs()
   sec_did_pyexample()
   sec_did_pyexample_cs2021()
+  sec_pyexample_suite()
   sec_bootstrap()
   sec_padjust()
   sec_cv_repeated()
@@ -646,6 +647,204 @@ fn sec_did_pyexample_cs2021() -> Unit {
   }
   data_out("cs_g", g_dbl)
   data_out("cs_t", t_dbl)
+  end()
+}
+
+// --------------------------------------------------------------------------- //
+// 6b. pyexample_suite -- the core estimator family, port vs upstream
+// --------------------------------------------------------------------------- //
+
+///|
+/// Six estimators that both sides can express, on THREE datasets, because they
+/// do not share a treatment domain: `d` is binary on A, CONTINUOUS on B
+/// (PLIV), and binary-with-a-binary-instrument on C (IIVM / LATE).
+///
+/// Every learner is spelled out rather than left to a default. Two of these
+/// constructors default to something upstream rejects outright --
+/// `DoubleMLPLR::new` defaults BOTH learners to a REGRESSOR, and
+/// `DoubleMLIIVM::new` defaults `ml_r` to a regressor where upstream's must be
+/// a classifier (`iivm.py:164`, `_check_learner(..., classifier=True)`). A port
+/// default that would turn this gate red for the wrong reason is a trap for
+/// whoever has to read the failure, so nothing here leans on one.
+///
+/// `DoubleMLSSM::new` has no `ml_pi` slot, while upstream takes the selection
+/// propensity `P(S = 1 | D, X)` as a THIRD learner. The port's `fit` does take
+/// it (`ssm.mbt:694`), defaulting to `ml_m`, so it is passed explicitly here.
+/// Relying on that default happens to match today and would silently stop
+/// matching the day it changed -- and nothing in the output would say why.
+///
+/// `DoubleMLPLIV::new` likewise takes ONE `learner` for all three of upstream's
+/// slots. Upstream's are all `LinearRegression` on this DGP, so a single linear
+/// learner is a faithful stand-in rather than a shortcut.
+///
+/// Upstream's BLP regresses the orth signal on a ONE-COLUMN basis (x1), so the
+/// basis here is that single column and not the full design. Passing all p
+/// columns would still fit -- it is a valid BLP -- but it would no longer be
+/// the estimator the reference measured.
+///
+/// DID is absent on purpose: `pyexample_did.py` and `pyexample_did_cs2021.py`
+/// already gate it upstream-side, and a third copy would add runtime without
+/// adding coverage.
+///
+/// `DoubleMLPolicyTree` is absent too, for a different reason. It is the one
+/// estimator here whose port defaults genuinely diverge from upstream's
+/// (`depth=1, min_leaf_n=5` against `depth=2, min_samples_leaf=8,
+/// ccp_alpha=0.01`), and upstream's exposes no `coef`/`se` at all -- only a root
+/// split. Reconciling that is a reported-behaviour decision, not a gate
+/// detail. `suite_a_sig` is still generated, so enabling it later is a one-line
+/// change here rather than another fixture rewrite.
+fn sec_pyexample_suite() -> Unit {
+  section("pyexample_suite")
+  // Its OWN sentinel. `pyexample_generated()` would be true whenever the DID
+  // fixture is installed, which says nothing about whether THIS file is the
+  // real one or the committed 3-row placeholder.
+  let generated = suite_generated() != 0
+  val("suite_generated", if generated { 1.0 } else { 0.0 })
+  if !generated {
+    end()
+    return
+  }
+  let n = suite_n()
+  let p = suite_p()
+
+  let xa = @moonbit_doubleML.Matrix::from_array(suite_a_x(), n, p)
+  let ya = suite_a_y()
+  let da = suite_a_d()
+  let sa = suite_a_s()
+
+  let xb = @moonbit_doubleML.Matrix::from_array(suite_b_x(), n, p)
+  let yb = suite_b_y()
+  let db = suite_b_d()
+  let zb = suite_b_z()
+
+  let xc = @moonbit_doubleML.Matrix::from_array(suite_c_x(), n, p)
+  let yc = suite_c_y()
+  let dc = suite_c_d()
+  let zc = suite_c_z()
+
+  let lin = @moonbit_doubleML.LearnerDispatch::linear_regression()
+  let logi = @moonbit_doubleML.LearnerDispatch::logistic_regression(
+    @moonbit_doubleML.LogisticRegression::new(),
+  )
+
+  // -- dataset A: binary d, MAR selection -------------------------------- //
+  let plr = @moonbit_doubleML.DoubleMLPLR::new(
+    @moonbit_doubleML.DoubleMLData::new(xa, ya, da),
+    learner_l=lin,
+    learner_m=logi,
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+  ).fit()
+  let irm = @moonbit_doubleML.DoubleMLIRM::new(
+    @moonbit_doubleML.DoubleMLData::new(xa, ya, da),
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    ml_g=lin,
+    ml_m=logi,
+  ).fit()
+  let ssm = @moonbit_doubleML.DoubleMLSSM::new(
+    @moonbit_doubleML.DoubleMLSSMData::new(xa, ya, da, sa),
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    ml_g=lin,
+    ml_m=logi,
+  ).fit(ml_pi=logi)
+  // BLP gets a BARE one-column basis `x0`, while the Python side hands upstream
+  // `[1, x0]`. That asymmetry is the whole alignment, and getting it backwards
+  // is measurable rather than subtle.
+  //
+  // Upstream is `sm.OLS(orth_signal, basis)` with no `add_constant` and no
+  // `has_constant` (`blp.py:239`): it is origin-forced on whatever basis it is
+  // given, and `_all_coef[:, i] = blp_model.params` stores exactly
+  // `basis.shape[1]` numbers. The port's `LinearRegression::fit` ALWAYS
+  // prepends an intercept (`linear.mbt:102`) and `DoubleMLBLP::fit` stores
+  // that whole augmented vector, so the port's `coef` is `basis.cols() + 1`
+  // long with the intercept at index 0 -- a convention `predictions` itself
+  // relies on (`blp_policy.mbt:677`) and `n_params()` documents.
+  //
+  // So each side is given the raw column and each side's own convention adds
+  // the constant: upstream's basis is `[1, x0]`, the port's is `x0`, both
+  // solve the identical design `[1, x0]`, and both return `[intercept, slope]`
+  // in that order. Measured agreement: coef[0] 6.8e-14, se[0] 1.4e-15.
+  //
+  // Passing `[1, x0]` to the PORT as well does NOT work, and the failure is
+  // worth recording: `LinearRegression::fit` prepends a second constant column
+  // regardless, the design `[1, 1, x0]` is rank-deficient, and the 1e-10 ridge
+  // splits the intercept between the two constant columns. Measured on this
+  // DGP: coef[0] 0.33253 and coef[1] 0.33222, which sum to 0.66475 -- the
+  // true intercept -- with the slope pushed to an unemitted index 2. Both
+  // numbers are individually plausible and jointly obviously wrong.
+  let basis_a = @moonbit_doubleML.Matrix::from_array(
+    col(suite_a_x(), n, p, 0),
+    n,
+    1,
+  )
+  let blp = @moonbit_doubleML.DoubleMLBLP::new(
+    basis_a,
+    sa,
+    cov_type="HC0",
+    ml_g=lin,
+  ).fit()
+
+  // -- dataset B: continuous d, continuous z ---------------------------- //
+  let pliv = @moonbit_doubleML.DoubleMLPLIV::new(
+    @moonbit_doubleML.DoubleMLPLIVData::new(xb, yb, db, zb),
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    learner=lin,
+  ).fit()
+
+  // -- dataset C: binary d, binary z (LATE) ----------------------------- //
+  let iivm = @moonbit_doubleML.DoubleMLIIVM::new(
+    @moonbit_doubleML.DoubleMLIIVMData::new(xc, yc, dc, zc),
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    ml_g=lin,
+    ml_m=logi,
+    ml_r=logi,
+  ).fit()
+
+  val("plr_coef", plr.coef())
+  val("plr_se", plr.se())
+  val("irm_coef", irm.coef())
+  val("irm_se", irm.se())
+  val("ssm_coef", ssm.coef())
+  val("ssm_se", ssm.se())
+  val("blp_coef_0", blp.coef()[0])
+  val("blp_coef_1", blp.coef()[1])
+  val("blp_se_0", blp.se()[0])
+  val("blp_se_1", blp.se()[1])
+  val("pliv_coef", pliv.coef())
+  val("pliv_se", pliv.se())
+  val("iivm_coef", iivm.coef())
+  val("iivm_se", iivm.se())
+  val("n_estimators", 6.0)
+  val("n", n.to_double())
+  val("p", p.to_double())
+  // A fingerprint of the rows the port actually fitted, so a stale build that
+  // ran the 3-row PLACEHOLDER reads as a number mismatch instead of a
+  // mystery. Sums, not the full columns: 3 x 1000 doubles is an unreadable
+  // dump, and a sum still moves if any single element differs.
+  val("sum_a_y", wsum(ya))
+  val("sum_a_d", wsum(da))
+  val("sum_a_s", wsum(sa))
+  // `suite_a_sig` is the SIGNED (+/-1) orth signal `DoubleMLPolicyTree` wants
+  // (`bin_signal = (sign(orth_signal) + 1) / 2`), not the 0/1 `s` above. The
+  // tree itself is deferred, but the column still has to round-trip: a
+  // placeholder that emitted `s` here would compile just as well and would
+  // only fail the day someone enabled the estimator.
+  val("sum_a_sig", wsum(suite_a_sig()))
+  val("sum_b_y", wsum(yb))
+  val("sum_b_d", wsum(db))
+  val("sum_b_z", wsum(zb))
+  val("sum_c_y", wsum(yc))
+  val("sum_c_d", wsum(dc))
+  val("sum_c_z", wsum(zc))
   end()
 }
 

@@ -608,6 +608,72 @@ def c_pyexample():
 
 
 # --------------------------------------------------------------------------- #
+# pyexample_suite -- the CORE ESTIMATOR FAMILY against upstream's own fits
+# --------------------------------------------------------------------------- #
+#
+# Same contract as the two gates above, applied to the six estimators that had
+# no upstream gate at all: PLR, IRM, SSM, BLP, PLIV and IIVM on three numpy
+# datasets. Registered separately rather than folded into `pyexample`, because
+# it is a different gate against different estimators and a merge would hide
+# which one broke.
+#
+# It writes a DIFFERENT tracked fixture (`examples/parity/suite_data.mbt`) than
+# the two DID gates, so there is no fixture contention -- but all three drive
+# the same `moon run examples/parity` build, so they must still not run
+# concurrently against one working tree. It carries the same independent
+# byte-snapshot guard for the same reason: the failure being defended against is
+# "the gate's own restore did not run", which is exactly when its restore would
+# be the thing that is missing.
+@check("pyexample_suite",
+       "port vs upstream on PLR/IRM/SSM/BLP/PLIV/IIVM over 3 datasets",
+       "fast")
+def c_pyexample_suite():
+    fixture = os.path.join(ROOT, "examples", "parity", "suite_data.mbt")
+    gate = os.path.join(ROOT, "pyexample_suite.py")
+    if not os.path.isfile(gate):
+        return R("pyexample_suite", "", SKIP, "pyexample_suite.py is not present")
+    if not os.path.isfile(fixture):
+        return R("pyexample_suite", "", SKIP, "%s is not present"
+                 % os.path.relpath(fixture, ROOT))
+    try:
+        with open(fixture, "rb") as fh:
+            before = fh.read()
+    except OSError as e:
+        return R("pyexample_suite", "", SKIP, "cannot read the fixture: %s" % e)
+    try:
+        rc, out = run([sys.executable, "pyexample_suite.py", "--check"],
+                      cwd=ROOT, timeout=2400)
+        verdict = PASS if rc == 0 else FAIL
+        evidence = ""
+        for line in out.splitlines():
+            s = line.strip()
+            if s.startswith("pyexample: port vs upstream estimator family"):
+                evidence = s
+        if not evidence:
+            tail = out.strip().splitlines()[-1] if out.strip() else ""
+            evidence = tail.strip()[:110]
+        # Two numbers a reader needs to judge whether this gate can bite: how
+        # many items it compared, and the band the deterministic BLP is held
+        # to. A `checked 0 item(s)` here would mean it compared nothing.
+        for line in out.splitlines():
+            if line.startswith("checked ") and "item(s)" in line:
+                evidence += " | " + line.strip()
+        for line in out.splitlines():
+            if "BLP band in force" in line:
+                evidence += " | " + line.strip()
+        return R("pyexample_suite", "", verdict, evidence)
+    finally:
+        try:
+            with open(fixture, "rb") as fh:
+                after = fh.read()
+        except OSError:
+            after = b"<unreadable>"
+        if after != before:
+            with open(fixture, "wb") as fh:
+                fh.write(before)
+
+
+# --------------------------------------------------------------------------- #
 # pyexample_cs2021 -- the MULTI-COHORT port against upstream's own CS2021 data
 # --------------------------------------------------------------------------- #
 #
