@@ -863,25 +863,132 @@ def c_contract():
 
 
 # --------------------------------------------------------------------------- #
-# 16. E2E -- run a real example and assert its output
+# 16. E2E -- run every runnable example and assert its output
 # --------------------------------------------------------------------------- #
-@check("e2e", "run examples end-to-end and assert output", "full")
+#
+# The previous version of this check ran TWO examples (`pava` with a marker,
+# `ssm` with `marker=None`) and was registered in `full` scope, which the CI
+# fast job does not execute. So it asserted almost nothing, in a scope nothing
+# runs. Both are fixed here.
+#
+# SCOPE OF THE TABLE -- measured, not guessed
+# `_verify/_examples_census_1680.py` ran every `examples/*` directory that has
+# both `moon.mod` and `moon.pkg` and recorded exit code, wall time and output
+# shape. 21 directories: 20 finish, in **35.9 s total**, and every marker below
+# is the measured final non-empty line of that example with every numeric
+# literal replaced by `<n>`.
+#
+# WHY SUBSTITUTE THE VALUES. A marker is worth having only if it fails when the
+# example breaks and not when it merely prints a different float. The first
+# extraction rule cut each line at the first digit, which was wrong in both
+# directions at once: `95% CI = [0.996, 1.004]` starts with a digit so the
+# prefix came back empty and the marker became the whole line INCLUDING the
+# floats (breaks on rounding, passes on NaN), while `key -2147483648 ...` cut
+# to `key`, which matches any output containing that word. Replacing the
+# literals keeps the whole structure and drops only the values.
+#
+# The `<n>` line count is the second assertion and is not decoration: a
+# truncated or aborted example that still emits one matching line would pass a
+# marker check alone.
+#
+# `api_server` IS DELIBERATELY ABSENT. `moon run examples/api_server` starts a
+# listener and does not return -- measured as a 900 s timeout, which is 96% of
+# the total runtime of the whole census. `api_test` and `security_dast` already
+# boot that service and talk to it over HTTP with a settle delay; putting it in
+# a "run it and read stdout" batch would turn a service into a hang. Its
+# absence is a decision with a reason, not an oversight.
+#
+# Three markers are structurally generic (`datasets` `se = <n>`, `main`
+# `se = <n>`, `parity` `end`) because that is genuinely all those examples end
+# with. For them the assertion is "reached the final print with the expected
+# line count", not "computed the right number" -- that is what the numeric
+# upstream gates are for, and claiming otherwise here would overstate this
+# check.
+#
+# (name, templatised final-line PREFIX, that line's exact char length,
+#  minimum non-empty output lines)
+#
+# GENERATED, NOT TYPED. `_verify/_gen_e2e_table_1680.py` runs every example and
+# prints this table; `--check` re-runs it and diffs against this file. Two
+# hand-transcription failures got here first: the census stored each final line
+# TRUNCATED to 90 characters and those fragments were pasted in as if whole,
+# and the repair retyped `bitexact`'s line by counting `b'...'` fields and got
+# 22 against an actual 32. Both are counting problems and neither belongs to a
+# person.
+#
+# The marker is a 60-character PREFIX of the templatised line plus that line's
+# exact length. The length is not decoration: a prefix alone passes a line that
+# got cut in half, and the whole line for `bitexact` is a 295-character string
+# of 32 repetitions of `b'<n>'` that would assert nothing except "some bytes
+# were printed".
+_EXAMPLES = [
+    ("apo", "bias_corrected_coef = <n>", 25, 26),
+    ("apos", "contrast (level <n> - level <n>): delta=<n>, se=<n>", 51, 5),
+    ("bitexact", "key <n> b'\\x<n>' b'\\x<n>' b'\\x<n>' b'\\x<n>' b'\\x<n>' b'\\x<n>", 295, 36),
+    ("cluster", "cluster example done", 20, 7),
+    ("consumer_demo", "contains <n>?    = true", 23, 5),
+    ("cvar", "Result:                 PASS  (within <n>*se + <n> of <n>)", 58, 10),
+    ("datasets", "se        = <n>", 15, 16),
+    ("did_binary", "<n>% CI      = [<n>, <n>]", 25, 7),
+    ("did_cross_section", "noisy ATT_hat = <n>, se = <n>", 29, 11),
+    ("did_cs", "(g=<n>, t=<n>): ATT_hat=<n>, se=<n>, <n>% CI=[<n>, <n>] cove", 67, 7),
+    ("did_cs_binary", "<n>% CI       = [<n>, <n>]", 26, 9),
+    ("did_multi", "pre-treatment cells: <n>, max|coef|=<n> (expect < <n>)", 54, 24),
+    ("fuzz", "ALL FUZZ SURFACES PASSED (no invariant violations)", 50, 24),
+    ("lplr", "LPLR example done", 17, 16),
+    ("main", "se   = <n>", 10, 81),
+    ("parity", "end", 3, 215),
+    ("pava", "PAVA example done", 17, 7),
+    ("plpr", "<n>% CI    = [<n>, <n>]", 23, 18),
+    ("splitting", "splitting se=<n>", 16, 4),
+    ("ssm", "ssm example done", 16, 7),
+]
+
+# The `<n>` in a template is a PLACEHOLDER, so the substitution has to run on
+# the observed line too, not only when the table was written. The first version
+# compared a templated string against raw output and failed 13 of 20 examples
+# for no reason other than that -- which is the mirror image of the failure it
+# was written to avoid: a check that reports verdicts while comparing nothing.
+# Both sides go through the same function or the templates are decoration.
+_NUM_LITERAL = re.compile(r"-?\d+\.\d+(?:[eE][-+]?\d+)?|-?\.\d+|-?\d+")
+
+
+def _templatise(line):
+    return _NUM_LITERAL.sub("<n>", line.strip())
+
+
+@check("e2e", "run every runnable example and assert its output", "fast")
 def c_e2e():
-    cases = [("examples/pava", "PAVA example done"),
-             ("examples/ssm", None)]
     ran, bad = 0, []
-    for d, marker in cases:
+    for name, prefix, want_len, min_lines in _EXAMPLES:
+        d = os.path.join("examples", name)
         if not os.path.isdir(os.path.join(ROOT, d)):
+            bad.append((name, "missing"))
             continue
         rc, out = run(["moon", "run", "--target", "native", d], timeout=900)
         ran += 1
-        if rc != 0 or (marker and marker not in out):
-            bad.append((d, rc))
+        if rc != 0:
+            bad.append((name, "exit=%d" % rc))
+            continue
+        lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+        if len(lines) < min_lines:
+            bad.append((name, "only %d line(s), expected >= %d"
+                        % (len(lines), min_lines)))
+            continue
+        got = _templatise(lines[-1]) if lines else ""
+        if not got.startswith(prefix):
+            bad.append((name, "final line starts %r, expected %r"
+                        % (got[:60], prefix)))
+        elif len(got) != want_len:
+            bad.append((name, "final line is %d templatised chars, expected %d"
+                        % (len(got), want_len)))
     if ran == 0:
         return R("e2e", "", SKIP, "no runnable examples found")
     return R("e2e", "", PASS if not bad else FAIL,
-             f"{ran} example(s) executed natively"
-             + (f"; failures: {bad}" if bad else "; expected output markers present"))
+             "%d example(s) executed natively; exit code, final-line prefix, "
+             "final-line length and output length asserted on each; "
+             "examples/api_server excluded (service, never returns)"
+             % ran + ("" if not bad else "; FAILURES: %s" % bad))
 
 
 # --------------------------------------------------------------------------- #
