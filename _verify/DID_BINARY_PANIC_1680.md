@@ -1,12 +1,17 @@
-# Finding: `DoubleMLDIDBinary` panics on the CS2021 panel, upstream does not
+# RETRACTED: `DoubleMLDIDBinary` does not panic on the CS2021 panel
 
-**Status:** confirmed defect, NOT fixed. The gate built for it was removed
-rather than shipped red.
+**Status: the finding below is WRONG and is retracted.** It is kept, unedited in
+substance, because a wrong conclusion that reads like a right one is worse than
+no conclusion — the next reader has to be able to see what was claimed and what
+disproved it.
 
-## What happens
+The retraction is `pyexample_did_binary.py`, a working upstream gate over all six
+cells. The defect described here never existed.
 
-Fitting the port's `DoubleMLDIDBinary` on upstream's own CS2021 panel, for
-`examples/did_binary`'s estimator, aborts the whole process:
+## What was claimed
+
+An earlier version of that gate passed upstream's default `n_folds = 5`, and the
+emitter aborted with:
 
 ```
 section did_binary_upstream
@@ -17,77 +22,70 @@ PanicError
 ```
 
 `did.mbt:276` is `require(n_folds <= data.n_obs())` inside `DoubleMLDID::new`.
-The panic fires on the FIRST cell, ATT(2,1,2), before any coefficient is
-emitted, so the entire `examples/parity` emitter dies and takes every other
-section with it.
+It was recorded as: the eligible wide-format subset must be smaller than
+`n_folds`, so the CS2021 panel defeats the port.
 
-Upstream's `DoubleMLDIDBinary` fits the same panel, the same cell and the same
-learners without error, for all six cells.
+## Why that reasoning was wrong
 
-## It is NOT the data
+The claim rested on an INFERENCE about the call graph, not on a measurement.
+The real `inner_pre = DoubleMLDID::new(wide_data, ...)` is at
+`did_binary.mbt:898`, so the panic was read as coming from there. But
+`DoubleMLDIDBinary::new` builds a **second, 4-row dummy** `DoubleMLDID` at
+`did_binary.mbt:445` — a placeholder so that construction cannot itself trip
+`n_folds <= n_obs`. Both calls raise at the SAME line and print the SAME
+message. The panic text cannot tell them apart, and the call site was never
+evidence about which one fired.
 
-Checked, because "the DGP was unfalsifiable" is a finding this repo has been
-bitten by before (`sec_blp_policy`'s header records exactly that):
+It was always a known port limit, recorded next to the code it came from
+(`did_binary.mbt:425-439`) and in `_verify/N_FOLDS_1570.md`: the 4-row dummy
+caps `n_folds` at 4 for this type, `n_folds <= 4` fits and `n_folds >= 5`
+aborts, **at every sample size**. The port default of 2 sits under the ceiling,
+which is why it went unnoticed until a gate passed 5.
 
-* **Units with both periods.** For ATT(2,1,2) (t_pre=1, t_value_eval=2),
-  1000 of 1000 units have a row at t=1 AND a row at t=2. The same holds for
-  all six cells.
-* **Cohort labels are stable.** `g` takes the same cohort distribution at
-  every period t=0..4: `{0: 263, 2: 252, 3: 265, 4: 220}`. So reading the
-  cohort from the PRE-period row (`did_binary.mbt:185`, `g_unit =
-  data.g[pre_idx]`) is not reading a blank.
-* **The eligible subset is large.** `preprocess_did_binary` keeps a wide row
-  iff `g_indicator + c_indicator == 1.0` (`did_binary.mbt:208`), i.e. the unit
-  is exactly one of {cohort == g_value, cohort == min(g)}. For ATT(2,1,2) that
-  is 252 + 263 = **515 rows**, far above `n_folds = 2`.
+## What is actually true (measured)
 
-So `data.n_obs() >= 2` at the call site by every route available to
-inspection, and yet the precondition fires.
+Sweep on the CS2021 panel, cell ATT(2,1,2), 5000 rows:
 
-## Structural difference worth noting
+| `n_folds` | constructs | fits | coef |
+|---|---|---|---|
+| 2 | yes | yes | 1.14480 |
+| 3 | yes | yes | 1.14611 |
+| 4 | yes | yes | 1.11875 |
+| 5 | **no** | — | aborts |
 
-The two implementations are not the same construction:
+Upstream's `DoubleMLDIDBinary` on the same cell: **1.13860**.
 
-* **upstream** consumes the PANEL directly (`DoubleMLDIDBinary(obj_dml_data,
-  g_value, t_value_pre, t_value_eval, ...)`).
-* **the port** converts the panel to a WIDE cross-section first
-  (`preprocess_did_binary` -> `y_diff = y[eval] - y[pre]`), builds a
-  `DoubleMLDIDData`, and then constructs an inner `DoubleMLDID` on it
-  (`did_binary.mbt:833`, `:892`).
+`preprocess_did_binary` emits **515** wide rows (252 + 263, exactly as the
+independent Python calculation predicts), so the subset is nowhere near small.
+And `n_folds = 5` aborts **during construction** — a `println` placed before
+each construct/fit pair shows the "about to construct" line printing and no
+"constructed" line, with no preprocessing output at all. That is what locates
+the raise in the dummy rather than the real model.
 
-That is a legitimate alternative formulation, and `examples/did_binary`'s own
-two-period DGP exercises it successfully. What is unexplained is why the wide
-row count reaching `DoubleMLDID::new` is below `n_folds` when the panel
-supplies 515 eligible units.
+The control for this: the same sweep run through `examples/parity`, a workspace
+member, and through a non-member directory. The non-member resolved
+`riantr/moonbit_doubleML@0.162.0` from the registry instead of the local
+source and produced **bit-identical** coefficients — which is a real result
+(published and local agree on this path) and is also why the first probe run
+showed no probe output at all. A probe that does not print is a probe pointed at
+the wrong subject.
 
-## What was NOT done
+## What replaced it
 
-* No speculative fix. The obvious-looking candidates -- widen the fold
-  guard, clamp `n_folds`, or special-case the panel -- would each paper over
-  the row-count bug rather than locate it, and a fix that silences a
-  precondition without restoring the rows would make the estimator quietly
-  wrong instead of loudly broken.
-* No red gate. A gate that panics on every run is not a gate; keeping it would
-  either fail CI permanently or get muted with `--allow-inert`, which is worse
-  than not having it.
+`pyexample_did_binary.py` gates `DoubleMLDIDBinary` against upstream on the
+same CS2021 panel, all six cells explicitly requested on both sides, both sides
+at `n_folds = 2`. Coefficients agree to 57.5% of band and standard errors to
+51.2% at worst. Wired into `check.yml` and the QA LOOP.
 
-## Where the remaining binary-DID coverage stands
+The `n_folds <= 4` ceiling is a **real, separate, still-open limitation** and
+is not fixed here — upstream's default of 5 remains unattainable on this type.
+Fixing it means removing the dummy (build the inner model lazily, on `fit`) so
+that construction has no row count to check. That is a behaviour change to a
+constructor and was not undertaken speculatively.
 
-`examples/did_cs_binary` IS gated, via `pyexample_did_cs_binary.py`, against
-upstream's `DoubleMLDIDCSBinary` -- all six cells, none excluded. It is a
-different estimator with a different construction path (it consumes the panel
-and cross-fits it), and it does not hit this.
+Reproduce:
 
-`examples/did_binary` remains ungated **upstream-side**. Its own deterministic
-two-period DGP is still covered by the parity emitter's section 5, which
-compares the port's `att` against a hand-computed reference; what is missing is
-the upstream cross-check on upstream's own data.
+    python pyexample_did_binary.py --check          # the gate
+    python _verify\_didbin_reach_1680.py            # the arms above, re-measured
 
-## Reproducing
-
-    python _verify/_didbin_tol_1680.py     # upstream reference, fits cleanly
-    # then install the CS2021 fixture and run the emitter:
-    #   precondition failed at did.mbt:276 ... PanicError
-
-Reproduced on Windows, MoonBit 0.1.20261012 (748b63c 2026-10-12), doubleml
-0.11.3.
+Measured on Windows, MoonBit 0.1.20261012 (748b63c 2026-10-12), doubleml 0.11.3.

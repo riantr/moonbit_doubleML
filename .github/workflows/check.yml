@@ -219,6 +219,31 @@ jobs:
           set -e
           python pyexample_did_cs_binary.py --check
 
+      # `DoubleMLDIDBinary` -- the class `examples/did_binary` builds, and the
+      # third DID class. Distinct from both steps above: a different upstream
+      # class with a different construction (the port converts the panel to a
+      # WIDE cross-section first and fits an inner `DoubleMLDID`, whereas
+      # `DoubleMLDIDMulti` and `DoubleMLDIDCSBinary` consume the panel), so
+      # agreement with either is not evidence about it.
+      #
+      # This gate is also the CORRECTION of a recorded defect.
+      # `_verify/DID_BINARY_PANIC_1680.md` claimed the port aborts on the CS2021
+      # panel because the eligible subset is smaller than `n_folds`. That was
+      # wrong: the subset is 515 rows, and `n_folds` 2/3/4 all construct AND fit
+      # (coef 1.1448 / 1.1461 / 1.1187 against upstream's 1.1386). `n_folds = 5`
+      # aborts during CONSTRUCTION, before preprocessing runs, because
+      # `DoubleMLDIDBinary::new` builds a 4-row dummy inner model so that
+      # construction cannot trip `require(n_folds <= n_obs)` -- a CONSTANT
+      # ceiling, not a property of the sample.
+      #
+      # Both sides are fitted at `n_folds = 2`, under that ceiling. Writes the
+      # same `cs2021_*` fixture block as the two DID steps above, so it needs
+      # its own step rather than sharing one.
+      - name: Compare the binary DID port against upstream
+        run: |
+          set -e
+          python pyexample_did_binary.py --check
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.

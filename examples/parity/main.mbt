@@ -39,6 +39,7 @@ fn main {
   sec_did_pyexample()
   sec_did_pyexample_cs2021()
   sec_did_cs_binary()
+  sec_did_binary_upstream()
   sec_pyexample_suite()
   sec_bootstrap()
   sec_padjust()
@@ -983,6 +984,85 @@ fn sec_did_cs_binary() -> Unit {
     ).fit()
     val("csb_coef_" + i.to_string(), fitted.coef())
     val("csb_se_" + i.to_string(), fitted.se())
+  }
+  end()
+}
+
+// --------------------------------------------------------------------------- //
+// 6d. did_binary_upstream -- DoubleMLDIDBinary against upstream on CS2021
+// --------------------------------------------------------------------------- //
+
+///|
+/// The CS2021 panel, one `DoubleMLDIDBinary` per cell, REQUESTED explicitly on
+/// both sides. All six cells, none excluded -- unlike the CS2021 gate above,
+/// which could only compare the two `(g, t)` pairs each estimator derives.
+///
+/// `n_folds = 2`, and that is a hard port limitation rather than a choice:
+/// `DoubleMLDIDBinary::new` builds a FOUR-ROW dummy inner model so that
+/// construction does not trip `require(n_folds <= data.n_obs())`
+/// (`did_binary.mbt:445`), which caps `n_folds` at 4 for this type no matter
+/// how many rows the real wide subset holds.
+///
+/// This section exists because that ceiling was misdiagnosed. An earlier
+/// version passed upstream's default `n_folds = 5`, aborted at `did.mbt:276`,
+/// and was recorded as a row-count defect -- "the eligible subset is too
+/// small". The subset is NOT small. Measured here directly: for ATT(2,1,2)
+/// `preprocess_did_binary` emits 515 wide rows out of a 5000-row panel, and
+/// `n_folds` of 2, 3 and 4 all construct AND fit, giving coef 1.1448 / 1.1461
+/// / 1.1187 against upstream's 1.1386. `n_folds = 5` aborts during
+/// CONSTRUCTION -- before `preprocess_did_binary` is ever reached -- so the
+/// offending `DoubleMLDID::new` is the dummy, not the real one. The dummy and
+/// the real model raise at the SAME line and print the SAME message, which is
+/// why the call site could not be identified from the panic text alone.
+/// See `_verify/DID_BINARY_PANIC_1680.md`.
+///
+/// So the ceiling is a property of the CONSTRUCTOR, not of the data, and the
+/// port is free to be compared against upstream at any fold count the
+/// constructor accepts.
+fn sec_did_binary_upstream() -> Unit {
+  section("did_binary_upstream")
+  // Shared sentinel, same reason as `sec_did_cs_binary`: same fixture file,
+  // same `cs2021_*` block, no separate data.
+  let generated = cs2021_generated() != 0
+  val("db_generated", if generated { 1.0 } else { 0.0 })
+  if !generated {
+    end()
+    return
+  }
+  let n_cs = cs2021_n_obs()
+  let p_cs = cs2021_n_feat()
+  let panel = @moonbit_doubleML.DoubleMLDIDBinaryData::new(
+    @moonbit_doubleML.Matrix::from_array(cs2021_x(), n_cs, p_cs),
+    cs2021_y(),
+    cs2021_d(),
+    cs2021_t(),
+    cs2021_g(),
+    cs2021_id(),
+  )
+  let n_cells = cs2021_n_cells()
+  val("db_n_cells", n_cells.to_double())
+  for i = 0; i < n_cells; i = i + 1 {
+    // `ml_m` is a CLASSIFIER on upstream's side (`P[D=1|X]`), and the port
+    // DEFAULTS IT TO A REGRESSOR (`did_binary.mbt:376`). Left at the default
+    // this gate would be red for a reason that has nothing to do with parity,
+    // so both learners are spelled out. Same trap as `sec_cvar`.
+    let fitted = @moonbit_doubleML.DoubleMLDIDBinary::new(
+      panel,
+      cs2021_cell_g(i),
+      cs2021_cell_t_pre(i),
+      cs2021_cell_t_eval(i),
+      control_group="never_treated",
+      n_folds=2,
+      n_rep=1,
+      seed=42,
+      in_sample_normalization=true,
+      ml_g=@moonbit_doubleML.LearnerDispatch::linear_regression(),
+      ml_m=@moonbit_doubleML.LearnerDispatch::logistic_regression(
+        @moonbit_doubleML.LogisticRegression::new(),
+      ),
+    ).fit()
+    val("db_coef_" + i.to_string(), fitted.coef())
+    val("db_se_" + i.to_string(), fitted.se())
   }
   end()
 }
