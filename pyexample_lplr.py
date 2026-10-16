@@ -182,10 +182,22 @@ def main():
     fold_id = datas["lplr_fold"].astype(int)
 
     # Self-check: the emitter must have reproduced the example's own DGP.
-    # Its printed `theta_hat` is 0.46411015764901836; if the replication in
+    # Its printed `theta_hat` is 0.46403803469979032; if the replication in
     # `sec_lplr_upstream` ever drifts this stops matching and the whole
     # comparison is measuring a different dataset.
-    expected = 0.46411015764901836
+    #
+    # MOVED TWICE, both deliberately, and both verified against TWO independent
+    # sources -- the `examples/lplr` printout and the `sec_lplr_upstream`
+    # emission -- before each re-pin. That is the point of this check: it is a
+    # replication check, so a pin may move only when the thing it replicates
+    # has itself moved on purpose.
+    #
+    #   0.46411015764901836  OLS default `ml_m`, `m_pred = a_pred`
+    #   0.3874127183029159  logistic default + the upstream `Y == 0`
+    #                        conditioning -- HELD OFF, see the `m_pred` block
+    #                        in `lplr.mbt`
+    #   0.46403803469979032  logistic default, conditioning held off  <-- here
+    expected = 0.46403803469979032
     got = vals["lplr_ns_theta"]
     selfcheck = abs(got - expected) <= 1e-15
     print("")

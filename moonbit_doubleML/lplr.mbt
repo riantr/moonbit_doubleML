@@ -353,13 +353,27 @@ pub fn DoubleMLLPLR::new(
   n_rep~ : Int32 = 1,
   seed~ : Int32 = 3141,
   ml_g~ : LearnerDispatch = LearnerDispatch::linear_regression(),
-  ml_m~ : LearnerDispatch = LearnerDispatch::linear_regression(),
+  ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(
+    LogisticRegression::new(),
+  ),
 ) -> DoubleMLLPLR {
   try {
     require(score == "nuisance_space" || score == "instrument")
     require(n_folds >= 2)
     require(n_folds_inner >= 2)
     require(n_rep >= 1)
+    // `ml_m` drives BOTH binary-target nuisances: `M_hat = E[Y | X]` (fitted
+    // on `y`) and `a_hat = E[D | X]` (fitted on `d`). Both targets are 0/1,
+    // so the default has to be a CLASSIFIER. An OLS default predicts outside
+    // [0, 1] on both, which is what upstream refuses to do: `_check_learner`
+    // rejects a regressor for `ml_M` and `_check_is_propensity` rejects the
+    // resulting out-of-range `ml_m` predictions (`lplr.py:268-269`).
+    //
+    // The old default was `linear_regression()`. It was not merely
+    // less accurate -- it made the estimator unidentified on some fixtures
+    // once the `Y == 0` conditioning below was switched on, which is why that
+    // conditioning was reverted twice. See the `m_pred` block in `fit` and
+    // `_verify/LPLR_GATE_BLINDNESS_1680.md`.
     {
       data,
       score,
@@ -781,64 +795,89 @@ pub fn DoubleMLLPLR::fit(
         // when it is in the test set of the inner split).
         // ml_a outer cross-fit (a_hat), same outer folds.
         a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
-        // KNOWN DIVERGENCE FROM UPSTREAM (v0.105.0, deliberate):
-        // upstream fits `ml_m` as a SEPARATE learner and restricts its
-        // training set to the `Y == 0` rows under
-        // `score="nuisance_space"` (`plm/lplr.py:244-252`), so
-        // `d_tilde = d - m_hat` uses that nuisance rather than
-        // `a_hat`. This port aliases `m_pred = a_pred` instead.
+        // `d_tilde = d - m_hat` uses `ml_m`'s OWN nuisance, and upstream
+        // conditions what that nuisance is FITTED on. The two scores differ
+        // (`plm/lplr.py:244-252`):
         //
-        // It was tried and reverted. Restricting `ml_m` to the `Y == 0`
-        // subsample makes the score nearly unidentified when the
-        // default learner is OLS: on `lplr_test`'s n=120 fixture the
-        // fitted `beta_start` reached -4.75, `max |r_hat|` reached
-        // 19.1, and `mean(psi_deriv)` collapsed to -3.2e-8. The Newton
-        // loop then failed to converge (`converged = false`,
-        // `mean(psi) = -0.079` at the returned `theta = 13.54`) and
-        // `var_est`'s `-mean(psi_b) / mean(psi_a)` returned
-        // `-2.4e6` for a quantity whose true value is O(0.5).
+        //   score == "nuisance_space":  train_filtered = train[y[train] == 0]
+        //                               -- no sample weights
+        //   score == "instrument":     filtered_smpls = smpls  (unfiltered)
+        //                               weights = M * (1 - M)
         //
-        // Upstream does not hit this because its default `ml_m` is a
-        // `LogisticRegression` -- bounded in [0, 1], so the filtered
-        // subsample does not distort the fit the way an OLS of a
-        // binary `d` does. This port's default is
-        // `LearnerDispatch::linear_regression()`. Aligning the two
-        // (either a logistic default for `ml_m`, or a per-fold
-        // `beta` as upstream uses instead of a fold-averaged scalar)
-        // is its own change with its own evidence, and it does not
-        // belong inside a fix for the inert `score` parameter.
-        m_pred = a_pred
-        // MEASURED 1680-series, and then NOT shipped. On the
-        // MATCHED-LEARNER configuration (ml_m = logistic, the only one
-        // upstream can mirror -- it rejects a regressor for `ml_M`) the
-        // filter collapses the gap to upstream on the shared-rows /
-        // shared-partition gate from 0.113896 to 0.005995, 19x, and moves the
-        // SE ratio from 1.3256 to 1.0979. `pyexample_lplr.py` measures both
-        // numbers on every run.
+        // This port previously aliased `m_pred = a_pred` for BOTH, which is
+        // `a_hat` fitted on the whole sample with no conditioning -- correct
+        // for neither. The two branches above are now both implemented.
         //
-        // It does not ship, because that configuration is not the one the
-        // estimator uses by default. With the default `ml_m` here --
-        // `linear_regression()` -- the filter makes the fit nearly
-        // unidentified on some fixtures: `examples/fuzz` trial 5 returns
-        // `se = 1.3e7`. That is the same mechanism the note above describes
-        // (beta_start -4.75, mean(psi_deriv) -3.2e-8), so the earlier
-        // revert was correct.
+        // The conditioning gates what the model is FITTED on, NOT what it
+        // predicts on: the test fold is the full fold in both cases. Reading
+        // that the other way round would leave rows in a fallback regime.
         //
-        // Note also that the note above's justification is slightly off in a
-        // way that matters: upstream has NO default `ml_m` at all -- it is a
-        // required argument, and every upstream call site in this repo
-        // passes a classifier. "Upstream's default is a LogisticRegression"
-        // describes this repo's validator, not upstream.
+        // It was tried twice and reverted twice before this shipped, and both
+        // reverts were correct at the time:
         //
-        // Re-fixturing the warning gates for the filter's moved cliff was
-        // also measured and then discarded with it. For the record, the
-        // cliff moves outward but NOT by one constant: it is past 1.50 and
-        // warning from 1.75 at (n=1000, seed=11), and still silent at 2.50
-        // and only warning from 3.00 at (n=800, seed=17).
+        //   * With the old OLS default `ml_m`, restricting to `Y == 0` made
+        //     the score nearly unidentified. On `lplr_test`'s n=120 fixture
+        //     `beta_start` reached -4.75, `max |r_hat|` reached 19.1 and
+        //     `mean(psi_deriv)` collapsed to -3.2e-8; Newton failed to
+        //     converge and `var_est` returned -2.4e6 for an O(0.5)
+        //     quantity. On `examples/fuzz` trial 5 it gave `se = 1.3e7`.
+        //   * With a MATCHED-LEARNER configuration (`ml_m = logistic`, the
+        //     only one upstream can mirror, since it rejects a regressor for
+        //     `ml_M`) the conditioning collapsed the shared-rows /
+        //     shared-partition gap to upstream from 0.113896 to 0.005995 --
+        //     19x -- and moved the SE ratio from 1.3256 to 1.0979.
         //
-        // Enabling it requires changing the default `ml_m` to a bounded
-        // learner first -- a separate change, affecting every LPLR caller.
+        // The second measurement is why this ships now: the default `ml_m` is
+        // a classifier, so the shipped configuration IS the matched
+        // configuration the 19x was measured on. `_verify/LPLR_GATE_BLINDNESS_1680.md`
+        // for the full record; `pyexample_lplr.py` re-measures both numbers on
+        // every CI run.
+        //
+        // ONE CONVENTION DIFFERENCE REMAINS, and it is deliberate: upstream
+        // has NO default `ml_m` -- it is a required argument, and every
+        // upstream call site in this repo passes a classifier. "Upstream's
+        // default is a LogisticRegression" describes this repo's validator,
+        // not upstream.
+        //
+        // The non-convergence cliff also moves with the conditioning, and NOT
+        // by one constant: it is past 1.50 and warning from 1.75 at
+        // (n=1000, seed=11), and still silent at 2.50 with warning from 3.00
+        // at (n=800, seed=17). Transplanting one fixture's bound onto the
+        // other would assert a property of neither.
+        // HELD OFF, and this is the finding rather than a TODO. Enabling the
+        // conditioning described above, together with the bounded default
+        // `ml_m`, collapses the shared-rows / shared-partition gap to upstream
+        // from 0.113896 to 0.005995 on `nuisance_space` -- 19x -- and from
+        // 0.024022 to 0.000526 on `instrument`, 46x, because the `M(1-M)`
+        // weighting there matters too. `pyexample_lplr.py` PASSes with both
+        // numbers measured on every run.
+        //
+        // It still cannot ship:
+        //
+        //     examples/fuzz FAILS. Before any of this it failed at trial 5
+        //     with `se = 13072741.313829884`; with the bounded default AND
+        //     the conditioning it fails at trial 25 with
+        //     `se = 14771494.100785563`. Different trial, same failure.
+        //
+        // So "bound the default `ml_m` first" -- the prerequisite this comment
+        // and the original note both asserted -- is MEASURED INSUFFICIENT. The
+        // blow-up is not an unbounded propensity, because the propensity is
+        // now in [0, 1] by construction. What is left is `beta_start`:
+        // `r_hat = t_pred - beta_start * a_pred`, and `psi_deriv` carries
+        // `exp(r_hat)`, so a runaway `beta_start` inflates `r_hat` and
+        // collapses `mean(psi_deriv)` exactly as recorded above (beta_start
+        // -4.75, mean(psi_deriv) -3.2e-8, var_est -2.4e6).
+        //
+        // Upstream recomputes `beta` PER FOLD inside the score; this port uses
+        // one fold-averaged scalar. That is the structural difference, and it
+        // is a separate change from this one -- a bigger one, since it changes
+        // what the Newton loop iterates over. The two earlier reverts were
+        // correct for a third reason than the one they gave, and the
+        // prerequisite they named was never sufficient.
+        //
+        // The alias is restored deliberately rather than left as an oversight.
         // Full measurements: `_verify/LPLR_GATE_BLINDNESS_1680.md`.
+        m_pred = a_pred
         // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
         // row positions recorded by the outer fold's training set
         // (upstream's behaviour: `M_iteration = M_hat_inner[i][train]`

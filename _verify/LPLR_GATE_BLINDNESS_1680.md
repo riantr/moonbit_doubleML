@@ -223,16 +223,82 @@ moves `lplr_ns_theta` (the default configuration), which the self-check
 pins to the example's printed value. That is a kill, but it means the
 self-check is the stricter of the two paths.
 
+## 7b. The prerequisite, tested: and it is INSUFFICIENT
+
+§5b named the prerequisite and then stopped. This section is the test of it.
+
+**Change 1 — the default `ml_m` becomes a classifier.** `ml_m` drives both
+binary-target nuisances, `M_hat = E[Y|X]` (fitted on `y`) and
+`a_hat = E[D|X]` (fitted on `d`), so with an OLS default both escape `[0, 1]`.
+Upstream refuses exactly that: `_check_learner(..., classifier=True)` for
+`ml_M` and `_check_is_propensity` for `ml_m` (`lplr.py:268-269`). Changing the
+default to `logistic_regression` is a correctness fix in its own right and it
+ships.
+
+**Change 2 — enable D1 on top of it.** The gap collapses, and further than
+§5 predicted because `instrument` needs the *other* half of upstream's
+convention (`weights = M*(1-M)`, `filtered_smpls = smpls`,
+`lplr.py:244-252`) which the alias had been dropping too:
+
+| score | gap before | gap after | collapse |
+|---|---|---|---|
+| `nuisance_space` | 0.113896 | **0.005995** | 19x |
+| `instrument` | 0.024022 | **0.000526** | **46x** |
+
+SE ratio 1.3256 → 1.0979. `pyexample_lplr.py` PASSes.
+
+**And `examples/fuzz` still fails.**
+
+```
+before D1                      trial=5,  se=13072741.313829884
+logistic default + D1          trial=25, se=14771494.100785563
+```
+
+Different trial, same failure. ⇒ **"bound the default `ml_m` first" is
+measured insufficient.** The premise §5 and §5b both relied on is false.
+
+Note the shape of the error: the prerequisite was *necessary-looking* and
+*testable*, and it was not tested until now. It had the confidence of a
+mechanism (`se` exploding ⇒ propensity unbounded ⇒ bound the propensity) with
+no measurement behind the middle step.
+
+**Where the blow-up actually comes from.** The propensity is now in `[0, 1]`
+by construction, so it is not the cause. What is left is `beta_start`:
+
+```
+r_hat = t_pred - beta_start * a_pred
+psi_deriv carries exp(r_hat)
+```
+
+so a runaway `beta_start` inflates `r_hat` and collapses `mean(psi_deriv)`
+exactly as the original revert recorded (`beta_start` -4.75,
+`mean(psi_deriv)` -3.2e-8, `var_est` -2.4e6). That is **D3** — one
+fold-averaged `beta_start` where upstream uses per-fold `beta[test]` — already
+listed as open in §8.
+
+**Shipped state, measured on every one of these:**
+
+| configuration | fuzz | `moon test` | LPLR gate |
+|---|---|---|---|
+| logistic default, D1 held off | ALL 11 SURFACES PASSED | 1115/1115 | PASS |
+| logistic default, D1 on | FAIL trial 25 | — | PASS |
+
+So the default change ships and D1 does not. D1 is now blocked on **D3**, not
+on the default — which reorders the work and is a bigger change, since it
+alters what the Newton loop iterates over.
+
 ## 8. Status
 
 - **Shipped in this series**: `sec_lplr_upstream` in `examples/parity` and
   `pyexample_lplr.py` — a shared-rows, shared-partition gate that is
   materially stronger than the validator it complements.
-- **Not yet shipped**: D1 itself. It is a behavioural change that moves the
-  example's printed values, the generated e2e table, and the validator's
-  assertions. Its blast radius on the test suite is being measured before
-  it is proposed.
+- **Also shipped now**: the default `ml_m` is a classifier. Correctness fix in
+  its own right — both binary-target nuisances were escaping `[0, 1]`, which
+  is what upstream refuses (§7b). Measured green: fuzz 11/11, `moon test`
+  1115/1115, gate PASS.
+- **Still not shipped**: D1. Its prerequisite was tested and found
+  insufficient (§7b); it is now blocked on **D3**, the fold-averaged
+  `beta_start`.
 - **Still open**: D2 (`W_inner` uses outer OOF; upstream uses inner OOF) and
   D3 (one fold-averaged `beta_start`; upstream uses per-fold `beta[test]`).
-  Both were left in place while measuring D1, so their contribution is not
-  yet separated.
+  D3 is the live blocker for D1, not a background item.
