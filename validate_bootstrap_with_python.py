@@ -84,6 +84,98 @@ TOL = {"mean": 0.05, "var": 0.05, "m3": 0.30, "m4": 1.00}
 # tolerance ever reached this, the test would stop discriminating.
 SEPARATION = {"mean": 0.0, "var": 0.0, "m3": 1.0, "m4": 2.6}
 
+# ---------------------------------------------------------------------- #
+# THE EXACT MOMENTS, AND WHY m3 IS THE RIGHT ORDER
+# ---------------------------------------------------------------------- #
+# The `TOL` table above is TUNED -- each entry was measured by watching how far
+# the empirical numbers moved and rounding up. That answers "is this number in
+# the right neighbourhood", not "is this the right distribution", and it puts
+# the one number nobody can derive inside the gate.
+#
+# All three laws have EXACT RATIONAL central moments to any order, so the
+# sampling noise can be derived instead of tuned:
+#
+#     normal  N(0,1)                  E[w^{2j}] = (2j-1)!!
+#     Bayes   Exp(1) - 1              E[(E-1)^k] = sum_j C(k,j)(-1)^(k-j) j!
+#     wild    x/sqrt(2) + (y^2-1)/2   rational: x enters only as x^2/2, and
+#                                     x, y independent
+#
+# Computed with `fractions.Fraction` by `_verify/_boot_moments_1680.py`, so
+# there is no round-off in the table below. `EXACT_MOMENTS[k][method]` is the
+# exact central moment; `E_W2K` carries the 2k-th raw moment, which is what the
+# CLT variance of the sample central moment needs.
+#
+#     k   normal      Bayes       wild        (central moments)
+#     3       0          2          1
+#     4       3          9          6
+#     5       0         44         22
+#     6      15        265        130
+#     7       0       1854        822
+#     8     105      14833       6202
+#
+# THE RESULT CONTRADICTED THE OBVIOUS PLAN. The intuition was that a higher
+# moment would separate the three laws better, because the moment VALUES grow.
+# They do, but the SAMPLING NOISE grows faster, so separation in units of
+# noise FALLS monotonically at n = 100_000:
+#
+#     m3  19.6x      m4   7.8x      m5   6.0x      m6   3.2x
+#     m7   1.8x      m8   1.0x
+#
+# So m3 and m4 -- what this file already uses -- are the best two orders
+# available, and adding m6 or m8 would have made the check WEAKER while
+# looking like a strengthening. The measurement is why that was not done.
+EXACT_MOMENTS = {
+    3: {"normal": 0, "Bayes": 2, "wild": 1},
+    4: {"normal": 3, "Bayes": 9, "wild": 6},
+}
+# E[w^{2k}] for the three laws, used for se(moment k) = sqrt(E[w^2k] - mu_k^2)/sqrt(n).
+E_W2K = {
+    3: {"normal": 15, "Bayes": 265, "wild": 130},       # m6
+    4: {"normal": 105, "Bayes": 14833, "wild": 6202},   # m8
+}
+
+
+def analytic_se(k: str, method: str, n: int) -> float:
+    """CLT standard error of the sample central moment of order k."""
+    import math
+    mu = EXACT_MOMENTS[k][method]
+    var = E_W2K[k][method] - mu * mu
+    return math.sqrt(float(var)) / math.sqrt(n)
+
+
+def discriminating(method_values):
+    """Would swapping two methods' identities still pass?
+
+    This is the question the check is really asking -- "can it tell the three
+    laws apart" -- and it is asked directly instead of inferred from a gap and
+    a tolerance compared by hand. A check that passes under a permuted
+    assignment is not testing the thing its name claims, which is the failure
+    mode this file's own header is about.
+    """
+    perms = {
+        "normal<->Bayes": {"normal": "Bayes", "Bayes": "normal",
+                           "wild": "wild"},
+        "normal<->wild": {"normal": "wild", "Bayes": "Bayes",
+                          "wild": "normal"},
+        "Bayes<->wild": {"normal": "normal", "Bayes": "wild",
+                         "wild": "Bayes"},
+    }
+    survivors = []
+    for name, perm in perms.items():
+        for key, tol in TOL.items():
+            idx = {"mean": 0, "var": 1, "m3": 2, "m4": 3}[key]
+            ok = True
+            for m in METHODS:
+                got = method_values[m][idx]
+                want = THEORY[perm[m]][idx]
+                if abs(got - want) <= tol:
+                    ok = False
+                    break
+            if ok:
+                survivors.append((name, key))
+    return survivors
+
+
 
 def main() -> int:
     sec = ph.section("bootstrap")
@@ -126,6 +218,34 @@ def main() -> int:
             print("WARNING: the %s tolerance (%.3f) is not smaller than the "
                   "method separation (%.3f) -- this check cannot tell the "
                   "methods apart" % (key, TOL[key], SEPARATION[key]))
+
+    # The derived sampling noise next to the tuned tolerance. Both are printed
+    # because they answer different questions: the tolerance is what the gate
+    # enforces, and the se is how much of the method separation that tolerance
+    # is actually spending.
+    print()
+    print("analytic sampling noise from the EXACT moments (Fraction-derived):")
+    for k in (3, 4):
+        for m in METHODS:
+            se = analytic_se(k, m, n_draws)
+            print("  m%d %-7s exact %-6s se %.5f  ->  tolerance is %.1f se"
+                  % (k, m, EXACT_MOMENTS[k][m], se, TOL["m%d" % k] / se))
+    print("  separation in units of noise: m3 19.6x, m4 7.8x; higher orders")
+    print("  FALL (m5 6.0x, m6 3.2x, m8 1.0x), so m3/m4 are the best two.")
+
+    # Ask the discriminating question directly.
+    print()
+    observed = {m: [ph.val(sec, "%s_%s" % (m, key))
+                    for key in ("mean", "var", "m3", "m4")] for m in METHODS}
+    survivors = discriminating(observed)
+    if survivors:
+        print("FAIL: the check cannot tell the laws apart -- it would still")
+        print("      pass under these permuted assignments: %s" % survivors)
+        print()
+        print("bootstrap weight draw parity: FAIL")
+        return 1
+    print("discrimination control: all 3 method permutations are rejected by")
+    print("at least one quantity -> this check really does tell them apart")
     print()
 
     return ph.report("bootstrap weight draw parity", rows, ok=True)
