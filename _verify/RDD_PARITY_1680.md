@@ -80,6 +80,72 @@ Matching the coefficient needs `bw ≈ 2.0`, where `se` is off by 6.6x. The
 `1/bw` scaling is an analytic local-linear standard error; upstream's comes
 from `rdrobust`'s estimator. **These are not the same estimator's variance.**
 
+## Follow-up: why "swap the SE" cannot be the fix
+
+The section above measures a 3.3x gap on a two-column design and never
+re-examines it on a design built to answer the question. Two things were found.
+
+**`sec_rdd` cannot answer it.** Its design is exact --
+`y = 2 + u + 0.5*z + 2*d`, no noise -- so every residual is zero. Measured:
+
+```
+sharp_se_hc0 = 0.000000000
+fuzzy_se_hc0 = nan
+```
+
+A variance formula cannot be compared where the variance is identically zero:
+that design "agrees" with any formula, including a wrong one. The new section
+`sec_rdd_var` uses an integer-only **noisy** design (n=800, modulo noise) and
+emits both `cov_type` arms, so CPython rebuilds identical rows with nothing
+transmitted.
+
+Bandwidth 0.5, triangular kernel, same rows:
+
+| | coef | se |
+|---|---|---|
+| port, homoskedastic (default) | 2.000000005 | 0.003535472 |
+| port, HC0 | 2.000000005 | **0.000000000** |
+| upstream, conventional | 2.148600465 | 0.092729567 |
+| upstream, bias-corrected | 2.068653420 | 0.136825728 |
+
+Port/upstream SE ratios: **0.038** conventional, **0.026** bias-corrected.
+
+**The sign of the divergence is not stable across designs** -- 3.3x smaller on
+the old design, 26-39x smaller here. So it is not a scale factor to tune; it is
+design-dependent, which is what a formula difference looks like.
+
+### Three findings, in order of how much they change the decision
+
+**1. Upstream's estimator is BIAS-CORRECTED and the port's is not.** `rdrobust`
+reports both arms and defaults to the corrected one. The true jump here is
+exactly 2.0: the port recovers `2.000000005` while `rdrobust` reports
+`2.148600` / `2.068653`.
+
+So the two sides are not estimating the same functional, which is exactly why
+no bandwidth repaired both. **Matching upstream is therefore not an SE change.**
+It needs Calonico-Cattaneo-Titiunik local bias correction on the *point
+estimate* -- a different estimator, not a different variance.
+
+Call-shape notes, all found by running: `rdrobust(y, x, c=...)` has **no `d=`**
+(a sharp design is `c` plus a derived `d`); there is **no `biascorr` flag** in
+2.1.1 (`subset` is an observation subset); top-level `tau_T`/`se_T` are `None`;
+`tau_bc` is a per-side **list**, so `float()` on it raises. The usable handle is
+`o.Estimate`, columns `tau.us` / `tau.bc` / `se.us` / `se.rb`. It is unseeded --
+measured spread 2.99e-02 over four fits in one process -- so `np.random.seed`
+must be set.
+
+**2. The port's HC0 arm returns EXACTLY 0.0 on both designs.** On `sec_rdd_var`,
+where `homo_se = 0.003535472` on the *same rows with non-zero residuals*. An SE
+of precisely zero is never legitimate and it is not caused by anything upstream
+does. The accumulator is `sum_k w_k^2 * m_k^2 * e_k^2` (`linear.mbt:319`), so
+the zero means one of `w`, `m_k`, `e_k` is identically zero on that path --
+and `sandwich_se_weighted` builds `X^T X` **unweighted** where its docstring
+says `X^T W X`. A separate defect with its own merit; the root cause is **not
+yet diagnosed**, so it is recorded rather than guessed at.
+
+**3. The RDD work is therefore a re-specification**, not a parity edit: bias
+correction + a robust variance + the HC0 defect. That is the user's call.
+
 ## Decision: no RDD gate
 
 A gate built on this would be permanently red, which is worse than

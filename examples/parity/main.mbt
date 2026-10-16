@@ -48,6 +48,7 @@ fn main {
   sec_lplr_upstream()
   sec_pq_qte()
   sec_policytree_upstream()
+  sec_rdd_var()
 }
 
 // --------------------------------------------------------------------------- //
@@ -141,6 +142,26 @@ fn sec_rdd() -> Unit {
   val("sharp_se", sharp.se())
   val("fuzzy_coef", fuzzy.coef())
   val("fuzzy_se", fuzzy.se())
+  // The `cov_type` arms. `DoubleMLRDD`'s default is HOMOSKEDASTIC --
+  // `(X'WX)^-1_00 * sum_k w_k e_k^2 / n^2` -- while `rdrobust`, which upstream
+  // wraps, reports a heteroskedasticity-robust variance and bias-corrects the
+  // point estimate by default. Which of these arms the divergence lives in is
+  // a measurement, so both are emitted rather than argued.
+  let sharp_hc0 = @moonbit_doubleML.DoubleMLRDD::new(
+    @moonbit_doubleML.DoubleMLRDDData::new(ux, ys, ds, sc),
+    bandwidth=0.5,
+    cov_type="HC0",
+  ).fit()
+  val("sharp_coef_hc0", sharp_hc0.coef())
+  val("sharp_se_hc0", sharp_hc0.se())
+  let fuzzy_hc0 = @moonbit_doubleML.DoubleMLRDD::new(
+    @moonbit_doubleML.DoubleMLRDDData::new(ux, yf, df, sc),
+    bandwidth=0.5,
+    fuzzy=true,
+    cov_type="HC0",
+  ).fit()
+  val("fuzzy_coef_hc0", fuzzy_hc0.coef())
+  val("fuzzy_se_hc0", fuzzy_hc0.se())
   val("n_local", sharp.n_local().to_double())
   val("fuzzy_n_local", fuzzy.n_local().to_double())
   // The data is deterministic, so Python regenerates it; emitted anyway so a
@@ -1843,6 +1864,71 @@ fn sec_policytree_upstream() -> Unit {
   data_out("pt2_labels", lab2)
   let pp2 = pt2.predict(probe)
   data_out("pt2_probe", [pp2[0].to_double(), pp2[1].to_double()])
+  end()
+}
+
+// --------------------------------------------------------------------------- //
+// 17b. rdd_var -- the variance arms, on a design whose residuals are NON-ZERO
+// --------------------------------------------------------------------------- //
+
+///|
+/// WHY A SEPARATE SECTION, and why `sec_rdd` cannot answer the question
+/// ==================================================================
+/// `sec_rdd`'s design is EXACT: `y = 2 + u + 0.5*z + 2*d` with no noise, so
+/// the local linear fit reproduces it to the last bit and every residual is
+/// zero. Measured consequence, which is the whole reason this section exists:
+///
+///     sharp_se_hc0 = 0.000000000
+///     fuzzy_se_hc0 = nan
+///
+/// A variance formula cannot be compared on a design where the variance is
+/// identically zero. That is not a small detail -- it means the existing
+/// section would have "agreed" with any formula, including a wrong one.
+///
+/// `DoubleMLRDD`'s default is HOMOSKEDASTIC --
+/// `(X'WX)^-1_00 * sum_k w_k e_k^2 / n^2` -- while `rdrobust`, which upstream
+/// wraps, reports a robust variance and bias-corrects the point estimate by
+/// default. Which arm the divergence lives in has to be measured, and this
+/// section adds noise so there is something to measure.
+///
+/// Integer-only DGP, like `sec_pq_qte`: CPython rebuilds the rows from the
+/// same modulo formulas, so there is nothing to emit and nothing to drift.
+/// The noise is what the upstream side needs -- without it `se` is 0 or NaN.
+fn sec_rdd_var() -> Unit {
+  section("rdd_var")
+  let n = 800
+  let u = Array::make(n, 0.0)
+  let z = Array::make(n, 0.0)
+  let y = Array::make(n, 0.0)
+  let d = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    let ii = i.to_int64()
+    let uu = (i.to_double() + 0.5) / 400.0 - 1.0
+    let zi = (ii * 6271 % 997).to_double() / 498.5 - 1.0
+    let ei = (ii * 130363 + 777).to_double() / 131069.5 - 1.0
+    let di = if uu >= 0.0 { 1.0 } else { 0.0 }
+    u[i] = uu
+    z[i] = zi
+    d[i] = di
+    y[i] = 2.0 + uu + 0.5 * zi + 2.0 * di + 0.5 * ei
+  }
+  let ux = @moonbit_doubleML.Matrix::from_array(z, n, 1)
+  let data = @moonbit_doubleML.DoubleMLRDDData::new(ux, y, d, u)
+  val("n", n.to_double())
+  val("sum_y", wsum(y))
+  val("sum_d", wsum(d))
+  val("sum_u", wsum(u))
+  let homo = @moonbit_doubleML.DoubleMLRDD::new(data, bandwidth=0.5).fit()
+  val("homo_coef", homo.coef())
+  val("homo_se", homo.se())
+  val("homo_n_local", homo.n_local().to_double())
+  let hc0 = @moonbit_doubleML.DoubleMLRDD::new(
+    data,
+    bandwidth=0.5,
+    cov_type="HC0",
+  ).fit()
+  val("hc0_coef", hc0.coef())
+  val("hc0_se", hc0.se())
   end()
 }
 
