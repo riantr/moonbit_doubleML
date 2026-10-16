@@ -1576,7 +1576,7 @@ gates, all of which run on push to `master` and again before publishing:
 | `typos` (pinned 1.19.0) | `publish.yml` | prose |
 | 24 `validate_*_with_python.py` | `check.yml` | estimator parity; see the two-tier note below |
 | 8 `pyexample_*` upstream gates | `check.yml` `python-cross-check` | the port against **upstream's own code**; see the table below |
-| QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 28 registered checks, 19 of them fast |
+| QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 30 registered checks, 21 of them fast |
 
 `nightly.yml` additionally runs the package against the MoonBit **nightly**
 toolchain, so a breaking upstream change surfaces before it reaches stable.
@@ -1734,7 +1734,16 @@ the ref. The real case is `Install typos`: it is `curl ... | tar zxf -` with
 no `--max-time`, and on this machine the asset CDN delivered 4,350,067 of
 6,365,610 bytes and then timed out, so `curl` exited non-zero and piped a
 truncated stream into `tar`. That reported `tar: Error is not recoverable` and
-was scored `FAIL` twice on a tree whose every code gate was green.
+was scored `FAIL` twice on a tree whose every code gate was green. The same
+fetch also failed a third time as `curl: (55) SSL_read: unexpected eof` in 91s,
+and succeeded a fourth time in 274s -- the intermittency is the network, and the
+failure text differs each time, which is why matching on the error text was the
+wrong lever.
+
+That fourth run is the useful control: with the download restored, `BLOCKED`
+becomes `PASS` and `static_code_check` reports
+`typos: 8 finding(s) in 1 tracked file(s) [pyexample_lplr.py]` -- so on a green
+run the typos gate really does run, and "QA loop green" here does include it.
 
 The obvious guard -- "downgrade only when the tool is still absent" -- is
 *wrong*: the guest had `typos` on disk from an earlier successful run, so that
