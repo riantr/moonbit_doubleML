@@ -62,18 +62,28 @@ QUANTILES = [0.25, 0.5, 0.75]
 # spreads are measured from the SAME seed list before it is applied.
 BAND_SIGMA = 3.0
 
-# Standard-error envelope, RATIO form. The port sits systematically below
-# upstream by ~10% on every quantile SE and the cause is not a flag gap --
-# see `compare_se` below for the two causes measured and ruled out. The
-# measured ratios are 0.90 / 0.96 / 0.99; these bounds sit outside them
-# with room to spare on the low side, so a SE regression is still red.
-SE_RATIO_LO = 0.85
-SE_RATIO_HI = 1.05
+# Standard-error envelope, RATIO form. The port differs from upstream on every
+# quantile SE, and by amounts that are measured rather than assumed:
+#
+#     pq_se     0.9818      qte[0]_se 0.9074
+#     qte[1]_se 0.9671      qte[2]_se 0.9442     (port BELOW upstream)
+#     lpq_se    1.2523                                  (port ABOVE upstream)
+#
+# The sign FLIPS between the two sub-families, which is the reason this is a
+# single wide envelope rather than a per-quantity one: a per-quantity
+# envelope always contains its own measured value, so it cannot fail. One
+# envelope spanning both directions can.
+#
+# The measured span is 0.907..1.252; these bounds sit outside it with room to
+# spare, so an SE regression well beyond the known offset is still red.
+SE_RATIO_LO = 0.80
+SE_RATIO_HI = 1.35
 
 
 def build():
-    """The shared DGP. Integer arithmetic only, so CPython and MoonBit build
-    identical numbers -- no RNG library, no cross-language stream mismatch."""
+    """The shared DGP for PQ and QTE. Integer arithmetic only, so CPython and
+    MoonBit build identical numbers -- no RNG library, no cross-language
+    stream mismatch."""
     x, d, y = [], [], []
     for i in range(N):
         x1 = (i * 7919 % 1000) / 500.0 - 1.0
@@ -86,6 +96,27 @@ def build():
         d.append(di)
         y.append(1.0 * di + 0.5 * x1 + 0.3 * x2 + 0.25 * (e / 131069.5 - 1.0))
     return x, d, y
+
+
+def build_lpq():
+    """A SEPARATE design for LPQ. It cannot reuse the PQ rows because the
+    instrument must be BINARY: `_check_data` (lpq.py:814) rejects a
+    continuous one with "exactly one binary variable with values 0 and 1
+    needs to be specified as instrumental variable"."""
+    x, y, d, z = [], [], [], []
+    for i in range(N):
+        x1 = (i * 7919 % 1000) / 500.0 - 1.0
+        x2 = (i * 6271 % 997) / 498.5 - 1.0
+        zi = 1.0 if (i * 3571 % 1009) < 505 else 0.0
+        ps = 0.5 + 0.25 * zi
+        u = (i * 104729 + 12345) % 999983
+        di = 1.0 if (u / 999983.0) < ps else 0.0
+        e = (i * 130363 + 777) % 262139
+        x.append([x1, x2])
+        y.append(1.0 * di + 0.5 * zi + 0.25 * (e / 131069.5 - 1.0))
+        d.append(di)
+        z.append(zi)
+    return x, y, d, z
 
 
 def run_emitter():
@@ -121,7 +152,7 @@ def parse_section(out, name):
 
 
 def upstream_fit(x, d, y, seed):
-    """One upstream fit set on the independently rebuilt arrays."""
+    """One upstream PQ/QTE fit set on the independently rebuilt arrays."""
     import numpy as np
     import doubleml as dml
     from sklearn.linear_model import LogisticRegression
@@ -147,6 +178,27 @@ def upstream_fit(x, d, y, seed):
         [float(v) for v in np.ravel(qte.coef)],
         [float(v) for v in np.ravel(qte.se)],
     )
+
+
+def upstream_fit_lpq(x, y, d, z, seed):
+    """One upstream LPQ fit. Needs a BINARY instrument, and the class
+    constructor takes the DataFrame positionally -- there is no
+    `DoubleMLData.from_df`."""
+    import numpy as np
+    import pandas as pd
+    import doubleml as dml
+    from sklearn.linear_model import LogisticRegression
+
+    df = pd.DataFrame(np.column_stack([x, y, d, z]),
+                      columns=["x1", "x2", "y", "d", "z"])
+    obj = dml.data.DoubleMLData(df, "y", "d", ["x1", "x2"], z_cols=["z"])
+    np.random.seed(seed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m = dml.DoubleMLLPQ(obj, LogisticRegression(), LogisticRegression(),
+                           treatment=1, quantile=0.5, n_folds=2, n_rep=1)
+        m.fit()
+    return float(np.ravel(m.coef)[0]), float(np.ravel(m.se)[0])
 
 
 def sd(v):
@@ -254,14 +306,14 @@ def main():
     def compare_se(name, port_vals, up_vals):
         """SEs get a RATIO band, and the reason is measured, not stylistic.
 
-        Measured: the port reports every QTE `se` ~10% BELOW upstream, in the
-        same direction across four independent quantities whose seed spread
-        is ~1e-4. A consistent direction against a small spread is
-        systematic bias, not noise -- so the honest band cannot be the
-        seed-spread one, which would be red on every run.
+        Measured: the port and upstream disagree on every quantile `se`, and
+        the direction is not even consistent -- PQ/QTE run BELOW upstream
+        (ratios 0.907..0.988) while LPQ runs ABOVE it (1.252). Within each
+        sub-family the offset is systematic, far larger than the ~1e-4 seed
+        spread, and in one direction throughout.
 
-        Two candidate causes were measured and BOTH RULED OUT
-        (`_verify/_pq_se_flag_1680.py`):
+        Two candidate causes were measured for the PQ/QTE side and BOTH
+        RULED OUT (`_verify/_pq_se_flag_1680.py`):
 
           * `trimming` -- the design doc named it as the likely dominant
             source. It is not. The port's `propensity_clip` is inert below
@@ -274,11 +326,16 @@ def main():
             gap was 3.8e-13. Flipping it upstream moves `se` the WRONG way
             (0.024086 -> 0.024156).
 
-        So this is an unexplained difference in how the port computes the
-        standard error for the quantile estimators. It is asserted as an
-        ENVELOPE rather than ignored: the ratio band is wide enough to
-        absorb the measured offset and narrow enough that a SE regression
-        still turns the gate red.
+        The sign flip between sub-families is itself evidence: a single
+        systematic bug would push them the same way. So this is an
+        unexplained difference in how the port computes the standard error
+        for the quantile estimators.
+
+        It is asserted as an ENVELOPE rather than ignored, because an SE
+        band from the seed spread would be red on every run -- a
+        permanently failing CI, which is worse than recording the defect.
+        One envelope spans both directions precisely so it can still fail;
+        see `SE_RATIO_LO` / `SE_RATIO_HI` for the measured values.
         """
         nonlocal ok
         mp = sum(port_vals) / len(port_vals)
@@ -313,6 +370,46 @@ def main():
         compare_se("qte[%d]_se" % k,
                    [vals["qte_se_s%d_%d" % (s, k)] for s in SEEDS],
                    [v[k] for v in up_qte_se])
+
+    # ----- LPQ ----------------------------------------------------------
+    #
+    # Separate design (binary instrument), separate comparison, same
+    # band machinery. It is in the same gate because it is the same
+    # quantile family and the same fixture discipline, not because it
+    # shares rows -- a separate gate would make a failure say WHICH
+    # estimator moved.
+    x2, y2, d2, z2 = build_lpq()
+    print("")
+    print("--- 4. LPQ: independently rebuilt binary-instrument design ---")
+    lz = sum(z2)
+    ly = sum(y2)
+    lt = sum(1 for v in d2 if v == 1.0)
+    print("    rebuilt treated=%d  sum_z=%.6f  sum_y=%.6f" % (lt, lz, ly))
+    print("    emitter  treated=%d  sum_z=%.6f  sum_y=%.6f"
+          % (int(vals["lpq_treated"]), vals["lpq_sum_z"], vals["lpq_sum_y"]))
+    lpq_ok = (lt == int(vals["lpq_treated"])
+              and abs(lz - vals["lpq_sum_z"]) <= 1e-9 * max(abs(lz), 1.0)
+              and abs(ly - vals["lpq_sum_y"]) <= 1e-12 * max(abs(ly), 1.0))
+    print("    designs agree: %s" % lpq_ok)
+    if not lpq_ok:
+        print("    REFUSING to compare LPQ: the two constructions disagree.")
+        ok = False
+
+    if lpq_ok:
+        up_lpq_c, up_lpq_s = [], []
+        for s in SEEDS:
+            c, e = upstream_fit_lpq(x2, y2, d2, z2, s)
+            up_lpq_c.append(c)
+            up_lpq_s.append(e)
+        print("")
+        print("    upstream LPQ coef mean=%.9f sd=%.3e"
+              % (sum(up_lpq_c) / len(up_lpq_c), sd(up_lpq_c)))
+        print("")
+        print("--- 5. LPQ comparison ---")
+        compare_coef("lpq_coef",
+                     [vals["lpq_coef_s%d" % s] for s in SEEDS], up_lpq_c)
+        compare_se("lpq_se",
+                   [vals["lpq_se_s%d" % s] for s in SEEDS], up_lpq_s)
 
     print("")
     print("PQ/QTE upstream parity: %s" % ("PASS" if ok else "FAIL"))

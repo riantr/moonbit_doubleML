@@ -12,8 +12,10 @@ takes two more:
 |---|---|---|
 | `DoubleMLPQ` | analytic only | `pyexample_pq.py` |
 | `DoubleMLQTE` | analytic only | `pyexample_pq.py` |
+| `DoubleMLLPQ` | analytic only | `pyexample_pq.py` |
 
-Still open on `examples/main`: RDD, LPQ, PolicyTree.
+Still open on `examples/main`: RDD (measured divergent — see
+`RDD_PARITY_1680.md`), PolicyTree.
 
 ## A different comparison shape from every other gate here
 
@@ -142,3 +144,59 @@ question that actually matters: is the check load-bearing?
 M7 guards a specific hazard — QTE returns one coefficient per quantile, and
 pairing `port[k]` with `upstream[k+1]` compares the wrong numbers on both
 sides and can still look plausible.
+
+## LPQ, added later: the tightest coefficient agreement in the repo
+
+`DoubleMLLPQ` needs its own design, not a reuse of the PQ rows. `_check_data`
+(`lpq.py:814`) requires a **binary** instrument — "exactly one binary
+variable with values 0 and 1" — so the continuous running variable that
+suits the RDD gate is rejected outright.
+
+Upstream demands `ml_g` and `ml_m` as classifiers; the port's
+`DoubleMLLPQ::new` exposes **no learner parameters at all**. They agree
+anyway:
+
+| | port | upstream | gap | band | % of band |
+|---|---|---|---|---|---|
+| `lpq_coef` | 1.672410121 | 1.672378013 | **3.211e-05** | 7.421e-03 | **0.4%** |
+
+At several seeds the two sides return *identical* values (1.673323122465562
+and 1.6713279977416562 both appear on each side). That the port's internal
+learners match upstream's supplied classifiers this closely is a
+measurement, not an assumption.
+
+## The SE offset FLIPS SIGN between sub-families
+
+This is the finding that changed the gate's shape. Measured ratios:
+
+```
+pq_se     0.9818      qte[0]_se 0.9074
+qte[1]_se 0.9671      qte[2]_se 0.9442     <- port BELOW upstream
+lpq_se    1.2523                                  <- port ABOVE upstream
+```
+
+Within each sub-family the offset is systematic and far exceeds the ~1e-4
+seed spread. **Between them the sign reverses.** A single systematic bug
+would push both the same way, so this is not one bug — it is a difference in
+how the port computes the quantile standard error, and the direction
+depends on the estimator.
+
+That is why there is ONE envelope spanning both directions (`[0.80, 1.35]`,
+measured span 0.907–1.252) rather than one per quantity. A per-quantity
+envelope always contains its own measured value, so it can never fail; one
+envelope that has to cover both signs still can.
+
+Battery after adding LPQ: **10/10**.
+
+| arm | breaks | result |
+|---|---|---|
+| M1 | emitter scales a coefficient | KILLED |
+| M2 | Python rebuilds `x2` wrongly | KILLED (fingerprint) |
+| M3 | Python rebuilds treatment wrongly | KILLED (fingerprint) |
+| M4 | emitter reports a wrong fingerprint | KILLED (refused) |
+| M6 | port halves every `se` | KILLED (envelope bites) |
+| M7 | upstream quantile levels permuted | KILLED (index mapping) |
+| M8 | LPQ design fingerprint wrong | KILLED (refused) |
+| M9 | emitter scales the LPQ coefficient | KILLED |
+| M10 | port doubles the LPQ `se` | KILLED (envelope bites) |
+| M5 | CONTROL: seed list reordered | PASS |

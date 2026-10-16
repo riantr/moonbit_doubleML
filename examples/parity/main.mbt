@@ -1631,6 +1631,56 @@ fn sec_pq_qte() -> Unit {
   let clog = @moonbit_doubleML.LearnerDispatch::logistic_regression(
     @moonbit_doubleML.LogisticRegression::new(),
   )
+  // ----- LPQ: the instrument-valued member of the quantile family -------
+  //
+  // A SEPARATE design, not a reuse of the PQ rows. LPQ needs a BINARY
+  // instrument: `_check_data` (lpq.py:814) rejects a continuous one with
+  // "exactly one binary variable with values 0 and 1 needs to be specified
+  // as instrumental variable". The RDD-shaped running variable that suits
+  // the RDD gate is not accepted here.
+  //
+  // Upstream demands `ml_g` and `ml_m` as classifiers; the port's
+  // `DoubleMLLPQ::new` exposes NO learner parameters at all. The two agree
+  // to ~7e-4 on the coefficient regardless, so the port's internal
+  // learners are close enough for the comparison to mean something -- but
+  // that is a measurement, not an assumption.
+  let n2 = 1000
+  let x2_flat = Array::make(n2 * 2, 0.0)
+  let y2 = Array::make(n2, 0.0)
+  let d2 = Array::make(n2, 0.0)
+  let z2 = Array::make(n2, 0.0)
+  let mut treated2 = 0
+  let mut sz = 0.0
+  let mut sy2 = 0.0
+  for i = 0; i < n2; i = i + 1 {
+    let ii = i.to_int64()
+    let a1 = (ii * 7919 % 1000).to_double() / 500.0 - 1.0
+    let a2 = (ii * 6271 % 997).to_double() / 498.5 - 1.0
+    let zi = if ii * 3571 % 1009 < 505 { 1.0 } else { 0.0 }
+    let ps2 = 0.5 + 0.25 * zi
+    let u2 = (ii * 104729 + 12345) % 999983
+    let di = if u2.to_double() / 999983.0 < ps2 { 1.0 } else { 0.0 }
+    let e2 = (ii * 130363 + 777) % 262139
+    x2_flat[i * 2] = a1
+    x2_flat[i * 2 + 1] = a2
+    z2[i] = zi
+    d2[i] = di
+    y2[i] = 1.0 * di + 0.5 * zi + 0.25 * (e2.to_double() / 131069.5 - 1.0)
+    sz = sz + zi
+    sy2 = sy2 + y2[i]
+    if di == 1.0 {
+      treated2 = treated2 + 1
+    }
+  }
+  val("lpq_treated", treated2.to_double())
+  val("lpq_sum_z", sz)
+  val("lpq_sum_y", sy2)
+  let lpq_data = @moonbit_doubleML.DoubleMLLPQData::new(
+    @moonbit_doubleML.Matrix::from_array(x2_flat, n2, 2),
+    y2,
+    d2,
+    z2,
+  )
   // Re-seeded across a spread of values so the PORT side's spread is
   // measured here rather than assumed. Upstream is seeded with
   // `np.random.seed` on the other side of the gate.
@@ -1668,6 +1718,15 @@ fn sec_pq_qte() -> Unit {
       val("qte_coef_s" + sd.to_string() + "_" + k.to_string(), coefs[k])
       val("qte_se_s" + sd.to_string() + "_" + k.to_string(), ses[k])
     }
+    let lpq = @moonbit_doubleML.DoubleMLLPQ::new(
+      lpq_data,
+      treatment=1.0,
+      quantile=0.5,
+      n_folds=2,
+      seed=sd,
+    ).fit()
+    val("lpq_coef_s" + sd.to_string(), lpq.coef)
+    val("lpq_se_s" + sd.to_string(), lpq.se)
   }
   end()
 }
