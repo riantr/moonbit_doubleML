@@ -38,6 +38,7 @@ fn main {
   sec_did_cs()
   sec_did_pyexample()
   sec_did_pyexample_cs2021()
+  sec_did_cs_binary()
   sec_pyexample_suite()
   sec_bootstrap()
   sec_padjust()
@@ -912,6 +913,81 @@ fn sec_pyexample_suite() -> Unit {
   end()
 }
 
+// --------------------------------------------------------------------------- //
+// 6c. did_cs_binary -- upstream's DoubleMLDIDCSBinary, cell by cell
+// --------------------------------------------------------------------------- //
+
+///|
+/// The one DID variant whose two sides are structurally IDENTICAL:
+///
+///     upstream  (obj_dml_data, g_value, t_value_pre, t_value_eval, ml_g, ...)
+///     port      (data,        g_value, t_value_pre, t_value_eval, ..., ml_g)
+///
+/// Same four leading arguments, same names, same order. Both are TOLD which
+/// cell to estimate, so there is no grid-derivation question at all -- the
+/// thing that limited the CS2021 gate to 6 of upstream's 12 standard cells.
+/// `in_sample_normalization` is the only default that differs (upstream
+/// `True`, port `False`), so it is pinned explicitly in both directions.
+///
+/// `DoubleMLDIDCS` itself is deliberately NOT gated against. Upstream's is
+/// deprecated -- "will be removed with version 0.12.0" -- and it refuses
+/// `DoubleMLPanelData` outright. `DoubleMLDIDCSBinary` is the successor.
+///
+/// The CS2021 sentinel is shared ON PURPOSE: this section reads the same
+/// `cs2021_*` block, including the cell list, from the same fixture. A
+/// separate sentinel would be a lie in the other direction -- there is no
+/// separate data, and `pyexample_did_cs_binary.py` writes exactly the block
+/// `pyexample_did_cs2021.py` writes.
+fn sec_did_cs_binary() -> Unit {
+  section("did_cs_binary")
+  let generated = cs2021_generated() != 0
+  val("csb_generated", if generated { 1.0 } else { 0.0 })
+  if !generated {
+    end()
+    return
+  }
+  let n_cs = cs2021_n_obs()
+  let p_cs = cs2021_n_feat()
+  let x_cs = @moonbit_doubleML.Matrix::from_array(cs2021_x(), n_cs, p_cs)
+  let cs_data = @moonbit_doubleML.DoubleMLDIDCSData::new(
+    x_cs,
+    cs2021_y(),
+    cs2021_d(),
+    cs2021_t(),
+    cs2021_id(),
+    cs2021_g(),
+  )
+  let n_cells = cs2021_n_cells()
+  val("csb_n_cells", n_cells.to_double())
+  for i = 0; i < n_cells; i = i + 1 {
+    let gv = cs2021_cell_g(i)
+    let tp = cs2021_cell_t_pre(i)
+    let te = cs2021_cell_t_eval(i)
+    // One fit per cell, and the cell is REQUESTED rather than inferred -- so
+    // this row is evidence that the port estimates the cell it was told to,
+    // not that its internal derivation happens to land there.
+    let fitted = @moonbit_doubleML.DoubleMLDIDCSBinary::new(
+      cs_data,
+      gv,
+      tp,
+      te,
+      control_group="never_treated",
+      n_folds=2,
+      n_rep=1,
+      seed=42,
+      in_sample_normalization=true,
+      ml_g=@moonbit_doubleML.LearnerDispatch::linear_regression(),
+      ml_m=@moonbit_doubleML.LearnerDispatch::logistic_regression(
+        @moonbit_doubleML.LogisticRegression::new(),
+      ),
+    ).fit()
+    val("csb_coef_" + i.to_string(), fitted.coef())
+    val("csb_se_" + i.to_string(), fitted.se())
+  }
+  end()
+}
+
+// --------------------------------------------------------------------------- //
 // 7. bootstrap -- the weight draw, which is pure chacha8 arithmetic
 // --------------------------------------------------------------------------- //
 

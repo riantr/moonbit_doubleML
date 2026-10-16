@@ -206,6 +206,13 @@ def build_cs2021():
         "x": x, "y": y, "d": d, "t": t, "id": idc, "g": g,
         "upstream": upstream,
         "never_treated": int(ntv),
+        # The `DoubleMLPanelData` this DGP was wrapped in, handed back so a
+        # second gate can drive upstream's OWN estimator classes on the same
+        # rows. Two gates that independently rebuild this DGP would agree
+        # today and could drift tomorrow, and the integer recode above is the
+        # part most likely to be re-derived incorrectly -- it is what maps
+        # upstream's float `inf` never-treated sentinel onto the port's rule.
+        "obj": panel,
     }
 
 

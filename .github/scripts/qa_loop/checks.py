@@ -674,6 +674,60 @@ def c_pyexample_suite():
                 fh.write(before)
 
 
+@check("pyexample_did_cs_binary",
+       "port vs upstream DoubleMLDIDCSBinary on the CS2021 panel, 6 cells",
+       "fast")
+def c_pyexample_did_cs_binary():
+    # Same fixture as the two DID gates above -- `pyexample_data.mbt`, spliced
+    # with the same `cs2021_*` block -- so it carries the same byte-snapshot
+    # guard and the same "must not run concurrently" caveat. The three gates
+    # drive one `moon run examples/parity` build, and the harness runs them
+    # sequentially.
+    fixture = os.path.join(ROOT, "examples", "parity", "pyexample_data.mbt")
+    gate = os.path.join(ROOT, "pyexample_did_cs_binary.py")
+    if not os.path.isfile(gate):
+        return R("pyexample_did_cs_binary", "", SKIP,
+                 "pyexample_did_cs_binary.py is not present")
+    if not os.path.isfile(fixture):
+        return R("pyexample_did_cs_binary", "", SKIP, "%s is not present"
+                 % os.path.relpath(fixture, ROOT))
+    try:
+        with open(fixture, "rb") as fh:
+            before = fh.read()
+    except OSError as e:
+        return R("pyexample_did_cs_binary", "", SKIP,
+                 "cannot read the fixture: %s" % e)
+    try:
+        rc, out = run([sys.executable, "pyexample_did_cs_binary.py", "--check"],
+                      cwd=ROOT, timeout=2400)
+        verdict = PASS if rc == 0 else FAIL
+        evidence = ""
+        for line in out.splitlines():
+            s = line.strip()
+            if s.startswith("pyexample: port vs upstream DoubleMLDIDCSBinary"):
+                evidence = s
+        if not evidence:
+            tail = out.strip().splitlines()[-1] if out.strip() else ""
+            evidence = tail.strip()[:110]
+        # The number that says whether this gate can bite: every cell is
+        # REQUESTED on both sides here, so a drop below 6 means a cell went
+        # missing rather than being skipped for a structural reason -- the
+        # failure mode the CS2021 gate documents and has to guard against.
+        for line in out.splitlines():
+            if "cell(s), each REQUESTED explicitly" in line:
+                evidence += " | " + line.strip()
+        return R("pyexample_did_cs_binary", "", verdict, evidence)
+    finally:
+        try:
+            with open(fixture, "rb") as fh:
+                after = fh.read()
+        except OSError:
+            after = b"<unreadable>"
+        if after != before:
+            with open(fixture, "wb") as fh:
+                fh.write(before)
+
+
 # --------------------------------------------------------------------------- #
 # pyexample_cs2021 -- the MULTI-COHORT port against upstream's own CS2021 data
 # --------------------------------------------------------------------------- #

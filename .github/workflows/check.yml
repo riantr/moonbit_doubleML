@@ -199,6 +199,26 @@ jobs:
           set -e
           python pyexample_suite.py --check
 
+      # `DoubleMLDIDCSBinary` -- the class `examples/did_cs_binary` builds.
+      # Distinct from the CS2021 step above, which grades
+      # `DoubleMLDIDMulti`: different class, different defaults, and
+      # agreement with one is not evidence about the other.
+      #
+      # Unlike both DID gates above, NO cell is skipped for structural
+      # reasons. Both constructors take an explicit
+      # `(g_value, t_value_pre, t_value_eval)`, so all 6 comparable cells are
+      # compared rather than the subset where two grid-derivation rules
+      # happen to coincide.
+      #
+      # Upstream's `DoubleMLDIDCS` is deliberately NOT used: it is deprecated
+      # ("will be removed with version 0.12.0") and refuses DoubleMLPanelData.
+      # It writes the same `cs2021_*` fixture block the step above does, so
+      # the two must not run concurrently against one working tree.
+      - name: Compare the binary DID-CS port against upstream
+        run: |
+          set -e
+          python pyexample_did_cs_binary.py --check
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.
