@@ -45,6 +45,7 @@ fn main {
   sec_padjust()
   sec_cv_repeated()
   sec_gain_statistics()
+  sec_lplr_upstream()
 }
 
 // --------------------------------------------------------------------------- //
@@ -1296,6 +1297,235 @@ fn sec_gain_statistics() -> Unit {
   data_out("coef_long", coef_long)
   data_out("coef_short", coef_short)
   val("n_coef", res.cf_y.length().to_double())
+  end()
+}
+
+// --------------------------------------------------------------------------- //
+// 15. lplr_upstream -- LPLR against upstream on the EXAMPLE's own data
+// --------------------------------------------------------------------------- //
+
+///|
+/// WHY THIS SECTION EXISTS, and what it replaces
+/// ============================================
+/// `examples/lplr` is one of the twenty e2e-checked examples, and
+/// `validate_lplr_with_python.py` does compare it against upstream
+/// `doubleml.plm.DoubleMLLPLR`. That comparison cannot see the estimator.
+/// Measured (see `_verify/LPLR_GATE_BLINDNESS_1680.md`):
+///
+///   * it fits upstream on `build_simplified_lzz2020` -- a numpy DGP -- and
+///     compares that against the example's `chacha8_rng` numbers. Two
+///     different datasets, so a gap is guaranteed before the estimator is
+///     even in question;
+///   * it then attributes the gap to "upstream's own run-to-run spread"
+///     (theta sd 0.198 over 7 refits) and widens the band to
+///     `3 * max(se)` with a 0.10 floor, i.e. ~0.81 here.
+///     Measured on FIXED data with the partition pinned per seed, the same
+///     fold draw moves theta by sd 0.308 (min 0.154, max 1.155 around a
+///     true alpha of 0.5). So the width is legitimate -- it is demanded by
+///     the fold draw -- but it is spent on noise that can be REMOVED
+///     instead of absorbed.
+///
+/// Upstream accepts an externally supplied partition. Measured: writing
+/// `_smpls` / `_smpls_inner` and refitting gives bit-identical output
+/// (|dcoef| = 0.000e+00), because LPLR draws a DOUBLE split
+/// (`_double_sample_splitting = True`) and 0.11.3 exposes no public setter
+/// for it. `fit` draws its outer partition as `kfold(n, n_folds, seed + r)`
+/// (`lplr.mbt:758`), so the port's partition is reproducible here and is
+/// emitted rather than assumed.
+///
+/// The data is emitted for the reason given at the top of this file: the
+/// DGP is `chacha8`-driven and CPython cannot reproduce it. Emitting it
+/// turns "two different random datasets landed near each other" into a
+/// comparison on identical rows.
+///
+/// REMAINING MISMATCH, stated rather than hidden: the port's INNER split is
+/// still drawn from `self.seed + r * 1000 + 7` (`set_sample_splitting`
+/// covers the outer partition only, `lplr.mbt:1630`). `fit` is therefore
+/// re-run across five seeds -- with the outer partition HELD FIXED, so the
+/// only thing that moves is the inner draw -- and those are emitted as
+/// `lplr_ns_seed*`. The band the Python side uses is built from that
+/// measured spread, not from an assumption about it.
+fn sec_lplr_upstream() -> Unit {
+  section("lplr_upstream")
+  let n = 500
+  let p = 6
+  let alpha = 0.5
+  let seed = 3141
+  // Identical to `examples/lplr/main.mbt::build_dgp`. If the replication
+  // ever drifts, `lplr_ns_theta` stops matching the example's own printed
+  // `theta_hat = 0.464110` -- which is the check, not an assumption.
+  let x_flat = Array::make(n * p, 0.0)
+  let y = Array::make(n, 0.0)
+  let d = Array::make(n, 0.0)
+  // `build_dgp` draws from ONE rng handle threaded through the Box-Muller
+  // pool and both Bernoulli loops, so the three share a stream. Drawing the
+  // pool from a separate handle would shift every later value.
+  let rng = @moonbit_doubleML.chacha8_rng(seed)
+  let pool : Array[Double] = []
+  while pool.length() < n * p + n {
+    let u1 = rng.double()
+    let u2 = rng.double()
+    let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
+    let r = (-2.0 * @math.ln(safe)).sqrt()
+    let th = 2.0 * 3.141592653589793 * u2
+    pool.push(r * @math.cos(th))
+    pool.push(r * @math.sin(th))
+  }
+  for i = 0; i < n * p; i = i + 1 {
+    x_flat[i] = pool[i]
+  }
+  for i = 0; i < n; i = i + 1 {
+    let x1 = x_flat[i * p]
+    let x2 = x_flat[i * p + 1]
+    let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]
+    let p_t = @moonbit_doubleML.expit(a)
+    let u = rng.double()
+    d[i] = if u < p_t { 1.0 } else { 0.0 }
+  }
+  for i = 0; i < n; i = i + 1 {
+    let x1 = x_flat[i * p]
+    let x2 = x_flat[i * p + 1]
+    let x3 = x_flat[i * p + 2]
+    let x4 = x_flat[i * p + 3]
+    let x5 = x_flat[i * p + 4]
+    let x6 = x_flat[i * p + 5]
+    let r = 0.25 * x1 * x2 +
+      0.25 * x3 * x3 +
+      0.25 * @math.cos(x4) -
+      0.5 * @math.sin(x5) +
+      (if x6 > 0.0 { 1.0 } else { 0.0 }) -
+      0.5
+    let prob = @moonbit_doubleML.expit(alpha * d[i] + r)
+    let u = rng.double()
+    y[i] = if u < prob { 1.0 } else { 0.0 }
+  }
+  data_out("lplr_x", x_flat)
+  data_out("lplr_y", y)
+  data_out("lplr_d", d)
+  val("lplr_n", n.to_double())
+  val("lplr_p", p.to_double())
+  // The outer partition `fit` would draw anyway (`kfold(n, 2, seed + 0)`),
+  // emitted row-by-fold so the Python side can install the SAME one.
+  let outer = @moonbit_doubleML.kfold(n, 2, seed)
+  let fold_id = Array::make(n, 0.0)
+  for f = 0; f < outer.length(); f = f + 1 {
+    let te = outer[f].test_idx
+    for j = 0; j < te.length(); j = j + 1 {
+      fold_id[te[j]] = f.to_double()
+    }
+  }
+  data_out("lplr_fold", fold_id)
+  let data = @moonbit_doubleML.DoubleMLBinaryData::new(
+    @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
+    y,
+    d,
+  )
+  let ns = @moonbit_doubleML.DoubleMLLPLR::new(
+      data,
+      score="nuisance_space",
+      n_folds=2,
+      n_folds_inner=2,
+      seed~,
+    )
+    .set_sample_splitting([outer])
+    .fit()
+  val("lplr_ns_theta", ns.coef())
+  val("lplr_ns_se", ns.se())
+  let inst = @moonbit_doubleML.DoubleMLLPLR::new(
+      data,
+      score="instrument",
+      n_folds=2,
+      n_folds_inner=2,
+      seed~,
+    )
+    .set_sample_splitting([outer])
+    .fit()
+  val("lplr_in_theta", inst.coef())
+  val("lplr_in_se", inst.se())
+  // Outer partition HELD FIXED across these seeds, so the only thing that
+  // varies is the inner draw. This is the port-side spread the band needs.
+  let probe = [3141, 3142, 3143, 3144, 3145]
+  for i = 0; i < probe.length(); i = i + 1 {
+    let f2 = @moonbit_doubleML.DoubleMLLPLR::new(
+        data,
+        score="nuisance_space",
+        n_folds=2,
+        n_folds_inner=2,
+        seed=probe[i],
+      )
+      .set_sample_splitting([outer])
+      .fit()
+    val("lplr_ns_seed" + probe[i].to_string(), f2.coef())
+  }
+  // MATCHED-LEARNER configuration -- the one upstream can actually mirror.
+  //
+  // The port's DEFAULTS are `linear_regression()` for BOTH slots, so `ml_M`
+  // (which needs a probability) is fitted by OLS here. Upstream cannot
+  // reproduce that at all: `_check_learner(ml_M, regressor=False,
+  // classifier=True)` rejects a regressor outright. Comparing the default
+  // configuration against upstream would therefore measure the LEARNER
+  // CHOICE, not the estimator -- so the gate fits the port with
+  // `ml_g`=OLS / `ml_m`=logistic, which is upstream's own
+  // `LinearRegression` / `LogisticRegression` pairing, and compares THAT.
+  //
+  // The default configuration is still emitted above, so the size of the
+  // learner-choice effect is visible rather than assumed.
+  let mlog = @moonbit_doubleML.LearnerDispatch::logistic_regression(
+    @moonbit_doubleML.LogisticRegression::new(),
+  )
+  let mols = @moonbit_doubleML.LearnerDispatch::linear_regression()
+  let match_ns = @moonbit_doubleML.DoubleMLLPLR::new(
+      data,
+      score="nuisance_space",
+      n_folds=2,
+      n_folds_inner=2,
+      seed~,
+      ml_g=mols,
+      ml_m=mlog,
+    )
+    .set_sample_splitting([outer])
+    .fit()
+  val("lplr_match_ns_theta", match_ns.coef())
+  val("lplr_match_ns_se", match_ns.se())
+  let match_in = @moonbit_doubleML.DoubleMLLPLR::new(
+      data,
+      score="instrument",
+      n_folds=2,
+      n_folds_inner=2,
+      seed~,
+      ml_g=mols,
+      ml_m=mlog,
+    )
+    .set_sample_splitting([outer])
+    .fit()
+  val("lplr_match_in_theta", match_in.coef())
+  val("lplr_match_in_se", match_in.se())
+  for i = 0; i < probe.length(); i = i + 1 {
+    let f3 = @moonbit_doubleML.DoubleMLLPLR::new(
+        data,
+        score="nuisance_space",
+        n_folds=2,
+        n_folds_inner=2,
+        seed=probe[i],
+        ml_g=mols,
+        ml_m=mlog,
+      )
+      .set_sample_splitting([outer])
+      .fit()
+    val("lplr_match_seed" + probe[i].to_string(), f3.coef())
+    let f4 = @moonbit_doubleML.DoubleMLLPLR::new(
+        data,
+        score="instrument",
+        n_folds=2,
+        n_folds_inner=2,
+        seed=probe[i],
+        ml_g=mols,
+        ml_m=mlog,
+      )
+      .set_sample_splitting([outer])
+      .fit()
+    val("lplr_match_in_seed" + probe[i].to_string(), f4.coef())
+  }
   end()
 }
 

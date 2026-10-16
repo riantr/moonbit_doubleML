@@ -784,6 +784,45 @@ def c_pyexample_did_binary():
 
 
 # --------------------------------------------------------------------------- #
+# pyexample_lplr -- the LPLR port against upstream on SHARED ROWS
+# --------------------------------------------------------------------------- #
+#
+# No byte-snapshot guard, unlike the four DID gates above: those overwrite the
+# shared `pyexample_data.mbt` fixture and must restore it. This one reads only
+# the emitter's stdout -- the LPLR rows and partition are PRINTED by
+# `sec_lplr_upstream` (`data_out`), not injected as literals -- so there is no
+# file for it to disturb and nothing to restore.
+#
+# Registered separately because it is the only gate here that pins the fold
+# partition. Measured: upstream refit under a pinned partition is bit-identical
+# (|dcoef| = 0.000e+00), so this one removes the fold-draw noise the other
+# estimators' gates still absorb. See `_verify/LPLR_GATE_BLINDNESS_1680.md`.
+@check("pyexample_lplr",
+       "port vs upstream DoubleMLLPLR on the example's own rows, pinned partition",
+       "fast")
+def c_pyexample_lplr():
+    gate = os.path.join(ROOT, "pyexample_lplr.py")
+    if not os.path.isfile(gate):
+        return R("pyexample_lplr", "", SKIP, "pyexample_lplr.py is not present")
+    try:
+        rc, out = run([sys.executable, "pyexample_lplr.py", "--check"],
+                      cwd=ROOT, timeout=3600)
+    except Exception as e:  # noqa: BLE001 - any failure is a FAIL, never a PASS
+        return R("pyexample_lplr", "", FAIL, "could not run the gate: %s" % e)
+    verdict = PASS if rc == 0 else FAIL
+    evidence = []
+    for line in out.splitlines():
+        s = line.strip()
+        if s.startswith(("nuisance_space port=", "instrument     port=",
+                         "identical:")):
+            evidence.append(s)
+    if not evidence:
+        tail = out.strip().splitlines()[-1] if out.strip() else ""
+        evidence = [tail.strip()[:110]]
+    return R("pyexample_lplr", "", verdict, " | ".join(evidence))
+
+
+# --------------------------------------------------------------------------- #
 # pyexample_cs2021 -- the MULTI-COHORT port against upstream's own CS2021 data
 # --------------------------------------------------------------------------- #
 #

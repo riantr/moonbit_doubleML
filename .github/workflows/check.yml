@@ -244,6 +244,32 @@ jobs:
           set -e
           python pyexample_did_binary.py --check
 
+      # `DoubleMLLPLR` -- the class `examples/lplr` builds. Distinct from
+      # every step above: not a DID class at all, and the only gate here that
+      # compares on SHARED ROWS AND A SHARED OUTER PARTITION.
+      #
+      # WHY IT EXISTS, since `validate_lplr_with_python.py` already compares
+      # LPLR to upstream. That comparison fits upstream on a numpy DGP and
+      # compares it against the example's `chacha8_rng` numbers -- two
+      # different datasets -- then attributes the gap to upstream noise and
+      # widens the band to `3 * max(se)` (~0.81 here). Measured on FIXED data
+      # with only the partition redrawn, the fold draw moves theta by sd
+      # 0.308, so the width is legitimate; but spending it on a data mismatch
+      # meant no estimator-level difference below ~0.6 was visible. Measured
+      # in `_verify/LPLR_GATE_BLINDNESS_1680.md`.
+      #
+      # This gate removes both sources instead of absorbing them: the emitter
+      # prints the example's own rows and the partition `fit` drew, and
+      # upstream is pinned to them. Refitting upstream under a pinned
+      # partition is bit-identical (|dcoef| = 0.000e+00). What remains is the
+      # INNER split, which `set_sample_splitting` does not cover on the port
+      # side (`lplr.mbt:1630`), so both sides' inner spreads are measured and
+      # the band is built from them.
+      - name: Compare the LPLR port against upstream on shared rows
+        run: |
+          set -e
+          python pyexample_lplr.py --check
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.
