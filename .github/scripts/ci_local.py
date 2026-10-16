@@ -426,8 +426,8 @@ def missing_tool(engine, tree, text):
     return None
 
 
-def unprovisionable_tool(engine, tree, body):
-    """The tool a step exists to PROVISION, when that step failed.
+def unprovisionable_tool(engine, tree, body, inject=None):
+    """The tool a step exists to PROVISION, and whether it is now reachable.
 
     The same false accusation as `missing_tool`, reached the other way round.
     `missing_tool` catches a step that *invokes* an absent command and bash says
@@ -445,23 +445,30 @@ def unprovisionable_tool(engine, tree, body):
     GitHub Actions runs this step on a runner that fetches it fine.
 
     Note what the obvious guard gets WRONG here. "Downgrade only when the tool
-    is still absent" looks safer and is not: this guest already had `typos` from
+    is still absent" looks safer and is not: this guest had `typos` on disk from
     an earlier successful run, so that rule would keep reporting FAIL for a
     transfer the gate does not even need. The `command -v` probe is therefore
-    used for the DETAIL only -- it says whether the gate downstream can still
-    run -- never to decide the verdict.
+    used for the DETAIL only -- never to decide the verdict.
+
+    THE PROBE MUST SEE THE STEP'S OWN PATH (`inject`), not the guest default.
+    Measured: `check.yml` puts the tool on PATH by appending to `$GITHUB_PATH`
+    in this very step, and a later `static_code_check` finds it that way.
+    Probing with the guest default instead reports "not available" while the
+    tool is demonstrably reachable at `/home/ryx/.cargo/bin/typos` -- a detail
+    line contradicting the run's own evidence. Passing `{}` here is exactly how
+    that happened; pass the step's `inject`.
     """
     for rx, tool in INSTALL_TARGETS:
         if not rx.search(body or ""):
             continue
-        present = False
+        reachable = False
         try:
             p = engine.run("command -v %s || true" % shlex.quote(tool),
-                           tree, {}, 60)
-            present = bool((p.stdout or "").strip())
+                           tree, dict(inject or {}), 60)
+            reachable = bool((p.stdout or "").strip())
         except Exception:                            # noqa: BLE001
-            present = False
-        return tool, present
+            reachable = False
+        return tool, reachable
     return None
 
 
@@ -867,17 +874,18 @@ def run_job(workflow_file, job_id, job, matrix_ctx, engine, tree, timeout,
                 # verdict about the ref, whatever the cause. See the
                 # function's docstring for the measurement and for why the
                 # obvious "only if the tool is absent" guard is wrong.
-                prov = unprovisionable_tool(engine, tree, body)
+                prov = unprovisionable_tool(engine, tree, body, inject)
                 if prov:
-                    tool, present = prov
+                    tool, reachable = prov
                     results.append(StepResult(
                         name, "BLOCKED",
                         "not verified: provisioning step for %r failed, and it "
                         "only downloads tools, so it proves nothing about the "
-                        "ref (a CI runner fetches it). %r is %s here. %s"
+                        "ref (a CI runner fetches it). %r is %s. %s"
                         % (tool, tool,
-                           "already present from an earlier run" if present
-                           else "NOT available in this guest",
+                           "still reachable on PATH" if reachable
+                           else "not reachable afterwards, so checks needing it "
+                                "will SKIP in this run",
                            detail), dt))
                 else:
                     results.append(StepResult(name, "FAIL",

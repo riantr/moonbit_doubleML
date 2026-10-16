@@ -1734,10 +1734,17 @@ the ref. The real case is `Install typos`: it is `curl ... | tar zxf -` with
 no `--max-time`, and on this machine the asset CDN delivered 4,350,067 of
 6,365,610 bytes and then timed out, so `curl` exited non-zero and piped a
 truncated stream into `tar`. That reported `tar: Error is not recoverable` and
-was scored `FAIL` twice on a tree whose every code gate was green. The obvious
-guard -- "downgrade only when the tool is still absent" -- is *wrong*: the guest
-already had `typos` from an earlier successful run, so that rule would have kept
-reporting red for a transfer the gate does not need.
+was scored `FAIL` twice on a tree whose every code gate was green.
+
+The obvious guard -- "downgrade only when the tool is still absent" -- is
+*wrong*: the guest had `typos` on disk from an earlier successful run, so that
+rule would have kept reporting red for a transfer the gate does not need. So
+the marker decides the verdict, and `command -v` only enriches the detail text.
+That probe has to run with the **step's own PATH**: the tool reaches later
+steps through the `$GITHUB_PATH` line this same step writes, so probing with the
+guest default reports "not available" for a tool that is sitting at
+`/home/ryx/.cargo/bin/typos`. A detail line that contradicts the run's own
+evidence is worse than no detail line.
 
 `selftest` is the guard on the guard: every discriminating rule has a paired
 control arm, so a gate that cannot fail cannot pass here either. **22
