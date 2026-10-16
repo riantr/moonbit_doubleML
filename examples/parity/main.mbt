@@ -809,6 +809,55 @@ fn sec_pyexample_suite() -> Unit {
     ml_r=logi,
   ).fit()
 
+  // -- policy and risk estimators, also on dataset A --------------------- //
+  // APO (policy value at one level), APOS (across levels) and CVAR
+  // (conditional value at risk) are cross-sectional, so dataset A serves all
+  // three and this section stays a generalisation rather than a fourth
+  // dataset.
+  //
+  // `ml_m` is a CLASSIFIER in all three and is spelled out rather than left to
+  // a default. For CVAR that is not cosmetic: upstream REJECTS a regressor
+  // there -- "Invalid learner provided for ml_m: LinearRegression() has no
+  // method .predict_proba()" -- and the port's `DoubleMLCVAR::new` defaults
+  // `ml_m` to exactly that regressor. The default is left alone (changing a
+  // published default is a behaviour change) but it is never relied on here.
+  //
+  // `normalize_ipw` is pinned rather than inherited for the same reason, and
+  // the values ARE upstream's: APO and APOS default to `false`, CVAR to
+  // `true`. A future change to either default would otherwise silently move
+  // three gated numbers.
+  let apo = @moonbit_doubleML.DoubleMLAPO::new(
+    @moonbit_doubleML.DoubleMLData::new(xa, ya, da),
+    treatment_level=1.0,
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    normalize_ipw=false,
+    ml_g=lin,
+    ml_m=logi,
+  ).fit()
+  let apos = @moonbit_doubleML.DoubleMLAPOS::new(
+    @moonbit_doubleML.DoubleMLData::new(xa, ya, da),
+    [0.0, 1.0],
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    normalize_ipw=false,
+    ml_g=lin,
+    ml_m=logi,
+  ).fit()
+  let cvar = @moonbit_doubleML.DoubleMLCVAR::new(
+    @moonbit_doubleML.DoubleMLData::new(xa, ya, da),
+    treatment=1.0,
+    quantile=0.5,
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+    normalize_ipw=true,
+    ml_g=lin,
+    ml_m=logi,
+  ).fit()
+
   val("plr_coef", plr.coef())
   val("plr_se", plr.se())
   val("irm_coef", irm.coef())
@@ -823,7 +872,22 @@ fn sec_pyexample_suite() -> Unit {
   val("pliv_se", pliv.se())
   val("iivm_coef", iivm.coef())
   val("iivm_se", iivm.se())
-  val("n_estimators", 6.0)
+  val("apo_coef", apo.coef())
+  val("apo_se", apo.se())
+  // APOS returns one coefficient PER treatment level, so it is emitted per
+  // index. Collapsing to a scalar would compare one level and silently ignore
+  // the other, which is how a two-level policy check becomes a one-level one
+  // without anything failing.
+  let apos_coefs = apos.coefs()
+  let apos_ses = apos.ses()
+  val("apos_n", apos_coefs.length().to_double())
+  for i = 0; i < apos_coefs.length(); i = i + 1 {
+    val("apos_coef_" + i.to_string(), apos_coefs[i])
+    val("apos_se_" + i.to_string(), apos_ses[i])
+  }
+  val("cvar_coef", cvar.coef())
+  val("cvar_se", cvar.se())
+  val("n_estimators", 9.0)
   val("n", n.to_double())
   val("p", p.to_double())
   // A fingerprint of the rows the port actually fitted, so a stale build that

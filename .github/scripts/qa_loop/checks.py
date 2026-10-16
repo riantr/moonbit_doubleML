@@ -625,7 +625,8 @@ def c_pyexample():
 # "the gate's own restore did not run", which is exactly when its restore would
 # be the thing that is missing.
 @check("pyexample_suite",
-       "port vs upstream on PLR/IRM/SSM/BLP/PLIV/IIVM over 3 datasets",
+       "port vs upstream on 9 estimators (PLR/IRM/SSM/BLP/PLIV/IIVM/APO/APOS/CVAR)"
+       " over 3 datasets",
        "fast")
 def c_pyexample_suite():
     fixture = os.path.join(ROOT, "examples", "parity", "suite_data.mbt")

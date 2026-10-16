@@ -160,6 +160,15 @@ XCOLS = ["X%d" % (j + 1) for j in range(P)]
 #     pliv  1.0144873096859628  0.10659834    28.6   0.1042739494330317  0.00624459
 #     iivm  1.6087053043610753  0.22750085    21.2   0.3060838667567364  0.01982083
 #     blp   0.12556106906583503  (see BLP_BAND)          0.0239810046380003
+#     apo   0.93467950811909961  0.01540728   182.0   0.0833778246027313  0.00106456
+#     apos  [-0.10522751769039783, 0.93191343326563247]
+#                3 sd 0.03522778 (9.0x) and 0.02221867 (125.8x)
+#     cvar  2.9629845458657864   0.06096239   145.8   0.0986378327873876  0.00707812
+#
+# The weakest signal is `apos[0]` at 9x the fold noise -- the level-0 policy
+# value, whose true coefficient is near zero because it is a mean outcome
+# rather than an effect. It is kept rather than dropped because a two-level
+# policy check that silently compares only one level is worse than a loose one.
 #
 # The weakest signal is IIVM at 21x the fold noise, so even the loosest band
 # here is a real constraint rather than a rubber stamp.
@@ -286,6 +295,20 @@ def build_reference():
     seeded("iivm")(lambda: dml.irm.DoubleMLIIVM(
         obj_c, LinearRegression(), LogisticRegression(), LogisticRegression(),
         n_folds=N_FOLDS, n_rep=N_REP))
+    # Policy and risk estimators, all cross-sectional, so dataset A serves them.
+    seeded("apo")(lambda: dml.irm.DoubleMLAPO(
+        obj_a, treatment_level=1.0, n_folds=N_FOLDS, n_rep=N_REP,
+        ml_g=LinearRegression(), ml_m=LogisticRegression()))
+    seeded("apos")(lambda: dml.irm.DoubleMLAPOS(
+        obj_a, treatment_levels=[0.0, 1.0], n_folds=N_FOLDS, n_rep=N_REP,
+        ml_g=LinearRegression(), ml_m=LogisticRegression()))
+    # `treatment=1` as an INT. Upstream's `_check_treatment`
+    # (irm/utils/_checks.py:167) raises on a float outright, while the port
+    # types the slot `Double` -- a type-level divergence, not a numeric one,
+    # and the kind of detail that makes "the two ports match" false on paper.
+    seeded("cvar")(lambda: dml.irm.DoubleMLCVAR(
+        obj_a, treatment=1, quantile=0.5, n_folds=N_FOLDS, n_rep=N_REP,
+        ml_g=LinearRegression(), ml_m=LogisticRegression()))
 
     return {
         "xa": xa, "ya": ya, "da": da, "sa": sa,
@@ -458,7 +481,14 @@ BAND_BY_EST = {
     "pliv": 0.10659834,
     "iivm": 0.22750085,
     "blp": BLP_BAND,
+    "apo": 0.01540728,
+    "cvar": 0.06096239,
 }
+# APOS returns one coefficient per treatment LEVEL, so its band is per index.
+# An earlier revision kept a single band for the estimator and would have
+# inherited it for both levels; `apos[0]` and `apos[1]` differ by 5x in both
+# coefficient and fold noise, so one number cannot describe both.
+APOS_BAND = {0: 0.03522778, 1: 0.02221867}
 # `data` key -> column, for the row fingerprint.
 SUMS = [
     ("sum_a_y", "ya"), ("sum_a_d", "da"), ("sum_a_s", "sa"),
@@ -507,10 +537,11 @@ def main(argv):
           % (d["rel_b"], d["exc_b"]))
     print("  C  P(d=1|z=1) %.4f  P(d=1|z=0) %.4f  diff %+.4f"
           % (d["p1"], d["p0"], d["p1"] - d["p0"]))
-    for k in ("plr", "irm", "ssm", "blp", "pliv", "iivm"):
-        print("    %-5s coef % .6f  se %.6f  band %.6f"
-              % (k, sc(d["up"][k], "coef"), sc(d["up"][k], "se"),
-                 BAND_BY_EST[k]))
+    for k in ("plr", "irm", "ssm", "blp", "pliv", "iivm", "apo", "apos", "cvar"):
+        print("    %-5s coef %s  se %s  band %.6f"
+              % (k, np.array2string(np.ravel(d["up"][k].coef), precision=6),
+                 np.array2string(np.ravel(d["up"][k].se), precision=6),
+                 APOS_BAND[0] if k == "apos" else BAND_BY_EST[k]))
     print()
 
     snapshot = snapshot_fixture()
@@ -530,7 +561,7 @@ def main(argv):
         return 1
 
     rows = []
-    for k in ("plr", "irm", "ssm", "pliv", "iivm"):
+    for k in ("plr", "irm", "ssm", "pliv", "iivm", "apo", "cvar"):
         band = BAND_BY_EST[k]
         want_c = sc(d["up"][k], "coef")
         want_s = sc(d["up"][k], "se")
@@ -540,6 +571,30 @@ def main(argv):
                      got_c, want_c, abs(got_c - want_c) <= band))
         rows.append(("%s_se   vs upstream (band %.5f)" % (k, band),
                      got_s, want_s, abs(got_s - want_s) <= band))
+
+    # APOS: one coefficient per treatment level, compared PER INDEX. A single
+    # scalar comparison here would pass while level 1 was silently ignored,
+    # which is the failure mode of a multi-contrast estimator that has only
+    # been checked on its first entry.
+    n_apos = int(ph.val(sec, "apos_n"))
+    want_apos = np.ravel(d["up"]["apos"].coef)
+    if n_apos != len(want_apos):
+        rows.append(("apos_n (levels compared)",
+                     float(n_apos), float(len(want_apos)),
+                     False))
+    else:
+        rows.append(("apos_n (levels compared)",
+                     float(n_apos), float(len(want_apos)), True))
+        for j in range(n_apos):
+            band = APOS_BAND[j]
+            got_c = ph.val(sec, "apos_coef_%d" % j)
+            got_s = ph.val(sec, "apos_se_%d" % j)
+            rows.append(("apos_coef_%d vs upstream (band %.5f)" % (j, band),
+                         got_c, float(want_apos[j]),
+                         abs(got_c - float(want_apos[j])) <= band))
+            rows.append(("apos_se_%d   vs upstream (band %.5f)" % (j, band),
+                         got_s, float(np.ravel(d["up"]["apos"].se)[j]),
+                         abs(got_s - float(np.ravel(d["up"]["apos"].se)[j])) <= band))
 
     # BLP carries TWO coefficients under the shared augmented design, so it is
     # compared per index rather than collapsed to [0]. Index 0 is the
@@ -556,8 +611,8 @@ def main(argv):
         rows.append(("blp_se_%d   vs upstream (band %.3g)" % (j, BLP_BAND),
                      got_s, want_s, abs(got_s - want_s) <= BLP_BAND))
 
-    rows.append(("n_estimators", ph.val(sec, "n_estimators"), 6.0,
-                 ph.val(sec, "n_estimators") == 6.0))
+    rows.append(("n_estimators", ph.val(sec, "n_estimators"), 9.0,
+                 ph.val(sec, "n_estimators") == 9.0))
     rows.append(("n", ph.val(sec, "n"), float(N), ph.val(sec, "n") == float(N)))
     rows.append(("p", ph.val(sec, "p"), float(P), ph.val(sec, "p") == float(P)))
 
@@ -568,8 +623,8 @@ def main(argv):
         rows.append(("%s round-trip" % label, got, want,
                      abs(got - want) <= SUM_TOL))
 
-    rc = ph.report("pyexample: port vs upstream estimator family (6 estimators, "
-                   "3 datasets)", rows, ok=True)
+    rc = ph.report("pyexample: port vs upstream estimator family "
+                   "(9 estimators, 3 datasets)", rows, ok=True)
     with open(FIXTURE, "rb") as fh:
         same = fh.read() == snapshot
     print()
