@@ -860,6 +860,53 @@ def c_pyexample_pq():
 
 
 # --------------------------------------------------------------------------- #
+# pyexample_policytree -- the policy tree's decision rule against upstream
+# --------------------------------------------------------------------------- #
+#
+# The last of the five estimator slots that shipped with an ANALYTIC oracle only.
+# RDD is measured divergent and has no gate by decision (`_verify/RDD_PARITY_1680.md`);
+# PQ/QTE/LPQ are `pyexample_pq` above.
+#
+# Its comparison shape is unique in this file. Upstream wraps a
+# `DecisionTreeClassifier` and the port implements its own builder, and the two
+# are genuinely different algorithms -- different threshold convention,
+# different criterion, different leaf rule. So nothing structural is compared.
+# What is compared is the LABEL VECTOR over every row, plus the split feature
+# and the threshold: the quantities invariant to all of those differences.
+#
+# The threshold rides a bound because sklearn stores node thresholds as float32
+# and the port computes in f64 -- measured gap 4.75e-8 relative, bound 1e-6. An
+# arm in `_verify/_pt_battery_1680.py` perturbs it 1e-4 to prove that bound can
+# actually go red, since the label comparison alone would not catch a
+# threshold that moved without crossing a row.
+@check("pyexample_policytree",
+       "port vs upstream DoubleMLPolicyTree, label vector over every row",
+       "fast")
+def c_pyexample_policytree():
+    gate = os.path.join(ROOT, "pyexample_policytree.py")
+    if not os.path.isfile(gate):
+        return R("pyexample_policytree", "", SKIP,
+                 "pyexample_policytree.py is not present")
+    try:
+        rc, out = run([sys.executable, "pyexample_policytree.py", "--check"],
+                      cwd=ROOT, timeout=3600)
+    except Exception as e:  # noqa: BLE001 - any failure is a FAIL, never a PASS
+        return R("pyexample_policytree", "", FAIL,
+                 "could not run the gate: %s" % e)
+    verdict = PASS if rc == 0 else FAIL
+    evidence = []
+    for line in out.splitlines():
+        s = line.strip()
+        if s.startswith(("split feature :", "labels        :",
+                         "RESULT: PolicyTree")):
+            evidence.append(s)
+    if not evidence:
+        tail = out.strip().splitlines()[-1] if out.strip() else ""
+        evidence = [tail.strip()[:110]]
+    return R("pyexample_policytree", "", verdict, " | ".join(evidence)[:300])
+
+
+# --------------------------------------------------------------------------- #
 # pyexample_cs2021 -- the MULTI-COHORT port against upstream's own CS2021 data
 # --------------------------------------------------------------------------- #
 #

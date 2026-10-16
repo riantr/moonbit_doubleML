@@ -47,6 +47,7 @@ fn main {
   sec_gain_statistics()
   sec_lplr_upstream()
   sec_pq_qte()
+  sec_policytree_upstream()
 }
 
 // --------------------------------------------------------------------------- //
@@ -1728,6 +1729,120 @@ fn sec_pq_qte() -> Unit {
     val("lpq_coef_s" + sd.to_string(), lpq.coef)
     val("lpq_se_s" + sd.to_string(), lpq.se)
   }
+  end()
+}
+
+// --------------------------------------------------------------------------- //
+// 17. policytree -- the tree's decision rule against upstream, label for label
+// --------------------------------------------------------------------------- //
+
+///|
+/// WHY THIS SECTION, and why the comparison is LABELS rather than structure
+/// ==========================================================================
+/// PolicyTree is the last of the five estimator slots on `examples/main` that
+/// carried an ANALYTIC oracle only. RDD is measured divergent
+/// (`_verify/RDD_PARITY_1680.md`); PQ/QTE/LPQ are gated above; this closes
+/// PolicyTree.
+///
+/// Upstream is `doubleml.utils.policytree.DoubleMLPolicyTree`, which wraps a
+/// `sklearn.tree.DecisionTreeClassifier`:
+/// `bin_signal = (sign(s) + 1) / 2`, `sample_weight = abs(s)`,
+/// `max_depth=depth`, `ccp_alpha=0.01`, `min_samples_leaf=8`. Two call-shape
+/// traps: the argument order is REVERSED relative to the port
+/// (`orth_signal` FIRST), and upstream's default `depth` is 2 while the port's
+/// is 1 -- so depth is pinned on both sides rather than left to defaults.
+///
+/// The two builders are DIFFERENT ALGORITHMS, so the structure cannot be
+/// compared directly:
+///
+///   * the port's `policy_tree_build` splits at the column MEAN; sklearn's
+///     threshold is a MIDPOINT between two consecutive sorted values;
+///   * the port's criterion is variance reduction on the RAW signal; upstream
+///     is gini on the binarised signal weighted by `abs(s)`;
+///   * the port's leaf label is the sign of the mean raw signal; upstream's is
+///     `argmax` of the weighted class counts.
+///
+/// On a two-column design those differences put 10 of 300 rows in different
+/// leaves (measured -- `_verify/POLICYTREE_PARITY_1680.md`). So the gate
+/// compares what both algorithms DO rather than how they are built: the full
+/// LABEL VECTOR over all rows. That is invariant to the threshold convention,
+/// to the criterion, and even to the port splitting a zero-gain pure node at
+/// depth 2 -- a structural difference with no effect on any prediction.
+///
+/// The design is `examples/main`'s own: one column on a symmetric grid,
+/// `signal = sign(z)`. That is deliberate. It is the configuration the
+/// repository SHIPS, and on it the two conventions coincide exactly (the grid
+/// mean and the straddling midpoint are the same number), so this gate tests
+/// the thing that runs rather than a matched configuration built to suit it.
+///
+/// `policy_value()` is deliberately NOT compared: it requires `honest = true`
+/// and its own docstring proves it is identically the sample mean of the
+/// signal, so agreeing on it would mean nothing.
+fn sec_policytree_upstream() -> Unit {
+  section("policytree")
+  let n = 500
+  let half = n / 2
+  let x_flat = Array::make(n, 0.0)
+  let s = Array::make(n, 0.0)
+  let mut neg = 0
+  let mut sz = 0.0
+  let mut sz2 = 0.0
+  for i = 0; i < n; i = i + 1 {
+    let z = (i.to_double() - half.to_double()) / half.to_double()
+    x_flat[i] = z
+    let si = if z < 0.0 { -1.0 } else { 1.0 }
+    s[i] = si
+    sz = sz + si
+    sz2 = sz2 + z * z
+    if si < 0.0 {
+      neg = neg + 1
+    }
+  }
+  // A fingerprint, not a class count. `pt_neg` alone would survive a
+  // permutation that reshuffles every row; `pt_sum_x2` is the second moment,
+  // so it moves the moment any row is perturbed.
+  val("pt_n", n.to_double())
+  val("pt_sum_x", wsum(x_flat))
+  val("pt_sum_x2", sz2)
+  val("pt_sum_s", sz)
+  val("pt_neg", neg.to_double())
+  let x = @moonbit_doubleML.Matrix::from_array(x_flat, n, 1)
+  let pt1 = @moonbit_doubleML.DoubleMLPolicyTree::new(x, s, depth=1).fit()
+  val("pt1_split_feature", pt1.split_feature().to_double())
+  val("pt1_split_value", pt1.split_value())
+  let p1 = pt1.predict(x)
+  let lab1 = Array::make(n, 0.0)
+  let mut ones1 = 0
+  for i = 0; i < n; i = i + 1 {
+    lab1[i] = p1[i].to_double()
+    if p1[i] == 1 {
+      ones1 = ones1 + 1
+    }
+  }
+  val("pt1_ones", ones1.to_double())
+  data_out("pt1_labels", lab1)
+  let probe = @moonbit_doubleML.Matrix::from_array([-0.5, 0.5], 2, 1)
+  let pp1 = pt1.predict(probe)
+  data_out("pt1_probe", [pp1[0].to_double(), pp1[1].to_double()])
+  // Depth 2 is upstream's DEFAULT and the port's non-default. Both are fitted
+  // and compared, so the gate covers the depth the upstream class actually
+  // chooses unless told otherwise.
+  let pt2 = @moonbit_doubleML.DoubleMLPolicyTree::new(x, s, depth=2).fit()
+  val("pt2_split_feature", pt2.split_feature().to_double())
+  val("pt2_split_value", pt2.split_value())
+  let p2 = pt2.predict(x)
+  let lab2 = Array::make(n, 0.0)
+  let mut ones2 = 0
+  for i = 0; i < n; i = i + 1 {
+    lab2[i] = p2[i].to_double()
+    if p2[i] == 1 {
+      ones2 = ones2 + 1
+    }
+  }
+  val("pt2_ones", ones2.to_double())
+  data_out("pt2_labels", lab2)
+  let pp2 = pt2.predict(probe)
+  data_out("pt2_probe", [pp2[0].to_double(), pp2[1].to_double()])
   end()
 }
 

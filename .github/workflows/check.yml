@@ -294,6 +294,31 @@ jobs:
           set -e
           python pyexample_pq.py --check
 
+      # PolicyTree -- the fifth and last of the slots that shipped with an
+      # ANALYTIC oracle only. RDD is measured divergent and deliberately has
+      # no gate (a permanently red gate is worse than a recorded defect);
+      # PQ/QTE/LPQ are the step above.
+      #
+      # Upstream's signature is `DoubleMLPolicyTree(orth_signal, features,
+      # depth=2, ...)`, so the argument order is REVERSED relative to the
+      # port and upstream's default depth is 2 while the port's is 1 -- depth
+      # is pinned on both sides rather than left to defaults. `random_state`
+      # is pinned too: without it upstream is non-deterministic, and two fits
+      # in one process returned different trees.
+      #
+      # Nothing STRUCTURAL is compared. The port implements its own builder
+      # and upstream wraps a `DecisionTreeClassifier`; they differ in threshold
+      # convention, criterion and leaf rule, and on a two-column design those
+      # differences put 10 of 300 rows in different leaves. What is compared is
+      # the LABEL VECTOR over every row -- invariant to all of it -- plus the
+      # split feature and the threshold. The threshold rides a bound because
+      # sklearn stores it as float32: measured gap 4.75e-8 relative, bound
+      # 1e-6. A battery arm perturbs it 1e-4 to prove that bound can go red.
+      - name: Compare the policy tree against upstream
+        run: |
+          set -e
+          python pyexample_policytree.py --check
+
   # The 21 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.
