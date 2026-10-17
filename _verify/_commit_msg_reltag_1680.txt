@@ -1,0 +1,14 @@
+chore(verify): release tooling for 0.163.1 and the captured CI sim
+
+Records how the tag was cut and pushed (gitee then github, six-attempt
+retry on each, no -u, never moon publish), the tag message, and the
+simulator output for 67e1e64.
+
+_read_ci_1680.py exists because Tee-Object writes UTF-16LE: a naive utf-8
+decode turns every other byte into U+FFFD and every status line
+silently stops matching, so the greps returned nothing on a run that
+had in fact passed. Same class of trap as the Select-Object -Last 24
+that hid the readme-sync failure earlier — a file that looks plausible and
+matches nothing.
+
+Co-Authored-By: MiniMax M3 <noreply@minimax.io>

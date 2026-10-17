@@ -1,0 +1,74 @@
+workspace: C:\Users\31379\AppData\Local\Temp\ci_local_n8083nna\repo (566 tracked files from 67e1e64)
+engine:    wsl
+jobs:      README sync, moon test --deny-warn (native), moon test --deny-warn (wasm-gc), moon test --deny-warn (wasm), moon test --deny-warn (js), Python cross-check, QA loop
+
+=== README sync  [check.yml]  running
+    SKIP Checkout code                                    0.0s  uses: actions/checkout@v5 (not simulated)
+    PASS Shipped README matches the edited README         0.3s  README sync OK: moon.mod readme="README.mbt.md" resolves to a non-empty file and it is byte-identical to README.mbt.md (116636 bytes)
+
+=== moon test --deny-warn (native)  [check.yml]  running
+    SKIP Checkout code                                    0.0s  uses: actions/checkout@v5 (not simulated)
+    PASS Set up MoonBit                                 391.6s  Finished. moon: ran 328 tasks, now up to date
+    PASS Update dependencies                             14.7s  Symbols updated successfully
+    PASS Build                                           38.4s  Finished. moon: ran 128 tasks, now up to date
+    PASS Test                                           130.8s  Total tests: 1117, passed: 1117, failed: 0.
+    PASS Format check                                     5.9s  Finished. moon: ran 307 tasks, now up to date
+
+=== moon test --deny-warn (wasm-gc)  [check.yml]  running
+    SKIP Checkout code                                    0.0s  uses: actions/checkout@v5 (not simulated)
+    PASS Set up MoonBit                                 311.9s  Finished. moon: ran 328 tasks, now up to date
+    PASS Update dependencies                             10.2s  Symbols updated successfully
+    PASS Build                                            2.8s  Finished. moon: ran 7 tasks, now up to date
+    PASS Test                                            12.7s  Total tests: 1123, passed: 1123, failed: 0.
+    PASS Format check                                     2.3s  Finished. moon: no work to do
+
+=== moon test --deny-warn (wasm)  [check.yml]  running
+    SKIP Checkout code                                    0.0s  uses: actions/checkout@v5 (not simulated)
+    PASS Set up MoonBit                                 304.6s  Finished. moon: ran 328 tasks, now up to date
+    PASS Update dependencies                              6.8s  Symbols updated successfully
+    PASS Build                                            4.9s  Finished. moon: ran 26 tasks, now up to date
+    PASS Test                                            17.2s  Total tests: 1117, passed: 1117, failed: 0.
+    PASS Format check                                     2.4s  Finished. moon: no work to do
+
+=== moon test --deny-warn (js)  [check.yml]  running
+    SKIP Checkout code                                    0.0s  uses: actions/checkout@v5 (not simulated)
+    PASS Set up MoonBit                                  82.4s  Finished. moon: ran 328 tasks, now up to date
+    PASS Update dependencies                              6.6s  Symbols updated successfully
+    PASS Build                                            2.9s  Finished. moon: ran 1 task, now up to date
+    PASS Test                                            14.1s  Total tests: 1117, passed: 1117, failed: 0.
+    PASS Format check                                     2.4s  Finished. moon: no work to do
+
+=== Python cross-check  [check.yml]  running
+    SKIP Checkout code                                    0.0s  uses: actions/checkout@v5 (not simulated)
+    SKIP Set up Python                                    0.0s  uses: actions/setup-python@v5 (not simulated)
+    PASS Set up MoonBit                                  71.7s  Finished. moon: ran 328 tasks, now up to date
+    PASS Update dependencies                              5.3s  Symbols updated successfully
+    PASS Install Python dependencies                      2.1s  Requirement already satisfied: MarkupSafe>=2.0 in /home/ryx/.ci_local_pyenv/lib/python3.14/site-packages (from Mako->alembic>=1.5.0->optuna>=4.6.0->doubleml) (3.0.4)
+    PASS Run every validate_*_with_python.py script     115.0s  ran 24 validator(s)
+    PASS Compare the port against upstream's own Python   9.3s  model = dml.DoubleMLDID(obj, LinearRegression(), LogisticRegression(),
+    PASS Compare the multi-cohort port against upstream   9.6s  fixture restored byte for byte: True
+    PASS Compare the core estimator family against upst   9.6s  fixture restored byte for byte: True
+    PASS Compare the binary DID-CS port against upstrea  10.0s  fixture restored byte for byte: True
+    PASS Compare the binary DID port against upstream    10.0s  fixture restored byte for byte: True
+    PASS Compare the LPLR port against upstream on shar   9.8s  LPLR upstream parity: PASS
+    PASS Compare the quantile port against upstream      14.2s  PQ/QTE upstream parity: PASS
+    PASS Compare the policy tree against upstream         5.4s  ============================================================================
+    PASS Compare RDD against upstream rdrobust            5.0s  ============================================================================
+
+=== QA loop  [check.yml]  running
+    SKIP Checkout code                                    0.0s  uses: actions/checkout@v5 (not simulated)
+    SKIP Set up Python                                    0.0s  uses: actions/setup-python@v5 (not simulated)
+    PASS Set up MoonBit                                  29.5s  Finished. moon: ran 328 tasks, now up to date
+    BLOCKED Install typos                                  269.8s  not verified: provisioning step for 'typos' failed, and it only downloads tools, so it proves nothing about the ref (a CI runner fetches it). 'typos' is still reachable on PATH. tar: Error is not recoverable: exiting now
+    PASS Update dependencies                             11.6s  Symbols updated successfully
+    PASS Self-test the harness                            5.9s  ::error::QA loop FAILED: t_fail
+    PASS QA loop (fast scope)                           206.4s  report -> qa_loop.json
+    PASS QA loop (service checks)                        30.5s  report -> qa_loop_services.json
+
+========================================================================
+RESULT: NOT FULLY VERIFIED -- 1 step(s) could not run here:
+        QA loop / Install typos
+        These are gaps in THIS machine, not defects in the repo.
+        Run `ci_local.py provision` to close the common ones.
+not simulated: uses: steps, secrets, release publishing, and the
+exact OS image (WSL Ubuntu is close to ubuntu-latest, not equal to it)

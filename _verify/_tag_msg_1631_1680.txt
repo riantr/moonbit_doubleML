@@ -1,0 +1,30 @@
+0.163.1 -- LPLR reads its own nuisances the way upstream does, and the
+gates that could not fail now can
+
+Four upstream inputs the LPLR coefficient and standard error were computed
+from were wrong. `W_inner` was built from ml_M's OUTER cross-fit where
+upstream reads the inner one (plm/lplr.py:318), `beta` was one averaged
+scalar where upstream keeps it per observation (:315-323, :345), the reported
+coefficient was never the root at all (upstream takes root_res.root), and the
+Newton started from an ad-hoc OLS scale instead of np.average(beta) (:326).
+
+On the 200-design sweep: designs exceeding 1e4 go 88/200 -> 0, the worst
+absolute coefficient 1.03e11 -> 24.18, the median 6.35 -> 1.89. The gated
+n=500 numbers barely move -- 0.007307 / 0.010609 -- which is the signature of
+a fix that only bites where the solver was actually failing.
+
+Gate work: one comparison compared model.warnings() to a second call on the
+same object and so could not fail; one alpha-suffix invariant swept a range
+that returned all zeros; two CI-identity tolerances asserted luck rather than
+arithmetic (one was 0.91 ulp on wasm-gc). All closed and mutation-verified.
+
+KNOWN DIVERGENCE, REPORTED NOT GATED: at n=500 the port and upstream agree to
+~0.007, and that is the one design point this estimator was never wrong at.
+Below it, 91 of 200 small-n designs still warn where upstream warns zero
+times. The cause is pinned to the Newton step -- the port damps it and scipy
+does not -- and the damping stays because removing it reaches se = NaN by
+trial 2 of examples/fuzz while upstream is 0/300 non-finite on the same DGP.
+Two candidate causes were implemented and measured and both are falsified.
+See README.mbt.md and _verify/LPLR_GATE_BLINDNESS_1680.md sections 11-16.
+
+Tests 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js), unchanged.
