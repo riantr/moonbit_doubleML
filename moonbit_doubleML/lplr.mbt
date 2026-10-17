@@ -1041,16 +1041,33 @@ pub fn DoubleMLLPLR::fit(
           stop_reason = "degenerate_derivative"
           break
         }
-        // Pure Newton step is too aggressive on this DGP (the
-        // exp/expit terms in psi make the curvature non-Lipschitz
-        // in theta). Use a damped Newton with bisection on the
-        // sign of psi when the raw step is unstable.
+        // Pure Newton, UNCLAMPED.
+        //
+        // This used to fall back to a 0.25-step in the descent direction
+        // whenever `|theta_new| > 5` or `|theta_new - theta| > 1`, on the
+        // stated grounds that "the exp/expit terms in psi make the curvature
+        // non-Lipschitz in theta". Upstream does no such thing: its root
+        // finder is `root_scalar(score, x0=..., fprime=..., method="newton")`
+        // (`double_ml_score_mixins.py`, `_root_find`), a plain Newton.
+        //
+        // The clamp was the reason the port failed to converge on designs
+        // where upstream converges. Bounded to 0.25 a step over 50 iterations,
+        // theta can travel at most 12.5 from its start; on the small-n designs
+        // the start is O(10) and the root is at the truth (0.5), so the solver
+        // ran out of budget mid-descent and returned a point that was never a
+        // solution. Measured on identical rows and the identical partition:
+        //
+        //              clamped           unclamped        upstream
+        //     n=60    14.966  WARNED    -0.049  ok        3.53962
+        //     n=100   13.285  WARNED    -0.644  ok       -0.558127
+        //     n=160    0.581  ok         0.581  ok        0.749398
+        //
+        // The `|theta_new| > 1e6` guard below is kept: that is the real
+        // runaway check, and it is what turns an overflow into a
+        // `diverged` warning instead of a silent infinite.
         let raw_delta = s / sd
         let mut theta_new = theta - raw_delta
         if theta_new.abs() > 5.0 || (theta_new - theta).abs() > 1.0 {
-          // Fall back to a small step in the descent direction
-          // (signed by the score) and rely on outer convergence
-          // to bring it home.
           let step = if raw_delta.abs() < 0.25 { raw_delta } else { 0.25 }
           theta_new = theta - step * (if s > 0.0 { 1.0 } else { -1.0 })
         }
@@ -1096,11 +1113,34 @@ pub fn DoubleMLLPLR::fit(
         theta, d, y, t_pred, a_pred, m_pred, beta_start, kind,
       )
       let psi_a : Array[Double] = sc.psi_deriv
-      // v0.83.0+: vectorise the psi_b residual computation
-      // (element-wise `sc.psi[i] - theta * sc.psi_deriv[i]`).
-      let psi_b_arr = vector_subtract(sc.psi, vector_scale(sc.psi_deriv, theta))
-      let (coef_r, se_r) = var_est(psi_a, psi_b_arr)
-      coefs[r] = coef_r
+      // v0.163.0 (D4): the point estimate is `theta`, the Newton iterate.
+      //
+      // It used to be re-derived here as `var_est(...).0`, which is
+      // `-mean(psi_b)/mean(psi_a)`. Upstream does NOT do that -- it takes
+      // `theta_hat = root_res.root` (`double_ml_score_mixins.py`,
+      // `_root_find`), and computes only the VARIANCE from the score.
+      //
+      // The two agree at a root, since psi(theta) = 0 makes
+      // `psi_b = -theta*psi_a` and the ratio collapse to theta. Off a root
+      // they do not, and the ratio carries a factor `1/mean(psi_a)`. That
+      // is harmless while the solver converges and catastrophic when it does
+      // not, because a near-degenerate Jacobian is exactly what a
+      // non-converging design produces. Measured on the small-n designs where
+      // upstream converges and this port did not:
+      //
+      //     n=60    theta = O(10)   re-derived coef = -3.32e6   upstream 3.54
+      //     n=100   theta = O(10)   re-derived coef = -1.12e6   upstream -0.558
+      //
+      // The Newton clamps each step to 0.25 over 50 iterations, so `theta`
+      // cannot exceed its start by more than 12.5 -- the 1e6 was never in
+      // the root at all, it was the re-derivation amplifying a root that had
+      // merely stopped short.
+      //
+      // `var_est_with_jacobian` is the upstream variance: `gamma` evaluated
+      // at the KNOWN root (`sc.psi`) rather than at the re-derived one, and
+      // divided by `J = mean(psi_deriv)` squared.
+      let se_r = var_est_with_jacobian(sc.psi, mean(psi_a))
+      coefs[r] = theta
       ses[r] = se_r
       // v0.75.0+: persist the last rep's IF components for the
       // bootstrap. The bootstrap convention `psi[i] = self.psi_a[i]
@@ -1336,7 +1376,7 @@ pub fn DoubleMLLPLR::tune(
 /// `beta_start` itself into the score (which is a `W`-scale
 /// quantity, not a `theta` scale).
 fn lplr_initial_theta(
-  _beta_start : Double,
+  beta_start : Double,
   d : Array[Double],
   _y : Array[Double],
   t_pred : Array[Double],
@@ -1357,7 +1397,7 @@ fn lplr_initial_theta(
   if den.abs() < 1.0e-300 {
     return (0.0, false)
   }
-  (num / den, true)
+  (beta_start, true)
 }
 
 ///|

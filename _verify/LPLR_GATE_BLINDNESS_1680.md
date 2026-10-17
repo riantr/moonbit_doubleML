@@ -824,3 +824,94 @@ that a regime exists where they are not.
 Reproduction: `python pyexample_lplr.py` (sections 1-4 gated, section 5
 reported). Sweeps: `_verify/_upstream_lplr_tail_1680.py` (upstream side) and
 the port-side probe it was paired with.
+## 12. Root cause of section 11, and the fix (D4 + upstream's start value)
+
+Section 11 established that the port returns -3.3e6 where upstream returns
+3.54, and ruled out D2/D3, D1 and the score. It left the mechanism open. Here it
+is.
+
+### 12a. The coefficient was never the root
+
+Upstream takes the root directly:
+
+    theta_hat = root_res.root          # double_ml_score_mixins.py, _root_find
+
+and uses the score only for the VARIANCE. The port ran the Newton, got `theta`,
+and then **threw it away**:
+
+    let psi_b_arr = vector_subtract(sc.psi, vector_scale(sc.psi_deriv, theta))
+    let (coef_r, se_r) = var_est(psi_a, psi_b_arr)
+    coefs[r] = coef_r                   // <-- not theta
+
+`var_est` returns `-mean(psi_b)/mean(psi_a)`. At a root, `psi(theta) = 0` makes
+`psi_b = -theta*psi_a` and the ratio collapses to `theta`, so the two agree and
+nobody notices. Off a root they do not, and the ratio carries a factor
+`1/mean(psi_a)` -- which is exactly what a non-converging design produces.
+
+The arithmetic that had been assumed impossible is what pinned it down. The
+Newton clamps each step to 0.25 over 50 iterations, so `theta` can exceed its
+start by at most 12.5, and the start `sum(d*t_pred)/sum(d^2)` is bounded by
+`|t_pred| <= 37`. A reported **-3.3e6** is therefore unreachable by `theta` --
+which is only consistent if the reported number was never `theta`. The
+re-derivation, not the root, was producing the 1e6.
+
+**D4: the point estimate is `theta`.** The variance comes from the existing
+`var_est_with_jacobian(sc.psi, mean(psi_a))`, which is upstream's form:
+`gamma` at the known root rather than at a re-derived one.
+
+### 12b. Upstream's start value, which the port was not using
+
+`plm/lplr.py:326` sets `self._coef_start_val = np.average(beta)` and hands it
+to the root finder. The port's `lplr_initial_theta` accepts a `beta_start`
+argument, prefixes it with `_` -- **unused** -- and substitutes an ad-hoc OLS
+scale. Shipping that substitution is arm (a).
+
+### 12c. Four arms, measured
+
+Identical rows, identical outer partition, truth 0.5:
+
+| arm | n=60 | n=100 | n=160 |
+|---|---|---|---|
+| pre-D4 | -3.32e6 WARN | -1.12e6 WARN | 0.581 ok |
+| D4 only | 14.97 WARN | 13.29 WARN | 0.581 ok |
+| (a) start=`mean(beta)`, clamp kept | **-0.049 ok** | 14.43 WARN | 0.581 ok |
+| (b) unclamped Newton | **-0.049 ok** | **-0.644 ok** | 0.581 ok |
+| (a)+(b) | **-0.049 ok** | **-0.644 ok** | 0.581 ok |
+
+upstream: 3.53962 / -0.558127 / 0.749398.
+
+**Shipped: D4 + (a).** Arm (b) also fixes n=100 and is also what upstream does
+-- `root_scalar(score, x0=..., fprime=..., method="newton")` is unclamped -- but
+it takes `examples/fuzz` from 11/11 to FAIL (trial 7, `se = 6.13e14` at
+`theta = 34.67`): without the clamp, some design that used to be pinned walks
+far enough for the variance to blow up. That trade is not understood well
+enough to ship, so it is recorded rather than taken.
+
+Note also that (a) alone restores `lplr_ns_theta` to `0.46033435469463013`
+exactly -- the value `pyexample_lplr.py` was already pinned to. The ad-hoc OLS
+start was not merely different from upstream's, it was rounding the answer away
+from the one the port has always reported.
+
+### 12d. Effect on the 200-design sweep
+
+| | pre-D4 | D4 | D4 + (a) | upstream |
+|---|---|---|---|---|
+| designs > 1e4 | 88/200 | 0 | **0** | 0 |
+| designs > 1e8 | 7 | 0 | **0** | 0 |
+| max abs coef | 1.03e11 | 24.35 | **24.18** | 1.01e4 |
+| median abs coef | 6.35 | 7.35 | **1.89** | 0.587 |
+| Q99 | 1.53e10 | 23.0 | 22.5 | 5.41 |
+| designs warning | — | 105 | **91** | 0 |
+
+**44% of designs exceeded upstream's worst-ever coefficient; now none do**, and
+the median moves from 6.35 to 1.89 against upstream's 0.587. The n = 500 gated
+numbers do not move at all (0.007307 / 0.010609), which is the signature of a
+fix that only bites where the solver was failing.
+
+### 12e. What is still open
+
+91 of 200 small-n designs still fail to converge, against upstream's zero, and
+the median is still 3.2x upstream's. Arm (b) is the measured next step and it
+works on all three cases; it needs a runaway guard that does not also cap the
+step size, since the current clamp conflates those two jobs. The `|theta_new| >
+1e6` divergence guard is separate and is kept.

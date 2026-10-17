@@ -62,7 +62,42 @@ cluster pin and the new per-row-`beta` gate below.
   what that check is for. Re-pinned with the reason recorded in the file, in
   the same convention as its two previous moves.
 
-### Known divergence -- LPLR is wrong by ~1e6 at small n, and no gate saw it
+### Fixed -- the LPLR coefficient was never the root (D4)
+
+The small-n divergence below has a mechanism, and the fix is upstream fidelity.
+
+Upstream takes the root directly: `theta_hat = root_res.root`
+(`double_ml_score_mixins.py`, `_root_find`), and uses the score only for the
+variance. The port ran the Newton, got `theta`, and then discarded it:
+`coefs[r] = var_est(psi_a, psi_b).0`, which is `-mean(psi_b)/mean(psi_a)`. At a
+root `psi(theta) = 0` makes that collapse to `theta`, so the two agree and
+nothing looks wrong. Off a root it does not, and it carries a factor
+`1/mean(psi_a)` -- precisely what a non-converging design produces. The 1e6 was
+never in the root.
+
+**D4**: the point estimate is `theta`; the variance comes from the existing
+`var_est_with_jacobian`, which evaluates `gamma` at the known root the way
+upstream does.
+
+Also shipped: `lplr_initial_theta` accepted a `beta_start` argument, ignored it
+(underscore prefix), and substituted an ad-hoc OLS scale. Upstream starts the
+root finder at `np.average(beta)` (`plm/lplr.py:326`). Using that start also
+restores `lplr_ns_theta` to `0.46033435469463013` -- the value the gate was
+already pinned to. The n = 500 gated numbers do not move at all.
+
+Over 200 small-n designs: designs exceeding 1e4 go **88/200 (44%) -> 0**, the
+worst |coef| goes **1.03e11 -> 24.18**, and the median goes **6.35 -> 1.89**
+against upstream's 0.587.
+
+Recorded and NOT taken: removing the Newton step clamp. It is also unfaithful
+(upstream's `root_scalar(method="newton")` is unclamped) and it fixes the
+n = 100 case too (-0.644 against upstream -0.558, no warning) -- but it takes
+`examples/fuzz` from 11/11 to FAIL at trial 7 (`se = 6.13e14`). The clamp is
+doing two jobs at once, capping the step and bounding the iterate; separating
+them is the next step, not a silent swap. 91 of 200 small-n designs still warn
+against upstream's zero, so this is progress, not closure.
+
+### How the small-n divergence was found, and what D4 did to it
 
 The largest divergence in the audit, and it was invisible because the parity
 gate's design point was never questioned. `pyexample_lplr.py` compares the port
