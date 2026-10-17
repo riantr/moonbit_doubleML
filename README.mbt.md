@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.163.1** |
+| `moon.mod` version | **0.163.2** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1735,7 +1735,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.163.1
+python .github/scripts/ci_local.py run --all --release-tag v0.163.2
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 

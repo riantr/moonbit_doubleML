@@ -9,10 +9,21 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-## [0.163.1] — LPLR reads its own nuisances the way upstream does, and
+## [0.163.2] — LPLR reads its own nuisances the way upstream does, and
 three gates that could not fail now can
 
-No `moon.mod` bump yet. This one **does** move reported numbers: the LPLR
+### The `v0.163.1` tag shipped nothing; this entry is the release
+
+The `v0.163.1` tag exists on both remotes and its publish run went red at
+`Check typos`, so `Publish to Mooncakes` and `Create GitHub Release` were
+skipped and mooncakes never received it. Tags are not deleted or moved,
+and a skipped number is not reused, so the body below ships as `0.163.2`.
+The two failures and their fixes are in the commit titled
+`fix(ci): the new pyexample gates had never run on CI, and two spellings
+blocked the release`.
+
+`moon.mod` moves 0.163.1 -> 0.163.2. This one **does** move reported
+numbers: the LPLR
 coefficient and standard error change for every fit, because two upstream
 inputs they were computed from were wrong. The test counts are **1117 /
 1123 / 1117 / 1117** (native / wasm-gc / wasm / js), +1 each from the
