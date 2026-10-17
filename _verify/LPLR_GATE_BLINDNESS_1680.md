@@ -1185,3 +1185,70 @@ over with a guard whose justification would be a guess.
 The cost is unchanged: gap to upstream 11.4 at n=60 and 13.8 at n=100 with
 the clamp, against 3.59 and 0.086 without it; 91 of 200 small-n designs
 warn where upstream warns zero times. None of that is gated.
+
+## 16. What has actually been checked against upstream, and the one confound that was not
+
+Section 15c ended with "something in the port's evaluation of the score still
+differs and has not been located". Here is the exhaustive list of what HAS
+been checked, so the next reader does not re-walk it -- and one comparison
+that was confounded and has now been cleared.
+
+### 16a. Verified equivalent
+
+| piece | upstream | port | where |
+|---|---|---|---|
+| root finder | `root_scalar(..., method="newton")`, no cap | damped 0.25-step clamp | `:149` / `lplr.mbt` |
+| Newton step | `p = p0 - fval/fder` | `theta - s/sd` | scipy 1.18 `_zeros_py` |
+| start value | `np.average(beta)` (`:326`) | `mean(beta_start)` | shipped `df049c2` |
+| point estimate | `theta_hat = root_res.root` | `coefs[r] = theta` | shipped `df049c2` |
+| `d_tilde` | `d - m_hat` (`:403`) | `d - m_pred`, `m_pred = a_pred` | `:254` is ml_m's plain outer CV |
+| `psi_hat` | `expit(-r_hat)` | `expit(-r_hat)` | `:404` |
+| `score_const` | `d_tilde * (1-y) * exp(r_hat)` | same | `:405` |
+| score | `psi_hat * (y*exp(-theta*d)*d_tilde - score_const)` | same | `:523-524` |
+| derivative | `psi_hat * d_tilde * (-y*exp(-theta*d)*d)` | same | `:534-535` |
+| aggregation | `np.mean(psi)` | `s / n_obs` | `_aggregate_obs:121` |
+| variance | `mean(psi^2) / (n * J^2)`, no guard | same, no guard | `_estimation.py:362-418` |
+
+So the score, its derivative, the aggregation, the start value, the point
+estimate and the variance formula all match upstream. The root finder does
+NOT, and that is the one deliberate deviation.
+
+### 16b. The confound in 13c, cleared
+
+The 0/300 measurement in 13c was about to be thrown out. It fitted upstream
+with `LogisticRegression(C=1e6, ...)` while `DoubleMLLPLR::new` defaults to
+`LearnerDispatch::logistic_regression(LogisticRegression::new())`
+(`lplr.mbt:360-362`), and `LogisticRegression::new()` looks like a C = 1.0
+default -- so the two sides of the comparison would have had different
+regularization, and "upstream is robust where the port is not" would have
+been an artifact.
+
+It is not. `LogisticRegression` in this port has no regularization parameter
+at all:
+
+    pub fn LogisticRegression::new() -> LogisticRegression {
+      { fitted: false, coef_: [], }
+    }
+
+(`logistic.mbt:23-25`). No `C`, no penalty term, no lambda -- it is an
+unregularized MLE, which is the same regime as upstream's `C=1e6`. The two
+configurations are matched in substance, so the 0/300 figure stands.
+
+A sweep written to "fix" this by forcing upstream to `C = 1.0` was deleted
+rather than kept: it would have introduced the very mismatch it was meant to
+remove. This is the second time in this series that an experiment was caught
+before it produced a number by checking the premise first (the first was the
+0-anchor `d_tilde` probe in 14b).
+
+### 16c. What is left
+
+Unknown, and narrower than 15c made it sound. The estimator structure is
+verified equivalent term by term; both nuisance inputs were tested and both
+moved the port AWAY from upstream; the learners match; the aggregation
+matches; the variance formula matches. What remains unexplained is why
+upstream stays finite on 300/300 draws of this DGP while the port's Newton
+diverges by trial 2.
+
+That gap is real and is not closed by anything in this document. The clamp
+stays, its cost is recorded, and the small-n regime stays reported rather
+than gated.

@@ -1,0 +1,50 @@
+docs(lplr): the checklist of what is verified equivalent, and a confound cleared
+
+Section 15c ended with "something in the port's evaluation of the score still
+differs and has not been located". Left there, the next reader re-walks
+every piece. This is the walk, done once.
+
+Verified equivalent against upstream source, term by term:
+
+  root finder      :149 root_scalar(..., method="newton")   vs a damped
+                     0.25-step clamp -- the ONE deliberate deviation
+  Newton step      scipy 1.18 _zeros_py: p = p0 - fval/fder  vs theta - s/sd
+  start value      :326 np.average(beta)                     vs mean(beta_start)
+  point estimate   root_res.root                            vs coefs[r] = theta
+  d_tilde          :403 d - m_hat                            vs d - m_pred,
+                     and :254 makes m_hat ml_m's PLAIN outer CV, which is
+                     exactly what a_pred holds
+  psi_hat          :404 expit(-r_hat)                        vs expit(-r_hat)
+  score_const      :405 d_tilde*(1-y)*exp(r_hat)             vs same
+  score            :523-524                                  vs same
+  derivative       :534-535                                  vs same
+  aggregation      _aggregate_obs:121 np.mean(psi)           vs s / n_obs
+  variance         _estimation.py:362-418, no guard         vs same, no guard
+
+Score, derivative, aggregation, start value, point estimate and variance
+formula all match. The root finder does not, and that is the deviation the
+clamp comment already owns.
+
+The 0/300 figure from 13c was about to be thrown out. It fitted upstream
+with LogisticRegression(C=1e6) while the port defaults to
+LogisticRegression::new(), which reads like a C = 1.0 default, so the two
+sides of the comparison would have had different regularization and "upstream
+is robust where the port is not" would have been an artifact.
+
+It is not. LogisticRegression in this port has no regularization parameter
+at all -- { fitted: false, coef_: [] } at logistic.mbt:23-25, no C, no
+penalty, no lambda. It is an unregularized MLE, the same regime as C=1e6.
+The configurations match in substance and the figure stands.
+
+A sweep written to "fix" this by forcing upstream to C = 1.0 was deleted
+rather than kept: it would have introduced the very mismatch it claimed to
+remove. Second time in this series an experiment was caught before it
+produced a number by checking its premise first; the first was the 0-anchor
+d_tilde probe.
+
+What remains unexplained is narrower than 15c implied but is real: upstream
+is 0/300 non-finite on this DGP and the port's Newton diverges by trial 2,
+with every element above checked. The clamp stays and small-n stays
+reported rather than gated.
+
+Markdown only. Record in _verify/LPLR_GATE_BLINDNESS_1680.md section 16.
