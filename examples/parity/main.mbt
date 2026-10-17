@@ -46,6 +46,7 @@ fn main {
   sec_cv_repeated()
   sec_gain_statistics()
   sec_lplr_upstream()
+  sec_lplr_smalln()
   sec_pq_qte()
   sec_policytree_upstream()
   sec_rdd_var()
@@ -1368,6 +1369,114 @@ fn sec_gain_statistics() -> Unit {
 /// only thing that moves is the inner draw -- and those are emitted as
 /// `lplr_ns_seed*`. The band the Python side uses is built from that
 /// measured spread, not from an assumption about it.
+fn sec_lplr_smalln() -> Unit {
+  // The small-n regime, where the port and upstream disagree by ~1e6.
+  //
+  // The `lplr_upstream` section is n = 500 and there the two agree to 0.007.
+  // Off that design point they do not agree at all. On IDENTICAL rows and the
+  // IDENTICAL outer partition, measured:
+  //
+  //     n=60    port -3.319646e+06    upstream  3.53962    ratio 9.4e5
+  //     n=100   port -1.119798e+06    upstream -0.558127   ratio 2.0e6
+  //     n=160   port  5.805777e-01    upstream  0.749398   ratio 0.77
+  //
+  // Upstream is silent on all three; the port warns on the first two. Over a
+  // 200-design sweep of the same family, upstream's worst |coef| is 1.01e4
+  // while the port's is 1.03e11, and 44% of the port's designs exceed
+  // upstream's maximum. A control arm against `bb38642~1` and `c744fc4` shows
+  // this is PRE-EXISTING, not caused by the v0.163.0 D2/D3 work: the port
+  // returned -1.63e6 at n = 60 before either landed.
+  //
+  // This section exists so `pyexample_lplr.py` re-measures all of it on every
+  // run. It REPORTS the numbers; it does not gate them. Gating a known
+  // divergence would be a permanently-red gate, which is worse than none --
+  // the finding is recorded in `_verify/LPLR_GATE_BLINDNESS_1680.md` section 11
+  // and the numbers belong next to the ones that ARE gated, where nobody has
+  // to remember to look.
+  let cases = [(60, 9001), (100, 9002), (160, 9003)]
+  for c in cases {
+    let (n, seed) = c
+    let p = 6
+    let alpha = 0.5
+    section("lplr_smalln_" + n.to_string())
+    let x_flat = Array::make(n * p, 0.0)
+    let y = Array::make(n, 0.0)
+    let d = Array::make(n, 0.0)
+    let rng = @moonbit_doubleML.chacha8_rng(seed)
+    let pool : Array[Double] = []
+    while pool.length() < n * p + n {
+      let u1 = rng.double()
+      let u2 = rng.double()
+      let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }
+      let r = (-2.0 * @math.ln(safe)).sqrt()
+      let th = 2.0 * 3.141592653589793 * u2
+      pool.push(r * @math.cos(th))
+      pool.push(r * @math.sin(th))
+    }
+    for i = 0; i < n * p; i = i + 1 {
+      x_flat[i] = pool[i]
+    }
+    for i = 0; i < n; i = i + 1 {
+      let x1 = x_flat[i * p]
+      let x2 = x_flat[i * p + 1]
+      let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]
+      let p_t = @moonbit_doubleML.expit(a)
+      let u = rng.double()
+      d[i] = if u < p_t { 1.0 } else { 0.0 }
+    }
+    for i = 0; i < n; i = i + 1 {
+      let x1 = x_flat[i * p]
+      let x2 = x_flat[i * p + 1]
+      let x3 = x_flat[i * p + 2]
+      let x4 = x_flat[i * p + 3]
+      let x5 = x_flat[i * p + 4]
+      let x6 = x_flat[i * p + 5]
+      let r = 0.25 * x1 * x2 +
+        0.25 * x3 * x3 +
+        0.25 * @math.cos(x4) -
+        0.5 * @math.sin(x5) +
+        (if x6 > 0.0 { 1.0 } else { 0.0 }) -
+        0.5
+      let prob = @moonbit_doubleML.expit(alpha * d[i] + r)
+      let u = rng.double()
+      y[i] = if u < prob { 1.0 } else { 0.0 }
+    }
+    data_out("x", x_flat)
+    data_out("y", y)
+    data_out("d", d)
+    val("n", n.to_double())
+    val("p", p.to_double())
+    let outer = @moonbit_doubleML.kfold(n, 2, seed)
+    let fold_id = Array::make(n, 0.0)
+    for f = 0; f < outer.length(); f = f + 1 {
+      let te = outer[f].test_idx
+      for j = 0; j < te.length(); j = j + 1 {
+        fold_id[te[j]] = f.to_double()
+      }
+    }
+    data_out("fold", fold_id)
+    let data = @moonbit_doubleML.DoubleMLBinaryData::new(
+      @moonbit_doubleML.Matrix::from_array(x_flat, n, p),
+      y,
+      d,
+    )
+    let m = @moonbit_doubleML.DoubleMLLPLR::new(
+        data,
+        score="nuisance_space",
+        n_folds=2,
+        n_folds_inner=2,
+        seed~,
+      )
+      .set_sample_splitting([outer])
+      .fit()
+    val("port_coef", m.coef())
+    val("port_se", m.se())
+    val("port_n_warn", m.warnings().length().to_double())
+    end()
+  }
+}
+
+///|
 fn sec_lplr_upstream() -> Unit {
   section("lplr_upstream")
   let n = 500

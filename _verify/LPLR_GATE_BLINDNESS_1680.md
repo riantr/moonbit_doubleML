@@ -719,3 +719,108 @@ exposed it by moving `se` to 8.25e6, where the half-width deviation is
 measure 0 with `eps*scale = 2.94e-9`, so the old bound sat **2.9x below one
 rounding step** and passed only because the step happened to be zero. One
 derived tolerance now covers both halves.
+## 11. The parity gate agrees at n = 500 and the estimator is wrong at n = 60
+
+This is the largest divergence found in the whole audit, and it was invisible
+until the gate's own design point was questioned.
+
+`pyexample_lplr.py` compares the port with upstream on the example's own rows
+and the example's own outer partition, at **n = 500**. There the gap is
+0.007307 / 0.010609 -- excellent. That is ONE design point, and it is the one
+point at which this estimator has never been wrong.
+
+Off it, on **identical rows and the identical partition** (`sec_lplr_smalln` in
+`examples/parity`, seeds 9001/9002/9003):
+
+| n | port | upstream | ratio | port warns | upstream warns |
+|---|---|---|---|---|---|
+| 60 | **-3.319646e+06** | **3.53962** | 9.4e5 | yes | no |
+| 100 | **-1.119798e+06** | **-0.558127** | 2.0e6 | yes | no |
+| 160 | 5.805777e-01 | 0.749398 | 0.77 | no | no |
+
+Upstream is silent on all three. The port returns a coefficient six orders of
+magnitude away from upstream's, and its standard errors agree with upstream's
+to within a factor (`2.53e6` vs `20.2`, `3.28e5` vs `0.83`) -- so the port is
+confidently reporting a catastrophe while upstream is quietly reporting an
+answer.
+
+### 11a. It is distributional, not three unlucky draws
+
+200 designs from the same family (n = 60..159), port vs upstream:
+
+| | upstream | port |
+|---|---|---|
+| fitted | 197 (3 raised) | 200 |
+| median abs coef (truth 0.5) | 0.587 | **6.35** |
+| Q90 | 1.51 | **1.44e7** |
+| Q99 | 5.41 | **1.53e10** |
+| max abs coef | **1.01e4** | **1.03e11** |
+| designs above 1e4 | 0 | **88 / 200 (44%)** |
+| designs above 1e8 | 0 | 7 |
+| designs above 1e10 | 0 | 2 |
+
+**44% of the port's designs exceed upstream's worst-ever coefficient**, and the
+median is 10.8x further from the truth than upstream's.
+
+### 11b. It is PRE-EXISTING, not something D2/D3 caused
+
+Control arm, same three cases, swapping ONLY `lplr.mbt`:
+
+| ref | n=60 | n=100 | n=160 |
+|---|---|---|---|
+| HEAD (D2+D3 shipped) | -3.32e6 | -1.12e6 | **0.581** |
+| `bb38642~1` (pre-D2) | -1.63e6 | -1.17e6 | 1.888 |
+| `c744fc4` (pre-D2) | -1.63e6 | -1.17e6 | 1.888 |
+
+The port was already returning -1.63e6 at n = 60 before any of this session's
+work. D2/D3 made n = 60 worse and n = 160 much better (1.888 -> 0.581 against
+a truth of 0.5); neither direction is a cause.
+
+### 11c. D1 is NOT the cause -- re-tested and worse
+
+D1 was reverted in section 10 partly on the argument that the port's
+`|coef| < 1e10` fuzz ceiling is the PORT's invariant, not a property upstream
+must satisfy. That argument deserved the same-rows test, and it was run:
+
+| arm | n=60 | n=100 | n=160 |
+|---|---|---|---|
+| baseline (alias) | -3.32e6 | -1.12e6 | 0.581 |
+| with D1 | **-6.52e6** | **-1.46e6** | 0.705 |
+
+D1 is upstream's `m_hat`, `m_hat` feeds `d_tilde`, `d_tilde` drives the score
+and therefore the Newton root -- so it was the live candidate. It makes both
+divergences worse. **The revert stands, now for a stronger reason than the one
+it was made on.**
+
+### 11d. What is ruled in and what is not
+
+Ruled out by direct comparison against upstream source:
+
+- **The score.** `_score_elements` (`plm/lplr.py:401-415`) and `_compute_score`
+  / `_compute_score_deriv` (`:495-512`) match `lplr_score_at` term for term,
+  including `deriv = psi_hat * d_tilde * (-y*exp(-coef*d)*d)`.
+- **`m_hat`** -- D1, measured above.
+- **D2/D3** -- control arm above.
+
+Not yet pinned: why the port's Newton fails to converge where upstream's
+converges. Two measured constraints narrow it. The port clamps each Newton
+step to 0.25 over 50 iterations, so `|theta|` can exceed its starting value by
+at most 12.5 -- a reported `-3.3e6` therefore implies a START of that size, and
+the start is `sum(d*t_pred)/sum(d^2)` (`lplr_initial_theta`). The measured
+`t_pred` range at n = 60 is `[-35.3, 37.0]`, which is already ~2x outside the
+`logit` range `[-18.4, 18.4]` that `W_inner` is clipped to -- the `ml_g`
+regression is extrapolating well past its own target range, and the starting
+value inherits that. **This is the next thing to measure, and it is a lead, not
+a conclusion.**
+
+### 11e. Why it is reported and not gated
+
+Gating it would be a permanently-red gate, which this repo treats as strictly
+worse than no gate. So `pyexample_lplr.py` section 5 re-measures all three
+cases on every run and prints the ratios, flagged `<-- DIVERGES` above 100x.
+The numbers sit next to the ones that ARE gated, so nobody has to remember
+that a regime exists where they are not.
+
+Reproduction: `python pyexample_lplr.py` (sections 1-4 gated, section 5
+reported). Sweeps: `_verify/_upstream_lplr_tail_1680.py` (upstream side) and
+the port-side probe it was paired with.

@@ -62,6 +62,53 @@ cluster pin and the new per-row-`beta` gate below.
   what that check is for. Re-pinned with the reason recorded in the file, in
   the same convention as its two previous moves.
 
+### Known divergence -- LPLR is wrong by ~1e6 at small n, and no gate saw it
+
+The largest divergence in the audit, and it was invisible because the parity
+gate's design point was never questioned. `pyexample_lplr.py` compares the port
+with upstream on the example's own rows and partition at **n = 500**, where the
+gap is 0.007307 / 0.010609. That is one point, and it is the only point at which
+this estimator has been right.
+
+On **identical rows and the identical partition** at small n:
+
+| n | port | upstream | ratio | upstream warns |
+|---|---|---|---|---|
+| 60 | **-3.319646e+06** | **3.53962** | 9.4e5 | no |
+| 100 | **-1.119798e+06** | **-0.558127** | 2.0e6 | no |
+| 160 | 5.805777e-01 | 0.749398 | 0.77 | no |
+
+Over 200 designs of the same family: upstream's worst |coef| is **1.01e4**,
+the port's is **1.03e11**, and **44% of the port's designs exceed upstream's
+worst-ever coefficient**. The port's median absolute coefficient is 6.35
+against upstream's 0.587, for a true parameter of 0.5.
+
+Three things this is NOT:
+
+- **Not caused by the v0.163.0 D2/D3 work.** A control arm against
+  `bb38642~1` and `c744fc4` shows the port returned -1.63e6 at n = 60 before
+  either landed. D2/D3 made n=60 worse and n=160 much better.
+- **Not caused by D1.** Re-tested against upstream on the same rows, since the
+  original revert leaned on the port's own `1e10` fuzz ceiling rather than on
+  upstream. D1 makes both worse (-3.32e6 -> -6.52e6, -1.12e6 -> -1.46e6).
+- **Not a score mismatch.** `_score_elements` and `_compute_score` /
+  `_compute_score_deriv` match `lplr_score_at` term for term against upstream's
+  source.
+
+What is shipped here is the MEASUREMENT, because a gate that encodes a known
+divergence is a permanently-red gate and this repo treats that as worse than
+no gate. `examples/parity` gained a `lplr_smalln` section and
+`pyexample_lplr.py` a section 5 that re-fits upstream on the same rows on every
+run and prints the ratios, flagged `<-- DIVERGES` above 100x -- so the numbers
+sit beside the ones that ARE gated instead of living only in a note.
+
+**Open, and stated as a lead rather than a conclusion**: the port clamps each
+Newton step to 0.25 over 50 iterations, so a reported -3.3e6 implies a
+starting value of that size, and the start is `sum(d*t_pred)/sum(d^2)`. The
+measured `t_pred` range at n = 60 is [-35.3, 37.0], already about twice outside
+the [-18.4, 18.4] range `W_inner` is clipped to -- `ml_g` is extrapolating past
+its own target range. `_verify/LPLR_GATE_BLINDNESS_1680.md` section 11.
+
 ### Not shipped, and why -- D1 (upstream's `m_hat` conditioning)
 
 `plm/lplr.py:244-264` fits `ml_m` with per-score conditioning: `Y = 0`

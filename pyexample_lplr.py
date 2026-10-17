@@ -160,6 +160,75 @@ def upstream_fit(x, y, d, fold_id, n_folds_inner, inner_seed, score):
     return float(m.coef[0]), float(m.se[0])
 
 
+def print_report_smalln(out):
+    """Re-measure the SMALL-N divergence on every run. Reported, not gated.
+
+    Sections 1-4 are all at the example's n = 500, where the port and upstream
+    agree to ~0.007. That is one design point, and it is the one the estimator
+    was never wrong at: on identical rows at n = 60 and n = 100 the port
+    returns -3.3e6 and -1.1e6 where upstream returns 3.54 and -0.558.
+
+    A control arm against `bb38642~1` and `c744fc4` shows the small-n
+    divergence is PRE-EXISTING, and upstream's own `m_hat` conditioning (D1)
+    makes it worse rather than better -- so neither is the cause.
+
+    Why report instead of gate: the number is a real divergence and gating it
+    would be a permanently-red gate, which this repo treats as worse than no
+    gate. What is gated is that the port still agrees with upstream where it is
+    expected to; this line makes sure nobody has to REMEMBER that there is a
+    regime where it does not.
+
+    An upstream fit that raises is printed as ERROR and never counted as
+    agreement -- a crash is not a measurement.
+    """
+    sections = []
+    cur = None
+    for line in out.splitlines():
+        s = line.strip()
+        if s.startswith("section lplr_smalln_"):
+            cur = {"name": s.split(None, 1)[1], "val": {}, "data": {}}
+            sections.append(cur)
+            continue
+        if cur is None:
+            continue
+        if s == "end":
+            cur = None
+            continue
+        if s.startswith("val "):
+            p = s.split()
+            cur["val"][p[1]] = float(p[2])
+        elif s.startswith("data "):
+            p = s.split()
+            k = int(p[2])
+            arr = np.array([float(v) for v in p[3:3 + k]], dtype=float)
+            if len(arr) == k:
+                cur["data"][p[1]] = arr
+    if not sections:
+        print("    NO smalln sections in the emitter output -- skip")
+        return
+    print("    On identical rows and the identical outer partition:")
+    for sec in sections:
+        n = int(sec["val"]["n"])
+        pcols = int(sec["val"]["p"])
+        x = sec["data"]["x"].reshape(n, pcols)
+        y = sec["data"]["y"]
+        d = sec["data"]["d"]
+        fold = sec["data"]["fold"]
+        pc = sec["val"]["port_coef"]
+        pw = int(sec["val"]["port_n_warn"])
+        print("      n=%-4d port coef=%-16.6g se=%-14.6g warn=%d"
+              % (n, pc, sec["val"]["port_se"], pw))
+        try:
+            uc, us = upstream_fit(x, y, d, fold, 2, 7000, "nuisance_space")
+            ratio = abs(pc) / max(abs(uc), 1e-12)
+            print("              upstream coef=%-12.6g se=%-14.6g  ratio=%.4g %s"
+                  % (uc, us, ratio,
+                     "<-- DIVERGES" if ratio > 100.0 else ""))
+        except Exception as e:
+            print("              upstream ERROR %s: %s" % (type(e).__name__, str(e)[:90]))
+    print("    Recorded, not gated: _verify/LPLR_GATE_BLINDNESS_1680.md section 11.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
@@ -277,6 +346,10 @@ def main():
         print("    %-14s port se=%.6f  upstream se mean=%.6f  ratio=%.4f"
               % (sc, port_se, up[sc]["se"].mean(),
                  port_se / up[sc]["se"].mean()))
+
+    print("")
+    print("--- 5. small-n regime: a KNOWN divergence, reported not asserted ---")
+    print_report_smalln(out)
 
     print("")
     print("LPLR upstream parity: %s" % ("PASS" if ok else "FAIL"))
