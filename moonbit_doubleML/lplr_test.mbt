@@ -145,6 +145,27 @@ test "lplr_deterministic" {
 ///|
 /// CI identity: 95% interval is symmetric around the coef at
 /// exactly z=1.959963984540054 times the SE.
+///
+/// v0.163.0: the symmetry check was `|(hi + lo)/2 - coef| < 1e-12`, an
+/// absolute tolerance that is NOT ACHIEVABLE on this fixture. `confint()`
+/// returns the stored `coef_ +/- z*se_`, so the midpoint is recovered by
+/// summing two numbers that very nearly cancel, and the rounding error of
+/// that sum is about `eps * max(|hi|, |lo|)` -- here `eps * 1.3e7` is
+/// 1.03e-9, about a thousand times the asserted bound. Measured on the two
+/// backends it disagreed on:
+///
+///     native    dev = 0
+///     wasm-gc   dev = 9.313225746154785e-10   (0.91 ulp of the midpoint)
+///
+/// i.e. one rounding step, and the test passed on native only because that
+/// step happened to land on zero. D2/D3 did not break this identity; they
+/// moved `coef` to a magnitude where the old bound stopped being about
+/// floating point and started being about luck.
+///
+/// The tolerance is now derived from the operands' own magnitude rather than
+/// written down. It still discriminates by eight orders of magnitude: a real
+/// asymmetry (one end built with a different `z`, say) shows up at O(z*se)
+/// = 8.6e6 here, not O(1e-8).
 test "lplr_confint_identity" {
   let data = build_lzz2020_dgp(120, 0.5, 42)
   let fitted = DoubleMLLPLR::new(data, n_folds=2).fit()
@@ -152,7 +173,9 @@ test "lplr_confint_identity" {
   let z = 1.959963984540054
   let half_width = (hi - lo) / 2.0
   inspect((half_width - z * fitted.se()).abs() < 1.0e-9, content="true")
-  inspect(((hi + lo) / 2.0 - fitted.coef()).abs() < 1.0e-12, content="true")
+  let scale = if hi.abs() > lo.abs() { hi.abs() } else { lo.abs() }
+  let mid_tol = 4.0 * 2.220446049250313e-16 * scale
+  inspect(((hi + lo) / 2.0 - fitted.coef()).abs() <= mid_tol, content="true")
 }
 
 ///|

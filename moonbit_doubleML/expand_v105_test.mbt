@@ -47,14 +47,50 @@ fn v105_lplr_inputs() -> (
   Array[Double],
   Array[Double],
   Array[Double],
-  Double,
+  Array[Double],
 ) {
   let d = [0.0, 1.0, 1.0, 0.0]
   let y = [0.0, 1.0, 0.0, 1.0]
   let t_pred = [0.4, -0.2, 1.1, -0.9]
   let a_pred = [0.3, 0.7, 0.2, 0.55]
   let m_pred = [0.28, 0.66, 0.24, 0.51]
-  (0.75, d, y, t_pred, a_pred, m_pred, 0.45)
+  // v0.163.0 (D3): `beta` is PER OBSERVATION upstream
+  // (`plm/lplr.py:345` reads `beta[i]`), so the fixture returns a
+  // vector. Every entry is the old scalar 0.45, which keeps the
+  // `expect_psi` / `expect_deriv` literals below EXACTLY as measured --
+  // `r_hat = t_pred[i] - beta[i] * a_pred[i]` is unchanged. It is
+  // therefore NOT a discriminator for per-row vs shared `beta`;
+  // `lplr_beta_is_read_per_row` is.
+  (0.75, d, y, t_pred, a_pred, m_pred, [0.45, 0.45, 0.45, 0.45])
+}
+
+///|
+/// v0.163.0 (D3) gate. `lplr_score_at` must read `beta[i]` for row
+/// `i`, not one shared `beta`. This is the assertion the uniform
+/// fixture above deliberately cannot make: perturbing ONE row's
+/// `beta` must move that row's `psi` and leave the rest bit-identical.
+///
+/// Under the pre-D3 scalar signature this test does not compile, so
+/// it cannot silently pass on the old code -- which is the point: the
+/// observable it protects is a parameter TYPE, and the type change is
+/// the shipped behaviour change.
+test "lplr_beta_is_read_per_row" {
+  let (_, d, y, t_pred, a_pred, m_pred, beta) = v105_lplr_inputs()
+  let kind = lplr_score_kind("nuisance_space")
+  let base = lplr_score_at(0.75, d, y, t_pred, a_pred, m_pred, beta, kind)
+  // Row 2 only: beta[2] 0.45 -> 0.95.
+  let bumped = [beta[0], beta[1], 0.95, beta[3]]
+  let sc = lplr_score_at(0.75, d, y, t_pred, a_pred, m_pred, bumped, kind)
+  // MEASURED, not derived: with beta[2] = 0.95 the row-2 psi is
+  // -0.541880123691734. (The base value -0.5570953134215317 is the
+  // uniform-beta literal from the gate above and does NOT survive the
+  // perturbation -- that is the whole point of the perturbation.)
+  assert_eq(sc.psi[2], -0.541880123691734)
+  assert_true(sc.psi[2] != base.psi[2])
+  // Rows 0, 1, 3 are untouched, bit-for-bit.
+  assert_eq(sc.psi[0], base.psi[0])
+  assert_eq(sc.psi[1], base.psi[1])
+  assert_eq(sc.psi[3], base.psi[3])
 }
 
 ///|

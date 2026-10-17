@@ -478,15 +478,29 @@ fn fuzz_lplr(rng : @random.Rand, trials : Int32) -> Unit {
       se == se && se >= 0.0 && se < 1.0e10,
       "lplr non-negative finite se (trial=\{trial}, se=\{se}, th=\{th})",
     )
-    // CI identity only meaningful when se dominates
-    // floating-point rounding. Below ~1e-3 the confint
-    // computation can produce numerical artefacts; skip.
+    // CI identity. Only meaningful once se dominates floating-point
+    // rounding; below ~1e-3 the confint computation can produce
+    // numerical artefacts, so skip.
     if se > 1.0e-3 {
       let (lo, hi) = model.confint()
       let z = 1.959963984540054
       let half = (hi - lo) / 2.0
+      // v0.163.0: the bound is DERIVED from the operands, not written
+      // down. This was `|half - z*se| < 1e-9`, which is a claim about a
+      // quantity that scales with `se` (1.2e7 at the trial that caught
+      // it) tested against a constant. `confint()` returns the stored
+      // `coef_ +/- z*se_`, so `hi - lo` cancels two large numbers and
+      // carries an error of order `eps * max(|hi|, |lo|)` -- at that
+      // trial about 1e-8, ten times the old bound. The check was
+      // therefore asserting a rounding step away from the truth, and
+      // D2/D3 only made it visible by moving `se`.
+      //
+      // It still discriminates: a genuinely wrong interval (one end
+      // built with a different z) misses at O(z*se), not O(eps*|hi|).
+      let scale = if hi.abs() > lo.abs() { hi.abs() } else { lo.abs() }
+      let tol = 4.0 * 2.220446049250313e-16 * scale
       check(
-        (half - z * se).abs() < 1.0e-9,
+        (half - z * se).abs() <= tol,
         "lplr CI identity (trial=\{trial}, se=\{se})",
       )
     }

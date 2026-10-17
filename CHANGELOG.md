@@ -9,20 +9,92 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-## [Unreleased] — the multi-cohort port is now graded against upstream's own CS2021 data
+## [Unreleased] — LPLR reads its own nuisances the way upstream does, and
+three gates that could not fail now can
 
-No `moon.mod` bump yet: this adds gates and corrects documented claims, and
-no reported estimator number moves. The test counts are **1116 / 1122 / 1116 /
-1116** (native / wasm-gc / wasm / js), +1 each from the cluster pin added below.
-
-Why: v0.163.0 added the first gate whose reference is upstream's rather than
-ours, but only for the single-cohort `DoubleMLDID`. The multi-cohort
-`DoubleMLDIDMulti` -- where the port's DID-CS machinery actually lives -- was
-carrying a documented refusal, and **both reasons for that refusal were false**.
-The refusal had cost real coverage: every post-treatment ATT of every cohort,
-on upstream's own dataset, was ungated.
+No `moon.mod` bump yet. This one **does** move reported numbers: the LPLR
+coefficient and standard error change for every fit, because two upstream
+inputs they were computed from were wrong. The test counts are **1117 /
+1123 / 1117 / 1117** (native / wasm-gc / wasm / js), +1 each from the
+cluster pin and the new per-row-`beta` gate below.
 
 ### Fixed
+
+- **`W_inner` was built from ml_M's OUTER cross-fit; upstream reads the inner
+  one.** `plm/lplr.py:318` is `M_hat["preds_inner"][i][train]`. The port read
+  `m_hat_outer`, and the comment justifying it -- "inner OOF for ml_M would
+  require the same double-cross-fit scaffolding as ml_a" -- was false:
+  `a_inner_per_fold` had been doing exactly that since v0.62.0, three lines
+  above, and the scaffolding was simply not used for this. `m_hat_outer` is
+  now deleted rather than left as an unused binding.
+- **`beta` was one averaged scalar; upstream keeps it per observation.**
+  `plm/lplr.py:315` allocates `beta` as an `n`-vector, `:323` writes
+  `beta[test] = b_f` per fold, and `:345` reads `beta * a_hat["preds"]`
+  row by row. `np.average(beta)` at `:326` is the Newton START and nothing
+  else. `prelim_beta_per_fold` was also being handed `a_inner` for BOTH its
+  `m_inner` and `a_inner` slots, so `beta` was regressed on `logit(a_hat)`
+  twice and ml_M's inner OOF reached that function never. `lplr_score_at`'s
+  `beta_start` parameter is now `Array[Double]` (a breaking signature change
+  on a `pub fn`), and the fit cache stores the length-`n` vector.
+
+  Measured against upstream on the same rows and the same outer partition:
+
+  | | before | after |
+  |---|---|---|
+  | `nuisance_space` gap | 0.113896 | **0.007307** |
+  | `instrument` gap | 0.024022 | **0.010609** |
+  | SE ratio, `nuisance_space` | 1.3256 | 1.1549 |
+  | SE ratio, `instrument` | 1.0724 | 1.0269 |
+
+  The `instrument` gap moved the wrong way by 0.0024, and that is stated
+  rather than smoothed over: the port mean is over 5 inner draws with
+  sd ~0.03, so the standard error of the mean is ~0.014 against a band of
+  0.18. This change ships because it is the faithful port, read off
+  upstream's source, not because it scores better on that proxy. Shipping a
+  knowingly divergent `beta` to protect a 0.002 proxy movement would be the
+  exact trade this audit exists to refuse. `_verify/LPLR_GATE_BLINDNESS_1680.md`
+  section 9 has the full record.
+
+- **`examples/lplr`'s printed `theta_hat` moves, so `pyexample_lplr.py`'s
+  replication pin moves with it** (0.46403803469979032 ->
+  0.46033435469463013). The example's ROWS did not change; the guard caught
+  the port drifting away from the value it is supposed to reproduce, which is
+  what that check is for. Re-pinned with the reason recorded in the file, in
+  the same convention as its two previous moves.
+
+### Gate holes the change above exposed
+
+- **GATE 5 was vacuous and stayed green through this change.**
+  `lplr_warnings_are_returned_not_printed` compared `model.warnings()` to a
+  second call on the same object, which holds with equal ease when the
+  channel returns nothing -- and the fixture it used had just become exactly
+  such a channel. It is the one gate that should have objected. It now
+  asserts the fixture warns before asserting the read is stable.
+- **GATE 6's invariant is now dead, not merely mis-based.** It asserted the
+  warning-producing alphas form a SUFFIX; run unchanged after this change
+  that sweep returns `[0, 0, 0, 0, 0, 0]`, so the monotonicity holds
+  vacuously. Only the `assert_true(warned[last])` guard caught it. Replaced
+  with the axis the measured region runs along -- sample size -- with both
+  ends asserted so it cannot pass on a dead channel either. GATES 2-4 were
+  re-based from `n=1000` to `n=200`, which still warns (the warning region
+  became a small-sample phenomenon: `n >= 800` is silent across a 3x4x2 grid).
+- **Two CI-identity checks were asserting luck rather than arithmetic.**
+  `lplr_confint_identity` demanded `(hi + lo)/2 == coef` to `1e-12` on a
+  fixture with `|coef| ~ 4.6e6`, where one rounding step is `1.03e-9` -- a
+  thousand times the bound. It passed on native and failed on all three web
+  backends, at exactly 0.91 ulp. `examples/fuzz` had the same defect at
+  `1e-9` against `se = 1.23e7` and did fire (trial 12). Both bounds are now
+  derived from the operands' magnitude and still discriminate by eight
+  orders of magnitude. Neither identity was broken by this change; the
+  change moved `se` to a magnitude where the old bounds stopped being about
+  floating point.
+
+  `_verify/_lplr_v1630_battery_1680.py` -- 5 arms, 6 gate subjects, all
+  discriminate. One arm was written wrong first (it produced an
+  unterminated string literal); the battery scored it `BUILD_ERROR`, not
+  `RED`, because a mutation that does not compile has tested nothing.
+
+### Fixed (the multi-cohort CS2021 parity gates)
 
 - **`examples/api_server` advertised `0.162.0` while `moon.mod` said `0.163.0`.**
   The v0.163.0 version bump missed a hardcoded literal in

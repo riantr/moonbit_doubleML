@@ -182,7 +182,7 @@ def main():
     fold_id = datas["lplr_fold"].astype(int)
 
     # Self-check: the emitter must have reproduced the example's own DGP.
-    # Its printed `theta_hat` is 0.46403803469979032; if the replication in
+    # Its printed `theta_hat` is 0.46033435469463013; if the replication in
     # `sec_lplr_upstream` ever drifts this stops matching and the whole
     # comparison is measuring a different dataset.
     #
@@ -196,8 +196,16 @@ def main():
     #   0.3874127183029159  logistic default + the upstream `Y == 0`
     #                        conditioning -- HELD OFF, see the `m_pred` block
     #                        in `lplr.mbt`
-    #   0.46403803469979032  logistic default, conditioning held off  <-- here
-    expected = 0.46403803469979032
+    #   0.46403803469979032  logistic default, conditioning held off
+    #   0.46033435469463013  logistic default + D2/D3 (v0.163.0)  <-- here
+    #
+    # The v0.163.0 move is not a re-pin in the usual sense: the value moved
+    # because the PORT changed, not because the example's DGP drifted. D2
+    # gives `W_inner` the inner cross-fit of ml_M (upstream
+    # `plm/lplr.py:318`) and D3 keeps `beta` per-observation (`:315-323`,
+    # `:345`) instead of averaging it to a scalar (`:326`). The example's
+    # rows are untouched, which is what this check exists to confirm.
+    expected = 0.46033435469463013
     got = vals["lplr_ns_theta"]
     selfcheck = abs(got - expected) <= 1e-15
     print("")

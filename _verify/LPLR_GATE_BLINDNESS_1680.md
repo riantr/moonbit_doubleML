@@ -512,26 +512,124 @@ which is why the script writes it there and removes it in a `finally`.
 
 ## 8. Status
 
-- **Shipped in this series**: `sec_lplr_upstream` in `examples/parity` and
-  `pyexample_lplr.py` — a shared-rows, shared-partition gate that is
-  materially stronger than the validator it complements.
-- **Also shipped now**: the default `ml_m` is a classifier. Correctness fix in
-  its own right — both binary-target nuisances were escaping `[0, 1]`, which
-  is what upstream refuses (§7b). Measured green: fuzz 11/11, `moon test`
-  1115/1115, gate PASS.
-- **Still not shipped**: D1. Its prerequisite was tested and found
-  insufficient (§7b); it is blocked on **D3**, the fold-averaged
-  `beta_start`. Re-measured per §7c: this blocks *enabling D1*, and is not a
-  live failure today.
-- **Still open**: D2 (`W_inner` uses outer OOF; upstream uses inner OOF) and
-  D3 (one fold-averaged `beta_start`; upstream uses a per-observation
-  `beta[test]` array in the score and the average only as the Newton start).
-  **D3 is a real parity defect in its own right** and its own increment; see
-  §7c for the source lines.
-- **D3 was implemented, measured, and reverted** (§7d). Correct against
-  upstream's source, but it moves the gate gap the WRONG way — +17% on
-  `nuisance_space`, +61% on `instrument` — because `b_f` is computed from
-  `w = logit(M_outer)` rather than upstream's inner OOF, so D3's inputs are
-  D2's divergence. **D2 must land first**, then D3 on top, measured once.
+- **D2 and D3 both shipped** (v0.163.0). `W_inner` is now built from the INNER
+  cross-fit of ml_M, `beta` is per-observation, and `m_hat_outer` is deleted.
+  Gate gaps, measured against upstream on the same rows and the same outer
+  partition:
 
+  | | before | D2 only | D2 + D3 (shipped) |
+  |---|---|---|---|
+  | `nuisance_space` gap | 0.113896 | 0.027097 | **0.007307** |
+  | `instrument` gap | 0.024022 | 0.008251 | **0.010609** |
+  | SE ratio, `nuisance_space` | 1.3256 | 1.1480 | 1.1549 |
+  | SE ratio, `instrument` | 1.0724 | 1.0238 | 1.0269 |
 
+  **Read the `instrument` row honestly.** D3 improves `nuisance_space` 3.7x
+  further and moves `instrument` the wrong way by 0.0024. That movement is
+  NOT resolvable by this gate: the port mean is over 5 inner draws with
+  sd ~0.03, so the standard error of the mean is ~0.014 and the band is 0.18.
+  D3 was shipped because it is the faithful port of `plm/lplr.py:315-323` and
+  `:345`, not because it scores better; a knowingly-divergent `beta` would
+  have been shipped otherwise, which is the thing this audit exists to
+  remove. The evidence for that decision is upstream's source, read directly.
+
+- **Still not shipped**: D1 (`ml_m` is fitted on the whole sample rather than
+  conditioned on `Y = 0`). Its two recorded reasons for being held off were
+  both measured false in section 7b; what remains is the non-convergence
+  cliff, and D2 moved that cliff rather than removing it.
+
+## 9. What D2 did to the warning channel, and what it cost
+
+### 9a. D2 silences the alpha cliff. It does NOT silence the channel.
+
+The recorded blocker was that D2 "silences the warning channel", which would
+have made the four `expand_v145_test.mbt` gates unfixable. Measured, on D2
+code, over 19 configurations spanning `n` / alpha / `n_folds` /
+`n_folds_inner` / `score` / seed:
+
+    before D2:  swept=19  warned=16  silent=3
+    after  D2:  swept=19  warned=6   silent=13
+
+So the channel was never silenced; what changed is *which* designs warn. A
+3 x 4 x 2 grid of `n` in {200, 400, 800, 1000} x alpha in {0.25, 1.0, 1.5,
+2.5} x seed in {11, 17} maps the new region:
+
+    n=200   warns at 4 of 8 cells (all of seed 11, plus alpha=2.5 seed 17)
+    n=400   warns at 1 of 8  (alpha=0.25, seed 11)
+    n=800   0 of 8
+    n=1000  0 of 8
+
+The warning region became a SMALL-SAMPLE phenomenon. That is a better
+diagnostic than the one it replaced -- a non-convergence warning should track
+a property of the data, and sample size is one -- but it is a different
+invariant, and the old gates described the old one.
+
+### 9b. GATE 6's invariant is dead, not merely mis-based.
+
+GATE 6 asserted that the set of warning-producing alphas is a SUFFIX, read off
+`(800, alpha, 17)`. Run unchanged under D2 that sweep returns
+
+    [0.25, 0.5, 0.75, 1.0, 1.25, 1.5]  ->  [0, 0, 0, 0, 0, 0]
+
+The invariant now holds **vacuously**: monotone, yes, but with no warning
+anywhere in it. The guard that caught this was the `assert_true(warned[last])`
+on the degenerate end, not the monotonicity itself. Keeping a monotonicity
+assertion that every all-zero sweep satisfies would be precisely the "gate
+that cannot fail" this audit has been removing, so GATE 6 was replaced with
+the axis the measured region actually runs along -- sample size -- asserting
+both ends, so it cannot pass on a dead channel either.
+
+### 9c. GATE 5 was vacuous, and stayed green through the change.
+
+GATE 5 ("warnings are returned, not printed") compared `model.warnings()`
+against a second call to `model.warnings()` on the same object. That holds
+with equal ease when the channel returns nothing at all, and
+`(1000, 1.5, 11)` had just become exactly such a channel. It was the one
+gate that should have objected and it passed. It now asserts the fixture
+warns *before* asserting the read is stable.
+
+### 9d. Two absolute tolerances were asserting luck, not arithmetic.
+
+Both CI-identity checks were reading a quantity that scales with `se` against
+a constant. `confint()` returns the stored `coef_ +/- z*se_`, so recovering
+the midpoint sums two nearly-cancelling numbers and recovering the half-width
+subtracts them; both carry an error of order `eps * max(|hi|, |lo|)`.
+
+`lplr_test.mbt` asserted `(hi + lo)/2 == coef` to `1e-12`. On its fixture
+`|coef| ~ 4.6e6`, so `eps * |mid| = 1.03e-9` -- a thousand times the asserted
+bound. It passed on native and failed on all three web backends:
+
+    native    dev = 0
+    wasm-gc   dev = 9.313225746154785e-10   = 0.91 ulp of the midpoint
+
+One rounding step. The test had been passing on native because that step
+happened to land on zero. `examples/fuzz/main.mbt` had the same defect at
+`1e-9` against `se = 1.23e7`, and D2/D3 made it fire (trial 12). Both bounds
+are now derived from the operands' own magnitude. They still discriminate by
+eight orders of magnitude: a genuinely wrong interval misses at `O(z*se)`,
+not `O(eps*|hi|)`.
+
+**D2/D3 did not break either identity. They moved `se` to a magnitude where
+the old bounds stopped being about floating point and started being about
+chance.**
+
+### 9e. Battery
+
+`_verify/_lplr_v1630_battery_1680.py` -- 5 arms, 6 gate subjects, all
+discriminate:
+
+| arm | subject | verdict |
+|---|---|---|
+| M1 | `lplr_confint_identity`, `examples/fuzz` CI check | RED |
+| M2 | `lplr_beta_is_read_per_row` (new) | RED |
+| M3 | `lplr_warning_names_a_documented_stop_reason` | RED |
+| M4 | `lplr_warning_states_the_numbers_are_not_a_solution` | RED |
+| M5 | `lplr_warnings_report_the_degenerate_design`, `lplr_warnings_are_returned_not_printed` | RED |
+
+M5's second subject is the strengthened GATE 5: under the pre-v0.163.0 GATE 5
+it would have stayed green, which is the whole reason that arm exists.
+
+One arm was written wrong first and the battery refused to score it: the
+original M3 deleted `stop_reason` outright and produced an unterminated string
+literal. It returned `ERROR`, not `RED` -- a mutation that does not compile
+has tested nothing. `BUILD_ERROR` is now a distinct outcome from `RED`.

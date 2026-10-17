@@ -183,7 +183,7 @@ pub fn lplr_score_at(
   t_pred : Array[Double],
   a_pred : Array[Double],
   m_pred : Array[Double],
-  beta_start : Double,
+  beta : Array[Double],
   kind : LplrScoreKind,
 ) -> LplrScore {
   // The Newton root of mean(score) gives theta_hat.
@@ -191,7 +191,7 @@ pub fn lplr_score_at(
   let psi : Array[Double] = Array::make(n, 0.0)
   let psi_deriv : Array[Double] = Array::make(n, 0.0)
   for i = 0; i < n; i = i + 1 {
-    let r_hat = t_pred[i] - beta_start * a_pred[i]
+    let r_hat = t_pred[i] - beta[i] * a_pred[i]
     let dt = d[i] - m_pred[i]
     match kind {
       NuisanceSpace => {
@@ -624,21 +624,24 @@ fn concat_d_x(d : Array[Double], x : Matrix) -> Matrix {
 ///   2. Double cross-fit ml_a (also `LogisticRegression` for
 ///      binary D) on `x` -> `D` to obtain inner-fold OOF
 ///      propensity predictions per outer fold.
-///   3. Build per-fold targets `W_inner` from `ml_M` outer-OOF
+///   3. Build per-fold targets `W_inner` from `ml_M` INNER-OOF
 ///      predictions (clipped to `[1e-8, 1 - 1e-8]`, then
-///      `logit`); cross-fit `ml_t` (a `LinearRegression`) on
-///      `x` -> `W_inner` to get `t_hat`.
+///      `logit`) -- upstream's `M_hat["preds_inner"][i][train]`
+///      (`plm/lplr.py:318`); cross-fit `ml_t` (a `LinearRegression`)
+///      on `x` -> `W_inner` to get `t_hat`.
 ///   4. Per fold, compute `beta_f` from inner `W` and
-///      `(d - a_inner)`. Average across folds for the
-///      Newton starting value.
+///      `(d - a_inner)`, and write it onto that fold's TEST rows
+///      (`beta[test] = b_f`, `:323`). Average across rows for the
+///      Newton starting value (`:326`).
 ///   5. `ml_m` supplies `d_tilde = d - m_hat`. Upstream fits it as a
 ///      separate learner, restricted to the `Y = 0` rows under
 ///      `score="nuisance_space"`; this port aliases `m_hat = a_hat`
 ///      (see the `m_pred = a_pred` comment in the body).
 ///   6. Build the score at any `theta` from
-///      `r_i = t_hat_i - beta_start * a_hat_i` (no `theta` in `r`;
-///      see `lplr_score_at` for both upstream formulas -- they
-///      differ, and that difference is what `score` selects).
+///      `r_i = t_hat_i - beta_i * a_hat_i` -- `beta_i` is that ROW's
+///      value, not a shared scalar (`plm/lplr.py:345`); no `theta`
+///      in `r`; see `lplr_score_at` for both upstream formulas -- they
+///      differ, and that difference is what `score` selects.
 ///   7. Newton iteration with `mean(psi)` and `mean(psi_deriv)`.
 ///   8. Variance via the standard linear-score path
 ///      (`var_est(psi_a, psi_b)` with `psi_a = psi_deriv`,
@@ -680,10 +683,11 @@ pub fn DoubleMLLPLR::fit(
     let mut t_pred : Array[Double] = Array::make(n, 0.0)
     let mut m_pred : Array[Double] = Array::make(n, 0.0)
     let mut a_pred : Array[Double] = Array::make(n, 0.0)
-    // v0.83.0+: track the LAST rep's preliminary `beta_start`
+    // v0.83.0+: track the LAST rep's preliminary `beta`
     // so the cache-hit path can skip the inner-OOF /
     // `prelim_beta_per_fold` step entirely.
-    let mut last_beta_start : Double = 0.0
+    // v0.163.0 (D3): per-observation (length `n`), not a scalar.
+    let mut last_beta_start : Array[Double] = []
     // v0.83.0+: track the LAST rep's row-to-fold mapping for
     // the cache writeback.
     let fold_ids : Array[Int32] = Array::make(n, 0)
@@ -697,7 +701,8 @@ pub fn DoubleMLLPLR::fit(
     // v0.83.0+: memoize check (mirrors the PLR / IRM / CVAR
     // / SSM / PLPR pattern). The cache stores the LAST rep's
     // `(t_pred, m_pred, a_pred)` plus row-to-fold mapping; the
-    // `beta_start` scalar is packed as a length-1 array.
+    // `beta` vector is stored alongside as a fourth entry
+    // (v0.163.0: length-`n` per-observation, not a length-1 scalar).
     // Honored only when `n_rep == 1`.
     //
     // v0.109.0: external splits are EXCLUDED from the cache. The key
@@ -747,8 +752,8 @@ pub fn DoubleMLLPLR::fit(
     // printed -- the package deliberately has no output channel.
     let warnings : Array[String] = []
     for r = 0; r < nrep; r = r + 1 {
-      let beta_start : Double = if cache_hit && r == nrep - 1 {
-        // Reuse the cached LAST-rep nuisances + beta_start;
+      let beta_start : Array[Double] = if cache_hit && r == nrep - 1 {
+        // Reuse the cached LAST-rep nuisances + beta;
         // skip all per-fold crossfits. The Newton / score / SE
         // path below is the only computation we re-run.
         let preds = self.fit_cache.predictions
@@ -758,7 +763,7 @@ pub fn DoubleMLLPLR::fit(
           a_pred[i] = preds[2][i]
           fold_ids[i] = self.fit_cache.fold_ids[i]
         }
-        preds[3][0]
+        preds[3]
       } else {
         // v0.109.0: the external splitting wins over the drawn one for
         // the OUTER partition. `check_sample_splitting` already proved
@@ -775,7 +780,14 @@ pub fn DoubleMLLPLR::fit(
         // 1) Outer cross-fit ml_M: E[Y | D, X] (LogisticRegression ->
         // probability of Y = 1). v0.62.0+: routed through
         // `cross_fit_predict_dispatch` so `ml_m` reaches ml_M.
-        let m_hat_outer = cross_fit_predict_dispatch(ml_m, xd, y, outer)
+        //
+        // v0.163.0 (D2): the OUTER OOF is no longer read anywhere below.
+        // `W_inner` and the `beta` regression both moved to the INNER
+        // cross-fit of the same learner (`m_inner_per_fold`), which is
+        // what upstream reads (`plm/lplr.py:318`, `:323`). The outer
+        // cross-fit was deleted rather than left as an unused binding
+        // because an unused `let` is an error under `--deny-warn` -- and
+        // because leaving it invites the next reader to wire it back in.
         // 2) Double cross-fit ml_a: E[D | X] (logistic for binary D,
         // predicted probability of D = 1). Inner fold seeds vary per
         // outer fold so the inner OOFs are deterministic but
@@ -786,6 +798,29 @@ pub fn DoubleMLLPLR::fit(
           ml_m,
           x,
           d,
+          outer,
+          self.n_folds_inner,
+          self.seed + r * 1000 + 7,
+        )
+        // v0.163.0 (D2): the INNER cross-fit of `ml_M` -- E[Y | D, X] -- which
+        // upstream reads at `plm/lplr.py:318`:
+        //
+        //     M_iteration = M_hat["preds_inner"][i][train]
+        //     M_iteration = np.clip(M_iteration, 1e-8, 1 - 1e-8)
+        //     w = scipy.special.logit(M_iteration)
+        //
+        // `w` is `W_inner`, handed to the `ml_t` inner cross-fit (`:332-341`)
+        // and regressed on for `beta[test]` (`:323`). Before this both read
+        // `m_hat_outer`, the OUTER OOF.
+        //
+        // The seed offset is deliberately IDENTICAL to `a_inner_per_fold`'s:
+        // upstream draws both inner partitions from the one
+        // `_DoubleML__smpls__inner`, so the ml_M and ml_a inner OOFs see the
+        // same fold structure there and must here.
+        let m_inner_per_fold : Array[Array[Double]] = double_cross_fit_predict_dispatch(
+          ml_m,
+          xd,
+          y,
           outer,
           self.n_folds_inner,
           self.seed + r * 1000 + 7,
@@ -913,25 +948,29 @@ pub fn DoubleMLLPLR::fit(
         // The alias is restored deliberately rather than left as an oversight.
         // Full measurements: `_verify/LPLR_GATE_BLINDNESS_1680.md`.
         m_pred = a_pred
-        // 3) Per-fold W_inner from the outer-cross-fit M_hat, with
-        // row positions recorded by the outer fold's training set
-        // (upstream's behaviour: `M_iteration = M_hat_inner[i][train]`
-        // where `M_hat_inner[i]` is the *inner* OOF for the
-        // `ml_M` learner). We use the outer OOF for simplicity
-        // because the outer fold structure already keeps the OOF
-        // honest on the test rows, and inner OOF for ml_M would
-        // require the same double-cross-fit scaffolding as ml_a.
+        // 3) Per-fold W_inner, with row positions recorded by the outer
+        // fold's training set. This is upstream's behaviour verbatim
+        // (`M_iteration = M_hat["preds_inner"][i][train]`, i.e. the INNER
+        // out-of-fold prediction, not the outer one).
+        //
+        // Before this the loop read `m_hat_outer`, the OUTER OOF, on the
+        // stated grounds that "inner OOF for ml_M would require the same
+        // double-cross-fit scaffolding as ml_a" -- but `a_inner_per_fold`
+        // had been sitting right above doing exactly that since v0.62.0.
+        // The scaffolding was already there and was simply not used for
+        // this.
         let w_inner : Array[Array[Double]] = []
-        for fold in outer {
-          let ti = fold.train_idx
+        for fi = 0; fi < outer.length(); fi = fi + 1 {
+          let ti = outer[fi].train_idx
+          let mi = m_inner_per_fold[fi]
           let w : Array[Double] = Array::make(ti.length(), 0.0)
           for k = 0; k < ti.length(); k = k + 1 {
-            let mc = if m_hat_outer[ti[k]] < 1.0e-8 {
+            let mc = if mi[k] < 1.0e-8 {
               1.0e-8
-            } else if m_hat_outer[ti[k]] > 1.0 - 1.0e-8 {
+            } else if mi[k] > 1.0 - 1.0e-8 {
               1.0 - 1.0e-8
             } else {
-              m_hat_outer[ti[k]]
+              mi[k]
             }
             w[k] = @math.ln(mc / (1.0 - mc))
           }
@@ -939,24 +978,40 @@ pub fn DoubleMLLPLR::fit(
         }
         t_pred = cross_fit_predict_inner_dispatch(ml_g, x, w_inner, outer)
         // 4) Per-fold preliminary beta.
+        //
+        // v0.163.0 (D3): upstream writes each fold's `b_f` onto that
+        // fold's TEST rows (`beta[test] = b_f`, `plm/lplr.py:323`) and
+        // the score reads the row's own entry. A single averaged scalar
+        // is what this used to produce, which is upstream's Newton START
+        // only. `beta_acc` / `beta_count` are still accumulated because
+        // that average is genuinely needed -- for `theta0`.
         let mut beta_acc = 0.0
         let mut beta_count = 0
+        let beta_vec : Array[Double] = Array::make(n, 0.0)
         for fi = 0; fi < outer.length(); fi = fi + 1 {
           let ti = outer[fi].train_idx
-          let a_inner_for_fold : Array[Double] = Array::make(ti.length(), 0.0)
-          // The inner OOF for row `i` in this fold's training slice
-          // is the inner-fold prediction for that row. `a_inner_per_fold[fi]`
-          // is the *concatenated inner OOF* for the entire outer
-          // training set of fold `fi`, indexed by inner position.
-          let a_full_inner = a_inner_per_fold[fi]
-          for k = 0; k < ti.length(); k = k + 1 {
-            a_inner_for_fold[k] = a_full_inner[k]
-          }
+          // v0.163.0 (D2): the `m_inner` slot used to be handed the `a`
+          // copy, so `beta` was regressed on `logit(a_hat)` twice and
+          // ml_M's inner OOF reached this function exactly never. That is
+          // upstream's `beta[test]` regressed on `W_inner`'s own `m`
+          // (`plm/lplr.py:323`), which is `m_inner_per_fold[fi]`.
           let b_f = prelim_beta_per_fold(
-            a_inner_for_fold, a_inner_for_fold, d, ti,
+            m_inner_per_fold[fi],
+            a_inner_per_fold[fi],
+            d,
+            ti,
           )
           beta_acc = beta_acc + b_f
           beta_count = beta_count + 1
+          // v0.163.0 (D3): upstream keeps `beta` PER OBSERVATION
+          // (`plm/lplr.py:315-323` writes `beta[test] = b_f`) and reads
+          // `beta[i]` for row `i` at `:345` (`r_hat = t_hat - beta * a_hat`).
+          // Only the Newton START averages it (`np.average(beta)`, `:326`).
+          // So each row takes the `b_f` of the fold it was predicted in.
+          let te_rows = outer[fi].test_indices()
+          for j = 0; j < te_rows.length(); j = j + 1 {
+            beta_vec[te_rows[j]] = b_f
+          }
         }
         require(beta_count > 0)
         // Build row->fold_id map for the LAST rep (used by the
@@ -968,7 +1023,7 @@ pub fn DoubleMLLPLR::fit(
             }
           }
         }
-        beta_acc / beta_count.to_double()
+        beta_vec
       }
       // Track last-rep beta_start for the cache writeback.
       if memoize && r == nrep - 1 {
@@ -980,7 +1035,8 @@ pub fn DoubleMLLPLR::fit(
       // \expit(-r)\), so the linear ewton_solve_score\ does not
       // apply. Instead we run a hand-rolled Newton loop here with
       // the per-iteration score at the current \	heta\.
-      let (theta0, _) = lplr_initial_theta(beta_start, d, y, t_pred, a_pred)
+      let beta_scalar = mean(beta_start)
+      let (theta0, _) = lplr_initial_theta(beta_scalar, d, y, t_pred, a_pred)
       let mut theta = theta0
       let mut converged = false
       // v0.145.0: WHY the solver stopped, not merely whether. There are three
@@ -1088,13 +1144,13 @@ pub fn DoubleMLLPLR::fit(
     }
     let (coef, se) = aggregate_coef_se(coefs, ses)
     // v0.83.0+: when memoize is on and the cache missed, write
-    // the freshly-computed fold_ids + nuisances + beta_start
-    // to the cache. `beta_start` is packed as a length-1 array
-    // so it fits the `Array[Array[Double]]` shape of `FitCache`.
+    // the freshly-computed fold_ids + nuisances + beta
+    // to the cache. `beta` is already length-`n`, so it fits the
+    // `Array[Array[Double]]` shape of `FitCache` unchanged.
     let next_cache = if memoize && !cache_hit && nrep == 1 {
       FitCache::from_fit(
         fold_ids,
-        [t_pred, m_pred, a_pred, Array::make(1, last_beta_start)],
+        [t_pred, m_pred, a_pred, last_beta_start],
         self.seed,
         self.n_folds,
         nrep,

@@ -42,12 +42,25 @@ test "lplr_warnings_silent_on_a_healthy_design" {
 }
 
 ///|
-/// GATE 2. The degenerate regime must be REPORTED. alpha = 1.5 is past the
-/// cliff found in v0.140.0 (rootless objective at alpha >= 1.25), so the
-/// solver cannot converge and must say so rather than return a confident
-/// number.
+/// GATE 2. The degenerate regime must be REPORTED. It must say so rather than
+/// return a confident number.
+///
+/// v0.163.0: RE-BASED from `(1000, 1.5, 11)` to `(200, 1.5, 11)`, and the
+/// reason is measured, not asserted. The old fixture asserted that the
+/// objective goes rootless at `alpha >= 1.25` (v0.140.0). D2 gives `W_inner`
+/// the INNER cross-fit of ml_M -- upstream's `M_hat["preds_inner"][i][train]`
+/// at `plm/lplr.py:318` -- and that removes the alpha cliff: over a
+/// 3 x 4 x 2 grid of n in {200,400,800,1000} x alpha in {0.25,1,1.5,2.5} x
+/// seed in {11,17}, every n >= 800 cell is silent on both score names, and
+/// the only cells that warn are n = 200 and one n = 400 cell. The warning
+/// region became a SMALL-SAMPLE phenomenon, which is what a
+/// non-convergence diagnostic should actually track.
+///
+/// So the guarantee is preserved on a fixture that still exercises it. What
+/// is deliberately NOT claimed any more is "alpha = 1.5 is past the cliff" --
+/// see GATE 6, whose alpha-suffix invariant died with that cliff.
 test "lplr_warnings_report_the_degenerate_design" {
-  let model = v1450_lplr_fit(1000, 1.5, 11)
+  let model = v1450_lplr_fit(200, 1.5, 11)
   let w = model.warnings()
   assert_true(w.length() > 0)
   // The warning must NAME THE REPETITION, so a caller running n_rep > 1 can
@@ -62,7 +75,7 @@ test "lplr_warnings_report_the_degenerate_design" {
 /// requiring one of the three documented reasons to be present -- which fails
 /// if someone reduces the message to a constant string.
 test "lplr_warning_names_a_documented_stop_reason" {
-  let model = v1450_lplr_fit(1000, 1.5, 11)
+  let model = v1450_lplr_fit(200, 1.5, 11)
   let w = model.warnings()
   assert_true(w.length() > 0)
   let known = ["degenerate_derivative", "diverged", "exhausted_step_budget"]
@@ -81,7 +94,7 @@ test "lplr_warning_names_a_documented_stop_reason" {
 /// looking at a non-solution. This is the assertion that the diagnostic is
 /// about MEANING and not merely about a boolean.
 test "lplr_warning_states_the_numbers_are_not_a_solution" {
-  let model = v1450_lplr_fit(1000, 1.5, 11)
+  let model = v1450_lplr_fit(200, 1.5, 11)
   let w = model.warnings()
   assert_true(w.length() > 0)
   assert_true(w[0].contains("not a solution"))
@@ -93,13 +106,23 @@ test "lplr_warning_states_the_numbers_are_not_a_solution" {
 /// warnings are RETURNED, never printed. A gate that pins the library's silence
 /// is what stops a later "let me just println it" from quietly reintroducing
 /// unreadable test output for every downstream consumer.
+///
+/// v0.163.0: this gate was VACUOUS and stayed green through the D2 change,
+/// which is how the change got past it in the first place. It compared
+/// `model.warnings()` against itself, so it holds with equal ease on a
+/// channel that returns nothing at all -- and `(1000, 1.5, 11)` had just
+/// become exactly such a channel. It now asserts the fixture actually
+/// produces a warning before asserting that reading it twice is stable,
+/// so it cannot pass on an empty channel.
 test "lplr_warnings_are_returned_not_printed" {
   // The contract under test: `warnings()` is a pure read of the fitted struct
   // and does not itself produce output. Asserted structurally -- the accessor
-  // exists, returns an Array[String], and is stable across calls.
-  let model = v1450_lplr_fit(1000, 1.5, 11)
+  // exists, returns an Array[String], and is stable across calls -- and
+  // NON-TRIVIALLY, on a fixture that does warn.
+  let model = v1450_lplr_fit(200, 1.5, 11)
   let a = model.warnings()
   let b = model.warnings()
+  assert_true(a.length() > 0)
   assert_true(a.length() == b.length())
   for i = 0; i < a.length(); i = i + 1 {
     assert_true(a[i] == b[i])
@@ -107,31 +130,44 @@ test "lplr_warnings_are_returned_not_printed" {
 }
 
 ///|
-/// GATE 6. Across a RANGE of alphas, the diagnostic must separate the two
-/// regimes rather than flip on one fixture. This is the v0.139.0 lesson applied
-/// forward: a verdict about "healthy vs degenerate" drawn from a single probe
-/// is a verdict about one probe. Here the assertion is monotone in the sense
-/// that the set of alphas producing a warning is a SUFFIX -- once the objective
-/// is rootless, going further out must not return to silence.
-test "lplr_warning_appears_only_on_the_degenerate_side_of_the_cliff" {
-  let alphas = [0.25, 0.50, 0.75, 1.00, 1.25, 1.50]
+/// GATE 6. REPLACED in v0.163.0. The old gate asserted that across a range of
+/// alphas the set of warning-producing alphas is a SUFFIX, read off
+/// `(800, alpha, 17)`. D2 removes the alpha cliff that invariant described,
+/// and it does so completely: run unchanged, that sweep is
+/// `[0.25, 0.5, 0.75, 1.0, 1.25, 1.5] -> [0, 0, 0, 0, 0, 0]`, i.e. the
+/// invariant now holds VACUOUSLY -- monotone, yes, but with no warning
+/// anywhere in it, which is why the old guard's `assert_true(warned[last])`
+/// is what caught this rather than the monotonicity itself.
+///
+/// Keeping a monotonicity assertion that any all-zero sweep satisfies would be
+/// exactly the "gate that cannot fail" this audit has been removing, so the
+/// invariant is restated on the axis the measured region actually runs along:
+/// SAMPLE SIZE. At fixed alpha and seed, small n warns and large n does not,
+/// and both ends are asserted -- a suffix-style assertion that passes only
+/// when the channel really is live at the small end and really is quiet at
+/// the large end.
+test "lplr_warning_tracks_sample_size_not_alpha" {
+  let ns = [200, 400, 800, 1000]
   let warned : Array[Bool] = []
-  for a in alphas {
-    let model = v1450_lplr_fit(800, a, 17)
+  for n in ns {
+    let model = v1450_lplr_fit(n, 1.5, 11)
     warned.push(model.warnings().length() > 0)
   }
-  // No silent run after the first warning run -- the set must be a suffix.
-  let mut seen_warning = false
+  // The small end must warn, or this gate would pass on a dead channel.
+  assert_true(warned[0])
+  // The large end must be silent: D2's whole point is that a well-powered
+  // design at alpha = 1.5 no longer needs the warning.
+  assert_true(!warned[warned.length() - 1])
+  // And the channel must not come back at the large end -- once quiet, it
+  // stays quiet as n grows.
+  let mut seen_quiet = false
   let mut monotone = true
   for w in warned {
-    if w {
-      seen_warning = true
-    } else if seen_warning {
+    if !w {
+      seen_quiet = true
+    } else if seen_quiet {
       monotone = false
     }
   }
   assert_true(monotone)
-  // And the degenerate end of the range must actually warn, or this gate would
-  // pass vacuously on a channel that never fires.
-  assert_true(warned[warned.length() - 1])
 }
