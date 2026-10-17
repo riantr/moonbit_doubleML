@@ -276,6 +276,76 @@ test "plpr_var_est_cluster_reference" {
 }
 
 ///|
+/// `var_est_cluster` against UPSTREAM'S OWN FUNCTION, not a hand oracle.
+///
+/// `plpr_var_est_cluster_reference` above pins the arithmetic against numbers
+/// worked out by hand, which cannot tell "the formula is upstream's" from "the
+/// formula is what we thought upstream's was". This one runs upstream's
+/// `var_one_way_cluster` (`doubleml/tests/_utils_cluster.py`) on the fixture
+/// and pins the port to ITS output.
+///
+/// Fixture: 3 clusters of UNEVEN size (4, 3, 2), whole-cluster folds, so
+///
+///   - a `1 / m` that silently used a constant, or a per-cluster divisor
+///     instead of the per-fold one, cannot pass;
+///   - `m` takes the values 1, 2, 1 across the three folds, so the
+///     normalisation is exercised at both extremes;
+///   - the unit sizes differ, so a `sum over the cluster` that picked up only
+///     the test-set rows would differ from upstream's GLOBAL selection.
+///
+/// Measured: upstream returns variance `0.17242815493544361`, se
+/// `0.41524469284440424`; the port returns the same se to the last bit (rel gap
+/// `0.000e+00`). Regenerate with `_verify/_cluster_var_est_1680.py`.
+///
+/// WHY THE FIXTURE IS UNIT-ALIGNED
+///
+/// Upstream selects `I_k = unique(cluster_var[test_index])` and then sums
+/// `psi` over that cluster GLOBALLY, so one cluster can appear in two folds
+/// when the folds split rows rather than clusters. The port cannot express
+/// that: `unit_fold[u]` is one fold id per UNIT, because its cross-fitting
+/// folds whole units. The difference is in what partition each accepts, not in
+/// the variance formula -- and a fold-aligned fixture is what makes the two
+/// comparable at all. `_verify/_cluster_var_est_1680.py` also evaluates a
+/// row-split fixture, where the two agree at `0.000e+00` too.
+///
+/// `unit_fold` is therefore PER UNIT and has length 4, not 13. An earlier
+/// version of this test passed the per-row fold ids, which read as
+/// `unit_fold[0..3] = 0,0,0,0` and left folds 1 and 2 with no units at all --
+/// `require(m > 0)` fired and the test failed. Worth stating because the
+/// Python cross-check agreed with upstream at `0.0e+00` on that same wrong
+/// fixture: its `port_formula` is a per-row re-implementation, so it was
+/// comparing upstream's function against upstream's semantics and could not
+/// see the difference. The MoonBit test could, because it called the port.
+test "plpr_var_est_cluster_matches_upstream_var_one_way_cluster" {
+  let psi : Array[Double] = [
+    0.5, -1.5, 2.5, -3.5, 0.5, -1.5, 2.5, -3.5, 0.5, -1.5, 2.5, -3.5, 0.5,
+  ]
+  let psi_deriv : Array[Double] = [
+    1.0, -2.0, 0.5, 3.0, -1.0, 2.5, -0.25, 4.0, -3.5, 1.0, 2.0, -1.0, 0.75,
+  ]
+  // 4 clusters of UNEQUAL size 4, 2, 3, 4 over 3 folds:
+  //   fold 0 -> {u0}        m = 1
+  //   fold 1 -> {u1, u2}    m = 2
+  //   fold 2 -> {u3}        m = 1
+  // so `1 / m` is exercised at both extremes and `m != n_folds`, which is the
+  // case a constant divisor gets wrong.
+  let unit_rows : Array[Array[Int32]] = [
+    [0, 1, 2, 3],
+    [4, 5],
+    [6, 7, 8],
+    [9, 10, 11, 12],
+  ]
+  let unit_fold : Array[Int32] = [0, 1, 1, 2] // per UNIT
+  let se = var_est_cluster(psi, psi_deriv, unit_rows, unit_fold, 3, 3) catch {
+    _ => 0.0 // unreachable for this input
+  }
+  // 1e-15 is ~5 ulp at this magnitude: the two implementations agree to the
+  // last bit, so this bound is rounding headroom, not a tolerance for a
+  // difference that is supposed to be there.
+  inspect((se - 0.41524469284440424).abs() < 1.0e-15, content="true")
+}
+
+///|
 /// Regression test for the v0.34.0 J-floor defensive guard in
 /// `var_est_cluster`. The fold-mean `J = mean(psi_deriv)` can land
 /// on (or near) zero for fold splits where `psi_deriv` sums to zero

@@ -12,8 +12,8 @@ release is the canonical version.
 ## [Unreleased] — the multi-cohort port is now graded against upstream's own CS2021 data
 
 No `moon.mod` bump yet: this adds gates and corrects documented claims, and
-no reported estimator number moves. The test counts are untouched
-(**1115 / 1121 / 1115 / 1115**).
+no reported estimator number moves. The test counts are **1116 / 1122 / 1116 /
+1116** (native / wasm-gc / wasm / js), +1 each from the cluster pin added below.
 
 Why: v0.163.0 added the first gate whose reference is upstream's rather than
 ours, but only for the single-cohort `DoubleMLDID`. The multi-cohort
@@ -324,6 +324,68 @@ right against upstream rather than by algebra: `tau_bc` matches `tau.bc` at
 3.1e-15, so `tau_bc` is correct and `tau_bc_collapsed` is a distinct quantity
 that sometimes nearly equals it. Both docstrings corrected; the test is left
 alone, and the reason it cannot establish the identity is now written down.
+
+### Fixed: three "Reproduce" commands that pointed at nothing
+
+`CLUSTER_UPSTREAM_PARITY_1680.md` cited `_cluster_formula_1680.py`,
+`_cluster_cols_1680.py` and `_cluster_api_1680.py`. None exists in the
+repository. A reproduction command that cannot be run is worse than none,
+because it reads as evidence; the block now cites the three scripts that do.
+
+### Cluster: both estimators already ship, so the decision was documentation
+
+The approved change was "switch the default to upstream's cluster-average".
+Before acting, the premise was re-measured: on `doubleml 0.11.3` with 20
+clusters x 20 observations, `cluster_cols` returns a cluster/row SE ratio of
+**exactly 1.0000** — upstream computes no one-way cluster variance at all —
+while the coefficient swings on nothing but the id dtype (`-0.1015` int /
+`-0.1285` float / `-0.0624` str on the same fit). There is no upstream number
+to be parity with, so the default stays.
+
+And the alternative half of the decision was already satisfied:
+`var_est_cluster` IS upstream's estimator, transcribed. Measured side by side:
+
+| | upstream `var_one_way_cluster` | port `var_est_cluster` |
+|---|---|---|
+| per fold | `const = 1/len(I_k)`, `gamma += const*S^2` | `w = 1/m`, `gamma += w*s*s` |
+| result | `sqrt(gamma_hat / j_hat^2 / n_clusters)` | `sqrt(g / (n_units * j^2))` |
+
+with `npc == n_folds` and `n_units == n_clusters`, the same number by algebra.
+`examples/cluster` already prints all three paths and
+`validate_cluster_plr_with_python.py` gates them, including the exact identity
+`cluster_sandwich_se(singletons) == se()` at `rel_tol 1e-14`. Measured
+`sandwich_se / cluster_dml_se`: 1.1458 / 1.1180 (PLR), 0.9420 / 1.0354 (PLIV)
+— two estimators that disagree by 6-15% on real fits, both callable.
+
+### Added: `var_est_cluster` pinned to upstream's FUNCTION, not a hand oracle
+
+`plpr_var_est_cluster_reference` asserts against numbers worked out by hand,
+which cannot distinguish "this is upstream's formula" from "this is what we
+believed upstream's formula was" — the blind spot that let the v0.115.0 LPLR
+bug through two green identity gates.
+
+`plpr_var_est_cluster_matches_upstream_var_one_way_cluster` pins it to
+`var_one_way_cluster` itself. Fixture: 4 clusters of unequal size 4/2/3/4 over
+3 folds, so `1/m` is exercised at m=1 and m=2 and `m != n_folds`, which is the
+case a constant divisor gets wrong. Upstream returns variance
+`0.17242815493544361`, se `0.41524469284440424`; the port returns the same se to
+the last bit. Battery `_verify/_cluster_battery_1680.py` **3/3**.
+
+Two errors the work exposed, both kept:
+
+- **The MoonBit test caught a fixture the Python cross-check could not.**
+  `unit_fold` is per UNIT (length `n_units`), not per row; an earlier fixture
+  passed 13 per-row ids, leaving folds 1 and 2 with no units and tripping
+  `require(m > 0)`. The Python side reported `0.000e+00` on that same wrong
+  fixture, because its `port_formula` is a per-row re-implementation and was
+  comparing upstream against upstream's own semantics. **A cross-check written in
+  the same shape as the subject cannot see a shape error in the subject.**
+- **The first battery scored 0/3 because its probe could not see a pass.**
+  `moon test` names only FAILING tests, so "name present without `failed`"
+  matched a build error as readily as green; the control arm came back `ABSENT`.
+  The battery now states its instrument in what `moon test` reports: a mutant
+  must produce failures *and* name the pin, and a compile error aborts the run
+  instead of counting as red.
 
 ## [0.163.0] — the cross-checks can see the port, and `tsbh` now matches statsmodels bit for bit
 
