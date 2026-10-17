@@ -355,6 +355,84 @@ observable is the gate gap `pyexample_lplr.py` already prints every run
 `pub fn` signature, so it wants its own increment with its own before/after
 gap — not a drive-by on the strength of a failure that does not exist.
 
+## 7d. D3 IMPLEMENTED, MEASURED, AND REVERTED — it makes parity worse
+
+The D3 change was implemented in full and measured, because "it is a real
+divergence" and "fixing it improves agreement" are different claims and only
+one of them had been tested.
+
+**What was changed** (all four parts, matching upstream's source):
+
+1. `lplr_score_at`'s `beta_start : Double` became `beta : Array[Double]`, with
+   `r_hat = t_pred[i] - beta[i] * a_pred[i]`.
+2. `fit` stopped averaging the per-fold `b_f` away and instead wrote each
+   fold's value into that fold's **test** rows — `beta[test]`, as upstream does.
+3. The Newton start became `mean(beta_row)`, matching `np.average(beta)`.
+4. The fit cache stored the length-n array instead of a packed length-1 scalar.
+
+`moon test` stayed 1122/1122 — including the five `lplr_score_at` tests, whose
+expected literals did not move, because a constant array gives the same `r_hat`
+a scalar did.
+
+**The gap got worse.**
+
+| | before | after D3 | |
+|---|---|---|---|
+| nuisance_space port mean | 0.506110 | 0.525607 | moved AWAY |
+| nuisance_space upstream mean | 0.392214 | 0.392214 | fixed reference |
+| **nuisance_space gap** | **0.113896** | **0.133393** | **+17%** |
+| instrument port mean | 0.436704 | 0.451248 | moved AWAY |
+| **instrument gap** | **0.024022** | **0.038566** | **+61%** |
+
+The gate still PASSes — the band is 3 sigma over five inner splits and moved
+with the point estimate — which is exactly why the band is not the instrument
+for this question. The band answers "are these two numbers distinguishable";
+the gap answers "how far apart are they", and only the second one registers a
+change as an improvement.
+
+**Reverted.** A faithful transcription that moves a published coefficient
+further from upstream is not a fix, and shipping it would trade a documented
+divergence for a silent one.
+
+### Why the correct formula made the answer worse
+
+Because **`beta` is not the dominant divergence — its inputs are.** Upstream
+computes
+
+    w          = logit(M_hat["preds_inner"][i][train])    # INNER OOF of ml_M
+    d_tilde    = (d - a_hat["preds_inner"][i])[train]     # INNER OOF of ml_a
+    beta[test] = sum(d_tilde * w) / sum(d_tilde**2)
+
+and this port (D2) computes `w` from the **outer** OOF, passing
+`a_inner_for_fold` as both `m_inner` and `a_inner`. So `b_f` here was never
+upstream's `b_f`. Applying upstream's *combination rule* to a non-upstream
+`b_f` does not reproduce upstream's beta — it changes the wrong quantity, and
+the fold-to-fold spread it introduces lands on rows where the old scalar had
+smoothed it over.
+
+That predicts the fix has to land as **D2 + D3 together**, not D3 alone, and
+that the order matters: D3 on its own measures D2's residual error, and D2 on
+its own cannot be scored while the combination rule is still wrong. Both are
+needed before either is worth shipping, and the honest next step is to
+implement D2, then D3 on top, and measure the gap once — not to keep landing
+them separately.
+
+Nothing in this section is speculative: every number above came from
+`pyexample_lplr.py`, whose band, fixture guard and refusal behaviour all ran.
+The reproduce script is `_verify/_lplr_d3_gap_1680.py`; it patches an
+out-of-repo COPY of the gate's expected constant so the repo golden is never
+edited to match whatever the change produces. That ordering matters — editing
+the golden first would have blessed a regression and reported it as agreement.
+
+### A trap worth recording: a gate run from a copy finds the wrong cwd
+
+The first attempt at that script failed with `moon run examples/parity exited
+-1`. The gates derive their working directory from
+`HERE = os.path.dirname(os.path.abspath(__file__))`, so a patched copy parked
+in `_verify/` runs `moon run` from there and fails. The error looks like a
+build failure and is not one. A patched copy has to live in the repo root,
+which is why the script writes it there and removes it in a `finally`.
+
 ## 8. Status
 
 - **Shipped in this series**: `sec_lplr_upstream` in `examples/parity` and
@@ -373,4 +451,10 @@ gap — not a drive-by on the strength of a failure that does not exist.
   `beta[test]` array in the score and the average only as the Newton start).
   **D3 is a real parity defect in its own right** and its own increment; see
   §7c for the source lines.
+- **D3 was implemented, measured, and reverted** (§7d). Correct against
+  upstream's source, but it moves the gate gap the WRONG way — +17% on
+  `nuisance_space`, +61% on `instrument` — because `b_f` is computed from
+  `w = logit(M_outer)` rather than upstream's inner OOF, so D3's inputs are
+  D2's divergence. **D2 must land first**, then D3 on top, measured once.
+
 

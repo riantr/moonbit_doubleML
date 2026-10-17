@@ -440,7 +440,49 @@ This is a genuine upstream-parity defect and it does not depend on D1. Its
 observable is the gate gap `pyexample_lplr.py` already prints every run
 (0.113896 / 0.024022), not a fuzz blowup, and it changes a published `pub fn`
 signature — so it wants its own increment with its own before/after gap rather
-than a drive-by on the strength of a failure that does not exist. Not started.
+than a drive-by on the strength of a failure that does not exist.
+
+### D3 implemented, measured, and REVERTED: the correct formula made it worse
+
+Done properly rather than argued about — all four parts, matching upstream:
+`lplr_score_at` takes `beta : Array[Double]`, `fit` writes each fold's value
+into that fold's test rows instead of averaging it away, the Newton start
+becomes `mean(beta_row)` to match `np.average(beta)`, and the fit cache stores
+the length-n array. `moon test` stayed 1122/1122, including the five
+`lplr_score_at` literal tests, whose expected values did not move because a
+constant array gives the same `r_hat` a scalar did.
+
+The gate gap got **worse**:
+
+| | before | after D3 | |
+|---|---|---|---|
+| nuisance_space gap | 0.113896 | 0.133393 | **+17%** |
+| instrument gap | 0.024022 | 0.038566 | **+61%** |
+| port mean (ns) | 0.506110 | 0.525607 | moved away |
+| upstream mean (ns) | 0.392214 | 0.392214 | fixed reference |
+
+The gate still PASSes, because its band is 3 sigma over five inner splits and
+moved with the point estimate — which is precisely why the band is the wrong
+instrument for this question. The band asks "are these distinguishable"; the
+gap asks "how far apart", and only the gap registers a change as an
+improvement.
+
+**Reverted.** A faithful transcription that moves a published coefficient
+further from upstream is not a fix.
+
+Why it went the wrong way: **`beta` is not the dominant divergence — its inputs
+are.** Upstream takes `w = logit(M_hat["preds_inner"][i][train])`, the inner
+OOF of `ml_M`; this port takes `logit(M_outer)` (that is D2). So `b_f` here was
+never upstream's `b_f`, and applying upstream's *combination rule* to it changes
+the wrong quantity. **D2 must land first, then D3 on top, measured once** — and
+the order matters, because D3 alone only measures D2's residual error.
+
+Measurement note: the gap was read with `_verify/_lplr_d3_gap_1680.py`, which
+patches a COPY of the gate's expected constant rather than the repo golden.
+Editing the golden first would have blessed the regression and reported it as
+agreement. The copy has to live in the repo root — the gates resolve their cwd
+from `HERE`, so a copy parked elsewhere runs `moon run` from the wrong place and
+fails with exit -1, which reads like a build failure and is not one.
 
 ## [0.163.0] — the cross-checks can see the port, and `tsbh` now matches statsmodels bit for bit
 
