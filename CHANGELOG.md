@@ -62,6 +62,43 @@ cluster pin and the new per-row-`beta` gate below.
   what that check is for. Re-pinned with the reason recorded in the file, in
   the same convention as its two previous moves.
 
+### Not shipped, and why -- D1 (upstream's `m_hat` conditioning)
+
+`plm/lplr.py:244-264` fits `ml_m` with per-score conditioning: `Y = 0`
+subsamples for `nuisance_space`, `M*(1-M)` sample weights for `instrument`.
+This port aliases `m_pred = a_pred` -- unconditioned, unweighted -- and that is
+correct for neither. Implemented in full (both branches) on top of D2+D3,
+measured, and reverted.
+
+It is the faithful port, and it produces the best SE agreement measured in
+this series -- SE ratio 1.1549 -> 0.9949 and 1.0269 -> 0.9914. It still does
+not ship:
+
+- **Both gated gaps got worse**: `nuisance_space` 0.007307 -> 0.021078,
+  `instrument` 0.010609 -> 0.010994.
+- **`examples/fuzz` went from 11/11 to FAIL** at trial 141
+  (`|coef| = 1.75e10` against its `1e10` ceiling).
+
+A/B over 200 of fuzz's own designs, same draw on both arms, separates
+"marginal" from "categorical":
+
+| | shipped | + D1 |
+|---|---|---|
+| `\|coef\|` > 1e10 | 2 | 3 |
+| `\|coef\|` > 1e8 | 7 | 10 |
+| of those, warning | 7/7 | 10/10 |
+| max `\|coef\|` | 1.03e11 | **7.93e12** |
+
+The tail is not *created* by D1 -- it exists in the shipped code, and every
+large-coefficient case warns in both arms -- but D1 makes the worst case 77x
+larger. D3 shipped despite moving one proxy gap the wrong way because it
+improved both gated gaps and broke nothing; D1 worsens both and breaks an
+invariant. `_verify/LPLR_GATE_BLINDNESS_1680.md` section 10.
+
+The `0.113896 -> 0.005995` and `0.024022 -> 0.000526` figures an earlier note
+quoted for D1 were measured on the **pre-D2** baseline and have been struck:
+they describe a configuration that no longer exists.
+
 ### Gate holes the change above exposed
 
 - **GATE 5 was vacuous and stayed green through this change.**

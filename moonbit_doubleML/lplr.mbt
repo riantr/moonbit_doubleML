@@ -10,24 +10,28 @@
 /// (where `W = logit(M_0)`) can be estimated with inner-fold OOF
 /// predictions without leaking information from the outer test set.
 ///
-/// Two scores are supported, exactly as upstream:
-///   - `"nuisance_space"`: the per-fold `ml_m` training set is
-///     filtered to rows with `Y = 0` (the "nuisance space" of the
-///     ATE on the treated subsample). The starting `beta` is
-///     computed inside the loop, one per fold, from the inner
-///     predictions.
+/// Two scores are supported, exactly as upstream's SCORE FORMULAS:
+///   - `"nuisance_space"`: `psi_hat * (y*exp(-theta*D)*d_tilde -
+///     d_tilde*(1-Y)*exp(r_hat))`, upstream `plm/lplr.py:522-524`.
+///     The starting `beta` is computed per fold, one per fold, from the
+///     inner predictions.
 ///   - `"instrument"`: the score itself is upstream's instrument-type
 ///     form `(Y - expit(theta*D + r_hat)) * (D - m_hat)`, with the
 ///     derivative upstream gives at `plm/lplr.py:536-538`. The
 ///     starting `beta` is still per-fold.
 ///
-/// v0.105.0: these two used to be inert. `score` was validated and
-/// stored but never read, so both strings returned the
-/// nuisance_space answer bit for bit. If you are upgrading: the
-/// `nuisance_space` numbers move slightly (because `ml_m` is now
-/// fitted on the `Y = 0` subsample instead of being aliased to
-/// `ml_a`), and `instrument` produces a genuinely different
-/// estimate for the first time.
+/// v0.105.0: the two SCORE FORMULAS used to be inert. `score` was
+/// validated and stored but never read, so both strings returned the
+/// nuisance_space answer bit for bit; `instrument` now produces a
+/// genuinely different estimate.
+///
+/// WHAT IS NOT UPSTREAM, and is easy to assume otherwise: upstream also
+/// CONDITIONS WHAT `ml_m` IS FITTED ON, per score
+/// (`plm/lplr.py:244-264`) -- `Y = 0` subsamples for `nuisance_space`,
+/// `M*(1-M)` sample weights for `instrument`. That is implemented on
+/// neither branch here; `m_pred` is aliased to `a_pred`, unconditioned
+/// and unweighted. See the `m_pred = a_pred` block in `fit` for the full
+/// measurement and why it is held off.
 pub struct DoubleMLBinaryData {
   x : Matrix
   y : Array[Double]
@@ -839,16 +843,16 @@ pub fn DoubleMLLPLR::fit(
         //   score == "instrument":     filtered_smpls = smpls  (unfiltered)
         //                               weights = M * (1 - M)
         //
-        // This port previously aliased `m_pred = a_pred` for BOTH, which is
-        // `a_hat` fitted on the whole sample with no conditioning -- correct
-        // for neither. The two branches above are now both implemented.
+        // This port ALIASES `m_pred = a_pred` for BOTH, which is `a_hat`
+        // fitted on the whole sample with no conditioning -- correct for
+        // neither. The two branches above are NOT implemented.
         //
         // The conditioning gates what the model is FITTED on, NOT what it
         // predicts on: the test fold is the full fold in both cases. Reading
         // that the other way round would leave rows in a fallback regime.
         //
-        // It was tried twice and reverted twice before this shipped, and both
-        // reverts were correct at the time:
+        // It was implemented and reverted twice before this, and both reverts
+        // were correct at the time:
         //
         //   * With the old OLS default `ml_m`, restricting to `Y == 0` made
         //     the score nearly unidentified. On `lplr_test`'s n=120 fixture
@@ -856,44 +860,33 @@ pub fn DoubleMLLPLR::fit(
         //     `mean(psi_deriv)` collapsed to -3.2e-8; Newton failed to
         //     converge and `var_est` returned -2.4e6 for an O(0.5)
         //     quantity. On `examples/fuzz` trial 5 it gave `se = 1.3e7`.
-        //   * With a MATCHED-LEARNER configuration (`ml_m = logistic`, the
-        //     only one upstream can mirror, since it rejects a regressor for
-        //     `ml_M`) the conditioning collapsed the shared-rows /
-        //     shared-partition gap to upstream from 0.113896 to 0.005995 --
-        //     19x -- and moved the SE ratio from 1.3256 to 1.0979.
+        //   * In v0.163.0, implemented in FULL (both branches) on top of the
+        //     D2+D3 baseline and measured again. It is the faithful port and
+        //     it drives both SE ratios to ~1.0 (1.1549 -> 0.9949 and
+        //     1.0269 -> 0.9914) -- the best SE agreement measured in this
+        //     series. It still does not ship: both gated gaps got WORSE
+        //     (`nuisance_space` 0.007307 -> 0.021078), and A/B over 200 of
+        //     fuzz's own designs put the worst `|coef|` at 7.93e12 against
+        //     1.03e11 on the shipped state, with `examples/fuzz` going from
+        //     11/11 to FAIL at trial 141. The 0.113896 -> 0.005995 and
+        //     0.024022 -> 0.000526 figures an earlier note quoted here were
+        //     measured on the PRE-D2 baseline and describe nothing that
+        //     exists now.
         //
-        // The second measurement is why this ships now: the default `ml_m` is
-        // a classifier, so the shipped configuration IS the matched
-        // configuration the 19x was measured on. `_verify/LPLR_GATE_BLINDNESS_1680.md`
-        // for the full record; `pyexample_lplr.py` re-measures both numbers on
-        // every CI run.
-        //
-        // ONE CONVENTION DIFFERENCE REMAINS, and it is deliberate: upstream
-        // has NO default `ml_m` -- it is a required argument, and every
-        // upstream call site in this repo passes a classifier. "Upstream's
-        // default is a LogisticRegression" describes this repo's validator,
-        // not upstream.
+        // Full record: `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 8-10.
         //
         // The non-convergence cliff also moves with the conditioning, and NOT
         // by one constant: it is past 1.50 and warning from 1.75 at
         // (n=1000, seed=11), and still silent at 2.50 with warning from 3.00
         // at (n=800, seed=17). Transplanting one fixture's bound onto the
         // other would assert a property of neither.
-        // HELD OFF, and this is the finding rather than a TODO. Enabling the
-        // conditioning described above, together with the bounded default
-        // `ml_m`, collapses the shared-rows / shared-partition gap to upstream
-        // from 0.113896 to 0.005995 on `nuisance_space` -- 19x -- and from
-        // 0.024022 to 0.000526 on `instrument`, 46x, because the `M(1-M)`
-        // weighting there matters too. `pyexample_lplr.py` PASSes with both
-        // numbers measured on every run.
-        //
-        // ---- v0.163.0: `examples/fuzz` does NOT fail today. -------------
+        // HELD OFF, and this is the finding rather than a TODO.
         //
         // An earlier version of this comment read "It still cannot ship:
         // examples/fuzz FAILS", meaning the CONDITIONING. It was written as
-        // though it described the repository, and that reading is wrong:
-        // measured today, `moon run examples/fuzz --target native` reports
-        // ALL 11 SURFACES PASSED in the shipped state. Both recorded failures
+        // though it described the repository, and that reading was wrong for
+        // the shipped state, where `moon run examples/fuzz --target native`
+        // reports ALL 11 SURFACES PASSED. Both recorded failures
         // were in configurations that do not ship --
         //
         //   trial  5, se = 13072741.313829884   old OLS `ml_m` default,
@@ -902,7 +895,7 @@ pub fn DoubleMLLPLR::fit(
         //   trial 25, se = 14771494.100785563   bounded default + THIS
         //                                        conditioning, which is off
         //
-        // So "D1 is blocked on D3" describes a variant that is switched off,
+        // So "D1 is blocked on D3" described a variant that is switched off,
         // not a live red gate. Anyone reading the old wording would have gone
         // looking for a failure that is not there -- this one did.
         //
@@ -912,31 +905,16 @@ pub fn DoubleMLLPLR::fit(
         // workflow. Its passing here is a local measurement, not something CI
         // is holding in place.
         //
-        // ---- the confirmed upstream divergence, stated correctly ---------
+        // ---- the per-observation `beta` divergence is now FIXED ----------
         //
-        // There IS a real difference from upstream here, and reading
-        // `doubleml/plm/lplr.py:315-326` and `:345` pins it exactly:
-        //
-        //     beta = np.zeros(d.shape)
-        //     for i, (train, test) in enumerate(smpls):
-        //         ...
-        //         beta[test] = sum(d_tilde * w) / sum(d_tilde**2)
-        //     self._coef_start_val = np.average(beta)        # Newton start
-        //     ...
-        //     r_hat["preds"] = t_hat["preds"] - beta * a_hat["preds"]
-        //
-        // Upstream keeps `beta` as a PER-OBSERVATION ARRAY -- each test row
-        // carries its own fold's value -- and uses `np.average(beta)` only as
-        // the Newton starting value. This port uses ONE fold-averaged scalar
-        // for BOTH, so `r_hat` is wrong on every row whose fold's beta differs
-        // from the mean. The per-fold `b_f` is already computed at line ~920
-        // and then accumulated into a mean, so the array is one line away.
-        //
-        // A second, smaller difference rides along: `np.average(beta)`
-        // averages over the n-observation array, so it is FOLD-SIZE WEIGHTED,
-        // whereas `beta_acc / beta_count` is the unweighted mean of per-fold
-        // betas. They coincide on equal-size folds and differ on unequal ones
-        // (cluster folds, or an external partition).
+        // The remainder of this block described `beta` being one
+        // fold-averaged scalar against upstream's per-observation array. That
+        // was v0.163.0 (D3) and it SHIPPED, together with D2 above. The only
+        // part still true is the smaller one about fold-size weighting:
+        // `np.average(beta)` averages the n-vector (fold-size weighted) while
+        // the pre-D3 `beta_acc / beta_count` was the unweighted mean of
+        // per-fold betas. They coincide on equal-size folds and differ on
+        // unequal ones (cluster folds, or an external partition).
         //
         // The observable for this is the LPLR GATE GAP, not the fuzz blowup:
         // `pyexample_lplr.py` already prints the port/upstream coefficient gap

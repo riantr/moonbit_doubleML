@@ -633,3 +633,89 @@ One arm was written wrong first and the battery refused to score it: the
 original M3 deleted `stop_reason` outright and produced an unterminated string
 literal. It returned `ERROR`, not `RED` -- a mutation that does not compile
 has tested nothing. `BUILD_ERROR` is now a distinct outcome from `RED`.
+## 10. D1 measured again, on the D2+D3 baseline, and reverted
+
+D1 is the last item the audit left open: upstream's `m_hat` is NOT `a_hat`.
+`plm/lplr.py:244-264` fits `ml_m` with per-score conditioning --
+
+    if self.score == "instrument":
+        weights = M_hat["preds"] * (1 - M_hat["preds"])
+        filtered_smpls = smpls
+    elif self.score == "nuisance_space":
+        filtered_smpls = [(train[y[train] == 0], test) for train, test in smpls]
+        weights = None
+    m_hat = _dml_cv_predict(ml_m, x, d, smpls=filtered_smpls, sample_weights=weights)
+
+-- while this port aliases `m_pred = a_pred`, unconditioned and unweighted.
+Implemented in full (both branches: `Fold::new` over per-fold
+`train[y[train]==0]` for `nuisance_space`, `M*(1-M)` outer-OOF weights for
+`instrument`), measured, and reverted.
+
+The old section 8 numbers for D1 -- `nuisance_space` 0.113896 -> 0.005995,
+`instrument` 0.024022 -> 0.000526 -- were measured on the **pre-D2** baseline
+and no longer describe anything. Re-measured on top of D2+D3:
+
+| | D2+D3 (shipped) | + D1 |
+|---|---|---|
+| `nuisance_space` gap | 0.007307 | 0.021078 (worse) |
+| `instrument` gap | 0.010609 | 0.010994 (worse) |
+| SE ratio, `nuisance_space` | 1.1549 | **0.9949** |
+| SE ratio, `instrument` | 1.0269 | **0.9914** |
+
+D1 is unambiguously the faithful port, and it is the only change in this whole
+series that drives both SE ratios to ~1.0. It still does not ship, because the
+quantity the gate measures moves the wrong way and the estimator gets less
+stable.
+
+### 10a. The stability cost, A/B on identical designs
+
+`examples/fuzz` passes 11/11 on the shipped state and FAILS under D1 at trial
+141 (`|coef| = 1.75e10` against a `1e10` ceiling). Is that marginal or
+categorical? Replicated fuzz's exact design draw -- same
+`n = rng.int(100) + 60`, same inline DGP, same default configuration -- over
+200 designs, on both arms:
+
+| | shipped (D2+D3) | + D1 |
+|---|---|---|
+| designs with `\|coef\|` > 1e10 | 2 | 3 |
+| designs with `\|coef\|` > 1e8 | 7 | 10 |
+| of those, warning | 7/7 | 10/10 |
+| **max `\|coef\|`** | **1.03e11** | **7.93e12** |
+
+So the tail is **not created** by D1 -- it is present in the shipped code, 2
+breaches per 200 designs, and every single large-coefficient case warns in both
+arms. What D1 does is make it **77x worse at the maximum** and add three more
+blow-ups. The recorded hold's reason ("the non-convergence cliff") reproduces,
+and it reproduces on the current classifier default, not only on the old OLS
+one the original note blamed it on.
+
+The warning channel catching 10/10 is the reason this is a judgement call
+rather than an easy call: the diagnostic is honest about every blow-up. But
+`examples/fuzz`'s `|coef| < 1e10` invariant is a real stability property, and
+loosening it to accommodate D1 would be editing a gate to fit a regression.
+
+### 10b. Why this is not the D3 decision again
+
+D3 shipped despite moving the `instrument` gap the wrong way, because it is
+the faithful port and it improved everything else. D1 gets the same treatment
+and lands the other way:
+
+- D3 improved **both gated gaps**. D1 worsens both (0.0073 -> 0.0211 and
+  0.0106 -> 0.0110).
+- D3 left every invariant intact. D1 breaks one the shipped state passes.
+- D3's cost was inside the noise; D1's cost is a 77x larger tail.
+
+An unmeasured proxy cannot adjudicate fidelity, but it can and does register a
+regression. Fidelity to `m_hat`'s conditioning is real and recorded here; it is
+simply not worth a 77x tail on the small-n designs the package has to survive.
+
+### 10c. A defect this found that ships
+
+Reverting D1 was not a no-op. The half-width half of `lplr_confint_identity`
+still carried the magic `1e-9` while the midpoint half had been given a derived
+bound -- an inconsistency the D2+D3 increment introduced and half-fixed. D1
+exposed it by moving `se` to 8.25e6, where the half-width deviation is
+1.86e-9 against `eps*scale = 8.61e-9`. On the shipped state both halves
+measure 0 with `eps*scale = 2.94e-9`, so the old bound sat **2.9x below one
+rounding step** and passed only because the step happened to be zero. One
+derived tolerance now covers both halves.

@@ -172,10 +172,30 @@ test "lplr_confint_identity" {
   let (lo, hi) = fitted.confint()
   let z = 1.959963984540054
   let half_width = (hi - lo) / 2.0
-  inspect((half_width - z * fitted.se()).abs() < 1.0e-9, content="true")
+  // ONE tolerance, derived once, used for BOTH halves of the identity.
+  //
+  // `confint()` returns the stored `coef_ +/- z*se_`, so BOTH halves recover
+  // a small quantity by cancelling two large ones and both carry an error of
+  // order `eps * max(|hi|, |lo|)`. Measured on the SHIPPED state:
+  //
+  //     coef = -4.617631e6   se = 4.403419e6
+  //     eps*scale = 2.9416857546615477e-9     (so the old 1e-9 bound was
+  //                                           ~2.9x below one step)
+  //     half-width dev = 0        midpoint dev = 0     (native)
+  //
+  // Zero on native is luck, not arithmetic: the midpoint half measured
+  // 9.31e-10 = 0.91 ulp on wasm-gc on this same fixture, and the half-width
+  // half broke outright on wasm-gc at `1e-9` against the same 1e-9-scale
+  // operands. A bound that sits below the resolution of the operation is a
+  // statement about rounding luck.
+  //
+  // It still discriminates by eight orders of magnitude: a genuinely wrong
+  // interval (one end built with a different `z`) misses at `O(z*se)` = 8.6e6,
+  // not `O(1e-8)`.
   let scale = if hi.abs() > lo.abs() { hi.abs() } else { lo.abs() }
-  let mid_tol = 4.0 * 2.220446049250313e-16 * scale
-  inspect(((hi + lo) / 2.0 - fitted.coef()).abs() <= mid_tol, content="true")
+  let tol = 4.0 * 2.220446049250313e-16 * scale
+  inspect((half_width - z * fitted.se()).abs() <= tol, content="true")
+  inspect(((hi + lo) / 2.0 - fitted.coef()).abs() <= tol, content="true")
 }
 
 ///|
