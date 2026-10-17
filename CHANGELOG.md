@@ -484,6 +484,52 @@ agreement. The copy has to live in the repo root — the gates resolve their cwd
 from `HERE`, so a copy parked elsewhere runs `moon run` from the wrong place and
 fails with exit -1, which reads like a build failure and is not one.
 
+### D2 implemented, measured, reverted: it is where the gap lives
+
+Implemented against `plm/lplr.py:317-323` / `:332-341`: an inner cross-fit of
+`ml_M` on `(X, D) -> Y` with the same seed offset as `ml_a`'s (upstream draws
+both from one `_DoubleML__smpls__inner`); `W_inner` reads it, so
+`w = logit(clip(M_inner))` instead of `logit(M_outer)`; and
+`prelim_beta_per_fold` receives `m_inner` and `a_inner` as separate arrays —
+it had been handed `a_inner` for both, so `beta`'s `w` was rebuilt from
+`ml_a`'s prediction where upstream uses `ml_M`'s. The now-unread outer `ml_M`
+fit was deleted with it.
+
+**The gap collapsed.**
+
+| | before | after D2 |
+|---|---|---|
+| nuisance_space gap | 0.113896 | **0.027097** — 4.2x |
+| instrument gap | 0.024022 | **0.008251** — 2.9x |
+| SE ratio, nuisance_space | 1.3256 | **1.1480** |
+| SE ratio, instrument | 1.0724 | **1.0238** |
+
+So the divergence is dominated by `W_inner`'s outer OOF, not by `beta` — the
+opposite of what the earlier note concluded, and the same lesson one level
+down: the combination rule was wrong, but the inputs were wronger, so fixing
+the rule alone applied a correct operation to an incorrect argument.
+
+### Why D2 is still not shipped
+
+It silences the warning channel. Four gates in `expand_v145_test.mbt` assert
+that `make_lplr_LZZ2020(1000, alpha=1.5, seed=11)` MUST warn (rootless
+objective at `alpha >= 1.25`); after D2 it converges silently.
+
+A probe swept `alpha = 0.25 .. 2.25`: every fit is silent and the coefficients
+are smooth and monotone (.0694, .3216, .5971, .8277, 1.0471, 1.3146, 1.5170,
+1.6918, 2.0479). So the `alpha >= 1.25` degeneracy was a **symptom** of the
+outer-OOF `W_inner`, not a property of the design. But the channel then has no
+reachable input in that range while four gates assert it does, and no wider
+sweep was run, so they cannot be re-based. Shipping would mean either deleting
+the gates — dropping the "never returns a confident wrong number" guarantee on
+no evidence the failure mode is gone — or leaving them red. Reverted; baseline
+re-verified (`0.113896 / 0.024022`, PASS, 1122/1122).
+
+Unblocking order: (1) sweep `n`, `n_folds`, `n_folds_inner`, `score` and the
+`expand_v1410_*` degenerate designs for an input that still fails to converge,
+and re-base the gates onto it; (2) failing that, replace the fixture gates with
+a gate on the CHANNEL itself; (3) only then retry D3 on top, measured.
+
 ## [0.163.0] — the cross-checks can see the port, and `tsbh` now matches statsmodels bit for bit
 
 `moon.mod` moves 0.162.0 -> 0.163.0. The test counts are untouched

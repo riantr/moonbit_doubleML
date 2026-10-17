@@ -424,6 +424,83 @@ out-of-repo COPY of the gate's expected constant so the repo golden is never
 edited to match whatever the change produces. That ordering matters — editing
 the golden first would have blessed a regression and reported it as agreement.
 
+## 7e. D2 IMPLEMENTED AND MEASURED — it is where the gap lives (also reverted)
+
+The §7d conclusion said D2 must land first. It was implemented and measured.
+
+**The change**, all matching `plm/lplr.py:317-323` and `:332-341`:
+
+1. added `m_inner_per_fold`, the INNER cross-fit of `ml_M` on `(X, D) -> Y`,
+   with the same seed offset as `a_inner_per_fold` (upstream draws both inner
+   partitions from the one `_DoubleML__smpls__inner`, so they must coincide);
+2. `W_inner` now reads it, so `w = logit(clip(M_inner))` instead of
+   `logit(M_outer)` — this also feeds the `ml_t` inner cross-fit;
+3. `prelim_beta_per_fold` now receives `m_inner` and `a_inner` as SEPARATE
+   arrays. It had been passed `a_inner` for both, so `beta`'s `w` was being
+   rebuilt from `ml_a`'s prediction where upstream uses `ml_M`'s;
+4. the outer `ml_M` fit `m_hat_outer` lost its last reader (upstream consumes
+   it only through `d_tilde = d - m_hat`, which this port aliases to `a_pred`
+   while D1 is off) and was deleted.
+
+**The gap collapsed.**
+
+| | before | after D2 |
+|---|---|---|
+| nuisance_space gap | 0.113896 | **0.027097** — 4.2x |
+| instrument gap | 0.024022 | **0.008251** — 2.9x |
+| SE ratio, nuisance_space | 1.3256 | **1.1480** |
+| SE ratio, instrument | 1.0724 | **1.0238** |
+
+So the LPLR divergence is dominated by `W_inner`'s outer OOF, not by `beta`.
+That is the opposite of what §7b concluded and what I carried into D3, and it
+is the same lesson one level down: the *combination rule* was wrong, but the
+*inputs* were wronger, and fixing the rule alone moved the answer the wrong
+way because it applied a correct operation to an incorrect argument.
+
+## 7f. Why D2 is still not shipped: it silences the warning channel
+
+D2 turns four gates red — `expand_v145_test.mbt:38-136` — all of which assert
+that `make_lplr_LZZ2020(1000, alpha=1.5, seed=11)` **must** warn because the
+objective goes rootless at `alpha >= 1.25`. After D2 it converges silently.
+
+A vanishing warning has two causes with opposite responses, so a temporary
+probe swept `alpha = 0.25 .. 2.25` (9 values, a 9x range) on the port:
+
+| alpha | 0.25 | 0.5 | 0.75 | 1.0 | 1.25 | 1.5 | 1.75 | 2.0 | 2.25 |
+|---|---|---|---|---|---|---|---|---|---|
+| coef | .0694 | .3216 | .5971 | .8277 | 1.0471 | 1.3146 | 1.5170 | 1.6918 | 2.0479 |
+| se | .1361 | .1532 | .1783 | .2063 | .2411 | .2873 | .3362 | .3837 | .5099 |
+| warnings | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+**D2 does not produce garbage at high alpha — it produces a smooth, monotone,
+sensible answer across the whole range.** So the `alpha >= 1.25` degeneracy was
+a *symptom* of the outer-OOF `W_inner`, not a property of the design.
+
+But: **the warning channel then has no reachable input in that range**, while
+four gates assert it does. Shipping D2 would mean either deleting those gates —
+giving up the "the solver never returns a confident wrong number" guarantee on
+no evidence that the failure mode is gone — or leaving them red. Neither is
+acceptable, and I did not find an input that still triggers non-convergence, so
+I cannot re-base them.
+
+**Reverted**, and the baseline re-verified exactly (`0.113896 / 0.024022`,
+PASS, `moon test` 1122/1122).
+
+What would unblock it, in order:
+
+1. **Sweep wider** for a still-degenerate input — other `n`, `n_folds`,
+   `n_folds_inner`, `score`, and the degenerate designs `expand_v1410_*` built.
+   If one exists, re-base the four gates onto it and ship D2.
+2. If none exists, the channel is genuinely unreachable for LPLR after D2, and
+   the four gates should be replaced by a gate on the CHANNEL (does it still
+   fire when handed a `degenerate_derivative`?) rather than on one fixture.
+3. Only after (1) or (2) is settled does D3 become worth retrying on top — and
+   per §7d it should be re-measured there, not assumed to help.
+
+Note the ordering trap this exposes: §7d's advice to "do D2 then D3" was right
+about the *cause* and wrong about the *cost*, because D2 has a gate consequence
+that has to be resolved before either is worth landing.
+
 ### A trap worth recording: a gate run from a copy finds the wrong cwd
 
 The first attempt at that script failed with `moon run examples/parity exited
