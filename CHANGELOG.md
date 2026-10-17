@@ -387,6 +387,61 @@ Two errors the work exposed, both kept:
   must produce failures *and* name the pin, and a compile error aborts the run
   instead of counting as red.
 
+### Fixed: a source comment that read as a live failure
+
+`lplr.mbt` carried, inside a source file and with nothing to mark the referent:
+
+    It still cannot ship:
+        examples/fuzz FAILS.
+
+"It" meant the D1 conditioning, which is not enabled — but read cold it
+describes the repository, and it does not. Measured today:
+
+    $ moon run examples/fuzz --target native
+    ALL FUZZ SURFACES PASSED (no invariant violations)      [11/11 surfaces]
+
+Both recorded failures were in configurations that do not ship: trial 5
+(`se = 13072741.313829884`) under the old OLS `ml_m` default, since fixed, and
+trial 25 (`se = 14771494.100785563`) with the bounded default **plus D1**, which
+is off. So "D1 is blocked on D3" describes a variant that is switched off, not
+a red gate. This session read the comment as live, and spent a `moon run`
+discovering otherwise.
+
+Two things now stated in the source rather than left implicit: the green
+measurement above, and that **`fuzz` is registered `scope="full"` and run by no
+workflow** — neither `check.yml` nor `publish.yml` passes `--full` except the
+service step's `--only api_test,security_dast`. Its passing is a local
+measurement, not a property CI holds in place.
+
+### D3 restated from upstream's source: a real parity defect, independent of D1
+
+`doubleml/plm/lplr.py:315-326` and `:345` settle what the port's comment only
+described:
+
+    beta = np.zeros(d.shape, dtype=float)
+    for i, (train, test) in enumerate(smpls):
+        beta[test] = np.sum(d_tilde * w) / np.sum(d_tilde**2)
+    self._coef_start_val = np.average(beta)        # Newton start only
+    r_hat["preds"] = t_hat["preds"] - beta * a_hat["preds"]
+
+Upstream keeps `beta` as a **per-observation array** — each test row carries its
+own fold's value — and uses the average **only** as the Newton starting value.
+This port uses one fold-averaged scalar for both, so `r_hat` is wrong on every
+row whose fold's beta differs from the mean, and `exp(r_hat)` (present in `psi`,
+not only `psi_deriv`) amplifies it. The per-fold `b_f` is already computed one
+line above the accumulator and then discarded.
+
+A second difference rides along: `np.average(beta)` is over the n-observation
+array and therefore **fold-size weighted**, while `beta_acc / beta_count` is
+the unweighted mean of per-fold betas. Equal on equal-size folds, different on
+cluster folds or an external partition.
+
+This is a genuine upstream-parity defect and it does not depend on D1. Its
+observable is the gate gap `pyexample_lplr.py` already prints every run
+(0.113896 / 0.024022), not a fuzz blowup, and it changes a published `pub fn`
+signature — so it wants its own increment with its own before/after gap rather
+than a drive-by on the strength of a failure that does not exist. Not started.
+
 ## [0.163.0] — the cross-checks can see the port, and `tsbh` now matches statsmodels bit for bit
 
 `moon.mod` moves 0.162.0 -> 0.163.0. The test counts are untouched

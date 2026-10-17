@@ -852,28 +852,63 @@ pub fn DoubleMLLPLR::fit(
         // weighting there matters too. `pyexample_lplr.py` PASSes with both
         // numbers measured on every run.
         //
-        // It still cannot ship:
+        // ---- v0.163.0: `examples/fuzz` does NOT fail today. -------------
         //
-        //     examples/fuzz FAILS. Before any of this it failed at trial 5
-        //     with `se = 13072741.313829884`; with the bounded default AND
-        //     the conditioning it fails at trial 25 with
-        //     `se = 14771494.100785563`. Different trial, same failure.
+        // An earlier version of this comment read "It still cannot ship:
+        // examples/fuzz FAILS", meaning the CONDITIONING. It was written as
+        // though it described the repository, and that reading is wrong:
+        // measured today, `moon run examples/fuzz --target native` reports
+        // ALL 11 SURFACES PASSED in the shipped state. Both recorded failures
+        // were in configurations that do not ship --
         //
-        // So "bound the default `ml_m` first" -- the prerequisite this comment
-        // and the original note both asserted -- is MEASURED INSUFFICIENT. The
-        // blow-up is not an unbounded propensity, because the propensity is
-        // now in [0, 1] by construction. What is left is `beta_start`:
-        // `r_hat = t_pred - beta_start * a_pred`, and `psi_deriv` carries
-        // `exp(r_hat)`, so a runaway `beta_start` inflates `r_hat` and
-        // collapses `mean(psi_deriv)` exactly as recorded above (beta_start
-        // -4.75, mean(psi_deriv) -3.2e-8, var_est -2.4e6).
+        //   trial  5, se = 13072741.313829884   old OLS `ml_m` default,
+        //                                        fixed by the classifier
+        //                                        default (v0.163.0)
+        //   trial 25, se = 14771494.100785563   bounded default + THIS
+        //                                        conditioning, which is off
         //
-        // Upstream recomputes `beta` PER FOLD inside the score; this port uses
-        // one fold-averaged scalar. That is the structural difference, and it
-        // is a separate change from this one -- a bigger one, since it changes
-        // what the Newton loop iterates over. The two earlier reverts were
-        // correct for a third reason than the one they gave, and the
-        // prerequisite they named was never sufficient.
+        // So "D1 is blocked on D3" describes a variant that is switched off,
+        // not a live red gate. Anyone reading the old wording would have gone
+        // looking for a failure that is not there -- this one did.
+        //
+        // CAVEAT ON THE GREEN: `fuzz` is registered as a **full-scope** check,
+        // and no workflow passes `--full` except the service step, which runs
+        // `--only api_test,security_dast`. So `fuzz` is not executed by ANY
+        // workflow. Its passing here is a local measurement, not something CI
+        // is holding in place.
+        //
+        // ---- the confirmed upstream divergence, stated correctly ---------
+        //
+        // There IS a real difference from upstream here, and reading
+        // `doubleml/plm/lplr.py:315-326` and `:345` pins it exactly:
+        //
+        //     beta = np.zeros(d.shape)
+        //     for i, (train, test) in enumerate(smpls):
+        //         ...
+        //         beta[test] = sum(d_tilde * w) / sum(d_tilde**2)
+        //     self._coef_start_val = np.average(beta)        # Newton start
+        //     ...
+        //     r_hat["preds"] = t_hat["preds"] - beta * a_hat["preds"]
+        //
+        // Upstream keeps `beta` as a PER-OBSERVATION ARRAY -- each test row
+        // carries its own fold's value -- and uses `np.average(beta)` only as
+        // the Newton starting value. This port uses ONE fold-averaged scalar
+        // for BOTH, so `r_hat` is wrong on every row whose fold's beta differs
+        // from the mean. The per-fold `b_f` is already computed at line ~920
+        // and then accumulated into a mean, so the array is one line away.
+        //
+        // A second, smaller difference rides along: `np.average(beta)`
+        // averages over the n-observation array, so it is FOLD-SIZE WEIGHTED,
+        // whereas `beta_acc / beta_count` is the unweighted mean of per-fold
+        // betas. They coincide on equal-size folds and differ on unequal ones
+        // (cluster folds, or an external partition).
+        //
+        // The observable for this is the LPLR GATE GAP, not the fuzz blowup:
+        // `pyexample_lplr.py` already prints the port/upstream coefficient gap
+        // on both score names every run. Changing the score to the per-fold
+        // array is a behaviour change to a published `pub fn` signature, so it
+        // wants its own increment with its own before/after gap -- not a drive
+        // by on the strength of a failure that does not exist.
         //
         // The alias is restored deliberately rather than left as an oversight.
         // Full measurements: `_verify/LPLR_GATE_BLINDNESS_1680.md`.

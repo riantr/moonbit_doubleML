@@ -287,6 +287,74 @@ So the default change ships and D1 does not. D1 is now blocked on **D3**, not
 on the default — which reorders the work and is a bigger change, since it
 alters what the Newton loop iterates over.
 
+## 7c. CORRECTION (v0.163.0): `examples/fuzz` passes today
+
+§7b and §8 both record a fuzz failure. Re-measured:
+
+    $ moon run examples/fuzz --target native
+    === fuzz harness (300 trials per surface, fixed seed 20260824) ===
+    [1/11] .. [11/11]   all OK
+    ALL FUZZ SURFACES PASSED (no invariant violations)
+
+**The repository is green.** Both recorded failures were in configurations that
+do not ship:
+
+| trial | se | configuration | status |
+|---|---|---|---|
+| 5 | 13072741.313829884 | old OLS `ml_m` default | fixed by the classifier default (v0.163.0) |
+| 25 | 14771494.100785563 | bounded default **+ D1** | D1 is **off** |
+
+So "D1 is blocked on D3" is a statement about a variant that is switched off,
+not about a live red gate. §7b's framing — "it still cannot ship" — is about
+enabling D1, and that remains true; but §8's "D3 is the live blocker" reads as
+though something is currently red, and nothing is.
+
+Two consequences worth stating plainly:
+
+1. **The source comment was the thing that misled.** `lplr.mbt` carried the line
+   "It still cannot ship: `examples/fuzz` FAILS" inside a file, with no marker
+   that "it" meant the not-yet-enabled conditioning. This session read it as a
+   live failure and had to spend a `moon run` discovering otherwise. Rewritten
+   to name the variant, the trial numbers, and the green measurement.
+2. **`fuzz` is not run by any workflow.** It is registered `scope="full"`, and
+   neither `check.yml` nor `publish.yml` passes `--full` except the service step
+   (`--only api_test,security_dast`). Its passing is a local measurement, not a
+   property CI holds in place.
+
+### D3 restated from upstream's source, not from the port's comment
+
+`doubleml/plm/lplr.py:315-326` and `:345`:
+
+    beta = np.zeros(d.shape, dtype=float)
+    for i, (train, test) in enumerate(smpls):
+        ...
+        beta[test] = np.sum(d_tilde * w) / np.sum(d_tilde**2)
+
+    # Use preliminary beta estimates as starting value for root finding
+    self._coef_start_val = np.average(beta)
+
+    ...
+    r_hat["preds"] = t_hat["preds"] - beta * a_hat["preds"]
+
+Upstream keeps `beta` as a **per-observation array** — each test row carries
+its own fold's value — and uses `np.average(beta)` **only** as the Newton
+starting value. This port uses a single fold-averaged scalar for *both*, so
+`r_hat = t_pred - beta_start * a_pred` is wrong on every row whose fold's beta
+differs from the mean, and `exp(r_hat)` — which appears in `psi` as well as
+`psi_deriv` — amplifies exactly that error.
+
+A second difference rides along: `np.average(beta)` averages over the
+n-observation array and is therefore **fold-size weighted**;
+`beta_acc / beta_count` is the unweighted mean of per-fold betas. They coincide
+on equal-size folds and differ on unequal ones — cluster folds, or an external
+partition.
+
+**So D3 is a genuine upstream-parity defect, and it is independent of D1.** Its
+observable is the gate gap `pyexample_lplr.py` already prints every run
+(0.113896 / 0.024022 today), not a fuzz blowup. It also changes a published
+`pub fn` signature, so it wants its own increment with its own before/after
+gap — not a drive-by on the strength of a failure that does not exist.
+
 ## 8. Status
 
 - **Shipped in this series**: `sec_lplr_upstream` in `examples/parity` and
@@ -297,8 +365,12 @@ alters what the Newton loop iterates over.
   is what upstream refuses (§7b). Measured green: fuzz 11/11, `moon test`
   1115/1115, gate PASS.
 - **Still not shipped**: D1. Its prerequisite was tested and found
-  insufficient (§7b); it is now blocked on **D3**, the fold-averaged
-  `beta_start`.
+  insufficient (§7b); it is blocked on **D3**, the fold-averaged
+  `beta_start`. Re-measured per §7c: this blocks *enabling D1*, and is not a
+  live failure today.
 - **Still open**: D2 (`W_inner` uses outer OOF; upstream uses inner OOF) and
-  D3 (one fold-averaged `beta_start`; upstream uses per-fold `beta[test]`).
-  D3 is the live blocker for D1, not a background item.
+  D3 (one fold-averaged `beta_start`; upstream uses a per-observation
+  `beta[test]` array in the score and the average only as the Newton start).
+  **D3 is a real parity defect in its own right** and its own increment; see
+  §7c for the source lines.
+
