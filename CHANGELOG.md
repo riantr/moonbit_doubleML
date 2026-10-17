@@ -9,6 +9,47 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.163.3] — LPLR reads its own nuisances the way upstream does, and
+three gates that could not fail now can
+
+### The `v0.163.2` tag shipped nothing either; this entry is the release
+
+`v0.163.1` died at `Check typos` and `v0.163.2` died one gate later at
+`QA loop (fast scope)`, FAIL=9, all nine `pyexample_*` checks reporting
+`ModuleNotFoundError: No module named 'numpy'` in ~0.09s. `Publish to
+Mooncakes` and `Create GitHub Release` were skipped both times, so
+mooncakes has not seen this body of work at all. Both tags stay where
+they are and neither number is reused.
+
+### Fixed
+
+- **`publish.yml` never installed the Python dependencies.** The nine
+  `pyexample_*` gates import numpy, pandas, scikit-learn and doubleml.
+  `check.yml` had that bug, was fixed in 487c84b, and went green -- but
+  the fix was made *per workflow* instead of *per bug*, so
+  `publish.yml`, which runs the same QA loop two steps before publishing,
+  kept it. The release path is the only place it shows: a developer
+  machine always passes these checks because it already has numpy.
+  `publish.yml` now installs the same line as `check.yml`'s two Python
+  jobs, so the three cannot drift into disagreeing about what the port is
+  compared against.
+
+### Verified before tagging this time
+
+- `Check typos`, the gate that killed v0.163.1, reproduced with the
+  PINNED typos v1.19.0 over a clean `git archive` export rather than the
+  working tree: exit 0, 580 files, no findings. This step exists only in
+  `publish.yml`, so no green master run had ever covered it.
+- Master CI green on the release commit, including the `QA loop` job.
+- Full local CI simulation with `--release-tag v0.163.3`: 0 FAIL, with
+  `Resolve release version` passing, which is what proves the tag agrees
+  with `moon.mod`.
+
+`moon.mod` moves 0.163.2 -> 0.163.3. This one **does** move reported numbers: the
+LPLR coefficient and standard error change for every fit, because two
+upstream inputs they were computed from were wrong. The test counts are
+**1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
 ## [0.163.2] — LPLR reads its own nuisances the way upstream does, and
 three gates that could not fail now can
 

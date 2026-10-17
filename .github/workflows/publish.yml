@@ -91,6 +91,27 @@ jobs:
       - name: Update dependencies
         run: moon update
 
+      # The nine `pyexample_*` checks in the fast QA scope import numpy,
+      # pandas, scikit-learn and doubleml. This workflow had no dependency
+      # install, so every one of them died in ~0.09s with
+      # `ModuleNotFoundError: No module named 'numpy'`, and
+      # `QA loop (fast scope)` failed with FAIL=9 on the v0.163.2 release.
+      #
+      # This is the SECOND workflow to carry the bug. `check.yml` had it, was
+      # fixed in 487c84b, and went green -- but nobody checked whether
+      # `publish.yml` had the same shape, and it did, because the fix was
+      # made per-workflow rather than per-bug. A local machine always passes
+      # these checks because it already has numpy, so nothing here is
+      # visible until the release path runs on a clean runner.
+      #
+      # Same install line as check.yml's qa-loop job and its
+      # python-cross-check job, so the three cannot drift into disagreeing
+      # about what the port is compared against.
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install doubleml numpy pandas statsmodels scikit-learn "rdrobust>=2,<3"
+
       - name: Check package (all 4 backends, --deny-warn)
         run: |
           for target in native wasm wasm-gc js; do
