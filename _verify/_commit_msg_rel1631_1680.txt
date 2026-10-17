@@ -1,0 +1,22 @@
+release: 0.163.1 -- README synced, and the small-n divergence now disclosed
+
+Version bump, README sync, CHANGELOG promotion. Per the repo's release order
+(local CI green, THEN every README version reference, THEN the tag), this
+commit is the sync; the tag is cut only after readme-sync and the rest of the
+sim are green on it.
+
+The two test counts in the README were already stale and are corrected from a
+fresh `moon test` run, not from memory: 1116/1116/1116 -> 1117/1117/1117 and
+wasm-gc 1122 -> 1123. The `.mbt` file count (220 = 65 + 129 + 26) was
+re-measured and is already correct, so it stands.
+
+New README section: the LPLR small-n divergence, stated as reported and NOT
+gated. It was the headline finding of this cycle and the README did not
+mention it at all, while `pyexample_lplr.py` prints it on every run. The
+section gives the three measured rows, the 91-of-200 warning count, the
+mechanism (the port damps the Newton to 0.25, scipy does not), why the
+damping stays despite being unfaithful, and both falsified candidate causes
+so the next reader does not retry them.
+
+Encodings verified after write: README.mbt.md and moon.mod LF-only no BOM,
+CHANGELOG.md CRLF header with LF body preserved.

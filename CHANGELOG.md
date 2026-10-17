@@ -9,7 +9,7 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
-## [Unreleased] — LPLR reads its own nuisances the way upstream does, and
+## [0.163.1] — LPLR reads its own nuisances the way upstream does, and
 three gates that could not fail now can
 
 No `moon.mod` bump yet. This one **does** move reported numbers: the LPLR
