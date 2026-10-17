@@ -1089,3 +1089,99 @@ with the outer cross-fit still filling `outer[fi].test_indices()`.
 try, and it is a candidate for why the port's Newton runs away where
 upstream's does not -- but a candidate, not a conclusion. Nothing above
 licenses removing the clamp yet.
+
+## 15. The `a_hat` candidate is measured, and falsified
+
+Section 14c named the `a_hat` double-cross-fit as "a candidate for why the
+port's Newton runs away where upstream's does not". It was a candidate with
+no measurement behind it. Here is the measurement.
+
+The arm, implemented in `_verify/_lplr_ahat_1680.py`, closes the gap:
+
+    a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
+    for fi_a = 0; fi_a < outer.length(); fi_a = fi_a + 1 {
+      let ti_a = outer[fi_a].train_idx
+      for k = 0; k < ti_a.length(); k = k + 1 {
+        a_pred[ti_a[k]] = a_inner_per_fold[fi_a][k]
+      }
+    }
+
+which is upstream's `_double_dml_cv_predict(..., smpls_inner=...)` shape:
+an inner OOF on rows inside an outer fold's training set, the outer model
+on its test rows.
+
+### 15a. Judged against upstream, not against the pin
+
+The change moves the port off the pinned example value, so
+`pyexample_lplr.py:285` refuses before comparing. That refusal is correct
+normally and useless here -- it hides the number the arm exists to produce.
+`_verify/_mk_lplr_gap_probe_1680.py` makes a copy in the repo root that
+continues past the pin and reports the gap; the rows are untouched, only
+the PORT moved. Upstream in every row below is fitted on the same rows and
+the same outer partition.
+
+| | HEAD | arm a (`a_hat`) | upstream |
+|---|---|---|---|
+| n=500 `nuisance_space` gap | **0.007307** | 0.033977 | 0.392214 |
+| n=500 `instrument` gap | **0.010609** | 0.054513 | 0.412682 |
+| SE ratio, `nuisance_space` | 1.1549 | 1.1279 | 1 |
+| SE ratio, `instrument` | 1.0269 | 1.0278 | 1 |
+| fuzz (11 surfaces) | GREEN | GREEN | -- |
+
+The gate still reads OK, because the band is 3 sigma and the port's own
+spread fell (0.206 -> 0.139). But the gap went **up by 4.6x and 5.1x**.
+Reading "still OK" as "no change" is the same error as reading a green
+parity gate as "unchanged".
+
+Small-n moves the same way:
+
+| n | HEAD port | arm a port | upstream |
+|---|---|---|---|
+| 60 | -0.049129 | 0.20959 | 3.53962 |
+| 100 | 14.431 (warn) | 14.431 (warn) | -0.558127 |
+| 160 | 0.580578 | **3.88988** | 0.749398 |
+
+n=160 is the worst of it: gap to upstream 0.169 becomes **3.14**.
+
+### 15b. Combined with the unclamped Newton, fuzz still dies
+
+The reason the arm matters is the clamp. So it was also run unclamped:
+
+| arm | fuzz | n=100 port | upstream |
+|---|---|---|---|
+| a only | GREEN | 14.431 (warn) | -0.558127 |
+| `a_hat` + unclamped | **RED** | **-0.502784**, warn=0 | -0.558127 |
+
+The unclamped arm does fix n=100 -- -0.5028 against upstream's -0.5581 is
+the closest this port has ever come on that design. But it buys that by
+aborting the process:
+
+    precondition failed at var_est.mbt:79:5-79:34
+    [8/11] DoubleMLLPLR nonlinear fit invariants ...
+
+which is `require(jacobian.abs() > 0.0)`, uncatchable, on the surface that
+upstream completes. **So the `a_hat` gap does not explain the divergence
+either.** Closing it does not make the unguarded Newton safe.
+
+### 15c. Where that leaves it
+
+Three explanations have now been measured and none of them holds:
+
+| explanation | status | evidence |
+|---|---|---|
+| start value (`np.average(beta)`) | FIXED, shipped at `df049c2` | -- |
+| the point estimate was never the root | FIXED, shipped at `df049c2` | -- |
+| `d_tilde` uses the wrong nuisance | **falsified** | §14b, trial 0 vs trial 2 |
+| `a_hat` is not double-cross-fitted | **falsified** | §15b, still aborts |
+
+The clamp therefore stays, and it stays for a reason that is still not
+fully explained: upstream is 0/300 non-finite on this DGP and the port
+diverges by trial 2, with the solver, the score formula, the start value
+and both nuisance inputs now individually checked against source. Something
+in the port's evaluation of the score still differs, and it has not been
+located. That is the honest state, and it is recorded rather than papered
+over with a guard whose justification would be a guess.
+
+The cost is unchanged: gap to upstream 11.4 at n=60 and 13.8 at n=100 with
+the clamp, against 3.59 and 0.086 without it; 91 of 200 small-n designs
+warn where upstream warns zero times. None of that is gated.

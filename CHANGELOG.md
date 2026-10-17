@@ -87,6 +87,13 @@ gates would have to be conditioned on convergence to accommodate that,
 including `again.se() == se` — false for a bit-identical refit, because
 `NaN == NaN` is false.
 
+So the divergence is an **input**, not the solver: `m_pred = a_pred`
+here against upstream's `d_tilde = d - m_hat["preds"]` (`plm/lplr.py:403`,
+fed from `ml_M`). An unclamped Newton is safe once the score being solved
+is the right score. Fix that first, then remove the clamp — the ordering
+is the finding. Reported, not gated. Full record:
+`_verify/LPLR_GATE_BLINDNESS_1680.md` section 13.
+
 #### Correction (same day, same sitting)
 
 The paragraph above blamed the `m_pred = a_pred` alias and prescribed
@@ -107,12 +114,49 @@ prediction where upstream uses an inner one. Unmeasured — the
 clamp stays, and nothing above licenses removing it. Record:
 `_verify/LPLR_GATE_BLINDNESS_1680.md` section 14.
 
-So the divergence is an **input**, not the solver: `m_pred = a_pred`
-here against upstream's `d_tilde = d - m_hat["preds"]` (`plm/lplr.py:403`,
-fed from `ml_M`). An unclamped Newton is safe once the score being solved
-is the right score. Fix that first, then remove the clamp — the ordering
-is the finding. Reported, not gated. Full record:
-`_verify/LPLR_GATE_BLINDNESS_1680.md` section 13.
+#### The `a_hat` candidate is measured, and falsified too
+
+The paragraph above called the `a_hat` double-cross-fit an untested
+candidate. It has been implemented and measured.
+
+`_verify/_lplr_ahat_1680.py` applies the combine that gives upstream's
+shape — an inner OOF on rows inside an outer fold's training set,
+the outer model on its test rows. Judged against upstream on identical
+rows and the identical outer partition, because the change moves the
+port off the pin and `pyexample_lplr.py:285` would otherwise refuse
+before reporting (`_verify/_mk_lplr_gap_probe_1680.py` makes the copy
+that continues past it).
+
+| | HEAD | `a_hat` arm | upstream |
+|---|---|---|---|
+| n=500 `nuisance_space` gap | **0.007307** | 0.033977 | 0.392214 |
+| n=500 `instrument` gap | **0.010609** | 0.054513 | 0.412682 |
+| n=160 gap to upstream | **0.169** | 3.14 | 0.749398 |
+| fuzz | GREEN | GREEN | -- |
+
+The gate still reads OK, because the band is 3 sigma and the port's own
+spread fell from 0.206 to 0.139. The gap went up 4.6x and 5.1x. Reading
+"still OK" as "no change" is the same error as reading a green parity
+gate as "unchanged".
+
+Run with the clamp ALSO removed, it aborts fuzz at
+`precondition failed at var_est.mbt:79` — the uncatchable
+`require(jacobian.abs() > 0.0)` -- on the surface upstream completes. So
+closing this gap does not make the unguarded Newton safe, and the
+candidate is falsified. (That arm does fix n=100: -0.5028 against
+upstream's -0.5581, the closest this port has come there. It buys it by
+crashing.)
+
+**Where that leaves the clamp.** Four explanations are now measured: the
+start value and the point estimate, both fixed at `df049c2`; `d_tilde`,
+falsified at trial 0 against trial 2; and `a_hat`, falsified above.
+Upstream is 0/300 non-finite on this DGP and the port diverges by trial 2,
+with the solver, the score formula, the start value and both nuisance
+inputs each checked against source. Something in how the port evaluates
+the score still differs and has not been located. The clamp stays because
+the thing that makes it necessary is still unaccounted for — not
+because the guard is right. Record:
+`_verify/LPLR_GATE_BLINDNESS_1680.md` section 15.
 
 ### Fixed -- the LPLR coefficient was never the root (D4)
 

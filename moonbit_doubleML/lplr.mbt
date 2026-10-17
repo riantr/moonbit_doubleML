@@ -1095,13 +1095,30 @@ pub fn DoubleMLLPLR::fit(
         // `m_pred` at `ml_M`'s nuisance instead was tested and fails fuzz at
         // trial 0 -- worse than leaving the alias in place.
         //
-        // The gap that IS still open is the OTHER nuisance, `a_hat`, in
+        // The gap that WAS still open is the other nuisance, `a_hat`, in
         // `r_hat = t_hat["preds"] - beta * a_hat["preds"]` (`:345`):
         // upstream's is double-cross-fitted and a full `n`-vector, the port's
         // is a plain outer cross-fit, so rows inside an outer fold's training
         // set get an outer-model prediction where upstream uses an inner one.
-        // Not measured. `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-14
-        // carry the record, including the retraction.
+        //
+        // It is implemented and measured now, and it is NOT the cause. With
+        // `a_pred[ti_a[k]] = a_inner_per_fold[fi_a][k]` the fuzz surfaces stay
+        // green but the gated gaps get 4.6x and 5.1x WORSE (0.007307 ->
+        // 0.033977 and 0.010609 -> 0.054513), and n=160 moves from a 0.169
+        // gap to 3.14. Combined with the unclamped Newton it still aborts at
+        // `var_est.mbt:79`, on the surface upstream completes.
+        //
+        // So three explanations are now measured and none holds: the start
+        // value and the point estimate (both fixed at df049c2), `d_tilde`
+        // (falsified), and `a_hat` (falsified). Upstream is 0/300 non-finite
+        // on this DGP and the port diverges by trial 2, with the solver, the
+        // score formula, the start value and both nuisance inputs each
+        // checked against source. Something in how the port evaluates the
+        // score still differs and has not been located. That is why this
+        // clamp stays: not because the guard is right, but because the thing
+        // that makes it necessary is still unaccounted for.
+        // `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-15 carry the
+        // record, including the retractions.
         //
         // The `|theta_new| > 1e6` guard below is the real runaway check, and it
         // is what turns an overflow into a `diverged` warning instead of a

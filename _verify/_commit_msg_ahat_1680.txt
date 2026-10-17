@@ -1,0 +1,47 @@
+docs(lplr): the a_hat double-cross-fit is measured, and it is not the cause
+
+Section 14c named the a_hat gap -- upstream's
+r_hat = t_hat["preds"] - beta * a_hat["preds"] (:345) uses a
+_double_dml_cv_predict(..., smpls_inner=...) full n-vector, where the port
+uses a plain outer cross-fit -- as "a candidate for why the port's Newton
+runs away where upstream's does not". It was a candidate with nothing behind
+it. Here is the measurement, and it falsifies the candidate.
+
+_verify/_lplr_ahat_1680.py applies the combine that reproduces upstream's
+shape: a_pred[ti_a[k]] = a_inner_per_fold[fi_a][k], inner OOF on rows inside
+an outer fold's training set, the outer model on its test rows.
+
+Judged against upstream on identical rows and the identical outer partition.
+The change moves the port off the pin, and pyexample_lplr.py:285 refuses to
+compare when that happens -- correct normally, useless here, because it
+hides the number the arm exists to produce. _verify/_mk_lplr_gap_probe_1680.py
+writes a repo-root copy that continues past the pin; the rows are untouched,
+only the PORT moved.
+
+    |                          HEAD     a_hat arm    upstream |
+    | n=500 nuisance_space gap  0.007307   0.033977    0.392214 |
+    | n=500 instrument gap      0.010609   0.054513    0.412682 |
+    | n=160 gap to upstream     0.169      3.14        0.749398 |
+    | fuzz                      GREEN      GREEN       --       |
+
+The gate still reads OK because the band is 3 sigma and the port's own spread
+fell 0.206 -> 0.139. The gap went up 4.6x and 5.1x. Reading "still OK" as
+"no change" is the same error as reading a green parity gate as "unchanged".
+
+With the clamp ALSO removed the arm aborts fuzz at
+"precondition failed at var_est.mbt:79" -- the uncatchable
+require(jacobian.abs() > 0.0) -- on the surface upstream completes. So
+closing this gap does not make the unguarded Newton safe. (That arm does fix
+n=100: -0.5028 against upstream's -0.5581, the closest this port has come
+there. It buys it by crashing.)
+
+Four explanations are now measured. Start value and point estimate: fixed at
+df049c2. d_tilde: falsified, trial 0 against trial 2. a_hat: falsified here.
+Upstream is 0/300 non-finite on this DGP and the port diverges by trial 2,
+with the solver, the score formula, the start value and both nuisance inputs
+each checked against source. Something in how the port evaluates the score
+still differs and has not been located.
+
+So the clamp stays because the thing that makes it necessary is still
+unaccounted for -- not because the guard is right. Comments only, verified
+mechanically. Record in _verify/LPLR_GATE_BLINDNESS_1680.md section 15.
