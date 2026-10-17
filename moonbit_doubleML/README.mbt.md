@@ -30,13 +30,13 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.163.0** |
+| `moon.mod` version | **0.163.1** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
-| Tests (native / wasm / js) | **1116 / 1116 / 1116** |
-| Tests (wasm-gc) | **1122 / 1122** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1117 / 1117 / 1117** |
+| Tests (wasm-gc) | **1123 / 1123** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
 | Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items and 6 / 6 RNG keys are IEEE-754 identical to CPython |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -1044,6 +1044,34 @@ named, since they are different faults: `degenerate_derivative`, `diverged`,
 `exhausted_step_budget`. This is unrelated to the v0.144.0 sensitivity work --
 one is about the sensitivity API surface, the other about an estimate.
 
+**Known divergence, reported and NOT gated: the small-n regime.** At n = 500
+the port and upstream agree to ~0.007. That is one design point, and it is
+the one this estimator was never wrong at. On identical rows and the
+identical outer partition, below it:
+
+| n | port | upstream | port `se` | upstream `se` |
+|---|---|---|---|---|
+| 60 | `-0.049` | `3.53962` | `0.762` | `20.199` |
+| 100 | `14.431` (warns) | `-0.558127` | `751657` | `0.832026` |
+| 160 | `0.580578` | `0.749398` | `0.777` | `0.588` |
+
+91 of 200 small-n designs still warn where upstream warns zero times. This is
+**reported by `pyexample_lplr.py` section 5 on every run and asserted by
+nothing**, on purpose: a gate that is red forever gets ignored, which is
+worse than no gate. The cause is pinned to the Newton step. The port damps
+it (`lplr.mbt`, clamped to 0.25) and upstream does not -- scipy's Newton is
+a bare `p = p0 - fval/fder`. Removing the damping is the faithful port and
+does close the gap (11.4 -> 3.59 at n=60, 13.8 -> 0.086 at n=100), but it
+reaches `se = NaN` by trial 2 of `examples/fuzz`, aborts on
+`var_est.mbt:79`, and needs four gates conditioned on solver convergence --
+while upstream is 0/300 non-finite on the same DGP. Two candidate causes
+were implemented and measured: the `d_tilde` nuisance (falsified, trial 0 vs
+trial 2) and the `a_hat` double cross-fit (falsified, gaps 4.6x and 5.1x
+worse). Every other element is verified equivalent term by term. The
+residual is recorded in `_verify/LPLR_GATE_BLINDNESS_1680.md` sections
+13-16 rather than papered over with a guard whose justification would be a
+guess.
+
 **Robust variance & inference** -- heteroskedasticity-consistent (HC)
 standard errors, cluster-robust variance, multiplier bootstrap
 confidence intervals, joint CIs, and Romano-Wolf multiple-testing
@@ -1707,7 +1735,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.163.0
+python .github/scripts/ci_local.py run --all --release-tag v0.163.1
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 

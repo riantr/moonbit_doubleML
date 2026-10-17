@@ -329,8 +329,15 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // checks: a check nobody runs is not a gate, and the cost of running these
   // two is ~16s each, against the full scope's re-running of `moon test` and
   // all 24 cross-checks.
+  //
+  // It drifted a THIRD time, to 0.163.0, on the 0.163.1 bump. The first pass
+  // edited the root README and moon.mod and stopped; `readme-sync`
+  // caught the shipped copy and `api_test` caught this literal, in the
+  // same run. Both are real gates doing their job -- a version bump
+  // touches FOUR places: moon.mod, the edited README, the shipped
+  // README copy, and this literal.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.163.0",
+    library: "riantr/moonbit_doubleML@0.163.1",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })

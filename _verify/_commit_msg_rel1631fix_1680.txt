@@ -1,0 +1,39 @@
+release: 0.163.1 -- the two version references the first pass missed
+
+Both were caught by the repo's own gates in one run, and both are the same
+class of omission: a version bump lands in FOUR places, and the previous
+commit did two of them.
+
+1. THE SHIPPED README. `moon.mod` sits in `moonbit_doubleML/` and says
+   `readme = "README.mbt.md"`, which resolves RELATIVE TO THE PACKAGE DIR.
+   So `moonbit_doubleML/README.mbt.md` is what `moon publish` sends to
+   mooncakes.io and what the registry page renders; the root README is the
+   one humans edit and GitHub shows. The previous commit edited only the
+   root copy, so the release would have shipped a README still saying
+   0.163.0 / 1116 tests / 1122 wasm-gc and missing the small-n disclosure
+   entirely. `check_readme_sync.py` failed at line 33. Fixed by copying
+   edited -> shipped, which is the direction the guard itself prescribes --
+   a re-spliced copy is how the two drifted apart in the first place.
+
+2. THE ADVERTISED VERSION. `examples/api_server/main.mbt` hardcodes
+   `riantr/moonbit_doubleML@<version>` in its `/version` response, and the
+   qa_loop `api_test` check GETs that endpoint and compares it against the
+   real moon.mod. Its own comment records this literal drifting twice
+   before -- to 0.52.0, then to 0.162.0 on the last bump -- and neither time
+   did anything catch it. This time it did, and the comment now says a
+   bump touches four places so the fourth is not rediscovered.
+
+Verified after the fix rather than assumed: `check_readme_sync.py` exit 0
+(byte-identical, 116636 bytes), `api_test` exit 0 with
+`/version==moon.mod->200 [api_server advertises moon.mod version 0.163.1]`,
+`moon fmt --check` and `moon check --deny-warn` clean on the library and on
+the api_server package.
+
+The only surviving "0.163.0" in the shipped README is the historical
+"since v0.163.0" at line 1640, which is correct as written and was left
+alone.
+
+Worth stating plainly: the first pass reported the release as ready and it
+was not, and the cause of that was piping the simulator through
+`Select-Object -Last 24`, which silently dropped the readme-sync result
+while the run continued. Capture the whole output next time.
