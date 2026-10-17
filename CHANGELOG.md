@@ -87,6 +87,26 @@ gates would have to be conditioned on convergence to accommodate that,
 including `again.se() == se` — false for a bit-identical refit, because
 `NaN == NaN` is false.
 
+#### Correction (same day, same sitting)
+
+The paragraph above blamed the `m_pred = a_pred` alias and prescribed
+fixing `d_tilde` before removing the clamp. **That is retracted.**
+`plm/lplr.py:254` builds `m_hat` from `self._learner["ml_m"]` on `x, d`
+as a plain outer cross-fit — which is exactly what the port's
+`a_pred` holds. The alias is faithful. The wrong version of the fix was
+tested rather than argued about, and it is worse: pointing `m_pred` at
+`ml_M`'s nuisance and removing the clamp fails fuzz at **trial 0**
+(`se = 5.80e139`, `theta = 322.4`), against trial 2 for leaving the alias
+in place.
+
+The gap that is still open is the other nuisance, `a_hat`, in
+`r_hat = t_hat["preds"] - beta * a_hat["preds"]` (`:345`). Upstream's
+is double-cross-fitted and a full `n`-vector; the port's is a plain outer
+cross-fit, so rows inside an outer fold's training set get an outer-model
+prediction where upstream uses an inner one. Unmeasured — the
+clamp stays, and nothing above licenses removing it. Record:
+`_verify/LPLR_GATE_BLINDNESS_1680.md` section 14.
+
 So the divergence is an **input**, not the solver: `m_pred = a_pred`
 here against upstream's `d_tilde = d - m_hat["preds"]` (`plm/lplr.py:403`,
 fed from `ml_M`). An unclamped Newton is safe once the score being solved

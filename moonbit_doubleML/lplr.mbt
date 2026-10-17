@@ -1084,17 +1084,24 @@ pub fn DoubleMLLPLR::fit(
         //     -- finite -- and it is the squaring in
         //     `sigma2 = mean(psi^2) / (n * J^2)` that produces `Inf/Inf`.
         //   * Upstream has no guard there either, so the NaN is not a
-        //     port-only fiction. But upstream does not REACH it, which means
-        //     the port and upstream are not evaluating the same score on
-        //     these rows -- and the known input divergence is `m_pred =
-        //     a_pred` (this file) against upstream's
-        //     `d_tilde = d - m_hat["preds"]` (`plm/lplr.py:403`, fed from
-        //     `ml_M`). Removing the clamp before that input agrees makes the
-        //     port numerically WORSE, not more faithful.
+        //     port-only fiction. But upstream does not REACH it.
         //
-        // So the ordering matters: fix the score's `d_tilde` input first, then
-        // remove this. `_verify/LPLR_GATE_BLINDNESS_1680.md` carries the
-        // record.
+        // It is NOT the `d_tilde` input. An earlier version of this comment
+        // said it was, on the reasoning that the alias `m_pred = a_pred`
+        // substitutes the propensity where upstream uses `m_hat`. That is
+        // wrong: `plm/lplr.py:254` builds `m_hat` from `self._learner["ml_m"]`
+        // on `x, d` as a plain outer cross-fit, which is exactly the array
+        // `a_pred` holds here (`:836`). The alias is faithful. Pointing
+        // `m_pred` at `ml_M`'s nuisance instead was tested and fails fuzz at
+        // trial 0 -- worse than leaving the alias in place.
+        //
+        // The gap that IS still open is the OTHER nuisance, `a_hat`, in
+        // `r_hat = t_hat["preds"] - beta * a_hat["preds"]` (`:345`):
+        // upstream's is double-cross-fitted and a full `n`-vector, the port's
+        // is a plain outer cross-fit, so rows inside an outer fold's training
+        // set get an outer-model prediction where upstream uses an inner one.
+        // Not measured. `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-14
+        // carry the record, including the retraction.
         //
         // The `|theta_new| > 1e6` guard below is the real runaway check, and it
         // is what turns an overflow into a `diverged` warning instead of a

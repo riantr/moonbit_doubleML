@@ -1016,3 +1016,76 @@ with a differing `d_tilde` it runs away where upstream's does not.
 The cost is unchanged and still reported: gap to upstream at n=60 is 11.4 and
 at n=100 is 13.8, against 3.59 and 0.086 unclamped. 91 of 200 small-n designs
 still warn where upstream warns zero times. None of that is gated.
+
+## 14. Correction to 13e -- the alias is CORRECT, and the premise was wrong
+
+Section 13e recommended fixing `m_pred = a_pred` before removing the Newton
+clamp, on the reasoning that the port aliases the propensity where upstream
+uses `m_hat`. **That reading was wrong**, and the recommendation is retracted.
+It was tested and falsified in the same sitting.
+
+### 14a. What upstream's `m_hat` actually is
+
+`plm/lplr.py`, in order:
+
+- `:228` `M_hat` is built from `self._learner["ml_M"]` on `x_d_concat, y`,
+  with `smpls_inner`. That is `E[Y | D, X]`.
+- `:240` the comment reads `# nuisance m`.
+- `:254` `m_hat = _dml_cv_predict(self._learner["ml_m"], x, d, ...)` --
+  a PLAIN outer cross-fit of the propensity, no inner split.
+- `:347` `psi_elements = self._score_elements(y, d, r_hat["preds"], m_hat["preds"])`
+- `:403` `d_tilde = d - m_hat`
+
+So the score's `d_tilde` subtracts **`m_hat`, the plain outer cross-fit of
+`ml_m`**, not `M_hat`. In this port `a_pred` is exactly that array --
+`a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)` at `:836` -- and
+`m_pred = a_pred` hands it to `lplr_score_at`, which builds
+`dt = d[i] - m_pred[i]` at `:199`.
+
+**The alias is faithful.** It is not the bug, and section 12's D1 revert was
+correct on this axis after all.
+
+### 14b. The wrong version of D1 was tested anyway
+
+`_verify/_lplr_d1_unclamped_1680.py` sets `m_pred` to ml_M's outer nuisance
+and removes the clamp. Result:
+
+    FUZZ FAIL: lplr non-negative finite se
+                (trial=0, se=5.802668727856591e+139, th=322.4273297452067)
+
+Trial **0**, against trial 2 for aliasing-plus-unclamp. So pointing the
+score at `M_hat` is worse, and 13e's premise is falsified rather than merely
+unproven. The probe is kept because a negative result with a named number is
+what stops the next reader retrying it.
+
+### 14c. The gap that IS still open
+
+Not `d_tilde`. It is the OTHER nuisance, `a_hat`, in
+
+    r_hat["preds"] = t_hat["preds"] - beta * a_hat["preds"]      (`:345`)
+
+Upstream's `a_hat` comes from `_double_dml_cv_predict(..., smpls=smpls,
+smpls_inner=...)` and is a **full `n`-vector**: rows inside an outer fold's
+training set get an INNER out-of-fold prediction, rows in its test set get
+the outer model's. The port's `a_pred` is a plain outer cross-fit, so for
+every row that sits in some outer fold's training set -- which is most of
+them -- it substitutes an outer-model prediction for an inner one.
+
+The machinery to close it is already present and already correct for `beta`:
+`a_inner_per_fold` (`:801`) is ml_m's inner OOF per outer fold, and
+`prelim_beta_per_fold` consumes `a_inner_per_fold[fi]` against
+`ti = outer[fi].train_idx` (`:976-981`). `double_cross_fit_predict` returns a
+vector of length `len(outer[fi].train_idx)` per fold (`kfold.mbt:757`,
+`Array::make(m, 0.0)` with `m = train_idx.length()`), so combining is:
+
+    for fi in 0..outer.length():
+        let ti = outer[fi].train_idx
+        for k in 0..ti.length():
+            a_hat[ti[k]] = a_inner_per_fold[fi][k]
+
+with the outer cross-fit still filling `outer[fi].test_indices()`.
+
+**This is NOT measured.** No arm has implemented it. It is the next thing to
+try, and it is a candidate for why the port's Newton runs away where
+upstream's does not -- but a candidate, not a conclusion. Nothing above
+licenses removing the clamp yet.

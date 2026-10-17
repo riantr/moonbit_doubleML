@@ -1,0 +1,41 @@
+docs(lplr): retract the d_tilde premise; the alias was faithful all along
+
+4f6267e recommended fixing m_pred = a_pred before removing the Newton
+clamp, on the reasoning that the port aliases the propensity where upstream
+uses m_hat. That reading was wrong. plm/lplr.py:254 builds m_hat from
+self._learner["ml_m"] on x, d as a PLAIN outer cross-fit -- no inner split --
+which is exactly the array a_pred holds at :836. The alias is faithful, and
+section 12's D1 revert was right on this axis after all.
+
+Tested rather than argued about. _verify/_lplr_d1_unclamped_1680.py points
+m_pred at ml_M's nuisance and removes the clamp:
+
+    FUZZ FAIL: lplr non-negative finite se
+                (trial=0, se=5.802668727856591e+139, th=322.4273297452067)
+
+Trial 0, against trial 2 for leaving the alias in place. Worse, so the
+premise is falsified rather than merely unproven. The probe is kept: a
+negative result with a named number is what stops the next reader retrying
+it.
+
+The gap that is still open is the other nuisance, a_hat, in
+r_hat = t_hat["preds"] - beta * a_hat["preds"] (:345). Upstream's a_hat comes
+from _double_dml_cv_predict(..., smpls_inner=...) and is a full n-vector:
+rows inside an outer fold's training set get an INNER out-of-fold
+prediction. The port's a_pred is a plain outer cross-fit, so for most rows
+it substitutes an outer-model prediction for an inner one.
+
+The machinery to close it is already there and already correct for beta:
+a_inner_per_fold (:801) is ml_m's inner OOF per outer fold, and
+prelim_beta_per_fold consumes it against ti = outer[fi].train_idx
+(:976-981). double_cross_fit_predict returns a vector of length
+len(outer[fi].train_idx) per fold (kfold.mbt:757), so combining is
+a_hat[ti[k]] = a_inner_per_fold[fi][k] with the outer cross-fit still filling
+the test rows.
+
+UNMEASURED. No arm has implemented it. It is a candidate for why the port's
+Newton runs away where upstream's does not -- a candidate, not a conclusion.
+The clamp stays and nothing licenses removing it yet.
+
+Comments only, verified mechanically. Record in
+_verify/LPLR_GATE_BLINDNESS_1680.md section 14.
