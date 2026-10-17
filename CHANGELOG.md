@@ -62,6 +62,38 @@ cluster pin and the new per-row-`beta` gate below.
   what that check is for. Re-pinned with the reason recorded in the file, in
   the same convention as its two previous moves.
 
+### Fixed -- the LPLR Newton comment described a solver this file does not contain
+
+It read "Pure Newton, UNCLAMPED" and explained the 0.25-step clamp as
+something already removed, sitting directly above an intact copy of it.
+Anyone auditing convergence from that block would have concluded the
+guard was absent. It now describes what is actually there.
+
+Doing so turned up something worth recording: the clamp is a **known
+deviation from upstream**, and it costs agreement. Upstream solves with
+`root_scalar(..., method="newton")`
+(`doubleml/double_ml_score_mixins.py:149`), and scipy 1.18's Newton
+(`scipy.optimize._zeros_py.newton`) is a bare step — no cap, no `rmax`,
+no damping. The port's clamp exists in none of that. Its cost, measured
+on identical rows and the identical partition: the gap to upstream is
+11.4 at n=60 and 13.8 at n=100, against 3.59 and 0.086 with it removed.
+
+Removing it was then measured, and it does not ship. On this repo's own
+binary DGP upstream stayed finite on **300/300** draws, while the
+unclamped port reaches `se = NaN` by trial 2 and `th = NaN` by trial 28,
+and aborts the process outright on `var_est.mbt`'s
+`require(jacobian.abs() > 0.0)`, where upstream returns NaN. Four fuzz
+gates would have to be conditioned on convergence to accommodate that,
+including `again.se() == se` — false for a bit-identical refit, because
+`NaN == NaN` is false.
+
+So the divergence is an **input**, not the solver: `m_pred = a_pred`
+here against upstream's `d_tilde = d - m_hat["preds"]` (`plm/lplr.py:403`,
+fed from `ml_M`). An unclamped Newton is safe once the score being solved
+is the right score. Fix that first, then remove the clamp — the ordering
+is the finding. Reported, not gated. Full record:
+`_verify/LPLR_GATE_BLINDNESS_1680.md` section 13.
+
 ### Fixed -- the LPLR coefficient was never the root (D4)
 
 The small-n divergence below has a mechanism, and the fix is upstream fidelity.

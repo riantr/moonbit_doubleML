@@ -1,0 +1,35 @@
+docs(lplr): the Newton comment described a solver this file does not contain
+
+The comment above the LPLR Newton read "Pure Newton, UNCLAMPED" and
+explained the 0.25-step clamp as something already removed -- sitting
+directly above an intact copy of it. Anyone auditing convergence from
+that block would have concluded the guard was absent.
+
+It now describes what is actually there, and correcting it turned up a
+finding worth recording on its own.
+
+The clamp is a known deviation from upstream. Upstream solves with
+root_scalar(..., method="newton") (doubleml/double_ml_score_mixins.py:149),
+and scipy 1.18's Newton (scipy.optimize._zeros_py.newton) is a bare step --
+no cap, no rmax, no damping. Read out of the installed scipy, not assumed.
+The clamp exists in none of that, and it costs agreement: on identical rows
+and the identical partition the gap to upstream is 11.4 at n=60 and 13.8 at
+n=100, against 3.59 and 0.086 with the clamp removed.
+
+Removing it was measured and does not ship. On this repo's own binary DGP
+upstream stayed finite on 300/300 draws, while the unclamped port reaches
+se = NaN by trial 2 and th = NaN by trial 28, and aborts the process on
+var_est.mbt's require(jacobian.abs() > 0.0) where upstream returns NaN.
+Four fuzz gates would have to be conditioned on convergence to accommodate
+that, including again.se() == se, which is false for a bit-identical refit
+because NaN == NaN is false. The overflow is in the variance squaring, not
+in exp -- d is binary in that DGP, so exp(-theta*d) is a finite 1.2e191 at
+the observed iterate and mean(psi^2) is what becomes Inf.
+
+So the divergence is an input, not the solver: m_pred = a_pred here against
+upstream's d_tilde = d - m_hat["preds"] (plm/lplr.py:403, fed from ml_M).
+An unclamped Newton is safe once the score being solved is the right score.
+Fix that first, then remove the clamp -- the ordering is the finding.
+
+Code unchanged; the diff is comments only, verified mechanically. Reported,
+not gated. Record in _verify/LPLR_GATE_BLINDNESS_1680.md section 13.

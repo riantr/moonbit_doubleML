@@ -915,3 +915,104 @@ the median is still 3.2x upstream's. Arm (b) is the measured next step and it
 works on all three cases; it needs a runaway guard that does not also cap the
 step size, since the current clamp conflates those two jobs. The `|theta_new| >
 1e6` divergence guard is separate and is kept.
+
+## 13. Arm (b) is faithful and does not ship (measured)
+
+Section 12e proposed arm (b) -- remove the Newton clamp -- as the next step,
+on the grounds that it fixes all three small-n cases and that the clamp
+conflates two jobs (cap the step, bound the iterate). That proposal is now
+measured and it does not hold up. The clamp stays; this section is the
+record.
+
+### 13a. The clamp really is unfaithful
+
+Checked in source, not inferred. Upstream solves with
+`root_scalar(score, x0=..., fprime=..., method="newton")`
+(`doubleml/double_ml_score_mixins.py:149`), and scipy 1.18's Newton
+(`scipy.optimize._zeros_py.newton`) is a bare step:
+
+    newton_step = fval / fder
+    p = p0 - newton_step
+    if np.isclose(p, p0, rtol=rtol, atol=tol): converged
+
+No step cap, no `rmax`, no damping. The port's 0.25-step fallback does not
+exist upstream, so arm (b) is the faithful port.
+
+### 13b. Upstream's variance has no guard either
+
+`doubleml/utils/_estimation.py:362-418`:
+
+    J = np.mean(psi_deriv);  gamma_hat = np.mean(np.square(psi))
+    scaling = 1 / (n * J**2);  sigma2_hat = scaling * gamma_hat
+
+No overflow guard. So a non-finite SE at a runaway iterate is upstream's
+formula too, not a port-only fiction. Verified arithmetically at the observed
+iterate (`d` is binary in the fuzz DGP, so `exp` is not what overflows):
+
+| quantity | value | finite |
+|---|---|---|
+| `exp(-theta*d)`, d=1, theta=-440 | 1.2291e+191 | yes |
+| `mean(psi^2)` | inf | **no** |
+| `sigma2 = gamma / (J^2 * n)` | nan | **no** |
+
+The overflow is in the **squaring**, not in `exp`.
+
+### 13c. But upstream never reaches it, and the port does
+
+Same binary DGP, 300 draws, upstream `DoubleMLLPLR` with the same learner
+configuration `pyexample_lplr.py` uses:
+
+| | non-finite SE | non-finite coef | draws completed |
+|---|---|---|---|
+| upstream | **0 / 300** | 0 / 300 | 300 |
+| port, unclamped | by trial 2 | by trial 28 | -- |
+
+Upstream is not marginally safer; it never got there in 300 draws. Since the
+solver and the variance formula now both match upstream, the remaining
+difference must be an **input**. The known one is `m_pred = a_pred` in this
+file against upstream's `d_tilde = d - m_hat["preds"]` (`plm/lplr.py:403`,
+fed from `ml_M`). That is the D1 thread, reverted at `903e5ce`.
+
+### 13d. What removing the clamp actually costs
+
+Measured as a 2-file scripted mutation (both restored byte-for-byte):
+
+| trial | first failure under the unclamped Newton |
+|---|---|
+| 2 | `se = NaN`, `theta = -440.16` |
+| 24 | `lplr CI identity`, `se = Infinity` |
+| 28 | `th = NaN` |
+
+Each is a gate that could not be satisfied, not a wrong answer:
+
+- the absolute `se` ceiling is a property upstream does not have;
+- the CI-identity tolerance is derived as `4*eps*max(|hi|,|lo|)`, which is
+  itself infinite once `se` is, so `NaN <= inf` is false even for a
+  bit-exact interval;
+- `again.se() == se` is false for a **bit-identical** refit, because
+  `NaN == NaN` is false.
+
+Plus one hard abort: `precondition failed at var_est.mbt:79`, the
+`require(jacobian.abs() > 0.0)`, which is uncatchable. Upstream returns NaN
+there. A guard at the LPLR call site removes that abort (measured: trials
+2-27 then pass), and it is the right fix -- but it does not help, because
+trial 28 then fails on `th = NaN`.
+
+Four gates would have to be conditioned on the solver having converged, on a
+surface whose purpose is to catch exactly this. Upstream stays finite across
+the same 300 draws.
+
+### 13e. Conclusion
+
+Removing the clamp before the score's `d_tilde` input agrees with upstream
+makes the port numerically **worse**, not more faithful: it converts a wrong
+number into a NaN and then a process abort on designs where upstream returns
+a finite value. The clamp stays.
+
+**The ordering is the finding.** Fix `d_tilde` first, then remove the clamp.
+An unclamped Newton is safe when the score being solved is the right score;
+with a differing `d_tilde` it runs away where upstream's does not.
+
+The cost is unchanged and still reported: gap to upstream at n=60 is 11.4 and
+at n=100 is 13.8, against 3.59 and 0.086 unclamped. 91 of 200 small-n designs
+still warn where upstream warns zero times. None of that is gated.

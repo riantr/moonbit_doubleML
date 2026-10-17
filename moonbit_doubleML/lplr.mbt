@@ -1041,30 +1041,64 @@ pub fn DoubleMLLPLR::fit(
           stop_reason = "degenerate_derivative"
           break
         }
-        // Pure Newton, UNCLAMPED.
+        // Newton with a damped step. THIS IS A DEVIATION FROM UPSTREAM, and
+        // the deviation is deliberate for now -- see below.
         //
-        // This used to fall back to a 0.25-step in the descent direction
-        // whenever `|theta_new| > 5` or `|theta_new - theta| > 1`, on the
-        // stated grounds that "the exp/expit terms in psi make the curvature
-        // non-Lipschitz in theta". Upstream does no such thing: its root
-        // finder is `root_scalar(score, x0=..., fprime=..., method="newton")`
-        // (`double_ml_score_mixins.py`, `_root_find`), a plain Newton.
+        // Upstream solves with `root_scalar(score, x0=..., fprime=...,
+        // method="newton")` (`doubleml/double_ml_score_mixins.py:149`), and
+        // scipy's Newton (`scipy.optimize._zeros_py.newton`) is a bare step
+        // with a convergence test and nothing between them:
         //
-        // The clamp was the reason the port failed to converge on designs
-        // where upstream converges. Bounded to 0.25 a step over 50 iterations,
-        // theta can travel at most 12.5 from its start; on the small-n designs
-        // the start is O(10) and the root is at the truth (0.5), so the solver
-        // ran out of budget mid-descent and returned a point that was never a
-        // solution. Measured on identical rows and the identical partition:
+        //     newton_step = fval / fder
+        //     p = p0 - newton_step
+        //     if np.isclose(p, p0, rtol=rtol, atol=tol): converged
+        //
+        // There is no step cap, no `rmax` and no damping in that
+        // implementation -- read out of the installed scipy 1.18, not assumed.
+        // So this clamp does not exist upstream, and it costs agreement:
+        // capped at 0.25 a step over 50 iterations, theta can travel at most
+        // 12.5 from its start, while on the small-n designs the start is
+        // O(10) and the root is at the truth (0.5), so the solver runs out of
+        // budget mid-descent and returns a point that was never a solution.
+        // Measured on identical rows and the identical partition (truth 0.5):
         //
         //              clamped           unclamped        upstream
         //     n=60    14.966  WARNED    -0.049  ok        3.53962
         //     n=100   13.285  WARNED    -0.644  ok       -0.558127
         //     n=160    0.581  ok         0.581  ok        0.749398
         //
-        // The `|theta_new| > 1e6` guard below is kept: that is the real
-        // runaway check, and it is what turns an overflow into a
-        // `diverged` warning instead of a silent infinite.
+        // Gap to upstream is 11.4 and 13.8 clamped, against 3.59 and 0.086
+        // unclamped. (Upstream is itself far from the truth at n=60 -- 3.54
+        // against 0.5, with se 20.199. These designs are ill-conditioned for
+        // both implementations; what the clamp bought was a silent
+        // non-solution, not a correct answer.)
+        //
+        // WHY IT IS STILL HERE, which is the part that is easy to get wrong:
+        // removing it was measured and it is worse, not better.
+        //
+        //   * On this repo's own binary DGP, upstream stayed finite on
+        //     300/300 draws while the unclamped port reaches `se = NaN` at
+        //     `theta = -440.16` by trial 2 and `th = NaN` by trial 28.
+        //   * The overflow is in the variance, not the iterate: `d` is binary
+        //     in that DGP so `exp(-theta*d)` is only `exp(440)` at that point
+        //     -- finite -- and it is the squaring in
+        //     `sigma2 = mean(psi^2) / (n * J^2)` that produces `Inf/Inf`.
+        //   * Upstream has no guard there either, so the NaN is not a
+        //     port-only fiction. But upstream does not REACH it, which means
+        //     the port and upstream are not evaluating the same score on
+        //     these rows -- and the known input divergence is `m_pred =
+        //     a_pred` (this file) against upstream's
+        //     `d_tilde = d - m_hat["preds"]` (`plm/lplr.py:403`, fed from
+        //     `ml_M`). Removing the clamp before that input agrees makes the
+        //     port numerically WORSE, not more faithful.
+        //
+        // So the ordering matters: fix the score's `d_tilde` input first, then
+        // remove this. `_verify/LPLR_GATE_BLINDNESS_1680.md` carries the
+        // record.
+        //
+        // The `|theta_new| > 1e6` guard below is the real runaway check, and it
+        // is what turns an overflow into a `diverged` warning instead of a
+        // silent infinite.
         let raw_delta = s / sd
         let mut theta_new = theta - raw_delta
         if theta_new.abs() > 5.0 || (theta_new - theta).abs() > 1.0 {
