@@ -2191,9 +2191,12 @@ fn rdd_xi_bc_pair(
 /// gate that does catch it.
 ///
 /// `tau_bc_collapsed` (`xi_q(b)_r - xi_q(b)_l`) is still a real and useful
-/// quantity -- it is the order-`q` fit at the bias bandwidth, and it is
-/// what `rdrobust`'s bias-corrected limit equals when `b == h` -- so it
-/// stays, with its own docs corrected.
+/// quantity -- it is the order-`q` fit contrast at the bias bandwidth -- but it
+/// is NOT what this method returns at `b == h`. Measured at `b == h` the two
+/// differ by 6.7e-8 relative on the v0.116.0 fixture and by 1.3e-2 on the
+/// `rdd_var` design; `tau_bc` is the one that matches `rdrobust`'s `tau.bc`
+/// (3.1e-15, `pyexample_rdd.py`), so this method is the correct form. Read
+/// `tau_bc_collapsed`'s docs for why the substitution fails.
 ///
 /// # How it is evaluated, and why not "the long way"
 ///
@@ -2244,16 +2247,37 @@ pub fn DoubleMLRDD::tau_bc(
 ///
 /// # v0.116.0: this is NOT always `tau_bc`
 ///
-/// v0.115.0's docs claimed this and `tau_bc` were the same number. They
-/// agree to ~1e-15 when `b == h` and DIVERGE otherwise: `xi_q(b)` is the
-/// order-`q` fit at `b`, whereas `tau_bc` uses `rdrobust`'s `Q`-sandwich
-/// limit, and the two coincide only when the point and bias bandwidths
-/// are the same number. Read `tau_bc`'s docs for the measured
-/// discrepancy.
+/// v0.115.0's docs claimed this and `tau_bc` were the same number. That is
+/// not a general truth, and the "they agree when `b == h`" half of it is
+/// false. The substitution
 ///
-/// Kept because the quantity is meaningful in its own right and because
-/// the identity at `b == h` is a genuine, checkable structural fact that
-/// `v116_tau_bc_equals_the_collapsed_form_when_b_equals_h` pins.
+///     tau_bc_s = xi_p(h)_s - [xi_p(h)_s - xi_q(b)_s] = xi_q(b)_s
+///
+/// is arithmetically valid only if `bias` is DEFINED as the difference of two
+/// fits. It is not: `bias` returns
+/// `rdd_limit(s, h, p) - xi_bc_s`, where `xi_bc_s` comes from the `Q`
+/// sandwich (`rdd_rb_side`) -- `rdrobust`'s analytic local bias correction.
+/// The analytic correction and the order-`q` fit agree to leading order in
+/// `h`, not exactly.
+///
+/// MEASURED, both at `b == h`, both on designs with genuine residuals:
+///
+///     v116 fixture (h=0.30, no covariates)   rel gap 6.7e-8
+///     `rdd_var` design (h=0.50, 1 covariate) rel gap 1.3e-2
+///
+/// Five orders apart. `v116_tau_bc_equals_the_collapsed_form_only_when_b_equals_h`
+/// pins the first number and is not wrong about it, but that fixture's
+/// geometry made the two forms nearly coincide, so it cannot establish the
+/// identity -- only that one design nearly satisfies it.
+///
+/// Which one is right is settled by upstream, not by the algebra:
+/// `pyexample_rdd.py` measures `tau_bc` against `rdrobust`'s `tau.bc` at
+/// **3.1e-15**, so `tau_bc` is the correct form and `tau_bc_collapsed` is a
+/// distinct quantity that sometimes nearly equals it.
+///
+/// `tau_bc_collapsed` (`xi_q(b)_r - xi_q(b)_l`) is still a real and useful
+/// quantity -- it is the order-`q` fit contrast at the bias bandwidth -- so it
+/// stays, with the claim above corrected rather than deleted.
 ///
 /// Public so the comparison can be made from outside the file rather
 /// than re-derived inside a test.

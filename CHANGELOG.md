@@ -230,6 +230,101 @@ The QA LOOP check carries its own byte-snapshot guard, independently of the
 gate's, for the same reason the SZ2020 one does: the failure being defended
 against is "the gate's own restore did not run", so relying on it is circular.
 
+### RDD: the recorded divergence was measured on a design with no noise in it
+
+The last of the five estimator slots that shipped with an analytic oracle only.
+RDD was **measured divergent and left ungated** by decision, because a
+permanently red gate is either a failing CI or an `--allow-inert` mute. That
+measurement does not hold, and the gate is now installed.
+
+**The design added to fix it contained no noise.** `sec_rdd`'s DGP is exact
+(`y = 2 + u + 0.5*z + 2*d`), so every residual is zero and no variance formula
+can be compared on it. `sec_rdd_var` was added for exactly that reason, with
+noise `(i*130363 + 777) / 131069.5 - 1`. That term is an exact **linear**
+function of `i`, and `u` is linear in `i` too, so it was collinear with the
+running variable and the local-linear fit absorbed it exactly. Measured:
+
+    0.5 * noise ranges over         [-0.497, 396.85]   a ramp, not a shock
+    regressing it on (1, u):        residual ss-sum 6.9e-24
+    fit residuals on sec_rdd_var:   1.7e-23 L,  2.0e-23 R
+    port homo_se there:             3.15e-15      not the 0.003535 claimed
+
+The replacement is a multiplicative hash modulo a prime, which is not a linear
+function of the index. Residuals are now ~1.67e+01 per side.
+
+**Retracted, with the measurement that killed each one:**
+
+- port/upstream SE ratios **0.038 / 0.026** -- both sides were ~1e-15, so the
+  ratio measured the noise floor;
+- `homo_se = 0.003535472` -- it was `3.15e-15`;
+- "the sign of the divergence is not stable across designs" -- it compared a
+  3.3x against a ~0.03x, and only one of them was a variance;
+- **"the port's HC0 arm returns EXACTLY 0.0 ... the root cause is not yet
+  diagnosed"** -- a White sandwich is `sum_k w_k^2 m_k^2 e_k^2`, so on residuals
+  of 1e-23 it returns ~0. The two arms were agreeing that the residuals were
+  zero. `sandwich_se_weighted` is **not** defective and is untouched. What does
+  survive is an unproven code/doc mismatch: it builds `M` from `X^T X`
+  unweighted (`linear.mbt:301`) where its docstring says `X^T W X`
+  (`linear.mbt:280-282`). Recorded as a mismatch to settle on its own merits,
+  not as a defect with evidence behind it.
+- "rdrobust is unseeded, 2.99e-02 spread over four fits" -- **unreproduced**.
+  Four fits at one seed, four at four different seeds and one unseeded fit all
+  return `tau.bc` bit-for-bit. The obvious mechanism -- bandwidth *selection*
+  resamples -- is also wrong: `bwselect='mserd'` gives spread 0.0e+00. So no
+  mechanism was found, and the gate pins no seed. The correct response to an
+  unreproduced hazard is a control, not a workaround: the gate fits upstream
+  twice and fails if the two differ.
+
+**The estimator was already ported.** Finding 1 -- "upstream bias-corrects and
+the port does not" -- is true of the *default arm* only. `DoubleMLRDD::tau_bc`
+and `DoubleMLRDD::tau_bc_se_rb` have carried rdrobust's bias-corrected estimator
+and its robust SE all along:
+
+| quantity | port | upstream `rdrobust` | rel gap |
+|---|---|---|---|
+| `tau_bc` vs `tau.bc` | 2.0089050907775863 | 2.0089050907775801 | **3.1e-15** |
+| `tau_bc_se_rb` vs `se.rb` | 0.13164869924415856 | 0.1316486992441567 | **1.4e-14** |
+| `homo_coef` vs `tau.us` | 2.0168404167343894 | 2.0288599714992888 | 5.9e-3 |
+| `homo_se` vs `se.us` | 0.005241166289055757 | 0.09818767604537382 | 9.5e-1 |
+
+So the re-specification that was approved -- "add local bias correction" -- would
+have duplicated code that already exists and already matches. The real gap is
+narrower: **the default is wrong, not the port.** `coef()` / `se()` are
+homoskedastic and uncorrected where rdrobust's default is bias-corrected and
+robust. That is a default change, not a re-specification.
+
+**Added `pyexample_rdd.py`**, wired into `check.yml` (`rdrobust>=2,<3` is now a
+declared dependency) and into the QA LOOP as `pyexample_rdd` (`fast` scope) --
+the **31st** check, **22** of them fast. It gates the two quantities that match
+at bound `1e-11` and PRINTS the two that do not, so the default-arm divergence
+is visible on every run rather than asserted in a document. Mutation battery
+`_verify/_rdd_battery_1680.py`, **6/6**: C0 control, M1/M2 at 100x the bound,
+**M3 below the bound still PASS** (a gate that failed there would be a
+tripwire), M4 on the design fingerprint, M6 on a missing emitter row.
+
+M6 earned its place by finding a live bug in the gate itself: the
+`tau_bc_collapsed` reporting block read `vals["tau_bc"]` unguarded, so with the
+row missing the gate raised `KeyError` and exited 1 **with no `RESULT:` line**.
+A battery scoring only the exit code would have called that a pass -- a crash
+and a red gate are indistinguishable that way. The gate now guarantees a verdict
+on every path, and the battery reports a crash as its own outcome.
+
+### Fixed: a docstring stating an identity its own test cannot see
+
+`DoubleMLRDD::tau_bc_collapsed` claimed it "is what `rdrobust`'s bias-corrected
+limit equals when `b == h`". Measured at `b == h`, on two designs that both have
+genuine residuals, the two forms differ by **6.7e-8** relative on the v0.116.0
+fixture and by **1.3e-2** on `rdd_var` -- five orders apart.
+
+The substitution fails because `bias` is not a difference of two fits: it
+returns `rdd_limit(s, h, p) - xi_bc_s` with `xi_bc_s` from the `Q` sandwich, and
+`rdrobust`'s analytic local bias correction agrees with an order-`q` fit to
+leading order in `h`, not exactly. `pyexample_rdd.py` settles which form is
+right against upstream rather than by algebra: `tau_bc` matches `tau.bc` at
+3.1e-15, so `tau_bc` is correct and `tau_bc_collapsed` is a distinct quantity
+that sometimes nearly equals it. Both docstrings corrected; the test is left
+alone, and the reason it cannot establish the identity is now written down.
+
 ## [0.163.0] — the cross-checks can see the port, and `tsbh` now matches statsmodels bit for bit
 
 `moon.mod` moves 0.162.0 -> 0.163.0. The test counts are untouched

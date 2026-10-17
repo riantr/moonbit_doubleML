@@ -1894,6 +1894,21 @@ fn sec_policytree_upstream() -> Unit {
 /// Integer-only DGP, like `sec_pq_qte`: CPython rebuilds the rows from the
 /// same modulo formulas, so there is nothing to emit and nothing to drift.
 /// The noise is what the upstream side needs -- without it `se` is 0 or NaN.
+///
+/// # v0.163.0 correction: the FIRST version of this DGP added NO noise
+///
+/// The noise term was `(i*130363 + 777) / 131069.5 - 1`, which is an exact
+/// LINEAR function of `i` -- and `u` is also linear in `i`. So the "noise"
+/// was collinear with the running variable, the local linear fit absorbed
+/// it exactly, and the section reproduced `sec_rdd`'s zero-residual
+/// degeneracy. Measured: `0.5 * noise` ranges over `[-0.497, 396.85]`
+/// (a ramp, not a bounded shock), and regressing it on `(1, u)` leaves a
+/// residual ss-sum of `6.9e-24`. The residuals were `1.7e-23`, so
+/// `homo_se` was `3.15e-15` -- not `0.003535`, and not non-zero.
+///
+/// The replacement uses a multiplicative hash modulo a prime, which is not
+/// a linear function of the index, so it is genuine non-collinear noise.
+/// Residuals are now `~1.67e+01` per side.
 fn sec_rdd_var() -> Unit {
   section("rdd_var")
   let n = 800
@@ -1905,7 +1920,11 @@ fn sec_rdd_var() -> Unit {
     let ii = i.to_int64()
     let uu = (i.to_double() + 0.5) / 400.0 - 1.0
     let zi = (ii * 6271 % 997).to_double() / 498.5 - 1.0
-    let ei = (ii * 130363 + 777).to_double() / 131069.5 - 1.0
+    // Multiplicative hash mod a prime: NOT linear in `i`, hence not
+    // collinear with `uu`. The first version of this line used
+    // `(ii * 130363 + 777) / 131069.5 - 1`, which WAS linear in `i` --
+    // see the section comment above.
+    let ei = (ii * 2654435761 % 1000003).to_double() / 500001.5 - 1.0
     let di = if uu >= 0.0 { 1.0 } else { 0.0 }
     u[i] = uu
     z[i] = zi
@@ -1929,6 +1948,14 @@ fn sec_rdd_var() -> Unit {
   ).fit()
   val("hc0_coef", hc0.coef())
   val("hc0_se", hc0.se())
+  // rdrobust's bias-corrected point estimate and its procedure-(iii)
+  // robust SE. `tau_bc` defaults to `b = h / rho` with `rho = 1`, i.e.
+  // `b == h`, and `p = 1, q = 2` -- rdrobust's own defaults. Emitted so
+  // the comparison is against what a caller actually gets from
+  // `DoubleMLRDD`, not a hand-rolled equivalent computed elsewhere.
+  val("tau_bc", homo.tau_bc())
+  val("tau_bc_se_rb", homo.tau_bc_se_rb())
+  val("tau_bc_collapsed", homo.tau_bc_collapsed())
   end()
 }
 

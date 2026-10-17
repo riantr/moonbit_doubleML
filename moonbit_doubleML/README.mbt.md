@@ -1191,12 +1191,18 @@ script per upstream class:
 | `pyexample_lplr.py` | `DoubleMLLPLR` | shared rows + pinned outer partition |
 | `pyexample_pq.py` | `DoubleMLPQ` / `DoubleMLQTE` / `DoubleMLLPQ` | integer-only DGP, rebuilt independently on both sides |
 | `pyexample_policytree.py` | `DoubleMLPolicyTree` | integer-only DGP; the **label vector over every row** is compared, because the port's builder and upstream's `DecisionTreeClassifier` differ in threshold convention, criterion and leaf rule |
+| `pyexample_rdd.py` | `DoubleMLRDD` vs `rdrobust` | integer-only DGP **with genuine non-collinear noise**; the bias-corrected arm is gated |
 | `pyexample_suite.py` | the core estimator family | mixed |
 
-**`DoubleMLRDD` is deliberately the one absence.** It is **measured
-divergent**, not gated: its SE differs from `rdrobust`'s by 3.3x and no bandwidth
-repairs both sides at once, so a gate here would be permanently red. The
-measurement is `_verify/RDD_PARITY_1680.md`. That is the standing rule -- a
+**`DoubleMLRDD`'s shipped default arm is still the one absence.** `coef()` / `se()` are
+homoskedastic and **uncorrected**, so they are a *different estimator* from
+`rdrobust`'s default rather than a worse implementation of the same one, and matching
+them would be a re-specification rather than a bug fix. What `pyexample_rdd.py` gates is
+the arm that does match: `tau_bc` against upstream's `tau.bc` (measured gap **6.2e-15**)
+and `tau_bc_se_rb` against `se.rb` (**1.9e-15**), both at bound `1e-11`. The default arm
+is printed beside the gate on every run — `~5.9e-3` relative on the point estimate and
+`~19x` on the SE — so the divergence is visible rather than asserted. The standing rule is
+the same one below: a
 recorded defect beats a gate that cannot pass. With RDD recorded and the other
 four gated, every estimator slot on `examples/main` that once had an analytic
 oracle only is now either gated against upstream or measured.
@@ -1575,8 +1581,8 @@ gates, all of which run on push to `master` and again before publishing:
 | Generated-interface drift | `publish.yml` | public surface |
 | `typos` (pinned 1.19.0) | `publish.yml` | prose |
 | 24 `validate_*_with_python.py` | `check.yml` | estimator parity; see the two-tier note below |
-| 8 `pyexample_*` upstream gates | `check.yml` `python-cross-check` | the port against **upstream's own code**; see the table below |
-| QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 30 registered checks, 21 of them fast |
+| 9 `pyexample_*` upstream gates | `check.yml` `python-cross-check` | the port against **upstream's own code**; see the table below |
+| QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 31 registered checks, 22 of them fast |
 
 `nightly.yml` additionally runs the package against the MoonBit **nightly**
 toolchain, so a breaking upstream change surfaces before it reaches stable.

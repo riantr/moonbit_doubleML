@@ -864,8 +864,9 @@ def c_pyexample_pq():
 # --------------------------------------------------------------------------- #
 #
 # The last of the five estimator slots that shipped with an ANALYTIC oracle only.
-# RDD is measured divergent and has no gate by decision (`_verify/RDD_PARITY_1680.md`);
-# PQ/QTE/LPQ are `pyexample_pq` above.
+# PQ/QTE/LPQ are `pyexample_pq` above; RDD is `pyexample_rdd` below, gated on its
+# bias-corrected arm after the recorded divergence turned out to have been measured
+# on a noiseless design.
 #
 # Its comparison shape is unique in this file. Upstream wraps a
 # `DecisionTreeClassifier` and the port implements its own builder, and the two
@@ -904,6 +905,48 @@ def c_pyexample_policytree():
         tail = out.strip().splitlines()[-1] if out.strip() else ""
         evidence = [tail.strip()[:110]]
     return R("pyexample_policytree", "", verdict, " | ".join(evidence)[:300])
+
+
+# --------------------------------------------------------------------------- #
+# pyexample_rdd -- RDD against upstream rdrobust, on the bias-corrected arm
+# --------------------------------------------------------------------------- #
+#
+# RDD was the one estimator slot left ungated, on a recorded divergence
+# (`_verify/RDD_PARITY_1680.md`). That divergence was measured on a design whose
+# "noise" was collinear with the running variable, so the fit was exact and the
+# variances were ~1e-15; the record has been withdrawn and re-measured. What it
+# actually showed is that the port's BIAS-CORRECTED estimator agrees with
+# rdrobust to 6.2e-15 and its robust SE to 1.9e-15, while the shipped default
+# arm is a different estimator (homoskedastic, uncorrected) and diverges.
+#
+# So this gate pins the arm that matches and REPORTS the arm that does not.
+# Requiring the default arm to match would be a permanently red gate, which is
+# either a failing CI or a mute -- both worse than recording the divergence.
+@check("pyexample_rdd",
+       "port vs upstream rdrobust, bias-corrected arm (tau.bc / se.rb)",
+       "fast")
+def c_pyexample_rdd():
+    gate = os.path.join(ROOT, "pyexample_rdd.py")
+    if not os.path.isfile(gate):
+        return R("pyexample_rdd", "", SKIP, "pyexample_rdd.py is not present")
+    try:
+        rc, out = run([sys.executable, "pyexample_rdd.py", "--check"],
+                      cwd=ROOT, timeout=3600)
+    except Exception as e:  # noqa: BLE001 - any failure is a FAIL, never a PASS
+        return R("pyexample_rdd", "", FAIL, "could not run the gate: %s" % e)
+    # A crash exits 1 with no RESULT line and is a FAIL, not a silent pass; the
+    # gate now guarantees the verdict exists, but the absence is still reported
+    # rather than folded into the exit code.
+    verdict = PASS if rc == 0 else FAIL
+    evidence = []
+    for line in out.splitlines():
+        s = line.strip()
+        if s.startswith(("tau_bc ", "tau_bc_se_rb ", "RESULT: RDD")):
+            evidence.append(s)
+    if not evidence:
+        tail = out.strip().splitlines()[-1] if out.strip() else ""
+        evidence = [tail.strip()[:110]]
+    return R("pyexample_rdd", "", verdict, " | ".join(evidence)[:300])
 
 
 # --------------------------------------------------------------------------- #
