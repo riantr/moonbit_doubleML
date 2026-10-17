@@ -88,7 +88,7 @@ def parse_section(out, name):
         start = next(i for i, l in enumerate(lines) if l.strip() == "section " + name)
     except StopIteration:
         raise RuntimeError("emitter emitted no section %r" % name)
-    vals, datas = {}, {}
+    vals, by_name = {}, {}
     for l in lines[start + 1:]:
         s = l.strip()
         if s == "end":
@@ -104,10 +104,10 @@ def parse_section(out, name):
                 raise RuntimeError(
                     "data %s declared %d values, got %d" % (parts[1], n, len(arr))
                 )
-            datas[parts[1]] = arr
+            by_name[parts[1]] = arr
     if not vals:
         raise RuntimeError("section %r emitted no values" % name)
-    return vals, datas
+    return vals, by_name
 
 
 def upstream_fit(x, y, d, fold_id, n_folds_inner, inner_seed, score):
@@ -241,14 +241,14 @@ def main():
     print("=" * 76)
 
     out = run_emitter()
-    vals, datas = parse_section(out, "lplr_upstream")
+    vals, by_name = parse_section(out, "lplr_upstream")
 
     n = int(vals["lplr_n"])
     p = int(vals["lplr_p"])
-    x = datas["lplr_x"].reshape(n, p)
-    y = datas["lplr_y"]
-    d = datas["lplr_d"]
-    fold_id = datas["lplr_fold"].astype(int)
+    x = by_name["lplr_x"].reshape(n, p)
+    y = by_name["lplr_y"]
+    d = by_name["lplr_d"]
+    fold_id = by_name["lplr_fold"].astype(int)
 
     # Self-check: the emitter must have reproduced the example's own DGP.
     # Its printed `theta_hat` is 0.46033435469463013; if the replication in

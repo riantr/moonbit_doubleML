@@ -1,0 +1,43 @@
+fix(ci): the new pyexample gates had never run on CI, and two spellings blocked the release
+
+The v0.163.1 tag reached github and its publish run went red at `Check
+typos`, so `Publish to Mooncakes` and `Create GitHub Release` were both
+SKIPPED -- the tag exists but the package was never published. The same
+commit also went red on the master CI run. Two independent causes, both
+found by reading the logs rather than by guessing.
+
+1. `Check typos` -- and it only bites the PINNED dictionary.
+
+`publish.yml` runs bare `typos` with no tracked-file filter and pins
+v1.19.0. The local build is 1.50.3: a much newer dictionary, so "local typos
+was clean" was never evidence about this gate. Ran the pinned binary to
+find out what CI saw, and on a clean checkout it flags exactly two tracked
+files -- both of ours, both first added since v0.163.0:
+
+    pyexample_lplr.py                 `datas`  x7   -> `by_name`
+    _verify/_cluster_var_est_1680.py  `psiBa`  x5   -> `psiB_a`
+
+Renamed rather than added to `_typos.toml`: these are our own identifiers,
+not verbatim upstream text, which is what the exclude list is for. typos
+splits on underscores and on case runs, so `psiB_a` tokenises clean where
+`psiBa` exposed a bare `Ba`. Re-ran the PINNED binary afterwards: zero
+tracked files flagged.
+
+2. The nine `pyexample_*` checks died of `ModuleNotFoundError: numpy`.
+
+They are scope "fast", so they run in the QA loop job -- and that job has
+no `Install Python dependencies` step. All nine failed in 0.03s. The
+`python-cross-check` job installs them; `qa-loop` never did.
+
+Invisible until now because these checks are NEW: at 465431c, the last CI
+run on this repo that was green, `checks.py` had ZERO `c_pyexample*`
+functions. They arrived in d3ac364, so the failing run was the first CI
+execution these gates ever had. They passed locally the whole time, because
+a developer machine already has numpy. Added the same install line
+`python-cross-check` uses, so the two jobs cannot drift into disagreeing
+about what the port is compared against.
+
+check.yml parses after the edit (qa-loop steps: checkout, python, moonbit,
+typos, install-python-deps, update-deps, self-test, fast scope, service
+checks). `pyexample_lplr` re-verified green after the rename, with the same
+gaps: 0.007307 / 0.010609.

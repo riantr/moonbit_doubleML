@@ -106,7 +106,7 @@ print()
 # comparing upstream's function with itself and could not see the difference.
 nB = 13
 psiB = np.array([(-1.0) ** i * (0.5 + (i % 4)) for i in range(nB)])
-psiBa = np.array([1.0, -2.0, 0.5, 3.0, -1.0, 2.5, -0.25, 4.0, -3.5,
+psiB_a = np.array([1.0, -2.0, 0.5, 3.0, -1.0, 2.5, -0.25, 4.0, -3.5,
                   1.0, 2.0, -1.0, 0.75])
 clB = np.array([0] * 4 + [1] * 2 + [2] * 3 + [3] * 4)
 unitRowsB = [[0, 1, 2, 3], [4, 5], [6, 7, 8], [9, 10, 11, 12]]
@@ -115,12 +115,12 @@ unitFoldB = [0, 1, 1, 2]
 foldB = np.array([unitFoldB[c] for c in clB])
 smplsB = [(np.setdiff1d(np.arange(nB), np.nonzero(foldB == k)[0]),
            np.nonzero(foldB == k)[0]) for k in range(3)]
-varB = var_one_way_cluster(psiB, psiBa, clB, smplsB)
-seB_port = port_formula(psiB, psiBa, clB, foldB, 3, 4, 3)
+varB = var_one_way_cluster(psiB, psiB_a, clB, smplsB)
+seB_port = port_formula(psiB, psiB_a, clB, foldB, 3, 4, 3)
 
 print("FIXTURE B (unit-aligned) -- these literals go in plpr_test.mbt")
 print("  psi         ", [float(v) for v in psiB])
-print("  psi_deriv   ", [float(v) for v in psiBa])
+print("  psi_deriv   ", [float(v) for v in psiB_a])
 print("  unit_rows   ", unitRowsB)
 print("  unit_fold   ", unitFoldB, "<- per UNIT, length %d" % len(unitFoldB))
 print("  n_folds=3, n_folds_per_cluster=3, n_units=4")
@@ -130,7 +130,7 @@ for f in range(3):
     Ik = np.unique(clB[test])
     print("  fold %d: rows %-18s I_k=%-9s m=%d  sum(psi_a[test])=%.4f"
           % (f, [int(v) for v in test], [int(v) for v in Ik], len(Ik),
-             psiBa[test].sum()))
+             psiB_a[test].sum()))
 print()
 print("  upstream var_one_way_cluster variance : %.17g" % varB)
 print("  upstream                               se: %.17g" % np.sqrt(varB))

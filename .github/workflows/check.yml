@@ -384,6 +384,26 @@ jobs:
           curl -LsSf "https://github.com/crate-ci/typos/releases/download/${TYPOS_VERSION}/typos-${TYPOS_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar zxf - -C "${CARGO_HOME:-$HOME/.cargo}/bin"
           echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> $GITHUB_PATH
 
+      # The nine `pyexample_*` checks in the fast scope are PORT-vs-UPSTREAM
+      # gates: they import numpy, pandas, scikit-learn and doubleml from the
+      # emitted rows. This job had no dependency install, so every one of them
+      # died in 0.03s with `ModuleNotFoundError: No module named 'numpy'`.
+      #
+      # It went unseen because these checks are NEW: at 465431c -- the last CI
+      # run on this repo that was green -- checks.py had ZERO `c_pyexample*`
+      # functions. They arrived in d3ac364 ("gate DoubleMLLPLR on shared rows
+      # and a pinned partition"), so the run that reported this failure was the
+      # first CI execution these gates ever had. Locally they always passed,
+      # because a developer machine already has numpy; the job that runs them
+      # on CI did not.
+      #
+      # Same install line as `python-cross-check`, so the two jobs cannot drift
+      # into disagreeing about what the port is compared against.
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install doubleml numpy pandas statsmodels scikit-learn "rdrobust>=2,<3"
+
       - name: Update dependencies
         run: |
           moon version --all
