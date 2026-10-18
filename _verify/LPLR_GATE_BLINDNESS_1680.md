@@ -2059,6 +2059,41 @@ So "this piece differs from upstream, therefore matching it will bring the
 numbers together" does not hold here, and it has now failed on three separate
 pieces. Fidelity is a direction, not a lever.
 
+### 25e. CLOSING 24d: the conditioning does NOT rescue the solver, tested in the failure region
+
+24d said this probe "cannot be exonerated" at the runaway because it never
+reproduced one. That is now closed, by running the experiment where the
+failure actually lives.
+
+Both changes at once -- upstream's `Y = 0` conditioning **and** the clamp
+removed (`theta_new.abs() > 5.0 || (theta_new - theta).abs() > 1.0` raised to
+`1.0e300`, leaving scipy's bare `theta - s/sd`):
+
+```
+FUZZ FAIL: lplr non-negative finite se
+           (trial=7, se=8.883758984028203e+59, th=139.7860980312463)
+```
+
+| build | fuzz |
+|---|---|
+| clamped, alias `m_pred = a_pred` (shipped) | **11/11 PASS** |
+| unclamped, alias | FAIL trial 2, `se=NaN`, `th=-440.16` |
+| **unclamped + conditioned** | **FAIL trial 7**, `se=8.88e+59`, `th=139.79` |
+
+The conditioning does not rescue the Newton. It moves the failure from trial 2
+to trial 7 and changes it from `NaN` to a finite-looking `8.9e+59` -- which is
+worse as a diagnostic, because a huge finite `se` reads as a plausible number
+rather than an obvious failure.
+
+**So the clamp is necessary for reasons independent of the `m_hat`
+conditioning.** The port's Newton is unstable on this DGP family whatever
+`m_pred` is, which means the instability comes from somewhere else in the
+score path that upstream does not share. That is a live open question, not a
+settled one -- but it is no longer confounded by this deviation.
+
+This also retires the last idea that would have removed the clamp: "fix the
+fidelity gap and the damping becomes unnecessary" is now measured and false.
+
 ## 26. Bare local `typos` FAILS this repo on tracked files -- do not "fix" them
 
 The release gate pins `typos` **v1.19.0** and runs it bare over the whole
