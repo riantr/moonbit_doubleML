@@ -1552,4 +1552,81 @@ on `W_inner` and `beta`, section 12's territory), whereas 18a-18b is about
 `preds`. Both should be checked together, since resolving 18a requires
 knowing which rows the inner models were trained on.
 
+## 20. UPSTREAM IS ALSO ILL-POSED AT SMALL n -- the 0/300 figure was n=500-only
 
+Every "upstream is fine, the port is wrong" statement in this document rests
+on one number: upstream emits 0 non-finite SE over 300 draws. That number is
+real, and it was measured at **n=500** (`_lplr_nan_upstream_1680.py`, whose
+`part2` defaults to `n=500`). It was then used as a property of the
+estimator rather than of that sample size.
+
+`_verify/_lplr_upstream_smalln_1680.py` runs REAL upstream
+(`DoubleMLLPLR(...).fit()`, not a reconstruction) on the same DGP at the
+same small n, 25 draws per n, n_folds=2, n_folds_inner=2:
+
+    n      completed  non-finite se  non-finite coef  root warnings
+    60     25/25      7              2                11
+    100    25/25      1              0                1
+    160    25/25      1              0                1
+    500    25/25      0              0                0
+
+The failures are the same species the port's clamp was blamed for. At n=60,
+draw 9 and draw 15 return `coef=nan, se=nan`; draw 6 returns
+`coef=5.4e22, se=inf`; draw 14 `coef=3.5e15, se=inf`. And 11 of 25 draws at
+n=60 raise upstream's own `Could not find a root of the score function.`
+warning -- the same condition the port surfaces through
+`DoubleMLLPLR::warnings`.
+
+### 20a. What this does to the clamp
+
+The clamp was justified in section 13 by "upstream is 0/300 finite here".
+That justification holds at n=500 and nowhere else. At n=60 the comparison
+is:
+
+    upstream (no clamp, as shipped)  : 18/25 finite SE, 11/25 root warnings
+    port (clamped)                   : finite SE on every draw, with WARNED
+                                       set where Newton did not converge
+
+So at small n the port is **not** diverging where upstream holds. It is
+returning a finite but wrong number -- and warning -- where upstream returns
+NaN or a coefficient of order 1e22 on 28% of draws. The clamp converts a
+non-finite answer into a finite wrong one; it does not manufacture the
+failure.
+
+### 20b. Section 19's sweep, reconciled
+
+19's BAGGED arm scored 16/25 finite at n=60 while real upstream scores
+18/25. The arm is a reconstruction (upstream's captured `a_hat`, with
+`t_hat`, `beta`, `m_hat`, `W_inner` and `theta0` recomputed here and an
+unclamped Newton written to match scipy 1.18's stopping rule), so it is
+*more* pessimistic than upstream by two draws. The gap is small and in the
+expected direction, and the ordering it established -- BAGGED above PLAIN at
+every small n (16 vs 15, 21 vs 19, 20 vs 19) -- stands. It simply does not
+license the claim that matching upstream's construction removes the
+small-n problem, because upstream has no answer at small n to match.
+
+### 20c. What this means for the parity goal
+
+"Make the port agree with upstream" is well-posed where upstream has a
+defined answer, and section 11 already shows that is n=500, where the
+parity gate passes. At small n upstream's answer is NaN, `inf`, or 1e22 with
+a root-failure warning, so there is nothing to agree WITH; agreement there
+would mean reproducing a non-finite value.
+
+The honest statement of the residual is therefore not "a port deviation
+whose cause we could not locate". It is: **at n <~ 200 this estimator is
+ill-posed for both implementations; the port returns a finite warned answer
+where upstream returns a non-finite one, and the gap the README discloses at
+n=60 and n=100 is the cost of that choice, measured.** The clamp stays, and
+its justification is now the one in 20a rather than the n=500-only 0/300.
+
+### 20d. The meta-point, which is the same one as section 7b
+
+A measurement taken in the regime where a failure cannot occur is not
+evidence about the regime where it can. The 0/300 number was true and it was
+load-bearing for six sections and two shipped design decisions, and it was
+true *at n=500*. §11 recorded that the parity gate agrees at n=500 while the
+estimator is wrong at n=60 -- the two facts were in the same document, and
+the inference still did not get made. The same pattern as §7b and §19: a
+number was produced, then generalised past the conditions it was measured
+under.
