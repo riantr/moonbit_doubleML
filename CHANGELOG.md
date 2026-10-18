@@ -9,6 +9,84 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.163.4] — the LPLR small-n divergence is explained, and the conclusion it rested on is withdrawn
+
+`moon.mod` moves 0.163.3 -> 0.163.4. This one **does not move any reported
+number**: no estimator's coefficient, standard error or warning changed. 25
+commits, and every one of them is a correction to a *claim*, a *document* or a
+*gate* -- not to a computation. Test counts stay **1117 / 1123 / 1117 / 1117**
+(native / wasm-gc / wasm / js), and the LPLR parity gate reproduces
+`gap = 0.007307` / `0.010609` bit-for-bit across the whole range.
+
+### The retraction, which is the reason this version exists
+
+Section 25g of `_verify/LPLR_GATE_BLINDNESS_1680.md` concluded that "upstream is
+FINITE on the exact fuzz rows the unclamped port dies on", and from that "the
+clamp is justified, real port instability proven". It rested on **one** upstream
+draw, with `draw_sample_splitting=True`, which the same section had already
+flagged as unreproducible.
+
+Over **40 pinned redraws** of those identical rows, upstream's own
+uninstrumented `DoubleMLLPLR(...).fit()` returns a non-finite or absurd
+coefficient on **17 of 40 (42%)** -- `-648.285`, `5.18e+70`, `8.44e+122`,
+`172149`, `nan` four times -- raising its own `Could not find a root of the score
+function` warning on 18 of 40. The port's Newton start value sits at the **90th
+percentile** of upstream's own draws: an ordinary sample, not a port bias.
+
+So the port does not diverge "where upstream does not". The clamp is not
+covering a defect this port introduced; it is covering a fragility **upstream
+shares and does not guard against either**. The clamp stays.
+
+### What the divergence actually is, measured causally
+
+A row-by-row diff of the two implementations is impossible -- they draw
+different partitions, so `upstream.t_hat[i]` and `port.t_pred[i]` are
+predictions from different models. The port's own `t_pred` / `m_pred` /
+`a_pred` / `beta` were therefore dumped from the shipped build on the exact
+failing rows and handed to *upstream's own* solver, after the Python harness had
+been validated end-to-end to `|diff| = 0`:
+
+- `t`, `m`, `a` are **innocent** -- all 8 swap cells carrying them converge.
+- `beta` alone is necessary and sufficient -- all 8 cells carrying it diverge.
+- Inside `beta` it is the Newton **start value** `mean(beta)`, not
+  `r_hat = t - beta * a`. Swapping the port's `beta` into `r_hat` still
+  converges (`-0.658438`); swapping it into the start value does not.
+- The port's solver is **faithful**: LPLR never sets `_coef_bounds`, so
+  `double_ml_score_mixins.py:149` runs
+  `root_scalar(score, x0=..., fprime=..., method="newton")` -- an unbracketed
+  Newton from `np.average(beta)`, which is what this port does too.
+- The mechanism is a **derivative collapse**: at `theta0 = 6.842` the score is
+  `-0.1119` but the derivative is `-8.07e-05`, 344x smaller, so the first step
+  `theta - score/deriv` overshoots to about `-1381` and overflows. The Newton
+  basin for that draw is `x0 in [0, 3.5]`, draw-specific -- elsewhere in the
+  same sweep `3.5491` and `3.7774` both converged.
+
+### Also in this release
+
+- **Two of this repo's own gates could report success without measuring
+  anything.** `ci_local.py --jobs` filtered by id-or-name and never checked that
+  a requested selector matched, so asking for four jobs and mistyping one ran
+  three and exited 0 -- and a matrix job's selectable name is never the name
+  `list` prints. It now refuses to run and names the offender. Separately, the
+  meta-gate's two AST heuristics could not see a validator that emits its
+  verdict through `parity_helper.report()`, so ten of them were hand-exempted by
+  a list that went stale; recognising the delegation took the meta-gate from
+  **13 problems to 2**, and also caught that `validate_pava_with_python.py`'s
+  "hard-coded PASS" was a false positive on a per-case status row rather than
+  its verdict.
+- **Six stale live artifacts corrected**, including a withdrawn `69%` figure
+  still asserted 33 lines below the paragraph that withdrew it. Section 22a-bis
+  and section 27i both record the sweep: withdrawing a number in the place you
+  happened to be editing is not a sweep.
+- **`moonbitlang/async` 0.20.3 -> 0.22.5**, two minor versions behind the
+  registry, found by the pre-release dependency check. Nothing in the library
+  imports it, so the bump is inert for the numerics; the prose was corrected
+  per instance, since only three of the five `async@0.20.3` mentions describe
+  this package's manifest and a blanket replace would have made two true
+  statements false.
+- `pyexample_lplr.py`'s fails-closed message named the wrong cause -- it checks
+  the ANSWER, not the rows. Verified by perturbing the pin past its `1e-15`
+  tolerance, since a `1e-17` nudge does not trip it.
 ## [0.163.3] — LPLR reads its own nuisances the way upstream does, and
 three gates that could not fail now can
 
