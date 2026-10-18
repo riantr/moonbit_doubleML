@@ -2079,6 +2079,17 @@ All eleven pass the pinned gate, which last exited 0 on `873f0ea` over the same
 580 files. There is no `.typos.toml`, so both binaries run with defaults and
 the only difference is the dictionary.
 
+**Why this file quoting those tokens is still safe.** Writing this section
+made the evidence file itself fail local `typos` (exit 2), which is the trap
+demonstrating itself. The pinned binary could not be re-run at the time --
+its download was down -- so the claim rests on an inference rather than a
+fresh run, and the inference is direct: **the same tokens were already in
+tracked files inside the 580-file checkout that the pinned gate cleared on
+`873f0ea`.** `thr_ok` sat in `pyexample_policytree.py`, `REIVEW` in
+`_verify/H1-verdict.md`, `datas`/`psiBa` in the two scratch commit messages.
+v1.19.0 saw them and passed. Re-stating the same strings in another tracked
+file cannot introduce a finding the dictionary does not have.
+
 **The hazard is `thr_ok`.** It is a local variable in a shipped gate. Someone
 running local `typos`, believing it authoritative, renames it to `the_ok` and
 the rename has to be propagated through the file -- or not, and the gate breaks
