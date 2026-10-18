@@ -1435,31 +1435,58 @@ stopped one level short of the pieces that produce those pieces.
 and predict-`x[test_idx]`. The port's `cross_fit_predict_inner`
 (`lplr.mbt:1474-1487`) does exactly that.
 
-### 18d. What is NOT established
+### 18d. What is measured, and what is still not
 
-**Nothing here is measured.** Two things have to be shown before this can be
-called a cause:
+**MEASURED: the magnitude is large, and consistently signed.**
+`_verify/_lplr_ahat_bag_1680.py` spies on upstream's `_double_dml_cv_predict`
+so the compared value IS upstream's own `a_hat["preds"]` rather than a
+re-derivation, captures the partition from the same call so both sides use
+identical folds, and then fits the port's plain outer-OOF on that same
+partition. 12 draws, n=500, p=6, n_folds=2, n_folds_inner=2:
 
-1. **Magnitude.** Whether the aggregate and the single prediction differ by
-   enough to move `psi_hat` across the collapse threshold. Averaging
-   generally *shrinks* a fitted value toward the mean, which would make
-   upstream's `a_hat` smaller, which makes upstream's `r_hat` LARGER -- the
-   wrong direction to be an explanation, and it has to be checked rather
-   than assumed. Note also `/= len(smpls)` divides by the OUTER fold count,
-   so if `n_folds_inner != n_folds` upstream's value carries a scale factor
-   of `n_folds_inner / n_folds` on top of the averaging; that has to be
-   pinned before any comparison is meaningful.
-2. **Occupancy**, in 17b's sense: whether `a_pred`'s spread is actually what
-   drives `psi_hat -> 0` on the diverging draws, or whether `t_pred` or
-   `beta` is doing that instead.
+    median span of a_hat across rows : 0.57863
+    median rms(bag - plain)          : 0.39261
+    median rms/span                  : 0.6920
 
-The experiment that settles it is a direct comparison on ONE pinned
-partition and ONE pinned partition's rows: record upstream's `a_hat["preds"]`
-and the port's `a_pred`, and the resulting `r_hat`, `psi_hat`,
-`mean(psi)` and `mean(psi_deriv)` on both sides, for the fuzz trial 2 that
-detonates. That is a numerical comparison of intermediates on identical
-input -- not another input-side sweep, which is what 14, 15 and 17 all were
-and all of which failed.
+So the two differ by **69% of `a_hat`'s own span** -- not a rounding
+difference, not a subtle offset. The port's `a_pred` is simply not
+upstream's quantity.
+
+The sign is uniform: `mean(bag) - mean(plain)` is negative on **12 of 12**
+draws (-0.248, -0.187, -0.265, -0.185, -0.272, -0.229, -0.148, -0.174,
+-0.149, -0.091, -0.111, -0.278). Averaging shrinks the fitted value, exactly
+as expected, and it shrinks it every time.
+
+**That direction does NOT establish causation, and it is the wrong way
+round for the mechanism 17c proposed.** Since `r_hat = t_hat - beta*a_hat`
+with `beta > 0`, a smaller `a_hat` makes upstream's `r_hat` LARGER, which
+makes upstream's `psi_hat = expit(-r_hat)` SMALLER, which makes upstream's
+`mean(psi_deriv)` smaller still -- i.e. it pushes upstream toward the same
+collapse the port suffers, not away from it. Upstream is nonetheless finite
+300/300. So either the mechanism in 17c is not the whole story, or
+`beta`/`t_hat` move enough to dominate.
+
+**Still NOT established:**
+
+1. **Occupancy.** Whether this difference is what actually drives
+   `psi_hat -> 0` on the diverging draws, or whether `t_pred` and `beta`
+   dominate it. Note `psi_hat` does not cancel out of the Newton ratio --
+   `s/sd = mean(psi_hat*(A-B)) / [-mean(psi_hat*C)]` with
+   `A = y*exp(-theta*d)*d_tilde`, `B = d_tilde*(1-y)*exp(r_hat)`,
+   `C = d_tilde*y*d*exp(-theta*d)` -- so a uniform rescaling of `psi_hat`
+   would leave the ratio alone, but a change in its per-row SPREAD does not.
+   Which of those this is has to be measured.
+2. **Fold-count scaling.** `/= len(smpls)` divides by the OUTER fold count.
+   With n_folds = n_folds_inner = 2 the average is exact, but the port must
+   handle unequal counts correctly or it will reproduce a scale factor that
+   upstream's configuration never had.
+3. **Inner-split scope** (18e), which has to be answered in the same pass
+   because implementing the average requires knowing which rows the inner
+   models were trained on.
+
+The settling experiment is unchanged but now has a number attached: build
+`r_hat` and `psi_hat` both ways on the fuzz trial-2 partition and compare
+`mean(psi)` and `mean(psi_deriv)`, not just the final `se`.
 
 ### 18e. A related open question
 
