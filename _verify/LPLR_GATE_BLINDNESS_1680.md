@@ -1201,7 +1201,7 @@ that was confounded and has now been cleared.
 | Newton step | `p = p0 - fval/fder` | `theta - s/sd` | scipy 1.18 `_zeros_py` |
 | start value | `np.average(beta)` (`:326`) | `mean(beta_start)` | shipped `df049c2` |
 | point estimate | `theta_hat = root_res.root` | `coefs[r] = theta` | shipped `df049c2` |
-| `d_tilde` | `d - m_hat` (`:403`) | `d - m_pred`, `m_pred = a_pred` | `:254` is ml_m's plain outer CV |
+| `d_tilde` | `d - m_hat` (`:403`) | `d - m_pred`, `m_pred = a_pred` | `:254` is ml_m's plain outer CV -- **see §24** |
 | `psi_hat` | `expit(-r_hat)` | `expit(-r_hat)` | `:404` |
 | `score_const` | `d_tilde * (1-y) * exp(r_hat)` | same | `:405` |
 | score | `psi_hat * (y*exp(-theta*d)*d_tilde - score_const)` | same | `:523-524` |
@@ -1212,6 +1212,14 @@ that was confounded and has now been cleared.
 So the score, its derivative, the aggregation, the start value, the point
 estimate and the variance formula all match upstream. The root finder does
 NOT, and that is the one deliberate deviation.
+
+> **QUALIFIED by §24.** Every row above is an identity of FORM, verified by
+> reading both sources. The `d_tilde` row in particular is an algebraic match
+> only: upstream's `m_hat` is fitted on the `Y = 0` rows (`lplr.py:247-252`)
+> and the port's is not, and the two differ by rms 0.15-0.35 on a propensity
+> that lives in `[0, 1]`. Nothing else on this list is known to differ
+> numerically, but nothing else on this list has been checked numerically
+> either.
 
 ### 16b. The confound in 13c, cleared
 
@@ -1854,6 +1862,105 @@ This is also the fourth confirmation that the pre-D4 numbers were a separate
 failure mode from the clamp. D4 was worth doing on its own -- it is why n=60
 is healthy now -- and the clamp is a separate decision that happens to have
 been described using D4-era arithmetic.
+
+## 24. The one structural deviation never tested: upstream CONDITIONS `ml_m` on `Y = 0`
+
+While auditing §16a's "verified equivalent" table against upstream's source
+rather than against the port's comments, one row turned out to be verified by
+FORM and never by VALUE.
+
+### 24a. What upstream does
+
+`plm/lplr.py:244-264`:
+
+```python
+if self.score == "instrument":
+    weights = M_hat["preds"] * (1 - M_hat["preds"])
+    filtered_smpls = smpls
+elif self.score == "nuisance_space":
+    filtered_smpls = []
+    for train, test in smpls:
+        train_filtered = train[y[train] == 0]
+        filtered_smpls.append((train_filtered, test))
+    weights = None
+
+m_hat = _dml_cv_predict(self._learner["ml_m"], x, d, smpls=filtered_smpls, ...)
+```
+
+For `nuisance_space` upstream fits the propensity **on the control rows only**
+and predicts on the full test fold. The port's `m_pred = a_pred` is an
+UNCONDITIONED outer cross-fit (`lplr.mbt:836`, alias at `:928`).
+
+§14a checked the outer-cross-fit SHAPE -- that `_dml_cv_predict(ml_m, x, d)`
+really is a plain outer cross-fit -- and found the alias faithful. It did not
+check what happens INSIDE that fit. The port's own header has always said the
+conditioning "is implemented on neither branch"; what was missing was any
+measurement of what that costs.
+
+### 24b. It is a material difference, measured
+
+`_verify/_lplr_mhat_conditioning_1680.py`, 12 draws per n, both arms on the
+probability scale (section 21's correction), everything else held at
+upstream's real values, `m_pred` the ONLY thing that differs:
+
+| n | rms difference in `m_hat` | UNCONDITIONED finite | CONDITIONED finite |
+|---|---|---|---|
+| 100 | **0.3549** | 11/12 | 10/12 |
+| 160 | 0.2404 | 12/12 | 12/12 |
+| 500 | 0.1526 | 12/12 | 12/12 |
+
+A propensity prediction on `[0, 1]` differing by rms 0.15 to 0.35 is not a
+rounding difference. `d_tilde = d - m_hat` enters every `psi`, so §16a's
+"verified equivalent" row for `d_tilde` is verified as an algebraic identity
+and NOT as a numerical agreement.
+
+Reconstruction check, as required by 21e: rms(port `a_plain` - upstream
+`ml_a` bagged) averaged 0.0608, max 0.1645 -- consistent with section 21b's
+measured 1.7%-of-span, so the stand-in is sound and was not the thing being
+measured.
+
+### 24c. It is NOT the cause of the Newton runaway
+
+Strictly better on 1 draw, strictly worse on 2, tied on 33 of 36. At n=100 --
+the row that matters for the remaining divergence -- conditioning is slightly
+WORSE for survival (10/12 vs 11/12).
+
+So this is a genuine, material, previously unmeasured deviation that does
+**not** explain the clamp's necessity. Implementing it would not remove the
+clamp.
+
+### 24d. What this probe does NOT cover, stated plainly
+
+**It did not reproduce the runaway.** At n=500 both arms are 12/12 finite here,
+while the fuzz harness and `_lplr_tol_window2_1680.py` both produce
+`se = NaN, th = -440` on this design family. So the DGP/draw combination in
+this probe does not enter the failure region, and 24c's "not the cause" is a
+statement about the draws it ran, **not** about the runaway itself.
+
+That is section 7b's pattern appearing inside the probe that was written to
+avoid it. The honest reading of 24c is narrower than it looks: *the
+conditioning did not rescue the draws where the port already converged.* It
+was never tested on a draw that ran away, so it cannot be exonerated there.
+
+### 24e. Why it is recorded and not implemented
+
+Three reasons, in order:
+
+1. It would change results at EVERY n, including the n=500 design where the
+   gate currently passes. The D2/D3 precedent (§7d, §7e) is that this class of
+   change is implemented, measured, and reverted when it does not help -- and
+   both of those made parity worse.
+2. The n=500 gate cannot detect a regression here. Its band is
+   `3 * sqrt(sd_port^2 + sd_up^2)` = 0.206 against a measured gap of 0.007, so
+   a `d_tilde` change of this size could move the coefficient materially and
+   still read OK. **A loose gate cannot certify a change to the thing it is
+   loose about.**
+3. 24c gives no evidence it helps.
+
+So the deviation is now measured, scoped and priced, rather than being an
+unexamined gap in the equivalence table -- which is what it was for six
+sections. Closing it properly needs a tighter n=500 parity assertion first,
+which is a separate piece of work.
 
 ### 20d. The meta-point, which is the same one as section 7b
 
