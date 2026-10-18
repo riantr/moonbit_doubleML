@@ -1084,11 +1084,28 @@ This is **reported by `pyexample_lplr.py` section 5 on every run and asserted
 by nothing**, on purpose: a gate that is red forever gets ignored, which is
 worse than no gate. The cause sits in the Newton step. The port damps it
 (`lplr.mbt`, clamped to 0.25) and upstream does not -- scipy's Newton is a
-bare `p = p0 - fval/fder`. Removing the damping is the faithful port and does
-close the gap (11.4 -> 3.59 at n=60, 13.8 -> 0.086 at n=100), but it reaches
-`se = NaN` by trial 2 of `examples/fuzz` and aborts on `var_est.mbt:79` --
-while upstream's own unclamped answer at those sample sizes is non-finite on
-28% of draws.
+bare `p = p0 - fval/fder`. Removing the damping *is* the faithful port, and it
+was measured A/B at `8c01e96` by raising the two damping thresholds so the
+branch cannot fire, then reverting:
+
+| n | clamped | unclamped | upstream | gap, clamped -> unclamped |
+|---|---|---|---|---|
+| 60 | `-0.0491291` | `-0.0491291` | `3.53962` | `3.589` -> `3.589` (**no change**) |
+| 100 | `14.431` (warns) | `-0.643589` | `-0.558127` | `14.989` -> **`0.085`** |
+| 160 | `0.580578` | `0.580578` | `0.749398` | `0.169` -> `0.169` (**no change**) |
+
+So the clamp costs **nothing at n=60 and n=160** -- it is bit-identical to the
+unclamped arm on both. It bites at n=100 alone, where it is the whole
+difference between agreeing with upstream to `0.085` and being `14.989` away.
+
+It is not shipped, because the same A/B reproduces the failure that justifies
+it: unclamped reaches `se = NaN` at `theta = -440.16` by trial 2 of
+`examples/fuzz` and aborts on `var_est.mbt:79`, while upstream's own unclamped
+answer at those sample sizes is non-finite on 28% of draws. **The two
+requirements pull in opposite directions** -- the one design where upstream
+has a clean answer is not the one where this port can safely drop its damping.
+That tension is the honest state of this estimator below n ~ 200, and it is
+why no single change fixes both rows.
 
 Four candidates are now measured and none is the whole story. The `d_tilde`
 nuisance: falsified. The `a_hat` double cross-fit as `m_pred`: falsified.

@@ -1060,18 +1060,39 @@ pub fn DoubleMLLPLR::fit(
         // 12.5 from its start, while on the small-n designs the start is
         // O(10) and the root is at the truth (0.5), so the solver runs out of
         // budget mid-descent and returns a point that was never a solution.
-        // Measured on identical rows and the identical partition (truth 0.5):
+        // Measured on identical rows and the identical partition (truth 0.5),
+        // at `8c01e96`, by temporarily raising the two damping thresholds to
+        // 1.0e300 so the branch cannot fire, running `pyexample_lplr.py`, then
+        // reverting. Reproducible; the revert is exact.
         //
-        //              clamped           unclamped        upstream
-        //     n=60    14.966  WARNED    -0.049  ok        3.53962
-        //     n=100   13.285  WARNED    -0.644  ok       -0.558127
-        //     n=160    0.581  ok         0.581  ok        0.749398
+        //              clamped            unclamped         upstream
+        //     n=60    -0.0491291  ok      -0.0491291  ok      3.53962
+        //     n=100   14.431      WARNED  -0.643589   ok     -0.558127
+        //     n=160    0.580578   ok       0.580578   ok      0.749398
         //
-        // Gap to upstream is 11.4 and 13.8 clamped, against 3.59 and 0.086
-        // unclamped. (Upstream is itself far from the truth at n=60 -- 3.54
-        // against 0.5, with se 20.199. These designs are ill-conditioned for
-        // both implementations; what the clamp bought was a silent
-        // non-solution, not a correct answer.)
+        // Gap to upstream is 3.589 / 14.989 / 0.169 clamped, against
+        // 3.589 / 0.085 / 0.169 unclamped.
+        //
+        // **THE CLAMP COSTS NOTHING AT n=60 AND n=160** -- bit-identical to the
+        // unclamped arm on both. It bites at n=100 and nowhere else on these
+        // three designs, because that is the one where the solver exhausts its
+        // 50-step budget mid-descent. At n=100 it is the difference between
+        // agreeing with upstream to 0.085 and being 14.989 away.
+        //
+        // v0.163.4: this table previously read `n=60 14.966 WARNED` and
+        // `n=100 13.285 WARNED` for the clamped arm, and the README repeated
+        // the gap as "11.4 -> 3.59 at n=60". Both were measured BEFORE D4
+        // (v0.163.0), when the reported coefficient was a re-derivation rather
+        // than `theta` itself, so neither describes this code. The post-D4
+        // clamped iterate at n=60 is -0.0491291 with NO warning: the damping
+        // never fired there and the solve converged either way. **D4 fixed the
+        // REPORTING of that row, not the clamp** -- which is why the n=60 gap
+        // is now 3.589 on both arms instead of "11.4 clamped, 3.59 unclamped".
+        //
+        // Upstream is itself far from the truth at n=60 -- 3.54 against 0.5,
+        // with se 20.199. These designs are ill-conditioned for both
+        // implementations; what the clamp buys at n=100 is a finite WARNED
+        // answer, not a correct one.
         //
         // WHY IT IS STILL HERE, which is the part that is easy to get wrong:
         // removing it was measured and it is worse, not better.

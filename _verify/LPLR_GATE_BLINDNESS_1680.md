@@ -1774,13 +1774,86 @@ replacing either with a summary.
 
 ### 22d. One honest consequence for the parity goal
 
-The n=100 row is the port's genuine failure and it is still unexplained: the
-port returns `se` 751657 and `coef` 14.431 where upstream returns `se` 0.83 and
-`coef` -0.558, both finite, both on identical rows. §21 removed the `a_hat`
-bagging from the candidate list. The candidates falsified so far are `d_tilde`,
-`preds_inner`, the stopping tolerance, and the bagging. **The n=100 row is
-still an open divergence where upstream has a perfectly well-defined answer**,
-and it is not explained by ill-posedness on upstream's side.
+The n=100 row is the port's genuine failure: the port returns `se` 751657 and
+`coef` 14.431 where upstream returns `se` 0.83 and `coef` -0.558, both finite,
+both on identical rows. §21 removed the `a_hat` bagging from the candidate
+list. The candidates falsified so far are `d_tilde`, `preds_inner`, the
+stopping tolerance, and the bagging.
+
+> **RESOLVED by §23.** This paragraph originally called the n=100 row
+> "unexplained". It is explained: it is the Newton step clamp, and its cost
+> there is now measured. It remains a real divergence in the shipped build,
+> but it is not an open question -- it is a documented trade.
+
+**The n=100 row is still a divergence where upstream has a perfectly
+well-defined answer**, and it is not explained by ill-posedness on upstream's
+side.
+
+## 23. The clamp A/B, re-measured -- it costs nothing except at n=100
+
+The table justifying the step clamp (`lplr.mbt`, and mirrored in the README)
+was measured before D4, so §22's numbers did not reproduce it. Re-run at
+`8c01e96`.
+
+### 23a. Method
+
+Raise the two damping thresholds at `lplr.mbt:1189` from `5.0` / `1.0` to
+`1.0e300` so the branch cannot fire on any finite value, leaving
+`theta_new = theta - raw_delta` -- scipy's bare Newton, exactly. Run
+`pyexample_lplr.py` and `examples/fuzz`. Revert with `git checkout`. The tree
+was clean beforehand and is clean after; nothing else was edited while the
+experiment was live, because the QA loop compiles `examples/parity` and a
+concurrent `.mbt` edit corrupts its run.
+
+### 23b. Result
+
+| n | clamped | unclamped | upstream | gap clamped -> unclamped |
+|---|---|---|---|---|
+| 60 | `-0.0491291` ok | `-0.0491291` ok | `3.53962` | `3.589` -> `3.589` |
+| 100 | `14.431` WARNED | `-0.643589` ok | `-0.558127` | `14.989` -> **`0.085`** |
+| 160 | `0.580578` ok | `0.580578` ok | `0.749398` | `0.169` -> `0.169` |
+
+**The clamp is bit-identical to the unclamped arm at n=60 and n=160.** It
+costs exactly nothing there. It bites at n=100 and nowhere else on these three
+designs, and there it is the entire difference between agreeing with upstream
+to `0.085` and being `14.989` away.
+
+The old table's clamped column read `n=60 14.966 WARNED` and
+`n=100 13.285 WARNED`. Neither reproduces. **D4 fixed the REPORTING of the
+n=60 row, not the clamp**: the damping never fired there and the solve
+converged either way, so post-D4 the clamped arm reports `theta = -0.0491291`
+with no warning where it used to report a re-derivation of `14.966`. The
+README's "11.4 -> 3.59 at n=60" described that pre-D4 pair and is withdrawn;
+both arms are now `3.589`.
+
+### 23c. The clamp's justification reproduces exactly
+
+Unclamped `examples/fuzz`:
+
+```
+FUZZ FAIL: lplr non-negative finite se (trial=2, se=NaN, th=-440.15956528046615)
+```
+
+That is the documented failure, to the digit. So the clamp is not defending
+against a stale memory: remove it and the suite goes red on trial 2.
+
+### 23d. The trade, stated as a trade
+
+| requirement | wants | at n=100 |
+|---|---|---|
+| agree with upstream | no clamp | `0.085` |
+| survive `examples/fuzz` | clamp | 11/11 PASS |
+
+They pull opposite ways, and the same A/B shows why this is not resolvable by
+simply picking the faithful one: the design where upstream has a clean answer
+(n=100) is not the design where this port can safely drop its damping without
+going non-finite at n=500. **The clamp stays.** §22d's "unexplained" is
+withdrawn; what remains is a documented, measured trade, not an open defect.
+
+This is also the fourth confirmation that the pre-D4 numbers were a separate
+failure mode from the clamp. D4 was worth doing on its own -- it is why n=60
+is healthy now -- and the clamp is a separate decision that happens to have
+been described using D4-era arithmetic.
 
 ### 20d. The meta-point, which is the same one as section 7b
 
