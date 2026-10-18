@@ -1499,6 +1499,14 @@ measurement says both channels favour the bagged construction, and channel
 
 ### 19b. The actual mechanism, measured
 
+> **WITHDRAWN IN FULL by section 21c.** Every number in this subsection is an
+> artifact of the control, not of the port. The `PLAIN` arm was rebuilt with
+> sklearn's `.predict` -- hard 0/1 labels -- where both nuisances under
+> comparison are probability vectors. On the correct scale the ratios are
+> **0.99** and **1.00**, not `~13x` and `~1400x`. What follows is kept verbatim
+> as the record of what was believed and why, and **must not be cited as a
+> measurement.** Section 21d supersedes it.
+
 `mean(psi_deriv)` is nearly unchanged between the arms (ratio 1.074). The
 entire difference is in the **numerator**: `mean(psi)` at `theta0` is ~13x
 larger under PLAIN, and since the first Newton step is `s/sd`, the first
@@ -1698,6 +1706,33 @@ This is the same defect as the 0478 header that read `DISCARDED` next to a
 function returning values. The historical records in §11, §12 and `CHANGELOG.md`
 of `-3.3e6` stay -- they correctly describe what was true then. A **live**
 comment describing current behaviour does not get that protection.
+
+### 22a-bis. A sweep found three live artifacts, not one
+
+Searching tracked source for the pre-D4 figures rather than trusting that the
+one I happened to open was the only one turned up **three**, all carrying the
+same stale port numbers with the same *correct* upstream numbers beside them:
+
+  1. `pyexample_lplr.py` `print_report_smalln` docstring -- fixed in 22a.
+  2. `examples/parity/main.mbt` `sec_lplr_smalln` -- **the emitter itself**,
+     the function that produces the rows the gate re-measures. Its header said
+     "the port and upstream disagree by ~1e6" and tabulated
+     `-3.319646e+06` / `-1.119798e+06`, plus "the port warns on the first two"
+     (it now warns on one). Corrected.
+  3. §19b of this file -- the subsection that §21 retracts. A reader arriving
+     at 19b saw `~13x` and `~1400x` stated flatly, with the withdrawal only
+     300 lines later. Corrected with an inline banner at the subsection head.
+
+The upstream figures (`3.53962`, `-0.558127`, `0.749398`) were correct in all
+three, which is exactly why the stale halves survived so long: the tables
+looked self-consistent. **Grep for the withdrawn numbers in tracked source
+whenever you retract one** -- one of three being fixed is an assumption, not a
+result.
+
+Two figures were left alone deliberately. `CHANGELOG.md` and §11/§12 record
+`-3.3e6` and `1.03e11` as history and are correct as history. `lplr.mbt:870`'s
+`1.03e11` is a §8-10 D2 A/B result, explicitly labelled as such and pointing
+at its own sections.
 
 ### 22b. What the port actually returns now
 

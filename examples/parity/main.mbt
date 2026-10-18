@@ -1370,29 +1370,50 @@ fn sec_gain_statistics() -> Unit {
 /// `lplr_ns_seed*`. The band the Python side uses is built from that
 /// measured spread, not from an assumption about it.
 fn sec_lplr_smalln() -> Unit {
-  // The small-n regime, where the port and upstream disagree by ~1e6.
+  // The small-n regime, where the port and upstream disagree -- but NOT
+  // always in the same direction.
   //
   // The `lplr_upstream` section is n = 500 and there the two agree to 0.007.
   // Off that design point they do not agree at all. On IDENTICAL rows and the
   // IDENTICAL outer partition, measured:
   //
-  //     n=60    port -3.319646e+06    upstream  3.53962    ratio 9.4e5
-  //     n=100   port -1.119798e+06    upstream -0.558127   ratio 2.0e6
-  //     n=160   port  5.805777e-01    upstream  0.749398   ratio 0.77
+  //     n=60    port -0.0491291    upstream  3.53962    ratio 0.014
+  //     n=100   port 14.431        upstream -0.558127   ratio 25.9
+  //     n=160   port  0.580578     upstream  0.749398   ratio 0.77
   //
-  // Upstream is silent on all three; the port warns on the first two. Over a
-  // 200-design sweep of the same family, upstream's worst |coef| is 1.01e4
-  // while the port's is 1.03e11, and 44% of the port's designs exceed
-  // upstream's maximum. A control arm against `bb38642~1` and `c744fc4` shows
-  // this is PRE-EXISTING, not caused by the v0.163.0 D2/D3 work: the port
-  // returned -1.63e6 at n = 60 before either landed.
+  // v0.163.4: this block previously read -3.319646e+06 and -1.119798e+06 for
+  // the port at n=60 and n=100. Those were PRE-D4 and no longer describe this
+  // code. Upstream's three numbers were and are unchanged; only the port's
+  // moved, because D4 (v0.163.0) made the point estimate `theta` itself
+  // instead of a re-derivation of it. Section 12 showed a reported -3.3e6 is
+  // arithmetically unreachable by `theta` -- the Newton step is clamped to
+  // 0.25 over 50 iterations and the start `sum(d*t_pred)/sum(d^2)` is bounded
+  // by `|t_pred| <= 37` -- so that 1e6 was never in the root at all.
+  //
+  // THE DIRECTION REVERSES, which is the part a summary hides. At n=60 the
+  // port is the well-conditioned one (`se` 0.762) and upstream is the
+  // pathological one (`se` 20.2, coef 3.54 against a true effect near 0.5).
+  // At n=100 it is exactly reversed: the port is the broken one (`se` 751657,
+  // one warning) and upstream returns `se` 0.83. At n=160 both are finite and
+  // well-conditioned and sit 29% apart. So there is no single "the port
+  // diverges at small n" story to match -- do not read the n=60 row as the
+  // port misbehaving.
+  //
+  // Upstream is non-finite on its own at these sizes (section 20: 7 of 25
+  // draws at n=60, 2 of 25 at n=100 and n=160, 0 of 25 at n=500), which is
+  // why this port keeps its damped Newton. That rate is an AGGREGATE, and it
+  // does not license reading any individual row above as the port's fault.
+  // Over the same 200-design family as at the time of the D4 work, upstream's
+  // worst |coef| was 1.01e4 and the port's 1.03e11 -- those are PRE-D4
+  // figures and are kept only as the record of what the family looked like
+  // before the point estimate was fixed. They are not re-measured here.
   //
   // This section exists so `pyexample_lplr.py` re-measures all of it on every
   // run. It REPORTS the numbers; it does not gate them. Gating a known
   // divergence would be a permanently-red gate, which is worse than none --
-  // the finding is recorded in `_verify/LPLR_GATE_BLINDNESS_1680.md` section 11
-  // and the numbers belong next to the ones that ARE gated, where nobody has
-  // to remember to look.
+  // the finding is recorded in `_verify/LPLR_GATE_BLINDNESS_1680.md` sections
+  // 11, 20, 21 and 22, and the numbers belong next to the ones that ARE
+  // gated, where nobody has to remember to look.
   let cases = [(60, 9001), (100, 9002), (160, 9003)]
   for c in cases {
     let (n, seed) = c
