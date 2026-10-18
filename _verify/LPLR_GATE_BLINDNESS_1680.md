@@ -2400,3 +2400,200 @@ The check that would have caught it costs one grep: read the port's `predict`
 implementation and see what it returns. It was already written down at
 `learner.mbt:159`. **A control reconstructed from source must be validated
 against the source before it is used to measure anything.**
+
+---
+
+## 27. The last open LPLR divergence is CLOSED -- and it reverses 25g
+
+25h exonerated the formula but left the cause unlocated, so this section does the
+thing 25h said to do next: dump the port's own four arrays on the failing rows
+and find out which one carries the effect. The answer is `beta`, and following
+it one level further turns out to reverse a conclusion this record has been
+carrying since 25g.
+
+### 27a. What had to be dumped, and why a diff was impossible
+
+A row-by-row comparison of the port's `t_pred` against upstream's `t_hat` was
+never available and never would be: the two sides draw different partitions, so
+`upstream.t_hat[i]` and `port.t_pred[i]` are predictions from different models.
+The only test that survives that is **causal** -- hand upstream's solver the
+port's values and see whether the port's behaviour reproduces.
+
+A temporary probe dumped `x`, `y`, `d`, `t_pred`, `m_pred`, `a_pred`, `beta_start`
+whenever `n == 66`, from the **shipped** build, on the DGP rows of
+`examples/fuzz/main.mbt:412-459`. Reverted in the commit that consumed it;
+`moonbit_doubleML/lplr.mbt` is byte-identical to `1520c04` after the revert.
+
+Two things about the dump are worth recording because both nearly hid a result:
+
+* The guard `n == 66` fired **14 times** across the 300-trial surface, not once.
+  The block belonging to trial 2 was therefore located by **exact row equality**
+  against `_fuzz_dump_1680.log`, not by taking the first or last occurrence.
+  Two blocks matched -- the port fits each trial twice, and those two fits are
+  bit-identical to each other -- so this is a 14-way ambiguity that happens to
+  have a clean answer, not an unambiguous guard.
+* A first parse read the inner scan to EOF and so collected only the first block
+  while reporting 14. The count came from a separate line count, and the two
+  disagreed. Same family as the 25a dict-size bug: **terminate a parser on the
+  keys it needs, never on a sentinel count.**
+
+### 27b. The causal test: the port's own values make upstream's solver diverge
+
+Feeding the port's dumped arrays to the 25h-validated Python Newton:
+
+| side | `beta` values (2 folds) | `mean(beta)` = theta0 | Newton | stop | implied se |
+|---|---|---|---|---|---|
+| upstream's own | `[-8.4691, 10.4752]` | 1.003059 | -0.393576 | converged | 0.566214 |
+| **the port's** | `[3.6101, 10.0746]` | **6.842375** | **-440.159565** | **maxiter** | **NaN** |
+
+The port's values (`t` in `[-23.17, 20.34]`, `m_pred == a_pred`) are enough on
+their own to break a solver that converges on those same rows when handed
+upstream's values. Both matched blocks give the identical answer, as expected
+since they are the same fit.
+
+### 27c. The 16-cell swap names the array
+
+| `t` | `m` | `a` | `b` | theta | verdict |
+|---|---|---|---|---|---|
+| U | U | U | U | -0.393576 | ok |
+| P | U | U | U | 0.675398 | ok |
+| U | P | U | U | 0.058868 | ok |
+| U | U | P | U | -0.303850 | ok |
+| P | P | P | U | 0.897963 | ok |
+| **any** | **any** | **any** | **P** | -321 .. -440, or NaN | **DIVERGES (8/8)** |
+
+A clean partition: all 8 cells with `b` from upstream converge, all 8 with `b`
+from the port diverge. `t`, `m` and `a` move the root by at most ~1.0 and none of
+their cells fails. `beta` is necessary and sufficient.
+
+### 27d. Inside `beta`: the START value, not `r_hat`
+
+`beta` enters the solve twice, and the two uses are not interchangeable:
+`theta0 = np.average(beta)` (`plm/lplr.py:326`, the Newton start) and
+`r_hat = t_hat - beta * a_hat` (`plm/lplr.py:345`). Separating them, with
+upstream's `t`/`m`/`a` held fixed throughout:
+
+| configuration | theta | verdict |
+|---|---|---|
+| `theta0` = U.mean, `r_hat` uses U.b | -0.393576 | ok |
+| `theta0` = **P**.mean, `r_hat` uses U.b | NaN, nonfinite | **DIVERGES** |
+| `theta0` = U.mean, `r_hat` uses **P**.b | -0.658438 | ok |
+| `theta0` = **P**.mean, `r_hat` uses **P**.b | NaN, nonfinite | **DIVERGES** |
+
+So `beta` inside `r_hat` is harmless, and the **start value** is the whole
+defect. The port's start 6.842375 goes non-finite on upstream's *own*
+well-behaved function, where upstream's own start 1.003059 converges to -0.394.
+
+### 27e. The port's solver is FAITHFUL -- upstream runs the same unbracketed Newton
+
+This is what stops 27d from being a port bug. `plm/lplr.py:326` sets
+`self._coef_start_val = np.average(beta)` and `plm/lplr.py` never sets
+`_coef_bounds` anywhere. In `double_ml_score_mixins.py:143-150`:
+
+```python
+if self._coef_bounds is None:
+    bounded = False
+if not bounded:
+    root_res = root_scalar(score, x0=self._coef_start_val,
+                           fprime=score_deriv, method="newton")
+```
+
+With no bounds, upstream runs an **unbracketed Newton from exactly the start
+value the port uses**. The port's start *rule* is `np.average(beta)`, verbatim.
+The clamp at `lplr.mbt:1253` is standing in for a robustness upstream does not
+have either.
+
+### 27f. The basin, and the derivative collapse that explains it
+
+Real `scipy.optimize.root_scalar(..., method="newton")` -- not a mimic -- on
+upstream's own nuisances, over a grid of starts:
+
+| `x0` | root | converged |
+|---|---|---|
+| -20, -10, -5, -3, -2, -1, 0, 0.5, 1.003, 2, 3 | -0.393576 | yes |
+| 4, 5, 6 | -26.9, -165.0, -542.0 | **no** |
+| 6.842 (the port's), 8, 10, 15, 20 | NaN | **no** |
+
+Fine scan `0.0 .. 20.0` step `0.5`: 8/41 converge, range `[0.0, 3.5]`. The basin
+edge for **this** draw lies in `(3.5, 4.0]`.
+
+The mechanism is a derivative collapse, not an overflow from a large number:
+
+```
+at x0 = 1.003059 :  score = -0.0842799   deriv = -2.77093e-02
+at x0 = 6.842375 :  score = -0.111909    deriv = -8.06571e-05
+```
+
+The score barely changes (0.084 -> 0.112) while the derivative falls by a factor
+of 344, so the first step `theta - score/deriv` at 6.842 is `6.842 - 1387.5`,
+about **-1381**. That is the `e+70`/`e+122` mechanism, and it is why the start
+value is the lever: a flat-score region is safe to *be in* and fatal to *start*
+in.
+
+### 27g. 25g DOES NOT SURVIVE: upstream fails 42% on these same rows
+
+25g concluded "upstream is FINITE on the exact fuzz rows the unclamped port dies
+on", and from that "the clamp is justified, real port instability proven". That
+rested on **one** upstream draw with `draw_sample_splitting=True` -- which 25g
+itself flagged as unreproducible. Sweeping 40 **pinned** redraws on the same
+rows, upstream's own start value is a wide draw:
+
+```
+mean(beta) over 40 upstream draws : mean 2.5554  sd 3.3939  range [-3.2057, 13.8508]
+quantiles                         : 25% 0.4509  50% 1.9216  75% 5.0785  90% 6.5903
+draws with start > basin edge 3.5 : 14/40  (35%)
+the port's 6.842375 sits at the 90th percentile
+```
+
+and, on the **uninstrumented control** -- no spies, no rebuilt `beta`, no re-run
+`root_scalar`, just `DoubleMLLPLR(...).fit()` and read `.coef[0]`:
+
+| | instrumented | control |
+|---|---|---|
+| upstream fits that did not converge | 18/40 (45%) | **17/40 implausible (42%)** |
+| fits raising upstream's own root warning | -- | 18/40 |
+
+Sample of upstream's own output on rows it is supposed to handle: `coef`
+`-648.285`, `-592.928`, `-235.134`, `-242.104`, `-102.605`, `172149`, `nan` (x4),
+`5.18e+70`, `8.44e+122`, `3.73e+119`, `2.92e+26`, `9.78e+82`, `2.20e+74`, with
+`se` `nan` or `inf` on most of them.
+
+**So 25g's conclusion is withdrawn.** The port does not diverge "where upstream
+does not" -- on these rows upstream fails ~42% of the time and the port's start
+value is an unremarkable 90th-percentile draw. The clamp is not covering a port
+defect; it is covering a **fragility upstream shares and does not guard against
+either**. 25g's individual measurement was accurate for its one draw, which is
+precisely why it needed the population rate.
+
+The same sweep also bounds a bias claim. It does **not** show the port's `beta`
+is unbiased, because the port's own draws were not measured on this sweep (that
+would need the partition injected into the port). It removes "the port's start
+value is systematically too large" as a conclusion and leaves it unmeasured.
+The basin edge is also draw-specific -- among the sweep's draws, 3.5491 and
+3.7774 both converged -- so 3.5 is *this* draw's edge, not a constant.
+
+### 27h. What this does and does not establish
+
+**Does:** the mechanism, end to end and causally. The port's `mean(beta)` lands
+outside the Newton basin on the n=66 rows; there the derivative collapses by
+~344x; the first step overshoots to about -1381; the score overflows; the port
+returns `NaN`. Upstream's own solver has the identical exposure and fails
+~42% of the time on the same rows, by its own output, with nothing
+instrumented.
+
+**Does not:** show the port's `beta` is unbiased (that needs the port swept over
+the same partitions); show the port is *better* than upstream here -- it is
+unclamped-fatal where upstream is ~42% fatal, so on this row set the clamp is
+what makes the port *no worse*, a different and smaller claim than 25g made; or
+change any shipped behaviour. **The clamp stays**, and is now justified by a
+fragility measured on both sides rather than by an asymmetry that did not exist.
+
+### 27i. A withdrawn number was still live 33 lines below its own withdrawal
+
+Correcting 27g required re-reading what cites it, and the sweep for the withdrawn
+bagging figure found `lplr.mbt:1236-1242` still reading "One real divergence
+remains and it is NOT implemented ... (69% of `a_hat`'s own span apart)" -- 33
+lines below the paragraph at `:1202-1205` that withdraws that exact figure, and
+23 lines below `:1213-1215` which says **do not implement the bagging**. Fixed
+in the same commit. This is 22a-bis recurring: **withdrawing a number in the
+place you were already editing is not a sweep.**

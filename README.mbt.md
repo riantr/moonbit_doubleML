@@ -1080,6 +1080,36 @@ adopting upstream's bare Newton; but the clamp is **not** the explanation for
 the tabulated rows, and at n = 60 the port is the better-behaved of the two.
 Telling them apart requires per-draw inspection, not an aggregate rate.
 
+**What the cause actually is, and why it is not a port defect.** The port's own
+`t_pred`, `m_pred`, `a_pred` and `beta` were dumped on the exact n = 66 rows
+where the unclamped port dies, and handed to *upstream's own* solver. The
+`t`/`m`/`a` values are harmless; `beta` alone reproduces the divergence, all 8
+of 8 swap cells. And inside `beta`, it is not `r_hat = t - beta * a` that hurts
+but the **Newton start value** `mean(beta)`, which upstream also uses verbatim
+(`plm/lplr.py:326`, `np.average(beta)`).
+
+Upstream never sets `_coef_bounds` for LPLR, so `double_ml_score_mixins.py:149`
+runs `root_scalar(..., method="newton")` -- an **unbracketed** Newton from that
+same start. This port is structurally identical; the clamp is standing in for a
+robustness upstream does not have either. On the n = 66 rows the score is nearly
+flat past `theta ≈ 3.5`: at `theta0 = 6.842` the derivative is `-8.07e-05`
+against a score of `-0.1119`, a factor of **344** down, so the first step
+`theta - score/deriv` overshoots to about `-1381` and overflows. That is the
+`e+70` / `e+122` / `NaN` mechanism, and the basin edge is draw-specific.
+
+The decisive number, on 40 **pinned** redraws of those same rows, with nothing
+instrumented -- upstream's own `DoubleMLLPLR(...).fit()`, reading `.coef[0]`:
+**17 of 40 (42%) return a non-finite or absurd coefficient** (`-648`, `5.18e+70`,
+`8.44e+122`, `172149`, `nan` × 4, …), raising upstream's own `Could not find a
+root of the score function` warning on 18 of 40. Upstream's `mean(beta)` over
+those draws has mean 2.56, sd 3.39, range `[-3.21, 13.85]`, and this port's
+`6.842` sits at the **90th percentile** -- an unremarkable draw, not a port bias.
+
+So the clamp is not rescuing a defect this port introduced. It is covering a
+fragility upstream shares and does not guard against either, and on this row set
+it is what makes the port *no worse* rather than better. Record:
+`_verify/LPLR_GATE_BLINDNESS_1680.md` sections 25g-25h and 27.
+
 This is **reported by `pyexample_lplr.py` section 5 on every run and asserted
 by nothing**, on purpose: a gate that is red forever gets ignored, which is
 worse than no gate. The cause sits in the Newton step. The port damps it

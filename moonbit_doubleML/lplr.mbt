@@ -1212,13 +1212,41 @@ pub fn DoubleMLLPLR::fit(
         // returns `nan` or `1e22`. This clamp is what makes that trade; it is
         // not hiding a bug it caused.
         //
-        // One real divergence remains and it is NOT implemented: upstream's
-        // `a_hat["preds"]` is a bagged average of every inner model's
-        // prediction, this `:836` is a single outer OOF (69% of `a_hat`'s own
-        // span apart). Matching it is directionally right and partial. It is
-        // left alone until someone can show it does not cost the gated
-        // n=500 parity, which is the one design point where upstream has a
-        // defined answer to agree with.
+        // v0.163.4: the mechanism behind that ill-posedness is now MEASURED,
+        // and it is not a port defect. Upstream never sets `_coef_bounds` for
+        // LPLR (`plm/lplr.py` -- only `_coef_start_val = np.average(beta)` at
+        // `:326`), so `double_ml_score_mixins.py:148-149` runs
+        // `root_scalar(score, x0=..., fprime=..., method="newton")`: an
+        // UNBRACKETED Newton from `mean(beta)`, which is exactly what this
+        // loop does. On the n=66 rows the score is nearly flat past theta ~ 3.5
+        // -- at theta0=6.842 the derivative is -8.07e-05 against a score of
+        // -0.1119, a factor of 344 down -- so the first step
+        // `theta - score/deriv` overshoots to about -1381 and overflows. The
+        // basin edge is draw-specific; upstream's own start lands inside it and
+        // the port's does not on that draw.
+        //
+        // The decisive number: over 40 PINNED redraws of those same rows,
+        // upstream's own uninstrumented `fit()` returns a non-finite or absurd
+        // coefficient on **17/40 (42%)**, raising its own root warning on
+        // 18/40. Upstream's `mean(beta)` over those draws has mean 2.56, sd
+        // 3.39, range [-3.21, 13.85], and this port's 6.842 sits at the 90th
+        // percentile -- an unremarkable draw, not a port bias. So this clamp
+        // is not rescuing a defect the port introduced; it is covering a
+        // fragility upstream shares and does not guard against either.
+        // Section 27 withdrew section 25g's contrary conclusion, which rested
+        // on a single unpinned upstream draw. Record:
+        // `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 25g-25h and 27.
+        //
+        // v0.163.4: this paragraph used to read "One real divergence remains
+        // and it is NOT implemented ... (69% of `a_hat`'s own span apart)".
+        // The STRUCTURE is still real -- upstream's `a_hat["preds"]` is a
+        // bagged average of every inner model's prediction and this `:836` is
+        // a single outer OOF -- but the 69% magnitude is WITHDRAWN above, the
+        // real magnitude is 1.7% of `a_hat`'s span, and the apparent survival
+        // advantage was an artifact of a labels-vs-probabilities control.
+        // Section 21 measured all of it and section 22a-bis corrected it here.
+        // What is left is a structural difference that is measured immaterial,
+        // so nothing is left "remaining" and nothing is pending.
         //
         // `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-20 carry the
         // record, including three retractions of claims this comment used to
