@@ -1252,3 +1252,120 @@ diverges by trial 2.
 That gap is real and is not closed by anything in this document. The clamp
 stays, its cost is recorded, and the small-n regime stays reported rather
 than gated.
+
+## 17. The stopping tolerance is 14.8x off, and it is irrelevant (measured)
+
+Sections 13-16 all varied something the Newton loop is FED. This one aimed
+at the loop itself: WHEN it stops.
+
+### 17a. The mismatch is real
+
+Read out of installed scipy 1.18.0, not recalled:
+
+* `double_ml_score_mixins.py:149` is
+  `root_scalar(score, x0=self._coef_start_val, fprime=score_deriv, method="newton")`
+  -- no `tol`, `xtol`, `rtol` or `maxiter`.
+* `_root_scalar.root_scalar` forwards `xtol`/`rtol`/`maxiter` **only when not
+  None** (`for k in [...]: v = locals().get(k); if v is not None`), and all
+  three default to `None`. It then forces
+  `kwargs.update(full_output=True, disp=False)`.
+* So `newton` runs on its own signature defaults: `tol=1.48e-8`,
+  `rtol=0.0`, `maxiter=50`. Its test is
+
+      np.isclose(p, p0, rtol=0.0, atol=1.48e-8)
+
+  i.e. `|p - p0| <= 1.48e-8`, a **pure absolute** bound -- the relative term
+  is multiplied by zero.
+
+The port's test, `lplr.mbt:1132`, is
+
+    (theta_new - theta).abs() < 1.0e-9
+
+That is 14.8x tighter, and the two disagree on every step size in the window
+`(1e-9, 1.48e-8]`: upstream declares convergence there, the port keeps
+iterating. A stricter stop means more iterations at exactly the point where
+the score is cancelling in floating point, which is a plausible route to
+walking `theta` into `exp()` overflow. Worth testing.
+
+### 17b. It does not matter: the window is never occupied
+
+Two arms, each instrumented to record the smallest `|fval/fder|` its
+trajectory ever produced. The verdict follows from `min_step` alone, because
+steps shrink as Newton converges:
+
+| `min_step` | upstream | port |
+|---|---|---|
+| `<= 1e-9` | stops | stops |
+| `(1e-9, 1.48e-8]` | **stops** | keeps going |
+| `> 1.48e-8` | keeps going | keeps going |
+
+**CLAMPED** (the shipping configuration), 600 solves over `examples/fuzz`:
+
+    both stop (min_step <= 1e-9)            : 346
+    IN THE 14.8x WINDOW                     : 0
+    neither stops (min_step > 1.48e-8)      : 254
+    stop_reason tally: {'converged': 346, 'exhausted_step_budget': 254}
+
+**UNCLAMPED** -- the configuration that actually diverges, which is the only
+arm where the question is worth asking:
+
+    fuzz: FUZZ FAIL: lplr non-negative finite se
+          (trial=2, se=NaN, th=-440.15956528046615)
+
+    both stop (min_step <= 1e-9)            : 4
+    IN THE 14.8x WINDOW                     : 0
+    neither stops (min_step > 1.48e-8)      : 1
+
+**Zero solves in the window, in either arm.** The behaviour is BIMODAL:
+a solve either lands inside 1e-9 or never gets near even 1.48e-8. The
+tolerance difference never gets a chance to act, so it cannot be the cause,
+and tightening or loosening the port's threshold would change nothing.
+Hypothesis falsified; recorded so it is not retried.
+
+### 17c. What the bimodality does say
+
+The one non-converging unclamped solve is the one that detonates, and it
+never comes close to the root first -- it takes an enormous step straight to
+`theta = -440`. That is the signature of a collapsing denominator rather than
+of a slow approach:
+
+    mean(psi_deriv) = -mean_i[ psi_hat_i * d_tilde_i * y_i * d_i * exp(-theta*d_i) ]
+
+and the port's own log records this exact collapse ("`mean(psi_deriv)`
+collapsed to -3.2e-8"). Note the two aggregates are summed over different
+populations: `psi` has a `y`-term AND a `(1-y)` term (via `score_const`),
+while `psi_deriv` has only the `y`-term. So `mean(psi)` can stay O(1) while
+`mean(psi_deriv)` vanishes, and the step `s/sd` explodes. That structure is
+upstream's too (`lplr.py:405`, `:534-535`), which is why upstream being
+finite 300/300 remains unexplained by anything here.
+
+### 17d. Two smaller things found while looking
+
+**The derivative is associated differently.** Upstream computes
+`deriv = psi_hat * d_tilde * deriv_1` where `deriv_1 = -y * exp(-theta*d) * d`;
+the port computes `psi_hat * y * -d * exp(-theta*d) * dt`. Same factors,
+different grouping, so the rounding differs at ~1e-16 relative per
+evaluation. Mathematically identical, numerically not bit-identical. Recorded,
+not acted on -- it is far too small to explain a trial-2 detonation.
+
+**`lplr_initial_theta` documented a computation it did not perform.** Its
+comment claimed "Simple OLS scale: theta ~ mean(d * t_pred) / mean(d^2)",
+evaluated at `theta = 0`, "taking whichever magnitude is smaller" -- and it
+computed exactly that into `num` and `den`, then returned `beta_start`
+anyway. `num` was dead, and `den`'s only live effect was the all-`d == 0`
+guard. A reader checking the start value against upstream `:326`
+(`np.average(beta)`) would have concluded the port used a *different*
+quantity, when it uses the same one. Comment corrected and `num` removed in
+the same commit; `moon check --deny-warn`, 1117/1117 native tests,
+`moon fmt --check` and `examples/fuzz` all pass unchanged, which is what
+"no behavioural change" means here.
+
+### 17e. Status
+
+Four explanations are now measured and none holds: `d_tilde` (14), `a_hat`
+(15), the start value (12, re-verified against source in 17d), and now the
+stopping tolerance. Section 16c's "unknown" survives, narrowed to the
+collapse mechanism in 17c -- specifically why upstream's `mean(psi_deriv)`
+does not vanish on the draws where the port's does, given that the formulas
+producing it are equivalent.
+

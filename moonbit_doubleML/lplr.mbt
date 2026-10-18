@@ -1426,30 +1426,40 @@ pub fn DoubleMLLPLR::tune(
 }
 
 ///|
-/// Pick a one-step starting `theta` for Newton. The per-fold
-/// preliminary `beta_start` already gives a reasonable scale (the
-/// ratio of treatment to logit shift); we evaluate the score and
-/// the derivative at `theta = 0` as a clean alternative, taking
-/// whichever magnitude is smaller. This avoids feeding
-/// `beta_start` itself into the score (which is a `W`-scale
-/// quantity, not a `theta` scale).
+/// The Newton starting value `x0`.
+///
+/// It is `mean(beta)`, which is upstream verbatim: `plm/lplr.py:326` sets
+/// `self._coef_start_val = np.average(beta)` and `:149` passes that as `x0`
+/// to `root_scalar`. The port's `mean(beta_start)` is the same quantity on
+/// the same per-fold `beta` vector.
+///
+/// This used to carry a comment claiming an OLS scale -- "Simple OLS scale:
+/// theta ~ mean(d * t) / mean(d^2)", evaluated at `theta = 0`, "taking
+/// whichever magnitude is smaller" -- and it computed exactly that
+/// (`num = sum(d * t_pred)`, `den = sum(d^2)`) before returning `beta_start`
+/// anyway. So `num` and `den` were dead: the OLS scale the comment described
+/// was never used for anything, and a reader comparing this against upstream
+/// would have concluded the start value was a *different* quantity when it is
+/// the same one. `num` is gone and `t_pred` is renamed to `_t_pred`.
+///
+/// `den` is kept: its zero case is a live guard, and it is the only thing
+/// that function still computes.
+///
+/// v0.163.4: comment corrected. No behavioural change -- `mean(beta_start)`
+/// was already what this returned before the edit.
 fn lplr_initial_theta(
   beta_start : Double,
   d : Array[Double],
   _y : Array[Double],
-  t_pred : Array[Double],
+  _t_pred : Array[Double],
   _a_pred : Array[Double],
 ) -> (Double, Bool) {
-  // Simple OLS scale: theta ~ mean(d * t) / mean(d^2). This
-  // captures the "linear scale" of the parameter without
-  // requiring the full per-fold beta average to be threaded
-  // through. Newton converges from here in 5-15 iterations on
-  // well-conditioned LZZ2020-style DGPs.
-  let n = d.length()
-  let mut num = 0.0
+  // Only the all-d==0 guard is live here. Upstream has no equivalent: it goes
+  // straight to `np.average(beta)`, which is 0.0 (or nan) when every fold's
+  // `sum(d_tilde**2)` was 0. Returning (0.0, false) is closer to that than
+  // handing `beta_start` back, so the guard stays.
   let mut den = 0.0
-  for i = 0; i < n; i = i + 1 {
-    num = num + d[i] * t_pred[i]
+  for i = 0; i < d.length(); i = i + 1 {
     den = den + d[i] * d[i]
   }
   if den.abs() < 1.0e-300 {
