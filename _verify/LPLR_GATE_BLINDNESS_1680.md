@@ -2155,6 +2155,16 @@ exact rows:
 | trial 2, n=66 | `se=NaN`, `th=-440.15956528046615` | **`coef=-1.47917`, `se=0.580154` FINITE** |
 | trial 7, n=97 | `se=8.883758984028203e+59`, `th=139.786` (conditioned) | **`coef=0.279131`, `se=0.406804` FINITE** |
 
+> **v0.163.4: the two upstream NUMBERS above are not reproducible and must not
+> be quoted.** They came from `draw_sample_splitting=True`, which re-draws the
+> partition on every call. Re-running the same rows unpinned gives
+> `coef=+1.97947`; pinned (see 25h) it is `coef=-0.393576`. **The conclusion --
+> upstream is finite on these rows -- survives every draw observed, but each
+> individual number is one random draw.** The port's numbers in the left column
+> ARE reproducible, because they come from the fuzz harness whose DGP is a pure
+> function of `trial` (25g). That asymmetry is the whole reason the table can
+> be trusted to compare the two sides at all.
+
 **So 25f's caveat is falsified, and it matters.** Upstream is finite on BOTH
 rows under the score the port actually uses, while the unclamped port blows up
 on both. This is not a regime where the estimator is ill-posed for everyone and
@@ -2180,6 +2190,44 @@ Three consequences, in order of how much they matter:
    against. What survives from 25f is the correction to the `lplr.mbt` bullet:
    the n=500 figure and the fuzz trials are two different experiments, and
    neither one on its own settles this. The comparison above does.
+
+### 25h. The harness VALIDATED, and the formula EXONERATED
+
+25g left the divergence localised to "the score path somewhere else", which
+splits in two: the FORMULA (how `psi` and `psi_deriv` are built) or the
+NUISANCE VALUES fed into it. `_verify/_lplr_formula_vs_nuisance_1680.py`
+separates them, and is first and foremost a validation of the Python harness
+that every conclusion in sections 19, 21, 24 and 25e rests on.
+
+**Validation.** Upstream's real nuisances (`t_hat`, `m_hat`, `a_hat`, `beta`,
+all captured from the fit itself), run through the Python Newton on trial 2's
+rows, partition pinned:
+
+```
+coef=-0.393576  se=0.566214      upstream
+coef=-0.393576  se=0.566214      python
+VALIDATION: |theta_python - coef_upstream| = 0   (tol 1e-3)  -> MATCH
+```
+
+Not "within tolerance" -- **exactly zero**, and bit-reproducible across runs.
+The harness is upstream's Newton.
+
+**Exoneration.** With the formula reproducing upstream to the last bit on the
+very rows where the unclamped port dies, the formula is not the defect. The
+divergence is in the **values**: `t_pred`, `m_pred`, `a_pred` or `beta`. So the
+next step is a numeric dump of the port's own four arrays on `n=66` and a
+row-by-row diff against upstream's -- not another reading of the source.
+
+**A parser bug worth recording, because it produced plausible numbers.** The
+first version of the probe's row parser terminated on `len(rec) < 7` while the
+initial dict held three keys, not four. It therefore ran past trial 2's own
+data lines and silently overwrote them with trial 7's, yielding trial 2's
+header (`n=66`) beside trial 7's values (582 floats) with no error raised. A
+sentinel count is an assumption about the dict's size; the loop now terminates
+on the keys it needs and refuses any value count that disagrees with its
+header. The symptom was a reshape error on a length that was internally
+consistent -- exactly the shape of bug this investigation has been correcting
+all along, arriving from a different direction.
 
 ## 26. Bare local `typos` FAILS this repo on tracked files -- do not "fix" them
 
