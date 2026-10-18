@@ -1126,21 +1126,34 @@ pub fn DoubleMLLPLR::fit(
         // `r_hat`. Upstream builds it by summing EVERY inner model's
         // prediction on the outer test rows and dividing by `len(smpls)`
         // (`utils/_estimation.py:207-229`) -- a bagged predictor. `:836`
-        // is a single outer OOF. That difference is REAL and it is large:
-        // measured at 69% of `a_hat`'s own span, smaller on 12 of 12 draws.
-        // The verdict above does not cover it, because substituting
-        // `a_inner_per_fold` replaced `preds`, not `preds`. Measured since:
-        // holding everything else at upstream's values, the port's `a_pred`
-        // leaves `mean(psi)` ~13x larger at the start value and the first
-        // Newton step ~1400x larger, and it survives strictly less often
-        // (15 vs 16, 19 vs 21, 19 vs 20 of 25 at n = 60/100/160). So this is
-        // a real contributor -- directionally right, and PARTIAL. It does not
-        // make the clamp wrong, because upstream has no finite answer at
-        // those sample sizes to agree with.
+        // is a single outer OOF. That difference is REAL but it is SMALL,
+        // and it is NOT a cause. Measured with both nuisances on the
+        // PROBABILITY scale (see 21a): it moves `a_hat` by 1.7% of its own
+        // span on the gate fixture, 21.5% at n=60 falling to 2.6% at n=500;
+        // substituting it into upstream shifts the coefficient by +3.9e-4
+        // against a band floor of 1.3e-1; and Newton survival TIES at every
+        // n (18/18, 20/20, 25/25, 25/25 of 25 at n = 60/100/160/500) with
+        // `mean(psi)` and first-step ratios of 0.99-1.02.
         //
-        // So three explanations are now measured and none holds: the start
+        // v0.163.4: this paragraph previously claimed "69% of `a_hat`'s own
+        // span", "`mean(psi)` ~13x larger", "first Newton step ~1400x larger"
+        // and "survives strictly less often (15 vs 16, 19 vs 21, 19 vs 20)".
+        // ALL FOUR ARE WITHDRAWN. They came from a Python reconstruction of
+        // this file's own construction that used sklearn `.predict` -- hard
+        // 0/1 labels -- where upstream uses `predict_proba` (`lplr.py:166`,
+        // `:150`). This port is on the probability side too: `predict` returns
+        // `sigmoid(eta)` clipped into `(1e-15, 1-1e-15)` (`logistic.mbt:217`)
+        // and the labels are a separate `predict_class` (`logistic.mbt:250`).
+        // The old control measured labels-against-probabilities, which
+        // guarantees a large answer for a reason that has nothing to do with
+        // bagging. **Do not implement the bagging**: it cannot move the gated
+        // gap (0.007307) and it does not improve small-n survival. Full record
+        // and numbers in `_verify/LPLR_GATE_BLINDNESS_1680.md` section 21.
+        //
+        // So four explanations are now measured and none holds: the start
         // value and the point estimate (both fixed at df049c2), `d_tilde`
-        // (falsified), and `preds_inner` (falsified above). The stopping
+        // (falsified), `preds_inner` (falsified above), and the `a_hat`
+        // bagging (withdrawn above). The stopping
         // tolerance is also measured and irrelevant: scipy 1.18's `newton`
         // stops at `|step| <= 1.48e-8` and this loop at `< 1e-9`, a 14.8x
         // difference -- but 0 of 600 fuzz solves, and 0 of 5 on the arm that

@@ -1084,14 +1084,27 @@ The Newton stopping tolerance: a real 14.8x difference against scipy's
 `1.48e-8`, never exercised -- 0 of 600 solves enter the window where the two
 disagree. And `a_hat["preds"]` itself, which the port does **not** reproduce:
 upstream averages every inner model's prediction and the port uses a single
-outer OOF, a difference measured at 69% of `a_hat`'s own span. Matching
-upstream here is directionally right -- it leaves `mean(psi)` ~13x smaller at
-the start value and the first Newton step ~1400x smaller, and it survives
-strictly more often (16 vs 15, 21 vs 19, 20 vs 19 of 25 at n = 60 / 100 /
-160) -- but it is partial, and upstream has no small-n answer to match. Every
-other element is verified equivalent term by term. The record, including two
-corrections of claims this file previously carried, is in
-`_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-20.
+outer OOF. **That last one is real but measured at 1.7% of `a_hat`'s own span,
+and it is not a cause.** Holding everything else at upstream's values it shifts
+the coefficient by `+3.9e-4` against the gate's own band floor of `1.3e-1`,
+Newton survival ties at every `n` tested (18/18, 20/20, 25/25, 25/25 of 25 at
+`n = 60 / 100 / 160 / 500`), and the `mean(psi)` and first-step ratios are
+`0.99` to `1.02`. Matching upstream here would move nothing, so it is **not
+implemented**.
+
+> An earlier revision of this file reported that candidate as "69% of `a_hat`'s
+> span", leaving `mean(psi)` "~13x larger", the first Newton step "~1400x
+> larger", and surviving "strictly more often (16 vs 15, 21 vs 19, 20 vs 19 of
+> 25)". **All four numbers were wrong and are withdrawn.** They came from a
+> Python stand-in for the port that used sklearn's `.predict` -- hard 0/1
+> labels -- where upstream uses `predict_proba`. The port is on the
+> probability side (`logistic.mbt:217` returns `sigmoid(eta)`; the labels are
+> a separate `predict_class`). The measurement was of labels against
+> probabilities, not of bagging against a plain cross-fit.
+
+Every other element is verified equivalent term by term. The record, including
+three corrections of claims this file previously carried, is in
+`_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-21.
 
 **Robust variance & inference** -- heteroskedasticity-consistent (HC)
 standard errors, cluster-robust variance, multiplier bootstrap

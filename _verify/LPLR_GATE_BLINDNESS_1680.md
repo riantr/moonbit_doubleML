@@ -1678,3 +1678,116 @@ estimator is wrong at n=60 -- the two facts were in the same document, and
 the inference still did not get made. The same pattern as §7b and §19: a
 number was produced, then generalised past the conditions it was measured
 under.
+
+## 21. RETRACTION: 18d's magnitude and ALL of 19 were measured against the wrong control
+
+Sections 18d and 19 (and the n-sweep in 20b) compared upstream's `a_hat` against
+a Python reconstruction of "what the port builds". The reconstruction was wrong,
+and it was wrong in the one way that guarantees a large answer.
+
+### 21a. The control was hard labels; both nuisances are probabilities
+
+The reconstruction used
+
+```python
+LogisticRegression(...).fit(x[tr], d[tr]).predict(x[te])
+```
+
+and sklearn's `.predict` returns **0.0 / 1.0 class labels**. But both nuisances
+under comparison are probability vectors:
+
+  * `a_hat` -- `method=self._predict_method["ml_a"]`, which is `"predict_proba"`
+    (`plm/lplr.py:166`, consumed at `:311`), so `_double_dml_cv_predict` takes
+    the `predict_proba` branch at `utils/_estimation.py:225-226`.
+  * `m_hat` -- `method=self._predict_method["ml_m"]`, also `"predict_proba"`
+    (`plm/lplr.py:150`, consumed at `:261`). `_lplr_bag_nsweep_1680.py:125`
+    rebuilt this with `.predict()` as well, so the n-sweep had the defect TWICE,
+    once in each nuisance.
+
+The port is on the probability side, verified in the implementation and not only
+in its comment: `logistic.mbt:217-243` returns `sigmoid(eta[i])` clipped into
+`(1e-15, 1-1e-15)`, and the hard-label path is a *separate* function,
+`predict_class` at `logistic.mbt:250-262`.
+
+So every "PLAIN is much worse" number in this document was measuring **hard
+labels against probabilities**. That control is guaranteed to look bad: labels
+discard all the confidence information the score depends on, so Newton
+destabilises for a reason that has nothing to do with bagging.
+
+### 21b. Corrected on the gate's own fixture (n=500, p=6, 2x2 folds)
+
+`_verify/_lplr_ahat_proba_1680.py`, upstream's own `upstream_fit`, so rows and
+partition are the gate's:
+
+| control | rms vs upstream `a_hat` | / span | corr |
+|---|---|---|---|
+| `predict_proba` (**correct**) | 0.00870977 | **0.0170** | 0.995883 |
+| `predict` (labels, withdrawn) | 0.424712 | 0.8287 | 0.716463 |
+
+`span(a_hat) = 0.512483`. The real difference is **1.7% of span**, not the 69%
+of 18d and not the 82.9% my first re-probe reported.
+
+Effect on the coefficient, substituting the plain OOF into upstream and changing
+nothing else, over the gate's own five inner seeds:
+
+```
+bagged  mean 0.392214 (sd 0.043537)
+plain   mean 0.392604 (sd 0.043659)
+mean shift +0.000390   max|shift| 0.002234   sign consistent 4 of 5
+```
+
+The gate's band is `3 * hypot(sd_port, sd_up)`, so its floor at `sd_up` alone is
+`0.130611`. A shift of `+0.00039` is **335x below that floor**, and roughly 18x
+below the gate's own reported gap of `0.007307`.
+
+### 21c. Corrected small-n sweep -- the survival advantage was entirely the artifact
+
+`_verify/_lplr_bag_proba_nsweep_1680.py`, both nuisances on `predict_proba`,
+unclamped Newton, 25 draws per n:
+
+| n | BAGGED finite | PLAIN finite | rms/span of the nuisance gap | mean(psi) ratio | first-step ratio |
+|---|---|---|---|---|---|
+| 60 | 18/25 | 18/25 (tie) | 0.215 | 0.992 | 1.000 |
+| 100 | 20/25 | 20/25 (tie) | 0.126 | 1.015 | 1.013 |
+| 160 | 25/25 | 25/25 (tie) | 0.078 | 0.999 | 1.000 |
+| 500 | 25/25 | 25/25 (tie) | 0.026 | 0.999 | 0.999 |
+
+**Exact ties at every n.** 19's `15 vs 16, 19 vs 21, 19 vs 20 of 25` were the
+labels. 19b's `~13x` and `~1400x` are `0.99` and `1.00`.
+
+### 21d. What is left standing
+
+The bagging IS a real difference -- upstream sums every inner model's prediction
+on the outer test rows and divides by `len(smpls)` (`_estimation.py:207-229`),
+where `lplr.mbt:836` is a single outer OOF -- and it shrinks with n
+(21.5% of span at n=60, 2.6% at n=500). It is simply **not a cause of
+anything**: survival ties at every n, Newton-step ratios 1.00, and a coefficient
+shift of 3.9e-4 against a tolerance of 1.3e-1.
+
+**Do not ship the bagging.** It cannot move the gated gap, it does not improve
+small-n survival, and 18d's premise -- that it is "REAL and large" -- does not
+survive a control on the right scale. 18d's *structural* observation (a_hat is a
+bagged predictor, `preds_inner` is a separate quantity) remains correct; only
+its magnitude and its consequences are withdrawn.
+
+Unaffected by this retraction: 13-16 (verified-equivalent table), 17 (tolerance
+falsified), 18e (inner-split scope faithful), 20 (upstream ill-posed at small n),
+20a (the clamp's justification), and 7b/20d.
+
+### 21e. The failure mode, which is new
+
+§7b and §20d are both "a number measured where it cannot fail was generalised
+past its regime". This is a different one, and it is worse: **the control was
+never checked against the implementation it was standing in for.**
+
+The probe was supposed to answer "what does the port compute?" by writing the
+port's construction in Python. Nothing verified that Python matched the
+MoonBit. Two functions, `.predict` and `.predict_proba`, sit one call apart, the
+port uses the second, and the probe used the first. The error was invisible
+because it produced a *plausible, large, directional* number -- which is exactly
+what made 18d and 19 publishable and load-bearing.
+
+The check that would have caught it costs one grep: read the port's `predict`
+implementation and see what it returns. It was already written down at
+`learner.mbt:159`. **A control reconstructed from source must be validated
+against the source before it is used to measure anything.**
