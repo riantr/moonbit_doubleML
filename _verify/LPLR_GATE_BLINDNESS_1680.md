@@ -2059,6 +2059,43 @@ So "this piece differs from upstream, therefore matching it will bring the
 numbers together" does not hold here, and it has now failed on three separate
 pieces. Fidelity is a direction, not a lever.
 
+## 26. Bare local `typos` FAILS this repo on tracked files -- do not "fix" them
+
+The release gate pins `typos` **v1.19.0** and runs it bare over the whole
+checkout. The local binary is **1.50.3**. They disagree, and the disagreement
+lands on TRACKED files.
+
+Local 1.50.3 over a clean `git archive HEAD` export (580 files) reports 11
+findings, all in tracked paths:
+
+| file | finding | v1.19.0 |
+|---|---|---|
+| `pyexample_policytree.py:229,239,253` | `thr_ok` should be `the` | does not flag |
+| `_verify/H1-verdict.md:4` | `REIVEW` should be `REVIEW` | does not flag |
+| `_verify/_commit_msg_final7_1680.txt` | `datas` x1, `psiBa` / `Ba` x5 | does not flag |
+| `_verify/_commit_msg_fixgates_1680.txt` | `datas` x1, `psiBa` / `Ba` x3 | does not flag |
+
+All eleven pass the pinned gate, which last exited 0 on `873f0ea` over the same
+580 files. There is no `.typos.toml`, so both binaries run with defaults and
+the only difference is the dictionary.
+
+**The hazard is `thr_ok`.** It is a local variable in a shipped gate. Someone
+running local `typos`, believing it authoritative, renames it to `the_ok` and
+the rename has to be propagated through the file -- or not, and the gate breaks
+in a way that looks like a real bug. `datas` and `psiBa` are the same trap in
+`_verify/` scratch: they are the identifiers those commit messages are
+*quoting*, so "correcting" them destroys the record they preserve.
+
+So: **local `typos` is necessary and not sufficient, and where the two
+disagree the pinned binary wins.** CI's result is the gate; a local finding on
+these eleven is not a defect to fix until v1.19.0 agrees it is one.
+
+The QA loop's `static_code_check` reports its findings as "in 14 UNTRACKED
+file(s) ... none are tracked, so the release gate is clean", which is true and
+also misleading: it implies a clean tracked surface that the pinned binary
+does confirm, but the local binary disagrees with the pinned one about what
+that surface contains.
+
 ### 20d. The meta-point, which is the same one as section 7b
 
 A measurement taken in the regime where a failure cannot occur is not
