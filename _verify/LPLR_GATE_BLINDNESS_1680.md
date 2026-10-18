@@ -2277,6 +2277,61 @@ also misleading: it implies a clean tracked surface that the pinned binary
 does confirm, but the local binary disagrees with the pinned one about what
 that surface contains.
 
+### 26a. §26's safety claim is REFUTED -- v0.163.4's publish run FAILED at `Check typos`
+
+The inference above is wrong, and it cost a release. `v0.163.4`'s publish run
+(`39122421293`) went red at `Check typos`, the same gate that killed `v0.163.1`:
+
+```
+error: `datas` should be `data`
+  --> ./_verify/LPLR_GATE_BLINDNESS_1680.md:2245:44
+error: `Ba` should be `By`, `Be`
+  --> ./_verify/LPLR_GATE_BLINDNESS_1680.md:2245:59
+  ... 2245, 2246, 2259, 2266
+```
+
+Everything up to it passed -- including `Resolve release version`, so the tag
+agreed with `moon.mod` -- and `Publish to Mooncakes` and `Create GitHub Release`
+were both **skipped**. mooncakes still serves 0.163.3.
+
+**Why the inference failed.** It rested on: "the same tokens were already in
+tracked files inside the 580-file checkout that the pinned gate cleared on
+`873f0ea`". They were not. Every file it cites for that purpose is untracked
+scratch or excluded:
+
+| token | cited as "already cleared" | actually |
+|---|---|---|
+| `thr_ok` | `pyexample_policytree.py` | passes on its own -- no finding |
+| `REIVEW` | `_verify/H1-verdict.md` | **untracked** |
+| `datas` / `psiBa` | `_verify/_commit_msg_*.txt` | **untracked, and `extend-exclude`d** |
+
+So the pinned gate had never seen `datas` or `psiBa` at all, and "re-stating the
+same strings in another tracked file cannot introduce a finding the dictionary
+does not have" was a statement about a checkout that did not contain them. The
+580-file checkout `873f0ea` cleared predates §26's own commits (`5b3fc73`,
+`7d5ef8a`) -- §26 introduced the very findings it then excused.
+
+**The generalisable failure.** §26 wrote down its own epistemic status -- "the
+claim rests on an inference rather than a fresh run" -- and then spent two
+sections building on it. A stated inference is not a weaker version of a
+measurement; it is a different thing, and it cannot be promoted by being
+re-quoted. The check was one download away and the download recovered the moment
+it mattered.
+
+**Fixed** in `c223062`: `datas` and `Ba` are whitelisted in
+`_typos.toml [default.extend-words]`. Per-token, not by excluding the whole
+record -- that file is our own prose and the other ~2,600 lines should stay
+spell-checked. The same config already excludes verbatim *evidence* for exactly
+this reason, and the §26 table's whole subject is the misspelling it reports, so
+correcting it would make the record stop quoting what it is a record of.
+
+**Verified with the pinned binary, not inferred.** `_verify/_typos_pinned_check_1680.py`
+downloads typos v1.19.0 and runs it over a pristine `git archive` export -- the way
+CI checks out -- and reports `NOT VERIFIED` rather than falling back to the local
+1.50.3, since a local pass says nothing about a pinned gate. Before the fix it
+reproduced the CI failure exactly (exit 2, same 10 findings); after it, exit 0 over
+581 files.
+
 ### 20d. The meta-point, which is the same one as section 7b
 
 A measurement taken in the regime where a failure cannot occur is not

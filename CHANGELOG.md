@@ -9,6 +9,80 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.163.5] — the pinned spell-check gate is finally run instead of inferred
+
+`moon.mod` moves 0.163.4 -> 0.163.5. This release moves **no reported number**
+either: the only change since `v0.163.4` is a two-token dictionary entry and the
+documents that record why. Test counts stay **1117 / 1123 / 1117 / 1117**
+(native / wasm-gc / wasm / js), and the LPLR parity gate is unchanged at
+`gap = 0.007307` / `0.010609`.
+
+### `v0.163.4` shipped nothing; this entry is the release
+
+`v0.163.4`'s publish run `39122421293` went red at `Check typos`, the same gate
+that killed `v0.163.1`. Everything before it passed, including `Resolve release
+version` — so the tag agreed with `moon.mod` — and `Publish to Mooncakes` and
+`Create GitHub Release` were both **skipped**. mooncakes still serves 0.163.3.
+The tag stays where it is and the number is not reused.
+
+### Fixed
+
+- **Section 26's safety claim was refuted, and it was refuted by the release it
+  blocked.** §26 argued that re-stating the misspellings in a tracked file
+  "cannot introduce a finding the dictionary does not have", because the same
+  tokens already sat in files the pinned gate had cleared. They had not. Every
+  file it cited is untracked scratch or excluded by `_typos.toml`:
+
+  | token | cited as "already cleared" | actually |
+  |---|---|---|
+  | `thr_ok` | `pyexample_policytree.py` | passes on its own — no finding |
+  | `REIVEW` | `_verify/H1-verdict.md` | **untracked** |
+  | `datas` / `psiBa` | `_verify/_commit_msg_*.txt` | **untracked and `extend-exclude`d** |
+
+  So the pinned gate had never seen `datas` or `psiBa` at all, and the 580-file
+  checkout it cleared at `873f0ea` predates §26's own commits. §26 introduced the
+  findings it then excused.
+
+  `datas` and `Ba` are now whitelisted in `_typos.toml [default.extend-words]`,
+  per token rather than by excluding the whole 2,600-line record — that file is
+  our own prose and the rest should stay spell-checked. `[files]` already
+  excludes verbatim *evidence* for exactly this reason, and the table's whole
+  subject is the misspelling it reports.
+
+### Verified, not inferred
+
+`_verify/_typos_pinned_check_1680.py` downloads typos **v1.19.0** — the version
+`publish.yml` pins — and runs it over a pristine `git archive` export, the way CI
+checks out. It reports `NOT VERIFIED` rather than falling back to the local
+1.50.3, because a local pass says nothing about a pinned gate, and conflating the
+two is what produced this failure in the first place.
+
+- before the fix: **exit 2**, the same 10 findings CI reported
+- after: **exit 0**, 581 files
+
+The local binary and the pinned one now agree on this tree, so the disagreement
+§26 documented no longer exists and the QA loop's `static_code_check` WARN has
+nothing to warn about.
+
+### The generalisable failure
+
+§26 wrote down its own epistemic status — "the claim rests on an inference rather
+than a fresh run" — and then two sections were built on it. A stated inference
+is not a weaker measurement; it is a different thing, and it cannot be promoted
+by being re-quoted. The check was one download away, and the download recovered
+the moment it mattered. §20d and §7b are the same pattern one level up: a number
+produced under conditions where it could not fail, then generalised past them.
+
+### The `v0.163.4` tag shipped nothing either; this entry is the release
+
+`v0.163.4`'s publish run `39122421293` went red at `Check typos` -- the same
+gate that killed `v0.163.1`. The pinned typos v1.19.0 reports `datas` and
+`Ba` at `_verify/LPLR_GATE_BLINDNESS_1680.md:2245,2246,2259,2266`, which are
+the lines section 26 introduced and then excused. Everything before it
+passed, including `Resolve release version`; `Publish to Mooncakes` and
+`Create GitHub Release` were both skipped, so mooncakes still serves
+0.163.3. The tag stays where it is and the number is not reused.
+
 ## [0.163.4] — the LPLR small-n divergence is explained, and the conclusion it rested on is withdrawn
 
 `moon.mod` moves 0.163.3 -> 0.163.4. This one **does not move any reported
