@@ -101,15 +101,25 @@ MUST_NOT_READ_MOONBIT = {
 
 # Reference-only files whose verdict line is a typed literal. Known
 # defect, tracked here rather than in prose. See the module docstring.
-KNOWN_HARDCODED_VERDICT = {
-    "validate_blp_policy_with_python.py",
-    "validate_bootstrap_with_python.py",
-    "validate_cv_repeated_with_python.py",
-    "validate_gain_statistics_with_python.py",
-    "validate_padjust_with_python.py",
-    "validate_quantile_with_python.py",
-    "validate_rdd_with_python.py",
-}
+#
+# EMPTY, and empty on purpose. It used to exempt the ten files that delegate
+# to `parity_helper.report()`, back when they carried no verdict expression of
+# their own and `emits_computed_verdict` could not see the delegation. It went
+# stale the moment those files were refactored onto the helper, and every entry
+# on it was reported as "no longer prints a hard-coded verdict -- remove it".
+#
+# Removing the entries without fixing the blind spot was measured and does NOT
+# work: 13 problems became 12, still FAIL, because each removal just traded a
+# "stale entry" problem for a "cannot emit the verdict line" problem. The two
+# checks are mutually exclusive for a delegating file -- exempt it and it is
+# stale, drop it and it cannot emit. `emits_computed_verdict` now recognises
+# the delegation directly, so the exemption is both unnecessary and unverified.
+#
+# `set()` and not `{}`: an empty brace literal is a DICT in Python, and this is
+# used with set operations. Writing `{}` here -- the obvious way to follow the
+# gate's own "remove it from the list" advice -- crashes it with
+# "unsupported operand type(s) for -: 'dict' and 'set'".
+KNOWN_HARDCODED_VERDICT = set()
 
 SUBPROCESS_CALL = re.compile(r"subprocess\.(run|Popen|check_output|check_call)")
 HARD_EXIT = re.compile(r"(sys\.exit\(\s*[1-9]|SystemExit\(\s*[1-9])")
@@ -149,15 +159,34 @@ def spawns_moon(src: str) -> bool:
 
 
 def has_hard_coded_pass(src: str) -> bool:
-    """True if a verdict line is a bare string literal ending in PASS.
+    """True if THE VERDICT LINE is a bare string literal ending in PASS.
 
     `"Cross-check: " + ("PASS" if ok else "FAIL")` is fine -- the
     literal is a fragment, not the verdict. `print("...: PASS")` is
     not: the verdict was typed, not computed.
+
+    "the verdict line" is the whole point, and the first version of this
+    rule could not tell a verdict from a row. `validate_pava_with_python.py`
+    reports one status line PER CASE and also computes its verdict, and its
+    positive control prints a bare literal:
+
+        print("  accepts the true optimum                            -> PASS")
+
+    That is one row of an oracle self-test. Flagging it said the gate types its
+    verdict, which is false -- its real verdict is
+    `"PAVA cross-check " + ("PASS" if ok_all else "FAIL")`, a BinOp this walk
+    cannot match. Measured: the old rule matched exactly one line, 294, and
+    skipped 415.
+
+    So a bare PASS literal only counts as the verdict when the file emits NO
+    computed PASS/FAIL verdict of its own. If it computes one, the typed line
+    cannot be the verdict.
     """
     try:
         tree = ast.parse(src)
     except SyntaxError:
+        return False
+    if emits_computed_verdict(src):
         return False
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
@@ -172,17 +201,50 @@ def has_hard_coded_pass(src: str) -> bool:
     return False
 
 
+def delegates_verdict_to_helper(tree: ast.AST) -> bool:
+    """True if the file imports `parity_helper` and calls its `report()`.
+
+    `parity_helper.report(title, rows, ok)` is where the verdict line is built
+    and printed for every reference-only validator, so a file that delegates
+    carries neither a PASS nor a FAIL literal of its own. That is the correct
+    shape, not a defect: the helper exists precisely so a gate cannot print
+    PASS by checking nothing (its docstring records that exact incident).
+
+    Both heuristics below are single-file AST scans, so they miss a delegated
+    verdict completely. That is the whole reason `KNOWN_HARDCODED_VERDICT` had
+    to exempt these ten files by hand -- and why it went stale the moment they
+    were refactored onto the helper. Recognising the delegation is strictly
+    better than the exemption: it is checked, where the exemption was a
+    standing assertion that was never verified.
+    """
+    imports_helper = False
+    calls_report = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "parity_helper":
+                    imports_helper = True
+        elif isinstance(node, ast.Attribute) and node.attr == "report":
+            calls_report = True
+    return imports_helper and calls_report
+
+
 def emits_computed_verdict(src: str) -> bool:
     """True if the file carries both halves of a verdict expression.
 
     The shape is `"... " + ("PASS" if ok else "FAIL")` -- two separate
     literals, not one string mentioning both words, so this looks for a
     `PASS` literal and a `FAIL` literal anywhere in the source.
+
+    A file that delegates to `parity_helper.report()` is the other legitimate
+    way to emit one, and it is checked first.
     """
     try:
         tree = ast.parse(src)
     except SyntaxError:
         return False
+    if delegates_verdict_to_helper(tree):
+        return True
     has_pass = has_fail = False
     for node in ast.walk(tree):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
