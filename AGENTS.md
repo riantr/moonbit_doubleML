@@ -68,7 +68,7 @@ You can browse and install extra skills here:
 - Only official (`moonbitlang/*`) packages are allowed.
 - Non-official packages may only be `riantr/*` (i.e., this repo itself).
 - For official packages, prefer the latest published version on the
-  registry; pin the major-version (e.g. `moonbitlang/async@0.20.3`) and
+  registry; pin the major-version (e.g. `moonbitlang/async@0.22.5`) and
   upgrade when bumping is intentional.
 
 ## HTTP service (examples/api_server)

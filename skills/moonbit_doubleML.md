@@ -27,7 +27,7 @@ surface and anti-patterns).
 - Only official (`moonbitlang/*`) packages are allowed.
 - Non-official packages may only be `riantr/*` (this repo itself).
 - For official packages, pin to the latest published version on the
-  registry (e.g. `moonbitlang/async@0.20.3`) and upgrade when
+  registry (e.g. `moonbitlang/async@0.22.5`) and upgrade when
   bumping is intentional.
 - Notable consequence: HTTP-service code (e.g.
   `examples/api_server/`) builds directly on `moonbitlang/async`'s

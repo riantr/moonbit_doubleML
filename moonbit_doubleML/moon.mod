@@ -10,7 +10,7 @@
 // }
 import {
   "moonbit-community/sqlite3@0.2.3",
-  "moonbitlang/async@0.20.3",
+  "moonbitlang/async@0.22.5",
 }
 
 name = "riantr/moonbit_doubleML"

@@ -1668,7 +1668,7 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 
 - Only official `moonbitlang/*` packages.
 - Non-official packages may only be `riantr/*` (this repo).
-- Pin to the latest published version (e.g. `moonbitlang/async@0.20.3`).
+- Pin to the latest published version (e.g. `moonbitlang/async@0.22.5`).
 - Consequence: `examples/api_server/` builds directly on
   `moonbitlang/async`'s raw `Server` API. No third-party HTTP
   framework is allowed.
@@ -1679,7 +1679,7 @@ declares two packages, and **neither is imported by any `.mbt` in the library**
 
 | declared | imported by the library? | note |
 |---|---|---|
-| `moonbitlang/async@0.20.3` | no | used only by `examples/api_server/main.mbt`, which declares it in its own `moon.mod` |
+| `moonbitlang/async@0.22.5` | no | used only by `examples/api_server/main.mbt`, which declares it in its own `moon.mod` |
 | `moonbit-community/sqlite3@0.2.3` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
 
 So the library has no runtime third-party dependency today, while `moon.mod`
@@ -1811,7 +1811,7 @@ dependency-vulnerability scan -- `moon update` resolves versions, it is not an
 audit. `mutation` kills three mutants on one kernel, not a whole-codebase
 surviving-mutant ledger. `examples/fuzz/` has no crash-regression corpus. And
 the two declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
-and `moonbitlang/async@0.20.3` -- are dead: nothing imports them, and
+and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
 ['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
 [both]`) rather than passing quietly. Removing them is an open call, not an
