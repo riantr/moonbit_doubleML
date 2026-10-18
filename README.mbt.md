@@ -1063,10 +1063,22 @@ the score function` warning on 11 of 25; at n = 100 and n = 160 it is 1 of 25
 each; at n = 500 it is 0 of 25. The "upstream is 0/300 non-finite" figure that
 used to justify the clamp is real, but it was measured at n = 500 only --
 where nothing fails -- and was then read as a property of the estimator.
-**At small n this estimator is ill-posed for both implementations.** The port
-returns a finite, warned answer where upstream returns `nan` or `1e22`, and
-the gap tabulated above is the measured cost of that choice rather than a
-defect the clamp introduces.
+
+**Neither implementation is reliable below n ≈ 200, and they fail in opposite
+directions.** Read the table above against its own rows: at n = 60 the port is
+the well-conditioned one (`se` 0.76) and upstream is the pathological one
+(`se` 20.2, `coef` 3.54 against a true effect near 0.5); at n = 100 it is
+exactly reversed -- the port is the broken one (`se` 7.5e5, one warning) and
+upstream returns `se` 0.83; at n = 160 both are finite and well-conditioned
+and sit 29% apart. So the gap tabulated above is **not** uniformly "the port
+returning a finite answer where upstream returns `nan`". On some rows that
+description is backwards.
+
+The honest summary is: upstream's small-n rate is genuinely bad (7 of 25
+non-finite at n = 60), which is what justifies keeping the clamp rather than
+adopting upstream's bare Newton; but the clamp is **not** the explanation for
+the tabulated rows, and at n = 60 the port is the better-behaved of the two.
+Telling them apart requires per-draw inspection, not an aggregate rate.
 
 This is **reported by `pyexample_lplr.py` section 5 on every run and asserted
 by nothing**, on purpose: a gate that is red forever gets ignored, which is
@@ -1104,7 +1116,7 @@ implemented**.
 
 Every other element is verified equivalent term by term. The record, including
 three corrections of claims this file previously carried, is in
-`_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-21.
+`_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-22.
 
 **Robust variance & inference** -- heteroskedasticity-consistent (HC)
 standard errors, cluster-robust variance, multiplier bootstrap

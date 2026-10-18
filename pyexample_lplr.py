@@ -164,9 +164,34 @@ def print_report_smalln(out):
     """Re-measure the SMALL-N divergence on every run. Reported, not gated.
 
     Sections 1-4 are all at the example's n = 500, where the port and upstream
-    agree to ~0.007. That is one design point, and it is the one the estimator
-    was never wrong at: on identical rows at n = 60 and n = 100 the port
-    returns -3.3e6 and -1.1e6 where upstream returns 3.54 and -0.558.
+    agree to ~0.007. That is one design point, and the small-n ones are not all
+    the same kind of problem.
+
+    MEASURED at `8da9915`, on identical rows and the identical outer partition:
+
+        n=60   port -0.0491291  se 0.762404   | upstream  3.53962   se 20.1991
+        n=100  port 14.431      se 751657     | upstream -0.558127  se 0.832026
+        n=160  port  0.580578   se 0.777112   | upstream  0.749398  se 0.587901
+
+    Note the direction REVERSES. At n=60 the port is the well-behaved one
+    (se 0.76) and upstream is the pathological one (se 20.2, coefficient 3.54
+    against a true effect near 0.5). At n=100 it is the reverse: the port is
+    the broken one (se 7.5e5, one warning) and upstream is sane. At n=160 both
+    are finite and well-conditioned but 29% apart. So there is no single
+    "the port diverges at small n" story to match -- the two implementations
+    fail in OPPOSITE directions at different n, which is why reconciling them
+    is not one fix.
+
+    CORRECTION. This docstring previously read "the port returns -3.3e6 and
+    -1.1e6 where upstream returns 3.54 and -0.558". The upstream half was
+    right; the port half described a build from BEFORE D4. Section 12 showed a
+    reported -3.3e6 is arithmetically unreachable by `theta` (Newton clamps
+    each step to 0.25 over 50 iterations, and the start `sum(d*t_pred)/sum(d^2)`
+    is bounded by `|t_pred| <= 37`), which is only consistent with the number
+    never having been `theta`: the pre-D4 re-derivation, not the root, was
+    producing the 1e6. D4 made the point estimate `theta` itself (v0.163.0).
+    The section 11/12 records of -3.3e6 are history and stay as history; this
+    live comment described current behaviour and did not.
 
     A control arm against `bb38642~1` and `c744fc4` shows the small-n
     divergence is PRE-EXISTING, and upstream's own `m_hat` conditioning (D1)

@@ -1668,6 +1668,85 @@ where upstream returns a non-finite one, and the gap the README discloses at
 n=60 and n=100 is the cost of that choice, measured.** The clamp stays, and
 its justification is now the one in 20a rather than the n=500-only 0/300.
 
+> **CORRECTED by §22.** The aggregate rate is real -- upstream is non-finite on
+> 7 of 25 draws at n=60 -- but the sentence above generalises it into the
+> specific rows the README tabulates, and on those rows it is **backwards**. At
+> n=60 the port is the well-conditioned one and upstream is not; at n=100 it is
+> exactly reversed. "Ill-posed for both" survives as a statement about the
+> REGIME. It does not survive as a description of any single row, and it does
+> not license reading the port as the broken one by default.
+
+## 22. The small-n picture changed after D4, and a live docstring never noticed
+
+Section 12 established that a reported `-3.3e6` was arithmetically unreachable
+by `theta` -- Newton clamps each step to 0.25 over 50 iterations, and the start
+`sum(d*t_pred)/sum(d^2)` is bounded by `|t_pred| <= 37` -- and therefore that
+the number had never been `theta`. The pre-D4 re-derivation was producing the
+1e6, and D4 made the point estimate `theta` itself (v0.163.0).
+
+### 22a. A live docstring described pre-D4 behaviour
+
+`print_report_smalln`'s docstring in `pyexample_lplr.py` still read:
+
+> the port returns -3.3e6 and -1.1e6 where upstream returns 3.54 and -0.558
+
+The upstream half was right. The port half was a build from before D4. That
+file ships and is run by the gate on every CI pass, so the number was being
+re-measured correctly sixty characters below the comment that misdescribed it.
+
+This is the same defect as the 0478 header that read `DISCARDED` next to a
+function returning values. The historical records in §11, §12 and `CHANGELOG.md`
+of `-3.3e6` stay -- they correctly describe what was true then. A **live**
+comment describing current behaviour does not get that protection.
+
+### 22b. What the port actually returns now
+
+Re-measured at `8da9915` via `python pyexample_lplr.py`, identical rows and
+identical outer partition:
+
+| n | port coef | port `se` | warns | upstream coef | upstream `se` |
+|---|---|---|---|---|---|
+| 60 | `-0.0491291` | `0.762404` | 0 | `3.53962` | `20.1991` |
+| 100 | `14.431` | `751657` | 1 | `-0.558127` | `0.832026` |
+| 160 | `0.580578` | `0.777112` | 0 | `0.749398` | `0.587901` |
+
+**The direction reverses.** At n=60 the port has `se` 0.76 and upstream has
+`se` 20.2 with a coefficient of 3.54 against a true effect near 0.5. At n=100
+it is exactly the other way: the port returns `se` 7.5e5 with one warning and
+upstream returns `se` 0.83. At n=160 both are finite and well-conditioned and
+sit 29% apart.
+
+### 22c. What this corrects, and what it does not
+
+§20c's "the port returns a finite warned answer where upstream returns a
+non-finite one" is true as an AGGREGATE over 25 draws, and false as a
+description of the three rows the README tabulates next to it. Both statements
+were in the same document.
+
+The clamp's justification is untouched: 20a rests on upstream genuinely being
+ill-posed below n≈200 (7/25 non-finite SE at n=60, 11/25 root warnings), which
+is what makes adopting upstream's bare Newton the worse choice. What is
+withdrawn is the stronger claim that the tabulated gap IS the cost of that
+choice. At n=60 the port is the better-behaved implementation, so the clamp
+cannot be what explains that row.
+
+**The meta-point is 7b/20d for the third time, now inside shipped prose:** an
+aggregate rate was read as a property of each individual case, and the table
+sitting immediately above it says otherwise. The reader who checks the table
+against the sentence finds the contradiction in seconds -- which is the
+argument for keeping the table and the prose adjacent, and against ever
+replacing either with a summary.
+
+### 22d. One honest consequence for the parity goal
+
+The n=100 row is the port's genuine failure and it is still unexplained: the
+port returns `se` 751657 and `coef` 14.431 where upstream returns `se` 0.83 and
+`coef` -0.558, both finite, both on identical rows. §21 removed the `a_hat`
+bagging from the candidate list. The candidates falsified so far are `d_tilde`,
+`preds_inner`, the stopping tolerance, and the bagging. **The n=100 row is
+still an open divergence where upstream has a perfectly well-defined answer**,
+and it is not explained by ill-posedness on upstream's side.
+
 ### 20d. The meta-point, which is the same one as section 7b
 
 A measurement taken in the regime where a failure cannot occur is not
