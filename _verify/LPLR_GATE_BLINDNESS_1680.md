@@ -1369,3 +1369,108 @@ collapse mechanism in 17c -- specifically why upstream's `mean(psi_deriv)`
 does not vanish on the draws where the port's does, given that the formulas
 producing it are equivalent.
 
+## 18. LEAD (NOT MEASURED): the port's `a_pred` is not upstream's `a_hat["preds"]`
+
+17c located the mechanism -- `mean(psi_deriv)` collapses because
+`psi_hat = expit(-r_hat)` vanishes -- and 17e narrowed the question to
+*which input makes `r_hat` too large*. Following that back lands on
+`r_hat = t_hat - beta * a_hat["preds"]` (`lplr.py:345`), and on a structural
+difference that 16a's table does not cover.
+
+### 18a. What upstream computes
+
+`plm/lplr.py:302-312` builds `a_hat` with `_double_dml_cv_predict`, and
+`utils/_estimation.py:207-229` is what that actually does:
+
+    res["preds"] = np.zeros(y.shape)
+    for smpls_single_split, smpls_double_split in zip(smpls, smpls_inner):
+        res_inner = _dml_cv_predict(estimator, x, y,
+                                    smpls=smpls_double_split,
+                                    return_models=True)
+        res["preds_inner"].append(res_inner["preds"])
+        for model in res_inner["models"]:
+            res["preds"][smpls_single_split[1]] += model.predict(x[smpls_single_split[1]])
+    res["preds"] /= len(smpls)
+
+So `a_hat["preds"]` is an **aggregate over the models of an inner
+cross-fit** -- every one of that outer fold's inner models predicts the
+outer test rows and the results are summed, then divided by the number of
+outer folds. It is a bagged predictor, not a single model's output.
+
+`lplr.py:345` then uses exactly that:
+
+    r_hat["preds"] = t_hat["preds"] - beta * a_hat["preds"]
+
+### 18b. What the port computes
+
+`lplr.mbt:836`:
+
+    a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
+
+One model per outer test row -- the ordinary K-fold OOF value. No inner
+cross-fit, no averaging. `r_hat` is then built from it at `lplr.mbt:198`:
+
+    let r_hat = t_pred[i] - beta[i] * a_pred[i]
+
+So the port's `r_hat` uses a single outer-OOF prediction where upstream uses
+an average of inner-model predictions, and `r_hat` feeds
+`psi_hat = expit(-r_hat)` and `score_const = d_tilde * (1-y) * exp(r_hat)`
+(`lplr.mbt:202-203`) -- the exact pair that 17c identified as the collapse
+mechanism.
+
+### 18c. Why 16a did not catch this
+
+16a's table lists `d_tilde | d - m_hat | d - m_pred, m_pred = a_pred` as
+verified equivalent. That row is about the **alias** `m_pred = a_pred`
+(cleared in section 14), not about **how `a_pred` itself is constructed**.
+`t_pred` and `a_pred` were the two inputs to `r_hat` that had no row in
+16a at all. The verification enumerated the pieces the solver consumes and
+stopped one level short of the pieces that produce those pieces.
+
+`ml_t` is clean, by contrast, and is worth recording as cleared: upstream's
+`_dml_cv_predict` takes the `fold_specific_target` branch
+(`_estimation.py:65,117-131`) because `W_inner` is a list, materialises
+`xx[train_idx] = W_inner[idx]` padded with NaN, and `_fit` uses
+`y[train_index]`, so it reduces to fit-on-`(x[train_idx], W_inner[idx])`
+and predict-`x[test_idx]`. The port's `cross_fit_predict_inner`
+(`lplr.mbt:1474-1487`) does exactly that.
+
+### 18d. What is NOT established
+
+**Nothing here is measured.** Two things have to be shown before this can be
+called a cause:
+
+1. **Magnitude.** Whether the aggregate and the single prediction differ by
+   enough to move `psi_hat` across the collapse threshold. Averaging
+   generally *shrinks* a fitted value toward the mean, which would make
+   upstream's `a_hat` smaller, which makes upstream's `r_hat` LARGER -- the
+   wrong direction to be an explanation, and it has to be checked rather
+   than assumed. Note also `/= len(smpls)` divides by the OUTER fold count,
+   so if `n_folds_inner != n_folds` upstream's value carries a scale factor
+   of `n_folds_inner / n_folds` on top of the averaging; that has to be
+   pinned before any comparison is meaningful.
+2. **Occupancy**, in 17b's sense: whether `a_pred`'s spread is actually what
+   drives `psi_hat -> 0` on the diverging draws, or whether `t_pred` or
+   `beta` is doing that instead.
+
+The experiment that settles it is a direct comparison on ONE pinned
+partition and ONE pinned partition's rows: record upstream's `a_hat["preds"]`
+and the port's `a_pred`, and the resulting `r_hat`, `psi_hat`,
+`mean(psi)` and `mean(psi_deriv)` on both sides, for the fuzz trial 2 that
+detonates. That is a numerical comparison of intermediates on identical
+input -- not another input-side sweep, which is what 14, 15 and 17 all were
+and all of which failed.
+
+### 18e. A related open question
+
+The port's `double_cross_fit_predict` (`kfold.mbt:751-757`) draws its inner
+folds over the **outer training rows only** (`kfold(m, n_inner, ...)` where
+`m = train_idx.length()`), and maps inner indices back through `train_idx`.
+Upstream passes full `x, d` to `_dml_cv_predict` for the inner split, so the
+scope of the inner cross-fit is a second question this document has not
+settled. It was left alone deliberately: it bears on `preds_inner` (and so
+on `W_inner` and `beta`, section 12's territory), whereas 18a-18b is about
+`preds`. Both should be checked together, since resolving 18a requires
+knowing which rows the inner models were trained on.
+
+
