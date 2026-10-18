@@ -2094,6 +2094,41 @@ settled one -- but it is no longer confounded by this deviation.
 This also retires the last idea that would have removed the clamp: "fix the
 fidelity gap and the damping becomes unnecessary" is now measured and false.
 
+### 25f. The fuzz surface never runs at n=500, so "unclamped fails fuzz" is not a port defect
+
+`examples/fuzz/main.mbt:412`:
+
+```moonbit
+let n = rng.int(limit=100) + 60
+```
+
+**The LPLR fuzz surface only ever runs at `n` in [60, 160].** It never runs at
+n=500. Every "unclamped fails fuzz" number in this file -- trial 2 at
+`th=-440.16`, and 25e's trial 7 at `th=139.79` -- is from that band.
+
+And section 20 measured, with real `DoubleMLLPLR` fits on a comparable binary
+DGP, that upstream is itself unreliable exactly there: non-finite SE on 7 of 25
+draws at n=60, 1 of 25 at n=100, 1 of 25 at n=160.
+
+So the fuzz failure is **not, on its own, evidence of a port defect.** It is
+evidence that this surface exercises a band where upstream also fails. The
+clamp is what keeps the port finite inside a regime upstream does not survive.
+
+This corrects a claim sitting in the code since before section 20. The clamp
+block in `lplr.mbt` justifies itself with "On this repo's own binary DGP at
+**n = 500**, upstream stayed finite on 300/300 draws while the unclamped port
+reaches `se = NaN`". That n=500 figure comes from a separate probe
+(`make_dgp` at n=500), not from the fuzz surface -- so the port's fuzz failure
+and that probe's failure are two different experiments being cited as one.
+
+**What this does and does not settle.** It does not prove upstream fails on the
+exact fuzz draws in question; that needs both solvers run on the identical
+`chacha8_rng` rows, which is not cheap to arrange because the DGP is generated
+inline in MoonBit and is not reproducible in Python. It does mean the fuzz
+result cannot be read as a port-specific bug without that comparison, and that
+the n=500 justification and the fuzz evidence should not be quoted together as
+though they were one measurement.
+
 ## 26. Bare local `typos` FAILS this repo on tracked files -- do not "fix" them
 
 The release gate pins `typos` **v1.19.0** and runs it bare over the whole

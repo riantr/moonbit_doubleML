@@ -1097,10 +1097,22 @@ pub fn DoubleMLLPLR::fit(
         // WHY IT IS STILL HERE, which is the part that is easy to get wrong:
         // removing it was measured and it is worse, not better.
         //
-        //   * On this repo's own binary DGP at **n = 500**, upstream stayed
-        //     finite on 300/300 draws while the unclamped port reaches
-        //     `se = NaN` at `theta = -440.16` by trial 2 and `th = NaN` by
-        //     trial 28.
+        //   * `examples/fuzz` goes RED without it: `lplr non-negative finite se
+        //     (trial=2, se=NaN, th=-440.15956528046615)`, reproduced to the
+        //     digit. **v0.163.4: this bullet used to read "On this repo's own
+        //     binary DGP at n = 500, upstream stayed finite on 300/300 draws
+        //     while the unclamped port reaches se = NaN ... by trial 2."** That
+        //     spliced two different experiments together. "trial 2" is a
+        //     `moon run examples/fuzz` trial, and that harness draws
+        //     `n = rng.int(limit=100) + 60` (`examples/fuzz/main.mbt:412`), so
+        //     it only ever runs at n in [60, 160] -- never n=500. The n=500
+        //     upstream figure is a separate probe, not this one.
+        //   * That distinction matters for how the failure is read. Section 20
+        //     measured upstream non-finite on 7/25 draws at n=60 and 1/25 at
+        //     n=100 and n=160 -- the band the fuzz surface actually covers. So
+        //     "unclamped fails fuzz" is not by itself evidence of a port
+        //     defect; it is evidence the surface sits where upstream also
+        //     fails, and the clamp is what keeps the port finite there.
         //   * At **small n, upstream reaches it too** -- measured with real
         //     `DoubleMLLPLR` fits, 25 draws per n: non-finite SE on 7/25 at
         //     n=60 (`coef = nan` twice, `coef = 5.4e22, se = inf` once),
