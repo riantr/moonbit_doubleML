@@ -2129,6 +2129,58 @@ result cannot be read as a port-specific bug without that comparison, and that
 the n=500 justification and the fuzz evidence should not be quoted together as
 though they were one measurement.
 
+### 25g. The comparison 25f called "not cheap" -- run, and it goes the OTHER way
+
+25f left one thing open and said it would take both solvers on identical rows.
+That turns out to be cheap, because the fuzz DGP is a pure function of `trial`
+(`examples/fuzz/main.mbt:412-459`): `n`, `seed`, `x`, `y`, `d` come from
+`ch_rng = chacha8_rng(seed)` and nothing there reads the clamp. **The same rows
+are produced whether or not the port is clamped -- only the outcome differs.**
+So they can be dumped from the shipped build and handed to upstream, with no
+need to un-clamp anything.
+
+A temporary dump for trials 2 and 7 was added to `fuzz_lplr` and reverted in
+the same commit. It reported:
+
+```
+FZZMETA trial=2 n=66 p=6 seed=96696
+FZZMETA trial=7 n=97 p=6 seed=36677
+```
+
+`_verify/_lplr_fuzzrows_upstream_1680.py` then ran real `DoubleMLLPLR` on those
+exact rows:
+
+| rows | port (unclamped) | upstream `nuisance_space` |
+|---|---|---|
+| trial 2, n=66 | `se=NaN`, `th=-440.15956528046615` | **`coef=-1.47917`, `se=0.580154` FINITE** |
+| trial 7, n=97 | `se=8.883758984028203e+59`, `th=139.786` (conditioned) | **`coef=0.279131`, `se=0.406804` FINITE** |
+
+**So 25f's caveat is falsified, and it matters.** Upstream is finite on BOTH
+rows under the score the port actually uses, while the unclamped port blows up
+on both. This is not a regime where the estimator is ill-posed for everyone and
+the port merely reports it differently -- **the port's Newton is genuinely
+unstable where upstream's converges, on identical data.**
+
+Upstream does fail on trial 7's `instrument` score (`coef=50.8467, se=inf`,
+`Could not find a root of the score function`) -- but that is not the score the
+port's fuzz surface exercises.
+
+Three consequences, in order of how much they matter:
+
+1. **The clamp is justified.** It is not papering over ill-posedness upstream
+   shares; it is substituting for a stability upstream has and the port lacks.
+   The clamp stays, and n=100's disagreement is a genuine port-side
+   instability rather than a documented trade with an upstream.
+2. **There is a real defect to find.** Section 24e ruled out the `m_hat`
+   conditioning; section 21 ruled out the `a_hat` bagging. The instability is
+   in the score path somewhere else, and it is now the highest-value open
+   question in this file.
+3. **25f's closing paragraph is superseded.** The "not on its own evidence of a
+   port defect" caveat was the right caution at the time and is now measured
+   against. What survives from 25f is the correction to the `lplr.mbt` bullet:
+   the n=500 figure and the fuzz trials are two different experiments, and
+   neither one on its own settles this. The comparison above does.
+
 ## 26. Bare local `typos` FAILS this repo on tracked files -- do not "fix" them
 
 The release gate pins `typos` **v1.19.0** and runs it bare over the whole

@@ -1107,12 +1107,22 @@ pub fn DoubleMLLPLR::fit(
         //     `n = rng.int(limit=100) + 60` (`examples/fuzz/main.mbt:412`), so
         //     it only ever runs at n in [60, 160] -- never n=500. The n=500
         //     upstream figure is a separate probe, not this one.
-        //   * That distinction matters for how the failure is read. Section 20
-        //     measured upstream non-finite on 7/25 draws at n=60 and 1/25 at
-        //     n=100 and n=160 -- the band the fuzz surface actually covers. So
-        //     "unclamped fails fuzz" is not by itself evidence of a port
-        //     defect; it is evidence the surface sits where upstream also
-        //     fails, and the clamp is what keeps the port finite there.
+        //   * That distinction mattered, and it has since been settled. The
+        //     fuzz DGP is a pure function of `trial` -- `n`, `seed`, `x`, `y`,
+        //     `d` come from `chacha8_rng(seed)` and nothing there reads this
+        //     clamp -- so the SAME rows are produced clamped or not. Dumping
+        //     trial 2 and 7 and running real `DoubleMLLPLR` on them: upstream
+        //     is FINITE on both under `nuisance_space` (`n=66`:
+        //     `coef=-1.479, se=0.580`; `n=97`: `coef=0.279, se=0.407`) while
+        //     this port unclamped gives `se = NaN` at `th = -440` and
+        //     `se = 8.9e+59` at `th = 140`. **So this is not a regime where the
+        //     estimator is ill-posed for everyone: the port's Newton is
+        //     unstable on identical rows where upstream's converges.** The
+        //     clamp substitutes for a stability upstream has and the port
+        //     lacks. It stays. Upstream does fail on the `instrument` score at
+        //     n=97 (`se = inf`, "could not find a root"), but that is not the
+        //     score this path exercises.
+        //     `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 25e-25g.
         //   * At **small n, upstream reaches it too** -- measured with real
         //     `DoubleMLLPLR` fits, 25 draws per n: non-finite SE on 7/25 at
         //     n=60 (`coef = nan` twice, `coef = 5.4e22, se = inf` once),
