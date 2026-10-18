@@ -1435,60 +1435,112 @@ stopped one level short of the pieces that produce those pieces.
 and predict-`x[test_idx]`. The port's `cross_fit_predict_inner`
 (`lplr.mbt:1474-1487`) does exactly that.
 
-### 18d. What is measured, and what is still not
+### 18d. Magnitude, measured (the direction claim here was WRONG -- see 19)
 
-**MEASURED: the magnitude is large, and consistently signed.**
-`_verify/_lplr_ahat_bag_1680.py` spies on upstream's `_double_dml_cv_predict`
-so the compared value IS upstream's own `a_hat["preds"]` rather than a
-re-derivation, captures the partition from the same call so both sides use
-identical folds, and then fits the port's plain outer-OOF on that same
-partition. 12 draws, n=500, p=6, n_folds=2, n_folds_inner=2:
+`_verify/_lplr_ahat_bag_1680.py` spies on upstream's
+`_double_dml_cv_predict` so the compared value IS upstream's own
+`a_hat["preds"]` rather than a re-derivation, and captures the partition
+from the same call so both sides fit on identical folds. 12 draws, n=500,
+p=6, n_folds=2, n_folds_inner=2:
 
     median span of a_hat across rows : 0.57863
     median rms(bag - plain)          : 0.39261
     median rms/span                  : 0.6920
 
-So the two differ by **69% of `a_hat`'s own span** -- not a rounding
-difference, not a subtle offset. The port's `a_pred` is simply not
-upstream's quantity.
+The two differ by **69% of `a_hat`'s own span** -- not a rounding
+difference and not an offset. The port's `a_pred` is simply not upstream's
+quantity.
 
 The sign is uniform: `mean(bag) - mean(plain)` is negative on **12 of 12**
 draws (-0.248, -0.187, -0.265, -0.185, -0.272, -0.229, -0.148, -0.174,
--0.149, -0.091, -0.111, -0.278). Averaging shrinks the fitted value, exactly
-as expected, and it shrinks it every time.
+-0.149, -0.091, -0.111, -0.278), because averaging shrinks a fitted value
+toward the mean.
 
-**That direction does NOT establish causation, and it is the wrong way
-round for the mechanism 17c proposed.** Since `r_hat = t_hat - beta*a_hat`
-with `beta > 0`, a smaller `a_hat` makes upstream's `r_hat` LARGER, which
-makes upstream's `psi_hat = expit(-r_hat)` SMALLER, which makes upstream's
-`mean(psi_deriv)` smaller still -- i.e. it pushes upstream toward the same
-collapse the port suffers, not away from it. Upstream is nonetheless finite
-300/300. So either the mechanism in 17c is not the whole story, or
-`beta`/`t_hat` move enough to dominate.
+An earlier version of this section also claimed the resulting direction was
+"wrong" for explaining the collapse. **It was wrong**, the reasoning was
+single-channel, and section 19 retracts it with the measurement.
 
-**Still NOT established:**
+## 19. CORRECTION to 18d: the "wrong direction" claim is REFUTED
 
-1. **Occupancy.** Whether this difference is what actually drives
-   `psi_hat -> 0` on the diverging draws, or whether `t_pred` and `beta`
-   dominate it. Note `psi_hat` does not cancel out of the Newton ratio --
-   `s/sd = mean(psi_hat*(A-B)) / [-mean(psi_hat*C)]` with
-   `A = y*exp(-theta*d)*d_tilde`, `B = d_tilde*(1-y)*exp(r_hat)`,
-   `C = d_tilde*y*d*exp(-theta*d)` -- so a uniform rescaling of `psi_hat`
-   would leave the ratio alone, but a change in its per-row SPREAD does not.
-   Which of those this is has to be measured.
-2. **Fold-count scaling.** `/= len(smpls)` divides by the OUTER fold count.
-   With n_folds = n_folds_inner = 2 the average is exact, but the port must
-   handle unequal counts correctly or it will reproduce a scale factor that
-   upstream's configuration never had.
-3. **Inner-split scope** (18e), which has to be answered in the same pass
-   because implementing the average requires knowing which rows the inner
-   models were trained on.
+18d measured that `a_hat` (bagged) < `a_pred` (plain) on 12/12 draws, then
+asserted the resulting direction was "wrong" for explaining the collapse:
 
-The settling experiment is unchanged but now has a number attached: build
-`r_hat` and `psi_hat` both ways on the fuzz trial-2 partition and compare
-`mean(psi)` and `mean(psi_deriv)`, not just the final `se`.
+> a smaller `a_hat` makes upstream's `r_hat` LARGER, `psi_hat` SMALLER,
+> `mean(psi_deriv)` smaller -- pushing upstream toward the collapse
 
-### 18e. A related open question
+**That is wrong**, and measuring it says so plainly.
+`_verify/_lplr_bag_direction_1680.py` holds `t_hat`, `beta`, `m_hat`,
+`W_inner`, `a_inner` and `theta0` at UPSTREAM's own values and varies only
+`a_hat` (bagged) against `a_pred` (plain), on 8 draws, n=500:
+
+    quantity                        BAGGED        PLAIN      ratio
+    mean psi_hat                  0.40856     0.44722      0.914
+    mean(psi)                     0.0012142  -0.016214     -0.075
+    mean(psi_deriv)              -0.010983   -0.010224      1.074
+    FIRST Newton step             0.00099174  1.3938       0.001
+    |psi| max at solution          0.88217     1.0517       0.839
+
+    CHANNEL (1) runaway step : first_step smaller under BAGGED -> True
+    CHANNEL (2) psi^2 overflow: |psi| max smaller under BAGGED -> True
+
+### 19a. What went wrong in the reasoning
+
+There are **two** failure channels and 18d considered one of them.
+
+1. The runaway step. `mean(psi_deriv)` shrinking does make `s/sd` bigger.
+2. The variance overflow. Once `theta` is large,
+   `A = y*exp(-theta*d)*d_tilde` reaches ~1e191, `psi = psi_hat*A`, and the
+   variance squares it: `psi^2 ~ psi_hat^2 * 1e382`. **`psi_hat` is
+   squared**, so shrinking it by `k` shrinks the square by `k^2`.
+
+18d read the sign off channel 1 and applied it to the whole problem. The
+measurement says both channels favour the bagged construction, and channel
+1 by a factor of ~1000.
+
+### 19b. The actual mechanism, measured
+
+`mean(psi_deriv)` is nearly unchanged between the arms (ratio 1.074). The
+entire difference is in the **numerator**: `mean(psi)` at `theta0` is ~13x
+larger under PLAIN, and since the first Newton step is `s/sd`, the first
+step is ~1400x larger. So the port's non-bagged `a_pred` leaves the score
+much further from zero at the start value, and Newton throws `theta`
+somewhere far away on its very first move -- which is exactly the observed
+signature (`theta = -440` by trial 2).
+
+That is a mechanism, stated from measurement rather than inference, and it
+is the first one in sections 13-19 whose predicted sign matches the
+observation.
+
+### 19c. What this does NOT show, stated plainly
+
+At n=500 neither arm reproduces the divergence: **BAGGED 7/8 finite, PLAIN
+8/8 finite** -- draw 4 blows up under BAGGED (`fder==0`, `theta = 8.35e4`)
+while every PLAIN draw converged. So this is **not** a demonstration that
+bagging fixes anything, and the one failure here is on the *upstream-shaped*
+arm.
+
+Three things remain before this can be called the cause:
+
+1. **The real configuration.** n=500 with n_folds=2 is well-conditioned.
+   The failure under test is the fuzz DGP's trial 2. Re-run this comparison
+   on THAT partition, with the port's own nuisances rather than upstream's
+   captured ones, since upstream's `beta`/`t_hat` may themselves differ.
+2. **Occupancy**, again in 17b's sense: is the enlarged first step actually
+   what lands on the diverging draws, or does it need 18e/18d.2 resolved
+   first?
+3. **Fold-count scaling.** `/= len(smpls)` divides by the OUTER count, so
+   with n_folds != n_folds_inner an implementation must divide by the number
+   of contributing models, not the outer folds, or it will be wrong in a
+   way this n_folds == n_folds_inner == 2 test cannot see.
+
+So: 18d's magnitude measurement stands (69% of span, 12/12 negative), its
+direction claim is retracted, and 19b replaces it with a measured mechanism
+whose sign is right. The gate-blindness method needs one more entry as well:
+**an argument about which way a difference acts is itself a hypothesis, and
+this one was written down, published and committed before it was measured.**
+It should have been measured in 18d, in the same run that produced the
+magnitude.
+
 
 The port's `double_cross_fit_predict` (`kfold.mbt:751-757`) draws its inner
 folds over the **outer training rows only** (`kfold(m, n_inner, ...)` where
