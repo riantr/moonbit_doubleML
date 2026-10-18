@@ -1542,15 +1542,63 @@ It should have been measured in 18d, in the same run that produced the
 magnitude.
 
 
-The port's `double_cross_fit_predict` (`kfold.mbt:751-757`) draws its inner
-folds over the **outer training rows only** (`kfold(m, n_inner, ...)` where
-`m = train_idx.length()`), and maps inner indices back through `train_idx`.
-Upstream passes full `x, d` to `_dml_cv_predict` for the inner split, so the
-scope of the inner cross-fit is a second question this document has not
-settled. It was left alone deliberately: it bears on `preds_inner` (and so
-on `W_inner` and `beta`, section 12's territory), whereas 18a-18b is about
-`preds`. Both should be checked together, since resolving 18a requires
-knowing which rows the inner models were trained on.
+### 18e. SETTLED: the inner-split scope is faithful -- there is no divergence here
+
+This was left open deliberately in 18a-18b, because implementing the average
+requires knowing which rows the inner models were trained on. Now answered,
+from `utils/resampling.py:52-65`:
+
+    def split_samples(self):
+        all_smpls = [(train, test) for train, test in
+                     self.resampling.split(X=np.zeros(self.n_obs), ...)]
+        smpls = [all_smpls[(i_rep*n_folds):((i_rep+1)*n_folds)]
+                 for i_rep in range(self.n_rep)]
+        smpls_inner = []
+        for i_rep in range(self.n_rep):
+            smpls_inner_rep = []
+            for train, test in smpls[i_rep]:
+                smpls_inner_rep.append(
+                    [(train[train_inner], train[test_inner])
+                     for train_inner, test_inner in
+                     self.resampling_inner.split(X=train)])
+
+`self.resampling_inner.split(X=train)` yields **positional** indices into
+the outer fold's TRAINING rows, and `train[train_inner]` maps them back to
+original positions. So upstream's inner cross-fit covers the outer training
+rows only -- exactly what the port does at `kfold.mbt:751-757`:
+
+    let m = train_idx.length()
+    let inner = kfold(m, n_inner, rng_state)
+    ... train_idx[ifold.train_idx[k]] ...
+
+**Faithful.** The port's inner-split scope is not a divergence, and
+`preds_inner` (which feeds `W_inner` and `beta`) is therefore sound. The
+earlier worry here -- that upstream "passes full `x, d`" to the inner
+`_dml_cv_predict` -- was a misreading: the full arrays are passed, but the
+SPLIT restricts them to `train`, and `_dml_cv_predict` indexes with it.
+
+One difference remains and is not a scope question: upstream's
+`resampling_inner` is a single `RepeatedKFold(n_splits=n_folds_inner,
+n_repeats=1)` reused across outer folds with `random_state=None`, so each
+outer fold draws a fresh permutation; the port advances `rng_state` by one
+per fold. Both are "a different inner split per outer fold" -- the specific
+draws cannot match across two different RNGs, and never could.
+
+**Consequence for 18a-18b.** With the scope settled, `a_hat["preds"]` is now
+fully specified and `a_pred` at `:836` is the only remaining `a_hat`
+divergence. Upstream's is
+
+    for each outer fold i:
+        fit the n_folds_inner inner models on i's TRAINING rows
+        preds[test_i] += model.predict(x[test_i])   for EVERY such model
+    preds /= len(smpls)                             # len(smpls) == n_folds
+
+so with `n_folds == n_folds_inner` it is the MEAN of the inner models'
+predictions, and otherwise carries a `n_folds_inner / n_folds` scale factor
+on top. Reproducing it needs one new function that returns, per outer fold,
+the inner models' predictions on that fold's outer TEST rows -- which is not
+what `double_cross_fit_predict` returns (it gives the inner OOF on the outer
+TRAIN rows).
 
 ## 20. UPSTREAM IS ALSO ILL-POSED AT SMALL n -- the 0/300 figure was n=500-only
 
