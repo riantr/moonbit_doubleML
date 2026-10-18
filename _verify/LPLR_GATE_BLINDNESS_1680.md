@@ -1863,7 +1863,20 @@ failure mode from the clamp. D4 was worth doing on its own -- it is why n=60
 is healthy now -- and the clamp is a separate decision that happens to have
 been described using D4-era arithmetic.
 
-## 24. The one structural deviation never tested: upstream CONDITIONS `ml_m` on `Y = 0`
+## 24. The `m_hat` conditioning: a real deviation, implemented TWICE and held off twice
+
+> **CORRECTION.** This section was first written claiming the conditioning was
+> "the one structural deviation never tested". **That was wrong**, and the
+> error came from reading §14a rather than the `m_pred` block it points at.
+> `lplr.mbt:854-876` records TWO prior implementations, both reverted, both
+> with numbers -- most recently on the D2+D3 baseline in v0.163.0, where the
+> gated `nuisance_space` gap went **0.007307 -> 0.021078**. Section 25 is an
+> independent third implementation, and it reproduced that figure exactly.
+>
+> What §14a genuinely failed to check stands, though: it verified the
+> outer-cross-fit SHAPE, never what is inside the fit. So `d_tilde` was always
+> an identity-of-form claim and never a numerical one -- which is the claim
+> that survives.
 
 While auditing §16a's "verified equivalent" table against upstream's source
 rather than against the port's comments, one row turned out to be verified by
@@ -1959,8 +1972,92 @@ Three reasons, in order:
 
 So the deviation is now measured, scoped and priced, rather than being an
 unexamined gap in the equivalence table -- which is what it was for six
-sections. Closing it properly needs a tighter n=500 parity assertion first,
-which is a separate piece of work.
+sections. But it was never unexamined in the port: it was built twice and
+reverted twice, and the price was already on the record. §25 re-measures it a
+third time.
+
+## 25. Third implementation of the conditioning -- it replicates exactly
+
+Section 24's premise was wrong, so the experiment got run anyway. If the
+recorded 0.021078 were an artifact of the two old implementations, a fresh
+one would land somewhere else.
+
+### 25a. Method
+
+The primitive already exists: `cross_fit_predict_conditional_dispatch`
+(`learner.mbt:380-425`) fits on `train INTERSECT cond` and predicts on the
+**full** test fold, which is exactly upstream's
+`filtered_smpls = [(train[y[train] == 0], test)]`. So the change is small:
+
+```moonbit
+m_pred = match kind {
+  NuisanceSpace => {
+    let mut cond_y0 : Array[Int32] = []
+    for i = 0; i < y.length(); i = i + 1 {
+      if y[i] == 0.0 { cond_y0 = cond_y0 + [(i : Int32)] }
+    }
+    cross_fit_predict_conditional_dispatch(ml_m, x, d, outer, cond_y0)
+  }
+  // `instrument` conditions by SAMPLE WEIGHTS M*(1-M) (`lplr.py:245`), not by
+  // row subset -- a different mechanism, still not implemented.
+  Instrument => a_pred
+}
+```
+
+The `instrument` branch is deliberately left alone: conditioning there is
+sample weighting, not a row subset, so this is `nuisance_space` only.
+
+### 25b. Result -- identical to the v0.163.0 record
+
+The gate **failed closed** on the changed build, which is the check doing its
+job:
+
+```
+lplr_ns_theta = 0.41361558678817151
+example prints 0.46033435469463013
+identical: False
+REFUSING to compare: the fixture is not the example's data.
+```
+
+The refusal blocked the comparison, so `_verify/_lplr_cond_n500_1680.py`
+reads the 5 match-seeds straight out of the emitter instead and runs upstream
+on the same rows:
+
+| | port mean | upstream mean | gap |
+|---|---|---|---|
+| shipped (unconditioned) | 0.399521 | 0.392214 | **0.007307** |
+| conditioned | 0.371136 | 0.392214 | **0.021078** |
+
+`0.007307 -> 0.021078` is the **same pair** `lplr.mbt:868` records for the
+v0.163.0 implementation. Two independent implementations, a year of
+intervening work apart, landing on the same two numbers to six digits. The
+recorded price of this change is confirmed, not re-litigated.
+
+The example's published single fit moves by `-0.046719`
+(`0.46033435469463013 -> 0.41361558678817151`), which is why the self-check
+fired. Reverted; the gate returns to `identical: True`, gaps
+`0.007307`/`0.010609`, and all three small-n rows bit-identical.
+
+### 25c. The fails-closed message names the wrong thing
+
+> `REFUSING to compare: the fixture is not the example's data.`
+
+The rows were **identical**. Same DGP, same seed, same emitter. What differed
+was the port's *answer*. The check is really "has the port's output moved",
+which is a behaviour-change tripwire -- a good thing to have -- but the
+wording sends the next reader hunting a data-generation bug in a file that
+was not touched. Worth re-wording if this gate is next edited.
+
+### 25d. The methodological point, which is the reason this was worth running
+
+In a system carrying several deviations at once, **correcting one can make the
+aggregate worse**, because the deviations were partly cancelling. The
+conditioning is unambiguously the faithful construction and it makes the
+n=500 answer 2.9x further from upstream. That is D2 and D3 a third time.
+
+So "this piece differs from upstream, therefore matching it will bring the
+numbers together" does not hold here, and it has now failed on three separate
+pieces. Fidelity is a direction, not a lever.
 
 ### 20d. The meta-point, which is the same one as section 7b
 
