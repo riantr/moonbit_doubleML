@@ -1055,22 +1055,43 @@ identical outer partition, below it:
 | 100 | `14.431` (warns) | `-0.558127` | `751657` | `0.832026` |
 | 160 | `0.580578` | `0.749398` | `0.777` | `0.588` |
 
-91 of 200 small-n designs still warn where upstream warns zero times. This is
-**reported by `pyexample_lplr.py` section 5 on every run and asserted by
-nothing**, on purpose: a gate that is red forever gets ignored, which is
-worse than no gate. The cause is pinned to the Newton step. The port damps
-it (`lplr.mbt`, clamped to 0.25) and upstream does not -- scipy's Newton is
-a bare `p = p0 - fval/fder`. Removing the damping is the faithful port and
-does close the gap (11.4 -> 3.59 at n=60, 13.8 -> 0.086 at n=100), but it
-reaches `se = NaN` by trial 2 of `examples/fuzz`, aborts on
-`var_est.mbt:79`, and needs four gates conditioned on solver convergence --
-while upstream is 0/300 non-finite on the same DGP. Two candidate causes
-were implemented and measured: the `d_tilde` nuisance (falsified, trial 0 vs
-trial 2) and the `a_hat` double cross-fit (falsified, gaps 4.6x and 5.1x
-worse). Every other element is verified equivalent term by term. The
-residual is recorded in `_verify/LPLR_GATE_BLINDNESS_1680.md` sections
-13-16 rather than papered over with a guard whose justification would be a
-guess.
+91 of 200 small-n designs still warn. **Upstream warns too** -- measured on
+this DGP with real `DoubleMLLPLR` fits, 25 draws per n: at n = 60 upstream
+emits a non-finite SE on 7 of 25 draws (`coef = nan, se = nan` twice,
+`coef = 5.4e22, se = inf` once) and raises its own `Could not find a root of
+the score function` warning on 11 of 25; at n = 100 and n = 160 it is 1 of 25
+each; at n = 500 it is 0 of 25. The "upstream is 0/300 non-finite" figure that
+used to justify the clamp is real, but it was measured at n = 500 only --
+where nothing fails -- and was then read as a property of the estimator.
+**At small n this estimator is ill-posed for both implementations.** The port
+returns a finite, warned answer where upstream returns `nan` or `1e22`, and
+the gap tabulated above is the measured cost of that choice rather than a
+defect the clamp introduces.
+
+This is **reported by `pyexample_lplr.py` section 5 on every run and asserted
+by nothing**, on purpose: a gate that is red forever gets ignored, which is
+worse than no gate. The cause sits in the Newton step. The port damps it
+(`lplr.mbt`, clamped to 0.25) and upstream does not -- scipy's Newton is a
+bare `p = p0 - fval/fder`. Removing the damping is the faithful port and does
+close the gap (11.4 -> 3.59 at n=60, 13.8 -> 0.086 at n=100), but it reaches
+`se = NaN` by trial 2 of `examples/fuzz` and aborts on `var_est.mbt:79` --
+while upstream's own unclamped answer at those sample sizes is non-finite on
+28% of draws.
+
+Four candidates are now measured and none is the whole story. The `d_tilde`
+nuisance: falsified. The `a_hat` double cross-fit as `m_pred`: falsified.
+The Newton stopping tolerance: a real 14.8x difference against scipy's
+`1.48e-8`, never exercised -- 0 of 600 solves enter the window where the two
+disagree. And `a_hat["preds"]` itself, which the port does **not** reproduce:
+upstream averages every inner model's prediction and the port uses a single
+outer OOF, a difference measured at 69% of `a_hat`'s own span. Matching
+upstream here is directionally right -- it leaves `mean(psi)` ~13x smaller at
+the start value and the first Newton step ~1400x smaller, and it survives
+strictly more often (16 vs 15, 21 vs 19, 20 vs 19 of 25 at n = 60 / 100 /
+160) -- but it is partial, and upstream has no small-n answer to match. Every
+other element is verified equivalent term by term. The record, including two
+corrections of claims this file previously carried, is in
+`_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-20.
 
 **Robust variance & inference** -- heteroskedasticity-consistent (HC)
 standard errors, cluster-robust variance, multiplier bootstrap

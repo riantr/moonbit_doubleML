@@ -1076,15 +1076,26 @@ pub fn DoubleMLLPLR::fit(
         // WHY IT IS STILL HERE, which is the part that is easy to get wrong:
         // removing it was measured and it is worse, not better.
         //
-        //   * On this repo's own binary DGP, upstream stayed finite on
-        //     300/300 draws while the unclamped port reaches `se = NaN` at
-        //     `theta = -440.16` by trial 2 and `th = NaN` by trial 28.
+        //   * On this repo's own binary DGP at **n = 500**, upstream stayed
+        //     finite on 300/300 draws while the unclamped port reaches
+        //     `se = NaN` at `theta = -440.16` by trial 2 and `th = NaN` by
+        //     trial 28.
+        //   * At **small n, upstream reaches it too** -- measured with real
+        //     `DoubleMLLPLR` fits, 25 draws per n: non-finite SE on 7/25 at
+        //     n=60 (`coef = nan` twice, `coef = 5.4e22, se = inf` once),
+        //     1/25 at n=100, 1/25 at n=160, 0/25 at n=500; and upstream's own
+        //     `Could not find a root of the score function` warning fires on
+        //     11/25 draws at n=60. So the "0/300" that once justified this
+        //     clamp was measured where nothing fails, and generalised past
+        //     the sample size it was measured at.
         //   * The overflow is in the variance, not the iterate: `d` is binary
         //     in that DGP so `exp(-theta*d)` is only `exp(440)` at that point
         //     -- finite -- and it is the squaring in
         //     `sigma2 = mean(psi^2) / (n * J^2)` that produces `Inf/Inf`.
-        //   * Upstream has no guard there either, so the NaN is not a
-        //     port-only fiction. But upstream does not REACH it.
+        //   * Upstream has no guard there either. At n=500 it simply never
+        //     arrives; below that it arrives and is itself non-finite. What
+        //     this clamp buys is a finite, WARNED answer in place of `nan`,
+        //     not the absence of the failure.
         //
         // It is NOT the `d_tilde` input. An earlier version of this comment
         // said it was, on the reasoning that the alias `m_pred = a_pred`
@@ -1101,24 +1112,61 @@ pub fn DoubleMLLPLR::fit(
         // is a plain outer cross-fit, so rows inside an outer fold's training
         // set get an outer-model prediction where upstream uses an inner one.
         //
-        // It is implemented and measured now, and it is NOT the cause. With
-        // `a_pred[ti_a[k]] = a_inner_per_fold[fi_a][k]` the fuzz surfaces stay
-        // green but the gated gaps get 4.6x and 5.1x WORSE (0.007307 ->
-        // 0.033977 and 0.010609 -> 0.054513), and n=160 moves from a 0.169
-        // gap to 3.14. Combined with the unclamped Newton it still aborts at
-        // `var_est.mbt:79`, on the surface upstream completes.
+        // **Two DIFFERENT differences live in that one sentence, and only one
+        // of them was ever tested.** The one tested here is `preds_inner`
+        // (`:318`, `:322`) -- upstream reads `a_hat["preds_inner"][i][train]`
+        // to build `beta`. Substituting `a_inner_per_fold` for `a_pred` was
+        // implemented and measured, and it is NOT the cause: the fuzz
+        // surfaces stay green but the gated gaps get 4.6x and 5.1x WORSE
+        // (0.007307 -> 0.033977 and 0.010609 -> 0.054513), and n=160 moves
+        // from a 0.169 gap to 3.14. Combined with the unclamped Newton it
+        // still aborts at `var_est.mbt:79`.
+        //
+        // The other is `a_hat["preds"]` itself, the vector that feeds
+        // `r_hat`. Upstream builds it by summing EVERY inner model's
+        // prediction on the outer test rows and dividing by `len(smpls)`
+        // (`utils/_estimation.py:207-229`) -- a bagged predictor. `:836`
+        // is a single outer OOF. That difference is REAL and it is large:
+        // measured at 69% of `a_hat`'s own span, smaller on 12 of 12 draws.
+        // The verdict above does not cover it, because substituting
+        // `a_inner_per_fold` replaced `preds`, not `preds`. Measured since:
+        // holding everything else at upstream's values, the port's `a_pred`
+        // leaves `mean(psi)` ~13x larger at the start value and the first
+        // Newton step ~1400x larger, and it survives strictly less often
+        // (15 vs 16, 19 vs 21, 19 vs 20 of 25 at n = 60/100/160). So this is
+        // a real contributor -- directionally right, and PARTIAL. It does not
+        // make the clamp wrong, because upstream has no finite answer at
+        // those sample sizes to agree with.
         //
         // So three explanations are now measured and none holds: the start
         // value and the point estimate (both fixed at df049c2), `d_tilde`
-        // (falsified), and `a_hat` (falsified). Upstream is 0/300 non-finite
-        // on this DGP and the port diverges by trial 2, with the solver, the
-        // score formula, the start value and both nuisance inputs each
-        // checked against source. Something in how the port evaluates the
-        // score still differs and has not been located. That is why this
-        // clamp stays: not because the guard is right, but because the thing
-        // that makes it necessary is still unaccounted for.
-        // `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-15 carry the
-        // record, including the retractions.
+        // (falsified), and `preds_inner` (falsified above). The stopping
+        // tolerance is also measured and irrelevant: scipy 1.18's `newton`
+        // stops at `|step| <= 1.48e-8` and this loop at `< 1e-9`, a 14.8x
+        // difference -- but 0 of 600 fuzz solves, and 0 of 5 on the arm that
+        // actually diverges, ever produce a step in the window where the two
+        // disagree. The behaviour is bimodal: a solve lands inside 1e-9 or
+        // never approaches even 1.48e-8.
+        //
+        // So the honest statement is not "a port deviation whose cause is
+        // unknown". It is: **at n <~ 200 this estimator is ill-posed for both
+        // implementations.** Upstream is 0/300 finite at n=500 and 7/25
+        // non-finite at n=60, where it also raises its own root warning on
+        // 11/25 draws. The port returns a finite WARNED answer where upstream
+        // returns `nan` or `1e22`. This clamp is what makes that trade; it is
+        // not hiding a bug it caused.
+        //
+        // One real divergence remains and it is NOT implemented: upstream's
+        // `a_hat["preds"]` is a bagged average of every inner model's
+        // prediction, this `:836` is a single outer OOF (69% of `a_hat`'s own
+        // span apart). Matching it is directionally right and partial. It is
+        // left alone until someone can show it does not cost the gated
+        // n=500 parity, which is the one design point where upstream has a
+        // defined answer to agree with.
+        //
+        // `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 13-20 carry the
+        // record, including three retractions of claims this comment used to
+        // make.
         //
         // The `|theta_new| > 1e6` guard below is the real runaway check, and it
         // is what turns an overflow into a `diverged` warning instead of a
