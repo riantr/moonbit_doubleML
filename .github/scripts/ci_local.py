@@ -959,12 +959,35 @@ def plan(ref, jobs_filter, workflows, engine_name):
         want = {x.strip() for x in jobs_filter.split(",") if x.strip()}
         plan_jobs = [j for j in plan_jobs
                      if j["id"] in want or j["name"] in want]
-    return engine, tree, nfiles, plan_jobs, base
+        # A token that matched NOTHING is reported, not ignored. Without this,
+        # asking for four jobs and mistyping one silently runs three and exits
+        # 0 -- a gate that passes because it ran less than was asked, which is
+        # the exact failure mode this project keeps having to catch elsewhere.
+        # It bites hardest on matrix jobs: `list` prints the base name, but
+        # `expand_matrix` renders each target as "<name> (<target>)", so the
+        # name `list` shows can never match and the id must be used instead.
+        matched = {j["id"] for j in plan_jobs} | {j["name"] for j in plan_jobs}
+        unmatched = sorted(want - matched)
+    else:
+        unmatched = []
+    return engine, tree, nfiles, plan_jobs, base, unmatched
 
 
 def cmd_run(args):
     workflows = load_workflows()
-    engine, tree, nfiles, jobs, base = plan(args.ref, args.jobs, workflows, args.engine)
+    engine, tree, nfiles, jobs, base, unmatched = plan(
+        args.ref, args.jobs, workflows, args.engine)
+
+    if unmatched:
+        print("--jobs named %d selector(s) that match no job in any workflow:"
+              % len(unmatched))
+        for tok in unmatched:
+            print("    %r" % tok)
+        print()
+        print("Nothing ran. Selectors match a job's ID or its EXPANDED name;")
+        print("a matrix job's expanded name carries its target, so use the ID")
+        print("from `ci_local.py list` instead of the display name.")
+        return 2
 
     if not args.keep:
         print("workspace: %s (%d tracked files from %s)"
@@ -1042,9 +1065,9 @@ def cmd_list(args):
             runs = sum(st.get("uses") is None and "run" in st
                        for st in job.get("steps", []))
             uses = sum("uses" in st for st in job.get("steps", []))
-            print("   %-22s matrix=%-2d run=%-2d uses=%-2d needs=%s"
+            print("   %-22s matrix=%-2d run=%-2d uses=%-2d needs=%s   id: %s"
                   % (job.get("name", jid), len(expand_matrix(job)), runs, uses,
-                     job.get("needs", "-")))
+                     job.get("needs", "-"), jid))
 
 
 def cmd_selftest(args):
@@ -1393,7 +1416,10 @@ def main(argv=None):
                     help="set $GITHUB_REF_NAME to this tag (e.g. v0.163.0); "
                          "publish.yml's 'Resolve release version' reads it, and "
                          "without a tag that step fails on 'got:'")
-    ap.add_argument("--jobs", default="", help="comma-separated job names/ids")
+    ap.add_argument("--jobs", default="",
+                    help="comma-separated job names/ids; use the id from "
+                         "`ci_local.py list` for matrix jobs. A selector that "
+                         "matches nothing is an error, not a silent skip.")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--engine", default="wsl",
                     choices=["wsl", "gitbash", "none"])
