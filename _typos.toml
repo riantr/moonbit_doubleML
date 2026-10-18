@@ -110,3 +110,18 @@ levr = "levr"
 # columns align vertically. Both preserved as-is.
 unparseable = "unparseable"
 mis = "mis"
+
+# `datas` and `Ba` are UPSTREAM's spelling, quoted verbatim in the
+# section-26 table of `_verify/LPLR_GATE_BLINDNESS_1680.md`, where the
+# table's whole subject is the misspelling that the dictionary reports.
+# Writing them correctly would make the record stop quoting what it is a
+# record OF -- the same reasoning that excludes `_verify/_commit_msg_*.txt`
+# and the verbatim upstream copies in `[files]` above.
+#
+# Whitelisted per-token rather than excluding the whole 2600-line record,
+# because that file is our own prose and the rest of it should stay
+# spell-checked. Two tokens, not four: the pinned v1.19.0 reports only these
+# two (`_verify/LPLR_GATE_BLINDNESS_1680.md:2245,2246,2259,2266`); `thr_ok`
+# and `REIVEW` pass on their own.
+datas = "datas"
+Ba = "Ba"
