@@ -275,10 +275,10 @@ def main():
     d = by_name["lplr_d"]
     fold_id = by_name["lplr_fold"].astype(int)
 
-    # Self-check: the emitter must have reproduced the example's own DGP.
+    # Self-check: the emitter must have reproduced the example's own fit.
     # Its printed `theta_hat` is 0.46033435469463013; if the replication in
     # `sec_lplr_upstream` ever drifts this stops matching and the whole
-    # comparison is measuring a different dataset.
+    # comparison is measuring something else.
     #
     # MOVED TWICE, both deliberately, and both verified against TWO independent
     # sources -- the `examples/lplr` printout and the `sec_lplr_upstream`
@@ -298,17 +298,33 @@ def main():
     # gives `W_inner` the inner cross-fit of ml_M (upstream
     # `plm/lplr.py:318`) and D3 keeps `beta` per-observation (`:315-323`,
     # `:345`) instead of averaging it to a scalar (`:326`). The example's
-    # rows are untouched, which is what this check exists to confirm.
+    # rows are untouched. v0.163.4: this used to read "which is what this
+    # check exists to confirm". It does not -- the check compares
+    # `lplr_ns_theta` and says nothing about x/y/d. What it pins is the
+    # port's ANSWER, which is exactly what a port-side behaviour change moves.
     expected = 0.46033435469463013
     got = vals["lplr_ns_theta"]
     selfcheck = abs(got - expected) <= 1e-15
     print("")
-    print("--- 0. the emitter reproduces the example's rows ---")
+    print("--- 0. the emitter reproduces the example's FIT ---")
     print("    lplr_ns_theta = %.17g" % got)
     print("    example prints %.17g" % expected)
     print("    identical: %s" % selfcheck)
     if not selfcheck:
-        print("    REFUSING to compare: the fixture is not the example's data.")
+        # v0.163.4: this used to read "REFUSING to compare: the fixture is not
+        # the example's data". Measured 2026-10-18, that pointed at the wrong
+        # half: switching on upstream's `Y == 0` `ml_m` conditioning left the
+        # rows BIT-IDENTICAL and moved `lplr_ns_theta` by -0.0467. The check is
+        # on the port's OUTPUT, so it cannot tell the two causes apart -- name
+        # both rather than assert the wrong one.
+        print("    REFUSING to compare. `identical:` is false, which has TWO"
+              " causes needing")
+        print("    different responses, and this check cannot tell them apart:")
+        print("      * the ROWS moved   -> a DGP / seed / fixture change")
+        print("      * the ANSWER moved -> a behaviour change to the port")
+        print("    Decide by asking whether the change was to the port or to"
+              " the example,")
+        print("    not by this message. All four re-pins above were the second.")
         print("LPLR upstream parity: FAIL")
         return 1
 
