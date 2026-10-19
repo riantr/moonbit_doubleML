@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cli" ]
 
 description = "Datasets demo driver (synthetic 401(k) + PLR + IRM)"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

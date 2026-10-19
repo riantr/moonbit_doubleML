@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cli" ]
 
 description = "DID CS binary demo driver"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

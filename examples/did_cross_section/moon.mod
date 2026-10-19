@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cli" ]
 
 description = "DID cross-section (Sant'Anna-Zhao 2020) demo driver"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

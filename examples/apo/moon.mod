@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cli" ]
 
 description = "APO (average potential outcome) demo driver"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

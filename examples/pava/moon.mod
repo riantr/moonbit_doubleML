@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cli" ]
 
 description = "pava"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

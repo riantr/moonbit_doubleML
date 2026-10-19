@@ -14,6 +14,6 @@ license = "Apache-2.0"
 
 keywords = [ "doubleml", "demo", "cli" ]
 
-description = "Fuzz harness for pure functions across 12 surfaces"
+description = "Fuzz harness for pure functions across 11 surfaces"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

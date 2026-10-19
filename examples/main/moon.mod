@@ -14,6 +14,6 @@ license = "Apache-2.0"
 
 keywords = [ "doubleml", "demo", "cli" ]
 
-description = "Main demo driver (6 estimators on synthetic PLR)"
+description = "Main demo driver (12 estimators on synthetic PLR)"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

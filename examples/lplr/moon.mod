@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cli" ]
 
 description = "LPLR (local potential quantile regression) demo driver"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

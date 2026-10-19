@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cluster" ]
 
 description = "cluster-robust standard errors at two sample sizes"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

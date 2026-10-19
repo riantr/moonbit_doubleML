@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.163.7** |
+| `moon.mod` version | **0.163.8** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1441,20 +1441,27 @@ byte-equality; non-default overrides change the IF and the coef.
 ##Quick Start
 
 ```console
-$ moon test --deny-warn
+$ moon test --target native --deny-warn
 Total tests: 1117, passed: 1117, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
 true theta_0      = 1
-estimated theta   = 0.9763281577675552
-standard error    = 0.08740490230937094
+estimated theta   = 1.092018247331361
+standard error    = 0.08875683254582736
 ...
 
 $ python validate_irm_with_python.py
 ======================================================================
-PASS  |mb - handrolled_nrep5| (theta) = 5.24e-02 < max(MODEL_TOL=0.1, 2.0*handrolled_n5_se) = 1.91e-01
+PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*handrolled_n5_se) = 1.912555e-01
 ```
+
+`--target native` is spelled out because the package's `preferred_target` is
+`wasm-gc`, where the suite is **1123** -- 1117 plus 6 doc tutorials; the
+per-target numbers are in the Status table. A bare `moon test` runs every
+declared backend, and on `moon 0.1.20261012` it prints `Total tests: 0` for
+the backends other than the preferred one, so the per-target counts here
+come from explicit `--target` runs.
 
 ##Library Use
 
@@ -1473,7 +1480,10 @@ fit()`, `@moonbit_doubleML.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
 ##Examples
 
 21 `examples/<bin>/` directories in `moon.work`. 16 are CLI-style numeric
-demos (print true-vs-estimated theta and a 95 % CI); `examples/api_server/`
+demos that print an estimate; measured per driver, **14** of the 16 print a
+true value and **12** of the 16 print a 95 % CI -- `examples/pava` and
+`examples/splitting` print neither, and `examples/apos`, `examples/cluster`
+and `examples/ssm` print a true value but no CI. `examples/api_server/`
 is an HTTP service; `examples/consumer_demo/` is the library-user pattern
 that mirrors what an external `moon add riantr/moonbit_doubleML` consumer
 would write; `examples/fuzz/` is the property-based fuzz harness; and
@@ -1490,26 +1500,28 @@ is visible rather than described.
 | Driver | Model | DGP | True theta |
 |--------|-------|-----|--------|
 | `examples/main` | `DoubleMLPLR` + 11 others (IRM / PLIV / IIVM / DID / SSM / BLP / RDD / PQ / QTE / LPQ / PolicyTree) | Simple partially linear, `n=500`, `p=5` | 1.0 |
-| `examples/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=5000`, 9 controls | 1.5 |
+| `examples/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=4000`, 9 controls | 1.5 |
 | `examples/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
 | `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts x 4 periods | 1.0 |
 | `examples/did_cs_binary` | `DoubleMLDIDCSBinary` | Staggered CS-DID with binary outcome | 1.0 |
 | `examples/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
 | `examples/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
-| `examples/plpr`, `examples/lplr` | `DoubleMLPLPR` / `DoubleMLLPLR` | Static-panel PLR / partially logistic regression | 1.0 |
-| `examples/apo`, `examples/apos` | `DoubleMLAPO` / `DoubleMLAPOS` | 3-level discrete treatment: the LEVEL `E[Y(t)]` vs the CONTRAST | 1.0 / 2.5 |
-| `examples/cvar` | `DoubleMLCVAR` | CVaR | 1.0 |
+| `examples/plpr` | `DoubleMLPLPR` | Static-panel PLR (60 units x 4 periods) | 1.0 |
+| `examples/lplr` | `DoubleMLLPLR` | Partially logistic regression, LZZ2020 | 0.5 (logit-scale `alpha`) |
+| `examples/apo` | `DoubleMLAPO` | 3-level discrete treatment (`D` in 0/1/2): the LEVEL `E[Y(t)]` | 1.0 (`E[Y(1)]`) / 2.5 (`E[Y(2)]`) |
+| `examples/apos` | `DoubleMLAPOS` | 2-level discrete treatment: per-level `E[Y(t)]` PLUS pairwise CONTRASTS | 1.0 per level; contrast 0.0 |
+| `examples/cvar` | `DoubleMLCVAR` | CVaR at `q=0.5` | 1.74 |
 | `examples/ssm` | `DoubleMLSSM` | Sharp synthetic treatment | 1.0 |
 | `examples/cluster` | `DoubleMLPLIV` / `DoubleMLPLR` + `cluster_*` | Clustered data, cluster-robust SEs | 1.0 |
-| `examples/splitting` | `DoubleMLPLR` + `set_sample_splitting` | External sample splitting | 1.0 |
-| `examples/pava` | `pava` core | Isotonic regression, exact (no MC error) | 1.0 |
-| `examples/fuzz` | wrappers | Random-property fuzz harness across 11 surfaces (native-only: `moon run --target native examples/fuzz`) | n/a |
+| `examples/splitting` | `DoubleMLPLR` + `set_sample_splitting` | External sample splitting (n=200, p=2) | 1.5 |
+| `examples/pava` | `pava` core | Isotonic regression, exact (no MC error) | n/a -- fixed input cases, not a theta demo |
+| `examples/fuzz` | wrappers | Random-property fuzz harness across 11 surfaces (native-only) | n/a |
 | `examples/bitexact` | fixture | The bit-exact values and RNG keys `validate_bitexact_with_python.py` drives | n/a |
 | `examples/parity` | fixture | The LPLR nuisance-space / instrument values the parity gate drives | n/a |
 | `examples/consumer_demo` | library-user pattern | Minimal end-to-end PLR (no estimator-specific extras) | 1.0 |
 | `examples/api_server` | `DoubleMLPLR` + `DoubleMLIRM` | HTTP service -- see below | n/a |
 
-CLI demos:
+CLI demos (all 16 run bare; most print an estimate against a true value):
 
 ```console
 $ moon run examples/main
@@ -1524,7 +1536,7 @@ HTTP service:
 
 ```console
 $ moon build --target native examples/api_server
-$ _build/native/debug/build/api_server/api_server.exe        # listens on 127.0.0.1:4000
+$ _build/native/debug/build/example/api_server/api_server.exe   # listens on 127.0.0.1:4000
 
 $ curl -s http://127.0.0.1:4000/healthz
 {"status":"ok"}
@@ -1646,7 +1658,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.163.7, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.163.8, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1862,7 +1874,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.163.7
+python .github/scripts/ci_local.py run --all --release-tag v0.163.8
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 

@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "cli" ]
 
 description = "PLPR demo driver"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

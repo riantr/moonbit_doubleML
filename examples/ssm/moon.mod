@@ -16,4 +16,4 @@ keywords = [ "doubleml", "demo", "ssm" ]
 
 description = "SSM and the HC0 == se() identity"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

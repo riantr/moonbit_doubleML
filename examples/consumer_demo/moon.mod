@@ -16,4 +16,4 @@ keywords = [ "doubleml", "example", "consumer" ]
 
 description = "Library-user demo: minimal end-to-end PLR usage, equivalent to `moon add riantr/moonbit_doubleML` outside this repo"
 
-preferred_target = "wasm-gc"
+preferred_target = "native"

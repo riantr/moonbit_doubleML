@@ -9,6 +9,128 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.163.8] — the commands in the README actually run now
+
+`moon.mod` moves 0.163.7 -> 0.163.8. No `.mbt` changed, so the test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js) and the LPLR parity gate stays at
+`gap = 0.007307` / `0.010609`. What changed is that the README's Quick
+Start -- the block a reader copies and pastes -- was re-measured against the
+tree, and every command in it was actually RUN.
+
+### Fixed — a documented command that did not work
+
+- `moon run examples/main` **FAILED**. `examples/<dir>/moon.mod` declared
+  `preferred_target = "wasm-gc"` while the sibling `moon.pkg` declared
+  `supported_targets = "native"`; `moon run` uses the preferred target, so it
+  died with:
+
+      Package 'local/moonbit_doubleML-examples-main' does not support target
+      backend 'wasm-gc'. Supported backends: [native]
+
+  17 of the 21 example packages carried the contradiction (`bitexact`,
+  `parity` and `splitting` were already right; `api_server` supports
+  native+wasm). Fixed at the source: `preferred_target = "native"` on the 17.
+  Measured after the fix: **20 of the 20** runnable example directories run
+  bare, 0 failures.
+- Why no gate caught it: the qa_loop harness always passes `--target native`
+  explicitly, and `check.yml` only builds and tests the LIBRARY package. So
+  every gate was green on a tree whose first documented command was broken.
+
+### Fixed — stale numbers in the Quick Start transcript
+
+- `moon test --deny-warn` was quoted as
+  `Total tests: 1117, passed: 1117, failed: 0.` A bare `moon test` does not
+  print that: the package's `preferred_target` is `wasm-gc`, where the suite
+  is **1123**, and on `moon 0.1.20261012` the bare multi-target run prints
+  `Total tests: 0` for every backend other than the preferred one. The
+  transcript now shows `moon test --target native --deny-warn` -- which
+  really prints that line -- and says why the target is spelled out.
+- `moon run examples/main` was quoted as
+  `estimated theta = 0.9763281577675552` / `standard error = 0.08740490230937094`.
+  Those came from a TODO-9-era scratch log (`_probe/todo9_final_mb_run.log`)
+  and no longer match the tree: **1.092018247331361** and
+  **0.08875683254582736**.
+- `python validate_irm_with_python.py` was quoted as
+  `|mb - handrolled_nrep5| (theta) = 5.24e-02 < ... = 1.91e-01`. The current
+  run prints **8.868664e-02** and **1.912555e-01**.
+
+### Fixed — a path that does not exist
+
+- The HTTP recipe pointed at `_build/native/debug/build/api_server/api_server.exe`.
+  Built from the repo root the binary is at
+  `_build/native/debug/build/example/api_server/api_server.exe` (note
+  `example/`), or `examples/api_server/_build/native/debug/build/api_server.exe`
+  from inside the example. Verified by booting the repo-root binary and
+  reading `{"status":"ok"}` off `/healthz`.
+
+### Fixed — five wrong rows in the Examples table
+
+| row | claimed | measured |
+|---|---|---|
+| `examples/datasets` | `n=5000` | the source says `let n = 4000` |
+| `examples/cvar` | true 1.0 | the driver asserts against **1.74** |
+| `examples/splitting` | true 1.0 | the DGP is `y = 1.5 * d + ...` |
+| `examples/lplr` | true 1.0 | the logit-scale `alpha` is **0.5** |
+| `examples/pava` | true 1.0 | the driver prints no true value at all |
+
+`examples/plpr` and `examples/lplr` also shared one row for two different
+targets, and so did `examples/apo` and `examples/apos` -- but apo is a
+3-level treatment (`D` in 0/1/2) and apos a 2-level one. Both pairs are now
+separate rows.
+
+### Corrected — a claim that was stronger than the truth
+
+- "16 are CLI-style numeric demos (print true-vs-estimated theta and a 95 % CI)"
+  was an overclaim. Measured per driver: **14** of the 16 print a true value
+  and **12** of the 16 print a 95 % CI. `examples/pava` and
+  `examples/splitting` print neither; `examples/apos`, `examples/cluster` and
+  `examples/ssm` print a true value but no CI. The README now says so, and
+  names which.
+
+### Fixed — stale metadata in the example packages
+
+- `examples/fuzz/moon.mod` said "across 12 surfaces"; the harness drives
+  **11** (it prints `[1/11]`..`[11/11]` and derives 11 seeds). The 12th
+  `fuzz_*` definition, `fuzz_plpr_panel`, is a HELPER that builds the panel
+  `fuzz_plpr` consumes -- counting definitions instead of surfaces is how the
+  12 got there.
+- `examples/main/moon.mod` said "(6 estimators on synthetic PLR)"; the driver
+  runs **12** (18 banners, 6 of which are the `(n_rep=5)` arm of a model
+  already counted).
+
+### Verified, not changed
+
+The two curl transcripts are byte-for-byte what the live service returns
+(`{"status":"ok"}` and `{"estimator":"plr","coef":2,"se":0,...}`); the
+`api_server` advertises `riantr/moonbit_doubleML@0.163.7`;
+`ci_local.py selftest` is **22/22** -- the "22 self-tests" in the README
+refers to the local simulator, not the QA harness's 28;
+`riantr/pyroduct`'s `dmlref` still pins `0.163.3`; the 220 = 65 + 129 + 26
+census and the 22-estimator / 19-file model table.
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. **47** local gate steps, 0 failed: `moon build` and `moon test
+--deny-warn` green on all four backends; `moon fmt --check` clean; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the validator
+meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on the
+exported tree.
+
+### One known harness limitation, deliberately not fixed here
+
+Run in `--full` scope, the `contract` check timed out at its 900s limit. That
+is not a defect in the validator: standalone it finishes in 6s, and in fast
+scope it passes in 4.93s. The full-scope `integration` check runs 24
+validators that each spawn `moon`, and the resulting Windows pipe inheritance
+leaves the six deliberately-aborting `moon run examples/splitting` children
+unreaped, holding stdout open until the read times out. CI runs fast scope,
+so it does not hit this. A real fix means killing the child's process group on
+timeout.
+
 ## [0.163.7] — the second audit pass: one overclaim, one conflation, one unclassified gate
 
 `moon.mod` moves 0.163.6 -> 0.163.7. No estimator's behaviour changed: the
