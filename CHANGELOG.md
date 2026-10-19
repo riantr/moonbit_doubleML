@@ -9,6 +9,141 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.1] — a half-true API claim, a score that named the wrong family, and a gate that had started to work
+
+`moon.mod` moves 0.164.0 -> 0.164.1. The only `.mbt` edits are comments, so
+the test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js). This round
+audited the **interface** claims, the **score vocabulary** of the models
+table, the **parity tiers**, and every claim pinned to a **toolchain
+version**.
+
+### Fixed — "no per-estimator interface drift" was false on both halves
+
+- The README claimed "Unified API surface" and "No per-estimator interface
+  drift". Measured on the source: **16 of 22** estimators expose
+  `.coef()` / `.se()` / `.confint()` / `.bootstrap()`. Six do not, and the
+  six are now listed in the README instead of being left for a reader to
+  discover: `DoubleMLAPOS` and `DoubleMLQTE` expose `coefs` / `ses`;
+  `DoubleMLDIDCS` exposes `coef_at(g, t)` / `se_at(g, t)`;
+  `DoubleMLDIDMulti` exposes `coef_at_idx(i)` / `se_at_idx(i)`;
+  `DoubleMLBLP` exposes `confint_joint` and no `confint`; and
+  `DoubleMLPolicyTree` exposes **none** of the four -- it has
+  `leaf_influence`, `leaf_se`, `policy_value` and `policy_value_se`.
+- The constructors drift for the same reason: `DoubleMLDIDBinary` needs
+  `g_value` / `t_value_pre` / `t_value_eval`, `DoubleMLAPOS` needs
+  `treatment_levels`, `DoubleMLPolicyTree` needs `features` / `orth_signal` /
+  `depth` / `honest`, and each DID variant takes its own data type.
+- The claim is now "One API shape, with the differences named". A half-true
+  claim is worse than a false one: a reader who trusts "no interface drift"
+  writes `fitted.coef()` and gets a compile error.
+
+### Fixed — `DoubleMLRDD`'s score named the wrong family
+
+- The models table gave `DoubleMLRDD` the score "observational", which is the
+  DID family's score. RDD is a local-polynomial kernel estimator -- `rdd.mbt`:
+  "Local-polynomial RD estimator. The port uses a triangular kernel and a
+  fixed bandwidth" -- and the table's own `DoubleMLLPQ` row already said
+  "local polynomial". The rows whose score is "observational" are now exactly
+  the six DID estimators.
+
+### Fixed — "within-tolerance equivalence" was wrong for one of the 24
+
+- The README said the 24 `validate_*_with_python.py` scripts compare under
+  "`within-tolerance equivalence` rather than bit-exact re-implementation".
+  One of them does not: `validate_bitexact_with_python.py` compares IEEE-754
+  bit patterns, item by item. The split is **23 tolerance-based + 1
+  bit-exact**.
+
+### Fixed — a claim that named no toolchain, and four that named a stale one
+
+- The operator bit-exactness table (sqrt 6/6, cos 6/6, sin 6/6, ln 5/6, with
+  `ln(3.0)` exactly 1 ULP apart) now says which toolchain produced it:
+  `moon 0.1.20261016` vs CPython 3.13.14, unchanged from the
+  `moon 0.1.20261012` vs CPython 3.14 pair it was first taken on. Re-measured
+  on the current toolchain, every number is identical.
+- Four claims were pinned to `moon 0.1.20261012` while the local toolchain
+  is now `moon 0.1.20261016`. Each was re-measured and **all four still
+  hold**: a bare `moon test` still prints `Total tests: 0` for the
+  non-preferred backends; `@std/env` / `@std/fs` / `@std/io` / `@std/process`
+  still fail to resolve ("Package \"std\" not found in the loaded
+  packages"), so the port still has no file I/O; and the bit-exact
+  measurement is unchanged. Only the labels were wrong.
+- `examples/bitexact/main.mbt` and `validate_bitexact_with_python.py` -- the
+  two files that carry that measurement -- now name the same toolchain the
+  README does.
+
+### Fixed — a gate that had started to work, described as one that cannot
+
+- The README said "`moon fmt --check` has not been shown to be able to fail"
+  and that it "exits 0 on a package containing a deliberately mis-formatted
+  file, silently". Both halves were wrong on the current toolchain. Measured
+  in three arms against a copy of `examples/main`: `moon fmt` **rewrites** a
+  deliberately mangled file, so it really was mis-formatted;
+  `moon fmt --check` on a **clean** copy exits **0**; and on the **mangled**
+  copy it exits **non-zero** (`4294967295`, i.e. `-1`, on Windows) and names
+  `main.mbt`. The gate does discriminate.
+- The old verdict came from a control arm that pointed the tool at a
+  directory with no package in it, so there was nothing for it to format; the
+  QA harness's own control arm says so in
+  `.github/scripts/qa_loop/checks.py`. The residual weakness is the failure
+  *mode*: the formatted copy under `_build/.../format/` is never written, so
+  what actually fails is the follow-up `git diff --no-index`, and CI shows a
+  toolchain error instead of "this file needs formatting". The README now
+  says that, instead of the opposite.
+- The same false claim was repeated in two CI workflow comments
+  (`.github/workflows/check.yml` and `publish.yml`), which said
+  "`moon fmt --check` cannot fail on this toolchain". They now describe
+  `--allow-inert` as what it is: a policy for the INERT verdict.
+
+### New verifiers
+
+- `_verify/_verify_api_surface_1640.py` derives the 16/6 accessor split and
+  the alternative accessor names from the source and checks the README's
+  exception table against them.
+- `_verify/_verify_score_and_tiers_1640.py` checks the models table's score
+  column (the "observational" rows must be exactly the DID family) and the
+  parity-tier split (exactly one of the 24 validators is the bit-exact tier).
+  The tier is identified by the label in the file's own first six lines: an
+  earlier heuristic that keyed on the word "tolerance" in the header
+  classified the bit-exact validator as tolerance-based, because its
+  docstring says the *other* scripts use a tolerance.
+- `_verify/_verify_op_table_1640.py` re-measures the operator table on the
+  current toolchain and compares IEEE-754 bit patterns against CPython.
+- `_verify/_verify_provenance_1640.py` checks the 20 *(upstream)* / 1 renamed
+  / 1 port-only provenance labels against the `doubleml-0.11.4` sdist.
+- `_verify/_verify_toolchain_claims_1640.py` fails when a live claim names a
+  toolchain other than the current one -- while refusing to let a stale
+  mention be "fixed" where the text marks it as the original measurement, and
+  refusing to let CHANGELOG.md's own history be rewritten.
+- `_verify/_verify_fmt_gate_1640.py` runs the three arms above and checks
+  that the README and both workflows say what was measured.
+
+### Verified, not changed
+
+- The provenance labels are right: all 20 *(upstream)* rows have a
+  name-identical class in the `doubleml-0.11.4` sdist; upstream has `RDFlex`
+  and not `DoubleMLRDD`, and no `DoubleMLDIDCrossSection`.
+- The estimator census is right: 22 estimators in 19 source files, 16 with
+  one struct each and three with two (`apo.mbt`, `blp_policy.mbt`,
+  `quantile.mbt`).
+- The `validate_splitting_contract.py` bullet is right: it exits 0, prints
+  `Sample-splitting cross-check: PASS`, and refuses all 6 invalid partitions.
+- The QA LOOP's `format` check already reported PASS on the current
+  toolchain, with its own control arm confirming the check turns red on bad
+  input -- the README was the stale part, not the harness.
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. **47** local gate steps, 0 failed: `moon build` and `moon test
+--deny-warn` green on all four backends; `moon fmt --check` clean; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.164.0] — a dependency note that named the wrong version, and a quote that was a paraphrase
 
 `moon.mod` moves 0.163.9 -> 0.164.0. No `.mbt` changed, so the test counts

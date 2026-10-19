@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.0** |
+| `moon.mod` version | **0.164.1** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -58,10 +58,25 @@ Three rows -- `DoubleMLDIDCSBinary`, `DoubleMLLPLR`, `DoubleMLPLPR`
 -- were previously marked *(extra)*, which was wrong: all three ship
 upstream, so they had a reference implementation all along.
 
-**Unified API surface** -- every estimator follows the same
-`DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` shape and returns
-the same `.coef()` / `.se()` / `.confint()` / `.bootstrap()` accessors.
-No per-estimator interface drift.
+**One API shape, with the differences named** -- every estimator is built
+`DoubleMLXxx::new(...).fit()`, with `n_folds` / `n_rep` / `seed` among the
+labelled options. The *shape* is uniform; the signature and the accessor set
+are not, and the six exceptions are listed here rather than discovered later:
+
+| estimator | instead of | because |
+|---|---|---|
+| `DoubleMLAPOS` | `coef` / `se` -> `coefs` / `ses` | one estimate per treatment level |
+| `DoubleMLQTE` | `coef` / `se` -> `coefs` / `ses` | one estimate per quantile |
+| `DoubleMLDIDCS` | `coef` / `se` -> `coef_at` / `se_at` | one ATT per (group, period) |
+| `DoubleMLDIDMulti` | `coef` / `se` -> `coef_at_idx` / `se_at_idx` | the same cells, by row-major index |
+| `DoubleMLBLP` | `confint` -> `confint_joint` | the interval is for a contrast of the IV coefficient vector |
+| `DoubleMLPolicyTree` | no scalar coefficient at all | `leaf_influence`, `leaf_se`, `policy_value`, `policy_value_se` |
+
+The other 16 expose `.coef()` / `.se()` / `.confint()` / `.bootstrap()`.
+Constructor arguments differ for the same reason: `DoubleMLDIDBinary` needs
+`g_value` / `t_value_pre` / `t_value_eval`, `DoubleMLAPOS` needs
+`treatment_levels`, `DoubleMLPolicyTree` needs `features` / `orth_signal` /
+`depth` / `honest`, and each DID variant takes its own data type.
 
 **Cross-fitting infrastructure** -- `kfold`, repeated cross-fitting,
 stratified K-fold (`kfold_stratified`), `chacha8_rng`-based seeded
@@ -1473,7 +1488,7 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 `--target native` is spelled out because the package's `preferred_target` is
 `wasm-gc`, where the suite is **1123** -- 1117 plus 6 doc tutorials; the
 per-target numbers are in the Status table. A bare `moon test` runs every
-declared backend, and on `moon 0.1.20261012` it prints `Total tests: 0` for
+declared backend, and on `moon 0.1.20261016` it prints `Total tests: 0` for
 the backends other than the preferred one, so the per-target counts here
 come from explicit `--target` runs.
 
@@ -1599,7 +1614,7 @@ marked *(upstream, renamed)* because upstream calls it `RDFlex`, and
 | `DoubleMLLPQ` | local polynomial | local potential quantile *(upstream)* |
 | `DoubleMLLPLR` | partialling-out | partially logistic regression, Liu-Zhang-Zhou 2021 *(upstream)* |
 | `DoubleMLCVAR` | CVaR | conditional value-at-risk *(upstream)* |
-| `DoubleMLRDD` | observational | regression discontinuity *(upstream, renamed)* -- upstream `RDFlex` |
+| `DoubleMLRDD` | local polynomial | regression discontinuity *(upstream, renamed)* -- upstream `RDFlex` |
 | `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(upstream)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)*, + v0.98.0 honest split (`honest = true`) with `leaf_se` / `policy_value_se` |
@@ -1673,7 +1688,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.0, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.1, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1761,13 +1776,21 @@ toolchain, so a breaking upstream change surfaces before it reaches stable.
 **Two of these are weaker than the table makes them look, and both are stated
 here rather than left for a reader to assume.**
 
-- **`moon fmt --check` has not been shown to be able to fail.** On the local
-  toolchain (`moon 0.1.20261012`) it exits 0 on a package containing a
-  deliberately mis-formatted file, silently. CI installs the *latest* `moon`
-  from `cli.moonbitlang.com` rather than a pinned version, and its run log is
-  not readable without authentication, so its behaviour there is unverified.
-  The step reports success; treat "format is clean" as unproven until a
-  mis-formatted file is shown to turn it red.
+- **`moon fmt --check` can fail, but it fails as a toolchain error rather than
+  as a formatting report.** Measured on `moon 0.1.20261016`: a clean copy of
+  `examples/main` exits **0**, and the same copy with one deliberately
+  mis-formatted function exits **non-zero** (`4294967295`, i.e. `-1`, on
+  Windows) and names `main.mbt` -- so the gate does discriminate. An earlier
+  "it has not been shown to be able to fail" verdict was an artifact of a
+  control arm that pointed the tool at a directory with no package in it, so
+  the tool had nothing to look at; the QA harness's own control arm says so
+  in `.github/scripts/qa_loop/checks.py`. The way it goes red is the
+  remaining problem: the formatted copy under `_build/.../format/` is never
+  written, so what actually fails is the follow-up `git diff --no-index`, and
+  CI shows a toolchain error instead of "this file needs formatting". CI also
+  installs the *latest* `moon` from `cli.moonbitlang.com` rather than a
+  pinned version, and its run log is not readable without authentication, so
+  its behaviour there is unverified.
 - **`validate_splitting_contract.py` is not in the `python-cross-check` job.**
   It is tracked, but does not match that job's `validate_*_with_python.py`
   glob, so no cross-check step executes it. It does still run, as the QA
@@ -1817,7 +1840,9 @@ statsmodels itself, so it is the check's input, not its expected value.
 **Bit-exact parity is a second, stronger tier.** A tolerance cannot tell "the
 port is arithmetically identical to the reference" apart from "the port lands
 within 1e-4 of it". `validate_bitexact_with_python.py` compares IEEE-754 bit
-patterns instead, against `examples/bitexact/`. Measured scope, not assumed:
+patterns instead, against `examples/bitexact/`. Measured scope, not assumed --
+re-measured on `moon 0.1.20261016` vs CPython 3.13.14, unchanged from the
+`moon 0.1.20261012` vs CPython 3.14 pair it was first taken on:
 
 | operation | bit-exact | why |
 |---|---|---|
@@ -1890,7 +1915,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.164.0
+python .github/scripts/ci_local.py run --all --release-tag v0.164.1
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 
@@ -2097,9 +2122,11 @@ upstream counterpart in 0.11.4.
   MoonBit-idiomatic API, with optional JSON in/out for native /
   wasm-gc / wasm / js backends (Serverless / Wasm / edge
   deployments).
-- Behaviour-level parity check via the 24 Python reference scripts:
-  `within-tolerance equivalence` rather than bit-exact re-implementation.
-  This keeps the port resilient to upstream refactors.
+- Behaviour-level parity check via the 24 Python reference scripts: 23
+  compare under `within-tolerance equivalence`, and one
+  (`validate_bitexact_with_python.py`) compares IEEE-754 bit patterns
+  instead. The tolerance tier keeps the port resilient to upstream
+  refactors; the bit-exact tier is where it must not drift at all.
 - Strict dependency rule (see above): only `moonbitlang/*` official
   packages. Minimal supply-chain surface.
 

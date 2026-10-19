@@ -12,7 +12,7 @@ implementation" but "does the port agree with upstream, on upstream's data".
 
 WHY IT HAS TO LOOK LIKE THIS
 ============================
-MoonBit 0.1.20261012 has no file I/O. Measured, not assumed: `@std/env`,
+MoonBit 0.1.20261016 has no file I/O. Measured, not assumed: `@std/env`,
 `@std/fs`, `@std/io` and `@std/process` all fail to resolve (error 3001) and
 the builtin `read_file` does not exist (error 4021). A dataset cannot be
 handed to the port as a file; it has to arrive as literals in a compiled

@@ -350,12 +350,18 @@ jobs:
   # (tracked but matched by no CI glob until now), a test-coverage proxy, and
   # the harness's own self-test.
   #
-  # --allow-inert: `moon fmt --check` cannot fail on this toolchain, and the
-  # harness proves that with a control arm rather than asserting it. Gating on
-  # INERT would turn every run red for a reason unrelated to the code, and a
-  # permanently-red build is a build everyone learns to ignore. The verdict is
-  # still printed, and selftest T20 pins that --allow-inert can never mask a
-  # real FAIL.
+  # --allow-inert: it is a policy for the INERT verdict, not an assertion that
+  # `moon fmt --check` is inert. The harness re-measures that with its own
+  # control arm rather than taking it on faith, and on moon 0.1.20261016 the
+  # arm shows the check DOES turn red on a mis-formatted file (a clean copy
+  # of examples/main exits 0; the same copy with one bad function exits
+  # non-zero and names main.mbt). An earlier INERT verdict came from a
+  # control arm that pointed the tool at a directory with no package in it --
+  # see .github/scripts/qa_loop/checks.py. --allow-inert is kept so that a
+  # future toolchain regression, which would report INERT, cannot turn every
+  # run red for a reason unrelated to the code; a permanently-red build is a
+  # build everyone learns to ignore. The verdict is still printed, and
+  # selftest T20 pins that --allow-inert can never mask a real FAIL.
   qa-loop:
     name: QA loop
     runs-on: ubuntu-latest
