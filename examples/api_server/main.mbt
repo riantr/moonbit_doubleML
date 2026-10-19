@@ -337,7 +337,7 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // touches FOUR places: moon.mod, the edited README, the shipped
   // README copy, and this literal.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.164.4",
+    library: "riantr/moonbit_doubleML@0.164.5",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })

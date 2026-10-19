@@ -14,6 +14,8 @@ its verdicts are trusted:
   T8  duplicate_code finds a duplicate that is really there (and not one that
       is not) -- a detector with no positives is not a detector
   T9  the coverage proxy's subject set is non-empty
+  T10 `qa_process` finds no missing required activity
+  T11 `qa_process` is reachable through the driver's `--only`
   T12 gherkin resolves against the real feature file
   T13/T14 gherkin control A/B: valid mapping is green, bogus name is red
   T15 gherkin control C: a bogus name on a WRAPPED annotation line is red --
@@ -139,9 +141,50 @@ finally:
     C.CHECKS = real_checks
 
 # T6 -- every registered check is invoked
+#
+# THE CLAIM USED TO BE UNBACKED. This test was named "every registered check
+# is actually invoked by a pass" and asserted only `len(ids) >= 21` -- a
+# hardcoded floor that was true when the registry held 21 checks and grew
+# weaker with every check added after it. It counted the registry and
+# measured nothing about invocation, which is the exact disease this harness
+# exists to catch: a test that claims more than it checks.
+#
+# So the claim is implemented below. A pass is run over the REAL registry with
+# every `fn` replaced by a recorder, and the set of invoked ids must equal the
+# registry's set. The floor is derived from `qa_process`'s own evidence rather
+# than typed, so it cannot rot.
 ids = [c["id"] for c in C.CHECKS]
-ok("T6 >=21 checks registered", len(ids) >= 21, f"{len(ids)}: {','.join(ids)}")
 ok("T6b ids unique", len(ids) == len(set(ids)))
+
+_qa_ev = C.c_qa_process().evidence
+_m = re.search(r"(\d+) checks registered, (\d+) required activities", _qa_ev)
+_req_n = int(_m.group(2)) if _m else 0
+ok("T6a the registry holds at least one check per required activity",
+   _req_n > 0 and len(ids) >= _req_n,
+   "%d registered, %d required" % (len(ids), _req_n))
+
+_invoked = []
+
+
+def _recorder(cid):
+    def _f(*a, **k):
+        _invoked.append(cid)
+        return C.R(cid, "", C.PASS, "recorded")
+    return _f
+
+
+_real_checks_t6 = C.CHECKS
+try:
+    C.CHECKS = [dict(c, fn=_recorder(c["id"])) for c in _real_checks_t6]
+    D.one_pass(C.CHECKS, True)          # full=True: a fast pass would SKIP the
+                                        # full-scope checks instead of calling
+                                        # them, and would hide the very gap
+                                        # this test exists to close.
+finally:
+    C.CHECKS = _real_checks_t6
+ok("T6 every registered check is actually invoked by a pass",
+   set(_invoked) == set(ids) and len(_invoked) == len(ids),
+   "invoked %d of %d" % (len(_invoked), len(ids)))
 
 # T7 -- aggregation
 agg = C.c_metrics(prior=[C.PASS, C.FAIL, C.WARN, C.SKIP, C.INERT])

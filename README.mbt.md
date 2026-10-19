@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.4** |
+| `moon.mod` version | **0.164.5** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1702,7 +1702,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.4, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.5, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1758,21 +1758,31 @@ Deleting both lines is the change that would make this section true.
 ### What CI actually gates
 
 Measured from `.github/workflows/` and confirmed against the run list. Nine
-gates, **all of which run on push to `master`**; **eight of the nine also run
+gates, **seven of which run on push to `master`**; **eight of the nine also run
 again before publishing**, and the one that does not is stated here rather
-than left for a reader to assume:
+than left for a reader to assume. The two that run **only** before publishing
+-- `moon check --deny-warn` and the generated-interface drift check -- are
+marked **publish-only** in the table instead of being folded into the count:
 
 | Gate | Where | Scope |
 |---|---|---|
 | Shipped README == edited README | `check.yml` `readme-sync` | `moonbit_doubleML/README.mbt.md` byte-identity |
 | `moon build` + `moon test --deny-warn` | `check.yml` x4 matrix | `native`, `wasm-gc`, `wasm`, `js` |
 | `moon fmt --check` | `check.yml` "Format check" x4, `publish.yml` | see caveat below |
-| `moon check --deny-warn` x4 | `publish.yml` | warnings are errors |
-| Generated-interface drift | `publish.yml` | public surface |
-| `typos` (pinned 1.19.0) | `publish.yml` | prose |
+| `moon check --deny-warn` x4 | `publish.yml` -- **publish-only** | warnings are errors; a push to `master` never runs this command |
+| Generated-interface drift | `publish.yml` -- **publish-only** | public surface; `moon info` + `git diff --exit-code` run nowhere else |
+| `typos` (pinned 1.19.0) | `publish.yml`, and `check.yml` via the QA LOOP's `static_code_check` | prose |
 | 24 `validate_*_with_python.py` | `check.yml` | estimator parity; see the two-tier note below |
 | 9 `pyexample_*` upstream gates | `check.yml` `python-cross-check` | the port against **upstream's own code**; see the table below |
-| QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 31 registered checks, 22 of them fast |
+| QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 31 registered checks, 22 of them fast; CI also runs `api_test` and `security_dast` from the full scope |
+
+Seven is not a rounding of the table -- it is the job count. The `CI` run on
+`master` is **7 jobs**: `README sync`, `moon test --deny-warn` x4, `Python
+cross-check`, and `QA loop`. `moon check` and `moon info` appear in none of
+them. `typos` is the one row whose *Where* is easy to misread: it is a
+`publish.yml` step, but it also runs on every push inside the QA LOOP's
+`static_code_check`, with the same pinned `v1.19.0`, because that check is
+`fast` scope.
 
 `publish.yml` fires on a `v*` tag push, has a single job, and declares **no
 `needs:`** -- it neither waits on nor depends on a `check.yml` run. It re-runs
@@ -1783,6 +1793,15 @@ does **not** re-run the 24 `validate_*_with_python.py` scripts: that gate is
 `check.yml` only. A tag push is therefore a *narrower* gate than a master
 push, and the 24-validator parity check has to have passed on the commit
 being tagged.
+
+The other half of the asymmetry points the other way, and it is the half that
+is easy to miss: **`moon check --deny-warn` and the interface-drift check run
+only before publishing.** A push to `master` compiles and tests the package on
+four backends but never runs the SAST-class pass and never diffs the
+generated interface, so an interface change can sit on `master` unflagged
+until the next release. Neither `publish.yml` nor `check.yml` passes `--full`
+to the QA LOOP either, so the harness's `full` scope is not a release-time
+scope; the two-tier note below says exactly what that leaves uncovered.
 
 `nightly.yml` additionally runs the package against the MoonBit **nightly**
 toolchain, so a breaking upstream change surfaces before it reaches stable.
@@ -1887,7 +1906,7 @@ executable form -- there is no separate Gherkin runner.
 **Coverage is two-tier, and the tiers are not the same size.** The QA LOOP
 (`.github/scripts/qa_loop/`, v0.162.0) registers **31 checks** over the **22**
 required activities: **22 in `fast` scope**, which CI runs on every push and again
-before publishing, and **9 in `full` scope**, which is release-time.
+before publishing, and **9 in `full` scope**, which CI does **not** run as a scope.
 
 - fast (22): `format`, `static_code_check`, `duplicate_code`, `dependencies`,
   `gherkin`, `qa_process`, `pyexample`, `pyexample_suite`,
@@ -1898,20 +1917,38 @@ before publishing, and **9 in `full` scope**, which is release-time.
 - full (9): `static_analysis`, `unit_tests`, `component_tests`, `integration`,
   `api_test`, `security_dast`, `fuzz`, `mutation`, `load_stress`
 
-CI deliberately runs **fast only**: the full scope re-runs `moon test` several
-more times and all 24 Python cross-checks, which `moon-test` (x4 backends) and
-`python-cross-check` already do. Re-measuring them would multiply release time
-for no new information.
+CI deliberately runs **fast only** as a scope, and the reason is that most of
+the full scope re-measures what other jobs already measure: `unit_tests` and
+`component_tests` re-run `moon test`, which `moon-test` (x4 backends) already
+does; `integration` re-runs all 24 Python cross-checks, which
+`python-cross-check` already does; and `static_analysis` re-runs `moon check
+--deny-warn`, which `publish.yml` already does before it publishes.
+Re-measuring them would multiply release time for no new information.
+
+**What that leaves uncovered is named here rather than left to be inferred.**
+Neither `check.yml` nor `publish.yml` passes `--full`, so of the 9 `full`-scope
+checks **2 run in CI** -- `api_test` and `security_dast`, pulled out
+explicitly by `check.yml` (`--only api_test,security_dast`) -- and **7 run in
+no CI workflow at all**: `static_analysis`, `unit_tests`, `component_tests`,
+`integration`, `fuzz`, `mutation` and `load_stress`. For the first four the
+*subject* is covered by another job (the commands above), but the check itself
+is not, and one of them adds a property nothing else has: `integration` proves
+that each of the 24 validators actually **spawned MoonBit**, which
+`python-cross-check` does not require -- it requires a zero exit code and a
+trailing `PASS`. `fuzz`, `mutation` and `load_stress` are covered by nothing
+at all: no workflow runs them, so their verdicts are local measurements only.
+`moonbit_doubleML/lplr.mbt` states the same about `fuzz` in the source.
 
 **Still not covered, so not claimed.** The `coverage` check is a
 test-reachability proxy, not instrumented line coverage. There is no
 dependency-vulnerability scan -- `moon update` resolves versions, it is not an
 audit. `mutation` kills three mutants on one kernel, not a whole-codebase
-surviving-mutant ledger. `examples/fuzz/` has no crash-regression corpus, and
-its seed argument is **ignored** -- `fn main` takes no parameters -- so the
-fuzz check replays one fixed seed (20260824) three times rather than sweeping
-seeds: it is a re-run of one case, not a fuzz. And
-the two declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
+surviving-mutant ledger, and no CI workflow runs it. `examples/fuzz/` has no
+crash-regression corpus, and its seed argument is **ignored** -- `fn main`
+takes no parameters -- so the fuzz check replays one fixed seed (20260824)
+three times rather than sweeping seeds: it is a re-run of one case, not a
+fuzz, and no CI workflow runs it either. And the two declared `moon.mod`
+dependencies -- `moonbit-community/sqlite3@0.2.3`
 and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
 ['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
@@ -1929,7 +1966,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.164.4
+python .github/scripts/ci_local.py run --all --release-tag v0.164.5
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 

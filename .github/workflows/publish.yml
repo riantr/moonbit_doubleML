@@ -158,13 +158,24 @@ jobs:
       - name: Check shipped README matches the edited README
         run: python3 .github/scripts/check_readme_sync.py
 
-      # The 21 QA activities, as a runnable harness. Fast scope only, for the
+      # The 22 QA activities, as a runnable harness. Fast scope only, for the
       # same reason check.yml does not use --full: `moon test` already ran on
       # 4 backends two steps above, and the mutation battery would run it again
       # three more times. What this adds is the set nothing else gates --
       # duplicate code, dependency audit, Gherkin traceability, the coverage
       # proxy, and validate_splitting_contract.py, which is tracked but matched
       # by no CI glob and so had never run.
+      #
+      # The 22 is the required-activity set in checks.py's `qa_process`, which
+      # asserts that every one of them has a registered check. It was 21 until
+      # `static_code_check` was added; this comment kept the old number.
+      #
+      # This workflow runs the FAST scope only, and it is worth being explicit
+      # about what that leaves out. Of the 9 full-scope checks, 0 run here:
+      # `api_test` and `security_dast` are pulled out and run by check.yml, and
+      # the other 7 (`static_analysis`, `unit_tests`, `component_tests`,
+      # `integration`, `fuzz`, `mutation`, `load_stress`) run in no CI workflow
+      # at all.
       #
       # --allow-inert is a policy for the INERT verdict, not a claim that
       # `moon fmt --check` is inert. The harness re-measures that with its own

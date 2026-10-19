@@ -9,6 +9,98 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.5] -- the documents that say what "verified" means
+
+`moon.mod` moves 0.164.4 -> 0.164.5. No `.mbt` file changed and no behaviour
+changed: this round is entirely about the claims. The test counts stay
+**1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Round 9 asked which documents describe the executable layer. Round 10 asked
+the question one level further out: **which documents define what "verified"
+means?** The answer is the QA LOOP registry (`.github/scripts/qa_loop/`), the
+four CI workflows, and the shipped README's "What CI actually gates" section
+-- none of which had ever been audited, and all of which were carrying
+numbers that had drifted.
+
+### Fixed -- the README claimed all nine CI gates run on a push
+
+- "Nine gates, **all of which run on push to `master`**" was false. Measured
+  from the workflows, and confirmed against the GitHub run list: the master
+  `CI` run is **7 jobs** (`README sync`, `moon test --deny-warn` x4, `Python
+  cross-check`, `QA loop`), and `moon check` and `moon info` appear in none of
+  them. **Seven of the nine** run on a push; `moon check --deny-warn` and the
+  generated-interface drift check are **publish-only**, and are now marked as
+  such in the table instead of being folded into the count.
+- The table's `typos` row said `publish.yml`. `typos` also runs on every push,
+  inside the QA LOOP's `static_code_check` (fast scope), with the same pinned
+  `v1.19.0`. The row now names both workflows.
+- "**eight of the nine also run again before publishing**" was true and is
+  unchanged; the one that does not is the 24-validator parity check, which
+  the next paragraph already stated.
+
+### Fixed -- "9 in `full` scope, which is release-time" was false
+
+- No workflow runs the full scope. `publish.yml` runs the fast scope only,
+  and `check.yml` runs the fast scope plus `--only api_test,security_dast`.
+  So of the 9 `full`-scope checks, **2 run in CI** and **7 run in no CI
+  workflow at all**: `static_analysis`, `unit_tests`, `component_tests`,
+  `integration`, `fuzz`, `mutation`, `load_stress`.
+- The paragraph that justified "CI deliberately runs fast only" was itself
+  the false claim: it said the full scope only re-runs `moon test` and the 24
+  Python cross-checks, which other jobs already do -- which would imply the
+  full scope adds nothing CI lacks. It does: `fuzz`, `mutation` and
+  `load_stress` are covered by nothing, and `integration` adds a property
+  nothing else has (that each of the 24 validators actually **spawned
+  MoonBit**, which `python-cross-check` does not require). The paragraph now
+  says so, and names the seven.
+- The source already knew this. `moonbit_doubleML/lplr.mbt` says "`fuzz` is
+  not executed by ANY workflow", and `examples/api_server/main.mbt` says
+  "`api_test` is a FULL-scope check and neither `check.yml` nor
+  `publish.yml` passes `--full`". The README was the outlier.
+
+### Fixed -- a stale number, and a self-test that did not test
+
+- `publish.yml` said "The **21** QA activities". The required-activity set
+  has been 22 since `static_code_check` was added; the registry reports "22
+  required activities", and `qa_process` fails if any of them is missing.
+- The QA harness's own self-test T6 was named "every registered check is
+  actually invoked by a pass" and asserted only `len(ids) >= 21` -- a
+  hardcoded floor that grew weaker with every check added after it, and
+  which measured nothing about invocation. T6 now runs a pass over the real
+  registry with every `fn` replaced by a recorder and asserts that all 31 are
+  invoked; the floor is derived from `qa_process`'s own evidence rather than
+  typed. The self-test's header also never listed T10 and T11, which
+  existed; it does now.
+
+### A new verifier for the class
+
+- `_verify/_verify_round10_ci_1645.py` makes **31 checks**, all DERIVED: the
+  registry's size, its fast/full split and both name sets are read from
+  `checks.py`; the required-activity count is parsed out of `qa_process`; which
+  gates run where is decided by probing each workflow's step BODIES -- not its
+  comments -- and applying `run.py`'s own scope semantics; the job-instance
+  count is derived from `check.yml`'s job list and its matrix width. The
+  retracted phrases are asserted absent, and every full-scope check that no
+  workflow runs must be named in the README, so the gap cannot be quietly
+  dropped again.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.4 it reports **11 failures**; against the corrected tree it reports
+  **0**.
+
+### Gate for this release
+
+Both declared dependencies were already at the current registry latest
+(`moonbitlang/async@0.22.5`, `moonbit-community/sqlite3@0.2.3`), so the
+gate ran on current pins with no `moon update` needed. **48** local
+gate steps, 0 failed: `moon build` and `moon test --deny-warn` green on
+all four backends; `moon fmt --check` clean at the package root **and**
+at the workspace root, which is the one CI runs; both READMEs
+byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.164.4] -- the acceptance-criteria file, and the documents that describe it
 
 `moon.mod` moves 0.164.3 -> 0.164.4. Two `.mbt` files changed, and both

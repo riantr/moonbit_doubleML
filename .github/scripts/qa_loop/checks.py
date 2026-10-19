@@ -1025,7 +1025,9 @@ def c_contract():
     ok = "PASS" in out.upper() or rc == 0
     return R("contract", "", PASS if ok else FAIL,
              f"{s} executed (exit={rc}). NOTE: this script does NOT match CI's "
-             f"`validate_*_with_python.py` glob, so no workflow runs it.")
+             f"`validate_*_with_python.py` glob, so the python-cross-check job "
+             f"does not run it -- but this check does, on every push, because "
+             f"`contract` is `fast` scope.")
 
 
 # --------------------------------------------------------------------------- #

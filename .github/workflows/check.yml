@@ -339,11 +339,22 @@ jobs:
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.
   #
-  # It is deliberately NOT --full. The full scope runs `moon test` several more
-  # times (unit_tests, component_tests, and mutation's 3 mutants) and re-runs
-  # all 24 Python cross-checks -- all of which the moon-test and
-  # python-cross-check jobs above already do, on 4 backends. Re-doing them here
-  # would multiply release time to re-measure what is already measured.
+  # It is deliberately NOT --full. Most of the full scope re-measures what the
+  # jobs above already measure: `unit_tests` and `component_tests` re-run
+  # `moon test` (4 backends, above), `integration` re-runs all 24 Python
+  # cross-checks (`python-cross-check`, above), and `static_analysis` re-runs
+  # `moon check --deny-warn` (which publish.yml already does before it
+  # publishes). Re-doing them here would multiply release time to re-measure
+  # what is already measured.
+  #
+  # The full scope is NOT a release-time scope, though, and this job is where
+  # that becomes visible. Of the 9 full-scope checks, only `api_test` and
+  # `security_dast` are run anywhere in CI -- the last step of this job pulls
+  # them out explicitly. `fuzz`, `mutation` and `load_stress` run in no
+  # workflow at all, and `integration` adds one property nothing else has:
+  # that each of the 24 validators actually spawned MoonBit, which
+  # `python-cross-check` does not require. So the honest count is 2 of 9
+  # full-scope checks in CI, not 9.
   #
   # What this job adds that nothing else covers: duplicate-code detection, the
   # dependency audit, Gherkin -> test traceability, validate_splitting_contract
