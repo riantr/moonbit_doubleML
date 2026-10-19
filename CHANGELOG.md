@@ -9,6 +9,77 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.163.6] — the README audited against the code, one claim at a time
+
+`moon.mod` moves 0.163.5 -> 0.163.6. **Docs only**: no `.mbt` changed, so the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js)
+and the LPLR parity gate stays at `gap = 0.007307` / `0.010609`. What changed
+is that every number and every verification claim in the README was re-measured
+against the tree instead of trusted.
+
+### Fixed — stale claims found by re-measurement
+
+- Quick Start showed `Total tests: 593`; the native run reports **1117**.
+- `examples/` was described as 19 directories in `moon.work`; it is **21**.
+  `examples/bitexact/` and `examples/parity/` were absent from the table
+  entirely, and `examples/fuzz/` covers 11 surfaces, not 12.
+- The layout block still named `moon.mod v0.81.0, 144 .mbt files`; the package
+  is now 220 `.mbt` files.
+- `moon.work` was called a 15-member workspace; it has **23** members.
+- The QA LOOP tier counts (22 checks / 12 fast / 10 full, over 21 activities)
+  did not match `.github/scripts/qa_loop/checks.py`, which registers **31
+  checks, 22 fast, 9 full, over 22 activities**. `e2e` was filed under `full`
+  when it is `fast`, and the eight `pyexample_*` checks were missing from the
+  fast list.
+
+### Corrected — claims that were stronger than the truth
+
+- "`validate_splitting_contract.py` **never runs**" was false. It is not in
+  CI's `python-cross-check` glob, but it is registered as the QA LOOP's
+  `contract` check in `fast` scope, so it runs on every push. Measured: exit 0,
+  `Sample-splitting cross-check: PASS`, all 6 invalid partitions refused.
+- Acceptance traceability claimed "23 of the 27 named tests resolve". Measured
+  against every `test` declaration in the package: the 24 `# mapped to:`
+  annotations cite **29** names (26 distinct, one annotation wrapping onto a
+  following comment line) and **29/29 resolve**, 3 of them prose-exempt.
+- `Used By` cited `riantr/moonbit_doubleML v0.64.0+`; `riantr/pyroduct`'s
+  `dmlref` pins **0.163.3**. Its figures still hold: same nuisance, `theta`
+  delta 0.017, `se` delta 0.001.
+
+### Newly disclosed
+
+- `examples/fuzz/` has no crash-regression corpus, and its seed argument is
+  ignored -- `fn main` takes no parameters -- so the fuzz check replays one
+  fixed seed (20260824) three times rather than sweeping seeds. It is a re-run
+  of one case, not a fuzz.
+
+### Verified unchanged, not merely asserted
+
+22 estimators across 19 source files; upstream provenance (20 name-identical
+classes, `RDFlex` at `doubleml/rdd/rdd.py:20`, no `DoubleMLDIDCrossSection` in
+the 0.11.4 sdist -- still the latest release on PyPI); sandwich coverage 15
+scalar + 4 per-cell + 3 none; 248 comparison rows across 10 validators with
+`padjust` 108 of them; 25/25 bit-exact items and 6/6 RNG keys; 24/24 Python
+cross-checks; 22 simulator self-tests; sdist 388 members and 322 `.py` files.
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. QA LOOP fast scope: PASS=19, SKIP=10, WARN=2, no FAIL. `moon test`
+green on all four backends. `moon fmt --check` and `moon check --deny-warn`
+clean. Pinned `typos` v1.19.0 exit 0. Both READMEs byte-identical.
+
+### One known harness limitation, deliberately not fixed here
+
+Run in `--full` scope, the `contract` check timed out at its 900s limit. That
+is not a defect in the validator: standalone it finishes in 6s, and in fast
+scope it passes in 4.93s. The full-scope `integration` check runs 24 validators
+that each spawn `moon`, and the resulting Windows pipe inheritance leaves the
+six deliberately-aborting `moon run examples/splitting` children unreaped,
+holding stdout open until the read times out. CI runs fast scope, so it does
+not hit this. A real fix means killing the child's process group on timeout.
+
 ## [0.163.5] — the pinned spell-check gate is finally run instead of inferred
 
 `moon.mod` moves 0.163.4 -> 0.163.5. This release moves **no reported number**

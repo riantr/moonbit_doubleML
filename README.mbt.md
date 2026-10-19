@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.163.5** |
+| `moon.mod` version | **0.163.6** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1436,7 +1436,7 @@ byte-equality; non-default overrides change the IF and the coef.
 
 ```console
 $ moon test --deny-warn
-Total tests: 593, passed: 593, failed: 0.
+Total tests: 1117, passed: 1117, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
@@ -1466,12 +1466,14 @@ fit()`, `@moonbit_doubleML.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
 
 ##Examples
 
-19 `examples/<bin>/` directories in `moon.work`. 18 run end-to-end on
-synthetic DGPs: 17 are CLI-style numeric demos (print true-vs-estimated
-theta and a 95 % CI); the 18th -- `examples/api_server/` -- is an HTTP
-service. The 19th -- `examples/consumer_demo/` -- is the library-user
-pattern that mirrors what an external `moon add riantr/moonbit_doubleML`
-consumer would write.
+21 `examples/<bin>/` directories in `moon.work`. 16 are CLI-style numeric
+demos (print true-vs-estimated theta and a 95 % CI); `examples/api_server/`
+is an HTTP service; `examples/consumer_demo/` is the library-user pattern
+that mirrors what an external `moon add riantr/moonbit_doubleML` consumer
+would write; `examples/fuzz/` is the property-based fuzz harness; and
+`examples/bitexact/` and `examples/parity/` are the MoonBit fixtures the
+bit-exact and LPLR parity validators drive, kept as runnable binaries so
+their numbers are inspectable without a Python reference.
 
 `examples/apo/` and `examples/apos/` are the pair worth reading together:
 APO returns the potential outcome AT one treatment level, APOS returns
@@ -1495,7 +1497,9 @@ is visible rather than described.
 | `examples/cluster` | `DoubleMLPLIV` / `DoubleMLPLR` + `cluster_*` | Clustered data, cluster-robust SEs | 1.0 |
 | `examples/splitting` | `DoubleMLPLR` + `set_sample_splitting` | External sample splitting | 1.0 |
 | `examples/pava` | `pava` core | Isotonic regression, exact (no MC error) | 1.0 |
-| `examples/fuzz` | wrappers | Random-property fuzz harness across 12 surfaces | n/a |
+| `examples/fuzz` | wrappers | Random-property fuzz harness across 11 surfaces (native-only: `moon run --target native examples/fuzz`) | n/a |
+| `examples/bitexact` | fixture | The bit-exact values and RNG keys `validate_bitexact_with_python.py` drives | n/a |
+| `examples/parity` | fixture | The LPLR nuisance-space / instrument values the parity gate drives | n/a |
 | `examples/consumer_demo` | library-user pattern | Minimal end-to-end PLR (no estimator-specific extras) | 1.0 |
 | `examples/api_server` | `DoubleMLPLR` + `DoubleMLIRM` | HTTP service -- see below | n/a |
 
@@ -1636,7 +1640,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.81.0, 144 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.163.6, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1646,7 +1650,7 @@ doc/                     <- wasm-gc-targeted numbered tutorials
   ...
   006_python_check/
 
-examples/                <- 19 driver binaries (all listed in moon.work)
+examples/                <- 21 driver binaries (all listed in moon.work)
   main/                  <- 12 estimators, one perfect-DGP run each
   datasets/              <- 401(k)-style ATE / ATT recovery
   did_binary/            <- 2-period panel DID
@@ -1659,7 +1663,7 @@ examples/                <- 19 driver binaries (all listed in moon.work)
   consumer_demo/         <- library-user pattern (`example/consumer_demo`)
   api_server/            <- HTTP service built on `moonbitlang/async`
 
-moon.work                <- 15-member workspace aggregator
+moon.work                <- 23-member workspace aggregator (the library, doc/, 21 examples)
 AGENTS.md                <- this file (per moonbit agent convention)
 skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 ```
@@ -1718,8 +1722,12 @@ here rather than left for a reader to assume.**
   not readable without authentication, so its behaviour there is unverified.
   The step reports success; treat "format is clean" as unproven until a
   mis-formatted file is shown to turn it red.
-- **`validate_splitting_contract.py` never runs.** It is tracked, but does not
-  match CI's `validate_*_with_python.py` glob, so no workflow executes it.
+- **`validate_splitting_contract.py` is not in the `python-cross-check` job.**
+  It is tracked, but does not match that job's `validate_*_with_python.py`
+  glob, so no cross-check step executes it. It does still run, as the QA
+  LOOP's `contract` check -- `fast` scope, so on every push and before
+  publishing. Measured today: exit 0, `Sample-splitting cross-check: PASS`,
+  with all 6 invalid partitions refused.
 
 **All 24 now spawn a MoonBit process, but they are not all the same kind of
 check, and saying "24 / 24 PASS" without saying that would overstate what
@@ -1784,21 +1792,26 @@ truncated and a mis-tiled RNG key.
 
 **Acceptance-criteria traceability** lives in
 `features/moonbit_doubleML_acceptance.feature`: 6 `Feature`, 24 `Scenario`, 80
-Given/When/Then steps, each scenario annotated `# mapped to: <test name>`. 23
-of the 27 named tests resolve to real `test` declarations; the other four are
-descriptive prose. The MoonBit tests are the executable form -- there is no
-separate Gherkin runner.
+Given/When/Then steps. Its 24 `# mapped to:` annotations cite **29** test
+names (26 distinct -- one annotation wraps onto a following comment line and
+is joined). **All 29 resolve**: 26 against real `test` / `fn panic_*`
+declarations, 3 prose-exempt (they name a file or a concept, e.g.
+`padjust dispatcher tests in did_multi_test.mbt`). The MoonBit tests are the
+executable form -- there is no separate Gherkin runner.
 
 **Coverage is two-tier, and the tiers are not the same size.** The QA LOOP
-(`.github/scripts/qa_loop/`, v0.162.0) registers 22 checks over the 21 named
-activities: **12 in `fast` scope**, which CI runs on every push and again before
-publishing, and **10 in `full` scope**, which is release-time.
+(`.github/scripts/qa_loop/`, v0.162.0) registers **31 checks** over the **22**
+required activities: **22 in `fast` scope**, which CI runs on every push and again
+before publishing, and **9 in `full` scope**, which is release-time.
 
-- fast: `format`, `static_code_check`, `duplicate_code`, `dependencies`,
-  `gherkin`, `qa_process`, `contract`, `security_sast`, `perf_test`,
+- fast (22): `format`, `static_code_check`, `duplicate_code`, `dependencies`,
+  `gherkin`, `qa_process`, `pyexample`, `pyexample_suite`,
+  `pyexample_did_cs_binary`, `pyexample_did_binary`, `pyexample_lplr`,
+  `pyexample_pq`, `pyexample_policytree`, `pyexample_rdd`,
+  `pyexample_cs2021`, `contract`, `e2e`, `security_sast`, `perf_test`,
   `benchmark`, `coverage`, `quality_metrics`
-- full: `static_analysis`, `unit_tests`, `component_tests`, `integration`,
-  `api_test`, `security_dast`, `fuzz`, `mutation`, `load_stress`, `e2e`
+- full (9): `static_analysis`, `unit_tests`, `component_tests`, `integration`,
+  `api_test`, `security_dast`, `fuzz`, `mutation`, `load_stress`
 
 CI deliberately runs **fast only**: the full scope re-runs `moon test` several
 more times and all 24 Python cross-checks, which `moon-test` (x4 backends) and
@@ -1809,7 +1822,10 @@ for no new information.
 test-reachability proxy, not instrumented line coverage. There is no
 dependency-vulnerability scan -- `moon update` resolves versions, it is not an
 audit. `mutation` kills three mutants on one kernel, not a whole-codebase
-surviving-mutant ledger. `examples/fuzz/` has no crash-regression corpus. And
+surviving-mutant ledger. `examples/fuzz/` has no crash-regression corpus, and
+its seed argument is **ignored** -- `fn main` takes no parameters -- so the
+fuzz check replays one fixed seed (20260824) three times rather than sweeping
+seeds: it is a re-run of one case, not a fuzz. And
 the two declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
 and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
@@ -1828,7 +1844,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.163.5
+python .github/scripts/ci_local.py run --all --release-tag v0.163.6
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 
@@ -2048,8 +2064,10 @@ upstream counterpart in 0.11.4.
   (Gadamer/Habermas, Shanghai Academy of Social Sciences 2008)
   plus its appendix as runnable multi-agent state machines. Its
   `dmlref` package cross-checks its own from-scratch DoubleML
-  PLR against `riantr/moonbit_doubleML` v0.64.0+: same nuisance,
-  `theta` delta 0.017, `se` delta 0.001. Source lives on
+  PLR against `riantr/moonbit_doubleML` v0.163.3 (its current pin):
+  same nuisance (OLS), `n = 400`, true `theta = 1.5`, `theta` delta
+  `0.017` (1.667 vs 1.685) and `se` delta `0.001` (0.153 vs 0.152).
+  Source lives on
   [`gitee.com/ren-yongxiang/pyroduct`](https://gitee.com/ren-yongxiang/pyroduct).
 - `examples/api_server/` -- this repo's HTTP service.
 - `examples/consumer_demo/` -- minimal end-to-end PLR showing the
