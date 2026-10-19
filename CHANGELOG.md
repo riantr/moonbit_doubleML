@@ -9,6 +9,128 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.163.9] — a signature, a stale list, and a table that described the wrong set
+
+`moon.mod` moves 0.163.8 -> 0.163.9. No `.mbt` changed, so the test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js). This round audited the
+prose that names DEFAULTS, LISTS and MEASUREMENT SETS -- the claims that go
+stale when a default changes, which no test guards.
+
+### Fixed — a signature that contradicted the paragraph below it
+
+- The policy-tree section opened with
+  `DoubleMLPolicyTree::new(x, orth_signal, depth, honest = true, split_seed = 2024)`
+  and then, three lines later, said "`honest` defaults to `false` so existing
+  callers are byte-identical". The source settles it:
+  `honest~ : Bool = false`, `depth~ : Int32 = 1`, `split_seed~ : Int32 = 2024`,
+  `min_leaf_n~ : Int32 = 5`. The signature line is now
+  `new(x, orth_signal, depth = 1, honest = false, split_seed = 2024, min_leaf_n = 5)`.
+  A reader copying the old line would have believed honesty is ON by default,
+  when the whole point of the section is that it is OFF by default.
+
+### Fixed — a stale list of the estimators still defaulting to OLS
+
+- "**Nine** structs still default `ml_m` to `linear_regression()`" was wrong on
+  both the count and the list. Measured from the source: **eight** --
+  `DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`,
+  `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti`,
+  `DoubleMLIIVM` -- and `DoubleMLLPLR` is NOT among them. `DoubleMLLPLR`'s
+  `ml_m` default was changed to a classifier in commit `4775218`, and that
+  first SHIPPED in **v0.163.3**: v0.163.1 and v0.163.2 were tagged and pushed
+  but their publish runs went red, so the registry never served them (the
+  published 0.163.x set is 0.163.0, 0.163.3, 0.163.5-0.163.8). The migration
+  list now names `DoubleMLLPLR` in v0.163.3 alongside IRM, APO, APOS, SSM, PQ
+  and QTE.
+  The source comment says why LPLR cannot use an OLS default: both its
+  binary-target nuisances need a classifier, because an OLS propensity
+  predicts outside [0, 1] on both.
+
+### Fixed — a table that named the wrong set, in the wrong tense
+
+- The per-estimator hazard table was introduced by "All eleven remaining
+  defaults were measured in v0.137.0. ... The other eight keep their OLS
+  default **on measured evidence**." Three separate things were wrong with
+  that sentence:
+  - **The set.** The eleven measured in v0.137.0 were the ones still
+    *unmeasured* once `DoubleMLIRM` (v0.132.0), `DoubleMLAPO` (v0.134.0),
+    `DoubleMLAPOS` (v0.135.0) and `DoubleMLDIDBinary` (v0.136.0) had been
+    settled: `DoubleMLSSM`, `DoubleMLCVAR`, `DoubleMLQTE`, `DoubleMLPQ`,
+    `DoubleMLIIVM`, `DoubleMLLPLR` and the **five** remaining DID
+    estimators. The README's table listed the four earlier ones instead and
+    dropped the five DID estimators -- whose verdict ("not demonstrated",
+    doubly robust) *was* measured and recorded. A row for the family is
+    now in the table.
+  - **The tense.** "keep their OLS default" is false today for
+    `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLLPLR`: all
+    four are on a classifier now. The four that still default to OLS are
+    `DoubleMLDIDBinary`, `DoubleMLCVAR`, `DoubleMLIIVM` and `DoubleMLPLR`
+    -- the last one's propensity role is named `learner_m`, not `ml_m` --
+    and the sentence now *names* them instead of counting them.
+  - **The count.** "The other eight" could be read as the eight estimators
+    listed a few lines above as still defaulting to OLS. That is a
+    *different* set of eight. The bare count is gone.
+- `DoubleMLQTE` now gets its own sentence, because it is the one row whose
+  verdict is later than its measurement: v0.137.0 recorded it as **not
+  demonstrated** (`0.162` vs `0.249`) and the freeze was only found in
+  v0.139.0.
+- The table's lead-in moved from "(v0.136.0)" to "(v0.132.0-v0.142.0)",
+  which is the range the verdicts in it actually span.
+
+### The anchor audit, re-run over the whole document
+
+- All **65** distinct source anchors the README cites resolve in range, and
+  the resolver is now path-aware. The previous regex could not see
+  path-qualified anchors (`plm/lplr.py`, `doubleml/tests/_utils.py`), and
+  resolving by "most substantial file" had been picking a **registry cache
+  copy** -- `examples/api_server/.mooncakes/.../dgp_lplr.mbt`, a different
+  release of the file -- over the library's own source. Build artefacts and
+  registry caches are now excluded and the source trees are ranked.
+
+### Four new verifiers, for the claim classes that rot
+
+- `_verify/_verify_mlm_defaults_1680.py` derives the OLS-defaulting and
+  classifier-defaulting estimator sets from the source and compares them
+  with the README's prose. This is the check that would have caught the
+  nine-vs-eight list.
+- `_verify/_verify_hazard_table_1680.py` derives the propensity defaults
+  (both `ml_m` and `learner_m`) from the source and diffs them against the
+  hazard table and the two sentences around it: the hazardous set, the
+  set that kept its OLS default, the DID-family row, and the absence of
+  the bare "the other eight". 14 checks, 0 failures. This is the check
+  that would have caught the eleven-vs-twelve set error.
+- `_verify/_verify_api_snippets_1680.py` checks the "Library Use" snippet
+  and the "same shape for every other estimator" sentence against the real
+  constructor signatures -- a wrong parameter name there is a compile error
+  in the reader's project.
+- `_verify/_verify_sandwich_coverage_1680.py` checks the Status table's
+  sandwich-variance split (15 scalar / 4 per-cell / 3 none) and the NAMES in
+  each set against the source.
+
+### Verified, not changed
+
+`propensity_clip` defaults to `1e-6`; `LearnerDispatch::is_classifier()`
+exists (`learner.mbt:198`); `LearnerDispatch::RandomForestClassifier` and
+`LearnerDispatch::GradientBoostingClassifier` exist; `matrix_predict` is
+Kahan-compensated and `vector_subtract` / `vector_add` / `vector_scale` are
+public free functions; the default `seed` is 3141 across 45 constructors; the
+`Library Use` snippet matches the real signatures; `policy_value_se()` is
+`sqrt(ss/(n(n-1)))` over the estimation half, i.e. the plain-sample-mean SE
+and not the independence form; `leaf_se[k]` is `sd(y_k)/sqrt(n_k)`; the
+sandwich-variance split; `ci_local.py selftest` is 22/22 (the README's "22
+self-tests" is the local simulator, not the QA harness's 28).
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. **47** local gate steps, 0 failed: `moon build` and `moon test
+--deny-warn` green on all four backends; `moon fmt --check` clean; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.163.8] — the commands in the README actually run now
 
 `moon.mod` moves 0.163.7 -> 0.163.8. No `.mbt` changed, so the test counts

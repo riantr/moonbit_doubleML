@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.163.8** |
+| `moon.mod` version | **0.163.9** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -97,8 +97,8 @@ fixture with true `ATE = 1.5`:
 The port used to default `ml_m` to `LearnerDispatch::linear_regression()`
 everywhere. **`DoubleMLIRM` was migrated in v0.132.0**,
 **`DoubleMLAPO` in v0.134.0**, **`DoubleMLAPOS` in v0.135.0**,
-**`DoubleMLSSM` in v0.138.0** and **`DoubleMLPQ` / `DoubleMLQTE` in
-v0.139.0**:
+**`DoubleMLSSM` in v0.138.0**, **`DoubleMLPQ` / `DoubleMLQTE` in
+v0.139.0** and **`DoubleMLLPLR` in v0.163.3**:
 their `ml_m` default is now
 `LearnerDispatch::logistic_regression(LogisticRegression::new())`, while
 `ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x]`), so the
@@ -130,10 +130,10 @@ three decimals and OLS is marginally better. The hazard is a property of the
 clamp, not of the estimator in general, and the gate suite pins both regimes so
 a future change cannot be scored on the flattering fixture alone.
 
-**Nine structs still default `ml_m` to `linear_regression()`**:
+**Eight structs still default `ml_m` to `linear_regression()`**:
 `DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`,
 `DoubleMLDIDCrossSection`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
-`DoubleMLDIDMulti`, `DoubleMLIIVM`, `DoubleMLLPLR`. Until each is
+`DoubleMLDIDMulti`, `DoubleMLIIVM`. Until each is
 migrated, pass a classifier explicitly:
 
 ```moonbit
@@ -143,7 +143,7 @@ ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
 `LearnerDispatch::RandomForestClassifier` and
 `LearnerDispatch::GradientBoostingClassifier` are the nonlinear options.
 
-**The hazard is NOT uniform, and was measured per-estimator** (v0.136.0).
+**The hazard is NOT uniform, and was measured per-estimator** (v0.132.0-v0.142.0).
 Migrating `DoubleMLDIDBinary` was attempted and abandoned on the evidence:
 across four probe designs and ~14 configurations its OLS default matched a
 logistic one to within ~1e-4, and where they differed the OLS default was the
@@ -161,6 +161,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLAPO` | hazardous | bias `5.246` vs `0.531`; SE `86.28` vs `0.270` |
 | `DoubleMLAPOS` | hazardous | per-level bias to `436.11` |
 | `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~1e-4 |
+| `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti` | not demonstrated | doubly robust -- `1/m` enters treated rows only |
 | `DoubleMLSSM` | **hazardous -- fixed in v0.138.0** | coef `242.116` vs `1.177` |
 | `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
 | `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau 0.50-0.90 |
@@ -169,14 +170,22 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0-v0.142.0** | not an `ml_m` hazard; two failure modes; see below |
 | `DoubleMLPQ` | **hazardous -- fixed in v0.139.0** | ignored its `quantile` entirely |
 
-All eleven remaining defaults were measured in v0.137.0. **Three showed a
-defect: `DoubleMLSSM`** (`242.116` vs `1.177` -- its score divides by `m*pi`
-AND `(1-m)*pi`, two reciprocals in both directions, `ssm.mbt:73-74`), **and
-`DoubleMLPQ` / `DoubleMLQTE`**, which ignored their `quantile` outright.
-SSM was fixed in v0.138.0 and the quantile pair in v0.139.0. The other eight
-keep their OLS default **on measured evidence**. `DoubleMLLPLR`'s degenerate
-standard error is real and was root-caused in v0.140.0, but it is **not** an
-`ml_m` defect -- see the note below.
+Every row above is a **measured verdict**, and each was settled in the release
+that decided it: `DoubleMLIRM` (v0.132.0), `DoubleMLAPO` (v0.134.0),
+`DoubleMLAPOS` (v0.135.0) and `DoubleMLDIDBinary` (v0.136.0) first, the rest
+in v0.137.0. `DoubleMLQTE` is the one row whose verdict is later than its
+measurement: v0.137.0 recorded it as *not demonstrated* (`0.162` vs `0.249`),
+and the freeze was only found in v0.139.0. **Six rows turned out hazardous**:
+`DoubleMLIRM` (`-225.86` vs `1.44`), `DoubleMLAPO` (bias `5.246` vs `0.531`),
+`DoubleMLAPOS` (per-level bias to `436.11`), `DoubleMLSSM` (`242.116` vs
+`1.177` -- its score divides by `m*pi` AND `(1-m)*pi`, two reciprocals in both
+directions, `ssm.mbt:73-74`), and `DoubleMLPQ` / `DoubleMLQTE`, which ignored
+their `quantile` outright. All six default to a classifier today.
+`DoubleMLDIDBinary`, `DoubleMLCVAR`, `DoubleMLIIVM` and `DoubleMLPLR` (whose
+propensity role is `learner_m`, not `ml_m`) kept their OLS default **on
+measured evidence** -- no flip was warranted.
+`DoubleMLLPLR`'s degenerate standard error is real and was root-caused in
+v0.140.0, but it is **not** an `ml_m` defect -- see the note below.
 
 A static classifier (read the score: does it carry `1/m`? is it doubly robust?)
 was used to prioritise the probes, and it reproduces all four earlier outcomes
@@ -1625,8 +1634,9 @@ upstream's `__all__` while still being importable from their modules.
 
 ### Honest policy trees (v0.98.0)
 
-`DoubleMLPolicyTree::new(x, orth_signal, depth, honest = true,
-split_seed = 2024)` splits the sample: `policy_tree_build` sees only
+`DoubleMLPolicyTree::new(x, orth_signal, depth = 1, honest = false,
+split_seed = 2024, min_leaf_n = 5)` splits the sample when `honest` is on:
+`policy_tree_build` sees only
 the splitting half, and every reported leaf statistic (`leaf_assignment`,
 `leaf_signal_mean`, `leaf_count`, `leaf_se`) is computed on the
 estimation half. That is the honesty of Athey & Imbens (2016, PNAS
@@ -1658,7 +1668,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.163.8, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.163.9, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1874,7 +1884,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.163.8
+python .github/scripts/ci_local.py run --all --release-tag v0.163.9
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 
