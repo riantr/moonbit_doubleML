@@ -2,7 +2,7 @@
 
 WHY THIS FILE EXISTS
 ====================
-v0.103.0 audited the 23 `validate_*_with_python.py` files by hand and
+v0.103.0 audited the cross-validator suite by hand and
 wrote the result into the CHANGELOG as prose. Prose does not fail.
 Three of the files in the audit's own "fails open" and "never runs"
 categories -- `pava` (hard-coded PASS with a `subprocess` import it
@@ -62,13 +62,29 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # --------------------------------------------------------------------------
-# The expectation table. Every one of the 23 files must appear, with its
+# The expectation table. Every one of the 24 files must appear, with its
 # current classification. Editing a validator's wiring means editing this
 # table in the same commit, and that diff is the review surface.
+#
+# `validate_bitexact_with_python.py` sat off the table for several versions
+# and kept the gate red on exactly that count. It is now on
+# MUST_READ_MOONBIT, and that is a measurement rather than a preference:
+#   * it spawns `moon` -- `subprocess.run(["moon", "run", EXAMPLE, ...])` --
+#     so rule 4 rejects it as reference-only;
+#   * it READS MoonBit output and diffs it bit-for-bit against a CPython
+#     reference, so "reference-only" never described what it does;
+#   * the other way round -- dropping the `moon` call and keeping it
+#     reference-only -- is not a reclassification. `reference(arrays)` would
+#     then index an empty dict, i.e. it would delete the validator's entire
+#     subject instead of relabelling it.
+# It meets every MUST_READ_MOONBIT requirement: it spawns `moon`, it computes
+# its verdict (`"PASS" if ok else "FAIL"`), and it is fail-closed
+# (`return 1` feeding `sys.exit(main())`).
 # --------------------------------------------------------------------------
 # Spawn `moon`, parse its output, and exit non-zero if any of that fails.
 MUST_READ_MOONBIT = {
     "validate_apos_with_python.py",
+    "validate_bitexact_with_python.py",
     "validate_cluster_iv_with_python.py",
     "validate_cluster_plr_with_python.py",
     "validate_did_with_python.py",

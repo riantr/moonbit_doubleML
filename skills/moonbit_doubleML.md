@@ -8,7 +8,7 @@ surface and anti-patterns).
 # Basic requirement
 
 - prefer the public `DoubleML*::new(...).fit()` API over hand-rolling
-  score / nuisance / influence-function plumbing. The 17 estimators
+  score / nuisance / influence-function plumbing. The 22 estimators
   exposed here already implement the upstream doubleml-for-py
   semantics; reuse them.
 
@@ -75,20 +75,30 @@ surface and anti-patterns).
   `DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
   `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
   `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
-  pack into 17 `<name>.mbt` files (some files hold 2 structs:
+  pack into 19 `<name>.mbt` files (some files hold 2 structs:
   `apo.mbt` for APO+APOS, `quantile.mbt` for PQ+QTE,
   `blp_policy.mbt` for BLP+PolicyTree). Each estimator has a
-  sibling `<name>_test.mbt`. 19 mirror upstream `doubleml-for-py`;
-  3 are MoonBit extras (`DIDCSBinary`, `LPLR`, `PLPR`).
+  sibling `<name>_test.mbt`. 20 mirror upstream `doubleml-for-py`
+  by name; `DoubleMLRDD` is upstream's `RDFlex` renamed; and
+  `DoubleMLDIDCrossSection` has no upstream counterpart (port-only).
+  `DoubleMLDIDCSBinary`, `DoubleMLLPLR` and `DoubleMLPLPR` all ship
+  upstream too -- an earlier revision of this file called them
+  MoonBit extras, which was wrong.
 
-- 35 DGP modules live at root as `dgp_*.mbt` with sibling
-  `dgp_*_test.mbt`. The shared Box-Muller helper is in `seed.mbt`.
+- 17 DGP modules live at root as `dgp_*.mbt` with sibling
+  `dgp_*_test.mbt` (35 files in all). The shared Box-Muller helper is in
+  `seed.mbt`.
 
-- 14 driver binaries live under `examples/<bin>/main.mbt`. Of these:
-  - 13 (`apos`, `consumer_demo`, `cvar`, `datasets`, `did_binary`,
+- 21 driver binaries live under `examples/<bin>/main.mbt`. Of these:
+  - 16 (`apo`, `apos`, `cluster`, `cvar`, `datasets`, `did_binary`,
     `did_cross_section`, `did_cs`, `did_cs_binary`, `did_multi`,
-    `fuzz`, `lplr`, `main`, `plpr`) are CLI-style numeric demos
-    that print true-vs-estimated θ and a 95% CI.
+    `lplr`, `main`, `pava`, `plpr`, `splitting`, `ssm`) are CLI-style
+    numeric demos that print true-vs-estimated θ and a 95% CI.
+  - `examples/fuzz/` is the property-based fuzz harness (native-only:
+    it needs `--target native`), `examples/bitexact/` and
+    `examples/parity/` are the fixtures the bit-exact and LPLR parity
+    validators drive, and `examples/consumer_demo/` is the
+    library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
     `"riantr/moonbit_doubleML@0.52.0"` in `moon.mod` and consumes
     the library through its public API.

@@ -335,13 +335,13 @@ jobs:
           set -e
           python pyexample_rdd.py --check
 
-  # The 21 QA activities were, until v0.162.0, an inventory rather than
+  # The 22 QA activities were, until v0.162.0, an inventory rather than
   # something you could run. This job runs the fast scope of that harness on
   # every push and PR.
   #
   # It is deliberately NOT --full. The full scope runs `moon test` several more
   # times (unit_tests, component_tests, and mutation's 3 mutants) and re-runs
-  # all 23 Python cross-checks -- all of which the moon-test and
+  # all 24 Python cross-checks -- all of which the moon-test and
   # python-cross-check jobs above already do, on 4 backends. Re-doing them here
   # would multiply release time to re-measure what is already measured.
   #

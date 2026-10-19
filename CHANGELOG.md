@@ -9,6 +9,80 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.163.7] — the second audit pass: one overclaim, one conflation, one unclassified gate
+
+`moon.mod` moves 0.163.6 -> 0.163.7. No estimator's behaviour changed: the
+only `.mbt` files touched are one TEST file and the api_server's `library:`
+literal, so the test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js). What
+changed is that three more claims were measured instead of trusted.
+
+### Corrected — a claim that was stronger than the truth
+
+- "Nine gates, **all of which** run on push to `master` **and again before
+  publishing**" was an overclaim, and the same class of overstatement the two
+  reference pages avoid. `publish.yml` fires on a `v*` tag push, has a single
+  job and declares **no `needs:`** -- it neither waits on nor depends on a
+  `check.yml` run. It re-runs the README check, the 4-backend check and test,
+  the format check, the interface-drift check, `typos`, the 9 `pyexample_*`
+  gates, the QA loop and the harness's own self-test. It does **not** re-run
+  the 24 `validate_*_with_python.py` scripts: that gate is `check.yml` only.
+  The README now says "eight of the nine", and states the reason instead of
+  leaving it for a reader to assume.
+
+### Fixed — a documentation defect that made two numbers look like one
+
+- The PQ section quoted `mean(psi) = -0.0032` at "the reported theta" beside
+  `theta = 2.230920809568266`, but the Newton root `solve_pq` returns is
+  `2.233784152367102`, and `mean(psi)` AT THAT ROOT is
+  `+0.002819571355544647`. The two differ by `2.9e-3` and BOTH are correct:
+  one is the root, the other is the fitted coefficient, and they answer
+  different questions. Conflating them was the defect. It lived in the
+  test's docstring and in the README's table row, which now names which
+  coefficient `mean(psi)` refers to and gives both numbers.
+- `expand_v159_test.mbt` now PINS all five quantities instead of asserting
+  loose invariants: `theta` (1e-9), `mean(psi)` (1e-9), `deriv` (1e-12),
+  `pq.coef()` (1e-9) and `pq.se()` (1e-9). The loose invariants already
+  caught the original defect; the pins catch drift, and every pin holds on
+  all four backends.
+
+### Fixed — the meta-gate's last unclassified validator
+
+- `validate_bitexact_with_python.py` sat on neither list for several
+  versions, and the meta-gate was red on exactly that count. It is now on
+  `MUST_READ_MOONBIT`, which is a measurement rather than a preference: it
+  spawns `moon` (`subprocess.run(["moon", "run", EXAMPLE, ...])`) and READS
+  MoonBit output, so rule 4 rejected it as reference-only; it computes its
+  verdict and it is fail-closed. The alternative -- dropping the `moon` call
+  and keeping it reference-only -- is not a reclassification at all:
+  `reference(arrays)` would then index an empty dict, deleting the
+  validator's entire subject instead of relabelling it. The gate is now
+  **PASS with 0 problems**: 14 gates + 10 reference-only = all 24 validators
+  classified.
+
+### Fixed — stale counts in the skill file and the workflow comments
+
+- `skills/moonbit_doubleML.md`: 17 -> **22** estimators; 17 -> **19** source
+  files; "19 mirror upstream; 3 are MoonBit extras" -> **20 mirror by name,
+  `DoubleMLRDD` is upstream's `RDFlex` renamed, `DoubleMLDIDCrossSection` is
+  port-only**, and `DoubleMLDIDCSBinary` / `DoubleMLLPLR` / `DoubleMLPLPR`
+  all ship upstream too -- the earlier "extras" claim was wrong; 35 -> **17**
+  DGP modules (35 files in all); 14 -> **21** driver binaries, with the
+  correct **16** CLI demos and the fuzz / bitexact / parity / consumer_demo
+  roles restored.
+- `.github/workflows/check.yml` comments: "21 QA activities" -> **22**;
+  "23 Python cross-checks" -> **24**.
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. `moon build` and `moon test --deny-warn` green on all four backends;
+`moon fmt --check` clean; the shipped README byte-identical to the edited one;
+24/24 Python cross-checks PASS; 9/9 upstream `pyexample_*` gates PASS; the QA
+LOOP fast scope PASS=19, SKIP=10, WARN=2, no FAIL; the two service checks
+PASS=2, WARN=0; the validator meta-gate PASS with 0 problems; pinned `typos`
+v1.19.0 exit 0 on the exported tree.
+
 ## [0.163.6] — the README audited against the code, one claim at a time
 
 `moon.mod` moves 0.163.5 -> 0.163.6. **Docs only**: no `.mbt` changed, so the

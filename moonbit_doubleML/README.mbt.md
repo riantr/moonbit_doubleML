@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.163.6** |
+| `moon.mod` version | **0.163.7** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -275,8 +275,14 @@ more.
 > | | before | after |
 > |---|---|---|
 > | reported root | IPW | orthogonal (Newton from IPW root) |
-> | `mean(psi)` at reported theta | `-0.224968` | **`-0.0032`** |
+> | `mean(psi)` at the `DoubleMLPQ` coefficient | `-0.224968` | **`-0.0032`** |
 > | `deriv` | central difference, can be `0` | Silverman KDE, strictly positive |
+>
+> Two numbers, and conflating them is its own documentation defect. `solve_pq`
+> returns the Newton root (`2.233784152367102`, `mean(psi)` at that root
+> `+0.0028`), while `DoubleMLPQ::fit()` reports the coefficient
+> (`2.230920809568266`, `mean(psi)` there `-0.0032`). They differ by `2.9e-3`
+> and both are correct, because they answer different questions.
 >
 > On a DGP whose `Q_0.6(Y(1)) = 2.2` holds **by construction** (confounding
 > enters `Y(0)` only), `theta = 2.230920809568266` with `se = 0.044753173108603286`,
@@ -1640,7 +1646,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.163.6, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.163.7, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1695,7 +1701,9 @@ Deleting both lines is the change that would make this section true.
 ### What CI actually gates
 
 Measured from `.github/workflows/` and confirmed against the run list. Nine
-gates, all of which run on push to `master` and again before publishing:
+gates, **all of which run on push to `master`**; **eight of the nine also run
+again before publishing**, and the one that does not is stated here rather
+than left for a reader to assume:
 
 | Gate | Where | Scope |
 |---|---|---|
@@ -1708,6 +1716,16 @@ gates, all of which run on push to `master` and again before publishing:
 | 24 `validate_*_with_python.py` | `check.yml` | estimator parity; see the two-tier note below |
 | 9 `pyexample_*` upstream gates | `check.yml` `python-cross-check` | the port against **upstream's own code**; see the table below |
 | QA LOOP (fast scope) | `check.yml` `qa-loop`, `publish.yml` | 31 registered checks, 22 of them fast |
+
+`publish.yml` fires on a `v*` tag push, has a single job, and declares **no
+`needs:`** -- it neither waits on nor depends on a `check.yml` run. It re-runs
+the README check, the 4-backend check and test, the format check, the
+interface-drift check, `typos`, the 9 `pyexample_*` gates (through the QA
+loop's fast scope), the QA loop itself and the harness's own self-test. It
+does **not** re-run the 24 `validate_*_with_python.py` scripts: that gate is
+`check.yml` only. A tag push is therefore a *narrower* gate than a master
+push, and the 24-validator parity check has to have passed on the commit
+being tagged.
 
 `nightly.yml` additionally runs the package against the MoonBit **nightly**
 toolchain, so a breaking upstream change surfaces before it reaches stable.
@@ -1844,7 +1862,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.163.6
+python .github/scripts/ci_local.py run --all --release-tag v0.163.7
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 

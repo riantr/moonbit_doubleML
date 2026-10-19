@@ -169,12 +169,21 @@ fn v1590_data(n : Int32, seed : Int32) -> DoubleMLData {
 /// a bisection. (A bisection was tried first and is wrong here -- `1{y <= theta}`
 /// is a step function, so a bisection converges onto a jump, not a zero.)
 ///
-/// MEASURED: theta 2.230920809568266 against the true 2.2, and
-/// `mean(psi)` at the reported theta is `-0.0032` -- versus the `-0.224968`
-/// measured before the fix. The `deriv` is the Silverman-bandwidth Gaussian KDE
-/// of upstream's `_compute_score_deriv`, which replaced a central difference of
-/// the step function; that difference was identically ZERO outside the support
-/// of `y`, which put `0/0 = NaN` into the standard errors.
+/// MEASURED (re-measured 2026-10-19): `solve_pq`'s root is
+/// `2.233784152367102` against the true 2.2, and the `mean(psi)` AT THAT ROOT
+/// is `0.002819571355544647` -- versus the `-0.224968` measured before the fix.
+/// The `deriv` is the Silverman-bandwidth Gaussian KDE of upstream's
+/// `_compute_score_deriv`, which replaced a central difference of the step
+/// function; that difference was identically ZERO outside the support of `y`,
+/// which put `0/0 = NaN` into the standard errors.
+///
+/// TWO DISTINCT NUMBERS, and conflating them was a documentation defect of its
+/// own. `solve_pq` returns the Newton root; `DoubleMLPQ::fit()` goes through
+/// the whole fit and reports `coef = 2.230920809568266` with
+/// `se = 0.044753173108603286` on this same fixture. They differ by 2.9e-3 and
+/// both are correct, because they are answers to different questions. An
+/// earlier version of this comment quoted the `DoubleMLPQ` figures as if they
+/// were `solve_pq`'s return value; the assertions below pin each to its own.
 test "v1590_pq_reports_a_root_of_its_own_orthogonal_score" {
   let m = v1590_data(1200, 20260920)
   let (theta, psi, deriv) = solve_pq(
@@ -200,6 +209,18 @@ test "v1590_pq_reports_a_root_of_its_own_orthogonal_score" {
   // the Jacobian is finite and POSITIVE -- upstream's KDE derivative is
   // strictly positive wherever at least one treated observation exists
   assert_true(deriv > 0.0)
+  // PINNED, so the prose above cannot drift away from the code again. The two
+  // bands are wide enough to absorb the ~1e-15 cross-backend spread and still
+  // far tighter than the 0.7515 the defect produced (which misses theta by
+  // 1.48 and mean(psi) by 0.23).
+  assert_true((theta - 2.233784152367102).abs() < 1.0e-9)
+  assert_true((mean_psi - 0.002819571355544647).abs() < 1.0e-9)
+  assert_true((deriv - 0.4953118690107624).abs() < 1.0e-12)
+  // and the number the ESTIMATOR reports is a different one, pinned too, so
+  // the distinction above is enforced rather than merely asserted in prose.
+  let pq = DoubleMLPQ::new(m, quantile=0.6, n_folds=2, seed=3141).fit()
+  assert_true((pq.coef() - 2.230920809568266).abs() < 1.0e-9)
+  assert_true((pq.se() - 0.044753173108603286).abs() < 1.0e-9)
 }
 
 ///|
