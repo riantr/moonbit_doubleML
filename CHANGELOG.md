@@ -9,6 +9,107 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.0] — a dependency note that named the wrong version, and a quote that was a paraphrase
+
+`moon.mod` moves 0.163.9 -> 0.164.0. No `.mbt` changed, so the test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js). This round audited the
+**dependency** claims, the **counts** in the layout, and the **quotes** the
+README presents as output.
+
+### Fixed — a table cell that named the wrong version
+
+- The dependency table's row for the library's `moonbitlang/async@0.22.5` said
+  the service "is used only by `examples/api_server/main.mbt`, which declares
+  it in its own `moon.mod`". The example declares
+  **`moonbitlang/async@0.20.3`** -- a different pin -- so the library's
+  `0.22.5` line is not "used by the example" at all; it matches **no** import
+  anywhere. Measured: the library's own `.mbt` files reference `async` and
+  `sqlite3` **0** times, and the example's `moon.mod` pins `0.20.3`. The note
+  now says that, instead of implying a shared pin.
+- The same `async@0.20.3` pin is quoted correctly two sections earlier ("The
+  service is built directly on `moonbitlang/async@0.20.3`"), so the document
+  did name both versions -- but the dependency table is the place a reader
+  goes to find out which package the example builds against, and it was the
+  one that was wrong.
+
+### Fixed — a paraphrase presented as a quote
+
+- The README quoted the `dependencies` check's WARN evidence as
+  `...; declared but unreferenced by library code: [both]`. The check does not
+  print `[both]`; it prints the two package names. The quote is now the real
+  output, verbatim:
+  `2 declared; non-conforming: ['moonbit-community/sqlite3@0.2.3']; declared
+  but unreferenced by library code: ['moonbit-community/sqlite3@0.2.3',
+  'moonbitlang/async@0.22.5']`.
+  A quoted output that is not the output is a claim a reader cannot check.
+
+### Fixed — "one perfect-DGP run each" was one run per *banner*, not per estimator
+
+- The Project-layout section said `examples/main` runs "12 estimators, one
+  perfect-DGP run each". The driver prints **18** banners for **12**
+  estimators: five of them (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`,
+  `DoubleMLIIVM`, `DoubleMLDID`) get a second `(n_rep=5)` arm, and
+  `DoubleMLRDD` runs twice, sharp and fuzzy. The line now says "12
+  estimators in 18 runs".
+
+### Fixed — the Quick Start never said where to run it
+
+- All three commands in the Quick Start work from the **repository root**, and
+  two of them fail from inside `moonbit_doubleML/` -- measured:
+  `moon run examples/main` gives "failed to resolve path `examples/main`" and
+  `python validate_irm_with_python.py` gives "can't open file". The block was
+  correct but ambiguous, and `moon test` prints the same `1117` from either
+  directory, so nothing in the output revealed the mistake. The section now
+  states the working directory.
+
+### Five new verifiers, for the claim classes that rot
+
+- `_verify/_verify_qa_scope_1680.py` parses the QA registry and checks the
+  README's "31 registered checks, 22 of them fast" against it, and against a
+  measured fast-scope run. The scope argument is POSITIONAL and the decorator
+  can span several lines, so a single-line regex drops `pyexample_suite` and
+  reports 30 -- a parser that loses a check makes a correct README look
+  wrong.
+- `_verify/_verify_qa_evidence_1639.py` checks that the quoted `dependencies`
+  evidence is a verbatim prefix of the measured one, and that the `qa_process`
+  check's "31 checks registered, 22 required activities" matches the README.
+- `_verify/_verify_estimator_census_1680.py` derives the estimator census
+  from the source: 34 `DoubleML*` structs, 12 of them `*Data`, leaving 22
+  estimators in 19 files; 20 marked *(upstream)*, 1 *(upstream, renamed)*, 1
+  *(no upstream counterpart)*; and the file census 220 = 65 + 129 + 26.
+- `_verify/_verify_layout_1680.py` checks `moon.work` membership, the 21
+  example packages, the 6 numbered doc tutorials, and `examples/main`'s
+  banner structure.
+- `_verify/_verify_dep_pins_1680.py` checks the dependency table against the
+  two `moon.mod` files, and re-runs the two Quick Start commands from the
+  library directory to prove they fail there.
+
+### Verified, not changed
+
+- The QA LOOP's counts are right: the registry holds **31** checks, **22** in
+  `fast` scope and **9** in `full`, and the measured fast run SKIPs exactly
+  the 9 full-scope ones.
+- The estimator census is right: 22 estimators in 19 source files, 16 with one
+  struct each and three holding two (`apo.mbt`, `blp_policy.mbt`,
+  `quantile.mbt`).
+- `moon.work` has 23 members (the library, `doc/`, 21 examples) and every
+  `examples/` package with a `moon.mod` is one of them.
+- pyroduct's `dmlref` still pins `riantr/moonbit_doubleML@0.163.3`, n = 400,
+  true theta = 1.500, same-nuisance theta delta `0.017` (1.667 vs 1.685) and
+  se delta `0.001` (0.153 vs 0.152) -- the "Used By" section is accurate.
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. **47** local gate steps, 0 failed: `moon build` and `moon test
+--deny-warn` green on all four backends; `moon fmt --check` clean; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.163.9] — a signature, a stale list, and a table that described the wrong set
 
 `moon.mod` moves 0.163.8 -> 0.163.9. No `.mbt` changed, so the test counts

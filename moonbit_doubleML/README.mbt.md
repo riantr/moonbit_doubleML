@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.163.9** |
+| `moon.mod` version | **0.164.0** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1449,6 +1449,11 @@ byte-equality; non-default overrides change the IF and the coef.
 
 ##Quick Start
 
+Run these from the **repository root** -- the directory holding `moon.work`.
+`moon test --target native` prints the same total from either directory, but
+`moon run examples/main` and `python validate_irm_with_python.py` are
+repo-root paths and fail from inside `moonbit_doubleML/`.
+
 ```console
 $ moon test --target native --deny-warn
 Total tests: 1117, passed: 1117, failed: 0.
@@ -1668,7 +1673,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.163.9, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.0, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1679,7 +1684,8 @@ doc/                     <- wasm-gc-targeted numbered tutorials
   006_python_check/
 
 examples/                <- 21 driver binaries (all listed in moon.work)
-  main/                  <- 12 estimators, one perfect-DGP run each
+  main/                  <- 12 estimators in 18 runs: 5 also run with
+                            n_rep=5, and RDD runs twice (sharp, fuzzy)
   datasets/              <- 401(k)-style ATE / ATT recovery
   did_binary/            <- 2-period panel DID
   did_cs/                <- staggered CS-DID
@@ -1711,7 +1717,7 @@ declares two packages, and **neither is imported by any `.mbt` in the library**
 
 | declared | imported by the library? | note |
 |---|---|---|
-| `moonbitlang/async@0.22.5` | no | used only by `examples/api_server/main.mbt`, which declares it in its own `moon.mod` |
+| `moonbitlang/async@0.22.5` | no | referenced by nothing: `examples/api_server/` uses the same package, but at its own pin -- `moonbitlang/async@0.20.3` -- so this line matches no import |
 | `moonbit-community/sqlite3@0.2.3` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
 
 So the library has no runtime third-party dependency today, while `moon.mod`
@@ -1870,8 +1876,8 @@ the two declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
 and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
 ['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
-[both]`) rather than passing quietly. Removing them is an open call, not an
-oversight.
+['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.5']`) rather than
+passing quietly. Removing them is an open call, not an oversight.
 
 ### Reproducing CI locally
 
@@ -1884,7 +1890,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.163.9
+python .github/scripts/ci_local.py run --all --release-tag v0.164.0
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 
