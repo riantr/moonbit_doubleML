@@ -21,6 +21,13 @@ surface and anti-patterns).
   `se()`, `confint()`) — not via struct field reads. Cross-struct
   field access needs `pub` getters, but MoonBit's `pub` rule and
   the canonical method form together mean: just call the method.
+  The accessor set is *not* uniform, though: 16 of the 22 estimators
+  expose all four of `coef()` / `se()` / `confint()` / `bootstrap()`,
+  and six do not -- `DoubleMLAPOS` and `DoubleMLQTE` use `coefs` /
+  `ses`, `DoubleMLDIDCS` uses `coef_at` / `se_at`, `DoubleMLDIDMulti`
+  uses `coef_at_idx` / `se_at_idx`, `DoubleMLBLP` uses
+  `confint_joint` instead of `confint`, and `DoubleMLPolicyTree` has
+  no scalar coefficient at all.
 
 # Dependency rule (repo-wide)
 
@@ -44,7 +51,10 @@ surface and anti-patterns).
 - whitebox tests (package-internal access) live in `*_wbtest.mbt`
   next to the production file. Use them only for helpers that
   `_test.mbt` cannot reach (private visibility, internal
-  contracts). Current wbtest coverage:
+  contracts). There are **26** `*_wbtest.mbt` files at the package
+  root, holding **169** test cases in total; the `*_wbtest.mbt`
+  glob is the source of truth for the current set. Two of them
+  show the shape:
     - `kfold_wbtest.mbt` (5 tests) — `expand_unit_folds_to_rows`
       invariants (cluster contract: no unit straddles a split)
       and `build_row_unit_map` under non-contiguous unit ids.
@@ -60,9 +70,19 @@ surface and anti-patterns).
   built by `validate_*_with_python.py`.
 
 - DGP recovery tests go in `dgp_recovery_test.mbt` and check that
-  the estimator's `coef()` recovers the true `theta` to within
-  `MAX(MODEL_TOL=0.1, 2.0 * handrolled_se)`. Do NOT loosen the
-  tolerance without a written reason in the commit message.
+  the estimator's `coef()` recovers the true `theta`. The band is
+  **per test and measured**, not a package constant: the DIDCS tests
+  use an SE-relative band (measured across 12 seeds -- max error
+  14.41 absolute, 2.41 in SE units) and the PLPR test uses
+  `10.0 * se + 0.5`. Do NOT loosen a band without a written reason
+  in the commit message.
+
+  The `max(MODEL_TOL, 2.0 * handrolled_se)` tolerance is a
+  **different** thing: it lives in the Python validators
+  (`validate_*_with_python.py`), and it is not one constant either --
+  the IRM script uses `model_tol = 0.1` while the APOS and
+  DIDCSBinary scripts use `MODEL_TOL = 0.3`. Neither `MODEL_TOL` nor
+  `handrolled_se` appears anywhere in the MoonBit sources.
 
 # Source layout
 
@@ -103,42 +123,70 @@ surface and anti-patterns).
     `"riantr/moonbit_doubleML@0.52.0"` in `moon.mod` and consumes
     the library through its public API.
 
-- Python cross-validators live at root as `validate_*.py`. They
-  re-derive the hand-rolled reference for one model and compare
-  against the MoonBit output. Keep the script name aligned with
-  the estimator it validates.
+- Python cross-validators live at the **repo root** -- not inside
+  `moonbit_doubleML/` -- as `validate_*.py`. 24 of them are named
+  `validate_*_with_python.py`, and that glob is what CI runs; three
+  more (`validate_plotting_scope.py`, `validate_splitting_contract.py`,
+  `validate_suite_meta.py`) are repo-level harnesses the glob does
+  not pick up. They re-derive the hand-rolled reference for one
+  model and compare against the MoonBit output. Keep the script
+  name aligned with the estimator it validates.
 
 # Anti-patterns
 
 - do NOT introduce a `Map[K, V]` **for estimator / DGP kernel
-  code**. MoonBit 0.10.11 deprecated the built-in Map; use
-  `Array[(K, V)]` and linear scan, or use a per-key fixed-size
-  array when the key range is small. The HTTP plumbing in
-  `examples/api_server/main.mbt` is exempt from this rule — it
-  uses `Map::of([])` for response headers, where the deprecation
-  caveat does not apply.
+  code**. The built-in Map is deprecated: on `moon 0.1.20261016`,
+  `Map::of(...)` emits `Warning (deprecated): Use Map([(k, v),
+  ...]) or Map::from_array instead`. Use `Array[(K, V)]` and a
+  linear scan, or a per-key fixed-size array when the key range is
+  small. The HTTP plumbing in `examples/api_server/main.mbt` is
+  exempt from the *rule* -- it needs a map for response headers --
+  but it is not exempt from the deprecation: that file builds its
+  header map with `Map::from_array([])`, and CI runs
+  `moon build --deny-warn` over every workspace member, so
+  `Map::of` there would turn the build red.
 
 - do NOT name a field `train` or `test`. Both are reserved in
   current MoonBit; use `train_idx` / `test_idx`.
 
 - do NOT use `ref`, `dyn`, `with`, `assert`, `var`, `method`,
-  `test`, or `train` as identifiers — all are reserved keywords.
-  In particular, `method` shows up often in HTTP handlers; use
-  `method_` (or another non-reserved name) instead.
+  `test`, or `train` as identifiers — all are reserved in current
+  MoonBit. Measured on `moon 0.1.20261016`: `with`, `var`, `train`
+  and `test` are hard errors, while `ref`, `dyn`, `assert` and
+  `method` emit `Warning (reserved_keyword): The word ... is
+  reserved for possible future use` — which still fails the build,
+  because CI runs `--deny-warn`. In particular, `method` shows up
+  often in HTTP handlers; use `method_` (or another non-reserved
+  name) instead.
 
-- do NOT introduce classifier learners (RandomForest, XGBoost,
-  etc.). Upstream's scikit-learn interface is intentionally not
-  ported; the single closed-form `LinearRegression` learner
-  (Cholesky + 1e-10 ridge) is the project's design choice.
+- do NOT introduce a *new learner family* that upstream does not
+  have (XGBoost, an SVM wrapper, a neural net). The port ships
+  exactly 11 `LearnerDispatch` variants: 8 regressors
+  (`LinearRegression`, `Constant`, `Noop`, `RandomForest`,
+  `GradientBoosting`, `Ridge`, `Lasso`, `ElasticNet`) and 3
+  classifiers (`LogisticRegression`, `RandomForestClassifier`,
+  `GradientBoostingClassifier`).
+
+  The classifiers are not optional, so "no classifier learners" is
+  the wrong rule: `ml_m` defaults to
+  `LearnerDispatch::logistic_regression(LogisticRegression::new())`
+  for the six estimators whose propensity enters the score as
+  `1 / m_hat` -- `DoubleMLIRM` (v0.132.0), `DoubleMLAPO`
+  (v0.134.0), `DoubleMLAPOS` (v0.135.0), `DoubleMLSSM` (v0.138.0),
+  `DoubleMLPQ` / `DoubleMLQTE` (v0.139.0) and `DoubleMLLPLR`
+  (v0.163.3). `ml_g` deliberately stays OLS, because it models
+  `E[y | x]`, not `P(y = 1 | x]`.
 
 - do NOT bypass `--deny-warn`. The CI runs
   `moon test --target {native,wasm-gc,wasm,js} --deny-warn` and
   fails on any warning. Pre-existing warnings block the build
   until cleaned up.
 
-- do NOT relax `MAX(MODEL_TOL=0.1, ...)` in
-  `dgp_recovery_test.mbt` without a documented reason. This is
-  the contract that the upstream parity tests verify.
+- do NOT loosen a DGP-recovery band in `dgp_recovery_test.mbt`
+  without a documented reason. Each test's band is a measurement, not
+  a shared constant -- see the Tests section above for the bands and
+  for the `max(MODEL_TOL, 2.0 * handrolled_se)` tolerance, which
+  belongs to the Python validators rather than to this file.
 
 - do NOT use non-official third-party HTTP frameworks. Per the
   repo dependency rule, `examples/api_server/` uses
@@ -149,9 +197,12 @@ surface and anti-patterns).
 # Cross-validators
 
 - each `validate_<estimator>_with_python.py` script must produce
-  exactly one trailing line that contains `PASS` (or `passed`).
-  The CI loop `for s in validate_*_with_python.py; do python $s
-  | tail -1; done` greps for that token.
+  exactly one trailing line that contains the literal, upper-case
+  `PASS`. The CI step greps for it with `case "$line" in *PASS*)`,
+  which is **case-sensitive** -- a trailing line reading `passed`
+  does not satisfy it, and the step also requires a zero exit code.
+  (The QA loop's own check is case-insensitive, so a lower-case
+  `passed` would pass there and still fail CI.)
 
 - new estimators MUST come with a new `validate_<name>_with_python.py`
   script in the same commit. No estimator lands without a Python

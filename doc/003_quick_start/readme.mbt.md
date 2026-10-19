@@ -28,26 +28,33 @@ let fitted = @moonbit_doubleML.DoubleMLPLR::new(
 ).fit()
 
 // 4. Read off the estimated coefficient, standard error, and CI.
-let theta = fitted.coef_get()       // ≈ 1.0
-let se = fitted.se_get()           // ≈ 0.1
-let (lo, hi) = fitted.confint()    // ≈ (0.8, 1.2) at 95%
+let theta = fitted.coef()        // ≈ 1.0
+let se = fitted.se()            // ≈ 0.1
+let (lo, hi) = fitted.confint() // ≈ (0.8, 1.2) at 95%
 ```
 
 The `DoubleMLPLR::new(...).fit()` is the canonical entry point.
-The same shape applies to all 17 estimators — see
+The same shape applies to all 22 estimators — see
 `004_estimators` for the catalogue.
 
 ## Cross-platform
 
 The same `DoubleMLPLR::new(...).fit()` call runs on all 4 supported
-backends (`native`, `wasm`, `wasm-gc`, `js`). The only backend
-divergence is in the floating-point semantics for `next_f64`
-chacha8 draws; bit-exact determinism is preserved within each
-backend given the same `seed` and `n_rep`.
+backends (`native`, `wasm`, `wasm-gc`, `js`). Within one backend the
+draws are deterministic: `chacha8_rng(seed)` rebuilds the same
+`@random.Rand`, `box_muller_pair` takes its two normals with
+`rng.double()`, and the same `seed` and `n_rep` reproduce the same
+DGP output across runs.
+
+Across backends the *estimates* are not bit-identical: the `did_cs`
+quantities carry a known spread of about 1.5e-15 relative, which is
+why the suite pins those assertions at 1e-12 relative instead of
+`==`. A test that passes on native is not evidence that it passes on
+the other three.
 
 ## Next
 
 - See `004_estimators` for the full estimator catalogue and the
   estimator-specific constructor signatures.
-- See `005_dgps` for the 35 DGP factories you can use to test.
+- See `005_dgps` for the 18 DGP factories you can use to test.
 - See `006_python_check` for the cross-validation workflow.

@@ -2,7 +2,9 @@
 
 `riantr/moonbit_doubleML` is a pure-MoonBit port of the
 [`doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py) Python
-package, covering all 17 models currently in upstream.
+package. It covers all 21 estimator classes upstream ships in
+0.11.4, plus one port-only estimator (`DoubleMLDIDCrossSection`),
+for 22 in total.
 
 ## What is Double / Debiased Machine Learning?
 
@@ -22,26 +24,35 @@ Neyman-orthogonal (insensitive to first-order errors in g).
 
 The pure-MoonBit implementation:
 
-- **No Python FFI, no native add-ons** — the only external deps are
-  `moonbitlang/core/random` and `moonbitlang/core/math`.
+- **No Python FFI, no native add-ons** — the library imports no
+  third-party package at all. `moon.mod` does declare two entries,
+  `moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3`,
+  but no `.mbt` in the library imports either one (measured: 0
+  references each), so they are dead entries rather than runtime
+  dependencies.
 - **Same numerical semantics as upstream** — verified by
-  `validate_*_with_python.py` cross-checkers (24 scripts, all PASS
-  at v0.52.0).
+  `validate_*_with_python.py` cross-checkers (24 scripts, each
+  reporting `PASS` on its trailing line).
 - **Cross-platform WASM** — `moon build --target wasm-gc` produces
   a self-contained estimator that runs in browsers and Node.js.
-- **Single learner** — the closed-form `LinearRegression`
-  (Cholesky + 1e-10 ridge) handles every nuisance function,
-  avoiding scikit-learn compatibility.
+- **Pure-MoonBit learners** — no scikit-learn. The port ships 11
+  `LearnerDispatch` variants: 8 regressors (`LinearRegression`,
+  `Constant`, `Noop`, `RandomForest`, `GradientBoosting`, `Ridge`,
+  `Lasso`, `ElasticNet`) and 3 classifiers (`LogisticRegression`,
+  `RandomForestClassifier`, `GradientBoostingClassifier`).
+  `ml_m` defaults to the logistic classifier wherever the
+  propensity enters the score as `1 / m_hat`.
 
-## Status at v0.52.0
+## Status at v0.164.3
 
-- **17 estimators** — PLR, IRM, PLIV, IIVM, DID (5 variants),
-  SSM, APO(S), PQ/QTE, LPQ, CVaR, RDB, BLP, PolicyTree.
-- **35 DGPs** — covering all upstream doubleml-for-py
+- **22 estimators** — PLR, IRM, PLIV, IIVM, DID (6 variants),
+  SSM, APO(S), PQ/QTE, LPQ, LPLR, PLPR, CVaR, RDD, BLP, PolicyTree.
+- **18 DGP factories** across 17 `dgp_*.mbt` modules (35 files
+  counting the `dgp_*_test.mbt` siblings), ported from upstream's
   `make_*_data` factories.
-- **415 / 415 tests pass** on native (wasm-gc, wasm, js similar).
+- **1117 / 1117 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
-- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.52.0`.
+- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.3`.
 
 ## Next
 

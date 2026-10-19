@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.2** |
+| `moon.mod` version | **0.164.3** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1610,8 +1610,8 @@ marked *(upstream, renamed)* because upstream calls it `RDFlex`, and
 | `DoubleMLDIDMulti` | observational | multi-period DID with group-time ATT aggregation *(upstream)* |
 | `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(no upstream counterpart)* -- port-only |
 | `DoubleMLSSM` | MAR | sample selection (missing-at-random) *(upstream)* |
-| `DoubleMLAPO` | policy score | average prescriptive effect *(upstream)* |
-| `DoubleMLAPOS` | policy score | APO with stratified treatment *(upstream)* |
+| `DoubleMLAPO` | policy score | average potential outcomes for one treatment level *(upstream)* |
+| `DoubleMLAPOS` | policy score | average potential outcomes across several treatment levels *(upstream)* |
 | `DoubleMLPQ` | quantile | potential quantile *(upstream)* |
 | `DoubleMLQTE` | quantile | quantile treatment effect *(upstream)* |
 | `DoubleMLLPQ` | local polynomial | local potential quantile *(upstream)* |
@@ -1621,6 +1621,17 @@ marked *(upstream, renamed)* because upstream calls it `RDFlex`, and
 | `DoubleMLBLP` | IV | best linear predictor of treatment effect *(upstream)* |
 | `DoubleMLPLPR` | partialling-out | partially linear panel regression, Clarke-Polselli 2025 *(upstream)* |
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)*, + v0.98.0 honest split (`honest = true`) with `leaf_se` / `policy_value_se` |
+
+The **Score** column is a prose label for the estimand family, not a
+machine string, and three vocabularies are in play: the port accepts
+its own lower-case spellings (`partialling-out`, `apo`, `pq`, `lpq`,
+`cvar`, `policy_tree`, `nuisance_space`, `observational`); upstream
+`doubleml-for-py` 0.11.4 uses `APO`, `ATE`, `PQ`, `LPQ`, `CVaR`,
+`nuisance_space`, `partialling out`, `observational` and
+`missing-at-random`, and takes **no score argument at all** for
+`RDFlex`, `DoubleMLBLP` or `DoubleMLPolicyTree`. The
+`doc/004_estimators` tutorial lists the port's own strings, one row
+per estimator.
 
 **Provenance (v0.103.0, re-measured).** The counterpart modules in
 `doubleml` 0.11.4 are `plm/{plr,pliv,lplr,plpr}.py`,
@@ -1691,7 +1702,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.2, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.3, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1918,7 +1929,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.164.2
+python .github/scripts/ci_local.py run --all --release-tag v0.164.3
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 
@@ -2008,8 +2019,15 @@ close to `ubuntu-latest`, but not equal to it).
 - Python reference scripts `validate_*_with_python.py` reproduce
   the upstream `doubleml-for-py` numbers. CI runs each one and requires both a
   zero exit code and a trailing `PASS` line on stdout.
-- `dgp_recovery_test.mbt` enforces `|coef - theta| < MAX(MODEL_TOL=0.1,
-  2.0 * handrolled_se)`. The tolerance is contractual.
+- The parity tolerance lives in the **Python** validators, not in a
+  MoonBit test file. `validate_*_with_python.py` compares MoonBit's
+  output against a hand-rolled reference under a per-script tolerance
+  -- `max(model_tol, 2.0 * handrolled_se)`, with `model_tol = 0.1` in
+  the IRM script and `MODEL_TOL = 0.3` in the APOS and DIDCSBinary
+  scripts. `dgp_recovery_test.mbt` is a MoonBit test file and
+  enforces its own measured SE-relative bands; it contains no
+  `MODEL_TOL` and no `handrolled_se` (measured: 0 hits of either
+  anywhere in the library's sources).
 - v0.62.0 verified counts: `moon test` 485 / 485 (native & wasm &
   js) and 491 / 491 (wasm-gc); `python _verify/run_all_validators.py`
   23 / 23 PASS in ~70 s. `moon fmt --check` is now clean (was

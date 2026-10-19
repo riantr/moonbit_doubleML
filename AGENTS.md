@@ -16,15 +16,16 @@ You can browse and install extra skills here:
   `moon.pkg`). The project root is a pure workspace aggregator
   (`moon.work` lists every member) — it owns no MoonBit source itself.
 
-- `moon.work` members (16 total):
+- `moon.work` members (23 total):
   - `moonbit_doubleML/` — the library
   - `doc/` — wasm-gc-targeted numbered tutorials (`001_introduction`
     through `006_python_check`)
-  - `examples/<bin>/` × 14 — `main`, `apos`, `consumer_demo`,
-    `cvar`, `datasets`, `did_binary`, `did_cross_section`, `did_cs`,
-    `did_cs_binary`, `did_multi`, `fuzz`, `lplr`, `plpr`, plus
-    `api_server` (the HTTP-service example; no third-party framework,
-    built directly on `moonbitlang/async`).
+  - `examples/<bin>/` × 21 — `api_server` (the HTTP-service example;
+    no third-party framework, built directly on `moonbitlang/async`),
+    `apo`, `apos`, `bitexact`, `cluster`, `consumer_demo`, `cvar`,
+    `datasets`, `did_binary`, `did_cross_section`, `did_cs`,
+    `did_cs_binary`, `did_multi`, `fuzz`, `lplr`, `main`, `parity`,
+    `pava`, `plpr`, `splitting`, `ssm`.
 
 ## Coding convention
 

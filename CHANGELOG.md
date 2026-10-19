@@ -9,6 +9,179 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.3] — the same false claim, in every other shipped document
+
+`moon.mod` moves 0.164.2 -> 0.164.3. No library `.mbt` changed -- the only
+`.mbt` touched is `examples/api_server/main.mbt`, and only its `library:`
+version literal -- so the test counts stay **1117 / 1123 / 1117 / 1117**
+(native / wasm-gc / wasm / js). Round 7
+audited the README claim by claim. Round 8 asked the question that had not
+been asked: **what else ships that was never audited?** The answer was the
+package's other shipped documents -- and they carried the same defect class,
+plus a few of their own.
+
+### Fixed — `skills/moonbit_doubleML.md` banned the learners the port ships
+
+- The skill told agents "do NOT introduce classifier learners (RandomForest,
+  XGBoost, etc.)" and called `LinearRegression` "the single closed-form
+  learner ... the project's design choice". The port ships **11**
+  `LearnerDispatch` variants -- 8 regressors and **3 classifiers**
+  (`LogisticRegression`, `RandomForestClassifier`,
+  `GradientBoostingClassifier`) -- and the logistic classifier is the
+  **default `ml_m`** for the six estimators whose propensity enters the score
+  as `1 / m_hat` (IRM v0.132.0, APO v0.134.0, APOS v0.135.0, SSM v0.138.0,
+  PQ/QTE v0.139.0, LPLR v0.163.3). The anti-pattern is now "do not add a
+  learner family upstream does not have", which is the rule that was meant.
+- The skill listed **2** white-box test files as "Current wbtest coverage"
+  when there are **26**, holding **169** test cases. Both listed counts were
+  right; the list was 13% of the set.
+- The skill said the api_server "uses `Map::of([])` for response headers,
+  where the deprecation caveat does not apply". It uses
+  `Map::from_array([])` -- and the caveat *does* apply: on `moon 0.1.20261016`
+  `Map::of(...)` emits `Warning (deprecated)`, and CI runs
+  `moon build --deny-warn` over every workspace member. The sentence had the
+  exemption exactly backwards.
+- The skill said the Python cross-validators live "at root", which reads as
+  the package root; they live at the **repository** root (the package root
+  has zero).
+- The skill's accessor advice implied a uniform `coef()` / `se()` /
+  `confint()`. 16 of 22 estimators expose all four of `coef()` / `se()` /
+  `confint()` / `bootstrap()`; six do not, and the six are now named.
+
+### Fixed — `AGENTS.md` under-counted the workspace by seven members
+
+- "`moon.work` members (**16 total**)" -- the file lists **23**. The
+  sentence then said "`examples/<bin>/` x **14**" and enumerated 14 of the
+  **21** example members; `apo`, `bitexact`, `cluster`, `parity`, `pava`,
+  `splitting` and `ssm` were missing. Both numbers and the list are now
+  right, and the list is the full set.
+
+### Fixed — `doc/001` was frozen at v0.52.0
+
+- "covering all **17** models currently in upstream" -- upstream 0.11.4 ships
+  **21** estimator classes, and the port ships 22 (21 plus the port-only
+  `DoubleMLDIDCrossSection`).
+- "**17 estimators**" -> 22. "**35 DGPs**" -> **18 DGP factories** in 17
+  modules; 35 is the *file* count (17 production + 18 test siblings), which
+  the skill file states correctly and this tutorial did not.
+- "**Single learner** -- the closed-form `LinearRegression` ... handles every
+  nuisance function" -> the same false claim as the skill file.
+- "**415 / 415 tests pass**" -> **1117 / 1117**.
+- "RDB" -> the estimator is **RDD** (upstream's `RDFlex` renamed).
+- "the only external deps are `moonbitlang/core/random` and
+  `moonbitlang/core/math`" -> the library imports **no** third-party package
+  at all; `moon.mod` declares two entries that no `.mbt` imports.
+
+### Fixed — `doc/002`, `doc/003`
+
+- `doc/002` pinned the package at `0.52.0` and reported "Total tests: 415".
+  Both are current now, the toolchain is named as the one the counts were
+  measured on, and the Python dependency list gains `scipy`.
+- `doc/003` used `fitted.coef_get()` and `fitted.se_get()` -- **no such
+  methods exist**; the accessors are `coef()` and `se()`. It also said "all
+  **17** estimators" and cited "**35 DGP factories**", and it described the
+  only backend divergence as the floating-point semantics of `next_f64` --
+  a function that exists nowhere in the codebase. The draws come from
+  `rng.double()`, and the real cross-backend divergence is the known ~1.5e-15
+  relative spread in the `did_cs` quantities.
+
+### Fixed — `doc/004`'s table contradicted the README's on six of 22 rows
+
+- The Score column used a different vocabulary from the package README's
+  (`APO`, `APOS`, `PQ`, `LPQ`, `BLP`, "(sharp / fuzzy)", "(depth-N)") for six
+  rows. The column now carries the **port's own** `fit(score=...)` strings,
+  read out of the source, and a note reconciles the three vocabularies in
+  play (port / upstream / the README's prose label).
+- The column headed "Upstream file" listed the **port's** files; it is now
+  headed "Port file", and the upstream module paths live in the README.
+- "accessors (`coef()`, `se()`, `confint()`, etc.)" now carries the same
+  six-exception table as the README and the skill.
+- "`DoubleMLDID` and its **4** variants" -> **5** (six DID estimators).
+
+### Fixed — `doc/005` named 13 factories that do not exist
+
+- The table listed `make_plr_data`, `make_did_data`, `make_apos_data`,
+  `make_plpr_data`, `make_lplr_data`, `make_cvar_data`,
+  `make_simple_rdd_data`, `make_irm_heterogeneous`, `make_irm_confounded`,
+  `make_irm_discrete`, `make_plr_confounded`, `make_plr_turrell` and
+  `make_pliv_cluster`. **None** of them exists. The real 18 are now listed,
+  each with its real signature.
+- The usage example passed an `rng` and labelled kwargs
+  (`make_plr_CCDDHNR2018(rng, n_obs=500, n_features=5, theta=1.0)`). Every
+  factory takes **positional** args -- `(n_obs, dim_x, theta, seed)` -- and
+  returns a DGP struct, which still has to be wrapped in a `DoubleMLData`.
+- "`dgp_recovery_test.mbt` runs **every** estimator" -> it holds **three**
+  tests, for the staggered DID and PLPR estimators, and the file explains why
+  `DoubleMLDIDMulti` has none.
+- The `MAX(MODEL_TOL=0.1, 2.0 * handrolled_se)` tolerance was attributed to
+  that MoonBit test file. It belongs to the **Python** validators, and it is
+  not one constant: the IRM script uses `model_tol = 0.1`, the APOS and
+  DIDCSBinary scripts `MODEL_TOL = 0.3`. Neither identifier appears anywhere
+  in the MoonBit sources (measured: 0 hits).
+
+### Fixed — `doc/006` showed a transcript that never happened
+
+- The transcript printed "validate_apos_with_python.py === BLP/PolicyTree
+  reference checks passed" and "validate_did_binary_with_python.py ===
+  Reference: run `moon run examples/did_binary` ...", neither of which is
+  what those scripts print. The real trailing lines are "PASS: apos
+  reference" and "binary DID parity: PASS".
+- "exactly one trailing line that contains ` PASS ` (or `passed` or
+  `match`)" -> the CI step greps with `case "$line" in *PASS*)`, which is
+  **case-sensitive**, so neither `passed` nor `match` satisfies it.
+- "Port the estimator in `dml_xxx.mbt`" -> there is no `dml_*` convention in
+  this repository; the files are `plr.mbt`, `irm.mbt`, and so on.
+- "Append the new script to the loop in `.github/workflows/check.yml`" ->
+  the loop is a **glob**, so there is nothing to append; the naming is the
+  registration.
+- The "Float32 vs Float64" and "MT19937 (numpy default)" failure modes were
+  wrong: the port is all `Double`, and the Python references use
+  `numpy.random.default_rng` (PCG64). The real precision story is libm --
+  `ln`, `cos` and `sin` are not correctly rounded, and `ln(3.0)` differs by
+  exactly 1 ULP.
+
+### Fixed — the README itself, on three points
+
+- "`dgp_recovery_test.mbt` enforces `|coef - theta| < MAX(MODEL_TOL=0.1,
+  2.0 * handrolled_se)`. The tolerance is contractual." -- neither identifier
+  exists in the MoonBit sources and no CI script mentions either. The
+  tolerance is the Python validators', and it is per-script.
+- The estimator table called APO/APOS "average prescriptive effect" and "APO
+  with stratified treatment". The word **prescriptive** appears **zero**
+  times in the `doubleml-0.11.4` sdist, and both upstream and the port say
+  "average potential outcomes".
+- The Score column now says out loud that it is a prose label, and names the
+  three vocabularies -- so the next reader does not have to guess which of
+  `APO`, `apo` and "policy score" to pass to `fit(score=...)`.
+
+### A new verifier for the class
+
+- `_verify/_verify_shipped_docs_1643.py` makes **166 checks** over the
+  shipped documents, and almost every one of them is DERIVED from the
+  artefact rather than pinned to a literal: the estimator set, the DGP
+  factory set, the recovery-test set, the white-box file and case counts,
+  the `LearnerDispatch` variant list and its classifier subset, the 16/22
+  accessor split, the `moon.work` member set, the validator count, the
+  upstream score strings in the sdist, and the fact that the library imports
+  no third-party package. A literal pin rots exactly like the document does.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.2 it reports **86 failures** (every defect above is caught, and the
+  13 non-existent DGP names and the 7 missing examples are named
+  explicitly); against the corrected tree it reports **0**.
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. **48** local gate steps, 0 failed: `moon build` and `moon test
+--deny-warn` green on all four backends; `moon fmt --check` clean at the
+package root **and** at the workspace root, which is the one CI runs;
+both READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.164.2] — five count words that had drifted from the lists they introduce
 
 `moon.mod` moves 0.164.1 -> 0.164.2. No `.mbt` changed, so the test counts
