@@ -37,7 +37,7 @@ Measured, not hypothesised: an earlier sweep seeded once and got `pliv`
 DecisionTreeClassifier has no fixed `random_state` and so consumes global
 draws) got 1.03584 from byte-identical data. `np.random.seed` is therefore
 re-issued immediately before each estimator here, and
-`_verify/_suite_tol_1680.py::stability_check` proves it by inserting 50k
+the suite stability check proves it by inserting 50k
 unrelated draws between two identical PLIV fits and requiring a bit-identical
 coefficient.
 
@@ -75,8 +75,8 @@ The first draft of this gate handed both sides a bare `x0` and demanded
 agreement. That was wrong twice over: it compared two DIFFERENT estimators
 (origin-forced vs intercept-augmented), and the resulting "0.12556 vs 0.66475"
 looked like a 5x bug in the port when the port's 0.66475 is simply its
-intercept. Measured by `_verify/_blp_convention_1680.py`, which fits all the
-candidate variants and identifies which produces which number.
+intercept. Measured by fitting all the candidate variants and identifying
+which produces which number.
 
 So each side is given the RAW column and each side's own convention supplies
 the constant: upstream's basis is `[1, x0]`, the port's is the bare `x0`, both
@@ -102,7 +102,7 @@ WHAT THIS GATE CAN AND CANNOT RESOLVE
 The bands are 3 x UPSTREAM's fold noise, so they are sized by fold variation.
 The remaining question is whether each port-vs-upstream gap is that noise or a
 divergence the band is hiding. Measured by re-running the emitter across 9
-fold seeds (`_verify/_suite_portnoise_1680.py`), against the LARGER of the two
+fold seeds, against the LARGER of the two
 sides' spread:
 
     est    port coef   port sd   upstream coef   up sd     gap    gap/sd
@@ -118,7 +118,7 @@ close to its band: the band is 0.0736 and the gap 0.0596, but the PORT's own
 fold sd for SSM is 0.0408 -- larger than upstream's -- so the margin is real.
 
 The gate's measured RESOLUTION, from the mutation battery
-(`_verify/_ssm_reach_1680.py`): replacing SSM's selection propensity with a
+: replacing SSM's selection propensity with a
 REGRESSOR shifts `ssm_coef` by 0.0087, 11.9% of its band, and the gate stays
 green. Widening the band to catch that would invalidate the measurement that
 sets the band, so the limit is recorded instead of papered over. The gate
@@ -150,7 +150,7 @@ XCOLS = ["X%d" % (j + 1) for j in range(P)]
 # the measured tolerance table
 # --------------------------------------------------------------------------- #
 # Measured over 8 upstream fold seeds at the shipped configuration by
-# `_verify/_suite_tol_1680.py`, which writes `_suite_tol.json`. Band = 3 x the
+# the suite fold-noise measurement. Band = 3 x the
 # fold sd, i.e. the width that leaves a 3-sigma-equivalent margin.
 #
 #     est   coef              3 sd        ratio    se                3 sd

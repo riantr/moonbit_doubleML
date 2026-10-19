@@ -1,0 +1,99 @@
+PROBE: PQ root solver, corrected (v0.159.0)
+================================================================================
+THE FIRST FIX WAS WRONG. Record kept because the shape of the error is the
+useful part.
+
+ORACLE CHAIN (doubleml 0.11.3):
+  pq.py:252   _compute_ipw_score  = (d == treatment)/prop * (y <= theta) - quantile
+  pq.py:268   _compute_score      = ind_d * ((y <= theta) - g) / m + g - quantile
+  pq.py:377-8 _, bracket_guess = _get_bracket_guess(ipw_score, ...)
+              ipw_est = _solve_ipw_score(ipw_score, bracket_guess)     <- PRELIMINARY
+  pq.py:390   ml_g.fit(dx_treat, y_treat <= ipw_est)
+  pq.py:423   self._coef_start_val = np.mean(ipw_vec)
+  double_ml_score_mixins.py:149
+              root_scalar(score, x0=self._coef_start_val,
+                          fprime=score_deriv, method="newton")
+  pq.py _compute_score_deriv:
+              score_weights = ind_d / m
+              deriv = self.kde((y - coef).reshape(-1,1), score_weights)
+  utils/_estimation.py _default_kde:
+              KDEUnivariate(u); fit(kernel="gau", bw="silverman",
+                                    weights=weights, fft=False); evaluate(0)
+  pq.py:410   adjust_ps(m_hat["preds"], d, cv=smpls)
+
+  => the reported coefficient is the root of the ORTHOGONAL score, found by
+     NEWTON STARTED AT THE IPW ROOT, using a SILVERMAN-BANDWIDTH GAUSSIAN KDE
+     derivative.
+
+WHAT I FIRST DID (WRONG): kept the IPW bisection as theta_prelim, cross-fit g
+at it, then BISECTED the orthogonal score over the full-width bracket
+[y_min - margin, y_max + margin] and used a central difference for deriv.
+
+WHY THE BISECTION IS WRONG FOR THIS SCORE: 1{y <= theta} is a STEP function, so
+mean(score) is piecewise CONSTANT in theta. A bisection converges onto a jump,
+and the midpoint of a jump is not a root. Measured (v0.139.0 quantile-sweep
+fixture, q=0.9/0.1 arms):
+    q=0.9 treated arm: theta_prelim=1.790 theta=3.005 mean(psi)=-0.161
+    q=0.1 control arm: theta_prelim=-0.588 theta=-2.070 mean(psi)=+0.034
+                                ^^^^^^ BELOW min(y) entirely (~-1.4)
+
+WHY THE CENTRAL-DIFFERENCE DERIV IS WRONG: it differences the step function, so
+it is IDENTICALLY ZERO whenever no observation lies within +/- h of theta --
+which is exactly the out-of-support case above. Measured deriv = 0 at q=0.1.
+DoubleMLQTE::fit scales psi by 1/deriv with no guard (quantile.mbt:2411-2415
+documents this), so 0/0 = NaN reached ses[j]:
+    OLD ses = [NaN, 0.3019, 0.1758, 0.1994, 1.6937]
+That is a REAL defect, caught by the existing gate
+v1390_qte_multi_quantile_fit_returns_distinct_estimates (assert se > 0.0).
+It was NOT a stale pin and was deliberately not re-pinned.
+
+THE CORRECTED FIX:
+  * Newton from theta_prelim against the orthogonal score (upstream's solver).
+  * deriv = gaussian_kde_weighted(data.y, ind_d/m, theta,
+                                  silverman_bandwidth(data.y)) / n
+    i.e. upstream's _compute_score_deriv / _default_kde, reusing the KDE
+    helpers that already existed in this repo (kde.mbt:14, kde.mbt:125).
+    A Gaussian never evaluates to 0, so the NaN SE is structurally unreachable.
+  * this also drops the two extra g cross-fits per quantile that the central
+    difference needed.
+
+MEASURED (binary treatment, CONTINUOUS confounders, n=1200, q=0.6;
+DGP with a KNOWN-EXACT potential quantile: Y(1) = 2.2 + U,
+U ~ Uniform[-1.2, 0.8] whose 0.6-quantile is exactly 0, so
+population Q_0.6(Y(1)) = 2.2 BY CONSTRUCTION; confounding enters Y(0) only):
+
+  theta_prelim (IPW root)  = 2.2329845377162956
+  theta (reported)         = 2.230920809568266     <- true value 2.2
+  mean(psi)                = -0.003207544756000814
+  deriv                    = 0.49539607450278865
+  se                       = 0.044753173108603286
+  |theta - 2.2| = 0.0309 < se = 0.0448          (covered)
+
+  Newton moves theta only 0.0021 from the IPW root -- consistent with the
+  IPW root being a START VALUE, not the answer.
+
+  The invariant the user asked for now holds:
+      mean(psi) at the reported theta:  -0.224968 (before, user's measurement)
+                                      ->  -0.0032  (now)
+  and the reported theta is the root of the score the estimator publishes.
+
+MEASURED (v0.139.0 sweep fixture, 5 quantiles, after the fix):
+  coefs = [1.199136564793735, 0.1480301409397463, -0.9324416513768905,
+           -1.334379237007233, -1.2462595782637538]   (monotone in q, 4 distinct)
+  ses   = [1.7776760743336866, 0.5386877278915465, 0.8656198813762148,
+           0.5513022791434184, 0.5119008409316741]     (all finite, all > 0)
+
+DOWNSTREAM EFFECT on the QTE propensity-clip gate (expand_v124_test):
+  IPW-root era (pre-fix)            absdiff 0.901
+  bad-bisection era                 absdiff 0.063   <- gate FAILED, nearly inert
+  corrected Newton + KDE deriv      absdiff 0.248   <- gate passes, no re-pin
+      dflt 2.6769234202980465, clipped 2.925164677492298
+
+ISOTONIC FINGERPRINTS RE-PINNED (expand_v128_test), isotonic tied-x fix:
+  v128_cs_binary_isotonic_reaches_the_transform
+      iso.coef()        0.9931792566957861 -> 0.9931681980068351
+      base.coef()       0.9909760034277681 -> 0.9909760034277681  (UNCHANGED)
+  v128_did_cs_forwards_the_config
+      iso.coef_at(0,2)  0.9991226924315058 -> 0.99910048954314
+      a, c clip ladder                 byte-identical to their pre-fix pins
+  Only the isotonic branch moved; the clip ladder is the control that says so.

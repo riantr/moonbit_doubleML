@@ -1,0 +1,21 @@
+﻿Total tests: 0, passed: 0, failed: 0. [wasm]
+moon : Warning: no test entry found.
+所在位置 行:3 字符: 1
++ moon test -f 'ROW_P_cvar_cf_is_inert' 2>&1 | Out-File -FilePath '_ver ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: no test entry found.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+CVAR coef=1.7417212460064047 se=0.019633851063058223
+cf=0 rv=1.8627402166027296 max_bias=0.9350317507950578 sigma2=0.8742843749948602 nu2=1 stored_cf_y=0 stored_cf_d=0
+cf=0.03 rv=1.8627402166027296 max_bias=0.9350317507950578 sigma2=0.8742843749948602 nu2=1 stored_cf_y=0.03 stored_cf_d=0.03
+   delta vs cf=0.0 : rv=0 max_bias=0 sigma2=0 nu2=0
+cf=0.05 rv=1.8627402166027296 max_bias=0.9350317507950578 sigma2=0.8742843749948602 nu2=1 stored_cf_y=0.05 stored_cf_d=0.05
+   delta vs cf=0.0 : rv=0 max_bias=0 sigma2=0 nu2=0
+cf=0.1 rv=1.8627402166027296 max_bias=0.9350317507950578 sigma2=0.8742843749948602 nu2=1 stored_cf_y=0.1 stored_cf_d=0.1
+   delta vs cf=0.0 : rv=0 max_bias=0 sigma2=0 nu2=0
+cf=0.2 rv=1.8627402166027296 max_bias=0.9350317507950578 sigma2=0.8742843749948602 nu2=1 stored_cf_y=0.2 stored_cf_d=0.2
+   delta vs cf=0.0 : rv=0 max_bias=0 sigma2=0 nu2=0
+Total tests: 1, passed: 1, failed: 0. [wasm-gc]
+Warning: no test entry found.
+Total tests: 0, passed: 0, failed: 0. [native]

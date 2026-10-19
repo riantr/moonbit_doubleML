@@ -877,8 +877,8 @@ def c_pyexample_pq():
 #
 # The threshold rides a bound because sklearn stores node thresholds as float32
 # and the port computes in f64 -- measured gap 4.75e-8 relative, bound 1e-6. An
-# arm in `_verify/_pt_battery_1680.py` perturbs it 1e-4 to prove that bound can
-# actually go red, since the label comparison alone would not catch a
+# a perturbation arm in the policy-tree measurement battery perturbs it by
+# 1e-4 to prove that bound can actually go red, since the label comparison
 # threshold that moved without crossing a row.
 @check("pyexample_policytree",
        "port vs upstream DoubleMLPolicyTree, label vector over every row",
@@ -1038,7 +1038,7 @@ def c_contract():
 # runs. Both are fixed here.
 #
 # SCOPE OF THE TABLE -- measured, not guessed
-# `_verify/_examples_census_1680.py` ran every `examples/*` directory that has
+# The examples census ran every `examples/*` directory that has
 # both `moon.mod` and `moon.pkg` and recorded exit code, wall time and output
 # shape. 21 directories: 20 finish, in **35.9 s total**, and every marker below
 # is the measured final non-empty line of that example with every numeric
@@ -1074,7 +1074,7 @@ def c_contract():
 # (name, templatised final-line PREFIX, that line's exact char length,
 #  minimum non-empty output lines)
 #
-# GENERATED, NOT TYPED. `_verify/_gen_e2e_table_1680.py` runs every example and
+# GENERATED, NOT TYPED. The e2e table generator runs every example and
 # prints this table; `--check` re-runs it and diffs against this file. Two
 # hand-transcription failures got here first: the census stored each final line
 # TRUNCATED to 90 characters and those fragments were pasted in as if whole,

@@ -22,6 +22,12 @@ constraint.
 Anything else → `404 {"error":"route not found"}`.
 Any non-GET/POST method → `405 {"error":"method not allowed"}`.
 
+The route table is keyed on the **(method, path) pair**, so a path
+that exists under a different method is still a 404, not a 405:
+`GET /fit/plr` answers `404 {"error":"route not found"}` (there is no
+GET route for it), while `PUT /healthz` answers 405 (the method is
+rejected before the route lookup).
+
 ## Request shape (POST `/fit/{plr,irm}`)
 
 ```json
@@ -50,7 +56,20 @@ Any non-GET/POST method → `405 {"error":"method not allowed"}`.
 ```
 
 `estimator` is `"plr"` for `/fit/plr` and `"irm"` for `/fit/irm`.
-`ci_lo` / `ci_hi` are the 95% normal-CI bounds (`coef ± 1.96 * se`).
+`ci_lo` / `ci_hi` are the 95% normal-CI bounds returned by the
+library's own `confint()` — `coef ± z * se` with
+`z = norm_ppf(0.975)` (≈ 1.96), not a separate computation here.
+
+`GET /version` answers with the library and service versions plus the
+estimator list:
+
+```json
+{
+  "library": "riantr/moonbit_doubleML@0.164.4",
+  "service": "example/api_server@0.1.0",
+  "estimators": ["plr", "irm"]
+}
+```
 
 ## Build + run
 
@@ -59,7 +78,7 @@ Any non-GET/POST method → `405 {"error":"method not allowed"}`.
 ```console
 $ cd /path/to/moonbit_doubleML
 $ moon build --target native examples/api_server
-$ ./_build/native/debug/build/api_server/api_server.exe
+$ ./_build/native/debug/build/example/api_server/api_server.exe
 api_server: listening on http://127.0.0.1:4000
   GET  /healthz       liveness probe
   GET  /ping          round-trip
@@ -68,12 +87,17 @@ api_server: listening on http://127.0.0.1:4000
   POST /fit/irm       DoubleMLIRM (interactive regression)
 ```
 
+The binary lands under `example/api_server/` because the package is
+named `example/api_server` — the workspace build root is
+`_build/<target>/<profile>/build/`, and the package directory name
+is kept as-is.
+
 ### WASM (moonrun)
 
 ```console
 $ moon build --target wasm --release examples/api_server
 $ "$USERPROFILE/.moon/bin/moonrun.exe" \
-    _build/wasm/release/build/api_server/api_server.wasm \
+    _build/wasm/release/build/example/api_server/api_server.wasm \
     --port 4000
 ```
 
@@ -85,7 +109,7 @@ Override by editing the constant or wiring in a CLI arg parser once
 ## Smoke-test recipe (PowerShell)
 
 ```powershell
-$exe = "_build/native/debug/build/api_server/api_server.exe"
+$exe = "_build/native/debug/build/example/api_server/api_server.exe"
 $proc = Start-Process -FilePath $exe -PassThru -NoNewWindow
 
 # GET probes
@@ -112,12 +136,14 @@ Stop-Process -Id $proc.Id -Force
 
 ## Known limitations
 
-- `main_test.mbt` is currently empty. `moonbitlang/async`'s
-  `@http.get/post` helpers raise `ReaderClosed` when reading the
-  response body on Windows, which blocks an `assert_eq`-style
-  integration test inside the test driver. Endpoint correctness
-  is verified via the PowerShell smoke recipe above (and the
-  matching curl recipe in the root `README.mbt.md`).
+- There is **no** `main_test.mbt`: the package ships no test file.
+  `moonbitlang/async`'s `@http.get/post` helpers raise `ReaderClosed`
+  when reading the response body on Windows, which blocks an
+  `assert_eq`-style integration test inside the test driver. The
+  earlier attempts are kept for reference under `.archived/`
+  (`main_test.attempted.archived`, `main_test.crescent.archived`).
+  Endpoint correctness is verified via the PowerShell smoke recipe
+  above (and the matching curl recipe in the root `README.mbt.md`).
 - The body cap is 16 MiB. Larger uploads are rejected with
   `400 {"error":"request body exceeds 16 MiB limit"}`.
 - Only GET and POST are accepted. PUT/PATCH/DELETE/HEAD/CONNECT/
@@ -137,5 +163,6 @@ examples/api_server/
   moon.pkg          <- imports riantr/moonbit_doubleML, moonbitlang/async*
   main.mbt          <- router + JSON parser + handler + entry point
   README.md         <- this file
+  LICENSE           <- Apache-2.0, same terms as the library
   .archived/        <- previously-archived crescent-based main.mbt (kept for reference)
 ```

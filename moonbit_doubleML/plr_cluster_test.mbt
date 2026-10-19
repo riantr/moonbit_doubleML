@@ -118,8 +118,14 @@ test "plr_cluster_deterministic" {
 /// when the within-unit correlation is strong (this is the
 /// textbook reason for clustering). We build the same data twice
 /// — once with cluster_vars, once without — and assert the
-/// cluster SE is at least ~1.5x the row SE. (DGP alpha variance
+/// cluster SE is at least 1.5x the row SE. (DGP alpha variance
 /// is intentionally large to push the ratio well above 1.0.)
+///
+/// The ratio is asserted, not just the ordering: the measured
+/// value is 1.6002 (cluster_se 0.13359133763701572 / row_se
+/// 0.08348484985764741) and is bit-identical on all four
+/// backends, so 1.5 is a floor with ~6% headroom rather than a
+/// lucky threshold.
 test "plr_cluster_se_larger_than_row_se" {
   let rng = chacha8_rng(7)
   let (data_c, _) = build_clustered_dgp(rng, 50, 4, 1.0)
@@ -135,6 +141,18 @@ test "plr_cluster_se_larger_than_row_se" {
   println("plr_cluster_se: cluster_se=\{clustered.se()} row_se=\{row.se()}")
   inspect(clustered.coef() > 0.5, content="true")
   inspect(clustered.se() > row.se(), content="true")
+  // The 1.5x floor, asserted.
+  let ratio = clustered.se() / row.se()
+  inspect(ratio > 1.5, content="true")
+  // Both point estimates are finite. A NaN or an infinity would
+  // make the comparisons above vacuous, so check the range
+  // explicitly: NaN fails every comparison, and so does an
+  // infinite magnitude.
+  inspect(
+    clustered.coef() > -1.0e300 && clustered.coef() < 1.0e300,
+    content="true",
+  )
+  inspect(row.coef() > -1.0e300 && row.coef() < 1.0e300, content="true")
 }
 
 ///|

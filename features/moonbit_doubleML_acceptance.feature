@@ -2,11 +2,27 @@
 #
 # NOTE ON EXECUTABILITY: MoonBit has no native Gherkin/Cucumber
 # runner (no step-definition ecosystem). These .feature files are
-# the *documentation* layer: every scenario below maps 1:1 to an
-# executable MoonBit test in this repository (named in each
-# scenario's comment). The mapping is verified in the release QA
-# battery (_verify/T260-verdict.md). Treat a scenario as failing
-# if its mapped MoonBit test fails.
+# the *documentation* layer: every scenario below names the
+# executable MoonBit test(s) that implement it, in a
+# "# mapped to:" comment. Treat a scenario as failing if its
+# mapped MoonBit test fails.
+#
+# The mapping is verified by the release QA LOOP's `gherkin`
+# check (.github/scripts/qa_loop/checks.py), which resolves every
+# cited name against the real `test "..."` / `fn panic_*`
+# declarations and reports how many of the cited names are
+# prose-exempt (they name a method or a file, not a test).
+#
+# The mapping is NOT 1:1, and this file does not claim it is:
+# several scenarios name two tests each, and the FDR scenarios
+# name a method or a file rather than a single test. The `gherkin`
+# check is the authority on the exact split.
+#
+# HISTORY: the v0.25.0 QA battery that introduced this file is
+# recorded in _verify/T260-verdict.md. It audited an earlier
+# 10-scenario file named features/dml_acceptance.feature, so it
+# is a record of the ORIGINAL mapping, not of the current one --
+# the `gherkin` check is the live verifier.
 
 Feature: Multi-period DID gt_combinations keywords
   DoubleMLDIDMulti expands gt_combinations_keyword into
@@ -48,7 +64,8 @@ Feature: Repeated K-fold cross-fit stability
   variance on small samples.
 
   Background:
-    Given a fitted DoubleMLBLP on 60 observations with 2 basis columns
+    Given a fitted DoubleMLBLP with 2 basis columns (40, 50 or 60
+      observations, depending on the scenario)
 
   Scenario: Single repeat matches from_blp_cv exactly
     # mapped to: gain_stats_from_blp_cv_repeated_matches_single_when_one_repeat
@@ -60,8 +77,9 @@ Feature: Repeated K-fold cross-fit stability
     # mapped to: gain_stats_from_blp_cv_repeated_smooths_estimate
     Given single-rep estimates v_a (seed 3141) and v_b (seed 4242)
     When from_blp_cv_repeated is computed with n_repeats 20
-    Then the averaged estimate lies closer to both v_a and v_b
-    And the averaged estimate stays positive and finite
+    Then the averaged estimate lies between 0.5x the smaller of
+      v_a / v_b and 1.5x the larger
+    And both single-rep estimates are positive
 
   Scenario: Structural contract holds
     # mapped to: gain_stats_from_blp_cv_repeated_basic
@@ -141,7 +159,7 @@ Feature: Cluster-robust inference for PLR/IRM
 
   Background:
     Given a clustered panel DGP with strong within-unit
-      correlation (50 units x 4 periods, alpha = 0.5)
+      correlation (50 units x 4 periods, theta = 1.0)
 
   Scenario: Cluster-robust SE is larger than the row-level SE
     # mapped to: plr_cluster_se_larger_than_row_se
@@ -175,13 +193,13 @@ Feature: Partially logistic regression (LPLR)
   numerical stability on the closed-form-learner DGP.
 
   Background:
-    Given a LZZ2020-style DGP with alpha = 0.5 (60 x 6 features,
-      500 observations, binary D and Y)
+    Given a LZZ2020-style DGP with alpha = 0.5 (500 observations,
+      6 features, binary D and Y)
 
   Scenario: LPLR recovers alpha at finite positive SE
     # mapped to: lplr_smoke_lzz2020_recovers_theta
     When DoubleMLLPLR is fit with n_folds=2, n_folds_inner=2
-    Then theta_hat is finite and theta lies in [-1.0, 2.5]
+    Then theta_hat is finite and theta lies in (-0.05, 1.0)
     And the standard error is positive and finite
 
   Scenario: LPLR respects both score paths
@@ -204,8 +222,8 @@ Feature: Partially logistic regression (LPLR)
   Scenario: CI identity holds
     # mapped to: lplr_confint_identity
     When the model is fit
-    Then (hi - lo) / 2 == 1.959963984540054 * se within 1e-9
-    And (hi + lo) / 2 == coef within 1e-12
+    Then (hi - lo) / 2 == 1.959963984540054 * se
+    And (hi + lo) / 2 == coef, each within 4 * eps * max(|hi|, |lo|)
 
   Scenario: expit / logit round-trip
     # mapped to: lplr_expit_logit_round_trip

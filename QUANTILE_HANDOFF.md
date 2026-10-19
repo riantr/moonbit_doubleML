@@ -5,6 +5,32 @@
 **Pilot functions:** `quantile.mbt::array_min`, `quantile.mbt::array_max`
 **Reason for the parallel `_prove_pilot2/` mirror (not just direct contract on quantile.mbt):** see **Toolchain Blockers** below -- the main package's `Array[Double]` parameter is rejected at the `moonc prove` stage, and the `FixedArray[Double]` mirror is rejected at the `Double` comparison primitive stage. The `FixedArray[Int]` mirror in `probe_int.mbt` is the only one that lowers successfully.
 
+> **STATUS: HISTORICAL RECORD -- dated 2026-09-03.**
+>
+> This file records an exploratory `moon prove` (formal-verification)
+> pilot. It is **not** a description of the current package, and
+> **none of its numbers describe the current tree**: the
+> `302/302 pass` line was this repository's test count on 2026-09-03
+> (the package now runs 1117 native tests), and the "2 pre-existing
+> warnings" and "30+ files" figures describe the tree of that day.
+>
+> What is still true, and was re-checked when this banner was added:
+> the pilot directories `_prove_pilot/` and `_prove_pilot2/` are
+> still on disk, unchanged; `_prove_pilot2_error.txt` is still
+> captured; `moon prove` still exists in the toolchain; and the main
+> package's `moon.pkg` is still back to its pre-pilot state (no
+> `options("proof-enabled": true)`).
+>
+> The repository directory was renamed since: it was `dml-moonbit`
+> and is now `moonbit_doubleML`. The **absolute** `cd` paths in the
+> two "reproduce" sections below are therefore stale; the relative
+> commands inside them are not. The prose below still uses the old
+> project name, as it stood on the day.
+>
+> Read this as "what the proof pilot found on 2026-09-03", not as
+> "what the package is now". The pilot's two toolchain findings were
+> upstream `moonc prove` limitations, not defects in this package.
+
 ---
 
 ## Headline finding (TL;DR)
@@ -231,7 +257,7 @@ The `_prove_pilot2/` package is a complete deliverable for the FixedArray[Int] h
 
 ```powershell
 # 1. Save the current state of moon.pkg and quantile.mbt
-cd D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit
+cd D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML
 git diff moon.pkg quantile.mbt  # should be empty
 
 # 2. Add proof-enabled to moon.pkg
@@ -255,7 +281,7 @@ moon prove .  # see _prove_pilot2_error.txt for the expected output
 ## How to reproduce the FixedArray[Int] probe finding
 
 ```powershell
-cd D:\src\MiniMax\Projects\DoubleMachineLearning\dml-moonbit
+cd D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML
 moon check _prove_pilot2          # clean
 moon test  _prove_pilot2          # 1/1 pass
 moon prove _prove_pilot2          # 5 valid / 3 timeout (see _build/verif/_prove_pilot2/_prove_pilot2.proof.json)

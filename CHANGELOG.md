@@ -9,6 +9,162 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.4] -- the acceptance-criteria file, and the documents that describe it
+
+`moon.mod` moves 0.164.3 -> 0.164.4. Two `.mbt` files changed, and both
+changes make a claim that was already written down true, rather than
+adding behaviour: the DIDMulti and the clustered-PLR tests now assert
+what the acceptance scenarios had been saying. The test counts stay
+**1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Round 8 audited the documents that ship with the package. Round 9 asked
+the same question one level further down: **what documents describe the
+executable layer?** The answer is the `.feature` file, the six tutorial
+`using_test.mbt` files, the api_server's own README, and the two root
+design documents -- none of which had ever been audited.
+
+### Fixed -- the acceptance file claimed a 1:1 mapping it does not have
+
+- "every scenario below maps 1:1 to an executable MoonBit test" -- the
+  file has 24 scenarios naming 23 distinct tests; three scenarios name
+  two tests each, and the three FDR scenarios name a method or a file
+  rather than a test at all. The header now states what the mapping
+  actually is, and points at the live verifier (the QA LOOP's `gherkin`
+  check) instead of `_verify/T260-verdict.md` -- which audited a
+  different, 10-scenario file (`features/dml_acceptance.feature`) back
+  at v0.25.0.
+- "the cluster SE is at least 1.5x the row-level SE" was never
+  asserted: the test checked only `se > row_se`. The measured ratio is
+  **1.6002** (0.13359133763701572 / 0.08348484985764741), bit-identical
+  on all four backends, so the test now asserts the 1.5x floor and that
+  both point estimates are finite.
+- The universal-keyword scenario's "no emitted cell has cohort g = 0",
+  "no emitted cell has t_eval = t_pre" and "6 cells satisfy
+  t_eval < t_pre" were arithmetic, not assertions. The test now asserts
+  all three, plus that every standard cell has `t_pre == g` and
+  `t_eval > g`.
+- The LPLR band was "[-1.0, 2.5]"; the test asserts `(-0.05, 1.0)`.
+- The LPLR CI scenario still quoted the **pre-v0.163.0** tolerances
+  (`1e-9` / `1e-12`). Since v0.163.0 the test derives its tolerance
+  from the operands' own magnitude (`4 * eps * max(|hi|, |lo|)`); the
+  scenario now says that instead.
+- The LPLR background said "60 x 6 features"; the fixture is **500
+  observations, 6 features**. The cluster background said
+  "alpha = 0.5"; the fixture's theta is **1.0**. The cv_repeated
+  background said "60 observations"; its three fixtures use **40, 50
+  and 60**. The "the averaged estimate lies closer to both v_a and v_b"
+  scenario now states the band the test actually asserts (0.5x / 1.5x).
+
+### Fixed -- `doc/003` could not compile, and quoted numbers that were not its own
+
+- The snippet called `Matrix::from_array(Array::make(n * p, 0.0))` --
+  one argument. The signature takes three (`data`, `nrows`, `ncols`), so
+  the tutorial's example did not compile. The snippet is now the real
+  fixture -- the same one `using_test.mbt` builds.
+- "coef ~ 1.0, se ~ 0.1, confint ~ (0.8, 1.2)" described a
+  construction the file did not contain. The measured values for the
+  fixture that IS there are `coef = -8.782651064906958`,
+  `se = 13.75724952565863`,
+  `confint = (-35.74634818655666, 18.18104605674274)`, identical on
+  `native` and `wasm-gc`. The tutorial now also says why they are what
+  they are: the fixture is a deterministic modular pattern rather than a
+  DGP, so the orthogonality assumption does not hold for it, the
+  estimate is not near a true theta, and the interval is wide.
+
+### Fixed -- `doc/005`'s test explained itself with a reason that was false
+
+- "The full `make_plr_CCDDHNR2018` factory wraps fields in an abstract
+  struct" -- `PlrCcddhnr2018`'s accessors are public
+  (`pkg.generated.mbti`), and so is the factory. The tutorial test now
+  runs the readme's usage pattern for real: it builds the DGP, checks
+  the shapes, and asserts the estimate recovers theta (measured
+  0.4805230410998485 against a true 0.5).
+
+### Fixed -- `examples/api_server/README.md` pointed at build paths that do not exist
+
+- The native and wasm recipes used `_build/.../build/api_server/...`.
+  The package is named `example/api_server`, so the binaries are at
+  `_build/native/debug/build/example/api_server/api_server.exe` and
+  `_build/wasm/release/build/example/api_server/api_server.wasm`. The
+  PowerShell smoke recipe had the same wrong path.
+- "There is no `main_test.mbt`" -- the file said `main_test.mbt` "is
+  currently empty". There is no such file; the earlier attempts are
+  archived under `.archived/`.
+- The CI bounds were described as "coef +/- 1.96 * se"; the service
+  returns the library's own `confint()`, whose multiplier is
+  `norm_ppf(0.975)`.
+- A known path with the wrong method is a **404**, not a 405: the route
+  table is keyed on the (method, path) pair. The README now says so,
+  and documents the `/version` response shape it had not.
+- The recipe's claim that the PLR fit on `y = 2*d` returns
+  `coef == 2.0` was checked by running it: it does (coef 2, se 0,
+  CI (2, 2)).
+
+### Fixed -- two root design documents asserted a superseded state
+
+- `TUNE_DESIGN.md` said "design proposal, no implementation yet" and
+  "the port at v0.53.0 has no `tune()` method". `tune()` ships on **19
+  of the 22** estimators -- the three exceptions (BLP, LPQ, PolicyTree)
+  are structural, per the `0.108.0` entry in this file. The grid is
+  `Array[TuneParam]`, not `Array[Dict]`, and `LearnerDispatch` has since
+  grown to 11 variants. The document is now labelled a historical
+  record, with a table of what the implementation did differently.
+- `QUANTILE_HANDOFF.md` is a dated (2026-09-03) proof-pilot record
+  whose numbers describe that day's tree. It now says so, and its two
+  stale absolute `cd` paths are fixed (the repository was renamed
+  `dml-moonbit` -> `moonbit_doubleML`).
+
+### Fixed -- 85 of the document pointers to `_verify/` were unfollowable
+
+- A document that points at `_verify/<script>` is a pointer a reader can
+  follow, and 85 of them named a file that existed only in a working
+  tree and was never tracked -- so a clone could not open it. The
+  shipped README's own "a mutation battery
+  (`_verify/_bitexact_mutation_1640.py`) confirms the gate
+  discriminates" was one of them. Those 85 files are now tracked.
+- The remaining 19 named a file that does not exist at all, and 3 more
+  are excluded by the repository's own `_verify/` policy
+  (`_verify/_mut*.py`, `_verify/REVIEW*.md`). The **live** documents --
+  the QA LOOP, the Python cross-check gates, the shipped package -- now
+  keep the measurement and drop the unfollowable path. The CHANGELOG's
+  historical entries are deliberately left alone: they record what was
+  true when they were written, and history is append-only.
+
+### A new verifier for the class
+
+- `_verify/_verify_round9_docs_1644.py` makes **63 checks**, nearly all
+  DERIVED rather than pinned: the mapped test names are resolved against
+  the real `test "..."` / `fn panic_*` declarations; the README's
+  traceability counts are re-derived from the feature file; each
+  scenario's number is compared with the number in the test it maps to
+  (the 1.5x floor, the 6 placebo cells, the `(-0.05, 1.0)` band, the
+  derived CI tolerance, the 0.5x/1.5x band, the fixture shapes); the
+  `Matrix::from_array` arity in the tutorial is compared with the
+  signature in the source; the quoted confidence interval is checked to
+  be the 95% normal CI of the quoted coefficient and standard error; the
+  api_server build paths are checked against the package name in
+  `moon.mod`; the "Source layout" list is checked against the tracked
+  files; every version literal in the tree is checked to be a site the
+  bump script updates; and every `_verify/` path a live document names
+  is checked to be a file that exists AND is tracked.
+- It is dry-run against the previous release before it is trusted:
+  against v0.164.3 it reports **28 failures**; against the corrected
+  tree it reports **0**.
+
+### Gate for this release
+
+Both declared dependencies were already at the current registry latest
+(`moonbitlang/async@0.22.5`, `moonbit-community/sqlite3@0.2.3`), so the
+gate ran on current pins with no `moon update` needed. **48** local
+gate steps, 0 failed: `moon build` and `moon test --deny-warn` green on
+all four backends; `moon fmt --check` clean at the package root **and**
+at the workspace root, which is the one CI runs; both READMEs
+byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.164.3] — the same false claim, in every other shipped document
 
 `moon.mod` moves 0.164.2 -> 0.164.3. No library `.mbt` changed -- the only

@@ -1,8 +1,36 @@
 # TUNE_DESIGN.md — `DoubleML.tune()` Architecture (v0.55+)
 
-> **Status**: design proposal, no implementation yet.
+> **Status**: **historical design record — SUPERSEDED by the
+> implementation.** This document was written in the v0.54.0 planning
+> cycle, before any `tune()` existed. `tune()` has since landed, and
+> the shipped API differs from the sketch below in ways that matter;
+> see "What the implementation did differently" right below. The
+> `[OPEN]` markers are the decision points **as they stood when this
+> was written** — they are not open today.
 > **Author**: v0.54.0 planning cycle.
 > **Depends on**: v0.54.0 `Learner` injection (Item 2 of the v0.54.0 cycle — landed).
+
+## What the implementation did differently
+
+Read the code, not this sketch. The shipped surface is
+`moonbit_doubleML/tune.mbt` (the estimator-independent half: the
+`TuneParam` grid type, the `TuneScoring` enum and its parser, the
+score computation, the selection rule) plus one `::tune` method per
+estimator.
+
+| this document | the implementation |
+|---|---|
+| `param_set : Array[Dict]` | `param_set~ : Array[TuneParam]` — a typed struct, not a dict |
+| `tune_settings : Array[Dict]` (scoring config) | folded into `scoring_method~ : String` (`"MSE"` / `"RMSE"` / `"neg-MSE"`) |
+| `n_folds_tune? : Int` | `n_folds_tune~ : Int32` |
+| "no `tune()` at all" (§1: *"the port at v0.53.0 has no `tune()` method"*) | `tune()` ships on **19 of the 22** estimators. The three exceptions — `DoubleMLBLP`, `DoubleMLLPQ`, `DoubleMLPolicyTree` — are **structural, not unfinished**: BLP fits demand characteristics rather than a nuisance, and LPQ / PolicyTree take no learner to tune. See the `0.108.0` entry in `CHANGELOG.md`. |
+| "do we ship `tune()` with just `LinearRegression` and `ConstantLearner`?" (§6) | the learner set is `LearnerDispatch`, which has since grown to **11** variants (8 regressors + 3 classifiers; logistic regression is the default `ml_m` for 6 estimators) |
+
+The `tune()` grid is a **candidate-learner grid**, not a
+hyper-parameter grid: each `TuneParam` is one concrete
+`(learner_l, learner_m)` pair to be scored. The upstream
+`Optuna`-style search over hyper-parameters is a different feature and
+is not what `tune()` does here.
 
 This document sketches the architecture for a `DoubleML.tune()` method
 that runs a user-supplied grid-search over nuisance-learner hyperparameters
@@ -23,10 +51,12 @@ and easy to get wrong (the DML orthogonality property depends on using
 the *same* fold partitions across all candidates, so manual tuning
 must replicate the cross-fit fold schedule exactly).
 
-The MoonBit port at v0.53.0 has no `tune()` method. The user picked
-`tune()` as Item 5 of the v0.54.0 cycle but the work is too large for a
-single release; this document captures the design so v0.55+ can
-implement it without re-deriving the trade-offs.
+The MoonBit port at v0.53.0 (when this was written) had no
+`tune()` method. The user picked `tune()` as Item 5 of the v0.54.0
+cycle but the work was too large for a single release; this document
+captures the design so v0.55+ can implement it without re-deriving
+the trade-offs. **It has since been implemented** — see the status
+banner at the top.
 
 ## 2. Design constraints (from v0.54.0 work)
 
@@ -34,11 +64,14 @@ implement it without re-deriving the trade-offs.
    `LearnerDispatch` enum + `cross_fit_predict_dispatch` helper give
    us a non-generic `DoubleMLPLR` struct that can hold any combination
    of `LinearRegression` / `ConstantLearner` / `NoopLearner` per
-   nuisance. New learner types (logistic regression, gradient
-   boosting, random forest) are 3 small edits each:
+   nuisance. New learner types are 3 small edits each:
    `(a)` declare `impl Learner for X`,
    `(b)` add `X(x)` arm to `LearnerDispatch`,
    `(c)` add the matching arm to `cross_fit_predict_dispatch`.
+   **As it stands**, `LearnerDispatch` has 11 variants: 8 regressors
+   and 3 classifiers (logistic is the default `ml_m` for 6
+   estimators), so the "3 small edits" path has been exercised since
+   this was written.
 
 2. **`cross_fit_predict[T : Learner]` is already generic** in `kfold.mbt`.
    It accepts any `T : Learner` and produces an OOF prediction vector.

@@ -15,6 +15,14 @@ test "did_multi_universal_includes_pre_treatment" {
     gt_combinations_keyword="standard",
   ).fit()
   inspect(fitted_standard.n_combinations(), content="3")
+  // Every standard cell is post-treatment. `expand_gt_keyword` emits
+  // the triple `(g, g, t)`, so `t_pre == g` always, and the standard
+  // branch additionally requires `t > g`. Asserted, not just described.
+  for i = 0; i < fitted_standard.n_combinations(); i = i + 1 {
+    let (g, t_pre, t_eval) = fitted_standard.gt_combinations[i]
+    inspect(t_pre == g, content="true")
+    inspect(t_eval > g, content="true")
+  }
   // Universal: includes pre-treatment placebos.
   // For 4 cohorts (g=0,1,2,3) and 4 periods (t=0,1,2,3),
   // the non-baseline cells are:
@@ -29,6 +37,25 @@ test "did_multi_universal_includes_pre_treatment" {
     gt_combinations_keyword="universal",
   ).fit()
   inspect(fitted_universal.n_combinations(), content="9")
+  // The universal cell rules, asserted rather than described:
+  //   - the never-treated cohort g = 0 is never emitted (the
+  //     expansion skips g == 0 for every keyword);
+  //   - the baseline cell t_eval == t_pre is never emitted (the
+  //     universal branch requires t != g);
+  //   - 6 of the 9 cells are pre-treatment placebos (t_eval < t_pre):
+  //     g=1 contributes t=0, g=2 contributes t=0,1, g=3 contributes
+  //     t=0,1,2.
+  let mut n_pre = 0
+  for i = 0; i < fitted_universal.n_combinations(); i = i + 1 {
+    let (g, t_pre, t_eval) = fitted_universal.gt_combinations[i]
+    inspect(g != 0, content="true")
+    inspect(t_pre == g, content="true")
+    inspect(t_eval != t_pre, content="true")
+    if t_eval < t_pre {
+      n_pre = n_pre + 1
+    }
+  }
+  inspect(n_pre, content="6")
   // "all" is an alias for "universal".
   let fitted_all = DoubleMLDIDMulti::new(
     data,

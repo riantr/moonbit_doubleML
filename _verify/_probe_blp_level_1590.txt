@@ -1,0 +1,32 @@
+﻿PROBE: BLP confint_joint level, measured
+================================================================================
+BUG: blp_policy.mbt:746 had let z = 1.959963984540054 -- a hard-coded 95%
+constant -- while level was accepted, range-checked (line 727) and then
+IGNORED. level=0.5 and level=0.95 returned byte-identical intervals.
+
+FIX: let z = norm_ppf((1.0 + level) / 2.0).
+This is exactly the intended chi2(1 df) construction the adjacent comment
+already described: chi2(1, p) = z_{(1+p)/2}^2, so the half-width multiplier is
+sqrt(chi2(1,level)) = z_{(1+level)/2}, which is what
+statsmodels.OLS.conf_int(joint=True) applies. norm_ppf is the same quantile
+function the rest of the package uses for confint, and at level=0.95 it
+reproduces the old constant, so the default path is unchanged.
+
+MEASURED (n=400, noisy DGP, contrast [1,1]):
+  width @0.50 = 0.01910033329408023
+  width @0.95 = 0.05550262992787758
+  width @0.99 = 0.0729429224009781
+  50 == 95 ?  false          <- was true before the fix
+  ratio 95/50 = 2.9058461479873507
+  z_{0.975} / z_{0.75} = 1.959963984540054 / 0.6744897501960817
+                       = 2.9058461479873508   <- matches to the last digit
+
+NOTE ON THE FIRST ATTEMPT: the initial probe used a NOISELESS DGP
+(s = 2 + 3x exactly), so se ~ 0 and every width was ~1e-12; the widths still
+differed (proving level is read) but their RATIO was float noise. Re-run with
+noise to get a meaningful ratio. Also: the probe printed an "expected" ratio of
+1.7035, which was MY arithmetic error, not a code error -- z.975/z.75 is
+2.9058, and the measured value matches it exactly.
+
+Only confint_joint exists for DoubleMLBLP; there is no scalar confint, so
+this single site is the whole surface.

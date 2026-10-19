@@ -50,11 +50,11 @@ TOLERANCES
 ==========
 Measured, not derived from a formula and not copied from the sibling gate.
 `sd_up` is upstream's own fold sd over 12 seeds
-(`_verify/_didbin_tol_1680.py`, re-seeded before EVERY cell so adding or
+(re-seeded before EVERY cell so adding or
 removing a cell cannot move the others -- upstream draws folds from the
 process-global RandomState when `random_state` is unset; see
-`_verify/_suite_tol_1680.py::stability_check`). `sd_port` is the PORT's own
-fold sd over 9 seeds (`_verify/_didbin_reach_1680.py`). The band is
+the stability check). `sd_port` is the PORT's own
+fold sd over 9 seeds. The band is
 3 x sqrt(sd_up^2 + sd_port^2) -- the spread of the DIFFERENCE, because the two
 sides draw folds independently. The full table, including what an upstream-only
 band would have done, is at `TOL_BY_CELL` below.
@@ -121,9 +121,8 @@ FIXTURE = cs.FIXTURE
 #   ATT(3,2,4) se    0.00297  0.00265   0.00892   0.01196    1.34x
 #   ATT(4,3,4) se    0.00266  0.00277   0.00799   0.01152    1.44x
 #
-# `sd_port` is over 9 seeds (42, 7, 13, 99, 3, 5, 11, 21, 33), measured by
-# `_verify/_didbin_reach_1680.py`; `sd_up` is over 12 upstream fold seeds from
-# `_verify/_didbin_tol_1680.py`. The two are NOT interchangeable and neither
+# `sd_port` is over 9 seeds (42, 7, 13, 99, 3, 5, 11, 21, 33); `sd_up` is over
+# 12 upstream fold seeds. The two are NOT interchangeable and neither
 # alone is the band.
 TOL_BY_CELL = {
     (2, 1, 2): 0.25971,
@@ -212,7 +211,7 @@ def main(argv):
     if missing:
         raise SystemExit(
             "no MEASURED fold-noise band for cell(s) %s; measure them "
-            "(_verify/_didbin_tol_1680.py) rather than borrowing a "
+            "rather than borrowing a "
             "neighbour's" % (missing,))
 
     upstream = fit_upstream(panel["obj"], cells, cs.FIT_SEED)

@@ -724,8 +724,7 @@ pub fn DoubleMLDIDMulti::tune(
 ///
 /// `seed` controls the chacha8 RNG used to draw the weights
 /// (default `2024`; matches the upstream numpy default of
-/// `np.random.seed(2024)` for the first test in
-/// `_verify/test_bootstrap_reference.py`).
+/// `np.random.seed(2024)` for the first upstream test).
 ///
 /// The bootstrap populates `self.boot_t_stat` and is required
 /// for `confint(joint=true)`.

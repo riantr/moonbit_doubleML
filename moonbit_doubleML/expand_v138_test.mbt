@@ -68,9 +68,8 @@
 //| 100x to 450x and unstable in sign, the classifier is stable and within one
 //| standard error of the truth on all three seeds.
 //
-//| Mutations -- MEASURED, not predicted (`_verify/_mutate_1380_ssm.py revert`
-//| reverts the default to `LearnerDispatch::linear_regression()` and nothing
-//| else):
+//| Mutations -- MEASURED, not predicted (the revert arm restores the default
+//| to `LearnerDispatch::linear_regression()` and nothing else):
 //!
 //!   GATE 1  default IS the classifier            FAIL   as expected
 //!   GATE 2  point estimate beats the regressor    FAIL   as expected

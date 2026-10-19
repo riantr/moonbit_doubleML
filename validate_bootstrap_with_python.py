@@ -100,7 +100,7 @@ SEPARATION = {"mean": 0.0, "var": 0.0, "m3": 1.0, "m4": 2.6}
 #     wild    x/sqrt(2) + (y^2-1)/2   rational: x enters only as x^2/2, and
 #                                     x, y independent
 #
-# Computed with `fractions.Fraction` by `_verify/_boot_moments_1680.py`, so
+# Computed with `fractions.Fraction`, so
 # there is no round-off in the table below. `EXACT_MOMENTS[k][method]` is the
 # exact central moment; `E_W2K` carries the 2k-th raw moment, which is what the
 # CLT variance of the sample central moment needs.

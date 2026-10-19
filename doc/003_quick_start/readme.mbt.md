@@ -1,20 +1,28 @@
 # Quick Start
 
-A minimal end-to-end example: partially linear regression (PLR) on
-synthetic data with θ = 1.
+A minimal end-to-end example: partially linear regression (PLR) on a
+deterministic (n=100, p=5) synthetic panel.
 
 ```moonbit nocheck
 // 1. Build a (n=100, p=5) design matrix and a treatment + outcome.
 let n = 100
-let p = 5
+let x_data : Array[Double] = Array::make(n * 5, 0.0)
+for i = 0; i < n; i = i + 1 {
+  x_data[i * 5 + 0] = i.to_double()
+  x_data[i * 5 + 1] = (i % 2).to_double()
+  x_data[i * 5 + 2] = ((i + 1) % 3).to_double()
+  x_data[i * 5 + 3] = ((i + 2) % 5).to_double()
+  x_data[i * 5 + 4] = ((i + 3) % 7).to_double()
+}
 let x : @moonbit_doubleML.Matrix = @moonbit_doubleML.Matrix::from_array(
-  Array::make(n * p, 0.0),
+  x_data, n, 5,
 )
 let y : Array[Double] = Array::make(n, 0.0)
 let d : Array[Double] = Array::make(n, 0.0)
-
-// ... fill x with N(0, 1) draws, set d = x_1 + ε_d, y = θ · d + x_2 + ε_y
-// ... (see examples/datasets for the full RNG-driven construction)
+for i = 0; i < n; i = i + 1 {
+  d[i] = i.to_double() * 0.5
+  y[i] = i.to_double() * 1.0 + (i % 2).to_double()
+}
 
 // 2. Wrap into the data container.
 let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)
@@ -28,10 +36,36 @@ let fitted = @moonbit_doubleML.DoubleMLPLR::new(
 ).fit()
 
 // 4. Read off the estimated coefficient, standard error, and CI.
-let theta = fitted.coef()        // ≈ 1.0
-let se = fitted.se()            // ≈ 0.1
-let (lo, hi) = fitted.confint() // ≈ (0.8, 1.2) at 95%
+let theta = fitted.coef()
+let se = fitted.se()
+let (lo, hi) = fitted.confint()
 ```
+
+`Matrix::from_array` takes **three** arguments -- the flat
+row-major `data`, then `nrows`, then `ncols` -- and panics when
+`data.length() != nrows * ncols`. The fixture above is the same one
+the executable tutorial test (`using_test.mbt`) builds.
+
+## What this example actually produces
+
+The fixture is deterministic, so the numbers are fixed. The same code
+run on `native` and on `wasm-gc` (the backend this tutorial package
+builds for) returns the same values:
+
+| quantity | value |
+|---|---|
+| `coef()` | `-8.782651064906958` |
+| `se()` | `13.75724952565863` |
+| `confint()` | `(-35.74634818655666, 18.18104605674274)` |
+
+The estimate is far from zero and the interval is wide. That is
+correct, not a bug: the fixture is a deterministic *modular* pattern
+(`d` and `y` are polynomials in the row index, not an RNG draw), so
+the DML orthogonality assumption the estimator relies on does not
+hold for it. The point of this example is the **API shape**, not a
+recovered effect. For a DGP with a known theta, and for a recovery
+band that is actually asserted, see `005_dgps` and the estimator
+recovery tests in the package.
 
 The `DoubleMLPLR::new(...).fit()` is the canonical entry point.
 The same shape applies to all 22 estimators — see

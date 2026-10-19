@@ -1,0 +1,28 @@
+﻿PROBE: IRM/IIVM PSProcessor cv wiring, measured
+================================================================================
+The user's claim was "IRM/IIVM have no declared PSProcessor hookup". MEASURED:
+that is only half right, and the wrong half matters.
+
+  IRM  isotonic-vs-default maxdiff = 0.045927029359120075   <- config DOES reach the fit
+  IIVM isotonic-vs-default maxdiff = 0.36786154420494277   <- config DOES reach the fit
+So isotonic calibration is genuinely wired (v0.122.0 / v0.123.0 did that).
+
+The REAL gap, found by grep: adjust_ps DECLARES a cv parameter and upstream
+passes cv=smpls at every call site (did_binary.py:537, iivm.py:371,
+cvar.py:343). Before v0.159.0 NO estimator passed it -- the only callers of
+cv anywhere in the package were two lines in ps_processor_test.mbt. So a
+configured cv_calibration=true silently calibrated on the PROCESSOR's own
+default_5fold(n): five contiguous blocks, unrelated to the estimator's
+n_folds. The calibration folds are supposed to BE the cross-fitting folds.
+
+AFTER wiring cv = the estimator's folds:
+  IRM  isotonic-vs-default maxdiff = 0.045927029359120075   <- UNCHANGED
+  IRM  cv-vs-isotonic     maxdiff  = 0.43565217391304345   <- was 0.12187039764359348
+The cv path moved (it now uses n_folds=2 splits instead of 5 contiguous
+blocks) and the non-cv paths are bit-identical, because under
+calibration_method="none" the cv argument is ignored entirely.
+
+Still unfixed by this round (reported, not silently changed): the SAME missing
+cv exists at the other five adjust_ps call sites -- apo.mbt:320,
+did.mbt:628, did_cross_section.mbt:615, did_cs_binary.mbt:374,
+cvar.mbt:736 and :1005.

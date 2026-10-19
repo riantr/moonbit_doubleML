@@ -313,7 +313,7 @@ def main():
         spread, and in one direction throughout.
 
         Two candidate causes were measured for the PQ/QTE side and BOTH
-        RULED OUT (`_verify/_pq_se_flag_1680.py`):
+        RULED OUT (both were measured):
 
           * `trimming` -- the design doc named it as the likely dominant
             source. It is not. The port's `propensity_clip` is inert below

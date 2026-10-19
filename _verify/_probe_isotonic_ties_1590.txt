@@ -1,0 +1,45 @@
+﻿PROBE: isotonic tied-x behaviour, measured BEFORE the fix (moon 0.1.20261012)
+================================================================================
+ORACLE (sklearn 1.9.0, installed):
+  IsotonicRegression(out_of_bounds='clip', y_min=0, y_max=1)
+    .fit(x=[0.5,0.5], y=[0,1]).predict([0.5,0.5])  ->  [0.5, 0.5]
+    X_thresholds_=[0.5]   y_thresholds_=[0.5]
+    .fit(x=[0.1,0.5,0.9], y=[0,1,0]).predict(...)  ->  [0.0, 0.5, 0.5]
+
+PORT (measured, probe_isotonic_tied_x):
+  pava([0,1])                    = [0, 1]          <- correct: y is already monotone
+  fit_isotonic([.5,.5],[0,1]).x  = [0.5, 0.5]
+  fit_isotonic([.5,.5],[0,1]).yhat= [0, 1]          <- WRONG, should be [0.5, 0.5]
+  predict_isotonic               = [1, 1]          <- WRONG, should be [0.5, 0.5]
+  adjust_ps(isotonic, clip .01)  = [0.99, 0.99]    <- THE REPORTED SYMPTOM
+  fit_isotonic 3 ties y=[0,1,0]  = [0, 0.5, 0.5]    <- WRONG, should be [1/3]*3
+  fit_isotonic distinct x        = [0, 0.5, 0.5]    <- matches sklearn (control passes)
+
+ROOT CAUSE
+  fit_isotonic runs pava over the RAW sorted sequence without first pooling
+  observations that share the same x. Isotonic regression is a function of x,
+  so two observations at the same x MUST receive the same fitted value; sklearn
+  groups equal x and takes the group mean before the pool-adjacent-violators
+  step. Because predict_isotonic resolves a tie to the LAST index of the run,
+  the port reports the final y in each tie run -- and with clip=0.01 that 1.0
+  becomes 0.99.
+
+PROPERTY THAT MAKES THE FIX SAFE
+  With all-distinct x every group has size 1 and its mean is exactly y[i], so
+  pooling is the identity and pava sees the identical sequence. The fix is a
+  no-op on tie-free data, which is why the existing parity fixtures (float
+  propensity scores, no exact ties) did not catch this.
+PROBE: isotonic tied-x behaviour, measured AFTER the v0.159.0 fix
+================================================================================
+  pava([0,1])                    = [0, 1]                    (unchanged, still correct)
+  fit_isotonic([.5,.5],[0,1]).x  = [0.5, 0.5]
+  fit_isotonic([.5,.5],[0,1]).yhat= [0.5, 0.5]              <- FIXED (sklearn: 0.5, 0.5)
+  predict_isotonic               = [0.5, 0.5]                <- FIXED
+  apply_calibration(isotonic)    = [0.5, 0.5]                <- FIXED
+  adjust_ps(isotonic, clip .01)  = [0.5, 0.5]                <- SYMPTOM GONE
+  fit_isotonic 3 ties y=[0,1,0]  = [1/3, 1/3, 1/3]           <- FIXED
+  fit_isotonic distinct x        = [0, 0.5, 0.5]             <- control UNCHANGED
+
+Oracle agreement:
+  x=[0.5,0.5] y=[0,1]        sklearn [0.5, 0.5]      port [0.5, 0.5]      MATCH
+  x=[0.1,0.5,0.9] y=[0,1,0]  sklearn [0,0.5,0.5]     port [0,0.5,0.5]     MATCH

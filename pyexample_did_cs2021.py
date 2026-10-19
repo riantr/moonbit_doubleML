@@ -31,7 +31,7 @@ WHY ONLY 6 OF UPSTREAM'S 12 CELLS
 =================================
 Upstream's `"standard"` yields 12 `(g, t_pre, t_eval)` cells; the port's DIDCS
 yields 6. This is a structural difference, and it is measured rather than
-asserted (`_verify/_cs2021_partition_1670.py`):
+asserted (measured, not copied from the upstream source):
 
   * the port's `DoubleMLDIDCS` fixes its base period at `g_value - 1`
     (`did_cs.mbt:1563`) and restricts the panel to
@@ -57,7 +57,7 @@ THE TOLERANCES ARE MEASURED
 Same structure as the SZ2020 gate: upstream draws folds from numpy's global
 RNG, the port from `seed=`, so bit equality is impossible and the band must come
 from the fold noise. Measured over 12 upstream fold seeds at the shipped
-configuration (`_verify/_cs2021_tol_1670.py`):
+configuration:
 
     cell        coef     fold_sd   |coef|/sd    3 sd
     (2,1,2)   1.1284     0.05094      22.2     0.1528
@@ -93,7 +93,7 @@ FIXTURE = os.path.join(ROOT, "examples", "parity", "pyexample_data.mbt")
 
 sys.path.insert(0, ROOT)
 
-# --- fixture, swept for signal-to-noise (`_verify/_cs2021_sweep_1670.py`) ------
+# --- fixture, swept for signal-to-noise -------------------------------
 #     n_obs  dgp_seed  cell        coef   fold_sd  |coef|/sd
 #       500        7  ATT(2,1,3)  2.0296  0.0690      29.4
 #      1000        7  ATT(2,1,3)  1.9093  0.0457      41.8
@@ -106,7 +106,7 @@ N_FOLDS, N_REP = 2, 1  # both sides; the port cannot do 5 without `propensity_cl
 
 # Per-cell 3-sd coefficient band, measured over 12 upstream fold seeds at the
 # shipped configuration (n_obs=1000, DGP seed 7, LinearRegression /
-# LogisticRegression, n_folds=2) by `_verify/_cs2021_tol_1670.py`.
+# LogisticRegression, n_folds=2).
 #
 #     cell        coef     coef_sd   |coef|/sd    3 sd
 #     (2,1,2)   1.1284     0.05094      22.2     0.1528
@@ -423,7 +423,7 @@ def main(argv):
     if missing:
         raise SystemExit(
             "no MEASURED fold-noise band for cell(s) %s; measure them "
-            "(_verify/_cs2021_tol_1670.py) rather than borrowing a neighbour's"
+            "rather than borrowing a neighbour's"
             % (missing,))
     n_upstream = len(panel["upstream"])
     print("upstream CS2021 example regenerated")

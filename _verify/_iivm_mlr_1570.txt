@@ -1,0 +1,21 @@
+﻿Total tests: 0, passed: 0, failed: 0. [wasm]
+moon : Warning: no test entry found.
+所在位置 行:3 字符: 1
++ moon test -f 'ROW_Q_iivm_mlr_regressor_vs_classifier' 2>&1 | Out-File ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: no test entry found.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+port default is_classifier=false ; logistic is_classifier=true
+n=500 seed=11 theta=1 coef_reg=0.8421142291078455 coef_cls=0.7753800817068849 dcoef=0.06673414740096062 se_reg=0.00017949922827747183 se_cls=0.0001562794250201597 dcoef_over_se=371.7795783378091
+n=500 seed=22 theta=1 coef_reg=1.0592521369774952 coef_cls=0.9205549814768431 dcoef=0.1386971555006521 se_reg=1.0947118316094657 se_cls=0.9660222786323168 dcoef_over_se=0.12669741158888997
+n=500 seed=33 theta=1 coef_reg=-1.080176301351416 coef_cls=-1.0653839889770833 dcoef=0.014792312374332761 se_reg=2.430571968133311 se_cls=2.329526961496253 dcoef_over_se=0.006085938852365403
+n=500 seed=44 theta=1 coef_reg=2.1676361612392565 coef_cls=3.639851071720598 dcoef=1.4722149104813416 se_reg=1.195918978993548 se_cls=2.3327462494302256 dcoef_over_se=1.2310323160188632
+n=1000 seed=11 theta=1 coef_reg=1.9306536710502245 coef_cls=2.463831695379938 dcoef=0.5331780243297135 se_reg=1.5727522654090462 se_cls=2.08141872599765 dcoef_over_se=0.33900954146204515
+n=1000 seed=22 theta=1 coef_reg=-0.06946728245433562 coef_cls=-0.09473888492744503 dcoef=0.025271602473109417 se_reg=0.6940812726142164 se_cls=0.9437456712818544 dcoef_over_se=0.03641014888346635
+n=1000 seed=33 theta=1 coef_reg=-1.235976746347008 coef_cls=-1.5256641297883495 dcoef=0.2896873834413416 se_reg=1.36086906050024 se_cls=1.651505559725105 dcoef_over_se=0.21286940224422166
+n=1000 seed=44 theta=1 coef_reg=-3.4658494010641294 coef_cls=-1.9459667299194658 dcoef=1.5198826711446636 se_reg=3.6111839206587013 se_cls=1.4701692056118862 dcoef_over_se=0.42088209975952373
+EXAMINED=8 EXPECTED=8 mean_abs_err_regressor=1.5208621839220027 mean_abs_err_classifier=1.6299376796911438 worst_dcoef_over_se=371.7795783378091
+Total tests: 1, passed: 1, failed: 0. [wasm-gc]
+Total tests: 0, passed: 0, failed: 0. [native]
+Warning: no test entry found.

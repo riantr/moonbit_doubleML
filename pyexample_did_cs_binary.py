@@ -94,8 +94,8 @@ import pyexample_did_cs2021 as cs  # noqa: E402  the CS2021 fixture machinery
 
 FIXTURE = cs.FIXTURE
 
-# Measured over 12 upstream fold seeds by
-# `_verify/_didcsbin_tol_1680.py` -> `_didcsbin_tol.json`.
+# Measured over 12 upstream fold seeds by the did-cs-binary fold-noise
+# measurement.
 TOL_BY_CELL = {
     (2, 1, 2): 3 * 0.05520,
     (2, 1, 3): 3 * 0.06674,
@@ -170,7 +170,7 @@ def main(argv):
     if missing:
         raise SystemExit(
             "no MEASURED fold-noise band for cell(s) %s; measure them "
-            "(_verify/_didcsbin_tol_1680.py) rather than borrowing a "
+            "rather than borrowing a "
             "neighbour's" % (missing,))
 
     upstream = fit_upstream(panel["obj"], cells, cs.FIT_SEED)

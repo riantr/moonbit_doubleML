@@ -27,7 +27,7 @@
 /// `@math.exp`/`expit` and CPython's `math.exp`.
 ///
 /// The same input vectors, and the Python that produced them, live
-/// in `_verify/zz_probe_lplr_exact.py` -- it was a probe and is
+/// in a local probe -- it was a probe and is
 /// deleted; the literals below are the durable artefact.
 
 ///|
