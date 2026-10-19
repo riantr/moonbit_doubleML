@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.1** |
+| `moon.mod` version | **0.164.2** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -455,9 +455,11 @@ calibration. Plugs directly into `DoubleMLIRM` / `DoubleMLIIVM` /
 >
 > Note this is **narrower than "IRM/IIVM has no hookup"**, which was measured
 > and found too strong: the isotonic config *did* already reach both fits. The
-> five remaining `adjust_ps` call sites (`apo.mbt:320`, `did.mbt:628`,
-> `did_cross_section.mbt:615`, `did_cs_binary.mbt:374`, `cvar.mbt:736` and
-> `:1005`) still do not forward `cv`.
+> `adjust_ps` call sites that do not forward `cv` are **eight**, in seven
+> files: `apo.mbt:320`, `cvar.mbt:736`, `cvar.mbt:1005`, `did.mbt:628`,
+> `did_cross_section.mbt:615`, `did_cs_binary.mbt:374`, `quantile.mbt:217` and
+> `ssm.mbt:671`. The only two that do are IRM's and IIVM's -- `cv=` is passed
+> at `irm.mbt:430` and `iivm.mbt:525`.
 
 **`ps_processor_config` is reachable (v0.121.0+, IRM v0.122.0, IIVM and SSM
 v0.123.0, PQ v0.124.0, LPQ v0.125.0, CVaR v0.126.0, DID v0.127.0, CS-DID
@@ -833,7 +835,8 @@ the pre-period, i.e. the `(d=1, t=0)` cell is structurally empty, the same fact
 produces the same Inf/NaN. **No fallback is substituted**, because a quiet
 replacement number is indistinguishable from a correct one.
 
-5 gates added (`expand_v149_test.mbt`). The scalars are pinned at 1e-12 relative
+six gates added (`expand_v149_test.mbt`; GATE 1 and GATE 2 share one test
+function). The scalars are pinned at 1e-12 relative
 (the did_cs quantities carry the known ~1.5e-15 cross-backend spread) and are
 asserted positive and finite, since `sqrt(sigma2 * nu2)` depends on it. GATE 3
 proves the `in_sample_normalization` flag selects a genuinely different branch:
@@ -1688,7 +1691,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.1, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.2, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1915,7 +1918,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.164.1
+python .github/scripts/ci_local.py run --all --release-tag v0.164.2
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 
@@ -1971,7 +1974,7 @@ evidence is worse than no detail line.
 
 `selftest` is the guard on the guard: every discriminating rule has a paired
 control arm, so a gate that cannot fail cannot pass here either. **22
-self-tests.** Nine simulator bugs it has caught, every one of which read as a
+self-tests.** Eight simulator bugs it has caught, every one of which read as a
 project failure:
 
 - Windows `text=True` put a `\r` on every line of the script, so
@@ -2017,7 +2020,7 @@ close to `ubuntu-latest`, but not equal to it).
   APO learner plumbing + APOS bootstrap/confint + BLP plumbing.
 - v0.64.0 verified counts: `moon test` 500 / 500 (native, wasm, js)
   and 506 / 506 (wasm-gc); 23 / 23 Python cross-validators PASS in
-  ~73 s. Adds `bootstrap()` to 8 remaining estimators (SSM, DID,
+  ~73 s. Adds `bootstrap()` to nine remaining estimators (SSM, DID,
   DIDBinary, DIDCSBinary, LPQ, PQ, QTE, DIDCS, BLP) via four new
   shared inner helpers in `bootstrap_helper.mbt`. RDD and
   PolicyTree bootstrap deferred to v0.65.0 (kernel-weighted n_local
@@ -2031,7 +2034,7 @@ close to `ubuntu-latest`, but not equal to it).
   for true cluster-aware cross-fitting).
 - v0.66.0 verified counts: `moon test` 517 / 517 (native, wasm, js)
   and 523 / 523 (wasm-gc); 23 / 23 Python cross-validators PASS in
-  ~48 s. Adds `sensitivity_analysis()` on 7 IRM-style estimators
+  ~48 s. Adds `sensitivity_analysis()` on eight IRM-style estimators
   (PLR / IRM / PLIV / IIVM / APO / DID / DIDBinary / DIDCSBinary)
   via a shared `irm_style_sensitivity` helper; `confint(joint=true)`
   on 3 multi-theta estimators (APOS / QTE / DIDCS) using a

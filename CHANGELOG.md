@@ -9,6 +9,103 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.2] — five count words that had drifted from the lists they introduce
+
+`moon.mod` moves 0.164.1 -> 0.164.2. No `.mbt` changed, so the test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js). This round audited one
+claim class end to end: **a count word and the list it introduces**, in the
+README's own per-release log and in the `adjust_ps` retrospective.
+
+### Fixed — "the five remaining `adjust_ps` call sites" listed six, and there are eight
+
+- The v0.121.0 retrospective said the "five remaining `adjust_ps` call sites"
+  and then listed six: `apo.mbt:320`, `did.mbt:628`,
+  `did_cross_section.mbt:615`, `did_cs_binary.mbt:374`, `cvar.mbt:736` and
+  `cvar.mbt:1005`. Derived from the source, there are **ten** production
+  `adjust_ps` call sites; two forward `cv` (IRM's and IIVM's) and **eight**
+  do not, in seven files -- the six listed plus `quantile.mbt:217` and
+  `ssm.mbt:671`.
+- The sentence was **born wrong**: it first appeared in v0.159.0, already
+  saying five while listing six, and it never covered the SSM and PQ sites
+  that had existed since v0.123.0 and v0.124.0. It is a present-tense
+  claim, so it was false as written, not merely dated.
+- The count word and the list now agree, the list covers the set, and the
+  two forwarding sites are named.
+
+### Fixed — two per-release counts that did not match their own lists
+
+- v0.64.0: "Adds `bootstrap()` to **8** remaining estimators (SSM, DID,
+  DIDBinary, DIDCSBinary, LPQ, PQ, QTE, DIDCS, BLP)" -- the list has **nine**
+  names, and the source agrees: exactly nine estimators gained `bootstrap`
+  between v0.63.0 and v0.64.0, and they are exactly those nine. The count
+  word was wrong; the list was right. (The v0.64.0 tag message still reads
+  "Item 1 (bootstrap on 8 remaining estimators)" -- a tag is never rewritten,
+  so the correction lives here and in the README.)
+- v0.66.0: "Adds `sensitivity_analysis()` on **7** IRM-style estimators
+  (PLR / IRM / PLIV / IIVM / APO / DID / DIDBinary / DIDCSBinary)" -- the
+  list has **eight** names, and the source agrees: exactly eight estimators
+  gained `sensitivity_analysis` between v0.65.0 and v0.66.0, and they are
+  exactly those eight.
+
+### Fixed — "5 gates added" for a file whose gates are numbered 1 to 6
+
+- v0.149.0: "5 gates added (`expand_v149_test.mbt`)". The file's gates are
+  labelled **GATE 1** through **GATE 6**; GATE 1 and GATE 2 share one test
+  function, so there are six gates in five test functions. The README's own
+  next paragraph refers to "GATE 6", which is why a reader counting gates
+  finds six. It now says six, and says why the file holds five tests.
+
+### Fixed — "Nine simulator bugs" over a list of eight
+
+- The CI-simulation section said "Nine simulator bugs it has caught" and then
+  listed **eight** bullets. Traced through the tags: the count read "Eight"
+  at v0.163.0, with eight bullets, and flipped to "Nine" at v0.163.1 while
+  the list stayed at eight -- so it was wrong for **eleven** consecutive
+  releases, and no one caught it because a bare count next to a bullet list
+  is not the kind of thing a reader re-counts. It says eight now, and a
+  verifier counts the bullets.
+
+### A new verifier for the class
+
+- `_verify/_verify_counts_1641.py` pins all five counts, and pins the ones
+  that were checked and are CORRECT so they cannot quietly break later:
+  v0.67.0's "9 single-theta estimators" (measured: exactly nine gained a
+  `joint` parameter), v0.86.0's "coverage 2 -> 6 of 22" (measured: the
+  sandwich triple went from 2 estimators to 6), v0.86.0's "6 new white-box
+  tests" (measured: exactly six `test` declarations), v0.90.0's "11 affected
+  estimators" and "13 psi-construction sites" (both corroborated by
+  `CHANGELOG.md` v0.90.0), the gate counts in
+  `expand_v148/149/150/151/152_test.mbt`, `v063_wbtest.mbt`'s 6 tests, and
+  the fuzz harness's 11 surfaces.
+
+### Verified, not changed
+
+- All **31** port-source `file.mbt:NNN` references in the README still point
+  at a line that exists and says what the README says it says -- including
+  `irm.mbt:430` and `iivm.mbt:525`, which are the `cv=` lines.
+- All **43** upstream `file.py:NNN` references still point at the right
+  place in the `doubleml-0.11.4` sdist, including the four
+  `cv=smpls` call sites (`pq.py:410`, `did_binary.py:537`, `iivm.py:371`,
+  `cvar.py:343`) the "upstream passes it at every call site" claim rests on.
+- The present-tense deficiency claims elsewhere in the document are still
+  true: `DoubleMLDIDMulti` still calls `ignore(t_pre)` (three sites in
+  `did_multi.mbt`), `tsby_p_adjust` still diverges from `fdr_tsbky`, and
+  `DoubleMLRDD` still exposes `hac_se` and no `sandwich_se` -- it is one of
+  the three estimators with no sandwich family, and `rdd.mbt` explains why
+  in a section comment of its own.
+
+### Gate for this release
+
+`moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3` are both the
+current registry latest, so the gate ran on current pins with no `moon update`
+needed. **47** local gate steps, 0 failed: `moon build` and `moon test
+--deny-warn` green on all four backends; `moon fmt --check` clean; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.164.1] — a half-true API claim, a score that named the wrong family, and a gate that had started to work
 
 `moon.mod` moves 0.164.0 -> 0.164.1. The only `.mbt` edits are comments, so
