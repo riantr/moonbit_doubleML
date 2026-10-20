@@ -3,12 +3,51 @@
 WHAT THIS IS, AND WHY IT IS NOT LIKE THE OTHER 24 CHECKS
 ========================================================
 Every other `validate_*_with_python.py` builds a reference and compares the
-port against it. Those references are OURS. This one is not: the dataset
-here comes from `doubleml.did.datasets.make_did_SZ2020`, called with
-upstream's own seed and fed to upstream's own `DoubleMLDID` -- the exact
-sequence in the `DoubleMLDID` docstring. So this asks a strictly harder
-question than the rest: not "does the port agree with our second
-implementation" but "does the port agree with upstream, on upstream's data".
+port against it, and the reference is OURS -- a hand-rolled implementation
+that mirrors the MoonBit algorithm. Nine of them import `doubleml` as well,
+but there upstream's class is a second opinion or a cross-check between the
+two references, not the thing the port is graded against; the one that does
+grade the port against upstream's own class is
+`validate_lplr_with_python.py`, and `pyexample_lplr.py` is what supersedes it.
+
+This one is different: the dataset here comes from
+`doubleml.did.datasets.make_did_SZ2020` and is fed to upstream's own
+`DoubleMLDID`. So this asks a strictly harder question than the rest: not
+"does the port agree with our second implementation" but "does the port agree
+with upstream, on upstream's data".
+
+Two deliberate departures from upstream's own docstring example, both
+measured rather than assumed. Upstream's example is `np.random.seed(42)`,
+`make_did_SZ2020(n_obs=500)`, RandomForest learners and the default
+`n_folds=5`; this gate uses `n_obs=2000`, dgp seed 7, deterministic linear
+learners and `n_folds=2`. The DATASET is the departure that matters:
+`_verify/_seed_sweep_1660.py` found that upstream's own 500/42 fixture has a
+coefficient of 0.063 against a fold sd of 0.04150 -- 1.5x noise -- and that
+permuting the treatment column moves it by 0.0007, so a gate on that fixture
+would pass whether the estimator is correct or hard-codes zero. At 2000/7 the
+signal is 13x the noise and the gate can actually bite. The learners are
+deterministic on purpose: a forest would make the reference depend on a
+second RNG, and the point of the gate is that the DATA and the ESTIMATOR are
+upstream's, not that they are stochastic.
+
+UPSTREAM'S `DoubleMLDID` IS DEPRECATED, AND THIS GATE STILL USES IT
+=====================================================================
+`doubleml` 0.11.3 prints, on every run of this gate:
+
+    FutureWarning: DoubleMLDIDData is deprecated and will be removed with
+    version 0.12.0. Use DoubleMLPanelData instead.
+    DeprecationWarning: DoubleMLDID is deprecated and will be removed with
+    version 0.12.0. Please use DoubleMLDIDBinary instead.
+
+That is upstream's own advice. This gate follows it only in part: it still
+fits the deprecated `DoubleMLDID` on the deprecated `DoubleMLDIDData`,
+because the SZ2020 DGP is a single-cohort panel and upstream's replacement,
+`DoubleMLDIDBinary`, is gated separately, on the CS2021 panel, in
+`pyexample_did_binary.py`. The sibling `pyexample_did_cs_binary.py` declines
+the deprecated `DoubleMLDIDCS` for the same reason and says so in its own
+docstring. So when upstream 0.12.0 removes these classes, THIS is the gate
+that needs rewriting; the others are already on classes upstream plans to
+keep.
 
 WHY IT HAS TO LOOK LIKE THIS
 ============================
@@ -28,13 +67,22 @@ THE TOLERANCES ARE MEASURED, NOT CHOSEN
 ========================================
 Upstream draws folds from numpy's global RNG; the port draws its own from
 `seed=`. Those are different partitions of the same rows, so bit equality is
-impossible and the tolerance has to come from the fold noise itself. Fitting
-upstream under 20 different fold seeds (`_verify/_se_noise_1660.py`):
+impossible and the tolerance has to come from the fold noise itself. Upstream
+refitted under 10 fold seeds on the SHIPPED fixture (n_obs 2000, dgp seed 7)
+-- `_verify/_se_sd_1647.py`:
 
-    coef  upstream over 20 seeds: min 0.019404  max 0.157364  sd 0.034670
-    se    upstream over 20 seeds: min 0.140516  max 0.151343  sd 0.002994
+    coef  upstream over 10 seeds: min -0.162514  max -0.126479  sd 0.011281
+    se    upstream over 10 seeds: min  0.069212  max  0.071908  sd 0.000865
 
-An earlier revision of this file read an 8% SE gap there as an OPEN PORT
+Those are the two constants the gate uses (`COEF_SD`, `SE_SD`), and the band
+is 3 x each of them. An earlier revision of this file quoted a DIFFERENT
+measurement here -- 20 seeds on upstream's 500/42 fixture, sd 0.034670 and
+0.002994, from `_verify/_se_noise_1660.py` -- and presented it as the
+provenance of the tolerance. It is not: that script measures a fixture this
+gate does not use, and its numbers are the ones the seed sweep later
+rejected.
+
+An earlier revision of this file also read an 8% SE gap as an OPEN PORT
 DEFECT. It was not a port defect -- it was this fixture misconfiguring the
 port. Upstream defaults to `in_sample_normalization=True` and refuses an
 `ml_m` without `.predict_proba()`; the port defaults to `false` and a linear
@@ -46,11 +94,22 @@ regression. Four-way measurement on the generated dataset:
     ml_m=cls  norm=True  -> se 0.0708030   <- upstream's configuration
     upstream              -> se 0.0700322
 
-94% of the gap was the fixture. With upstream's actual configuration the port
-lands 0.03 sd from upstream on the coefficient and 0.89 sd on the standard
-error, so BOTH rows are now hard 3-sd gates and the pinned-ratio row is gone.
-`main.mbt`'s `sec_did_pyexample` carries the same measurement next to the
-settings that produce it.
+The fixture accounted for 86% of that gap, not for all of it. The total gap
+is 0.0055896 (0.0756218 - 0.0700322); the fixture's part of it is 0.0048188
+(0.0756218 - 0.0708030); 0.0007708 -- 14% -- remains. What remains is 0.89
+fold-sd, inside the noise, and the coefficient tightens from -0.167398 to
+-0.149834 against upstream's -0.150185. With upstream's actual configuration
+the port lands 0.03 sd from upstream on the coefficient and 0.89 sd on the
+standard error, so BOTH rows are now hard 3-sd gates and the pinned-ratio
+row is gone.
+
+That 86% is checked on every run rather than remembered: the parity fixture
+emits the port's fit under upstream's configuration AND a second fit under
+the port's own defaults, and this gate recomputes the split from those two
+live values plus upstream's own SE. The two middle rows of the table are a
+one-off measurement and are not re-derived; the rows the 86% is made of are.
+`examples/parity/main.mbt`'s `sec_did_pyexample` carries the same
+measurement next to the settings that produce it.
 
 THE CS2021 HALF LIVES NEXT DOOR, AND THE REASON IT WAS SKIPPED WAS WRONG
 ========================================================================
@@ -127,6 +186,12 @@ COEF_SD = 0.01128          # upstream coef, sd over 10 fold seeds at 2000/7
 COEF_TOL = 3 * COEF_SD      # = 0.03384
 SE_SD = 0.000865          # upstream se, sd over 10 fold seeds at 2000/7
 SE_TOL = 3 * SE_SD        # = 0.002595
+
+# How much of the SE gap the FIXTURE accounted for, at the port's default
+# configuration, against upstream's. The gate re-derives this from two live
+# values on every run, so the four-way table in the docstring cannot rot
+# unnoticed. 0.0048188 of a 0.0055896 gap.
+FIXTURE_SHARE = 0.862
 
 
 # --------------------------------------------------------------------------- #
@@ -316,6 +381,14 @@ def main(argv):
     import parity_helper as ph
     coef = sec["val"]["sz_coef"]
     se = sec["val"]["sz_se"]
+    # The port under its OWN DEFAULTS, emitted by the same fixture. The
+    # docstring's four-way table claims the fixture -- not the port --
+    # accounted for most of the SE gap; both endpoints of that claim are live
+    # values, so the split is checked here instead of being remembered.
+    se_defaults = sec["val"]["sz_se_defaults"]
+    total_gap = abs(se_defaults - sz["se"])
+    fixture_gap = abs(se_defaults - se)
+    share = (fixture_gap / total_gap) if total_gap else 0.0
     rows = [
         # HARD GATE. The effect is -0.150 and the band is 0.034, so this row
         # bites: a corrupted panel cannot pass it.
@@ -332,6 +405,14 @@ def main(argv):
          abs(se - sz["se"]) <= SE_TOL),
         ("sz_n_obs", sec["val"]["sz_n_obs"], float(sz["y"].shape[0]),
          sec["val"]["sz_n_obs"] == float(sz["y"].shape[0])),
+        # The four-way table's own arithmetic, on live values. The port's
+        # default configuration sits 8% above upstream; the fixture's
+        # misconfiguration accounted for FIXTURE_SHARE of that gap and the
+        # rest is inside the fold noise. If the port's DEFAULTS ever change,
+        # this row goes red and the table in the docstring is what has to be
+        # updated -- which is the point of measuring it here.
+        ("sz_se: fixture share of the gap", round(share, 4), FIXTURE_SHARE,
+         abs(share - FIXTURE_SHARE) <= 0.002),
     ]
     print("fold-noise band, measured over 10 upstream fold seeds:")
     print("  coef: sd %.6f  ->  port is %.2f sd from upstream"

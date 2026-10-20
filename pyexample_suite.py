@@ -37,9 +37,11 @@ Measured, not hypothesised: an earlier sweep seeded once and got `pliv`
 DecisionTreeClassifier has no fixed `random_state` and so consumes global
 draws) got 1.03584 from byte-identical data. `np.random.seed` is therefore
 re-issued immediately before each estimator here, and
-the suite stability check proves it by inserting 50k
+the suite stability check proves it on EVERY pass by inserting 50k
 unrelated draws between two identical PLIV fits and requiring a bit-identical
-coefficient.
+coefficient. The check is an assertion and not a report: a fit that drifts
+across the draws aborts the gate, and the verdict is printed beside the
+estimators on every run.
 
 WHY PolicyTree IS NOT IN THE SIX
 ================================
@@ -105,12 +107,19 @@ divergence the band is hiding. Measured by re-running the emitter across 9
 fold seeds, against the LARGER of the two
 sides' spread:
 
-    est    port coef   port sd   upstream coef   up sd     gap    gap/sd
-    plr     1.045287   0.009410      1.044260   0.004563  0.001027    0.11
-    irm     1.046243   0.012307      1.050818   0.020601  0.004575    0.22
-    ssm     1.028498   0.040783      0.968932   0.024551  0.059566    1.46
-    pliv    0.982029   0.021727      1.014487   0.035529  0.032458    0.91
-    iivm    1.505074   0.035505      1.608705   0.075830  0.103631    1.37
+    est    port coef   port sd   upstream coef   up sd     gap    gap/sd   band
+    plr     1.045287   0.009410      1.044260   0.004563  0.001027    0.11  0.013689
+    irm     1.046243   0.012307      1.050818   0.020601  0.004575    0.22  0.061785
+    ssm     1.028498   0.040783      0.968932   0.024551  0.059566    1.46  0.073639
+    pliv    0.982029   0.021727      1.014487   0.035529  0.032458    0.91  0.106598
+    iivm    1.505074   0.035505      1.608705   0.075830  0.103631    1.37  0.227501
+
+The last column is the BAND IN FORCE -- the numbers `BAND_BY_EST` holds and
+the gate prints on every run. It is not 3 x the "up sd" column: the two sd
+columns are a 9-seed re-run of the emitter, while the band is 3 x an 8-seed
+upstream fold sd, and for SSM that is 0.073653 against a band of 0.073639.
+The band is what decides whether a row passes, so the band is what is
+quoted.
 
 Every gap is inside 3 sd, so the bands are sized by fold variation rather than
 by an unexplained offset. SSM's 1.46 sd is the largest and is why its row looks
@@ -178,7 +187,7 @@ XCOLS = ["X%d" % (j + 1) for j in range(P)]
 # 0.059 (pliv) and 0.087 (iivm) -- every one far below 1/3, so a separate
 # 3-sd se band would be narrower than the arithmetic noise either side. The
 # CS2021 gate makes the same inherit on a measured argument; this family had
-# never been checked, which is what `_suite_tol_1680.py` was written for.
+# never been checked, which is what the tolerance table above is.
 #
 # BLP IS THE EXCEPTION AND HAS ITS OWN BAND
 # ----------------------------------------
@@ -291,6 +300,27 @@ def build_reference():
     seeded("pliv")(lambda: dml.plm.DoubleMLPLIV(
         obj_b, LinearRegression(), LinearRegression(), LinearRegression(),
         n_folds=N_FOLDS, n_rep=N_REP))
+    # THE STABILITY CHECK the module docstring promises, run on every gate
+    # pass. Two identical PLIV fits, with 50k unrelated draws from the
+    # process-global RandomState between them, must agree BIT for bit. The
+    # re-seed above is what makes that true; this is what proves it. Without
+    # the check, a change that moved the re-seed -- or let any estimator
+    # consume the global stream before its fold draw -- would silently
+    # re-couple every fold to every random number drawn before it, which is
+    # the exact failure the per-estimator re-seed exists to prevent.
+    pliv_coef_before = np.ravel(np.asarray(up["pliv"].coef, dtype=float)).copy()
+    np.random.random(50000)
+    np.random.seed(FIT_SEED)
+    pliv_stability_fit = dml.plm.DoubleMLPLIV(
+        obj_b, LinearRegression(), LinearRegression(), LinearRegression(),
+        n_folds=N_FOLDS, n_rep=N_REP).fit()
+    pliv_coef_after = np.ravel(np.asarray(pliv_stability_fit.coef, dtype=float))
+    pliv_stable = bool(np.array_equal(pliv_coef_before, pliv_coef_after))
+    assert pliv_stable, (
+        "PLIV is NOT stable under the per-estimator re-seed: two identical "
+        "fits with 50k unrelated draws between them disagree, so the fold "
+        "draw is reading the process-global RandomState."
+    )
     obj_c = dml.data.DoubleMLData(dfc, "y", "d", XCOLS, z_cols=["z"])
     seeded("iivm")(lambda: dml.irm.DoubleMLIIVM(
         obj_c, LinearRegression(), LogisticRegression(), LogisticRegression(),
@@ -315,6 +345,7 @@ def build_reference():
         "xb": xb, "yb": yb, "db": db, "zb": zb,
         "xc": xc, "yc": yc, "dc": dc, "zc": zc,
         "up": up, "rel_b": rel_b, "exc_b": exc_b, "p1": p1, "p0": p0,
+        "pliv_stable": pliv_stable,
     }
 
 
@@ -542,6 +573,8 @@ def main(argv):
               % (k, np.array2string(np.ravel(d["up"][k].coef), precision=6),
                  np.array2string(np.ravel(d["up"][k].se), precision=6),
                  APOS_BAND[0] if k == "apos" else BAND_BY_EST[k]))
+    print("  PLIV stability: two identical fits, 50k unrelated draws between "
+          "them, bit-identical: %s" % d["pliv_stable"])
     print()
 
     snapshot = snapshot_fixture()

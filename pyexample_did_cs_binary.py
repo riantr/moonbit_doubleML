@@ -31,8 +31,9 @@ Upstream's `DoubleMLDIDCS` is deprecated -- "will be removed with version
 0.12.0. Please use DoubleMLDIDCSBinary instead" -- and it refuses the modern
 container: "For repeated cross sections the data must be of DoubleMLDIDData
 type", raised against a `DoubleMLPanelData` argument. Gating a port method
-against a class upstream is deleting would put an expiry date on this gate,
-and a `doubleml-0.11.4` tarball is already sitting in `_verify`.
+against a class upstream is deleting would put an expiry date on this gate.
+The notice is in the installed upstream already -- `doubleml` 0.11.3 carries
+it in `doubleml/did/did_cs.py` -- so the removal is not a rumour.
 
 THE DATA IS THE CS2021 PANEL, NOT A NEW DGP
 ===========================================
@@ -65,11 +66,18 @@ folds from the process-global RandomState when `random_state` is unset):
 
     cell        coef      coef_sd   3 sd     |coef|/sd
     ATT(2,1,2)  1.15791   0.05520  0.16560     21.0
-    ATT(2,1,3)  1.90497   0.06674  0.20021     28.5
-    ATT(2,1,4)  2.89866   0.06655  0.19966     43.6
-    ATT(3,2,3)  0.93715   0.04748  0.14245     19.7
-    ATT(3,2,4)  1.67532   0.04245  0.12734     39.5
-    ATT(4,3,4)  0.87986   0.04570  0.13711     19.3
+    ATT(2,1,3)  1.90497   0.06674  0.20022     28.5
+    ATT(2,1,4)  2.89866   0.06655  0.19965     43.6
+    ATT(3,2,3)  0.93715   0.04748  0.14244     19.7
+    ATT(3,2,4)  1.67532   0.04245  0.12735     39.5
+    ATT(4,3,4)  0.87986   0.04570  0.13710     19.3
+
+The "3 sd" column is the BAND IN FORCE -- the same numbers `TOL_BY_CELL`
+below holds and the same ones the gate prints on every run -- and it is
+3 x the "coef_sd" column, not 3 x the unrounded sd. Those two differ in the
+last digit on five of the six rows (3 x 0.06674 is 0.20022, while 3 x the
+unrounded sd rounds to 0.20021), and it is the band that decides whether a
+cell passes, so the band is what is quoted here.
 
 Every cell is measured INDIVIDUALLY. The weakest signal is 19.3x the fold
 noise, so even the loosest band is a real constraint.

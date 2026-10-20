@@ -11,9 +11,10 @@ one, and it was left ungated because a measurement found it divergent --
 
 That measurement was taken on a design with NO NOISE, and has since been
 withdrawn; see the next section. Re-measured on a design that does, the port's
-bias-corrected estimator agrees with rdrobust to 6.2e-15 and its robust SE to
-1.9e-15. So RDD is gated here -- on the arm that matches -- and the divergent
-arm is reported beside it rather than gated.
+bias-corrected estimator agrees with rdrobust to 6.2e-15 ABSOLUTE -- 3.1e-15
+relative -- and its robust SE to 1.9e-15 absolute, 1.4e-14 relative. So RDD
+is gated here -- on the arm that matches -- and the divergent arm is reported
+beside it rather than gated.
 
 THE DESIGN THAT LOOKED NOISY AND WAS NOT
 ========================================
@@ -39,17 +40,20 @@ WHAT IS GATED AND WHAT IS ONLY REPORTED
 =======================================
 GATED -- the bias-corrected arm, at rdrobust's own defaults on both sides
 (`DoubleMLRDD::tau_bc` with `b == h, p = 1, q = 2`; `DoubleMLRDD::tau_bc_se_rb`
-with `vce = "nn"`, rdrobust's default):
+with `vce = "nn"`, rdrobust's default). The bound is RELATIVE, so the
+relative gap is the one the bound applies to; the absolute gap is given too,
+because that is the one a reader comparing two printed doubles can check:
 
-    tau_bc        vs  rdrobust  tau.bc      measured gap 6.2e-15
-    tau_bc_se_rb  vs  rdrobust  se.rb       measured gap 1.9e-15
+    quantity      upstream field   absolute gap   relative gap
+    tau_bc        tau.bc            6.2e-15        3.1e-15
+    tau_bc_se_rb  se.rb             1.9e-15        1.4e-14
 
 REPORTED, NOT GATED -- the shipped default arm. `DoubleMLRDD::coef()` / `se()`
 are homoskedastic and UNBIAS-CORRECTED, so they are a different estimator from
 rdrobust's default, not a worse implementation of the same one:
 
     homo_coef     vs  rdrobust  tau.us      ~5.9e-3 relative
-    homo_se       vs  rdrobust  se.us       ~19x
+    homo_se       vs  rdrobust  se.us       0.053x upstream's (rel gap 0.947)
 
 A gate that required those to match would be permanently red, and a permanently
 red gate is either a failing CI or a mute. Both are worse than recording the
@@ -81,10 +85,11 @@ that control turns red rather than the tolerance quietly absorbing it.
 ON THE TOLERANCE
 ================
 The two arms differ only in summation order between two IEEE-754
-implementations, and the measured gaps are ~6e-15. `RTOL` sits about four
-orders of magnitude above that -- loose enough never to trip on rounding,
-tight enough that the smallest structural difference in play (the 2.0e-2 gap
-between rdrobust's `tau.us` and `tau.bc`) is nine orders outside it.
+implementations, and the measured RELATIVE gaps are 3.1e-15 and 1.4e-14.
+`RTOL` (1e-11) sits about 700x above the larger of them -- loose enough never
+to trip on rounding, tight enough that the smallest structural difference in
+play (the 2.0e-2 gap between rdrobust's `tau.us` and `tau.bc`) is nine orders
+outside it.
 
 FAILS CLOSED: if `moon run` cannot be executed, its output cannot be parsed, the
 independently rebuilt design disagrees with the emitter's, or `rdrobust` is not
@@ -308,15 +313,24 @@ def main():
                          rel_gap=r, bound=None, agree=None))
 
     if "tau_bc_collapsed" in vals and "tau_bc" in vals:
+        # The gate is the OUTER evidence for a sentence in `rdd.mbt`, so it has
+        # to quote that sentence as it currently reads. It used to say "the
+        # v0.116.0 docstring claims they agree when b == h" -- true of v0.116.0,
+        # but `rdd.mbt` has since been corrected to say they DIFFER, so the
+        # note was flagging a sentence that no longer existed. The RELATIVE
+        # gap is what `rdd.mbt` quotes (1.3e-2 on the `rdd_var` design), so
+        # that is what is printed here too.
+        rel_gap = (abs(vals["tau_bc_collapsed"] - vals["tau_bc"])
+                   / max(abs(vals["tau_bc"]), 1.0e-300))
         print("\n    tau_bc_collapsed %.17g -- NOT the same quantity as"
               % vals["tau_bc_collapsed"])
-        print("    tau.bc; the v0.116.0 docstring claims they agree when b == h.")
-        print("    Measured here they differ by %.3e, so that sentence is wrong"
-              % abs(vals["tau_bc_collapsed"] - vals["tau_bc"]))
+        print("    tau.bc; `rdd.mbt` says they differ at b == h, and it does:")
+        print("    they differ by %.3e relative here, so the sentence is right"
+              % rel_gap)
         print("    and the test that 'pins' it cannot see the difference.")
         rows.append(dict(quantity="tau_bc_collapsed",
                          port=vals["tau_bc_collapsed"], upstream=None,
-                         rel_gap=None, bound=None, agree=None))
+                         rel_gap=rel_gap, bound=None, agree=None))
 
     print("\n" + "=" * 76)
     if ok:

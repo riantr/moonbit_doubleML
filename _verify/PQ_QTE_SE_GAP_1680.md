@@ -14,8 +14,10 @@ takes two more:
 | `DoubleMLQTE` | analytic only | `pyexample_pq.py` |
 | `DoubleMLLPQ` | analytic only | `pyexample_pq.py` |
 
-Still open on `examples/main`: RDD (measured divergent — see
-`RDD_PARITY_1680.md`), PolicyTree.
+Still open on `examples/main` **as of this record** (2026-10-16,
+`5f1ef977`): RDD (measured divergent — see `RDD_PARITY_1680.md`), PolicyTree.
+Both have since been gated — `pyexample_rdd.py` (2026-10-17) and
+`pyexample_policytree.py` (2026-10-16) — so that list is empty.
 
 ## A different comparison shape from every other gate here
 

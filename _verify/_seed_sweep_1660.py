@@ -1,5 +1,5 @@
 """The SZ2020 comparison is currently vacuous: the coefficient is 0.063 while
-the fold-noise sd is 0.0347, and PERMUTING the treatment moves it by 0.0007 --
+the fold-noise sd is 0.04150, and PERMUTING the treatment moves it by 0.0007 --
 i.e. the dataset's true effect is ~0 and the whole coefficient is noise.
 
 A fixture like that passes whether the estimator is correct or returns zero.
@@ -7,6 +7,11 @@ A fixture like that passes whether the estimator is correct or returns zero.
 So: sweep seeds and sample sizes, and pick a configuration where the signal
 clears the noise. The statistic that matters is the effect size relative to
 the fold-assignment spread, not the raw coefficient.
+
+(The sd was 0.0347 in an earlier revision of this note, which is the 20-seed
+figure from `_verify/_se_noise_1660.py` -- a different measurement, on the
+same fixture. This script's own output is 0.04150: ten fold seeds, 500
+observations, dgp seed 42.)
 """
 import sys
 import os

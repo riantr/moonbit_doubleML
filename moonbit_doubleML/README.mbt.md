@@ -30,7 +30,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.6** |
+| `moon.mod` version | **0.164.7** |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -1328,7 +1328,7 @@ outputs. CI runs each script and requires **both** a zero exit code and a
 trailing `PASS` line -- the second condition alone used to be the only one
 checked, and it is trivially satisfied by a script that never ran MoonBit.
 
-**Eight gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
+**Nine gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
 family. Every script above compares the port against a second implementation
 written in this repository, which can only catch a disagreement someone already
 thought to look for. The `pyexample_*` scripts instead run upstream's own code
@@ -1352,10 +1352,12 @@ script per upstream class:
 homoskedastic and **uncorrected**, so they are a *different estimator* from
 `rdrobust`'s default rather than a worse implementation of the same one, and matching
 them would be a re-specification rather than a bug fix. What `pyexample_rdd.py` gates is
-the arm that does match: `tau_bc` against upstream's `tau.bc` (measured gap **6.2e-15**)
-and `tau_bc_se_rb` against `se.rb` (**1.9e-15**), both at bound `1e-11`. The default arm
+the arm that does match: `tau_bc` against upstream's `tau.bc` (measured gap **6.2e-15**
+absolute, **3.1e-15** relative) and `tau_bc_se_rb` against `se.rb` (**1.9e-15** absolute,
+**1.4e-14** relative), both at relative bound `1e-11`. The default arm
 is printed beside the gate on every run — `~5.9e-3` relative on the point estimate and
-`~19x` on the SE — so the divergence is visible rather than asserted. The standing rule is
+`0.053x` upstream's on the SE (`~19x` smaller) — so the divergence is visible rather
+than asserted. The standing rule is
 the same one below: a
 recorded defect beats a gate that cannot pass. With RDD recorded and the other
 four gated, every estimator slot on `examples/main` that once had an analytic
@@ -1369,7 +1371,9 @@ integer `g`, which is exactly this port's own rule, and the `inf` that broke
 the earlier attempt came only from `time_type="float"`. Upstream's 12-cell
 `"standard"` grid maps onto 6 cells the port can express, all of them
 post-treatment cells of all cohorts, each gated at a **per-cell measured**
-3-sd band (signal is 12-57x the fold noise). `DoubleMLDIDMulti`'s `ignore(t_pre)`
+3-sd band (the coefficient's signal is 12-57x the fold noise, the standard
+error's 1.8-4.4x — one band per cell serves both rows, and the weaker of the
+two is the standard error). `DoubleMLDIDMulti`'s `ignore(t_pre)`
 is a real divergence from upstream and is not fixed; it is unreachable on those
 6 cells, which is what makes the comparison sound rather than lucky.
 
@@ -1702,7 +1706,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.6, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.7, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1966,7 +1970,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.164.6
+python .github/scripts/ci_local.py run --all --release-tag v0.164.7
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 

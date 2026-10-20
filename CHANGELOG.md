@@ -9,6 +9,137 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.7] -- the upstream gates' own docstrings, and what they check
+
+`moon.mod` moves 0.164.6 -> 0.164.7. No `.mbt` file changed except one
+comment block and one extra fit in the parity emitter, and no estimator
+behaviour changed: this round is entirely about the claims. The test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Rounds 1-11 audited the README, the shipped documents, the acceptance
+features, the QA LOOP registry and the dated session records. Round 12
+audited the part nobody had touched: the **nine `pyexample_*` upstream-parity
+gates**. They are the only verification in this repository that is a Python
+script printing its own verdict, so their docstrings are the only
+"test documentation" that no test runner ever reads.
+
+### Fixed -- a tolerance whose stated provenance was a different fixture
+
+- `pyexample_did.py` said the fold-noise band came from
+  `_verify/_se_noise_1660.py` ("20 different fold seeds"). That script
+  measures upstream's **500-observation, seed-42** fixture -- sd 0.034670 and
+  0.002994 -- which is the fixture the seed sweep later REJECTED as pure
+  noise. The gate's band is 0.01128 and 0.000865, at 2000/7 over 10 seeds.
+  The script it named was never the source of the tolerance.
+- The band now has a tracked, re-derivable provenance:
+  `_verify/_se_sd_1647.py` measures both constants and prints them beside the
+  gate's. Measured: coef sd 0.011281, se sd 0.000865 -- the gate's
+  `COEF_SD` and `SE_SD` hold.
+
+### Fixed -- a percentage that was not derivable from the table beside it
+
+- `pyexample_did.py` and `examples/parity/main.mbt` both said "**94%** of the
+  gap was the fixture". The four-way table next to them gives 0.0756218 (the
+  port's own defaults), 0.0708030 (upstream's configuration) and 0.0700322
+  (upstream), so the fixture's share is 0.0048188 of a 0.0055896 gap =
+  **86%**, and 0.0007708 -- 14% -- remains.
+- The share is now CHECKED on every run instead of remembered: the parity
+  fixture emits a second fit under the port's own defaults
+  (`sz_se_defaults`), and the gate recomputes the split from that and from
+  upstream's own SE. The new row prints `0.8621`.
+
+### Fixed -- three documents that disagreed with the gates they describe
+
+- `pyexample_did_cs_binary.py`'s tolerance table quoted a "3 sd" column that
+  was 3 x the UNROUNDED sd, so five of its six bands differed in the last
+  digit from the band the gate enforces. The column is now the band in force
+  (0.20022, 0.19965, 0.14244, 0.12735, 0.13710) and says which measurement it
+  is.
+- `pyexample_policytree.py` said the threshold bound "sits about 8x above"
+  the measured gap. `THRESH_RTOL` is 1e-6 and the measured relative gap is
+  4.750e-08, so it sits about **21x** above.
+- `pyexample_rdd.py` printed that "the v0.116.0 docstring claims they agree
+  when b == h". `rdd.mbt` was corrected long ago and says they DIFFER; the
+  gate was flagging a sentence that no longer existed. It now prints the
+  RELATIVE gap -- the one `rdd.mbt` quotes -- and points at what is true.
+
+### Fixed -- a README count that its own table contradicted
+
+- The README said "**Eight** gates whose reference is UPSTREAM" above a table
+  with **nine** rows, and said "9 `pyexample_*` upstream gates" 400 lines
+  later. The count word is now **Nine**, and the verifier derives it from the
+  number of files on disk, the number of table rows and the second mention.
+
+### Fixed -- gates that claimed a slot was still open
+
+- `pyexample_pq.py` said "the other three are still open", and
+  `pyexample_policytree.py` said "RDD is measured divergent and deliberately
+  has no gate". LPQ is closed in `pyexample_pq.py` itself, and RDD and
+  PolicyTree have their own gates.
+
+### Fixed -- a promise of a check that did not exist
+
+- `pyexample_suite.py` said "the suite stability check proves it by inserting
+  50k unrelated draws between two identical PLIV fits and requiring a
+  bit-identical coefficient". No such check existed anywhere in the
+  repository. It does now: two PLIV fits with 50k unrelated draws between
+  them must agree bit for bit, as an ASSERTION -- a fit that drifts across
+  the draws aborts the gate -- and the verdict is printed beside the
+  estimators on every run.
+- The same file named `_suite_tol_1680.py`, which has never existed in this
+  repository's history. The pointer is gone; the measurement it referred to is
+  the tolerance table in the file.
+
+### Fixed -- a dated record whose status line had become false
+
+- `_verify/FIVE_GATES_FEASIBLE_1680.md` said "gates not yet built" and listed
+  three "Reproduce" scripts that were never committed -- `git log --all` on
+  each of them is empty. It now carries a historical banner naming the commit
+  that introduced it (`3f83bf1c`, 2026-10-16, the date read from `git log`)
+  and a measured "what has changed since" table: 5 upstream gates then,
+  **9** now, with the 24 `validate_*_with_python.py` unchanged.
+
+### Recorded, not changed -- upstream's own deprecation
+
+- `pyexample_did.py` fits upstream's `DoubleMLDID`, which `doubleml` 0.11.3
+  reports with a DeprecationWarning on every run ("will be removed with
+  version 0.12.0. Please use DoubleMLDIDBinary instead"). The gate's
+  docstring now says so, and says which gate is the one that will need
+  rewriting when 0.12.0 lands. The sibling gates are already on classes
+  upstream plans to keep.
+
+### A new verifier for the class
+
+- `_verify/_verify_round12_pyexample_1647.py` makes **64** checks,
+  derived wherever a derivation exists: the fixture's share is derived from
+  the four-way table parsed out of the docstring and compared with the
+  percentage the document states, the percentage the parity emitter states
+  and the constant the gate asserts; the CS2021-binary band table is compared
+  with `TOL_BY_CELL` as a SET; the PolicyTree factor is derived from
+  `THRESH_RTOL` and the gap the docstring quotes; the five estimator slots
+  are checked by looking for their upstream class in a gate file; the README's
+  count word is compared with the number of table rows AND the number of
+  `pyexample_*.py` files on disk; and every `_verify/`, `.py` and
+  `.mbt:line` pointer in the nine gates is resolved and checked for
+  tracked-ness.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.6 it reports **32 failures**; against the corrected tree it
+  reports **0**.
+
+### Gate for this release
+
+Both declared dependencies were already at the current registry latest
+(`moonbitlang/async@0.22.5`, `moonbit-community/sqlite3@0.2.3`), so the
+gate ran on current pins with no `moon update` needed. **48** local
+gate steps, 0 failed: `moon build` and `moon test --deny-warn` green on
+all four backends; `moon fmt --check` clean at the package root **and**
+at the workspace root, which is the one CI runs; both READMEs
+byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.164.6] -- the dated records, and what they describe
 
 `moon.mod` moves 0.164.5 -> 0.164.6. No `.mbt` file changed and no behaviour

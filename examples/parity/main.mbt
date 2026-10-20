@@ -463,11 +463,18 @@ fn sec_did_cs() -> Unit {
 /// Upstream draws folds from numpy's global RNG; this port draws its own from
 /// `seed=`. Different partitions of the same rows, so the numbers cannot be
 /// bit-equal. `pyexample_did.py` measures that band rather than guessing it:
-/// upstream's coefficient varies with sd 0.0347 across 20 fold seeds, and the
-/// port lands 0.75 sd from upstream's mean -- inside the noise. Its standard
-/// error does NOT: the port's `se` is ~0.0022 below anything upstream
-/// produced, which is recorded as an open defect rather than folded into the
-/// tolerance.
+/// on the SHIPPED fixture (n_obs 2000, dgp seed 7) upstream's coefficient
+/// varies with sd 0.01128 across 10 fold seeds and its standard error with sd
+/// 0.000865, and the port lands 0.03 sd and 0.89 sd from upstream on the two
+/// -- inside the noise on both, and both are hard 3-sd gates.
+///
+/// The 500-observation, seed-42 fixture that upstream's own docstring uses is
+/// NOT the one measured here, and the earlier revision of this note was wrong
+/// to quote its numbers as if it were: `_verify/_seed_sweep_1660.py` found
+/// that fixture's coefficient is 0.063 against a fold sd of 0.04150, i.e. 1.5x
+/// noise, and permuting the treatment column moves it by 0.0007. A gate on
+/// that fixture would pass whether the estimator is correct or hard-codes
+/// zero.
 fn sec_did_pyexample() -> Unit {
   section("did_pyexample")
   // Emitted first, and it gates everything below. The first version fitted
@@ -511,9 +518,17 @@ fn sec_did_pyexample() -> Unit {
     //   ml_m=cls  norm=True  -> se 0.0708030   <- upstream's configuration
     //   upstream              -> se 0.0700322
     //
-    // 94% of the gap was the fixture. What remains (0.00077) is 0.89 fold-sd,
-    // inside the noise, and the coefficient tightens from -0.167398 to
-    // -0.149834 against upstream's -0.150185.
+    // The fixture accounted for 86% of the gap, not for all of it. The total
+    // gap is 0.0055896 (0.0756218 - 0.0700322); the fixture's part of it is
+    // 0.0048188 (0.0756218 - 0.0708030); 0.0007708 -- 14% -- remains. What
+    // remains is 0.89 fold-sd, inside the noise, and the coefficient tightens
+    // from -0.167398 to -0.149834 against upstream's -0.150185.
+    //
+    // The two rows the gap is made of are re-derived on every run, not
+    // remembered: this fit emits `sz_se` (upstream's configuration) and
+    // `sz_se_defaults` (the port's own defaults, fitted again below), and
+    // `pyexample_did.py` checks the split against the numbers quoted above.
+    // The middle two rows are a one-off measurement, not re-measured.
     ml_m=@moonbit_doubleML.LearnerDispatch::logistic_regression(
       @moonbit_doubleML.LogisticRegression::new(),
     ),
@@ -532,6 +547,30 @@ fn sec_did_pyexample() -> Unit {
   // fitted the rows it was handed, not some other panel.
   data_out("sz_y", sz2020_y())
   data_out("sz_d", sz2020_d())
+  // THE SAME FIT UNDER THE PORT'S OWN DEFAULTS, so the "ml_m=reg norm=False"
+  // row of the table above is measured rather than remembered. The two
+  // arguments are OMITTED ON PURPOSE: `ml_m` defaults to a linear regression
+  // and `in_sample_normalization` defaults to `false`, and that pair IS the
+  // default configuration. Naming them explicitly would pin the numbers to
+  // today's defaults instead of tracking them, so a default that ever changes
+  // would leave this row silently describing the past.
+  let fitted_sz_defaults = @moonbit_doubleML.DoubleMLDID::new(
+    @moonbit_doubleML.DoubleMLDIDData::new(
+      @moonbit_doubleML.Matrix::from_array(sz2020_x(), n_sz, p_sz),
+      sz2020_y(),
+      sz2020_d(),
+    ),
+    n_folds=2,
+    n_rep=1,
+    seed=42,
+  ).fit() catch {
+    _ =>
+      abort(
+        "did_pyexample: the default-configuration refit hit the same " +
+        "DoubleMLDIDData::new rejection as the fit above",
+      )
+  }
+  val("sz_se_defaults", fitted_sz_defaults.se())
   end()
 }
 
@@ -1891,9 +1930,10 @@ fn sec_pq_qte() -> Unit {
 /// WHY THIS SECTION, and why the comparison is LABELS rather than structure
 /// ==========================================================================
 /// PolicyTree is the last of the five estimator slots on `examples/main` that
-/// carried an ANALYTIC oracle only. RDD is measured divergent
-/// (`_verify/RDD_PARITY_1680.md`); PQ/QTE/LPQ are gated above; this closes
-/// PolicyTree.
+/// carried an ANALYTIC oracle only. PQ/QTE/LPQ are gated above, and RDD is
+/// gated too -- on the bias-corrected arm, after the divergence recorded in
+/// `_verify/RDD_PARITY_1680.md` turned out to have been measured on a
+/// noiseless design. This closes PolicyTree.
 ///
 /// Upstream is `doubleml.utils.policytree.DoubleMLPolicyTree`, which wraps a
 /// `sklearn.tree.DecisionTreeClassifier`:

@@ -5,8 +5,10 @@ WHY THIS GATE EXISTS
 ====================
 `examples/main` carried five estimator slots with an ANALYTIC oracle only and
 no upstream gate at all: RDD, PQ, QTE, LPQ and PolicyTree. PQ/QTE/LPQ are
-gated in `pyexample_pq.py`; RDD is measured divergent and deliberately has no
-gate (`_verify/RDD_PARITY_1680.md`). This closes PolicyTree, the last one.
+gated in `pyexample_pq.py` and RDD in `pyexample_rdd.py`, so with this file
+all five have an upstream gate and none is left open. The order in which they
+were closed does not matter; each of the three gates says which slots it
+took.
 
 TWO CALL-SHAPE TRAPS, both found by running rather than by reading
 ================================================================
@@ -50,7 +52,7 @@ WHY THE THRESHOLD IS COMPARED WITH A TOLERANCE
 sklearn stores node thresholds as float32. The port computes in f64. The two
 therefore cannot be bit-equal: on this design the gap is 9.499e-11 on a
 threshold of 0.002, i.e. 4.7e-8 relative, which is 0.4x the float32 epsilon.
-The bound below sits about 8x above that, so it never trips on storage and
+The bound below sits about 21x above that, so it never trips on storage and
 still fails on a moved split.
 
 WHY `random_state` IS PINNED

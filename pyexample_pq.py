@@ -3,10 +3,13 @@
 
 WHY THIS GATE EXISTS
 ====================
-`examples/main` carries five estimator slots with an ANALYTIC oracle only --
-no upstream gate at all (RDD, PQ, QTE, LPQ, PolicyTree). This covers the
-two quantile estimators; the other three are still open. See
-`_verify/FIVE_GATES_FEASIBLE_1680.md` for the census.
+`examples/main` carried five estimator slots with an ANALYTIC oracle only --
+no upstream gate at all (RDD, PQ, QTE, LPQ, PolicyTree). This file covers
+the two quantile estimators, and section 4 adds LPQ; RDD is gated in
+`pyexample_rdd.py` and PolicyTree in `pyexample_policytree.py`. None of the
+five is left open. `_verify/FIVE_GATES_FEASIBLE_1680.md` is the feasibility
+census that preceded those three gates -- a measurement of what was
+buildable, not a to-do list, and its status line now says so.
 
 WHY NO DATA IS EMITTED (unlike `pyexample_lplr.py`)
 ===================================================

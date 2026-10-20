@@ -1,13 +1,36 @@
 # Five more upstream gates are available; three traps make them non-obvious
 
-**Status: feasibility measured, gates not yet built.** This is the input to the
-next unit of work, not the work itself. Every claim below is a printed number
+> **Historical record. Read the status line, not the census.**
+>
+> This file was committed on 2026-10-16 as `3f83bf1c` ("docs: measure what
+> upstream coverage remains, and whether it is reachable"). It describes the
+> tree at that commit. It was a feasibility measurement -- the input to a unit
+> of work -- and that work has since been done.
+>
+> **What has changed since**, measured 2026-10-20 by diffing `git ls-tree` at
+> `3f83bf1c` against the current tree:
+>
+> | | at `3f83bf1c` (2026-10-16) | now |
+> |---|---|---|
+> | `pyexample_*` upstream gates | 5 (`did`, `did_binary`, `did_cs2021`, `did_cs_binary`, `suite`) | **9** -- `+lplr`, `+pq`, `+policytree`, `+rdd` |
+> | `validate_*_with_python.py` | 24 | 24, unchanged |
+> | the five slots below | no upstream gate at all | PQ, QTE and LPQ in `pyexample_pq.py`; PolicyTree in `pyexample_policytree.py`; RDD in `pyexample_rdd.py` |
+> | LPLR | one of the "two open decisions" | gated in `pyexample_lplr.py` |
+>
+> The call shapes, the three traps and the PolicyTree section below were
+> measured against `doubleml` 0.11.3 and have not been re-measured since; the
+> STATUS is what moved. The "Reproduce" section at the foot names three
+> scripts that were never committed, so the numbers here cannot be re-derived
+> from this tree -- that note is now part of the record rather than a promise.
+
+**Status: feasibility measured 2026-10-16; all five gates built since
+(2026-10-16 and 2026-10-17).** Every claim below is a printed number
 or a printed exception from `dml` 0.11.3, not an inference.
 
-## Where the goal actually stands
+## Where the goal actually stood, as measured 2026-10-16
 
-`_verify/_coverage_census_1680.py` enumerates every `validate_*_with_python.py`
-and `pyexample_*`, classifies each by whether it imports `doubleml`, and maps
+`_verify/_coverage_census_1680.py` enumerated every `validate_*_with_python.py`
+and `pyexample_*`, classified each by whether it imports `doubleml`, and mapped
 the 19 driver examples to estimators via the README's own table:
 
     estimator slots across the driver examples   34
@@ -85,8 +108,16 @@ comparison the other gates make.
 
 ## Reproduce
 
-    python _verify\_five_api_1680.py   # signatures, and why the first guesses raised
-    python _verify\_five_fit_1680.py   # the working shapes, fitted
-    python _verify\_coverage_census_1680.py   # the 20 / 2 / 12 split
+**There is nothing to run.** The three scripts this section used to name --
+`_five_api_1680.py`, `_five_fit_1680.py` and `_coverage_census_1680.py` --
+were never committed to this repository, and they are not in its history
+either (`git log --all -- _verify/_five_api_1680.py` is empty). The numbers
+above are therefore a one-off measurement, not a reproducible one, and this
+section says so rather than pointing at files that do not exist.
 
-Measured on `doubleml` 0.11.3, Windows.
+What supersedes it: the three gates the measurement led to, each of which
+re-derives its own numbers on every run --
+`pyexample_pq.py` (PQ, QTE, LPQ), `pyexample_policytree.py` (PolicyTree) and
+`pyexample_rdd.py` (RDD).
+
+Measured on `doubleml` 0.11.3, Windows, 2026-10-16.

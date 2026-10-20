@@ -287,21 +287,25 @@ jobs:
       #
       # Coefficients are gated on the measured seed spread. The standard
       # errors are gated on a RATIO envelope instead, and the reason is
-      # measured rather than stylistic: the port reports every QTE `se` about
-      # 10% below upstream, consistently in one direction across four
-      # quantities whose seed spread is ~1e-4. Both candidate causes were
-      # measured and ruled out -- `trimming` does not bind on this DGP, and
-      # `normalize_ipw` moves the gap the WRONG way. Details in
-      # `pyexample_pq.py` and `_verify/PQ_QTE_SE_GAP_1680.md`.
+      # measured rather than stylistic: the port's SE sits BELOW upstream's
+      # on the four PQ/QTE quantities -- ratios 0.9818, 0.9074, 0.9671 and
+      # 0.9442 -- whose seed spread is ~1e-4, and ABOVE it on LPQ (1.2523),
+      # so the direction is not even consistent. That is why the envelope
+      # spans both directions rather than being per-quantity: a per-quantity
+      # envelope always contains its own measured value, so it cannot fail.
+      # Both candidate causes for the PQ/QTE offset were measured and ruled
+      # out -- `trimming` does not bind on this DGP, and `normalize_ipw`
+      # moves the gap the WRONG way. Details in `pyexample_pq.py` and
+      # `_verify/PQ_QTE_SE_GAP_1680.md`.
       - name: Compare the quantile port against upstream
         run: |
           set -e
           python pyexample_pq.py --check
 
       # PolicyTree -- the fifth and last of the slots that shipped with an
-      # ANALYTIC oracle only. RDD is measured divergent and deliberately has
-      # no gate (a permanently red gate is worse than a recorded defect);
-      # PQ/QTE/LPQ are the step above.
+      # ANALYTIC oracle only. PQ/QTE/LPQ are the step above; RDD is the step
+      # below, gated on the bias-corrected arm after the recorded divergence
+      # turned out to have been measured on a noiseless design.
       #
       # Upstream's signature is `DoubleMLPolicyTree(orth_signal, features,
       # depth=2, ...)`, so the argument order is REVERSED relative to the
