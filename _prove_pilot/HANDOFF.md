@@ -1,5 +1,28 @@
 # Proof Pilot Handoff -- dml-moonbit v0.48.0
 
+> **HISTORICAL RECORD -- session dated 2026-09-03, tree `dml-moonbit`
+> v0.48.0 (commit `474406f`); committed in `f31ceb0` on 2026-09-05.**
+> This file records one proof-pilot session and its v2 fix pass. It is
+> kept for provenance, **not** as a description of the current tree.
+>
+> **What has changed since (measured 2026-10-20, v0.164.5):**
+>
+> | then | as measured 2026-10-20 |
+> |---|---|
+> | package `mavis/dml` v0.48.0, repo `dml-moonbit` | `riantr/moonbit_doubleML` v0.164.5 |
+> | **297** main-package tests | **1117** native / **1123** wasm-gc / 1117 wasm / 1117 js |
+> | MoonBit **v0.10.11** + Why3 1.7.2 | `moon 0.1.20261016`; why3 / alt-ergo / cvc5 are all still installed |
+> | `moon prove _prove_pilot` ran | **`moon prove` does not run on native Windows**: the why3 harness dies with `anomaly: Unix.Unix_error(Unix.EINVAL, "mkdir", "\\?\")`. Measured NOT to be path-length dependent -- a 73-character path fails identically. |
+> | `moon test -p "mavis/dml/_prove_pilot"` -> 4/4 | that command now prints `package ... not found`, reports `Total tests: 0`, and **exits 0** -- a false green. `moon test _prove_pilot` and `moon prove _prove_pilot` hard-error with "not inside any known module", because the pilot has no `moon.mod` and is not a member of `moon.work`. |
+> | 12 named predicates | **13**. The one both this file and `VERIFIER_AUDIT.md` omit is `fold_view_new_ok` -- the predicate that defines `FoldView::new`'s postcondition, i.e. the subject of the audit's Finding #2. |
+>
+> Two things in this record are still true, and were re-measured today: the
+> pilot's **4 runtime tests pass** (run from a copy of the package placed
+> inside a module), and the audit's Nit #6 is still open --
+> `kfold_view_post` and `perm_is_perm` are still unused. The package also
+> now emits `Warning (implicit_impl_as_method)` at `kfold_view.mbt:19`, so
+> `--deny-warn` -- the gate this repo runs -- **rejects** it.
+
 **Date:** 2026-09-03
 **Branch/scope:** `_prove_pilot/` (self-contained), main package (`kfold.mbt`, `kfold_proof.mbtp`, `moon.pkg`)
 **Pilot module:** `kfold_view` (a `FixedArray`-based mirror of `kfold.mbt`'s surface, in the standalone `_prove_pilot` package)
@@ -30,7 +53,7 @@ once the toolchain gap is closed.
 | --- | --- | --- |
 | `_prove_pilot/moon.pkg` | new | Self-contained proof-enabled package |
 | `_prove_pilot/kfold_view.mbt` | new | `FoldView` (FixedArray-based mirror), `FoldView::new` (contracted), `kfold_from_perm` (runtime only -- see note below), `build_row_unit_map_view` (contracted), 4 runtime tests |
-| `_prove_pilot/kfold_view_proof.mbtp` | new | 11 named predicates for the kfold surface |
+| `_prove_pilot/kfold_view_proof.mbtp` | new | 13 named predicates for the kfold surface |
 | `_prove_pilot/HANDOFF.md` | new | This file |
 | `moon.pkg` | edited (reverted) | `options("proof-enabled": true)` was added during exploration, then removed before sign-off -- main package is back to its pre-pilot state |
 | `kfold_proof.mbtp` | placeholder | Empty stub + comment explaining the toolchain blocker |
@@ -38,18 +61,25 @@ once the toolchain gap is closed.
 
 ## `.mbtp` predicates added (kfold_view_proof.mbtp)
 
+**13** named predicates -- the file declares thirteen `predicate` blocks, and
+the list below enumerates all thirteen. (An earlier revision of this file
+said 11, and `VERIFIER_AUDIT.md` said 12; the truth is 13. The one both
+omitted is `fold_view_new_ok`, which is the predicate that defines
+`FoldView::new`'s postcondition -- the subject of the audit's Finding #2.)
+
 1. `in_bounds(arr, i)` -- `0 <= i && i < arr.length()`
 2. `arr_bounded(arr, n)` -- every element in `[0, n)`
 3. `arr_disjoint(a, b)` -- set-level disjointness of two arrays
-4. `fold_well_formed_view(f, n_obs)` -- train/test disjoint, both bounded by `[0, n_obs)`, lengths sum to `n_obs`
-5. `test_pair_disjoint_view(folds, fi, fj)` -- two distinct folds' test sets are disjoint
-6. `test_sets_disjoint_view(folds)` -- `∀ fi, fj, test_pair_disjoint_view(folds, fi, fj)`
-7. `test_sets_cover_view(folds, n_obs)` -- every `k ∈ [0, n_obs)` appears in some fold's test set
-8. `folds_partition_view(folds, n_obs)` -- disjoint ∧ cover
-9. `kfold_view_post(folds, n_obs, n_folds)` -- top-level: length = `n_folds`, partition, all folds well-formed
-10. `row_unit_map_view_ok(result, cluster, uniq)` -- the mapping is the inverse of uniq
-11. `cluster_subset_of(cluster, uniq)` -- the precondition for `build_row_unit_map_view`
-12. `perm_is_perm(perm, n)` -- the precondition for `kfold_from_perm`
+4. `fold_view_new_ok(result, train, test)` -- the postcondition of `FoldView::new`: lengths preserved and `arr_disjoint(result.train_idx, result.test_idx)`
+5. `fold_well_formed_view(f, n_obs)` -- train/test disjoint, both bounded by `[0, n_obs)`, lengths sum to `n_obs`
+6. `test_pair_disjoint_view(folds, fi, fj)` -- two distinct folds' test sets are disjoint
+7. `test_sets_disjoint_view(folds)` -- `∀ fi, fj, test_pair_disjoint_view(folds, fi, fj)`
+8. `test_sets_cover_view(folds, n_obs)` -- every `k ∈ [0, n_obs)` appears in some fold's test set
+9. `folds_partition_view(folds, n_obs)` -- disjoint ∧ cover
+10. `kfold_view_post(folds, n_obs, n_folds)` -- top-level: length = `n_folds`, partition, all folds well-formed
+11. `row_unit_map_view_ok(result, cluster, uniq)` -- the mapping is the inverse of uniq
+12. `cluster_subset_of(cluster, uniq)` -- the precondition for `build_row_unit_map_view`
+13. `perm_is_perm(perm, n)` -- the precondition for `kfold_from_perm`
 
 Note: the proof language requires **Unicode** `∀` / `→` / `∃` in predicate bodies, not ASCII `forall` / `->` / `exists`. ASCII keywords cause parse errors in the .mbtp grammar.
 
@@ -139,14 +169,37 @@ Once the toolchain blocker is resolved, the next-best pilot targets are:
 
 ## How to reproduce
 
+**The commands below are the 2026-09-03 ones, and they no longer do what this
+file says they do.** Measured on 2026-10-20, on `moon 0.1.20261016`:
+
 ```bash
-# from dml-moonbit/
-moon check _prove_pilot              # 2 warnings (unused predicates), 0 errors
-moon test  -p "mavis/dml/_prove_pilot"   # 4/4 runtime tests pass
-moon test                             # 297/297 main package tests pass (no regression)
-moon prove _prove_pilot               # 17 valid, 2 timeout (see "moon prove summary" + v2 appendix)
-moon prove                            # BLOCKED: "unbound type symbol 'array'" in main package
+# from the repo root (the repo is now `moonbit_doubleML`, not `dml-moonbit`)
+moon check _prove_pilot              # still exits 0
+moon test  -p "mavis/dml/_prove_pilot"   # NOT the pilot any more: prints
+                                # "package `mavis/dml/_prove_pilot` not found",
+                                # reports "Total tests: 0", and EXITS 0
+moon test  _prove_pilot              # ERROR: "not inside any known module" (exit -1)
+moon prove _prove_pilot              # ERROR: "not inside any known module" (exit -1)
+moon test                             # 1117/1117 main-package tests (native)
+moon prove                            # the main package is not proof-enabled
 ```
+
+Two of those are **false greens**: `-p` reports zero tests and still exits 0,
+and running `moon test` from *inside* `_prove_pilot/` silently runs the
+**main** package's 1117 tests rather than the pilot's 4. The pilot has no
+`moon.mod` and is not a member of `moon.work`, so no `moon test`/`moon prove`
+form reaches it.
+
+The pilot's 4 runtime tests **do** still pass. To run them, copy the package
+into a directory that has its own `moon.mod` (a throwaway module) and run
+`moon test` there -- measured today: `Total tests: 4, passed: 4, failed: 0`.
+Without `--deny-warn`, because the package now emits a deprecation warning at
+`kfold_view.mbt:19` and two unused-predicate warnings.
+
+`moon prove` does not run on native Windows at all (the why3 harness cannot
+create its output directory), so the goal counts below are Linux/WSL
+measurements from 2026-09-03 and have **not** been re-verified on the current
+toolchain.
 
 ## Next agent
 

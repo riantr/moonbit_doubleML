@@ -1,5 +1,24 @@
 # Verifier Audit Report (v2 re-audit) — moonbit_doubleML v0.48.0 proof pilot
 
+> **HISTORICAL RECORD -- session dated 2026-09-03, tree `dml-moonbit`
+> v0.48.0 (commit `474406f`); committed in `f31ceb0` on 2026-09-05.**
+> This is the **v2** re-audit, and it is the current verdict for the pilot
+> (it supersedes `VERIFIER_AUDIT.md`). Kept for provenance, **not** as a
+> description of the current tree.
+>
+> **What has changed since (measured 2026-10-20, v0.164.5):**
+>
+> | then | as measured 2026-10-20 |
+> |---|---|
+> | package `mavis/dml` v0.48.0, repo `dml-moonbit` | `riantr/moonbit_doubleML` v0.164.5 |
+> | **297** main-package tests | **1117** native / **1123** wasm-gc / 1117 wasm / 1117 js |
+> | MoonBit **v0.10.11** + Why3 1.7.2 | `moon 0.1.20261016`; why3 / alt-ergo / cvc5 are all still installed |
+> | `moon prove _prove_pilot` ran -> 17v / 2t | **not re-verifiable on this platform.** `moon prove` does not run on native Windows: the why3 harness dies with `anomaly: Unix.Unix_error(Unix.EINVAL, "mkdir", "\\?\")`. Measured NOT to be path-length dependent -- a 73-character path fails identically. The 17v / 2t / 19-goal figures below are therefore **2026-09-03 Linux/WSL measurements, recorded and not re-confirmed**. |
+> | `moon test -p "mavis/dml/_prove_pilot"` -> 4/4 | that command now prints `package ... not found`, reports `Total tests: 0`, and **exits 0** -- a false green. `moon test _prove_pilot` and `moon prove _prove_pilot` hard-error with "not inside any known module", because the pilot has no `moon.mod` and is not a member of `moon.work`. |
+> | the 13 named predicates (corrected; this file and the v1 audit said 12) | the `.mbtp` declares **13** -- `fold_view_new_ok` is the one both audits omitted, and it is the predicate that defines `FoldView::new`'s postcondition |
+> | the pilot's 4 runtime tests pass | **still true** -- re-measured today from a copy of the package placed inside a module: `Total tests: 4, passed: 4, failed: 0`. Without `--deny-warn`, because the package now emits `Warning (implicit_impl_as_method)` at `kfold_view.mbt:19` plus the two unused-predicate warnings. |
+> | the v1 audit's Nit #6 (2 unused predicates) | **still open**: `kfold_view_post` and `perm_is_perm` are still unused |
+
 **Date:** 2026-09-03
 **Branch/scope:** `_prove_pilot/` (self-contained proof pilot)
 **Project:** DoubleMachineLearning / moonbit_doubleML v0.48.0 (commit `474406f`)

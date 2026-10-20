@@ -26,6 +26,19 @@
 //      (non-intrusive; what `_prove_pilot` and this package do)
 //   3. Or fix the moon prove toolchain so `Array[T]` operations
 //      are lowered correctly (file upstream)
+//
+// STATUS (measured 2026-10-20, v0.164.5): "the gap DOES fire" is a
+// 2026-09-03 measurement on MoonBit v0.10.11, recorded in
+// QUANTILE_HANDOFF.md -- itself a historical record. It has NOT been
+// re-verified on the current toolchain, and it cannot be re-verified on
+// native Windows: `moon prove` fails there with
+// `anomaly: Unix.Unix_error(Unix.EINVAL, "mkdir", "\\?\")`.
+//
+// Like `_prove_pilot`, this directory has no `moon.mod` and is not a member
+// of `moon.work`, so no `moon test` / `moon prove` form reaches it:
+// `moon test -p <name>` reports "package not found" and EXITS 0 while
+// running 0 tests, and `moon test _prove_pilot2` / `moon prove
+// _prove_pilot2` hard-error with "not inside any known module".
 options(
   "proof-enabled": true,
 )

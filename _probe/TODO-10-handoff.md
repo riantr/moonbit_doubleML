@@ -1,5 +1,26 @@
 # TODO #10 handoff: extract shared variance computation to var_est.mbt
 
+> **HISTORICAL RECORD -- 2026-08-09, package `mavis/dml` v0.4.0.**
+> This is the record of one session. It was committed in `57f2434`
+> ("Release 0.4.0: 15-model DML port (mavis/dml)") and is kept for
+> provenance, **not** as a description of the current tree: every number
+> below describes that day's code.
+>
+> **What has changed since (measured 2026-10-20, v0.164.5):**
+>
+> | then | as measured 2026-10-20 |
+> |---|---|
+> | package `mavis/dml` v0.4.0, `moon.mod` at the repo root | `riantr/moonbit_doubleML` v0.164.5, `moon.mod` in `moonbit_doubleML/` |
+> | **85** tests (82 -> 85) | **1117** native / **1123** wasm-gc / 1117 wasm / 1117 js |
+> | `cmd/main/main.mbt` | `examples/main/` (the workspace is 23 members) |
+> | 15 models | 22 estimators |
+> | MoonBit 0.10.x | `moon 0.1.20261016` |
+>
+> What the record still gets right: `var_est.mbt` ships today
+> (`moonbit_doubleML/var_est.mbt`), and every log artefact it lists is
+> still in `_probe/`. What it cannot claim: any of the numbers in the
+> table above, or the `cmd/main` path it uses throughout.
+
 ## Files changed
 
 ### Created (2)

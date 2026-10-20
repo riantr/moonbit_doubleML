@@ -1,5 +1,24 @@
 # Verifier Audit Report — dml-moonbit v0.48.0 proof pilot
 
+> **HISTORICAL RECORD -- session dated 2026-09-03, tree `dml-moonbit`
+> v0.48.0 (commit `474406f`); committed in `f31ceb0` on 2026-09-05.**
+> This is the **v1** audit. It was **superseded** by
+> `VERIFIER_AUDIT_v2.md` (same date), whose verdict is the current one for
+> the pilot. Kept for provenance, **not** as a description of the current
+> tree.
+>
+> **What has changed since (measured 2026-10-20, v0.164.5):**
+>
+> | then | as measured 2026-10-20 |
+> |---|---|
+> | package `mavis/dml` v0.48.0, repo `dml-moonbit` | `riantr/moonbit_doubleML` v0.164.5 |
+> | **297** main-package tests | **1117** native / **1123** wasm-gc / 1117 wasm / 1117 js |
+> | MoonBit **v0.10.11** + Why3 1.7.2 | `moon 0.1.20261016`; **`moon prove` does not run on native Windows** (the why3 harness dies with `anomaly: Unix.Unix_error(Unix.EINVAL, "mkdir", "\\?\")`; measured not to be path-length dependent) |
+> | `moon prove _prove_pilot` ran here | it hard-errors now: the pilot has no `moon.mod` and is not a member of `moon.work`, so it is "not inside any known module" |
+> | this audit counted **12** named predicates | the file declares **13**. The one this audit omitted is `fold_view_new_ok` -- the predicate that defines `FoldView::new`'s postcondition, i.e. the very subject of **Finding #2** below. Finding #5's recommendation ("fix the count in the handoff: 12 predicates (not 11)") is therefore itself off by one: the right number is 13. |
+> | audit's Nit #6 (2 unused predicates) | **still open**: `kfold_view_post` and `perm_is_perm` are still unused, and the package now also emits `Warning (implicit_impl_as_method)` at `kfold_view.mbt:19`, so `--deny-warn` rejects it |
+> | the pilot's 4 runtime tests pass | **still true** -- re-measured today from a copy of the package placed inside a module: `Total tests: 4, passed: 4, failed: 0` |
+
 **Date:** 2026-09-03
 **Branch/scope:** `_prove_pilot/` (self-contained proof pilot)
 **Project:** DoubleMachineLearning / dml-moonbit v0.48.0 (commit `474406f`)
@@ -10,7 +29,7 @@
 
 ## Producer's claims (HANDOFF.md)
 
-- 12 named predicates authored in `kfold_view_proof.mbtp` (HANDOFF says 11 — minor counting discrepancy, see Nit #1).
+- 12 named predicates authored in `kfold_view_proof.mbtp` (HANDOFF says 11 — minor counting discrepancy, see Nit #1). **Correction, measured 2026-10-20: the file declares 13.** The handoff's Files table said 11, its enumeration listed 12, and the missing one in both is `fold_view_new_ok`. See Finding #5.
 - Two functions contracted: `FoldView::new`, `build_row_unit_map_view`.
 - `kfold_from_perm` intentionally uncontracted (toolchain gap: `FixedArray::make` over struct containing `FixedArray` triggers "pure type variable" rejection).
 - `moon prove _prove_pilot`: **8 valid / 0 invalid / 0 unknown / 0 oom / 0 step_limit / 5 timeout / 0 failure** (13 total goals per handoff).
@@ -113,7 +132,7 @@ The main package's `kfold_test.mbt` exercises `kfold(n, n_folds, seed)` (not `Fo
 | 2 | **major** | `_prove_pilot/kfold_view.mbt:30-32` (`FoldView::new` preconditions) and `_prove_pilot/kfold_view_proof.mbtp:20-28` (`fold_view_new_ok` definition) | The `FoldView::new` postcondition asserts `arr_disjoint(result.train_idx, result.test_idx)`, but the precondition only asserts length non-negativity. The implementation is a no-op `{ train_idx, test_idx }` constructor — it does not check or enforce disjointness. The postcondition is therefore **unsound**: `FoldView::new([0], [0])` is a valid call under the current contract but the result violates the postcondition. Mutation 1 confirms: dropping the `arr_disjoint` conjunct makes the goal discharge, which means the prover is correctly *unable* to prove the unsound claim. The runtime test `fold_view_new_basic` does not catch this because it happens to use disjoint inputs. | Add `proof_require: arr_disjoint(train_idx, test_idx)` to `FoldView::new`. The postcondition then follows trivially. This is what the producer's handoff recommended but did not implement. |
 | 3 | **major** | `_prove_pilot/HANDOFF.md` § "`moon prove` summary" and § "What I blocked on" | The handoff overstates the toolchain gap for `proof_invariant`. The producer's handoff says: "the `for i = 0; i < n; i = i + 1` shape wasn't accepted with `proof_invariant` in the v0.10.11 grammar I tested". The auditor confirms the v0.10.11 grammar does accept `proof_invariant` in `where { proof_invariant: ... }` block syntax (the syntax documented at `https://docs.moonbitlang.com/en/stable/language/verification.html` and used in the `loop_invariants` community package). The producer's handoff is correct that `proof_invariant 0 <= i && i < n` as a bare statement inside the loop body is rejected (E4021 "unbound value identifier proof_invariant") — but the correct `where { ... }` block form is accepted. | Update the handoff to document the corrected syntax. The 5 timeouts in the pilot are **not** blocked on a toolchain fix; they are addressable with the corrected `proof_invariant` syntax (6 of 8 originally-timeout-but-trivially-sound goals discharge) plus a more sophisticated inner-loop invariant for the `found` claim. |
 | 4 | **minor** | `_prove_pilot/kfold_view_proof.mbtp:91-95` (`row_unit_map_view_ok`) | The `0 <= result[i] && result[i] < uniq.length()` conjunct is correct and load-bearing for callers (it lets downstream code know `result[i]` is a valid index into `uniq`), but it is not the bottleneck for the prover on the pilot's specific 5 timeouts. Mutation 2 confirms dropping it does not change the discharge/timeout counts. | Keep the conjunct — it is a useful downstream contract. The bottleneck is in the in-loop assertions and the `found` bridging, not the postcondition's bounds. |
-| 5 | **minor** | `_prove_pilot/HANDOFF.md` § "`.mbtp` predicates added" and § "`moon prove` summary" | The handoff says 11 named predicates were authored and 13 total goals were discharged/timeout. The actual file has 12 named predicates and the actual report is 15 total goals. The handoff's enumeration of predicates #1-12 in the `.mbtp predicates added` table is correct; the count summary at the top of the handoff appears to be off by one. | Fix the count in the handoff: 12 predicates (not 11), 15 total goals (not 13). |
+| 5 | **minor** | `_prove_pilot/HANDOFF.md` § "`.mbtp` predicates added" and § "`moon prove` summary" | The handoff says 11 named predicates were authored and 13 total goals were discharged/timeout. The actual file has **13** named predicates and the actual report is 15 total goals. The handoff's enumeration of predicates #1-12 in the `.mbtp predicates added` table is correct but **incomplete** — it omits `fold_view_new_ok`, the predicate that defines `FoldView::new`'s postcondition. The count summary at the top of the handoff appears to be off by two. **Correction (2026-10-20): this finding originally read "12 named predicates" and recommended fixing the handoff to 12; that was itself off by one. The file has 13, and the omitted predicate is the one that Finding #2 is about.** | Fix the count in the handoff: 13 predicates (not 11), 15 total goals (not 13), and add `fold_view_new_ok` to the enumeration. |
 | 6 | **nit** | `_prove_pilot/kfold_view_proof.mbtp:75-83` and 112-116 | `kfold_view_post` and `perm_is_perm` are defined but unused — `kfold_from_perm` (the only function that could use them) is uncontracted. Moon emits a `Warning (unused_value): Unused function` for each. | Either delete the unused predicates, or contract `kfold_from_perm` once the `FixedArray::make` toolchain gap is closed. |
 
 ---
@@ -139,7 +158,7 @@ The lowered `.mlw` contains `axiom Requires*`, `axiom Ensures*`, `axiom H1..H11`
 The lowered `.mlw` for `_prove_pilot` correctly:
 - emits `use array.Array` (the toolchain `Array` lowering gap that affects the main package does **not** trigger in the pilot, because the pilot uses `FixedArray` only).
 - emits `use moonbit_builtin_prelude.FixedArray` and `use moonbit_builtin_prelude.Int` aliases.
-- lowers the 12 predicates from `.mbtp` to Why3 `predicate` definitions with the correct `forall` / `exists` / Unicode-symbol → WhyML encoding.
+- lowers the 13 predicates from `.mbtp` to Why3 `predicate` definitions with the correct `forall` / `exists` / Unicode-symbol → WhyML encoding.
 - lowers `FoldView::new` and `build_row_unit_map_view` as WhyML `let` definitions with `requires` / `ensures` clauses, splitting postconditions into per-conjunct verification conditions.
 
 No type mismatches, no missing `use` statements, no unstated `#proof_external` bridges.
@@ -170,7 +189,7 @@ The producer's recommended fix path is correct in spirit (loop invariants + prec
 
 2. **Major — `FoldView::new` postcondition is unsound as written** (Finding #2). The contract asserts `arr_disjoint(result.train_idx, result.test_idx)` but the implementation is a no-op constructor and the precondition does not require the inputs to be disjoint. Mutation 1 confirms the prover correctly refuses to prove the unsound claim. Fix: add `proof_require: arr_disjoint(train_idx, test_idx)`. The producer's handoff recommended this fix but did not implement it.
 
-3. **Minor — Handoff count discrepancy** (Finding #5). HANDOFF says 11 predicates and 13 total goals; the actual file has 12 predicates and the actual proof report is 15 total goals (10v + 5t). Trivial fix to the handoff summary.
+3. **Minor — Handoff count discrepancy** (Finding #5). HANDOFF says 11 predicates and 13 total goals; the actual proof report is 15 total goals (10v + 5t). **Correction (2026-10-20): the file has 13 predicates, not 12 as this item originally stated** — the predicate both the handoff and this audit omitted is `fold_view_new_ok`, i.e. the one Finding #2 is about. Trivial fix to the handoff summary, now applied.
 
 ## Next step
 

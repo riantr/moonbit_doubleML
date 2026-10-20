@@ -17,9 +17,25 @@
 // by refactoring the kfold Fold struct to FixedArray).
 //
 // IMPORTANT: This directory is a self-contained MoonBit package
-// (its own moon.pkg). The dml-moonbit main package's moon.pkg
-// remains proof-enabled for future use, but its moon prove is
-// blocked by the Array/array symbol issue described above.
+// (its own moon.pkg), and it is NOT a member of `moon.work`.
+//
+// STATUS (measured 2026-10-20, v0.164.5): the main package's moon.pkg is
+// NOT proof-enabled. `options("proof-enabled": true)` was added during the
+// pilot and reverted before sign-off -- exactly as `_prove_pilot/HANDOFF.md`
+// records. An earlier revision of THIS comment claimed the opposite, and
+// that claim was wrong.
+//
+// Because this directory has no `moon.mod` and is not a workspace member, no
+// `moon test` / `moon prove` form reaches it: `moon test -p <name>` reports
+// "package not found" and EXITS 0 while running 0 tests, and
+// `moon test _prove_pilot` / `moon prove _prove_pilot` hard-error with
+// "not inside any known module". The pilot's 4 runtime tests still pass when
+// the package is copied into a directory that has its own moon.mod.
+//
+// The proof numbers quoted in the handoff and the audits are 2026-09-03
+// measurements on MoonBit v0.10.11. `moon prove` does not run on native
+// Windows (the why3 harness cannot create its output directory), so they
+// are recorded rather than re-confirmed.
 options(
   "proof-enabled": true,
 )

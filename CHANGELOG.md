@@ -9,6 +9,127 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.6] -- the dated records, and what they describe
+
+`moon.mod` moves 0.164.5 -> 0.164.6. No `.mbt` file changed and no behaviour
+changed: this round is entirely about the claims. The test counts stay
+**1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Round 10 audited the documents that say what "verified" means. Round 11 asked
+the same question of the rest of the tree's prose: **which tracked documents
+describe a tree that no longer exists?** The answer is five dated session
+records -- two in `_probe/`, three in `_prove_pilot/` -- plus a live source
+comment that contradicted its own sibling document, and a README that
+described a hook without saying what it did.
+
+### Fixed -- five dated records presented as if they were current
+
+- `_probe/TODO-9-handoff.md` and `_probe/TODO-10-handoff.md` are records of
+  sessions from **2026-08-09** (committed in `57f2434`, "Release 0.4.0:
+  15-model DML port (mavis/dml)"). They quoted a test count (96 and 85) and
+  a package path (`cmd/main/main.mbt`) that no longer exist, with nothing to
+  say they were history. Each now carries a historical-record banner naming
+  the commit that introduced it, and a **"What has changed since"** table:
+  package `mavis/dml` v0.4.0 with `moon.mod` at the repo root is now
+  `riantr/moonbit_doubleML` with `moon.mod` in `moonbit_doubleML/`; 85 / 96
+  tests are now **1117** native / **1123** wasm-gc; `cmd/main` is now
+  `examples/main/`; 15 models are now 22 estimators; MoonBit 0.10.x is now
+  `moon 0.1.20261016`.
+- `_prove_pilot/HANDOFF.md`, `VERIFIER_AUDIT.md` and `VERIFIER_AUDIT_v2.md`
+  are dated **2026-09-03** (committed in `f31ceb0`) and describe
+  `dml-moonbit` v0.48.0. They carried dates in their headers but nothing
+  that told a reader their commands, counts and repo names were historical.
+  Same treatment, plus the measured facts below.
+
+### Fixed -- a count that was wrong when the audit was written
+
+- The v1 audit's Finding #5 said "the actual file has **12** named
+  predicates" and recommended fixing the handoff to 12. The file declares
+  **13**. The predicate both documents omitted is `fold_view_new_ok` -- the
+  one that defines `FoldView::new`'s postcondition, i.e. the very subject of
+  the audit's Finding #2. Checked against the file's single commit
+  (`f31ceb0`), which already had 13.
+- The handoff's own count said **11** while its enumeration listed 12; it now
+  says 13 and enumerates all 13. The audit's recommendation now carries the
+  derived number too.
+
+### Fixed -- the pilot's documented commands do not do what they say
+
+- `moon test -p "mavis/dml/_prove_pilot"` now prints `package ... not
+  found`, reports `Total tests: 0` and **exits 0** -- a false green. The
+  pilot has no `moon.mod` and is not a member of `moon.work`, so
+  `moon test _prove_pilot` and `moon prove _prove_pilot` hard-error with
+  "not inside any known module".
+- Running `moon test` from *inside* `_prove_pilot/` silently runs the
+  **main** package's 1117 tests, not the pilot's 4.
+- The pilot's **4 runtime tests do still pass** (measured: `Total tests: 4,
+  passed: 4, failed: 0`), but only from a copy of the package placed inside
+  a module -- and without `--deny-warn`, because the package now emits
+  `Warning (implicit_impl_as_method)` at `kfold_view.mbt:19` plus the two
+  unused-predicate warnings the v1 audit's Nit #6 predicted.
+- **`moon prove` does not run on native Windows**: the why3 harness dies
+  with `anomaly: Unix.Unix_error(Unix.EINVAL, "mkdir", "\?")`. Measured
+  NOT to be path-length dependent -- a 73-character path fails identically.
+  So the 17v / 2t / 19-goal figures are 2026-09-03 Linux/WSL measurements,
+  recorded and not re-confirmed.
+
+### Fixed -- a source comment that contradicted its sibling document
+
+- `_prove_pilot/moon.pkg` said "The dml-moonbit main package's moon.pkg
+  remains proof-enabled for future use". It does not:
+  `moonbit_doubleML/moon.pkg` has no `proof-enabled` option, exactly as
+  `HANDOFF.md` records ("edited (reverted) ... main package is back to its
+  pre-pilot state"). The comment now says what is true, and warns that the
+  pilot is not a workspace member and that the `-p` form is a false green.
+- `_prove_pilot2/moon.pkg` -- the second pilot package, which no handoff
+  document mentions -- asserted "The gap DOES fire" in the present tense
+  about a 2026-09-03 measurement on MoonBit v0.10.11. It now carries the
+  same dated status, and says the claim is recorded, not re-confirmed.
+
+### Fixed -- `.githooks/README.md` described a hook it did not explain
+
+- The README said the pre-commit hook "performs automatic checks". It runs
+  **one** command: `moon check` (measured: 54 tasks, exit 0).
+- The hook is tracked with mode **100644**, so it is never executable in a
+  checkout -- the `chmod +x` step is always needed, not conditional. No file
+  in this repository is tracked as `100755`.
+- `core.hooksPath` is a **local** Git setting and cannot be committed, so
+  every clone has to opt in; the README did not say so.
+- It also now says what the hook does **not** cover: `moon check` does not
+  check `_test.mbt` files (only `moon test` does), and a push to `master`
+  does not run `moon check --deny-warn` either -- that runs only in
+  `publish.yml`, before a release.
+
+### A new verifier for the class
+
+- `_verify/_verify_round11_handoffs_1646.py` makes **41 checks**, derived
+  wherever a derivation exists: the commit that introduced each document
+  comes from `git log`, so each banner's date and commit id are checked
+  against history; the predicate count comes from counting the `predicate`
+  declarations in `kfold_view_proof.mbtp`, and the handoff's enumeration is
+  compared with the file as a SET, so a missing predicate fails even when
+  the prose count agrees with the prose list; the main package's
+  `proof-enabled` state is read from `moonbit_doubleML/moon.pkg` and the
+  pilot's comment is checked against it; and the pre-commit hook's tracked
+  file mode comes from `git ls-files -s`.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.5 it reports **36 failures**; against the corrected tree it reports
+  **0**.
+
+### Gate for this release
+
+Both declared dependencies were already at the current registry latest
+(`moonbitlang/async@0.22.5`, `moonbit-community/sqlite3@0.2.3`), so the
+gate ran on current pins with no `moon update` needed. **48** local
+gate steps, 0 failed: `moon build` and `moon test --deny-warn` green on
+all four backends; `moon fmt --check` clean at the package root **and**
+at the workspace root, which is the one CI runs; both READMEs
+byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19, SKIP=10, WARN=2
+with no FAIL; the two service checks PASS=2, WARN=0; the
+validator meta-gate PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on
+the exported tree.
+
 ## [0.164.5] -- the documents that say what "verified" means
 
 `moon.mod` moves 0.164.4 -> 0.164.5. No `.mbt` file changed and no behaviour
