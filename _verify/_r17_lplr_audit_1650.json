@@ -1,0 +1,2015 @@
+{
+  "record": "_verify/LPLR_GATE_BLINDNESS_1680.md",
+  "upstream_package": "doubleml 0.11.3",
+  "upstream_path": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml",
+  "record_lines": 2655,
+  "pointers": [
+    {
+      "pointer": "./_verify/LPLR_GATE_BLINDNESS_1680.md:2245",
+      "path": "./_verify/LPLR_GATE_BLINDNESS_1680.md",
+      "first": 2245,
+      "last": 2245,
+      "record_lines": [
+        2287,
+        2289
+      ],
+      "resolved_to": "_verify/LPLR_GATE_BLINDNESS_1680.md",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\_verify\\LPLR_GATE_BLINDNESS_1680.md",
+      "in_range": true,
+      "cited_text": [
+        "| `_verify/_commit_msg_final7_1680.txt` | `datas` x1, `psiBa` / `Ba` x5 | does not flag |"
+      ],
+      "file_lines": 2655
+    },
+    {
+      "pointer": "_estimation.py:65",
+      "path": "_estimation.py",
+      "first": 65,
+      "last": 65,
+      "record_lines": [
+        1440
+      ],
+      "resolved_to": "<upstream>/utils\\_estimation.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\utils\\_estimation.py",
+      "in_range": true,
+      "cited_text": [
+        "fold_specific_target = isinstance(y, list)"
+      ],
+      "file_lines": 492
+    },
+    {
+      "pointer": "_estimation.py:207-229",
+      "path": "_estimation.py",
+      "first": 207,
+      "last": 229,
+      "record_lines": [
+        2425
+      ],
+      "resolved_to": "<upstream>/utils\\_estimation.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\utils\\_estimation.py",
+      "in_range": true,
+      "cited_text": [
+        "for smpls_single_split, smpls_double_split in zip(smpls, smpls_inner):",
+        "res_inner = _dml_cv_predict(",
+        "estimator,",
+        "x,",
+        "y,",
+        "smpls=smpls_double_split,",
+        "n_jobs=n_jobs,",
+        "est_params=est_params,",
+        "method=method,",
+        "return_models=True,",
+        "sample_weights=sample_weights,",
+        ")",
+        "_check_finite_predictions(res_inner[\"preds\"], estimator, estimator_name, smpls_double_split)",
+        "",
+        "res[\"preds_inner\"].append(res_inner[\"preds\"])",
+        "res[\"targets_inner\"].append(res_inner[\"targets\"])",
+        "for model in res_inner[\"models\"]:",
+        "res[\"models\"].append(model)",
+        "if method == \"predict_proba\":",
+        "res[\"preds\"][smpls_single_split[1]] += model.predict_proba(x[smpls_single_split[1]])[:, 1]",
+        "else:",
+        "res[\"preds\"][smpls_single_split[1]] += model.predict(x[smpls_single_split[1]])",
+        "res[\"preds\"] /= len(smpls)"
+      ],
+      "file_lines": 492
+    },
+    {
+      "pointer": "_estimation.py:362-418",
+      "path": "_estimation.py",
+      "first": 362,
+      "last": 418,
+      "record_lines": [
+        1210
+      ],
+      "resolved_to": "<upstream>/utils\\_estimation.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\utils\\_estimation.py",
+      "in_range": true,
+      "cited_text": [
+        "J = np.mean(psi_deriv)",
+        "gamma_hat = np.mean(np.square(psi))",
+        "",
+        "else:",
+        "assert cluster_vars is not None",
+        "assert smpls_cluster is not None",
+        "assert n_folds_per_cluster is not None",
+        "n_folds = len(smpls)",
+        "",
+        "# one cluster",
+        "if cluster_vars.shape[1] == 1:",
+        "first_cluster_var = cluster_vars[:, 0]",
+        "clusters = np.unique(first_cluster_var)",
+        "gamma_hat = 0",
+        "j_hat = 0",
+        "for i_fold in range(n_folds):",
+        "test_inds = smpls[i_fold][1]",
+        "test_cluster_inds = smpls_cluster[i_fold][1]",
+        "I_k = test_cluster_inds[0]",
+        "const = 1 / len(I_k)",
+        "for cluster_value in I_k:",
+        "ind_cluster = first_cluster_var == cluster_value",
+        "gamma_hat += const * np.sum(np.outer(psi[ind_cluster], psi[ind_cluster]))",
+        "j_hat += np.sum(psi_deriv[test_inds]) / len(I_k)",
+        "",
+        "var_scaling_factor = len(clusters)",
+        "J = np.divide(j_hat, n_folds_per_cluster)",
+        "gamma_hat = np.divide(gamma_hat, n_folds_per_cluster)",
+        "",
+        "else:",
+        "assert cluster_vars.shape[1] == 2",
+        "first_cluster_var = cluster_vars[:, 0]",
+        "second_cluster_var = cluster_vars[:, 1]",
+        "gamma_hat = 0",
+        "j_hat = 0",
+        "for i_fold in range(n_folds):",
+        "test_inds = smpls[i_fold][1]",
+        "test_cluster_inds = smpls_cluster[i_fold][1]",
+        "I_k = test_cluster_inds[0]",
+        "J_l = test_cluster_inds[1]",
+        "const = np.divide(min(len(I_k), len(J_l)), (np.square(len(I_k) * len(J_l))))",
+        "for cluster_value in I_k:",
+        "ind_cluster = (first_cluster_var == cluster_value) & np.isin(second_cluster_var, J_l)",
+        "gamma_hat += const * np.sum(np.outer(psi[ind_cluster], psi[ind_cluster]))",
+        "for cluster_value in J_l:",
+        "ind_cluster = (second_cluster_var == cluster_value) & np.isin(first_cluster_var, I_k)",
+        "gamma_hat += const * np.sum(np.outer(psi[ind_cluster], psi[ind_cluster]))",
+        "j_hat += np.sum(psi_deriv[test_inds]) / (len(I_k) * len(J_l))",
+        "",
+        "n_first_clusters = len(np.unique(first_cluster_var))",
+        "n_second_clusters = len(np.unique(second_cluster_var))",
+        "var_scaling_factor = min(n_first_clusters, n_second_clusters)",
+        "J = np.divide(j_hat, np.square(n_folds_per_cluster))",
+        "gamma_hat = np.divide(gamma_hat, np.square(n_folds_per_cluster))",
+        "",
+        "scaling = np.divide(1.0, np.multiply(var_scaling_factor, np.square(J)))",
+        "sigma2_hat = np.multiply(scaling, gamma_hat)"
+      ],
+      "file_lines": 492
+    },
+    {
+      "pointer": "_lplr_bag_nsweep_1680.py:125",
+      "path": "_lplr_bag_nsweep_1680.py",
+      "first": 125,
+      "last": 125,
+      "record_lines": [
+        2367
+      ],
+      "resolved_to": null,
+      "resolved_abs": null,
+      "in_range": false,
+      "cited_text": []
+    },
+    {
+      "pointer": "_verify/H1-verdict.md:4",
+      "path": "_verify/H1-verdict.md",
+      "first": 4,
+      "last": 4,
+      "record_lines": [
+        2244
+      ],
+      "resolved_to": "_verify/H1-verdict.md",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\_verify\\H1-verdict.md",
+      "in_range": true,
+      "cited_text": [
+        "- **Scope**: REIVEW H1 fix — `solve_pq` upper bracket robustness"
+      ],
+      "file_lines": 136
+    },
+    {
+      "pointer": "check.yml:105",
+      "path": "check.yml",
+      "first": 105,
+      "last": 105,
+      "record_lines": [
+        8
+      ],
+      "resolved_to": ".github/workflows/check.yml",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\.github\\workflows\\check.yml",
+      "in_range": true,
+      "cited_text": [
+        "# No count in the step name: the glob below is the source of truth, and"
+      ],
+      "file_lines": 462
+    },
+    {
+      "pointer": "double_ml_score_mixins.py:143-150",
+      "path": "double_ml_score_mixins.py",
+      "first": 143,
+      "last": 150,
+      "record_lines": [
+        2546
+      ],
+      "resolved_to": "<upstream>/double_ml_score_mixins.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\double_ml_score_mixins.py",
+      "in_range": true,
+      "cited_text": [
+        "if self._coef_bounds is None:",
+        "bounded = False",
+        "else:",
+        "bounded = (self._coef_bounds[0] > -np.inf) & (self._coef_bounds[1] < np.inf)",
+        "",
+        "if not bounded:",
+        "root_res = root_scalar(score, x0=self._coef_start_val, fprime=score_deriv, method=\"newton\")",
+        "theta_hat = root_res.root"
+      ],
+      "file_lines": 226
+    },
+    {
+      "pointer": "double_ml_score_mixins.py:149",
+      "path": "double_ml_score_mixins.py",
+      "first": 149,
+      "last": 149,
+      "record_lines": [
+        1273
+      ],
+      "resolved_to": "<upstream>/double_ml_score_mixins.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\double_ml_score_mixins.py",
+      "in_range": true,
+      "cited_text": [
+        "root_res = root_scalar(score, x0=self._coef_start_val, fprime=score_deriv, method=\"newton\")"
+      ],
+      "file_lines": 226
+    },
+    {
+      "pointer": "doubleml/double_ml_score_mixins.py:149",
+      "path": "doubleml/double_ml_score_mixins.py",
+      "first": 149,
+      "last": 149,
+      "record_lines": [
+        931
+      ],
+      "resolved_to": "<upstream>/double_ml_score_mixins.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\double_ml_score_mixins.py",
+      "in_range": true,
+      "cited_text": [
+        "root_res = root_scalar(score, x0=self._coef_start_val, fprime=score_deriv, method=\"newton\")"
+      ],
+      "file_lines": 226
+    },
+    {
+      "pointer": "doubleml/plm/lplr.py:315-326",
+      "path": "doubleml/plm/lplr.py",
+      "first": 315,
+      "last": 326,
+      "record_lines": [
+        326
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "beta = np.zeros(d.shape, dtype=float)",
+        "",
+        "for i, (train, test) in enumerate(smpls):",
+        "M_iteration = M_hat[\"preds_inner\"][i][train]",
+        "M_iteration = np.clip(M_iteration, 1e-8, 1 - 1e-8)",
+        "w = scipy.special.logit(M_iteration)",
+        "W_inner.append(w)",
+        "d_tilde = (d - a_hat[\"preds_inner\"][i])[train]",
+        "beta[test] = np.sum(d_tilde * w) / np.sum(d_tilde**2)",
+        "",
+        "# Use preliminary beta estimates as starting value for root finding",
+        "self._coef_start_val = np.average(beta)"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "doubleml/utils/_estimation.py:362-418",
+      "path": "doubleml/utils/_estimation.py",
+      "first": 362,
+      "last": 418,
+      "record_lines": [
+        943
+      ],
+      "resolved_to": "<upstream>/utils\\_estimation.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\utils\\_estimation.py",
+      "in_range": true,
+      "cited_text": [
+        "J = np.mean(psi_deriv)",
+        "gamma_hat = np.mean(np.square(psi))",
+        "",
+        "else:",
+        "assert cluster_vars is not None",
+        "assert smpls_cluster is not None",
+        "assert n_folds_per_cluster is not None",
+        "n_folds = len(smpls)",
+        "",
+        "# one cluster",
+        "if cluster_vars.shape[1] == 1:",
+        "first_cluster_var = cluster_vars[:, 0]",
+        "clusters = np.unique(first_cluster_var)",
+        "gamma_hat = 0",
+        "j_hat = 0",
+        "for i_fold in range(n_folds):",
+        "test_inds = smpls[i_fold][1]",
+        "test_cluster_inds = smpls_cluster[i_fold][1]",
+        "I_k = test_cluster_inds[0]",
+        "const = 1 / len(I_k)",
+        "for cluster_value in I_k:",
+        "ind_cluster = first_cluster_var == cluster_value",
+        "gamma_hat += const * np.sum(np.outer(psi[ind_cluster], psi[ind_cluster]))",
+        "j_hat += np.sum(psi_deriv[test_inds]) / len(I_k)",
+        "",
+        "var_scaling_factor = len(clusters)",
+        "J = np.divide(j_hat, n_folds_per_cluster)",
+        "gamma_hat = np.divide(gamma_hat, n_folds_per_cluster)",
+        "",
+        "else:",
+        "assert cluster_vars.shape[1] == 2",
+        "first_cluster_var = cluster_vars[:, 0]",
+        "second_cluster_var = cluster_vars[:, 1]",
+        "gamma_hat = 0",
+        "j_hat = 0",
+        "for i_fold in range(n_folds):",
+        "test_inds = smpls[i_fold][1]",
+        "test_cluster_inds = smpls_cluster[i_fold][1]",
+        "I_k = test_cluster_inds[0]",
+        "J_l = test_cluster_inds[1]",
+        "const = np.divide(min(len(I_k), len(J_l)), (np.square(len(I_k) * len(J_l))))",
+        "for cluster_value in I_k:",
+        "ind_cluster = (first_cluster_var == cluster_value) & np.isin(second_cluster_var, J_l)",
+        "gamma_hat += const * np.sum(np.outer(psi[ind_cluster], psi[ind_cluster]))",
+        "for cluster_value in J_l:",
+        "ind_cluster = (second_cluster_var == cluster_value) & np.isin(first_cluster_var, I_k)",
+        "gamma_hat += const * np.sum(np.outer(psi[ind_cluster], psi[ind_cluster]))",
+        "j_hat += np.sum(psi_deriv[test_inds]) / (len(I_k) * len(J_l))",
+        "",
+        "n_first_clusters = len(np.unique(first_cluster_var))",
+        "n_second_clusters = len(np.unique(second_cluster_var))",
+        "var_scaling_factor = min(n_first_clusters, n_second_clusters)",
+        "J = np.divide(j_hat, np.square(n_folds_per_cluster))",
+        "gamma_hat = np.divide(gamma_hat, np.square(n_folds_per_cluster))",
+        "",
+        "scaling = np.divide(1.0, np.multiply(var_scaling_factor, np.square(J)))",
+        "sigma2_hat = np.multiply(scaling, gamma_hat)"
+      ],
+      "file_lines": 492
+    },
+    {
+      "pointer": "examples/fuzz/main.mbt:412",
+      "path": "examples/fuzz/main.mbt",
+      "first": 412,
+      "last": 412,
+      "record_lines": [
+        2099
+      ],
+      "resolved_to": "examples/fuzz/main.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\examples\\fuzz\\main.mbt",
+      "in_range": true,
+      "cited_text": [
+        "let n = rng.int(limit=100) + 60"
+      ],
+      "file_lines": 948
+    },
+    {
+      "pointer": "examples/fuzz/main.mbt:412-459",
+      "path": "examples/fuzz/main.mbt",
+      "first": 412,
+      "last": 459,
+      "record_lines": [
+        2136,
+        2479
+      ],
+      "resolved_to": "examples/fuzz/main.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\examples\\fuzz\\main.mbt",
+      "in_range": true,
+      "cited_text": [
+        "let n = rng.int(limit=100) + 60",
+        "let seed = rng.int(limit=100_000)",
+        "// Build a small LZZ2020-style DGP inline (the public",
+        "// test-only `build_lplr_dgp` is not visible from the fuzz",
+        "// harness, so we keep this self-contained and minimal).",
+        "let p = 6",
+        "let x_flat : Array[Double] = Array::make(n * p, 0.0)",
+        "let y : Array[Double] = Array::make(n, 0.0)",
+        "let d : Array[Double] = Array::make(n, 0.0)",
+        "let ch_rng = @moonbit_doubleML.chacha8_rng(seed)",
+        "let pool : Array[Double] = []",
+        "while pool.length() < n * p + n {",
+        "let u1 = ch_rng.double()",
+        "let u2 = ch_rng.double()",
+        "let safe = if u1 < 1.0e-12 { 1.0e-12 } else { u1 }",
+        "let r = (-2.0 * @math.ln(safe)).sqrt()",
+        "let th = 2.0 * 3.141592653589793 * u2",
+        "pool.push(r * @math.cos(th))",
+        "pool.push(r * @math.sin(th))",
+        "}",
+        "for i = 0; i < n * p; i = i + 1 {",
+        "x_flat[i] = pool[i]",
+        "}",
+        "for i = 0; i < n; i = i + 1 {",
+        "let x1 = x_flat[i * p]",
+        "let x2 = x_flat[i * p + 1]",
+        "let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]",
+        "let p_t = @moonbit_doubleML.expit(a)",
+        "let u = ch_rng.double()",
+        "d[i] = if u < p_t { 1.0 } else { 0.0 }",
+        "}",
+        "for i = 0; i < n; i = i + 1 {",
+        "let x1 = x_flat[i * p]",
+        "let x2 = x_flat[i * p + 1]",
+        "let x3 = x_flat[i * p + 2]",
+        "let x4 = x_flat[i * p + 3]",
+        "let x5 = x_flat[i * p + 4]",
+        "let x6 = x_flat[i * p + 5]",
+        "let r = 0.25 * x1 * x2 +",
+        "0.25 * x3 * x3 +",
+        "0.25 * @math.cos(x4) -",
+        "0.5 * @math.sin(x5) +",
+        "(if x6 > 0.0 { 1.0 } else { 0.0 }) -",
+        "0.5",
+        "let prob = @moonbit_doubleML.expit(0.5 * d[i] + r)",
+        "let u = ch_rng.double()",
+        "y[i] = if u < prob { 1.0 } else { 0.0 }",
+        "}"
+      ],
+      "file_lines": 948
+    },
+    {
+      "pointer": "examples/fuzz/main.mbt:478",
+      "path": "examples/fuzz/main.mbt",
+      "first": 478,
+      "last": 478,
+      "record_lines": [
+        144
+      ],
+      "resolved_to": "examples/fuzz/main.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\examples\\fuzz\\main.mbt",
+      "in_range": true,
+      "cited_text": [
+        "se == se && se >= 0.0 && se < 1.0e10,"
+      ],
+      "file_lines": 948
+    },
+    {
+      "pointer": "expand_v145_test.mbt:38-136",
+      "path": "expand_v145_test.mbt",
+      "first": 38,
+      "last": 136,
+      "record_lines": [
+        462
+      ],
+      "resolved_to": "moonbit_doubleML/expand_v145_test.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\expand_v145_test.mbt",
+      "in_range": true,
+      "cited_text": [
+        "test \"lplr_warnings_silent_on_a_healthy_design\" {",
+        "let model = v1450_lplr_fit(1000, 0.25, 11)",
+        "let w = model.warnings()",
+        "assert_true(w.length() == 0)",
+        "}",
+        "",
+        "///|",
+        "/// GATE 2. The degenerate regime must be REPORTED. It must say so rather than",
+        "/// return a confident number.",
+        "///",
+        "/// v0.163.0: RE-BASED from `(1000, 1.5, 11)` to `(200, 1.5, 11)`, and the",
+        "/// reason is measured, not asserted. The old fixture asserted that the",
+        "/// objective goes rootless at `alpha >= 1.25` (v0.140.0). D2 gives `W_inner`",
+        "/// the INNER cross-fit of ml_M -- upstream's `M_hat[\"preds_inner\"][i][train]`",
+        "/// at `plm/lplr.py:318` -- and that removes the alpha cliff: over a",
+        "/// 3 x 4 x 2 grid of n in {200,400,800,1000} x alpha in {0.25,1,1.5,2.5} x",
+        "/// seed in {11,17}, every n >= 800 cell is silent on both score names, and",
+        "/// the only cells that warn are n = 200 and one n = 400 cell. The warning",
+        "/// region became a SMALL-SAMPLE phenomenon, which is what a",
+        "/// non-convergence diagnostic should actually track.",
+        "///",
+        "/// So the guarantee is preserved on a fixture that still exercises it. What",
+        "/// is deliberately NOT claimed any more is \"alpha = 1.5 is past the cliff\" --",
+        "/// see GATE 6, whose alpha-suffix invariant died with that cliff.",
+        "test \"lplr_warnings_report_the_degenerate_design\" {",
+        "let model = v1450_lplr_fit(200, 1.5, 11)",
+        "let w = model.warnings()",
+        "assert_true(w.length() > 0)",
+        "// The warning must NAME THE REPETITION, so a caller running n_rep > 1 can",
+        "// tell which draw produced the bad coefficient.",
+        "assert_true(w[0].contains(\"rep 0\"))",
+        "}",
+        "",
+        "///|",
+        "/// GATE 3. The warning must carry the REASON, not just \"it failed\". The three",
+        "/// exits are different problems, and a bare flag is exactly what the old",
+        "/// `let _ = converged` was. This asserts the text distinguishes them by",
+        "/// requiring one of the three documented reasons to be present -- which fails",
+        "/// if someone reduces the message to a constant string.",
+        "test \"lplr_warning_names_a_documented_stop_reason\" {",
+        "let model = v1450_lplr_fit(200, 1.5, 11)",
+        "let w = model.warnings()",
+        "assert_true(w.length() > 0)",
+        "let known = [\"degenerate_derivative\", \"diverged\", \"exhausted_step_budget\"]",
+        "let mut named = false",
+        "for k in known {",
+        "if w[0].contains(k) {",
+        "named = true",
+        "}",
+        "}",
+        "assert_true(named)",
+        "}",
+        "",
+        "///|",
+        "/// GATE 4. The warning must say the reported numbers are not an estimate.",
+        "/// A caller reading only `coef()` has to be able to find out that it is",
+        "/// looking at a non-solution. This is the assertion that the diagnostic is",
+        "/// about MEANING and not merely about a boolean.",
+        "test \"lplr_warning_states_the_numbers_are_not_a_solution\" {",
+        "let model = v1450_lplr_fit(200, 1.5, 11)",
+        "let w = model.warnings()",
+        "assert_true(w.length() > 0)",
+        "assert_true(w[0].contains(\"not a solution\"))",
+        "}",
+        "",
+        "///|",
+        "/// GATE 5. The failure is still SILENT to the process. This package has no",
+        "/// output channel by design, and the convention v0.145.0 introduces is that",
+        "/// warnings are RETURNED, never printed. A gate that pins the library's silence",
+        "/// is what stops a later \"let me just println it\" from quietly reintroducing",
+        "/// unreadable test output for every downstream consumer.",
+        "///",
+        "/// v0.163.0: this gate was VACUOUS and stayed green through the D2 change,",
+        "/// which is how the change got past it in the first place. It compared",
+        "/// `model.warnings()` against itself, so it holds with equal ease on a",
+        "/// channel that returns nothing at all -- and `(1000, 1.5, 11)` had just",
+        "/// become exactly such a channel. It now asserts the fixture actually",
+        "/// produces a warning before asserting that reading it twice is stable,",
+        "/// so it cannot pass on an empty channel.",
+        "test \"lplr_warnings_are_returned_not_printed\" {",
+        "// The contract under test: `warnings()` is a pure read of the fitted struct",
+        "// and does not itself produce output. Asserted structurally -- the accessor",
+        "// exists, returns an Array[String], and is stable across calls -- and",
+        "// NON-TRIVIALLY, on a fixture that does warn.",
+        "let model = v1450_lplr_fit(200, 1.5, 11)",
+        "let a = model.warnings()",
+        "let b = model.warnings()",
+        "assert_true(a.length() > 0)",
+        "assert_true(a.length() == b.length())",
+        "for i = 0; i < a.length(); i = i + 1 {",
+        "assert_true(a[i] == b[i])",
+        "}",
+        "}",
+        "",
+        "///|",
+        "/// GATE 6. REPLACED in v0.163.0. The old gate asserted that across a range of",
+        "/// alphas the set of warning-producing alphas is a SUFFIX, read off",
+        "/// `(800, alpha, 17)`. D2 removes the alpha cliff that invariant described,",
+        "/// and it does so completely: run unchanged, that sweep is"
+      ],
+      "file_lines": 174
+    },
+    {
+      "pointer": "kfold.mbt:751-757",
+      "path": "kfold.mbt",
+      "first": 751,
+      "last": 757,
+      "record_lines": [
+        1584
+      ],
+      "resolved_to": "moonbit_doubleML/kfold.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\kfold.mbt",
+      "in_range": true,
+      "cited_text": [
+        "for fold in outer {",
+        "let train_idx = fold.train_idx",
+        "let m = train_idx.length()",
+        "// Build inner folds on the outer training indices.",
+        "let inner = kfold(m, n_inner, rng_state)",
+        "rng_state = rng_state + 1",
+        "let preds : Array[Double] = Array::make(m, 0.0)"
+      ],
+      "file_lines": 826
+    },
+    {
+      "pointer": "kfold.mbt:757",
+      "path": "kfold.mbt",
+      "first": 757,
+      "last": 757,
+      "record_lines": [
+        1078
+      ],
+      "resolved_to": "moonbit_doubleML/kfold.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\kfold.mbt",
+      "in_range": true,
+      "cited_text": [
+        "let preds : Array[Double] = Array::make(m, 0.0)"
+      ],
+      "file_lines": 826
+    },
+    {
+      "pointer": "learner.mbt:159",
+      "path": "learner.mbt",
+      "first": 159,
+      "last": 159,
+      "record_lines": [
+        2456
+      ],
+      "resolved_to": "moonbit_doubleML/learner.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\learner.mbt",
+      "in_range": true,
+      "cited_text": [
+        "/// `predict` returns P(y = 1 | x) for every row."
+      ],
+      "file_lines": 458
+    },
+    {
+      "pointer": "learner.mbt:380-425",
+      "path": "learner.mbt",
+      "first": 380,
+      "last": 425,
+      "record_lines": [
+        1988
+      ],
+      "resolved_to": "moonbit_doubleML/learner.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\learner.mbt",
+      "in_range": true,
+      "cited_text": [
+        "pub fn cross_fit_predict_conditional_dispatch(",
+        "learner : LearnerDispatch,",
+        "x : Matrix,",
+        "y : Array[Double],",
+        "folds : Array[Fold],",
+        "train_cond : Array[Int32],",
+        ") -> Array[Double] {",
+        "let n = y.length()",
+        "let p = x.cols()",
+        "let cond : Array[Bool] = Array::make(n, false)",
+        "for i in train_cond {",
+        "cond[i] = true",
+        "}",
+        "let out : Array[Double] = Array::make(n, 0.0)",
+        "for f = 0; f < folds.length(); f = f + 1 {",
+        "let te = folds[f].test_indices()",
+        "if te.length() == 0 {",
+        "continue",
+        "}",
+        "let tr_all = folds[f].train_indices()",
+        "let mut tr_idx : Array[Int32] = []",
+        "for i in tr_all {",
+        "if cond[i] {",
+        "tr_idx = tr_idx + [i]",
+        "}",
+        "}",
+        "if tr_idx.length() == 0 {",
+        "continue",
+        "}",
+        "let x_train = Matrix::from_array(",
+        "gather_rows(x, tr_idx, p),",
+        "tr_idx.length(),",
+        "p,",
+        ")",
+        "let y_train = Array::make(tr_idx.length(), 0.0)",
+        "for k = 0; k < tr_idx.length(); k = k + 1 {",
+        "y_train[k] = y[tr_idx[k]]",
+        "}",
+        "let x_test = Matrix::from_array(gather_rows(x, te, p), te.length(), p)",
+        "let preds = fit_predict_one_dispatch(learner, x_train, y_train, x_test)",
+        "for k = 0; k < te.length(); k = k + 1 {",
+        "out[te[k]] = preds[k]",
+        "}",
+        "}",
+        "out",
+        "}"
+      ],
+      "file_lines": 458
+    },
+    {
+      "pointer": "logistic.mbt:23-25",
+      "path": "logistic.mbt",
+      "first": 23,
+      "last": 25,
+      "record_lines": [
+        1241
+      ],
+      "resolved_to": "moonbit_doubleML/logistic.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\logistic.mbt",
+      "in_range": true,
+      "cited_text": [
+        "pub fn LogisticRegression::new() -> LogisticRegression {",
+        "{ fitted: false, coef_: [], }",
+        "}"
+      ],
+      "file_lines": 263
+    },
+    {
+      "pointer": "logistic.mbt:217-243",
+      "path": "logistic.mbt",
+      "first": 217,
+      "last": 243,
+      "record_lines": [
+        2372
+      ],
+      "resolved_to": "moonbit_doubleML/logistic.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\logistic.mbt",
+      "in_range": true,
+      "cited_text": [
+        "pub fn LogisticRegression::predict(",
+        "self : LogisticRegression,",
+        "x : Matrix,",
+        ") -> Array[Double] {",
+        "try {",
+        "require(self.fitted)",
+        "require(x.ncols == self.coef_.length() - 1)",
+        "let xa = augment_with_intercept(x)",
+        "let eta = matvec(xa, self.coef_)",
+        "let n = x.nrows",
+        "let out : Array[Double] = Array::make(n, 0.0)",
+        "for i = 0; i < n; i = i + 1 {",
+        "let pi = sigmoid(eta[i])",
+        "if pi < 1.0e-15 {",
+        "out[i] = 1.0e-15",
+        "} else if pi > 1.0 - 1.0e-15 {",
+        "out[i] = 1.0 - 1.0e-15",
+        "} else {",
+        "out[i] = pi",
+        "}",
+        "}",
+        "out",
+        "} catch {",
+        "PreconditionError::Violated(loc) =>",
+        "abort(\"precondition failed at \" + loc.to_string())",
+        "}",
+        "}"
+      ],
+      "file_lines": 263
+    },
+    {
+      "pointer": "logistic.mbt:250-262",
+      "path": "logistic.mbt",
+      "first": 250,
+      "last": 262,
+      "record_lines": [
+        2374
+      ],
+      "resolved_to": "moonbit_doubleML/logistic.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\logistic.mbt",
+      "in_range": true,
+      "cited_text": [
+        "pub fn LogisticRegression::predict_class(",
+        "self : LogisticRegression,",
+        "x : Matrix,",
+        "threshold~ : Double = 0.5,",
+        ") -> Array[Double] {",
+        "let p = self.predict(x)",
+        "let n = p.length()",
+        "let out : Array[Double] = Array::make(n, 0.0)",
+        "for i = 0; i < n; i = i + 1 {",
+        "out[i] = if p[i] >= threshold { 1.0 } else { 0.0 }",
+        "}",
+        "out",
+        "}"
+      ],
+      "file_lines": 263
+    },
+    {
+      "pointer": "lplr.mbt:198",
+      "path": "lplr.mbt",
+      "first": 198,
+      "last": 198,
+      "record_lines": [
+        1419
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "let r_hat = t_pred[i] - beta[i] * a_pred[i]"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:202-203",
+      "path": "lplr.mbt",
+      "first": 202,
+      "last": 203,
+      "record_lines": [
+        1426
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "let psi_hat = expit(-r_hat)",
+        "let score_const = dt * (1.0 - y[i]) * @math.exp(r_hat)"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:360-362",
+      "path": "lplr.mbt",
+      "first": 360,
+      "last": 362,
+      "record_lines": [
+        1229
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "ml_m~ : LearnerDispatch = LearnerDispatch::logistic_regression(",
+        "LogisticRegression::new(),",
+        "),"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:644",
+      "path": "lplr.mbt",
+      "first": 644,
+      "last": 644,
+      "record_lines": [
+        86
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "///   6. Build the score at any `theta` from"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:758",
+      "path": "lplr.mbt",
+      "first": 758,
+      "last": 758,
+      "record_lines": [
+        57
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "for r = 0; r < nrep; r = r + 1 {"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:810",
+      "path": "lplr.mbt",
+      "first": 810,
+      "last": 810,
+      "record_lines": [
+        88
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "// upstream reads at `plm/lplr.py:318`:"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:836",
+      "path": "lplr.mbt",
+      "first": 836,
+      "last": 836,
+      "record_lines": [
+        1414,
+        1905,
+        2426
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:854-876",
+      "path": "lplr.mbt",
+      "first": 854,
+      "last": 876,
+      "record_lines": [
+        1871
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "// It was implemented and reverted twice before this, and both reverts",
+        "// were correct at the time:",
+        "//",
+        "//   * With the old OLS default `ml_m`, restricting to `Y == 0` made",
+        "//     the score nearly unidentified. On `lplr_test`'s n=120 fixture",
+        "//     `beta_start` reached -4.75, `max |r_hat|` reached 19.1 and",
+        "//     `mean(psi_deriv)` collapsed to -3.2e-8; Newton failed to",
+        "//     converge and `var_est` returned -2.4e6 for an O(0.5)",
+        "//     quantity. On `examples/fuzz` trial 5 it gave `se = 1.3e7`.",
+        "//   * In v0.163.0, implemented in FULL (both branches) on top of the",
+        "//     D2+D3 baseline and measured again. It is the faithful port and",
+        "//     it drives both SE ratios to ~1.0 (1.1549 -> 0.9949 and",
+        "//     1.0269 -> 0.9914) -- the best SE agreement measured in this",
+        "//     series. It still does not ship: both gated gaps got WORSE",
+        "//     (`nuisance_space` 0.007307 -> 0.021078), and A/B over 200 of",
+        "//     fuzz's own designs put the worst `|coef|` at 7.93e12 against",
+        "//     1.03e11 on the shipped state, with `examples/fuzz` going from",
+        "//     11/11 to FAIL at trial 141. The 0.113896 -> 0.005995 and",
+        "//     0.024022 -> 0.000526 figures an earlier note quoted here were",
+        "//     measured on the PRE-D2 baseline and describe nothing that",
+        "//     exists now.",
+        "//",
+        "// Full record: `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 8-10."
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:868",
+      "path": "lplr.mbt",
+      "first": 868,
+      "last": 868,
+      "record_lines": [
+        2031
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "//     (`nuisance_space` 0.007307 -> 0.021078), and A/B over 200 of"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:870",
+      "path": "lplr.mbt",
+      "first": 870,
+      "last": 870,
+      "record_lines": [
+        1741
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "//     1.03e11 on the shipped state, with `examples/fuzz` going from"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:1132",
+      "path": "lplr.mbt",
+      "first": 1132,
+      "last": 1132,
+      "record_lines": [
+        1288
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "//     clamp was measured where nothing fails, and generalised past"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:1189",
+      "path": "lplr.mbt",
+      "first": 1189,
+      "last": 1189,
+      "record_lines": [
+        1808
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "// and the labels are a separate `predict_class` (`logistic.mbt:250`)."
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:1236-1242",
+      "path": "lplr.mbt",
+      "first": 1236,
+      "last": 1242,
+      "record_lines": [
+        2649
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "// Section 27 withdrew section 25g's contrary conclusion, which rested",
+        "// on a single unpinned upstream draw. Record:",
+        "// `_verify/LPLR_GATE_BLINDNESS_1680.md` sections 25g-25h and 27.",
+        "//",
+        "// v0.163.4: this paragraph used to read \"One real divergence remains",
+        "// and it is NOT implemented ... (69% of `a_hat`'s own span apart)\".",
+        "// The STRUCTURE is still real -- upstream's `a_hat[\"preds\"]` is a"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:1253",
+      "path": "lplr.mbt",
+      "first": 1253,
+      "last": 1253,
+      "record_lines": [
+        2558
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "// make."
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:1474-1487",
+      "path": "lplr.mbt",
+      "first": 1474,
+      "last": 1487,
+      "record_lines": [
+        1444
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        ")",
+        "}",
+        "{",
+        "..self,",
+        "boot_t_stat,",
+        "boot_method: method_name,",
+        "n_rep_boot,",
+        "boot_seed: seed,",
+        "}",
+        "} catch {",
+        "PreconditionError::Violated(loc) =>",
+        "abort(\"precondition failed at \" + loc.to_string())",
+        "}",
+        "}"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.mbt:1630",
+      "path": "lplr.mbt",
+      "first": 1630,
+      "last": 1630,
+      "record_lines": [
+        180
+      ],
+      "resolved_to": "moonbit_doubleML/lplr.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\lplr.mbt",
+      "in_range": true,
+      "cited_text": [
+        "preds[fold.test_idx[k]] = p[k]"
+      ],
+      "file_lines": 2061
+    },
+    {
+      "pointer": "lplr.py:244-252",
+      "path": "lplr.py",
+      "first": 244,
+      "last": 252,
+      "record_lines": [
+        241
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "if self.score == \"instrument\":",
+        "weights = M_hat[\"preds\"] * (1 - M_hat[\"preds\"])",
+        "filtered_smpls = smpls",
+        "elif self.score == \"nuisance_space\":",
+        "filtered_smpls = []",
+        "for train, test in smpls:",
+        "train_filtered = train[y[train] == 0]",
+        "filtered_smpls.append((train_filtered, test))",
+        "weights = None"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "lplr.py:245",
+      "path": "lplr.py",
+      "first": 245,
+      "last": 245,
+      "record_lines": [
+        2001
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "weights = M_hat[\"preds\"] * (1 - M_hat[\"preds\"])"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "lplr.py:247-252",
+      "path": "lplr.py",
+      "first": 247,
+      "last": 252,
+      "record_lines": [
+        89,
+        1218
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "elif self.score == \"nuisance_space\":",
+        "filtered_smpls = []",
+        "for train, test in smpls:",
+        "train_filtered = train[y[train] == 0]",
+        "filtered_smpls.append((train_filtered, test))",
+        "weights = None"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "lplr.py:250",
+      "path": "lplr.py",
+      "first": 250,
+      "last": 250,
+      "record_lines": [
+        50
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "train_filtered = train[y[train] == 0]"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "lplr.py:268-269",
+      "path": "lplr.py",
+      "first": 268,
+      "last": 269,
+      "record_lines": [
+        234
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "if self._check_learner(self._learner[\"ml_m\"], \"ml_m\", regressor=True, classifier=True):",
+        "_check_is_propensity(m_hat[\"preds\"], self._learner[\"ml_m\"], \"ml_m\", smpls, eps=1e-12)"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "lplr.py:345",
+      "path": "lplr.py",
+      "first": 345,
+      "last": 345,
+      "record_lines": [
+        1385,
+        1408
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "r_hat[\"preds\"] = t_hat[\"preds\"] - beta * a_hat[\"preds\"]"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "lplr.py:405",
+      "path": "lplr.py",
+      "first": 405,
+      "last": 405,
+      "record_lines": [
+        1347
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "score_const = d_tilde * (1 - y) * np.exp(r_hat)"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:150",
+      "path": "plm/lplr.py",
+      "first": 150,
+      "last": 150,
+      "record_lines": [
+        2367
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "self._predict_method[\"ml_m\"] = \"predict_proba\""
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:166",
+      "path": "plm/lplr.py",
+      "first": 166,
+      "last": 166,
+      "record_lines": [
+        2364
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "self._predict_method[\"ml_a\"] = \"predict_proba\""
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:244-264",
+      "path": "plm/lplr.py",
+      "first": 244,
+      "last": 264,
+      "record_lines": [
+        639,
+        1887
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "if self.score == \"instrument\":",
+        "weights = M_hat[\"preds\"] * (1 - M_hat[\"preds\"])",
+        "filtered_smpls = smpls",
+        "elif self.score == \"nuisance_space\":",
+        "filtered_smpls = []",
+        "for train, test in smpls:",
+        "train_filtered = train[y[train] == 0]",
+        "filtered_smpls.append((train_filtered, test))",
+        "weights = None",
+        "",
+        "m_hat = _dml_cv_predict(",
+        "self._learner[\"ml_m\"],",
+        "x,",
+        "d,",
+        "smpls=filtered_smpls,",
+        "n_jobs=n_jobs_cv,",
+        "est_params=self._get_params(\"ml_m\"),",
+        "method=self._predict_method[\"ml_m\"],",
+        "return_models=return_models,",
+        "sample_weights=weights,",
+        ")"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:302-312",
+      "path": "plm/lplr.py",
+      "first": 302,
+      "last": 312,
+      "record_lines": [
+        1390
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "a_hat = _double_dml_cv_predict(",
+        "self._learner[\"ml_a\"],",
+        "\"ml_a\",",
+        "x,",
+        "d,",
+        "smpls=smpls,",
+        "smpls_inner=self._DoubleML__smpls__inner,",
+        "n_jobs=n_jobs_cv,",
+        "est_params=self._get_params(\"ml_a\"),",
+        "method=self._predict_method[\"ml_a\"],",
+        ")"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:315-323",
+      "path": "plm/lplr.py",
+      "first": 315,
+      "last": 323,
+      "record_lines": [
+        531
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "beta = np.zeros(d.shape, dtype=float)",
+        "",
+        "for i, (train, test) in enumerate(smpls):",
+        "M_iteration = M_hat[\"preds_inner\"][i][train]",
+        "M_iteration = np.clip(M_iteration, 1e-8, 1 - 1e-8)",
+        "w = scipy.special.logit(M_iteration)",
+        "W_inner.append(w)",
+        "d_tilde = (d - a_hat[\"preds_inner\"][i])[train]",
+        "beta[test] = np.sum(d_tilde * w) / np.sum(d_tilde**2)"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:317-323",
+      "path": "plm/lplr.py",
+      "first": 317,
+      "last": 323,
+      "record_lines": [
+        431
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "for i, (train, test) in enumerate(smpls):",
+        "M_iteration = M_hat[\"preds_inner\"][i][train]",
+        "M_iteration = np.clip(M_iteration, 1e-8, 1 - 1e-8)",
+        "w = scipy.special.logit(M_iteration)",
+        "W_inner.append(w)",
+        "d_tilde = (d - a_hat[\"preds_inner\"][i])[train]",
+        "beta[test] = np.sum(d_tilde * w) / np.sum(d_tilde**2)"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:326",
+      "path": "plm/lplr.py",
+      "first": 326,
+      "last": 326,
+      "record_lines": [
+        864,
+        2527,
+        2544
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "self._coef_start_val = np.average(beta)"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:345",
+      "path": "plm/lplr.py",
+      "first": 345,
+      "last": 345,
+      "record_lines": [
+        2528
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "r_hat[\"preds\"] = t_hat[\"preds\"] - beta * a_hat[\"preds\"]"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:401-415",
+      "path": "plm/lplr.py",
+      "first": 401,
+      "last": 415,
+      "record_lines": [
+        799
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "def _score_elements(self, y, d, r_hat, m_hat):",
+        "# compute residual",
+        "d_tilde = d - m_hat",
+        "psi_hat = scipy.special.expit(-r_hat)",
+        "score_const = d_tilde * (1 - y) * np.exp(r_hat)",
+        "psi_elements = {",
+        "\"y\": y,",
+        "\"d\": d,",
+        "\"d_tilde\": d_tilde,",
+        "\"r_hat\": r_hat,",
+        "\"m_hat\": m_hat,",
+        "\"psi_hat\": psi_hat,",
+        "\"score_const\": score_const,",
+        "}",
+        ""
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "plm/lplr.py:403",
+      "path": "plm/lplr.py",
+      "first": 403,
+      "last": 403,
+      "record_lines": [
+        973
+      ],
+      "resolved_to": "<upstream>/plm\\lplr.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\plm\\lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "d_tilde = d - m_hat"
+      ],
+      "file_lines": 640
+    },
+    {
+      "pointer": "pyexample_lplr.py:285",
+      "path": "pyexample_lplr.py",
+      "first": 285,
+      "last": 285,
+      "record_lines": [
+        1116
+      ],
+      "resolved_to": "pyexample_lplr.py",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\pyexample_lplr.py",
+      "in_range": true,
+      "cited_text": [
+        "# emission -- before each re-pin. That is the point of this check: it is a"
+      ],
+      "file_lines": 410
+    },
+    {
+      "pointer": "pyexample_policytree.py:229",
+      "path": "pyexample_policytree.py",
+      "first": 229,
+      "last": 229,
+      "record_lines": [
+        2243
+      ],
+      "resolved_to": "pyexample_policytree.py",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\pyexample_policytree.py",
+      "in_range": true,
+      "cited_text": [
+        "feat_ok = up_feat == port_feat"
+      ],
+      "file_lines": 282
+    },
+    {
+      "pointer": "utils/_estimation.py:207-229",
+      "path": "utils/_estimation.py",
+      "first": 207,
+      "last": 229,
+      "record_lines": [
+        1391
+      ],
+      "resolved_to": "<upstream>/utils\\_estimation.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\utils\\_estimation.py",
+      "in_range": true,
+      "cited_text": [
+        "for smpls_single_split, smpls_double_split in zip(smpls, smpls_inner):",
+        "res_inner = _dml_cv_predict(",
+        "estimator,",
+        "x,",
+        "y,",
+        "smpls=smpls_double_split,",
+        "n_jobs=n_jobs,",
+        "est_params=est_params,",
+        "method=method,",
+        "return_models=True,",
+        "sample_weights=sample_weights,",
+        ")",
+        "_check_finite_predictions(res_inner[\"preds\"], estimator, estimator_name, smpls_double_split)",
+        "",
+        "res[\"preds_inner\"].append(res_inner[\"preds\"])",
+        "res[\"targets_inner\"].append(res_inner[\"targets\"])",
+        "for model in res_inner[\"models\"]:",
+        "res[\"models\"].append(model)",
+        "if method == \"predict_proba\":",
+        "res[\"preds\"][smpls_single_split[1]] += model.predict_proba(x[smpls_single_split[1]])[:, 1]",
+        "else:",
+        "res[\"preds\"][smpls_single_split[1]] += model.predict(x[smpls_single_split[1]])",
+        "res[\"preds\"] /= len(smpls)"
+      ],
+      "file_lines": 492
+    },
+    {
+      "pointer": "utils/_estimation.py:225-226",
+      "path": "utils/_estimation.py",
+      "first": 225,
+      "last": 226,
+      "record_lines": [
+        2365
+      ],
+      "resolved_to": "<upstream>/utils\\_estimation.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\utils\\_estimation.py",
+      "in_range": true,
+      "cited_text": [
+        "if method == \"predict_proba\":",
+        "res[\"preds\"][smpls_single_split[1]] += model.predict_proba(x[smpls_single_split[1]])[:, 1]"
+      ],
+      "file_lines": 492
+    },
+    {
+      "pointer": "utils/resampling.py:52-65",
+      "path": "utils/resampling.py",
+      "first": 52,
+      "last": 65,
+      "record_lines": [
+        1565
+      ],
+      "resolved_to": "<upstream>/utils\\resampling.py",
+      "resolved_abs": "C:\\Users\\31379\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\doubleml\\utils\\resampling.py",
+      "in_range": true,
+      "cited_text": [
+        "def split_samples(self):",
+        "all_smpls = [(train, test) for train, test in self.resampling.split(X=np.zeros(self.n_obs), y=self.stratify)]",
+        "smpls = [all_smpls[(i_repeat * self.n_folds) : ((i_repeat + 1) * self.n_folds)] for i_repeat in range(self.n_rep)]",
+        "smpls_inner = []",
+        "for i_rep in range(self.n_rep):",
+        "smpls_inner_rep = []",
+        "for train, test in smpls[i_rep]:",
+        "if self.stratify is None:",
+        "smpls_inner_rep.append(",
+        "[",
+        "(train[train_inner], train[test_inner])",
+        "for train_inner, test_inner in self.resampling_inner.split(X=train)",
+        "]",
+        ")"
+      ],
+      "file_lines": 130
+    },
+    {
+      "pointer": "var_est.mbt:79",
+      "path": "var_est.mbt",
+      "first": 79,
+      "last": 79,
+      "record_lines": [
+        995,
+        1159
+      ],
+      "resolved_to": "moonbit_doubleML/var_est.mbt",
+      "resolved_abs": "D:\\src\\MiniMax\\Projects\\DoubleMachineLearning\\moonbit_doubleML\\moonbit_doubleML\\var_est.mbt",
+      "in_range": true,
+      "cited_text": [
+        "require(jacobian.abs() > 0.0)"
+      ],
+      "file_lines": 99
+    }
+  ],
+  "pointer_count": 62,
+  "pointers_unresolved": [
+    "_lplr_bag_nsweep_1680.py:125"
+  ],
+  "pointers_out_of_range": [],
+  "scripts": [
+    {
+      "cited_as": "_estimation.py",
+      "name": "_estimation.py",
+      "record_lines": [
+        943,
+        1210,
+        1391,
+        1440,
+        2365,
+        2425
+      ],
+      "found_at": null,
+      "exists": false,
+      "tracked": false,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "_lplr_bag_nsweep_1680.py",
+      "name": "_lplr_bag_nsweep_1680.py",
+      "record_lines": [
+        2367
+      ],
+      "found_at": "_verify/_lplr_bag_nsweep_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "_lplr_nan_upstream_1680.py",
+      "name": "_lplr_nan_upstream_1680.py",
+      "record_lines": [
+        1623
+      ],
+      "found_at": "_verify/_lplr_nan_upstream_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "_lplr_tol_window2_1680.py",
+      "name": "_lplr_tol_window2_1680.py",
+      "record_lines": [
+        1948
+      ],
+      "found_at": "_verify/_lplr_tol_window2_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "_verify/_lplr_ahat_1680.py",
+      "name": "_lplr_ahat_1680.py",
+      "record_lines": [
+        1099
+      ],
+      "found_at": "_verify/_lplr_ahat_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_ahat_bag_1680.py",
+      "name": "_lplr_ahat_bag_1680.py",
+      "record_lines": [
+        1448
+      ],
+      "found_at": "_verify/_lplr_ahat_bag_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_ahat_proba_1680.py",
+      "name": "_lplr_ahat_proba_1680.py",
+      "record_lines": [
+        2383
+      ],
+      "found_at": "_verify/_lplr_ahat_proba_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_bag_direction_1680.py",
+      "name": "_lplr_bag_direction_1680.py",
+      "record_lines": [
+        1480
+      ],
+      "found_at": "_verify/_lplr_bag_direction_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_bag_proba_nsweep_1680.py",
+      "name": "_lplr_bag_proba_nsweep_1680.py",
+      "record_lines": [
+        2409
+      ],
+      "found_at": "_verify/_lplr_bag_proba_nsweep_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_cond_n500_1680.py",
+      "name": "_lplr_cond_n500_1680.py",
+      "record_lines": [
+        2022
+      ],
+      "found_at": "_verify/_lplr_cond_n500_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_d1_unclamped_1680.py",
+      "name": "_lplr_d1_unclamped_1680.py",
+      "record_lines": [
+        1050
+      ],
+      "found_at": "_verify/_lplr_d1_unclamped_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_d3_gap_1680.py",
+      "name": "_lplr_d3_gap_1680.py",
+      "record_lines": [
+        422
+      ],
+      "found_at": "_verify/_lplr_d3_gap_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_formula_vs_nuisance_1680.py",
+      "name": "_lplr_formula_vs_nuisance_1680.py",
+      "record_lines": [
+        2198
+      ],
+      "found_at": "_verify/_lplr_formula_vs_nuisance_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_fuzzrows_upstream_1680.py",
+      "name": "_lplr_fuzzrows_upstream_1680.py",
+      "record_lines": [
+        2150
+      ],
+      "found_at": "_verify/_lplr_fuzzrows_upstream_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_mhat_conditioning_1680.py",
+      "name": "_lplr_mhat_conditioning_1680.py",
+      "record_lines": [
+        1915
+      ],
+      "found_at": "_verify/_lplr_mhat_conditioning_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_upstream_smalln_1680.py",
+      "name": "_lplr_upstream_smalln_1680.py",
+      "record_lines": [
+        1627
+      ],
+      "found_at": "_verify/_lplr_upstream_smalln_1680.py",
+      "exists": true,
+      "tracked": false,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_lplr_v1630_battery_1680.py",
+      "name": "_lplr_v1630_battery_1680.py",
+      "record_lines": [
+        618
+      ],
+      "found_at": "_verify/_lplr_v1630_battery_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_mk_lplr_gap_probe_1680.py",
+      "name": "_mk_lplr_gap_probe_1680.py",
+      "record_lines": [
+        1118
+      ],
+      "found_at": "_verify/_mk_lplr_gap_probe_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_typos_pinned_check_1680.py",
+      "name": "_typos_pinned_check_1680.py",
+      "record_lines": [
+        2328
+      ],
+      "found_at": "_verify/_typos_pinned_check_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_verify/_upstream_lplr_tail_1680.py",
+      "name": "_upstream_lplr_tail_1680.py",
+      "record_lines": [
+        825
+      ],
+      "found_at": "_verify/_upstream_lplr_tail_1680.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "_with_python.py",
+      "name": "_with_python.py",
+      "record_lines": [
+        9
+      ],
+      "found_at": null,
+      "exists": false,
+      "tracked": false,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "double_ml_score_mixins.py",
+      "name": "double_ml_score_mixins.py",
+      "record_lines": [
+        837,
+        931,
+        1273,
+        2546
+      ],
+      "found_at": "_verify/double_ml_score_mixins.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "lplr.py",
+      "name": "lplr.py",
+      "record_lines": [
+        50,
+        76,
+        89,
+        234,
+        241,
+        326,
+        431,
+        531,
+        639,
+        799,
+        864,
+        973,
+        1029,
+        1218,
+        1347,
+        1385,
+        1390,
+        1408,
+        1887,
+        2001,
+        2364,
+        2367,
+        2527,
+        2528,
+        2544,
+        2545
+      ],
+      "found_at": null,
+      "exists": false,
+      "tracked": false,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "pyexample_lplr.py",
+      "name": "pyexample_lplr.py",
+      "record_lines": [
+        248,
+        353,
+        421,
+        727,
+        819,
+        824,
+        891,
+        963,
+        1116,
+        1705,
+        1724,
+        1747,
+        1811
+      ],
+      "found_at": "pyexample_lplr.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "pyexample_policytree.py",
+      "name": "pyexample_policytree.py",
+      "record_lines": [
+        2243,
+        2258,
+        2304
+      ],
+      "found_at": "pyexample_policytree.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    },
+    {
+      "cited_as": "resampling.py",
+      "name": "resampling.py",
+      "record_lines": [
+        1565
+      ],
+      "found_at": null,
+      "exists": false,
+      "tracked": false,
+      "resolves_as_cited": false,
+      "prefix_ok": false
+    },
+    {
+      "cited_as": "validate_lplr_with_python.py",
+      "name": "validate_lplr_with_python.py",
+      "record_lines": [
+        8
+      ],
+      "found_at": "validate_lplr_with_python.py",
+      "exists": true,
+      "tracked": true,
+      "resolves_as_cited": true,
+      "prefix_ok": true
+    }
+  ],
+  "scripts_missing": [
+    "_with_python.py",
+    "lplr.py",
+    "_estimation.py",
+    "resampling.py"
+  ],
+  "scripts_untracked": [
+    "_verify/_lplr_ahat_bag_1680.py",
+    "_verify/_lplr_bag_direction_1680.py",
+    "_verify/_lplr_upstream_smalln_1680.py",
+    "_verify/_lplr_mhat_conditioning_1680.py",
+    "_lplr_tol_window2_1680.py",
+    "_verify/_lplr_cond_n500_1680.py",
+    "_verify/_lplr_fuzzrows_upstream_1680.py",
+    "_verify/_lplr_formula_vs_nuisance_1680.py",
+    "_lplr_bag_nsweep_1680.py",
+    "_verify/_lplr_ahat_proba_1680.py",
+    "_verify/_lplr_bag_proba_nsweep_1680.py"
+  ],
+  "scripts_bad_prefix": [
+    "double_ml_score_mixins.py",
+    "_lplr_nan_upstream_1680.py",
+    "_lplr_tol_window2_1680.py",
+    "_lplr_bag_nsweep_1680.py"
+  ],
+  "test_counts": [
+    {
+      "record_line": 172,
+      "pair": "1115/1115",
+      "a": 1115,
+      "b": 1115,
+      "context": "2. **The test suite was green (1115/1115) while the estimator was broken.**"
+    },
+    {
+      "record_line": 283,
+      "pair": "1115/1115",
+      "a": 1115,
+      "b": 1115,
+      "context": "| logistic default, D1 held off | ALL 11 SURFACES PASSED | 1115/1115 | PASS |"
+    },
+    {
+      "record_line": 373,
+      "pair": "1122/1122",
+      "a": 1122,
+      "b": 1122,
+      "context": "`moon test` stayed 1122/1122 — including the five `lplr_score_at` tests, whose"
+    },
+    {
+      "record_line": 487,
+      "pair": "1122/1122",
+      "a": 1122,
+      "b": 1122,
+      "context": "PASS, `moon test` 1122/1122)."
+    },
+    {
+      "record_line": 733,
+      "pair": "9001/9002",
+      "a": 9001,
+      "b": 9002,
+      "context": "`examples/parity`, seeds 9001/9002/9003):"
+    },
+    {
+      "record_line": 1257,
+      "pair": "300/300",
+      "a": 300,
+      "b": 300,
+      "context": "upstream stays finite on 300/300 draws of this DGP while the port's Newton"
+    },
+    {
+      "record_line": 1348,
+      "pair": "300/300",
+      "a": 300,
+      "b": 300,
+      "context": "finite 300/300 remains unexplained by anything here."
+    },
+    {
+      "record_line": 1367,
+      "pair": "1117/1117",
+      "a": 1117,
+      "b": 1117,
+      "context": "the same commit; `moon check --deny-warn`, 1117/1117 native tests,"
+    },
+    {
+      "record_line": 2119,
+      "pair": "300/300",
+      "a": 300,
+      "b": 300,
+      "context": "**n = 500**, upstream stayed finite on 300/300 draws while the unclamped port"
+    }
+  ]
+}

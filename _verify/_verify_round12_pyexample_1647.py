@@ -297,8 +297,18 @@ ok("E2 rdd.mbt says they differ, so the gate's note points at something true",
 gap_re = re.compile(r"\d\.\d+e-1[45]")
 rdd_para = rdd[rdd.index("GATED -- the bias-corrected arm"):
                 rdd.index("REPORTED, NOT GATED")]
-rm_para = readme[readme.index("**`DoubleMLRDD`'s shipped default arm"):
-                 readme.index("The multi-cohort half is the one worth reading")]
+# The README's RDD paragraph is bounded by its OWN end -- the next blank line
+# -- rather than by a phrase in the paragraph after it.  The old boundary was
+# "The multi-cohort half is the one worth reading", a pointer into this
+# project's own CHANGELOG history, which the README no longer carries (it
+# lives in ENGINEERING.md).  Bounding the paragraph by itself is the stricter
+# reading: it cannot absorb text that belongs to a neighbouring section.
+rm_para = ""
+_m = re.search(r"\*\*`DoubleMLRDD`'s shipped default arm", readme)
+if _m:
+    _rest = readme[_m.start():]
+    _cut = _rest.find("\n\n")
+    rm_para = _rest if _cut < 0 else _rest[:_cut]
 ok("E3 the RDD docstring quotes both an absolute and a relative gap",
    "absolute" in rdd_para and "relative" in rdd_para)
 ok("E4 the README quotes both an absolute and a relative gap",
@@ -338,6 +348,14 @@ ok("G2 the table has one row per gate on disk", table_rows == len(on_disk),
 ok("G3 the count word equals the number of gates on disk",
    stated == len(on_disk), "%s vs %d" % (word, len(on_disk)))
 m = re.search(r"(\d+) `pyexample_\*` upstream gates", readme)
+if m is None:
+    # Round 18 split the documentation in two.  The SECOND mention of the
+    # count lives in the CI gate table, which is the PROJECT document's; the
+    # first (the count word and the table) is the README's.
+    _proj_path = os.path.join(ROOT, "ENGINEERING.md")
+    if os.path.exists(_proj_path):
+        m = re.search(r"(\d+) `pyexample_\*` upstream gates",
+                      read(os.path.join(ROOT, "ENGINEERING.md")))
 ok("G4 the second mention of the count agrees",
    m and int(m.group(1)) == len(on_disk),
    m.group(1) if m else "no mention")

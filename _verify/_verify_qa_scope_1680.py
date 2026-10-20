@@ -31,10 +31,17 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
 CHECKS = os.path.join(ROOT, ".github", "scripts", "qa_loop", "checks.py")
 README = os.path.join(ROOT, "README.mbt.md")
+PROJ = os.path.join(ROOT, "ENGINEERING.md")
 QA_FAST = os.path.join(ROOT, "_verify", "_qa_fast_1639.json")
 
 src = io.open(CHECKS, encoding="utf-8", errors="replace").read()
 readme = io.open(README, encoding="utf-8").read()
+# Round 18 split the documentation in two.  The QA registry's own shape is the
+# PROJECT's, not the library's: it is described in `ENGINEERING.md`, so these
+# four checks read that document.  The registry is still derived from
+# `checks.py` below -- the point is that the number cannot rot, not which
+# file carries it.
+proj = io.open(PROJ, encoding="utf-8").read()
 
 # The decorator may span lines, so match up to the closing paren of the call.
 CALL = re.compile(r"@check\(\s*[\"']([^\"']+)[\"']\s*,(.*?)\)\s*$", re.M | re.S)
@@ -106,14 +113,14 @@ else:
     print("  (no measured fast-scope JSON -- skipping the run cross-check)")
 
 # --------------------------------------------------------------- the prose
-check("the README says 31 registered checks",
-      "31 registered checks" in readme)
-check("the README says 22 of them fast",
-      "22 of them fast" in readme)
-check("the README says 22 in fast scope",
-      re.search(r"\*\*22 in `fast` scope\*\*", readme) is not None)
-check("the README says 9 in full scope",
-      re.search(r"\*\*9 in `full` scope\*\*", readme) is not None)
+check("the project document says 31 registered checks",
+      "31 registered checks" in proj)
+check("the project document says 22 of them fast",
+      "22 of them fast" in proj)
+check("the project document says 22 in fast scope",
+      re.search(r"\*\*22 in `fast` scope\*\*", proj) is not None)
+check("the project document says 9 in full scope",
+      re.search(r"\*\*9 in `full` scope\*\*", proj) is not None)
 
 print("")
 print("checks failed: %d" % len(fails))

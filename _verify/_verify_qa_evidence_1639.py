@@ -1,11 +1,18 @@
-"""Check the two quoted QA pieces of evidence in the README.
+"""Check the two quoted QA pieces of evidence in the project's documentation.
 
 1. The `dependencies` check's WARN evidence is quoted verbatim in the README:
      "2 declared; non-conforming: ['moonbit-community/sqlite3@0.2.3'];
       declared but unreferenced by library code: [both]"
-2. The README says the QA LOOP registers its checks "over the **22** required
-   activities" -- a different 22 from the 22 fast-scope checks, and worth
-   confirming it is not the same number by accident.
+2. The project document says the QA LOOP registers its checks "over the **22**
+   required activities" -- a different 22 from the 22 fast-scope checks, and
+   worth confirming it is not the same number by accident.
+
+Round 18 split the documentation in two: `README.mbt.md` is the LIBRARY
+document and `ENGINEERING.md` is the PROJECT document.  The dependency
+evidence is quoted in the README's "Not covered, so not claimed" section,
+because a user is entitled to see the warning the QA harness actually
+raised.  The QA registry's own counts are the project's, so that check
+reads `ENGINEERING.md`.
 """
 import io
 import json
@@ -19,8 +26,10 @@ ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
 QA_FAST = os.path.join(ROOT, "_verify", "_qa_fast_1639.json")
 CHECKS = os.path.join(ROOT, ".github", "scripts", "qa_loop", "checks.py")
 README = os.path.join(ROOT, "README.mbt.md")
+PROJ = os.path.join(ROOT, "ENGINEERING.md")
 
 readme = io.open(README, encoding="utf-8").read()
+proj = io.open(PROJ, encoding="utf-8").read()
 data = json.load(io.open(QA_FAST, encoding="utf-8"))
 runs = data.get("runs", [])
 measured = {c.get("id"): c for c in (runs[0] if runs else [])}
@@ -82,11 +91,11 @@ if mm:
     n_checks, n_act = int(mm.group(1)), int(mm.group(2))
     check("it registered 31 checks", n_checks == 31, "got %d" % n_checks)
     check("there are 22 required activities", n_act == 22, "got %d" % n_act)
-    check("the README's '22 required activities' matches",
-          re.search(r"\*\*22\*\*\s*\n?required activities", readme) is not None
-          or "**22**\nrequired activities" in readme
-          or re.search(r"over the \*\*22\*\*\s*required activities", readme) is not None,
-          "the README's phrase was not found")
+    check("the project document's '22 required activities' matches",
+          re.search(r"\*\*22\*\*\s*\n?required activities", proj) is not None
+          or "**22**\nrequired activities" in proj
+          or re.search(r"over the \*\*22\*\*\s*required activities", proj) is not None,
+          "the project document's phrase was not found")
 
 print("")
 print("checks failed: %d" % len(fails))

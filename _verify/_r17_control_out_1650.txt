@@ -1,0 +1,72 @@
+upstream: doubleml 0.11.4
+         from D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4\doubleml\__init__.py
+         via the VENDORED sdist (doubleml-0.11.4) at D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4
+upstream: doubleml 0.11.4
+         from D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4\doubleml\__init__.py
+         via the VENDORED sdist (doubleml-0.11.4) at D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4
+upstream: doubleml 0.11.4
+         from D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4\doubleml\__init__.py
+         via the VENDORED sdist (doubleml-0.11.4) at D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4
+trial 2 rows, n=66 p=6 -- 40 clean upstream fits, nothing instrumented
+
+  draw  0  coef=     -0.393576  se=      0.566214  
+  draw  1  coef=      0.759728  se=      0.641131  
+  draw  2  coef=      0.217447  se=      0.569142  
+  draw  3  coef=      -648.285  se=           nan  <-- not a plausible estimate
+  draw  4  coef=      -1.34472  se=       0.63041  
+  draw  5  coef=      -592.928  se=           nan  <-- not a plausible estimate
+  draw  6  coef=       1.34319  se=       1.02864  
+  draw  7  coef=      0.590707  se=       1.44786  
+  draw  8  coef=      -235.134  se=       0.51032  <-- not a plausible estimate
+  draw  9  coef=       1.79312  se=       1.96511  
+  draw 10  coef=       2.44298  se=       3.92226  
+  draw 11  coef=      0.814862  se=       1.19557  
+  draw 12  coef=      -0.19366  se=      0.483212  
+  draw 13  coef=   5.18129e+70  se=           inf  <-- not a plausible estimate
+  draw 14  coef=      0.780953  se=      0.846113  
+  draw 15  coef=        -24.02  se=      0.350049  
+  draw 16  coef=  8.44219e+122  se=           inf  <-- not a plausible estimate
+  draw 17  coef=     -0.993533  se=      0.751848  
+  draw 18  coef=           nan  se=           nan  <-- not a plausible estimate
+  draw 19  coef=      0.849467  se=      0.731283  
+  draw 20  coef=      0.123609  se=       0.60782  
+  draw 21  coef=           nan  se=           nan  <-- not a plausible estimate
+  draw 22  coef=      -242.104  se=      0.309976  <-- not a plausible estimate
+  draw 23  coef=      0.646469  se=      0.943807  
+  draw 24  coef=      0.413728  se=       1.06257  
+  draw 25  coef=       2.12521  se=       4.38973  
+  draw 26  coef=      0.507831  se=      0.537379  
+  draw 27  coef=      0.551588  se=         2.402  
+  draw 28  coef=      0.169484  se=      0.715838  
+  draw 29  coef=        172149  se=           inf  <-- not a plausible estimate
+  draw 30  coef=      -102.605  se=      0.336244  <-- not a plausible estimate
+  draw 31  coef=       1.27849  se=       1.63806  
+  draw 32  coef=   3.7316e+119  se=           inf  <-- not a plausible estimate
+  draw 33  coef=   2.92067e+26  se=           inf  <-- not a plausible estimate
+  draw 34  coef=       1.01409  se=        1.0118  
+  draw 35  coef=           nan  se=           nan  <-- not a plausible estimate
+  draw 36  coef=   9.77842e+82  se=           inf  <-- not a plausible estimate
+  draw 37  coef=      -483.875  se=           nan  <-- not a plausible estimate
+  draw 38  coef=           nan  se=           nan  <-- not a plausible estimate
+  draw 39  coef=   2.19954e+74  se=           inf  <-- not a plausible estimate
+
+=== control result ===
+    draws                                   : 40
+    implausible / non-finite coefficients   : 17  (42%)
+    fits that raised a root warning         : 18
+    example failures:
+      draw 3  coef=-648.285 se=nan
+      draw 5  coef=-592.928 se=nan
+      draw 8  coef=-235.134 se=0.51032
+      draw 13  coef=5.18129e+70 se=inf
+      draw 16  coef=8.44219e+122 se=inf
+
+CONFIRMED on the uninstrumented control: upstream's own LPLR
+returns non-finite or absurd coefficients on 17/40 partitions of
+these exact rows.
+
+Section 25g's claim -- 'the port diverges where upstream does
+not' -- rested on ONE draw and does not survive. Upstream is at
+least as fragile as the port on this row set, so the clamp is NOT
+covering a port defect: it is covering a fragility upstream
+shares and does not guard against either.

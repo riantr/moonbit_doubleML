@@ -48,6 +48,9 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WF = os.path.join(ROOT, ".github", "workflows")
 README = os.path.join(ROOT, "README.mbt.md")
+# round 18: the PROJECT document -- the CI harness, the QA registry and
+# the release history.  The LIBRARY document is `README.mbt.md`.
+PROJ = os.path.join(ROOT, "ENGINEERING.md")
 CHECKS_PY = os.path.join(ROOT, ".github", "scripts", "qa_loop", "checks.py")
 
 RESULTS = []
@@ -213,7 +216,16 @@ def main():
     full = [c["id"] for c in checks if c["scope"] == "full"]
     other = [c["id"] for c in checks if c["scope"] not in ("fast", "full")]
 
-    txt = read(README)
+    # Round 18 split the documentation in two: `README.mbt.md` is the LIBRARY
+    # document and `ENGINEERING.md` is the PROJECT document.  Everything this
+    # verifier checks -- the QA registry, the CI gate table, the full-scope
+    # coverage, the master run's job count -- describes this repository, so it
+    # lives in the project document and the checks below read that.  The
+    # numbers are still derived from `checks.py` / `check.yml` / `publish.yml`
+    # above, so nothing here can rot.
+    txt = read(PROJ)
+    readme = read(README)
+    both = txt + "\n" + readme
     check_txt = read(os.path.join(WF, "check.yml"))
     pub_txt = read(os.path.join(WF, "publish.yml"))
 
@@ -243,24 +255,24 @@ def main():
     for scope in ("fast", "full"):
         mm = re.search(r"^-\s*%s\s*\((\d+)\)\s*:(.*?)(?=^-\s|\n\n)" % scope, txt, re.S | re.M)
         if not mm:
-            ok("README has a %s bullet" % scope, False)
+            ok("the project document has a %s bullet" % scope, False)
             continue
         bullet[scope] = {"n": int(mm.group(1)), "names": re.findall(r"`([^`]+)`", mm.group(2))}
-    ok("README's fast bullet lists exactly the fast scope",
+    ok("the project document's fast bullet lists exactly the fast scope",
        set(bullet.get("fast", {}).get("names", [])) == set(fast),
        "sym-diff %r" % sorted(set(bullet.get("fast", {}).get("names", [])) ^ set(fast)))
-    ok("README's full bullet lists exactly the full scope",
+    ok("the project document's full bullet lists exactly the full scope",
        set(bullet.get("full", {}).get("names", [])) == set(full),
        "sym-diff %r" % sorted(set(bullet.get("full", {}).get("names", [])) ^ set(full)))
-    ok("README's fast bullet count is the derived fast count",
+    ok("the project document's fast bullet count is the derived fast count",
        bullet.get("fast", {}).get("n") == len(fast),
        "%s vs %d" % (bullet.get("fast", {}).get("n"), len(fast)))
-    ok("README's full bullet count is the derived full count",
+    ok("the project document's full bullet count is the derived full count",
        bullet.get("full", {}).get("n") == len(full),
        "%s vs %d" % (bullet.get("full", {}).get("n"), len(full)))
-    ok("README states the derived total check count",
+    ok("the project document states the derived total check count",
        claim_mentions(txt, len(checks), r"registers\s*\*\*@N@\s*checks\*\*"))
-    ok("README states the derived required-activity count",
+    ok("the project document states the derived required-activity count",
        claim_mentions(txt, len(required),
                       r"over the \*\*@N@\*\*\s*\n?required activities"),
        "required=%d" % len(required))
@@ -304,10 +316,10 @@ def main():
     n_push, n_pub = len(push_gates), len(pub_gates)
     print("    push to master : %d  %s" % (n_push, ", ".join(sorted(push_gates))))
     print("    before publish : %d  %s" % (n_pub, ", ".join(sorted(pub_gates))))
-    ok("README states the derived 'run on push' count",
+    ok("the project document states the derived 'run on push' count",
        claim_mentions(txt, n_push, r"gates,\s*\*\*@N@ of which run on push"),
        "derived %d" % n_push)
-    ok("README states the derived 'run before publishing' count",
+    ok("the project document states the derived 'run before publishing' count",
        claim_mentions(txt, n_pub, r"\*\*@N@ of the nine also run"), "derived %d" % n_pub)
 
     for label, pat in (("moon check", r"moon check"), ("interface drift", r"interface")):
@@ -333,14 +345,14 @@ def main():
     ok("no workflow runs the full scope as a scope",
        not any(inv["full"] and inv["only"] is None
                for inv in qa_invocations(check_txt) + qa_invocations(pub_txt)))
-    ok("README states the derived 'full-scope checks that run in CI' count",
+    ok("the project document states the derived 'full-scope checks that run in CI' count",
        claim_mentions(txt, len(full_in_ci), r"\*\*@N@\s*\n?run in CI\*\*"),
        "derived %d" % len(full_in_ci))
-    ok("README states the derived 'full-scope checks that run nowhere' count",
+    ok("the project document states the derived 'full-scope checks that run nowhere' count",
        claim_mentions(txt, len(full_nowhere), r"\*\*@N@\s*\n?run in\s*\n?no CI workflow at all\*\*"),
        "derived %d" % len(full_nowhere))
     for cid in full_nowhere:
-        ok("README names the uncovered full-scope check '%s'" % cid,
+        ok("the project document names the uncovered full-scope check '%s'" % cid,
            ("`%s`" % cid) in txt)
 
     # -- 5. the master CI run's job instances ------------------------------ #
@@ -358,21 +370,21 @@ def main():
             if mv:
                 width = len([x for x in mv.group(1).split(",") if x.strip()])
         instances += width
-    ok("the derived job-instance count is the one the README states",
+    ok("the derived job-instance count is the one the project document states",
        claim_mentions(txt, instances, r"\*\*@N@ jobs\*\*"),
        "derived %d from %d job definitions" % (instances, len(jobs)))
 
     # -- 6. the retracted phrases must stay retracted ---------------------- #
     print("\n[6] retracted claims")
-    for phrase, where in (("all of which run on push", "README"),
-                          ("which is release-time", "README"),
+    for phrase, where in (("all of which run on push", "both documents"),
+                          ("which is release-time", "both documents"),
                           ("The 21 QA activities", "publish.yml"),
                           # the `contract` check's own evidence string said the
                           # script "no workflow runs it" -- printed BY the
                           # fast-scope run that executes it.
                           ("so no workflow runs it", "checks.py")):
-        if where == "README":
-            body = txt
+        if where == "both documents":
+            body = both
         elif where == "publish.yml":
             body = pub_txt
         else:

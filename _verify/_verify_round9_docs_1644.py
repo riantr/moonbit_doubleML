@@ -27,6 +27,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join(ROOT, "moonbit_doubleML")
 FEATURE = os.path.join(ROOT, "features", "moonbit_doubleML_acceptance.feature")
 README = os.path.join(ROOT, "README.mbt.md")
+# round 18: the PROJECT document -- the CI harness, the QA registry and the
+# release history.  The LIBRARY document is `README.mbt.md`.
+PROJ = os.path.join(ROOT, "ENGINEERING.md")
 API_README = os.path.join(ROOT, "examples", "api_server", "README.md")
 API_MOD = os.path.join(ROOT, "examples", "api_server", "moon.mod")
 BUMP = os.path.join(ROOT, "_verify", "_bump_1636.py")
@@ -103,7 +106,7 @@ check("every non-prose mapped name resolves", not unresolved, str(unresolved[:4]
 # B. the shipped README's traceability paragraph == the feature file
 # --------------------------------------------------------------------------- #
 print()
-print("B. README traceability paragraph agrees with the feature file")
+print("B. the project document's traceability paragraph agrees with the feature file")
 n_feat = len(re.findall(r"^Feature:", feat, re.M))
 n_scen = len(re.findall(r"^\s*Scenario", feat, re.M))
 n_step = len(re.findall(r"^\s*(?:Given|When|Then|And)\s", feat, re.M))
@@ -112,7 +115,11 @@ n_distinct = len(set(MAPPED))
 n_resolve = len(REAL)
 n_prose = len(PROSE)
 
-rd = read(README)
+# Round 18 split the documentation in two.  The acceptance-criteria
+# traceability describes THIS repository's own `features/*.feature` file -- it
+# is project bookkeeping, not something a user of the library needs -- so the
+# paragraph lives in `ENGINEERING.md` and these checks read that.
+rd = read(PROJ)
 i = rd.find("Acceptance-criteria traceability")
 para = rd[i - 2 : i + 900] if i >= 0 else ""
 for label, value in [
@@ -124,10 +131,10 @@ for label, value in [
     ("resolving names", n_resolve),
     ("prose-exempt names", n_prose),
 ]:
-    check("README states %s = %d" % (label, value), str(value) in para,
-          "missing %d in the paragraph" % value)
-check("README paragraph present", bool(para))
-check("README does not claim a count the file does not have",
+    check("the project document states %s = %d" % (label, value),
+          str(value) in para, "missing %d in the paragraph" % value)
+check("the project document paragraph present", bool(para))
+check("the project document does not claim a count the file does not have",
       ("**%d**" % n_resolve) in para or ("%d against" % n_resolve) in para
       or ("%d of the %d" % (n_resolve, n_cited)) in para
       or ("%d resolve" % n_resolve) in para
@@ -427,6 +434,16 @@ check("QUANTILE_HANDOFF's absolute paths use the current directory name",
 # --------------------------------------------------------------------------- #
 print()
 print("I. every version literal is covered by the bump script")
+# The bump script IS the contract this section checks against -- its
+# `os.path.join(ROOT, ...)` calls are what the coverage list is derived
+# from -- so it has to be a file a reader can open.  It was untracked until
+# round 18, which meant the check that guards the version sites depended on
+# a script nobody else could see.
+_tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace").stdout.split()
+check("the bump script is TRACKED",
+      "_verify/_bump_1636.py" in _tracked,
+      "the check below reads a file a reader cannot open")
 ver = re.search(r'version\s*=\s*"([0-9.]+)"', read(os.path.join(PKG, "moon.mod"))).group(1)
 bump_src = read(BUMP)
 bump_paths = set()
@@ -442,6 +459,12 @@ for dirpath, dirnames, filenames in os.walk(ROOT):
             continue
         p = os.path.join(dirpath, fn)
         rel = os.path.relpath(p, ROOT).replace("\\", "/")
+        # A SYMLINK is not an independent version site: `README.md` is a
+        # symlink to `README.mbt.md`, so its content IS the target's content,
+        # and the target is a bump site.  Counting it again would report a
+        # site that cannot be bumped separately.
+        if os.path.islink(p):
+            continue
         try:
             s = read(p)
         except Exception:

@@ -129,10 +129,17 @@ check("DIDBinary itself is 'not demonstrated' too",
       table_rows.get("DoubleMLDIDBinary", "").lower().startswith("not demonstrated"))
 
 # --------------------------------------------------- the stale framings gone
-check("'the other eight' is gone", "other eight" not in readme)
-check("'eleven remaining' is gone", "eleven remaining" not in readme)
+# Round 18 split the documentation in two, so a withdrawn framing must be
+# absent from BOTH: it cannot come back in the document that replaced it.
+_proj = ""
+_proj_path = os.path.join(ROOT, "ENGINEERING.md")
+if os.path.exists(_proj_path):
+    _proj = io.open(_proj_path, encoding="utf-8").read()
+_both = readme + "\n" + _proj
+check("'the other eight' is gone", "other eight" not in _both)
+check("'eleven remaining' is gone", "eleven remaining" not in _both)
 check("the sentence no longer claims all eleven were measured in v0.137.0",
-      "All eleven remaining defaults were measured in v0.137.0" not in readme)
+      "All eleven remaining defaults were measured in v0.137.0" not in _both)
 
 print("")
 print("checks failed: %d" % len(fails))

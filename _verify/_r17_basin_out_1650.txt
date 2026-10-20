@@ -1,0 +1,37 @@
+upstream: doubleml 0.11.4
+         from D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4\doubleml\__init__.py
+         via the VENDORED sdist (doubleml-0.11.4) at D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4
+rows n=66 p=6 seed=96696   (upstream's own nuisances, pinned)
+upstream's own start mean(beta) = 1.003059
+the port's start       mean(beta) = 6.842375
+
+=== grid of starts, real scipy newton ===
+x0         root             converged
+-20        -0.393576        yes
+-10        -0.393576        yes
+-5         -0.393576        yes
+-3         -0.393576        yes
+-2         -0.393576        yes
+-1         -0.393576        yes
+0          -0.393576        yes
+0.5        -0.393576        yes
+1.003      -0.393576        yes
+2          -0.393576        yes
+3          -0.393576        yes
+4          -26.929291       **no**
+5          -164.988621      **no**
+6          -541.991071      **no**
+6.842      nan              **no**
+8          nan              **no**
+10         nan              **no**
+15         nan              **no**
+20         nan              **no**
+
+=== fine scan 0.0 .. 20.0 step 0.5 ===
+converged 8/41   range [0.0, 3.5]
+
+=== the derivative collapse ===
+at x0 = 1.003059     : score = -0.08427995    deriv = -0.02770929   
+at x0 = 6.842375     : score = -0.1119086     deriv = -8.06571e-05  
+derivative falls by a factor of 343.5
+first step theta - score/deriv at 6.842375 = -1380.6

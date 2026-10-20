@@ -2,10 +2,50 @@
 
 _1680 series. Measured on `b922349` plus the uncommitted LPLR gate work._
 
+> **Re-audited 2026-10-20 (round 17).** This is the **only** `_verify/`
+> record the shipped `README.mbt.md` cites (at its lines 1162 and 1217), so
+> every promise made here is a promise the README inherits. The record was
+> added at `d3ac364` (2026-10-16) and had never been re-audited; 33 commits
+> have since touched the record and 18 have touched the port's LPLR surface.
+>
+> **What was re-measured live on 2026-10-20**, against upstream `doubleml`
+> **0.11.4** -- the vendored sdist these numbers were originally taken
+> against:
+>
+> | | as written | now |
+> |---|---|---|
+> | upstream's own failure rate on the n=66 rows (27g) | 17/40 (42%) implausible coefficients, 18/40 root warnings | **reproduced exactly** by `_verify/_lplr_upstream_fragility_control_1680.py` |
+> | upstream's `mean(beta)` over the same 40 draws (27g) | mean 2.5554, sd 3.3939, range [-3.2057, 13.8508]; 14/40 above the basin edge; the port's 6.842375 at the 90th percentile | **reproduced exactly** by `_verify/_lplr_startval_bias_1680.py` |
+> | the `moon test` counts quoted below | `1115/1115` (twice), `1122/1122` (twice) | **all four were TRUE when written and are now stale.** `1115` was the native count at `b223a44` / `4775218`; `1122` was the wasm-gc count at `c744fc4` / `e7471e5`. The counts are now **1117 native / 1123 wasm-gc** |
+> | `moonbit_doubleML/lplr.mbt` line pointers (16 of them) | written against the `d3ac364` tree | **8 of the 16 moved** -- that file changed by 624 lines -- and all 16 are re-anchored below by content |
+> | the method scripts this record names | 10 named, **none of them tracked** | **now tracked**, path-portable, and each one announces which upstream it ran against |
+> | 27b/27c: the causal test and the 16-cell swap | the port's values make upstream's own solver diverge; `beta` alone does it | **reproduced exactly** by `_verify/_lplr_nuisance_causal_1680.py` -- both `PORTMETA` blocks, every one of the 16 cells |
+> | 27f: the basin and the derivative collapse | 8/41 fine-scan starts converge over `[0.0, 3.5]`; score -0.0842799 / -0.111909; deriv -2.77093e-02 / -8.06571e-05; factor **344**; first step **-1381** | **reproduced exactly** by `_verify/_lplr_basin_scan_1680.py`, which is **new in this round** -- 27f previously had **no method script at all**, so the README's "344" and "-1381" had no witness |
+> | the witness for 27a/27b | `_verify/_lplr_r17_1680/_fuzz_dump_1680.log` | **the WRONG FILE, and reproducibly so.** `_verify/_lplr_r17_1680/_fuzz_dump_1680.log` is byte-identical to `_verify/_lplr_r17_1680/_fuzz_run_1680.log` (sha256 prefix `6903e784`) and holds the harness's PASS/FAIL transcript, not rows -- and re-running the script that creates it reproduces that byte-for-byte, because the dump probe was reverted from the shipped build. The rows are in `_verify/_lplr_r17_1680/_port_dump_1680.log` (2 `PORTMETA` blocks, n=66 p=6 seed=96696) |
+>
+> **What is NOT verified here.** The D2/D3 A/B numbers in sections 8-10, the
+> clamp A/B table in section 23, the `m_hat` conditioning in sections 24-25 and
+> the 25g/25h result are **historical results of experiments that were reverted
+> and are not re-runnable from the tree**: they needed a temporary source patch
+> to `examples/fuzz` / `moonbit_doubleML/lplr.mbt` that was reverted in the
+> same commit that consumed it, so `_verify/_lplr_fuzzrows_upstream_1680.py`
+> now prints `no FZZMETA blocks found -- was the dump probe reverted?` and
+> exits 3. The 27g control that **replaced** 25g does re-run, and did. The
+> *selection* step that picked trial 2's block out of 14 is **not reproducible**
+> from the tree -- its inputs (the `FZZMETA` row dump and the 14-block
+> `PORTMETA` run) were never committed -- so only its selected output,
+> `_verify/_lplr_r17_1680/_port_dump_1680.log`, is. The upstream readings
+> were taken against the **vendored** `doubleml-0.11.4` sdist, which is
+> deliberately not committed
+> (1.1 MB); the scripts now print which upstream they used, and on a machine
+> without that tree they fall back to the **installed** `doubleml` and may
+> differ.
+>
+
 ## 1. What existed, and why it was blind
 
 `examples/lplr` is one of the twenty e2e-checked examples, and
-`validate_lplr_with_python.py` **is** wired into CI (`check.yml:105` globs
+`validate_lplr_with_python.py` **is** wired into CI (`check.yml:114` globs
 `validate_*_with_python.py`). So this was not "a gate in no workflow" — it
 was a gate that ran and could not fail for the reason anyone would assume it
 existed to catch.
@@ -54,7 +94,7 @@ With that, refitting under a pinned partition is **bit-identical**
 (`|dcoef| = 0.000e+00`). So the comparison does not need a 0.81 band.
 
 The port's own outer partition is reproducible: `fit` draws
-`kfold(n, n_folds, seed + r)` (`lplr.mbt:758`).
+`kfold(n, n_folds, seed + r)` (`lplr.mbt:781`).
 
 ## 3. A second divergence upstream cannot mirror at all
 
@@ -83,9 +123,9 @@ load-bearing (`plm/lplr.py`):
 | `ml_a` | inner propensity for `d_tilde`; `clone(ml_m)` when absent | `ml_m` |
 
 The port's 2-slot API is a faithful compression of the *structure*
-(`lplr.mbt:644`: "route `ml_g` to the `ml_t` slot and `ml_m` to the
+(`lplr.mbt:665`: "route `ml_g` to the `ml_t` slot and `ml_m` to the
 binary-classification slots"). It is not faithful on `ml_m`: the port sets
-`m_pred = a_pred` (`lplr.mbt:810`) where upstream fits `ml_m` separately on
+`m_pred = a_pred` (`lplr.mbt:928`) where upstream fits `ml_m` separately on
 the `Y == 0` subsample (`lplr.py:247-252`). **That is D1.**
 
 ## 5. D1 measured, not assumed — and then measured again
@@ -170,6 +210,9 @@ Two lessons, both of which cost a cycle here:
    necessity* (upstream rejects a regressor for `ml_M`), which makes it a
    poor instrument for a question about defaults.
 2. **The test suite was green (1115/1115) while the estimator was broken.**
+   *(1115 was the native count at `b223a44` (2026-10-16), where this line was
+   written; it is **1117** today. The claim is that the suite was green, not
+   what it counted.)*
    The LPLR invariants live in `examples/fuzz`, not in `moon test`, so
    `moon test` cannot see them. Regenerating the e2e table — which runs
    every example — is what surfaced it.
@@ -177,7 +220,7 @@ Two lessons, both of which cost a cycle here:
 ## 6. Band, measured from both sides
 
 `set_sample_splitting` replaces the **outer** partition only
-(`lplr.mbt:1630`) — the port's inner draw still comes from
+(`lplr.mbt:775-782`) — the port's inner draw still comes from
 `self.seed + r*1000 + 7`. That is the residual, so both sides' inner
 spreads are measured and the band is built from them rather than assumed:
 
@@ -280,7 +323,7 @@ listed as open in §8.
 
 | configuration | fuzz | `moon test` | LPLR gate |
 |---|---|---|---|
-| logistic default, D1 held off | ALL 11 SURFACES PASSED | 1115/1115 | PASS |
+| logistic default, D1 held off | ALL 11 SURFACES PASSED | 1115/1115 *(the native count at `4775218`; **1117** today)* | PASS |
 | logistic default, D1 on | FAIL trial 25 | — | PASS |
 
 So the default change ships and D1 does not. D1 is now blocked on **D3**, not
@@ -370,7 +413,8 @@ one of them had been tested.
 3. The Newton start became `mean(beta_row)`, matching `np.average(beta)`.
 4. The fit cache stored the length-n array instead of a packed length-1 scalar.
 
-`moon test` stayed 1122/1122 — including the five `lplr_score_at` tests, whose
+`moon test` stayed 1122/1122 — the wasm-gc count at `c744fc4`; it is **1123**
+today — including the five `lplr_score_at` tests, whose
 expected literals did not move, because a constant array gives the same `r_hat`
 a scalar did.
 
@@ -484,7 +528,8 @@ acceptable, and I did not find an input that still triggers non-convergence, so
 I cannot re-base them.
 
 **Reverted**, and the baseline re-verified exactly (`0.113896 / 0.024022`,
-PASS, `moon test` 1122/1122).
+PASS, `moon test` 1122/1122 — the wasm-gc count at `e7471e5`; it is **1123**
+today).
 
 What would unblock it, in order:
 
@@ -1285,7 +1330,7 @@ Read out of installed scipy 1.18.0, not recalled:
   i.e. `|p - p0| <= 1.48e-8`, a **pure absolute** bound -- the relative term
   is multiplied by zero.
 
-The port's test, `lplr.mbt:1132`, is
+The port's test, `lplr.mbt:1264`, is
 
     (theta_new - theta).abs() < 1.0e-9
 
@@ -1441,7 +1486,7 @@ stopped one level short of the pieces that produce those pieces.
 `xx[train_idx] = W_inner[idx]` padded with NaN, and `_fit` uses
 `y[train_index]`, so it reduces to fit-on-`(x[train_idx], W_inner[idx])`
 and predict-`x[test_idx]`. The port's `cross_fit_predict_inner`
-(`lplr.mbt:1474-1487`) does exactly that.
+(`lplr.mbt:1616-1634`) does exactly that.
 
 ### 18d. Magnitude, measured (the direction claim here was WRONG -- see 19)
 
@@ -1620,7 +1665,7 @@ TRAIN rows).
 
 Every "upstream is fine, the port is wrong" statement in this document rests
 on one number: upstream emits 0 non-finite SE over 300 draws. That number is
-real, and it was measured at **n=500** (`_lplr_nan_upstream_1680.py`, whose
+real, and it was measured at **n=500** (`_verify/_lplr_nan_upstream_1680.py`, whose
 `part2` defaults to `n=500`). It was then used as a property of the
 estimator rather than of that sample size.
 
@@ -1805,7 +1850,7 @@ was measured before D4, so §22's numbers did not reproduce it. Re-run at
 
 ### 23a. Method
 
-Raise the two damping thresholds at `lplr.mbt:1189` from `5.0` / `1.0` to
+Raise the two damping thresholds at `lplr.mbt:1260` from `5.0` / `1.0` to
 `1.0e300` so the branch cannot fire on any finite value, leaving
 `theta_new = theta - raw_delta` -- scipy's bare Newton, exactly. Run
 `pyexample_lplr.py` and `examples/fuzz`. Revert with `git checkout`. The tree
@@ -1945,7 +1990,7 @@ clamp.
 ### 24d. What this probe does NOT cover, stated plainly
 
 **It did not reproduce the runaway.** At n=500 both arms are 12/12 finite here,
-while the fuzz harness and `_lplr_tol_window2_1680.py` both produce
+while the fuzz harness and `_verify/_lplr_tol_window2_1680.py` both produce
 `se = NaN, th = -440` on this design family. So the DGP/draw combination in
 this probe does not enter the failure region, and 24c's "not the cause" is a
 statement about the draws it ran, **not** about the runaway itself.
@@ -2364,7 +2409,7 @@ under comparison are probability vectors:
     (`plm/lplr.py:166`, consumed at `:311`), so `_double_dml_cv_predict` takes
     the `predict_proba` branch at `utils/_estimation.py:225-226`.
   * `m_hat` -- `method=self._predict_method["ml_m"]`, also `"predict_proba"`
-    (`plm/lplr.py:150`, consumed at `:261`). `_lplr_bag_nsweep_1680.py:125`
+    (`plm/lplr.py:150`, consumed at `:261`). `_verify/_lplr_bag_nsweep_1680.py:125`
     rebuilt this with `.predict()` as well, so the n-sweep had the defect TWICE,
     once in each nuisance.
 
@@ -2483,10 +2528,28 @@ Two things about the dump are worth recording because both nearly hid a result:
 
 * The guard `n == 66` fired **14 times** across the 300-trial surface, not once.
   The block belonging to trial 2 was therefore located by **exact row equality**
-  against `_fuzz_dump_1680.log`, not by taking the first or last occurrence.
-  Two blocks matched -- the port fits each trial twice, and those two fits are
-  bit-identical to each other -- so this is a 14-way ambiguity that happens to
-  have a clean answer, not an unambiguous guard.
+  against the fuzz harness's row dump, not by taking the first or last
+  occurrence. Two blocks matched -- the port fits each trial twice, and those
+  two fits are bit-identical to each other -- so this is a 14-way ambiguity that
+  happens to have a clean answer, not an unambiguous guard.
+  **Corrected 2026-10-20 (round 17): this bullet named
+  `_verify/_lplr_r17_1680/_fuzz_dump_1680.log` as that witness, and that is
+  the WRONG FILE.** On disk it is byte-identical to
+  `_verify/_lplr_r17_1680/_fuzz_run_1680.log` (sha256 prefix `6903e784`) and
+  holds the harness's PASS/FAIL transcript, not rows. This is **reproducible,
+  not merely an observation**: re-running
+  `_verify/_lplr_fuzzrows_upstream_1680.py` -- the script that CREATES that
+  file -- writes a `_fuzz_dump_1680.log` with the same sha256 prefix
+  `6903e784`, because the dump probe was reverted from the shipped build in
+  the same commit that consumed it, so the capture takes the transcript and
+  nothing else. The file that actually carries the rows is
+  `_verify/_lplr_r17_1680/_port_dump_1680.log` (sha256 prefix `7be25bac`),
+  which holds the **2** `PORTMETA` blocks for trial 2
+  (`n=66 p=6 seed=96696`) -- the two
+  matching fits this bullet describes. The selection step is therefore **not
+  reproducible** from the tree: its inputs (the `FZZMETA` row dump and the
+  14-block `PORTMETA` run) were never committed. What is committed is the
+  selected result.
 * A first parse read the inner scan to EOF and so collected only the first block
   while reporting 14. The count came from a separate line count, and the two
   disagreed. Same family as the 25a dict-size bug: **terminate a parser on the
@@ -2555,13 +2618,17 @@ if not bounded:
 
 With no bounds, upstream runs an **unbracketed Newton from exactly the start
 value the port uses**. The port's start *rule* is `np.average(beta)`, verbatim.
-The clamp at `lplr.mbt:1253` is standing in for a robustness upstream does not
+The clamp at `lplr.mbt:1261` is standing in for a robustness upstream does not
 have either.
 
 ### 27f. The basin, and the derivative collapse that explains it
 
 Real `scipy.optimize.root_scalar(..., method="newton")` -- not a mimic -- on
-upstream's own nuisances, over a grid of starts:
+upstream's own nuisances, over a grid of starts. The method script is
+`_verify/_lplr_basin_scan_1680.py`; it was **written on 2026-10-20 (round 17)**
+because this section previously had **no** script at all, and it reproduces
+every number below exactly:
+
 
 | `x0` | root | converged |
 |---|---|---|
@@ -2571,6 +2638,13 @@ upstream's own nuisances, over a grid of starts:
 
 Fine scan `0.0 .. 20.0` step `0.5`: 8/41 converge, range `[0.0, 3.5]`. The basin
 edge for **this** draw lies in `(3.5, 4.0]`.
+
+**"Converged" means converged TO THE ROOT.** Starts 4, 5 and 6 return finite
+numbers -- -26.9, -165.0, -542.0 -- and every one of them is wrong. A finite
+answer is not a solution, and a gate that counts "did scipy return a number"
+would score 13/41 here instead of 8/41 and would call three runaways
+successes. The script tests the root against upstream's own fitted
+coefficient, not against finiteness.
 
 The mechanism is a derivative collapse, not an overflow from a large number:
 
@@ -2599,6 +2673,14 @@ quantiles                         : 25% 0.4509  50% 1.9216  75% 5.0785  90% 6.59
 draws with start > basin edge 3.5 : 14/40  (35%)
 the port's 6.842375 sits at the 90th percentile
 ```
+
+The two runs behind this section are `_verify/_lplr_startval_bias_1680.py`
+(the start-value sweep above) and
+`_verify/_lplr_upstream_fragility_control_1680.py` (the uninstrumented control
+below). Both were **untracked** until 2026-10-20 (round 17), and both now
+print which upstream they ran against. Re-run on 2026-10-20 against
+`doubleml` 0.11.4, they reproduce the table above and the control below
+**exactly**.
 
 and, on the **uninstrumented control** -- no spies, no rebuilt `beta`, no re-run
 `root_scalar`, just `DoubleMLLPLR(...).fit()` and read `.coef[0]`:

@@ -38,6 +38,16 @@ GITLIB = "moonbit_doubleML"
 README = os.path.join(ROOT, "README.mbt.md")
 readme = io.open(README, encoding="utf-8").read()
 flat = re.sub(r"\s+", " ", readme)
+# Round 18 split the document in two.  `README.mbt.md` is the LIBRARY document;
+# `ENGINEERING.md` is the PROJECT document -- the CI harness, the QA registry
+# and the release-by-release history.  The release archaeology below belongs to
+# the project, so its checks read the project document.  The `adjust_ps` count
+# does not: it is a user-facing gotcha and stays in the README.
+PROJ = os.path.join(ROOT, "ENGINEERING.md")
+proj = io.open(PROJ, encoding="utf-8").read()
+projflat = re.sub(r"\s+", " ", proj)
+# a retracted wording must be absent from BOTH documents
+bothflat = flat + " " + projflat
 
 fails = []
 
@@ -131,7 +141,7 @@ check("the README says 'seven files'", "**eight**, in seven\n> files" in readme
 for s in EXPECTED_NO_CV:
     check("the README names %s" % s, "`%s`" % s in readme)
 check("the old 'five remaining' wording is gone",
-      "five remaining `adjust_ps` call sites" not in flat)
+      "five remaining `adjust_ps` call sites" not in bothflat)
 print()
 
 print("=== 2. v0.64.0: estimators that gained `bootstrap` ===")
@@ -139,12 +149,13 @@ a, b = methods("v0.63.0", "bootstrap"), methods("v0.64.0", "bootstrap")
 gained = sorted(b - a)
 print("  gained: %d -> %s" % (len(gained), ", ".join(gained)))
 check("exactly nine gained it", len(gained) == 9, "got %d" % len(gained))
-check("the README says 'nine remaining estimators'",
-      "Adds `bootstrap()` to nine remaining estimators" in flat)
+check("the project document says 'nine remaining estimators'",
+      "Adds `bootstrap()` to nine remaining estimators" in projflat)
 for e in ("DoubleMLSSM", "DoubleMLDID", "DoubleMLDIDBinary",
           "DoubleMLDIDCSBinary", "DoubleMLLPQ", "DoubleMLPQ",
           "DoubleMLQTE", "DoubleMLDIDCS", "DoubleMLBLP"):
-    check("the README's list names %s" % e.replace("DoubleML", ""), e in flat)
+    check("the project document's list names %s" % e.replace("DoubleML", ""),
+          e in projflat)
 print()
 
 print("=== 3. v0.66.0: estimators that gained `sensitivity_analysis` ===")
@@ -152,8 +163,8 @@ a, b = methods("v0.65.0", "sensitivity_analysis"), methods("v0.66.0", "sensitivi
 gained = sorted(b - a)
 print("  gained: %d -> %s" % (len(gained), ", ".join(gained)))
 check("exactly eight gained it", len(gained) == 8, "got %d" % len(gained))
-check("the README says 'eight IRM-style estimators'",
-      "Adds `sensitivity_analysis()` on eight IRM-style estimators" in flat)
+check("the project document says 'eight IRM-style estimators'",
+      "Adds `sensitivity_analysis()` on eight IRM-style estimators" in projflat)
 print()
 
 print("=== 4. v0.149.0: the gates in expand_v149_test.mbt ===")
@@ -162,25 +173,25 @@ gates = sorted(set(int(g) for g in GATE.findall(src)))
 tests = len(TEST.findall(src))
 print("  GATE labels: %s   test functions: %d" % (gates, tests))
 check("the file has GATE 1..6", gates == [1, 2, 3, 4, 5, 6], "got %s" % gates)
-check("the README says 'six gates added'",
-      "six gates added (`expand_v149_test.mbt`" in flat)
-check("the README notes that GATE 1 and GATE 2 share a test function",
-      "GATE 1 and GATE 2 share one test" in flat)
+check("the project document says 'six gates added'",
+      "six gates added (`expand_v149_test.mbt`" in projflat)
+check("the project document notes that GATE 1 and GATE 2 share a test function",
+      "GATE 1 and GATE 2 share one test" in projflat)
 print()
 
 print("=== the counts that are CORRECT stay correct ===")
 a, b = methods("v0.66.0", "confint", "joint"), methods("v0.67.0", "confint", "joint")
 check("v0.67.0: exactly nine gained a `joint` param",
       len(b - a) == 9, "got %d" % len(b - a))
-check("the README still says 9 single-theta estimators",
-      "`confint(joint?)` API parity to 9 single-theta estimators" in flat)
+check("the project document still says 9 single-theta estimators",
+      "`confint(joint?)` API parity to 9 single-theta estimators" in projflat)
 
 sa = methods("v0.85.0", "sandwich_se")
 sb = methods("v0.86.0", "sandwich_se")
 check("v0.86.0: sandwich coverage went 2 -> 6",
       len(sa) == 2 and len(sb) == 6, "got %d -> %d" % (len(sa), len(sb)))
-check("the README still says 'coverage 2 -> 6 of 22'",
-      "coverage 2 -> 6 of 22" in flat)
+check("the project document still says 'coverage 2 -> 6 of 22'",
+      "coverage 2 -> 6 of 22" in projflat)
 
 for f, tag, prev, claim, kind in (
         ("expand_v152_test.mbt", "v0.152.0", "v0.151.0", 4, "gates"),
@@ -216,7 +227,7 @@ check("the fuzz harness has 11 surfaces", n_surf == 11, "got %d" % n_surf)
 check("the README still says 11 surfaces", "across 11 surfaces" in flat)
 
 # the simulator-bug list: "Eight simulator bugs it has caught" + N bullets
-rlines = readme.splitlines()
+rlines = proj.splitlines()
 lead = next((i for i, l in enumerate(rlines)
              if "simulator bugs it has caught" in l), None)
 n_bul = 0
@@ -228,10 +239,10 @@ if lead is not None:
         if s.startswith("- "):
             n_bul += 1
 check("the simulator-bug list has 8 bullets", n_bul == 8, "got %d" % n_bul)
-check("the README says 'Eight simulator bugs'",
-      "Eight simulator bugs it has caught" in flat)
+check("the project document says 'Eight simulator bugs'",
+      "Eight simulator bugs it has caught" in projflat)
 check("the old 'Nine simulator bugs' wording is gone",
-      "Nine simulator bugs it has caught" not in flat)
+      "Nine simulator bugs it has caught" not in bothflat)
 
 print()
 print("checks failed: %d" % len(fails))

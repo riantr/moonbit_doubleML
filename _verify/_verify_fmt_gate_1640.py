@@ -101,21 +101,29 @@ check("C: the output names main.mbt", "main.mbt" in cC)
 shutil.rmtree(aC, ignore_errors=True)
 
 print()
-print("=== the README and the workflows say what was measured ===")
+print("=== the project document and the workflows say what was measured ===")
+# Round 18 split the documentation in two.  The `moon fmt --check` gate is a
+# CI gate -- it describes this repository's pipeline, not the library -- so its
+# measurement lives in `ENGINEERING.md` and these checks read that.  A
+# withdrawn wording must be absent from BOTH documents.
 readme = io.open(os.path.join(ROOT, "README.mbt.md"), encoding="utf-8",
                  errors="replace").read()
-flat = re.sub(r"\s+", " ", readme)
+proj = io.open(os.path.join(ROOT, "ENGINEERING.md"), encoding="utf-8",
+               errors="replace").read()
+flat = re.sub(r"\s+", " ", proj)
+bothflat = re.sub(r"\s+", " ", readme + " " + proj)
 
-check("README no longer carries the old bullet's opening",
-      "`moon fmt --check` has not been shown to be able to fail" not in readme)
-check("README no longer says it 'exits 0 on a package containing a "
-      "deliberately mis-formatted file, silently'",
+check("the project document no longer carries the old bullet's opening",
+      "`moon fmt --check` has not been shown to be able to fail" not in bothflat)
+check("the project document no longer says it 'exits 0 on a package "
+      "containing a deliberately mis-formatted file, silently'",
       "exits 0 on a package containing a deliberately mis-formatted file, "
-      "silently" not in flat)
-check("README says the check can fail", "can fail" in flat)
-check("README gives the measured exit code", "4294967295" in readme)
-check("README names the toolchain the measurement was taken on",
-      "moon 0.1.20261016" in readme)
+      "silently" not in bothflat)
+check("the project document says the check can fail", "can fail" in flat)
+check("the project document gives the measured exit code",
+      "4294967295" in proj)
+check("the project document names the toolchain the measurement was taken on",
+      "moon 0.1.20261016" in proj)
 
 for wf in ("check.yml", "publish.yml"):
     p = os.path.join(ROOT, ".github", "workflows", wf)

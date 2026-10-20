@@ -80,8 +80,20 @@ for e, names in (("DoubleMLAPOS", ("coefs", "ses")),
               re.search(r"pub fn %s::%s\b" % (re.escape(e), n), s) is not None)
 
 # and the README's table names them with those accessors
+#
+# The README carries TWO tables whose first column is an estimator name: the
+# estimator catalogue (Model | Score | Description) and the API-differences
+# table (estimator | instead of | because).  A row search that takes the FIRST
+# match finds the catalogue's row, which names no accessor at all, so the
+# table is located by its own header first.
+api_tbl = ""
+m_api = re.search(r"^\|\s*estimator\s*\|\s*instead of\s*\|\s*because\s*\|\s*$"
+                   r"(.*?)(?:\n[ \t]*\n|\Z)", readme, re.M | re.S)
+check("the README's API-differences table is findable", m_api is not None)
+if m_api:
+    api_tbl = m_api.group(1)
 for e in exceptions:
-    m = re.search(r"^\|\s*`%s`\s*\|(.+?)\|\s*$" % re.escape(e), readme, re.M)
+    m = re.search(r"^\|\s*`%s`\s*\|(.+?)\|\s*$" % re.escape(e), api_tbl, re.M)
     check("the README's table has a row for %s" % e, m is not None)
     if m:
         row = m.group(1)

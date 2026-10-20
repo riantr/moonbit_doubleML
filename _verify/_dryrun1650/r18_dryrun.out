@@ -1,0 +1,195 @@
+
+A. the README's shape -- the reference package page's, in that order
+  the README has a '## Features' section                           *** FAIL ***
+  the README has a '## Installation' section                       *** FAIL ***
+  the README has a '## Quick Start' section                        *** FAIL ***
+  the README has a '## The 22 estimators' section                  *** FAIL ***
+  the README has a '## API reference' section                      *** FAIL ***
+  the README has a '## Propensity processing' section              *** FAIL ***
+  the README has a '## Cross-fitting' section                      *** FAIL ***
+  the README has a '## Examples' section                           *** FAIL ***
+  the README has a '## Common pitfalls and best practices' section *** FAIL ***
+  the README has a '## Development status' section                 *** FAIL ***
+  the README has a '## Project layout' section                     *** FAIL ***
+  the README has a '## Dependency rule' section                    *** FAIL ***
+  the README has a '## Attribution' section                        *** FAIL ***
+  the README has a '## Used By' section                            *** FAIL ***
+  the README has a '## Development' section                        *** FAIL ***
+  the README has a '## License' section                            *** FAIL ***
+  the README has exactly one H1                                    OK
+  the README has no H2 that is not in the reference's shape        *** FAIL ***
+  the README opens with the package title                          OK
+
+B. the README is a USER document
+  the pre-rewrite README is readable at v0.164.11                  OK
+  the README is under 900 lines                                    *** FAIL ***
+  the README is under 60 KB                                        *** FAIL ***
+  the README is at most half the pre-rewrite line count            *** FAIL ***
+  the README no longer carries the project phrase 'registers **31 checks**' *** FAIL ***
+  the project document carries 'registers **31 checks**'           *** FAIL ***
+  the README no longer carries the project phrase '**22 in `fast` scope**' *** FAIL ***
+  the project document carries '**22 in `fast` scope**'            *** FAIL ***
+  the README no longer carries the project phrase '**9 in `full` scope**' *** FAIL ***
+  the project document carries '**9 in `full` scope**'             *** FAIL ***
+  the README no longer carries the project phrase 'Adds `bootstrap()` to nine remaining estimat' *** FAIL ***
+  the project document carries 'Adds `bootstrap()` to nine remaining estimat' *** FAIL ***
+  the README no longer carries the project phrase 'Eight simulator bugs it has caught' *** FAIL ***
+  the project document carries 'Eight simulator bugs it has caught' *** FAIL ***
+  the README no longer carries the project phrase 'Acceptance-criteria traceability' *** FAIL ***
+  the project document carries 'Acceptance-criteria traceability'  *** FAIL ***
+  the README no longer carries the project phrase '4294967295'     *** FAIL ***
+  the project document carries '4294967295'                        *** FAIL ***
+
+C. nothing was lost -- every pinned string is still in the documentation
+  every string the pre-rewrite README carried is still in the documentation OK
+     (329 distinct pinned literals, 139 of which the pre-rewrite README carried)
+  no line of the pre-rewrite README is missing from the two documents OK
+     (2067 non-blank lines of the pre-rewrite README)
+  the README keeps the user-facing fact '_verify/LPLR_GATE_BLINDNESS_1680.md' OK
+  the README keeps the user-facing fact '_verify/UPSTREAM_PROVENANCE.md' OK
+  the README keeps the user-facing fact '17 of 40 (42%)'           OK
+  the README keeps the user-facing fact '344'                      OK
+  the README keeps the user-facing fact '-1381'                    OK
+  the README keeps the user-facing fact '2.56'                     OK
+  the README keeps the user-facing fact 'sd 3.39'                  OK
+  the README keeps the user-facing fact '**1123**'                 OK
+  the README keeps the user-facing fact '**19** are marked *(upstream)*' OK
+  the README keeps the user-facing fact 'no 1:1 upstream class'    *** FAIL ***
+  the README keeps the user-facing fact 'AMENDED 2026-10-20 (round 16)' OK
+  the README keeps the user-facing fact '1.0986122886681096'       OK
+  the README keeps the user-facing fact '1.0986122886681098'       OK
+  the README keeps the user-facing fact 'The other 16 expose'      OK
+  the README keeps the user-facing fact 'Six rows turned out hazardous' OK
+  the README keeps the user-facing fact 'structs still default `ml_m` to `linear_regr' OK
+  the README keeps the user-facing fact 'call sites that do not forward `cv` are **ei' OK
+  the README keeps the user-facing fact '**eight**, in seven files' *** FAIL ***
+  the README keeps the user-facing fact 'gates whose reference is UPSTREAM' OK
+  the README keeps the user-facing fact 'shipped default arm is still the one absence' OK
+  the README keeps the user-facing fact 'Still not covered'        OK
+  the README keeps the user-facing fact 'moon test --target native --deny-warn' OK
+  the README keeps the user-facing fact 'Total tests: 1117'        OK
+  the README keeps the user-facing fact 'Run these from the **repository root**' OK
+  the README keeps the user-facing fact 'estimated theta   = 1.092018247331361' OK
+  the README keeps the user-facing fact 'standard error    = 0.08875683254582736' OK
+  the README keeps the user-facing fact '**2** are marked *(upstream, renamed)*' OK
+  the README does not quote the stale count '1115/1115'            OK
+  the README does not quote the stale count '1122/1122'            OK
+
+D. no check silently died -- each touched verifier vs v0.164.11
+  _verify_counts_1641.py keeps every check it had at v0.164.11     OK
+  _verify_counts_1641.py has at least as many checks as at v0.164.11 OK
+  _verify_counts_1641.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_qa_evidence_1639.py keeps every check it had at v0.164.11 OK
+  _verify_qa_evidence_1639.py has at least as many checks as at v0.164.11 OK
+  _verify_qa_evidence_1639.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_qa_scope_1680.py keeps every check it had at v0.164.11   OK
+  _verify_qa_scope_1680.py has at least as many checks as at v0.164.11 OK
+  _verify_qa_scope_1680.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_round10_ci_1645.py keeps every check it had at v0.164.11 OK
+  _verify_round10_ci_1645.py has at least as many checks as at v0.164.11 OK
+  _verify_round10_ci_1645.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_fmt_gate_1640.py keeps every check it had at v0.164.11   OK
+  _verify_fmt_gate_1640.py has at least as many checks as at v0.164.11 OK
+  _verify_fmt_gate_1640.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_round9_docs_1644.py keeps every check it had at v0.164.11 OK
+  _verify_round9_docs_1644.py has at least as many checks as at v0.164.11 OK
+  _verify_round9_docs_1644.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_hazard_table_1680.py keeps every check it had at v0.164.11 OK
+  _verify_hazard_table_1680.py has at least as many checks as at v0.164.11 OK
+  _verify_hazard_table_1680.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_api_surface_1640.py keeps every check it had at v0.164.11 OK
+  _verify_api_surface_1640.py has at least as many checks as at v0.164.11 OK
+  _verify_api_surface_1640.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_round12_pyexample_1647.py keeps every check it had at v0.164.11 OK
+  _verify_round12_pyexample_1647.py has at least as many checks as at v0.164.11 OK
+  _verify_round12_pyexample_1647.py keeps every prose-shape regex it had at v0.164.11 OK
+  _verify_round17_lplr_1650.py is new at v0.164.11 and exists now  *** FAIL ***
+
+E. ENGINEERING.md is a real document
+  the project document exists                                      *** FAIL ***
+  the project document carries a dated banner                      *** FAIL ***
+  the banner says what it is NOT                                   *** FAIL ***
+  the ledger says nothing was deleted                              *** FAIL ***
+  the ledger names the release it preserves                        *** FAIL ***
+  the ledger carries the old README's H1, under its own heading    *** FAIL ***
+  the ledger carries the whole pre-rewrite README, verbatim        *** FAIL ***
+  the ledger carries the estimator-defaults narrative verbatim     *** FAIL ***
+  the README does NOT carry the estimator-defaults narrative       *** FAIL ***
+  the ledger carries the LPLR small-n narrative verbatim           *** FAIL ***
+  the README does NOT carry the LPLR small-n narrative             *** FAIL ***
+  the ledger carries the upstream-correspondence narrative verbatim *** FAIL ***
+  the README does NOT carry the upstream-correspondence narrative  *** FAIL ***
+  the ledger carries the CI-gate narrative verbatim                *** FAIL ***
+  the README does NOT carry the CI-gate narrative                  *** FAIL ***
+
+F. the two documents point at each other, and the paths are real
+  the README links to the project document                         *** FAIL ***
+  the project document links back to the README                    *** FAIL ***
+  the README names the LPLR record it leans on                     OK
+  the README names the upstream provenance record                  OK
+  the project document is TRACKED -- the README links to it, so a path in prose is a promise *** FAIL ***
+  the shipped README copy is byte-identical to the edited one      OK
+  the README's pointer _verify/LPLR_GATE_BLINDNESS_1680.md exists AND is tracked OK
+  the README's pointer _verify/UPSTREAM_PROVENANCE.md exists AND is tracked OK
+  the README is LF-only with no BOM                                OK
+  the project document is LF-only with no BOM                      OK
+
+checks: 121   failed: 55
+  - the README has a '## Features' section -- 
+  - the README has a '## Installation' section -- 
+  - the README has a '## Quick Start' section -- 
+  - the README has a '## The 22 estimators' section -- 
+  - the README has a '## API reference' section -- 
+  - the README has a '## Propensity processing' section -- 
+  - the README has a '## Cross-fitting' section -- 
+  - the README has a '## Examples' section -- 
+  - the README has a '## Common pitfalls and best practices' section -- 
+  - the README has a '## Development status' section -- 
+  - the README has a '## Project layout' section -- 
+  - the README has a '## Dependency rule' section -- 
+  - the README has a '## Attribution' section -- 
+  - the README has a '## Used By' section -- 
+  - the README has a '## Development' section -- 
+  - the README has a '## License' section -- 
+  - the README has no H2 that is not in the reference's shape -- a section appears twice
+  - the README is under 900 lines -- 2289
+  - the README is under 60 KB -- 139079
+  - the README is at most half the pre-rewrite line count -- 2289 vs 2289
+  - the README no longer carries the project phrase 'registers **31 checks**' -- 
+  - the project document carries 'registers **31 checks**' -- 
+  - the README no longer carries the project phrase '**22 in `fast` scope**' -- 
+  - the project document carries '**22 in `fast` scope**' -- 
+  - the README no longer carries the project phrase '**9 in `full` scope**' -- 
+  - the project document carries '**9 in `full` scope**' -- 
+  - the README no longer carries the project phrase 'Adds `bootstrap()` to nine remaining estimat' -- 
+  - the project document carries 'Adds `bootstrap()` to nine remaining estimat' -- 
+  - the README no longer carries the project phrase 'Eight simulator bugs it has caught' -- 
+  - the project document carries 'Eight simulator bugs it has caught' -- 
+  - the README no longer carries the project phrase 'Acceptance-criteria traceability' -- 
+  - the project document carries 'Acceptance-criteria traceability' -- 
+  - the README no longer carries the project phrase '4294967295' -- 
+  - the project document carries '4294967295' -- 
+  - the README keeps the user-facing fact 'no 1:1 upstream class' -- 
+  - the README keeps the user-facing fact '**eight**, in seven files' -- 
+  - _verify_round17_lplr_1650.py is new at v0.164.11 and exists now -- 
+  - the project document exists -- 
+  - the project document carries a dated banner -- 
+  - the banner says what it is NOT -- 
+  - the ledger says nothing was deleted -- 
+  - the ledger names the release it preserves -- 
+  - the ledger carries the old README's H1, under its own heading -- 
+  - the ledger carries the whole pre-rewrite README, verbatim -- 
+  - the ledger carries the estimator-defaults narrative verbatim -- 
+  - the README does NOT carry the estimator-defaults narrative -- 
+  - the ledger carries the LPLR small-n narrative verbatim -- 
+  - the README does NOT carry the LPLR small-n narrative -- 
+  - the ledger carries the upstream-correspondence narrative verbatim -- 
+  - the README does NOT carry the upstream-correspondence narrative -- 
+  - the ledger carries the CI-gate narrative verbatim -- 
+  - the README does NOT carry the CI-gate narrative -- 
+  - the README links to the project document -- 
+  - the project document links back to the README -- 
+  - the project document is TRACKED -- the README links to it, so a path in prose is a promise -- 
+VERDICT: FAIL
+
+EXACT failure count: 55

@@ -9,6 +9,156 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.12] -- the README, and the record the whole LPLR story rests on
+
+`moon.mod` moves 0.164.11 -> 0.164.12. No `.mbt` file changed, and no estimator
+behaviour changed: this round is entirely about the claims and the document
+that carries them. The test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm /
+js).
+
+Round 17 re-audited the one `_verify/` record the README actually cites --
+`_verify/LPLR_GATE_BLINDNESS_1680.md` -- and found that four of its counts had
+gone stale, eight of its line pointers had moved, ten of its method scripts
+were not in the repository, and the witness it named for section 27a was the
+wrong file. Round 18 turned the README itself into a user-facing document and
+moved the project's own history into a companion.
+
+### Fixed -- the LPLR record's counts were true when written and are now stale
+
+- The record said **1115/1115** (twice) and **1122/1122** (twice). The live
+  counts are **1117** (native / wasm / js) and **1123** (wasm-gc). The old
+  numbers were **true when written**: 1115 was the native count at `b223a44` /
+  `4775218`, and 1122 was the wasm-gc count at `c744fc4` / `e7471e5`. A
+  historical count rewritten as a current one is a different claim, so each is
+  now **re-anchored to the commit that wrote it** and the current value is
+  given beside it.
+- The re-anchoring is calibrated, not asserted: a test-block proxy puts HEAD
+  at 1117 and the live native run at 1117, and wasm-gc at native + the 6
+  doc-tutorial tests.
+- The README's headline was re-measured and **reproduced exactly**:
+  **17 of 40 (42%)** implausible coefficients, 18 of 40 root warnings, and
+  every coefficient the README quotes (`-648.285`, `5.18129e+70`,
+  `8.44219e+122`, `172149`, `nan` x4). The start-value bias is mean(beta)
+  **2.56**, sd **3.39**, range `[-3.21, 13.85]`, with the port's 6.8424 at the
+  90th percentile.
+
+### Fixed -- section 27f had no method script at all
+
+- The README quoted a derivative factor of **344** and an overshoot of
+  **-1381**, and nothing in the repository could produce either number. The
+  witness script `_verify/_lplr_basin_scan_1680.py` now exists and reproduces
+  section 27f exactly: 8 of 41 fine-scan starts converge over `[0.0, 3.5]`,
+  score -0.08427995 / -0.1119086, derivative -0.02770929 / -8.06571e-05, factor
+  343.5, first step -1380.6.
+- Its first "converged" criterion was **wrong**: it counted a finite root, and
+  starts 4/5/6 return finite-but-wrong values (-26.9 / -165.0 / -542.0). The
+  criterion is now "converged **to the root**", which scores 8 of 41 rather
+  than 13 of 41.
+
+### Fixed -- the record named the wrong witness
+
+- Section 27a named `_fuzz_dump_1680.log` as its witness. That file is
+  **byte-identical** to `_fuzz_run_1680.log` (sha256 prefix `6903e784`) and
+  holds the harness PASS/FAIL transcript, not rows. The real witness is
+  `_verify/_lplr_r17_1680/_port_dump_1680.log` (2 `PORTMETA` blocks, n=66, p=6,
+  seed=96696, sha256 prefix `7be25bac`), and the finding is stated as
+  **reproducible**: re-running the script that creates the misleading file
+  reproduces it byte for byte.
+
+### Fixed -- 16 line pointers had moved, and 16 method scripts were not in the repository
+
+- `moonbit_doubleML/lplr.mbt` moved by 624 lines since `d3ac364`. Eight of the
+  record's sixteen `lplr.mbt:NNN` pointers still landed correctly; eight were
+  re-anchored by content (644->665, 758->781, 810->928, 1132->1264,
+  1189->1260, 1253->1261, 1474-1487->1616-1634, 1630->775-782). One pointer
+  into `check.yml` moved from a comment to the glob it names (105->114).
+- The record named **ten** method scripts that were not tracked, and the
+  transitive import closure is **sixteen** modules, all untracked. All sixteen
+  are now tracked, and all sixteen -- plus the six that were already tracked
+  -- are **path-portable**: they used to hard-code one machine's absolute
+  path, so a clone could not run any of them. They now derive the repository
+  root from their own location and announce which upstream they used.
+- The raw logs the record cites live in `_verify/_lplr_r17_1680/`, because
+  `_verify/*.log` is excluded from the repository and a witness nobody can
+  open is not a witness.
+
+### Changed -- the README is now a user-facing document
+
+- The README was **2290 lines**, of which roughly 1200 were an internal
+  investigation narrative: a release-by-release history of the defects that
+  moved the estimator defaults, the CI harness's internals, the QA registry,
+  and the archaeology behind the upstream naming map. It is now **770
+  lines**, in the shape the mooncakes.io package pages use -- pitch, features,
+  installation, quick start, the estimator table, API reference, propensity
+  processing, cross-fitting, examples, common pitfalls, development status,
+  project layout, dependency rule, attribution, license.
+- The project's own material moved to **`ENGINEERING.md`**, which is the
+  README as it stood at v0.164.11, in full and word for word. **Nothing was
+  deleted**: a census over every non-blank line of the previous README finds
+  **0** lines missing from the two documents together, and the round-18
+  verifier asserts it on every run.
+- The line between the two documents is a rule, not a taste: a fact is in the
+  README when a person who has run `moon add riantr/moonbit_doubleML` and is
+  writing code against the library would need it to use the library correctly
+  or to trust its output; a fact is in ENGINEERING.md when it describes this
+  repository -- its CI, its QA registry, its release history -- rather than the
+  library.
+- Ten verifiers read the README. Their **project-facing** checks now read
+  `ENGINEERING.md` -- the QA registry's 31 checks and their fast/full split,
+  the nine-row CI gate table, the seven full-scope checks that run in no CI
+  workflow, the master run's job count, the `moon fmt --check` exit code, the
+  acceptance-criteria traceability census, and the release-by-release
+  archaeology. **The numbers are still derived from the same sources**
+  (`checks.py`, `check.yml`, `publish.yml`, the git history), so a check cannot
+  rot; only the document it reads changed. The user-facing checks -- the
+  `ml_m` default list, the per-estimator hazard table, the `adjust_ps` `cv`
+  gap, the six API exceptions, the Quick Start transcript, the LPLR regime,
+  the RDD default arm, the upstream naming map -- still read the README.
+- Three verifier bugs surfaced while re-pointing them, and are fixed:
+  `_verify/_verify_api_surface_1640.py` took the **first** table row that
+  names an estimator, which is the estimator catalogue and not the
+  API-differences table, so it read the wrong row; the API table is now located
+  by its own header. `_verify/_verify_round12_pyexample_1647.py` bounded the
+  README's RDD paragraph by a phrase in the **next** paragraph, and now bounds
+  it by its own end -- the stricter reading. `_verify/_verify_round17_lplr_1650.py`
+  matched the **tail** of the glob `validate_*_with_python.py` as a file named
+  `with_python.py`, and now requires a script name that stands alone.
+- `_verify/_bump_1636.py` used to text-replace the README's version sites.
+  It now bumps `moon.mod` and then **regenerates** the README through
+  `_verify/_r18_build_readme_1650.py`, which takes the version from
+  `moon.mod`: two scripts that both edit the version are two places to
+  forget. The bump script itself was **never tracked**, and a tracked
+  verifier parses it to derive the version-site list -- so it is tracked now.
+- The version-literal census now skips **symlinks**: `README.md` is a symlink
+  to `README.mbt.md`, so its content is the target's content and the target is
+  the bump site. Counting it again reported a site that cannot be bumped
+  separately.
+
+### A new verifier for the split
+
+- `_verify/_verify_round18_readme_1650.py` makes **145** checks. It pins
+  the README's **shape** (the reference page's sections, in that order), a
+  **size budget**, the **line census** above, the user-facing facts that must
+  stay in the README, and -- the part that matters most -- that **no check
+  silently died**: each of the ten verifiers this round touched is compared
+  call by call with the version that shipped as v0.164.11, and every check
+  name and every prose-shape regex it had must still be there.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.11 it reports **55 failures**; against the corrected tree it
+  reports **0**. The dry-run counter is checked against the verifier's own
+  summary, because a count that can drift from the output proves nothing.
+
+### Gate for this release
+
+**48** local gate steps, **0** failed: `moon build` and
+`moon test --deny-warn` green on all four backends; `moon fmt --check` clean
+at the package root and at the workspace root, which is the one CI runs; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=18,
+SKIP=10, WARN=3 with no FAIL; the two service checks
+PASS=2, WARN=0; the validator meta-gate PASS with 0 problems;
+pinned `typos` v1.19.0 exit 0 on the exported tree.
+
 ## [0.164.11] -- the upstream provenance map, which was never in the repository
 
 `moon.mod` moves 0.164.10 -> 0.164.11. No `.mbt` file changed, and no estimator

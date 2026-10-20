@@ -1,0 +1,74 @@
+upstream: doubleml 0.11.4
+         from D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4\doubleml\__init__.py
+         via the VENDORED sdist (doubleml-0.11.4) at D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4
+upstream: doubleml 0.11.4
+         from D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4\doubleml\__init__.py
+         via the VENDORED sdist (doubleml-0.11.4) at D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4
+upstream: doubleml 0.11.4
+         from D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4\doubleml\__init__.py
+         via the VENDORED sdist (doubleml-0.11.4) at D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4
+trial 2 rows: n=66 p=6   40 upstream redraws, each pinned
+
+  draw  0  mean(beta)=   1.0031  coef=    -0.39358  converged=True
+  draw  1  mean(beta)=   1.8461  coef=     0.75973  converged=True
+  draw  2  mean(beta)=  -1.5602  coef=     0.21745  converged=True
+  draw  3  mean(beta)=   6.5530  coef=  -648.28483  converged=False   <- beyond the measured edge
+  draw  4  mean(beta)=   1.1270  coef=    -1.34472  converged=True
+  draw  5  mean(beta)=   6.9258  coef=  -592.92789  converged=False   <- beyond the measured edge
+  draw  6  mean(beta)=   1.9716  coef=     1.34319  converged=True
+  draw  7  mean(beta)=   1.4997  coef=     0.59071  converged=True
+  draw  8  mean(beta)=   5.2545  coef=  -235.13360  converged=False   <- beyond the measured edge
+  draw  9  mean(beta)=  -1.9665  coef=     1.79312  converged=True
+  draw 10  mean(beta)=   3.0945  coef=     2.44298  converged=True
+  draw 11  mean(beta)=   1.9519  coef=     0.81486  converged=True
+  draw 12  mean(beta)=   1.2759  coef=    -0.19366  converged=True
+  draw 13  mean(beta)=  -0.5737  coef=51812868918441677916223815541327315772256439330069866226917842654068736.00000  converged=False
+  draw 14  mean(beta)=   2.4959  coef=     0.78095  converged=True
+  draw 15  mean(beta)=   5.0199  coef=   -24.02003  converged=False   <- beyond the measured edge
+  draw 16  mean(beta)=   0.4836  coef=844218970163906362167906215896934864108479282545718662804253935182109928474824967263868323813871710066578561310356316094464.00000  converged=False
+  draw 17  mean(beta)=  -0.6285  coef=    -0.99353  converged=True
+  draw 18  mean(beta)=  13.8508  coef=         nan  converged=False   <- beyond the measured edge
+  draw 19  mean(beta)=   3.5491  coef=     0.84947  converged=True   <- beyond the measured edge
+  draw 20  mean(beta)=   0.4243  coef=     0.12361  converged=True
+  draw 21  mean(beta)=   7.9574  coef=         nan  converged=False   <- beyond the measured edge
+  draw 22  mean(beta)=   6.1681  coef=  -242.10441  converged=False   <- beyond the measured edge
+  draw 23  mean(beta)=   3.2138  coef=     0.64647  converged=True
+  draw 24  mean(beta)=   3.7774  coef=     0.41373  converged=True   <- beyond the measured edge
+  draw 25  mean(beta)=   1.9527  coef=     2.12521  converged=True
+  draw 26  mean(beta)=   1.8913  coef=     0.50783  converged=True
+  draw 27  mean(beta)=   1.3470  coef=     0.55159  converged=True
+  draw 28  mean(beta)=  -0.7205  coef=     0.16948  converged=True
+  draw 29  mean(beta)=   3.7231  coef=172148.78807  converged=False   <- beyond the measured edge
+  draw 30  mean(beta)=   5.2811  coef=  -102.60528  converged=False   <- beyond the measured edge
+  draw 31  mean(beta)=  -3.2057  coef=     1.27849  converged=True
+  draw 32  mean(beta)=  -3.0257  coef=373159895697034868128720974461594734902194618627654333566494960825101462095272220775157390272092961925427515992035033088.00000  converged=False
+  draw 33  mean(beta)=  -1.2990  coef=292067338458234631026114560.00000  converged=False
+  draw 34  mean(beta)=   1.8059  coef=     1.01409  converged=True
+  draw 35  mean(beta)=   6.0379  coef=         nan  converged=False   <- beyond the measured edge
+  draw 36  mean(beta)=   0.4598  coef=97784227543275717042444268522848778506116071644993636163961729535248685083775729664.00000  converged=False
+  draw 37  mean(beta)=   6.2278  coef=  -483.87491  converged=False   <- beyond the measured edge
+  draw 38  mean(beta)=   7.4710  coef=         nan  converged=False   <- beyond the measured edge
+  draw 39  mean(beta)=  -0.4433  coef=219954233683131569743138794543459261660882241463952498037216585705290989568.00000  converged=False
+
+=== distribution of upstream's OWN start value on these rows ===
+    n=40 draws   mean=2.5554  sd=3.3939  min=-3.2057  max=13.8508
+    quantiles: 25%=0.4509  50%=1.9216  75%=5.0785  90%=6.5903
+    draws with start > basin edge (3.5) : 14/40  (35%)
+    upstream fits that did NOT converge : 18/40  (45%)
+
+    the port's start on trial 2 : 6.8424
+    its percentile within upstream's own draws : 90%
+
+=== reading ===
+Upstream's own start value exceeded the basin edge on 14/40 draws
+(18 actually failed to converge). The fragility is SHARED: upstream
+runs the same unbracketed Newton from the same rule, and on these
+rows it is exposed too.
+
+The port's 6.8424 sits at the 90th percentile of upstream's own
+draws, so it is an unremarkable draw rather than an outlier.
+
+This does NOT show the port is unbiased -- one draw cannot -- but
+it removes 'the port's start value is systematically too large'
+as a conclusion. A bias claim needs the port's start measured over
+the same sweep, which needs the partition injected into the port.
