@@ -1,0 +1,22 @@
+lib test declarations      = 1117
+doc test declarations      = 6
+lib + doc                  = 1123
+
+  the README states the native / wasm / js test count            OK
+  the README's native / wasm / js count is the tree's lib count  *** FAIL ***
+        README says 1116, the tree has 1117
+  the README states the wasm-gc test count                       OK
+  the README's wasm-gc count is the tree's lib + doc count       *** FAIL ***
+        README says 1122, the tree has 1123
+  the README's doc-tutorial count is the tree's doc count        OK
+  the README's two rows are consistent with each other           OK
+  every 'Total tests: N, passed: N, failed: 0.' in the README is the tree's lib count *** FAIL ***
+        1 transcript(s), 1 wrong
+
+==========================================================================
+checks: 7   failures: 3
+  FAILED: the README's native / wasm / js count is the tree's lib count
+  FAILED: the README's wasm-gc count is the tree's lib + doc count
+  FAILED: every 'Total tests: N, passed: N, failed: 0.' in the README is the tree's lib count
+
+EXACT failure count: 3
