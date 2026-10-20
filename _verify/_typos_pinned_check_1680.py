@@ -31,7 +31,7 @@ import zipfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VERSION = "v1.19.0"
 DEST = os.path.join(REPO, "_verify", "_typos_pinned_1680")
 URL = ("https://github.com/crate-ci/typos/releases/download/%s/"

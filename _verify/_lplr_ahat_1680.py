@@ -38,7 +38,7 @@ import shutil
 import subprocess
 import sys
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LPLR = os.path.join(REPO, "moonbit_doubleML", "lplr.mbt")
 BACKUP = os.path.join(REPO, "_verify", "_ahat_backup.mbt")
 

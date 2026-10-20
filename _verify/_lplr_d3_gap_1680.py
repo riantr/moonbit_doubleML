@@ -16,7 +16,7 @@ import re
 import subprocess
 import sys
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(REPO, "pyexample_lplr.py")
 # The patched copy MUST live in the repo root: the gate derives its working
 # directory from `HERE = dirname(abspath(__file__))`, so a copy parked in

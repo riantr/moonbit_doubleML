@@ -28,7 +28,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "_verify", "_upstream_ps", "doubleml-0.11.4"))
 
 

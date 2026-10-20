@@ -20,7 +20,7 @@ working directory from `HERE = dirname(abspath(__file__))`; a copy in
 import io
 import os
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "pyexample_lplr.py")
 DST = os.path.join(REPO, "_lplr_gap_probe_1680.py")
 
