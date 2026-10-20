@@ -1,0 +1,146 @@
+// _probe_nfolds4_1570_test.mbt
+//
+// ROW N, second pass. The first pass concluded that `n_folds = 5` aborts on
+// DoubleMLDIDCS because a per-cell subset (the post-preprocess_did_binary
+// survivor) falls below 5 rows. That conclusion was WRONG about the mechanism,
+// and did_binary.mbt:412-417 says so:
+//
+//   // Placeholder: the real `DoubleMLDID` is built in `fit()` once
+//   // the wide-format preprocessing has produced a non-empty
+//   // dataset. We pass a 4-row dummy here so the
+//   // `DoubleMLDID::new` precondition `n_folds <= n_obs` is not
+//   // tripped at construction time (`n_folds` defaults to 2).
+//
+// The binding set is a hard-coded FOUR-ROW DUMMY, created at construction of
+// DoubleMLDIDBinary, before any preprocessing runs. That predicts a sharp
+// threshold: n_folds <= 4 fits, n_folds >= 5 aborts, at EVERY sample size,
+// including ones where the real cells hold hundreds of rows.
+//
+// This probe tests that threshold. It also re-counts the DIDCS cells over the
+// FULL grid: the first pass looped gi in [0,1,2] and ti in [0,1,2], i.e. 9 of
+// the 16 cells that dgp_did_CS2021.mbt:50-52 actually produces
+// (n_periods = 4, n_groups = 4).
+//
+// Under the `panic_` convention an ABORT passes and a successful fit FAILS.
+
+test "panic_ROW_N2_f2_fits" {
+  println("f2 begin")
+  let raw = make_did_CS2021(1600, 3, 1.0, 11)
+  let d = DoubleMLDIDCSData::new(
+    raw.x_get(),
+    raw.y_get(),
+    raw.d_get(),
+    raw.t_get(),
+    raw.id_get(),
+    raw.g_get(),
+  )
+  let f = DoubleMLDIDCS::new(d, n_folds=2, n_rep=1, seed=3141).fit()
+  println("f2 SURVIVED " + f.coef_at(0, 1).to_string())
+}
+
+test "panic_ROW_N2_f3_fits" {
+  println("f3 begin")
+  let raw = make_did_CS2021(1600, 3, 1.0, 11)
+  let d = DoubleMLDIDCSData::new(
+    raw.x_get(),
+    raw.y_get(),
+    raw.d_get(),
+    raw.t_get(),
+    raw.id_get(),
+    raw.g_get(),
+  )
+  let f = DoubleMLDIDCS::new(d, n_folds=3, n_rep=1, seed=3141).fit()
+  println("f3 SURVIVED " + f.coef_at(0, 1).to_string())
+}
+
+/// THE SHARP TEST. If the 4-row dummy is the binding set, 4 must still fit,
+/// because the dummy has exactly 4 rows. Only 5 should abort.
+test "panic_ROW_N2_f4_fits_at_the_boundary" {
+  println("f4 begin")
+  let raw = make_did_CS2021(1600, 3, 1.0, 11)
+  let d = DoubleMLDIDCSData::new(
+    raw.x_get(),
+    raw.y_get(),
+    raw.d_get(),
+    raw.t_get(),
+    raw.id_get(),
+    raw.g_get(),
+  )
+  let f = DoubleMLDIDCS::new(d, n_folds=4, n_rep=1, seed=3141).fit()
+  println("f4 SURVIVED " + f.coef_at(0, 1).to_string())
+}
+
+test "panic_ROW_N2_f5_aborts" {
+  println("f5 begin")
+  let raw = make_did_CS2021(1600, 3, 1.0, 11)
+  let d = DoubleMLDIDCSData::new(
+    raw.x_get(),
+    raw.y_get(),
+    raw.d_get(),
+    raw.t_get(),
+    raw.id_get(),
+    raw.g_get(),
+  )
+  let f = DoubleMLDIDCS::new(d, n_folds=5, n_rep=1, seed=3141).fit()
+  println("f5 SURVIVED " + f.coef_at(0, 1).to_string())
+}
+
+/// Same boundary, at a sample size where every real cell holds 250 rows.
+/// A sample-size mechanism cannot explain 5 aborting here while 250 rows sit
+/// in each cell; a hard-coded 4-row dummy explains it at any n.
+test "panic_ROW_N2_f4_fits_at_n4000" {
+  println("f4 n4000 begin")
+  let raw = make_did_CS2021(4000, 3, 1.0, 11)
+  let d = DoubleMLDIDCSData::new(
+    raw.x_get(),
+    raw.y_get(),
+    raw.d_get(),
+    raw.t_get(),
+    raw.id_get(),
+    raw.g_get(),
+  )
+  let f = DoubleMLDIDCS::new(d, n_folds=4, n_rep=1, seed=3141).fit()
+  println("f4 n4000 SURVIVED " + f.coef_at(0, 1).to_string())
+}
+
+/// Full 4x4 cell grid, as dgp_did_CS2021.mbt:50-52 actually produces.
+test "ROW_N2_cell_grid_full" {
+  for n_obs in [1600, 4000] {
+    let raw = make_did_CS2021(n_obs, 3, 1.0, 11)
+    let g = raw.g_get()
+    let t = raw.t_get()
+    let n = if g.length() < t.length() { g.length() } else { t.length() }
+    let mut nonempty = 0
+    let mut smallest = 1000000
+    let mut counted = 0
+    for gi in [0, 1, 2, 3] {
+      for ti in [0, 1, 2, 3] {
+        let mut c = 0
+        for i = 0; i < n; i = i + 1 {
+          if g[i] == gi && t[i] == ti {
+            c = c + 1
+          }
+        }
+        counted = counted + 1
+        if c > 0 {
+          nonempty = nonempty + 1
+          if c < smallest {
+            smallest = c
+          }
+        }
+      }
+    }
+    println(
+      "n_obs_arg=" +
+      n_obs.to_string() +
+      " rows=" +
+      n.to_string() +
+      " cells_examined=" +
+      counted.to_string() +
+      " cells_nonempty=" +
+      nonempty.to_string() +
+      " smallest_cell=" +
+      smallest.to_string(),
+    )
+  }
+}

@@ -1,13 +1,36 @@
 # Learner defaults in `moonbit_doubleML` — measured inventory
 
+> **Re-audited 2026-10-20 against the `v0.164.9` tree.** Written in the
+> v0.153.0 round; committed to the repository on 2026-10-20 in `5b0b364`
+> (v0.164.4). **§1 describes the pre-v0.153.0 inventory while §3 describes the
+> post-v0.153.0 one** — the two sections contradict each other, and the live
+> tree sides with §3.
+> Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
+>
+> | | as written (v0.153.0) | now (`v0.164.9`) |
+> |---|---|---|
+> | `.mbt` files in scope | 213 | **220** |
+> | `DoubleMLXxx::new` definitions | 34 | 34, unchanged |
+> | learner default sites | **27** (§1) / 33 (§3) | **33** — §1 is the stale one |
+> | `ml_g` / `ml_m` sites | 12 / 12 (§1) | **15 / 15** |
+> | `ml_m` default split | logistic ×6 / linear ×6 (§1) | **logistic ×7 / linear ×8** — `DoubleMLLPLR` has migrated to logistic since |
+> | `ml_m` = a regressor where upstream demands a classifier | not stated | **8 of 8** — see §2 |
+>
+> **What is NOT verified here.** No estimator was re-run. The §4 gate counts
+> (`1087 / 1087`) and the §5 mutation table (5 / 5 killed) are quoted from the
+> v0.153.0 round and were not reproduced; the native test count has moved on
+> since (1087 → 1117).
+
 **v0.153.0 working note.** Produced because the active goal refers to "the
 remaining 11 defaults" and that list could not be recovered from any durable
 artifact. This re-derives the candidate set from the **source**, so a
 user-supplied list can be checked against what actually exists.
 
 Generator: `_verify/_enum_defaults_1530.py` (parses, does not grep).
-Scope: 213 `.mbt` files, 34 `DoubleMLXxx::new` definitions, **27 learner
-default sites**.
+Scope: **220** `.mbt` files, 34 `DoubleMLXxx::new` definitions, **33 learner
+default sites**. (This line said 213 files and 27 sites when it was written in
+the v0.153.0 round; both are re-measured now. The 27 was the **pre**-v0.153.0
+figure — see the banner.)
 
 A "default" here means a `::new` parameter whose default *value* is a
 `LearnerDispatch::...()` construction — i.e. what a caller who never mentions
@@ -19,26 +42,35 @@ choice), and bare struct fields with no default.
 
 | slot | sites | distinct defaults |
 |---|---|---|
-| `ml_g` | 12 | `linear_regression` × 12 |
-| `ml_m` | 12 | `logistic_regression` × 6, `linear_regression` × 6 |
+| `ml_g` | 15 | `linear_regression` × 15 |
+| `ml_m` | 15 | `logistic_regression` × 7, `linear_regression` × 8 |
 | `ml_l` | 2 | `linear_regression` × 2 |
 | `ml_r` | 1 | `linear_regression` × 1 |
 
-### `ml_m` — split 6 / 6
+> **This table is the re-measured one.** It previously read `12 / 12 / 2 / 1`
+> = 27 sites with a 6 / 6 `ml_m` split — the **pre-v0.153.0** inventory, which
+> contradicted §3 of this same document. §3 was right; §1 was stale.
+
+### `ml_m` — split 7 / 8
 
 **logistic** (migrated): `DoubleMLIRM` (v0.132.0), `DoubleMLAPO` (v0.134.0),
 `DoubleMLAPOS` (v0.135.0), `DoubleMLSSM` (v0.138.0), `DoubleMLPQ`,
-`DoubleMLQTE`.
+`DoubleMLQTE`, and **`DoubleMLLPLR`** — which has migrated to logistic since
+this list was written. (It was listed below as *not migrated*, i.e. linear.)
 
 **linear** (not migrated): `DoubleMLCVAR`, `DoubleMLDID`,
-`DoubleMLDIDCrossSection`, `DoubleMLDIDMulti`, `DoubleMLIIVM`,
-`DoubleMLLPLR`.
+`DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
+`DoubleMLDIDCrossSection`, `DoubleMLDIDMulti`, `DoubleMLIIVM` — eight. The
+three DID constructors that acquired an `ml_m` slot in v0.153.0
+(`DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`) default to
+`linear_regression`, so they belong in this list too.
 
 ### `ml_g` — all OLS
 
 `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLBLP`, `DoubleMLCVAR`, `DoubleMLDID`,
+`DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
 `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti`, `DoubleMLIIVM`,
-`DoubleMLIRM`, `DoubleMLLPLR`, `DoubleMLRDD`, `DoubleMLSSM` — all at
+`DoubleMLIRM`, `DoubleMLLPLR`, `DoubleMLRDD`, `DoubleMLSSM` — fifteen, all at
 `linear_regression`. This matches upstream: `ml_g` models `E[y | x]`, so OLS is
 the correct default and diverging from it would be the bug, not the fix.
 
@@ -47,7 +79,13 @@ the correct default and diverging from it would be the bug, not the fix.
 `ml_l`: `DoubleMLPQ`, `DoubleMLQTE` — both OLS. `ml_r`: `DoubleMLIIVM` only,
 OLS.
 
-## 2. The `ml_m` queue is CLOSED — do not reopen it
+## 2. The `ml_m` queue — re-measured, and **not** closed
+
+> **Re-measured 2026-10-20: the heading's verdict does not survive.** The
+> queue was closed for the estimators that existed then. The tree now has
+> **15** `ml_m` slots, **8** of which still default to a regressor, and
+> **every one of those 8 is an estimator where upstream requires a
+> classifier** — see the live measurement below.
 
 The most obvious reading of "the remaining 11 defaults" is the `ml_m` queue,
 and measurement shows it is finished:
@@ -70,6 +108,38 @@ quantile-ignoring defect; `DoubleMLLPLR` a degenerate SE.
 records the static classifier being refuted once (`DoubleMLIIVM` was predicted
 hazardous and measured harmless). If the intended queue is to *harden* those
 ten, that is a different and much larger piece of work than migrating them.
+
+### The live measurement, 2026-10-20 — and the exact relation
+
+The `ml_m` default was re-derived from the source and set against what
+upstream **requires** for the same slot. Upstream validates `ml_m` with
+`_check_learner(ml_m, "ml_m", regressor=False, classifier=True)` in 13 of its
+classes:
+
+| | count | estimators |
+|---|---|---|
+| port `ml_m` = `logistic_regression` | 7 | APO, APOS, IRM, LPLR, PQ, QTE, SSM |
+| port `ml_m` = `linear_regression` | 8 | CVAR, DID, DIDBinary, DIDCS, DIDCSBinary, DIDCrossSection, DIDMulti, IIVM |
+| upstream demands a **classifier** for `ml_m` | 13 | the 8 above, plus APO, APOS, IRM, PQ, SSM |
+| upstream accepts **either** for `ml_m` | 1 | LPLR |
+
+⇒ **Every one of the 8 estimators whose `ml_m` defaults to a regressor is an
+estimator where upstream requires a classifier (8 of 8).** And the port never
+defaults `ml_m` to a regressor where upstream accepts one: the only upstream
+class that tolerates a regressor for `ml_m` is `DoubleMLLPLR`, and the port's
+`DoubleMLLPLR` uses logistic.
+
+The divergence is therefore not "8 estimators left to migrate". It is sharper
+and more actionable: **the port ships a regressor as the propensity learner
+for 8 estimators, and upstream's own API would reject that learner for
+exactly those 8.** A caller porting upstream code who passes upstream's
+classifier gets a different estimator than one who takes the port's default.
+
+**This does not disturb the v0.137.0 per-estimator verdicts** — "not
+demonstrated" still means the *hazard* was not measured, and the hazard
+question is separate from the API question. But the queue's *closure* was a
+statement about a tree with 12 `ml_m` slots, and it is now a statement about a
+tree with 15.
 
 ## 3. Two defects found while enumerating
 

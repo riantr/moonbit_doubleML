@@ -1,0 +1,92 @@
+// _probe_binceil_1570_test.mbt
+//
+// ROW N, closing the "not established" item: the previous pass exercised PLR
+// only, and left open whether any estimator OTHER than DoubleMLDIDCS funnels
+// through a reduced subset the way DIDCS does.
+//
+// The abort trace runs
+//   DoubleMLDIDCS::fit -> DoubleMLDIDBinary::new -> DoubleMLDID::new
+// so the ceiling could belong to either the DIDCS cell loop or the binary
+// wrapper itself. This isolates the wrapper by constructing
+// `DoubleMLDIDBinary` DIRECTLY, with no DIDCS involved, and scaling the real
+// data up.
+//
+// Prediction if the 4-row PLACEHOLDER is the binding set (did_binary.mbt:434):
+// n_folds <= 4 fits and n_folds >= 5 aborts REGARDLESS OF SUBSET SIZE, because
+// the dummy is built before any real data is looked at.
+//
+// Prediction if it were really a subset-size limit: n_folds = 5 would fit once
+// the subset is comfortably larger than 5.
+//
+// Under the `panic_` convention an ABORT passes and a successful fit FAILS.
+
+fn bin_build(n_treated : Int32, n_control : Int32) -> DoubleMLDIDBinaryData {
+  let n_units = n_treated + n_control
+  let n = n_units * 2
+  let p = 1
+  let x_flat : Array[Double] = Array::make(n * p, 0.0)
+  let y : Array[Double] = Array::make(n, 0.0)
+  let d : Array[Double] = Array::make(n, 0.0)
+  let t : Array[Int32] = Array::make(n, 0)
+  let g : Array[Int32] = Array::make(n, 0)
+  let id : Array[Int32] = Array::make(n, 0)
+  for u = 0; u < n_units; u = u + 1 {
+    let treated = if u < n_treated { 1 } else { 0 }
+    for per = 0; per < 2; per = per + 1 {
+      let i = u * 2 + per
+      y[i] = (per + treated).to_double()
+      d[i] = treated.to_double()
+      t[i] = per
+      g[i] = treated
+      id[i] = u
+    }
+  }
+  DoubleMLDIDBinaryData::new(Matrix::from_array(x_flat, n, p), y, d, t, g, id)
+}
+
+fn bin_fit(n_treated : Int32, n_control : Int32, n_folds : Int32) -> Int32 {
+  let data = bin_build(n_treated, n_control)
+  let f = DoubleMLDIDBinary::new(
+    data,
+    1,
+    0,
+    1,
+    n_folds=n_folds,
+    n_rep=1,
+    seed=3141,
+  )
+    .fit()
+  f.n_obs_subset()
+}
+
+/// Print the REAL subset size for the large fixture, so the abort below can be
+/// read against a subset that is demonstrably far larger than 5.
+test "ROW_O_subset_sizes" {
+  let small = bin_fit(3, 1, 2)
+  let large = bin_fit(300, 300, 2)
+  println(
+    "subset_small(4 units)=" +
+    small.to_string() +
+    " subset_large(600 units)=" +
+    large.to_string() +
+    " both_fitted_with_n_folds=2",
+  )
+}
+
+/// CONTROL -- must fit, therefore must FAIL under the panic_ convention.
+test "panic_ROW_O_bin_f2_fits" {
+  let r = bin_fit(300, 300, 2)
+  println("bin f2 SURVIVED subset=" + r.to_string())
+}
+
+test "panic_ROW_O_bin_f4_fits" {
+  let r = bin_fit(300, 300, 4)
+  println("bin f4 SURVIVED subset=" + r.to_string())
+}
+
+/// THE TEST. 600 units, so the real wide-format subset holds 600 rows. If the
+/// ceiling were a subset-size limit, 5 folds would sail through here.
+test "panic_ROW_O_bin_f5_aborts_despite_large_subset" {
+  let r = bin_fit(300, 300, 5)
+  println("bin f5 SURVIVED subset=" + r.to_string())
+}

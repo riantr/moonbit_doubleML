@@ -1,0 +1,114 @@
+// _probe_determinism_1570_test.mbt
+//
+// The upstream arm of ROW M turned out to be 65x smaller than first measured,
+// because that arm was never seeded deterministically. The port arms are in the
+// same position of risk and MUST be checked the same way before any of their
+// numbers are quoted: an instrument whose reproducibility has not been
+// demonstrated has not produced a result.
+//
+// Each arm is run TWICE inside one test and the max elementwise difference
+// between the two runs is printed. Only a difference of exactly 0 licenses the
+// published figure.
+
+fn dn_isn_build_dgp(
+  n : Int32,
+  p : Int32,
+  att : Double,
+) -> DoubleMLDIDCrossSectionData {
+  let rng = chacha8_rng(42)
+  let x = Matrix::zeros(n, p)
+  let y : Array[Double] = []
+  let d : Array[Double] = []
+  let t : Array[Int32] = []
+  let mut y_acc = y
+  let mut d_acc = d
+  let mut t_acc = t
+  for i = 0; i < n; i = i + 1 {
+    for j = 0; j < p; j = j + 1 {
+      x.set(i, j, rng.double() * 2.0 - 1.0)
+    }
+    d_acc = d_acc + [if rng.double() < 0.5 { 1.0 } else { 0.0 }]
+    t_acc = t_acc + [if rng.double() < 0.5 { 1 } else { 0 }]
+    let di = d_acc[i]
+    let ti = t_acc[i].to_double()
+    let noise = (rng.double() - 0.5) * 0.5
+    let yi = di * ti * att + x.get(i, 0) + 0.5 * x.get(i, 1) + noise
+    y_acc = y_acc + [yi]
+  }
+  DoubleMLDIDCrossSectionData::new(x, y_acc, d_acc, t_acc)
+}
+
+fn xs_coef(
+  data : DoubleMLDIDCrossSectionData,
+  isn : Bool,
+) -> Double {
+  DoubleMLDIDCrossSection::new(
+    data,
+    n_folds=2,
+    n_rep=1,
+    seed=3141,
+    score="observational",
+    in_sample_normalization=isn,
+  )
+  .fit()
+  .coef()
+}
+
+fn didcs_coef(dgp_seed : Int32, isn : Bool) -> Double {
+  let raw = make_did_CS2021(1600, 3, 1.0, dgp_seed)
+  let d = DoubleMLDIDCSData::new(
+    raw.x_get(),
+    raw.y_get(),
+    raw.d_get(),
+    raw.t_get(),
+    raw.id_get(),
+    raw.g_get(),
+  )
+  DoubleMLDIDCS::new(d, n_folds=2, n_rep=1, seed=3141, in_sample_normalization=isn)
+  .fit()
+  .coef_at(0, 1)
+}
+
+/// Arm 1 -- cross-section DID. Two passes over both flag values.
+test "ROW_M_det_xsection" {
+  let ns = [200, 500, 1000, 2000, 5000]
+  let mut worst = 0.0
+  for n in ns {
+    let data = dn_isn_build_dgp(n, 3, 1.0)
+    for isn in [false, true] {
+      let a = xs_coef(data, isn)
+      let b = xs_coef(data, isn)
+      let d = (a - b).abs()
+      if d > worst {
+        worst = d
+      }
+    }
+  }
+  println("XSARM examined_ns=" + ns.length().to_string() + " worst_repeat_diff=" + worst.to_string())
+}
+
+/// Arm 2 -- DIDCS. Two passes over 4 seeds x both flag values.
+test "ROW_M_det_didcs" {
+  let seeds = [11, 22, 33, 44]
+  let mut worst = 0.0
+  let mut examined = 0
+  for s in seeds {
+    for isn in [false, true] {
+      let a = didcs_coef(s, isn)
+      let b = didcs_coef(s, isn)
+      let d = (a - b).abs()
+      examined = examined + 1
+      if d > worst {
+        worst = d
+      }
+    }
+  }
+  println(
+    "DIDCSARM examined=" +
+    examined.to_string() +
+    " expected=" +
+    (seeds.length() * 2).to_string() +
+    " worst_repeat_diff=" +
+    worst.to_string(),
+  )
+}

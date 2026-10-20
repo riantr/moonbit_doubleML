@@ -3,10 +3,25 @@
 The README says: "Those provenance labels are re-measured against the published
 `doubleml` 0.11.4 sdist, not asserted -- see the estimator table below."
 
-So the table's three labels must match the sdist:
-  * 20 rows marked *(upstream)*        -> a name-identical class exists
-  * `DoubleMLRDD` marked *(upstream, renamed)* -> upstream calls it `RDFlex`
-  * `DoubleMLDIDCrossSection` marked *(no upstream counterpart)* -> no such class
+So the table's labels must match the sdist:
+  * rows marked *(upstream)*          -> a name-identical class exists
+  * rows marked *(upstream, renamed)* -> an upstream class exists under the
+    name the row gives
+  * rows marked *(no upstream counterpart)* -> no upstream class implements it
+
+**RE-AUDITED 2026-10-20.** This file used to assert "20 rows marked
+*(upstream)*" and that `DoubleMLDIDCrossSection` was marked
+*(no upstream counterpart)*. Both were the README's own belief, checked by a
+**name scan** -- and a name scan cannot establish that no upstream estimator
+implements a design, only that no upstream class carries a given NAME.
+Upstream's `DoubleMLDIDCS` is the *repeated cross-sections* estimator, which
+is the counterpart of the port's `DoubleMLDIDCrossSection`; the port's
+`DoubleMLDIDCS` is the panel estimator, whose upstream counterpart is
+`DoubleMLDIDMulti`. The grouping is now **19 name-identical + 3 renamed + 0
+port-only**, and the counts below are DERIVED from the table rather than
+written down. The estimator-level evidence is in
+`_verify/_verify_estimator_census_1680.py` (design markers read from both
+sides) and `_verify/_verify_round15_defaults_1650.py`.
 
 The sdist is at `_verify/doubleml-0.11.4.tar.gz` (a local copy of the
 published `doubleml` 0.11.4).
@@ -76,8 +91,21 @@ print()
 
 # every *(upstream)* row must have a name-identical upstream class
 missing = [n for n in plain if n not in classes]
-check("all 20 *(upstream)* rows have a name-identical upstream class",
-      not missing, "missing: %s" % missing)
+check("every *(upstream)* row has a name-identical upstream class",
+      not missing, "missing: %s (of %d rows)" % (missing, len(plain)))
+
+# every *(upstream, renamed)* row must name an upstream class that exists
+renamed_missing = []
+for n, _s, d in model_rows:
+    if "upstream, renamed" not in d:
+        continue
+    m = re.search(r"upstream `(\w+)`", d)
+    if not m:
+        renamed_missing.append("%s: names no upstream class" % n)
+    elif m.group(1) not in classes:
+        renamed_missing.append("%s: upstream `%s` is not in the sdist" % (n, m.group(1)))
+check("every *(upstream, renamed)* row names an upstream class that exists",
+      not renamed_missing, "; ".join(renamed_missing))
 
 # the renamed one: upstream calls it RDFlex
 check("upstream has RDFlex", "RDFlex" in classes)
@@ -87,10 +115,14 @@ check("upstream does NOT have DoubleMLRDD (it is renamed)",
 check("the README says upstream calls it RDFlex",
       "upstream `RDFlex`" in readme or "upstream calls it `RDFlex`" in readme)
 
-# the port-only one
-check("upstream has no DoubleMLDIDCrossSection",
+# the port-only one: there is none, and the README says so
+check("upstream has no class NAMED DoubleMLDIDCrossSection",
       "DoubleMLDIDCrossSection" not in classes,
       "upstream DID classes: %s" % sorted(c for c in classes if "DID" in c))
+check("the README marks no row *(no upstream counterpart)*",
+      not portonly, "marked: %s" % portonly)
+check("the README states there is no port-only estimator",
+      re.search(r"\*\*no\*\*\s*\n?\s*port-only estimator", readme) is not None)
 
 # and print the upstream DID classes for context
 print()

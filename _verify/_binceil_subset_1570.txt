@@ -1,0 +1,12 @@
+﻿Total tests: 0, passed: 0, failed: 0. [wasm]
+moon : Warning: no test entry found.
+所在位置 行:4 字符: 1
++ moon test -f 'ROW_O_subset_sizes' 2>&1 | Out-File -FilePath '_verify\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: no test entry found.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+subset_small(4 units)=4 subset_large(600 units)=600 both_fitted_with_n_folds=2
+Total tests: 1, passed: 1, failed: 0. [wasm-gc]
+Total tests: 0, passed: 0, failed: 0. [native]
+Warning: no test entry found.

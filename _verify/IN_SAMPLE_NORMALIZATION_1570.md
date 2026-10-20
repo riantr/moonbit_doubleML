@@ -1,5 +1,36 @@
 # ROW M — `in_sample_normalization`: port default `false`, upstream default `True`
 
+> **Re-audited 2026-10-20 against the `v0.164.9` tree. §5's headline is
+> WITHDRAWN.** Written in the v0.157.0 round; committed 2026-10-20 in `5b0b364`
+> (v0.164.4).
+>
+> §5 point 5 reads *"the port's `DoubleMLDIDCS` is ~20× more sensitive to this
+> flag than upstream is"*. It is built by comparing Arm 2 — the port's **panel**
+> `DoubleMLDIDCS`, on the `make_did_CS2021` fixture — against Arm 4 — upstream's
+> `DoubleMLDIDCS`, on the `make_did_SZ2020(..., cross_sectional_data=True)`
+> fixture. **Those are two different estimators that share a name, measured on
+> two different fixtures.** Upstream's `DoubleMLDIDCS` is the *repeated
+> cross-sections* estimator (`did/did_cs.py`: *"Double machine learning for
+> difference-in-difference with repeated cross-sections"*) — the counterpart of
+> the port's `DoubleMLDIDCrossSection`, not of the port's `DoubleMLDIDCS`.
+> The like-for-like pair is **Arm 1 against Arm 4**: the port's cross-section
+> estimator against upstream's, on the **same** fixture — **0.039 SE vs 0.048
+> SE**. The port is *less* sensitive there, not 20× more. See §9.
+>
+> Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
+>
+> | | as written | now (`v0.164.9`) |
+> |---|---|---|
+> | the 49 / 42 / 7 constructor-divergence triple | asserted | **not reproducible** from the two sources it names, under any of six scopings — replaced by §10 |
+> | the port's `in_sample_normalization` default | `false` at 6 sites | `false` at 6 sites — unchanged |
+> | upstream's default | `True` | `True` — unchanged |
+> | `did.mbt` `in_sample_normalization` | `:164-200` | `did.mbt:166-201` |
+> | `did_cross_section.mbt` `p_hat = mean(d)` note | `:1476` | `:1476` — unchanged |
+>
+> **What is NOT verified here.** No arm was re-run. Every number in §2–§4 is
+> quoted from the original record and was not reproduced. The raw logs they
+> come from (`_verify/_isn_*_1570.*`) were **not tracked** and are now tracked.
+
 > ## ⚠ RETRACTION — the headline number in the first version of this document was wrong
 >
 > The first version reported, from the upstream oracle, that the flag
@@ -34,9 +65,15 @@
 **Status:** measured, three arms, port commit `8308f09` (v0.155.0).
 Upstream oracle = installed `doubleml` **0.11.3** (vendored tree 0.11.4; not diffed).
 
-One of only **seven** constructor parameters where both sides declare the
+One of only ~~**seven** constructor parameters where both sides declare the
 parameter and only the *value* differs. The other 42 of the 49 constructor
-divergences are one-sided capability gaps, not defaults.
+divergences are one-sided capability gaps, not defaults.~~ **Re-measured
+2026-10-20: the 49 / 42 / 7 triple does not reproduce** from the two sources
+this document names, under any of six scopings — see **§10** for the live
+numbers and the rule that produces them. The *point* the sentence was making
+survives: the parameters where the two sides disagree in value are a handful
+of names, and most of the disagreement between the two APIs is one-sided
+capability rather than default choice.
 
 ---
 
@@ -147,11 +184,24 @@ though the absolute level is not an ATT-recovery statement.
 
 1. `psi_a` is **provably** unreachable by the flag (`p_hat = mean(d)`); measured
    `max |Δpsi_a| = 0` at five sample sizes.
-2. Port cross-section DID: **≤ 0.039 SE**, O(1/n).
-3. Port DIDCS: **up to 0.97 SE**, SE ratio 3.3×.
-4. Upstream DIDCS: **≤ 0.048 SE**, SE ratio 1.011.
-5. **The port's `DoubleMLDIDCS` is ~20× more sensitive to this flag than
-   upstream is.** That is the finding worth acting on; the rest is small.
+2. Port cross-section DID (`DoubleMLDIDCrossSection`): **≤ 0.039 SE**, O(1/n).
+3. Port panel DIDCS (`DoubleMLDIDCS`): **up to 0.97 SE**, SE ratio 3.3×.
+4. Upstream `DoubleMLDIDCS` — the **repeated cross-sections** estimator: **≤ 0.048 SE**, SE ratio 1.011.
+5. ~~**The port's `DoubleMLDIDCS` is ~20× more sensitive to this flag than
+   upstream is.**~~ **WITHDRAWN 2026-10-20 — see §9.** The number was formed
+   by comparing item 3 with item 4, and those are **two different estimators
+   that share a name**, measured on **two different fixtures**.
+
+The like-for-like pair is item 2 against item 4 — the port's cross-section
+estimator against upstream's cross-section estimator, on the **same**
+`make_did_SZ2020(..., cross_sectional_data=True)` fixture:
+
+| | port `DoubleMLDIDCrossSection` | upstream `DoubleMLDIDCS` |
+|---|---|---|
+| max \|Δcoef\| / SE | **0.039** | **0.048** |
+
+⇒ **the port's cross-section estimator is *less* sensitive to this flag than
+upstream's** — 0.039 against 0.048, a ratio of **0.81×** — not 20× more.
 
 ## 6. What is NOT established
 
@@ -168,9 +218,13 @@ though the absolute level is not an ATT-recovery statement.
 the upstream divergence turns out to be genuinely finite-sample-scale — the
 original comment was right.
 
-What is worth documenting is the **20× gap on `DoubleMLDIDCS`**: a user porting
-upstream code would expect ~0.05 SE of movement and gets ~0.97. That belongs in
-the `in_sample_normalization` comment, which now records it.
+What is worth documenting is the ~~**20× gap on `DoubleMLDIDCS`**~~ — that
+sentence is **withdrawn**, see §9. What survives is narrower and still worth
+writing: on the **cross-section** estimator the port moves ≤ 0.039 SE where
+upstream moves ≤ 0.048 SE, so the port is marginally *less* sensitive. The
+0.97 SE figure belongs to the port's **panel** `DoubleMLDIDCS`, and the
+upstream counterpart for *that* estimator is `DoubleMLDIDMulti` — which this
+record never ran.
 
 ## 8. Method note
 
@@ -185,6 +239,115 @@ Two failures in this row, both mine, both caught by the same discipline:
 
 ⇒ **Run every arm twice and check it reproduces before quoting a number.** The
 symptom of an unseeded instrument is a large, confident, wrong number.
+
+## 9. The 20× headline is withdrawn — a name collision, not a defect
+
+**The claim.** §5 point 5 read: *"the port's `DoubleMLDIDCS` is ~20× more
+sensitive to this flag than upstream is"*, formed from Arm 2's 0.971 SE and
+Arm 4's 0.048 SE (0.971 / 0.048 = **20.2**).
+
+**Why it does not hold.** The two arms are not the same estimator, and they
+are not the same fixture:
+
+| | arm | estimator | fixture |
+|---|---|---|---|
+| Arm 1 | port | `DoubleMLDIDCrossSection` | `make_did_SZ2020`, cross-section |
+| Arm 2 | port | `DoubleMLDIDCS` (panel) | `make_did_CS2021` |
+| Arm 4 | upstream | `DoubleMLDIDCS` | `make_did_SZ2020`, cross-section |
+
+Upstream's `DoubleMLDIDCS` is the **repeated cross-sections** estimator —
+`did/did_cs.py:17`: *"Double machine learning for difference-in-difference with
+repeated cross-sections"*, taking a `DoubleMLDIDData` (one observation per
+unit, binary post-period indicator `t`). The port's `DoubleMLDIDCrossSection`
+is that estimator: `did_cross_section.mbt` fits 4 g-functions over
+`(d, t) ∈ {0,1}²` plus one propensity, and its own header cites *"the
+repeated cross-sections variant"* of the same Sant'Anna & Zhao design. The
+repository's own `validate_did_cross_section_with_python.py` mirrors
+`doubleml.DoubleMLDIDCS._score_elements` to produce the port's reference
+estimate — i.e. the repo has always treated the two as the same estimator.
+
+The port's `DoubleMLDIDCS` is a **different** estimator: a **panel**,
+group-time ATT estimator (`did_cs.mbt` — per-`(g, t)` cells over a
+`DoubleMLDIDCSData` with `id` / `g` / `t`), whose upstream counterpart is
+`DoubleMLDIDMulti` (`did/did_multi.py`, takes a `DoubleMLPanelData`, emits
+per-`(cohort, pre, eval)` ATTs). The tell is the parameters: `control_group`
+and `anticipation_periods` exist on upstream's `DoubleMLDIDMulti` and on
+**neither** upstream's `DoubleMLDIDCS` nor its `DoubleMLDID` — and the port's
+`DoubleMLDIDCS` has both.
+
+**So the 20× compared Arm 2 against Arm 4** — the port's panel estimator
+against upstream's cross-section estimator, on different fixtures.
+
+**The like-for-like comparison, from this record's own arms:**
+
+| | port `DoubleMLDIDCrossSection` | upstream `DoubleMLDIDCS` |
+|---|---|---|
+| max \|Δcoef\| / SE | **0.039** | **0.048** |
+| arm | 1 | 4 |
+| fixture | `make_did_SZ2020`, cross-section | the same |
+
+⇒ On the estimator the two sides actually share, the port is **less**
+sensitive — **0.039 against 0.048, a ratio of 0.81×**. The 0.97 SE figure is
+real, but it belongs to the port's panel `DoubleMLDIDCS`, and this record
+never measured upstream's counterpart for it.
+
+**What is still open.** The panel question is real and unanswered: the port's
+`DoubleMLDIDCS` moves up to 0.97 SE under the flag, and upstream's
+`DoubleMLDIDMulti` — the estimator it corresponds to — was never run here.
+Until that arm exists, **no claim about the panel estimator's relative
+sensitivity is supported**, in either direction.
+
+## 10. The 49 / 42 / 7 constructor-divergence triple is not reproducible
+
+This record's header said: *"One of only **seven** constructor parameters where
+both sides declare the parameter and only the *value* differs. The other 42 of
+the 49 constructor divergences are one-sided capability gaps, not defaults."*
+
+**Re-measured 2026-10-20: that triple does not reproduce.** The two sources it
+names are the recorded upstream capture
+(`_verify/_upstream_defaults_1540.txt`, now tracked and re-encoded UTF-8) and
+the port enumerator (`_verify/_enum_all_defaults_1540.py`, now tracked, and
+which had been **crashing** on a `NameError` since it was written — its
+per-estimator detail section never ran). Six scopings were tried against those
+two sources — identity and crossed estimator-name maps, with and without the
+learner slots, and with and without port-only parameters counted — and **none**
+yields 49 / 42 / 7.
+
+**What replaces it.** Under the rule stated below, the live numbers are:
+
+- upstream declares **51** (estimator, parameter) pairs across the 10
+  estimators in the capture;
+- of those, the port declares the same parameter on the same estimator in
+  **30** cases — **18** with the same value, **12** with a different one;
+- those **12** value differences fall across **3** distinct parameter names
+  (`n_folds`, `in_sample_normalization`, `n_folds_inner`);
+- the remaining **21** are one-sided: upstream declares a parameter the port's
+  corresponding estimator does not (`n_rep`, `normalize_ipw`, `score`,
+  `trimming_threshold`);
+- and **45** parameters the port's constructors declare have no upstream
+  counterpart in the capture at all.
+
+The rule, so it can be re-derived: *match the capture's 10 upstream estimators
+1:1 to the port's corresponding `::new`, compare parameter **names** first and
+values second, count learners as parameters, and report upstream-only pairs
+separately from value differences.* `n_folds` appears 10 times in the
+difference column because 10 of the 10 capture estimators carry it; the two
+`in_sample_normalization` differences are `DoubleMLDID` and
+`DoubleMLDIDCrossSection`; the single `n_folds_inner` difference is
+`DoubleMLLPLR`. The 1:1 map matters — upstream's `DoubleMLDIDCS` is the
+repeated-cross-sections estimator, which is the port's
+`DoubleMLDIDCrossSection` (§9), and the port's `DoubleMLDIDCS` has no entry
+in the capture because its upstream counterpart, `DoubleMLDIDMulti`, is not
+one of the capture's 10.
+
+`_verify/_audit_r15_defaults_1650.py` §8 prints these numbers, and
+`_verify/_verify_round15_defaults_1650.py` pins them.
+
+**The point the original sentence was making survives.** The number of
+parameters where the two sides disagree *in value* is small — it is a
+handful of names, not a wide list — and most of the disagreement between the
+two APIs is one-sided capability, not default choice. The specific figures
+49 / 42 / 7 were not that point's evidence, and they are withdrawn.
 
 ## Artifacts
 

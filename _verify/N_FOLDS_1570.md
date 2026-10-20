@@ -1,5 +1,29 @@
 # ROW N — `n_folds`: port default 2, upstream default 5
 
+> **Re-audited 2026-10-20 against the `v0.164.9` tree.** Written in the
+> v0.157.0 round; committed 2026-10-20 in `5b0b364` (v0.164.4). The
+> *structural* claims were re-checked against the source; **one of this
+> record's line pointers had rotted** and the same bound is cited with a
+> different (also stale) line number in
+> `PORT_VS_UPSTREAM_DEFAULTS_1540.md`.
+> Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
+>
+> | pointer | as written | now (`v0.164.9`) |
+> |---|---|---|
+> | `DoubleMLDIDCS::fit` | did_cs.mbt:1620 | **`did_cs.mbt:1240`** |
+> | `DoubleMLDIDBinary::new` | `did_binary.mbt:352` | `did_binary.mbt:352` — unchanged |
+> | inner `DoubleMLDID::new` | `did_binary.mbt:439` | `did_binary.mbt:439` — unchanged |
+> | `require(n_folds <= data.n_obs())` | `did.mbt:276` | `did.mbt:276` — unchanged |
+> | `abort(...)` | `did.mbt:317` | `did.mbt:317` — unchanged |
+> | the 4-row placeholder | `did_binary.mbt:441` | `did_binary.mbt:441` — unchanged |
+> | the placeholder's comment | `did_binary.mbt:412-417` | `did_binary.mbt:412-417` — unchanged |
+>
+> **What is NOT verified here.** No estimator was re-run: the 4-row ceiling,
+> the 2/3/4/5 threshold and the per-cell counts are quoted from the original
+> record. The raw logs they come from were **not tracked** and are now tracked
+> (`_verify/_nfolds_*_1570.txt`, `_verify/_binceil_*_1570.txt`), so the numbers
+> are now checkable — but they were not re-derived.
+
 > ## ⚠ CORRECTION — the first version of this document blamed the wrong mechanism
 >
 > The first version concluded that `n_folds = 5` aborts because *"the
@@ -82,7 +106,7 @@ exactly 4 and rules out any sample-size explanation.
 ### Abort chain (line numbers at `8308f09`+v0.156.0)
 
 ```
-DoubleMLDIDCS::fit              did_cs.mbt:1620
+DoubleMLDIDCS::fit              did_cs.mbt:1240
 DoubleMLDIDBinary::new          did_binary.mbt:352
   inner: DoubleMLDID::new(      did_binary.mbt:439
     DoubleMLDIDData::new(Matrix::zeros(4, ...))   did_binary.mbt:441

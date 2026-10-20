@@ -9,6 +9,221 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.10] -- the constructor-defaults records, and a crossed provenance table
+
+`moon.mod` moves 0.164.9 -> 0.164.10. No `.mbt` file changed, and no estimator
+behaviour changed: this round is entirely about the claims. The test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Round 14 audited the seven `_verify/UPSTREAM_*.md` records. Round 15 took the
+**six constructor-defaults records** -- `PORT_VS_UPSTREAM_DEFAULTS_1540`,
+`LEARNER_DEFAULTS_1530`, `N_FOLDS_1570`, `IN_SAMPLE_NORMALIZATION_1570`,
+`SCORE_VOCABULARY_1550` and `PARITY_COMMENTS_1570` -- because they share one
+measurement method and one upstream authority, so a single live re-measurement
+audits all six coherently. It also fixed the README's estimator-provenance
+table, which the same sweep turned out to be **crossed**.
+
+### Fixed -- a claim the commit it cites had already made false
+
+- `SCORE_VOCABULARY_1550.md` §2 concluded that the port "rejects upstream's own
+  default spelling", with the abort transcript to prove it, and §4 recommended
+  accepting `"partialling out"` alongside `"partialling-out"` -- "**not done
+  here**".
+- The record anchors on commit `8308f09`. That commit **is** the fix: *"score:
+  accept upstream's spelling of the partialling-out score"*, released as
+  `v0.155.0`. `plr.mbt` now accepts **four** spellings, not three, and the
+  intersection with upstream's `valid_scores` is `{partialling out, IV-type}`
+  -- **two**, not the "one shared spelling out of two on each side" the record
+  asserted.
+- The recommendation is now marked **taken**, and the one half of the defect
+  that remains is named: `DoubleMLPLPR` still rejects the hyphen spelling its
+  own sibling defaults to (`plpr.mbt:567`).
+
+### Fixed -- a headline built by comparing two estimators that share a name
+
+- `IN_SAMPLE_NORMALIZATION_1570.md` §5 concluded that "the port's
+  `DoubleMLDIDCS` is ~20x more sensitive to this flag than upstream is", from
+  0.971 SE against 0.048 SE.
+- The 0.971 came from Arm 2 -- the port's **panel** `DoubleMLDIDCS`, on the
+  `make_did_CS2021` fixture. The 0.048 came from Arm 4 -- upstream's
+  `DoubleMLDIDCS`, on the `make_did_SZ2020(cross_sectional_data=True)` fixture.
+  Upstream's `DoubleMLDIDCS` is the **repeated cross-sections** estimator
+  (`did/did_cs.py:17`), which is the counterpart of the port's
+  `DoubleMLDIDCrossSection`, **not** of the port's `DoubleMLDIDCS`.
+- The like-for-like pair is Arm 1 against Arm 4, on the **same** fixture:
+  **0.039 SE vs 0.048 SE**. The port's cross-section estimator is *less*
+  sensitive, a ratio of **0.81x** -- not 20x more. The headline is withdrawn.
+- The panel question stays open and is now stated as open: the upstream
+  counterpart for the port's panel estimator is `DoubleMLDIDMulti`, which this
+  record never ran.
+
+### Fixed -- the README's provenance table was crossed
+
+- The README said **20** of the 22 estimators "match a class of the same name
+  in upstream", that `DoubleMLDIDRDD` is upstream's `RDFlex` under another
+  name, and that `DoubleMLDIDCrossSection` "has no upstream counterpart at
+  all" -- "the one genuinely port-only estimator".
+- The scan behind that claim looked for the **name**
+  `DoubleMLDIDCrossSection` (0 hits over the sdist's 322 `.py` members), which
+  shows there is no upstream class **by that name** -- not that no upstream
+  estimator implements the same design. The README's own prose even said the
+  label "refers to the estimator class", and its evidence -- upstream's
+  `make_did_SZ2020` generating the Sant'Anna & Zhao data -- pointed at the
+  design being present.
+- Upstream's `DoubleMLDIDCS` **is** the repeated cross-sections estimator, and
+  this repository had known it all along: `validate_did_cross_section_with_python.py`
+  mirrors `doubleml.DoubleMLDIDCS._score_elements` to produce the port's
+  reference estimate. The port's `DoubleMLDIDCS` is the panel estimator, and
+  upstream's `DoubleMLDIDMulti` is its counterpart -- the tell being that
+  `control_group` and `anticipation_periods` exist on upstream's
+  `DoubleMLDIDMulti` and on neither upstream's `DoubleMLDIDCS` nor its
+  `DoubleMLDID`.
+- So the labels are now **19 name-identical** and **3 renamed**
+  (`DoubleMLDIDRDD` -> `RDFlex`, `DoubleMLDIDCS` -> `DoubleMLDIDMulti`,
+  `DoubleMLDIDCrossSection` -> `DoubleMLDIDCS`), and there is **no port-only
+  estimator**.
+
+### Fixed -- a triple that reproduces under no scoping
+
+- `IN_SAMPLE_NORMALIZATION_1570.md` opened with "one of only **seven**
+  constructor parameters where both sides declare the parameter and only the
+  *value* differs. The other 42 of the 49 constructor divergences are one-sided
+  capability gaps".
+- **49 / 42 / 7 reproduces under none of six scopings** of the two sources it
+  names. The live numbers under a stated rule are **51** upstream
+  (estimator, parameter) pairs, **30** declared on both sides, **18** matching,
+  **12** differing across **3** parameter names, **21** upstream-only and **45**
+  port-only. The *point* the sentence made -- that value differences are a
+  handful of names, and most API disagreement is one-sided -- survives; the
+  figures are withdrawn.
+
+### Fixed -- the upstream `score` vocabulary was 13 of 18
+
+- The record's §1 table is headed "Upstream's actual `score` vocabulary
+  (measured)" and lists 13 files. Upstream has **18** classes that validate a
+  `score`, because five of them do it through a different mechanism:
+  `irm/cvar.py`, `irm/lpq.py` and `irm/pq.py` use a local variable named
+  `valid_score` (singular), `irm/ssm.py` passes the list inline, and
+  `plm/pliv.py` overrides the check with a method. A census that only looks
+  for `valid_scores =` finds none of them -- which is why the table stopped at
+  13.
+- The record's caveat that the installed 0.11.3 and the vendored 0.11.4 tree
+  were "not diffed" is now **resolved**: the score vocabulary of all 18 classes
+  is **identical** in the two, and every line the record cites resolves in
+  both. The readings are anchored to the **installed** package, so a reader no
+  longer needs the untracked vendored tree.
+
+### Fixed -- counts that had drifted
+
+- "213 `.mbt` files" and "216 `.mbt` files" -> **220** (65 production + 129
+  blackbox + 26 whitebox). The README's Status table already said 220; two
+  records did not.
+- `LEARNER_DEFAULTS_1530.md` §1 claimed **27** learner default sites with a
+  12 / 12 / 2 / 1 split, while its own §3 claimed 33 with 15 / 15 / 2 / 1. The
+  live tree has **33** -- §1 was the stale one, and the two sections
+  contradicted each other.
+- The `ml_m` split is **7 logistic / 8 linear**, not 6 / 6:
+  `DoubleMLLPLR` has migrated to logistic since, and the three DID
+  constructors that gained an `ml_m` slot in v0.153.0
+  (`DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`) default to
+  `linear_regression`.
+
+### Fixed -- the `ml_m` queue is not closed, and the relation is exact
+
+- `LEARNER_DEFAULTS_1530.md` §2 was headed "The `ml_m` queue is CLOSED -- do
+  not reopen it". Re-measured against what upstream **requires** for the same
+  slot, the relation is exact and stronger than the old heading: **every one of
+  the 8 estimators whose `ml_m` defaults to a regressor is one where upstream
+  requires a classifier** (8 of 8), and the port never defaults `ml_m` to a
+  regressor where upstream accepts one -- the only upstream class that tolerates
+  a regressor for `ml_m` is `DoubleMLLPLR`, and the port's LPLR uses logistic.
+  So the port ships a regressor propensity learner for 8 estimators, and
+  upstream's own API would reject that learner for exactly those 8.
+
+### Fixed -- pointers that had rotted, and a `cf` default that is not a constructor
+
+- `did.mbt:245` -> **:276** (the `require(n_folds <= data.n_obs())` the same
+  bound is cited at in two records, with two different line numbers);
+  `did_cs.mbt:1620` -> **:1240**; `did.mbt:231` -> **:262**;
+  `plr.mbt:388` / `:649` -> **:417** / **:676**; `lplr.mbt:350` -> **:354**;
+  `apo.mbt:52-60` -> **:50-62**; `cvar.mbt:354-357` -> **:359-362**;
+  `iivm.mbt:185` -> **:187-188**; `did_cs.mbt:1328` / `:1347` / `:1259-1275` /
+  `:635` / `:1388` -> **:1407** / **:1426** / **:1334-1345** / **:667** /
+  **:1390**. The `did_binary.mbt:352 / :439 / :441` and `did.mbt:276 / :317`
+  pointers were still correct and are unchanged.
+- The `cf_y` / `cf_d` default was described as "0.03 at all 17 estimators".
+  Upstream's `cf_y` / `cf_d` are **not constructor parameters** -- they are the
+  defaults of the `sensitivity_analysis()` **method** (`double_ml.py:1665`),
+  and the value is 0.03 at **16** classes.
+
+### Fixed -- method scripts and raw artefacts that were cited but never tracked
+
+- The records named `_verify/_upstream_defaults_1540.py`,
+  `_verify/_enum_all_defaults_1540.py` and the capture
+  `_verify/_upstream_defaults_1540.txt` as their method. **None was tracked**,
+  so a reader could not obtain the records' authority -- and
+  `_enum_all_defaults_1540.py` had been **crashing** on a `NameError` since it
+  was written, so its per-estimator detail section never ran. All three are
+  now tracked, the enumerator is fixed, and the 17 raw measurement logs the
+  records cite are tracked too.
+- The capture was stored as **UTF-16** and was **truncated** -- it stopped
+  before the script's learner-defaults section, so it was not the script's
+  output at all. It is now UTF-8, LF-only, regenerated, and byte-identical to a
+  fresh run; `_verify/_regen_capture_1650.py` enforces that.
+- `_verify/N_FOLDS_INNER_1550.md` is cited by two of the six records and was
+  untracked; it is now tracked, re-anchored to the installed upstream package,
+  and carries the same banner shape as the rest.
+
+### Fixed -- two verifiers that pinned the old grouping
+
+- `_verify/_verify_estimator_census_1680.py` asserted "20 rows are marked
+  *(upstream)*", "exactly one is *(upstream, renamed)*" and "exactly one is
+  *(no upstream counterpart)*" -- and the last of those asserted
+  `DoubleMLDIDCrossSection` as the port-only one. Those were the README's own
+  belief, written down as a literal, which is exactly what made it
+  unchallengeable.
+- The grouping is now **derived** rather than written down: an estimator is
+  name-identical when upstream has a class of the same name; it is renamed
+  when upstream implements the same design under another name, recognised by
+  **shared design markers read from both sides** -- upstream's
+  `DoubleMLDIDCS` docstring and the port's `DoubleMLDIDCrossSection` header
+  both say "repeated cross-sections", upstream's `DoubleMLDIDMulti`
+  docstring and the port's `DoubleMLDIDCS` header both say "multi-period",
+  and upstream's RDD estimator is the class `RDFlex`, found as the only
+  non-Data upstream class that uses `DoubleMLRDDData`. The derived grouping is
+  **19 name-identical + 3 renamed + 0 port-only**.
+- `_verify/_verify_provenance_1640.py` gets the same treatment: it no longer
+  asserts a count, it checks that every *(upstream)* row has a name-identical
+  upstream class, that every *(upstream, renamed)* row names an upstream class
+  that exists, and that the README marks **no** row *(no upstream
+  counterpart)*.
+
+### A new verifier for the class
+
+- `_verify/_verify_round15_defaults_1650.py` makes **108** checks, and
+  `_verify/_audit_r15_defaults_1650.py` is the shipped method it re-derives
+  from. Every expectation is DERIVED: the learner inventory, the constructor
+  defaults and the score vocabularies are recomputed from the port's source
+  and the **installed** upstream package; every path promise in the records is
+  resolved on disk **and** against `git ls-files`; every `file.mbt:NNN` pointer
+  is resolved **and** its content checked against an anchor, because a pointer
+  that resolves to the wrong line is still wrong; and the withdrawn claims are
+  checked to be absent from the record **bodies** -- a correct `was -> now`
+  banner legitimately quotes the old value, so the banner is excluded.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.9 it reports **46 failures**; against the corrected tree it
+  reports **0**.
+
+### Gate for this release
+
+**48** local gate steps, 0 failed: `moon build` and `moon test --deny-warn`
+green on all four backends; `moon fmt --check` clean at the package root and
+at the workspace root, which is the one CI runs; both READMEs byte-identical;
+24/24 Python cross-checks PASS; 9/9 upstream `pyexample_*` gates PASS; the QA
+LOOP fast scope PASS=19, SKIP=10, WARN=2 with no FAIL;
+the two service checks PASS=2, WARN=0; the validator meta-gate
+PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on the exported tree.
+
 ## [0.164.9] -- the upstream proof-restriction records, re-audited on the current toolchain
 
 `moon.mod` moves 0.164.8 -> 0.164.9. No `.mbt` file changed, and no estimator

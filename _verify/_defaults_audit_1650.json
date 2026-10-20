@@ -1,0 +1,777 @@
+{
+  "capture_class": {
+    "both_declare": 30,
+    "match": 18,
+    "port_only": 45,
+    "upstream_only": 21,
+    "upstream_only_names": [
+      "n_rep",
+      "normalize_ipw",
+      "score",
+      "trimming_threshold"
+    ],
+    "upstream_pairs": 51,
+    "value_diff": 12,
+    "value_diff_names": [
+      "in_sample_normalization",
+      "n_folds",
+      "n_folds_inner"
+    ]
+  },
+  "constructor_defaults": {
+    "anticipation_periods": {
+      "sites": 4,
+      "values": {
+        "0": 4
+      }
+    },
+    "control_group": {
+      "sites": 4,
+      "values": {
+        "\"never_treated\"": 4
+      }
+    },
+    "cov_type": {
+      "sites": 2,
+      "values": {
+        "\"HC0\"": 1,
+        "\"homoskedastic\"": 1
+      }
+    },
+    "in_sample_normalization": {
+      "sites": 6,
+      "values": {
+        "false": 6
+      }
+    },
+    "n_folds": {
+      "sites": 19,
+      "values": {
+        "2": 17,
+        "5": 2
+      }
+    },
+    "n_folds_inner": {
+      "sites": 1,
+      "values": {
+        "2": 1
+      }
+    },
+    "n_rep": {
+      "sites": 16,
+      "values": {
+        "1": 16
+      }
+    },
+    "normalize_ipw": {
+      "sites": 3,
+      "values": {
+        "false": 2,
+        "true": 1
+      }
+    },
+    "propensity_clip": {
+      "sites": 14,
+      "values": {
+        "1.0e-6": 14
+      }
+    },
+    "quantile": {
+      "sites": 3,
+      "values": {
+        "0.5": 3
+      }
+    },
+    "score": {
+      "sites": 6,
+      "values": {
+        "\"nuisance_space\"": 1,
+        "\"observational\"": 4,
+        "\"partialling out\"": 1
+      }
+    },
+    "seed": {
+      "sites": 19,
+      "values": {
+        "3141": 19
+      }
+    },
+    "treatment": {
+      "sites": 3,
+      "values": {
+        "1.0": 3
+      }
+    }
+  },
+  "learner": {
+    "ml_g": {
+      "estimators": [
+        "DoubleMLAPO",
+        "DoubleMLAPOS",
+        "DoubleMLBLP",
+        "DoubleMLCVAR",
+        "DoubleMLDID",
+        "DoubleMLDIDBinary",
+        "DoubleMLDIDCS",
+        "DoubleMLDIDCSBinary",
+        "DoubleMLDIDCrossSection",
+        "DoubleMLDIDMulti",
+        "DoubleMLIIVM",
+        "DoubleMLIRM",
+        "DoubleMLLPLR",
+        "DoubleMLRDD",
+        "DoubleMLSSM"
+      ],
+      "kinds": {
+        "linear_regression": 15
+      },
+      "sites": 15
+    },
+    "ml_l": {
+      "estimators": [
+        "DoubleMLPQ",
+        "DoubleMLQTE"
+      ],
+      "kinds": {
+        "linear_regression": 2
+      },
+      "sites": 2
+    },
+    "ml_m": {
+      "estimators": [
+        "DoubleMLAPO",
+        "DoubleMLAPOS",
+        "DoubleMLCVAR",
+        "DoubleMLDID",
+        "DoubleMLDIDBinary",
+        "DoubleMLDIDCS",
+        "DoubleMLDIDCSBinary",
+        "DoubleMLDIDCrossSection",
+        "DoubleMLDIDMulti",
+        "DoubleMLIIVM",
+        "DoubleMLIRM",
+        "DoubleMLLPLR",
+        "DoubleMLPQ",
+        "DoubleMLQTE",
+        "DoubleMLSSM"
+      ],
+      "kinds": {
+        "linear_regression": 8,
+        "logistic_regression": 7
+      },
+      "sites": 15
+    },
+    "ml_r": {
+      "estimators": [
+        "DoubleMLIIVM"
+      ],
+      "kinds": {
+        "linear_regression": 1
+      },
+      "sites": 1
+    }
+  },
+  "learner_total_sites": 33,
+  "mlm_allows_regressor": [
+    "DoubleMLLPLR"
+  ],
+  "mlm_needs_classifier": [
+    "DoubleMLAPO",
+    "DoubleMLAPOS",
+    "DoubleMLCVAR",
+    "DoubleMLDID",
+    "DoubleMLDIDBinary",
+    "DoubleMLDIDCS",
+    "DoubleMLDIDCSBinary",
+    "DoubleMLDIDCrossSection",
+    "DoubleMLDIDMulti",
+    "DoubleMLIIVM",
+    "DoubleMLIRM",
+    "DoubleMLPQ",
+    "DoubleMLSSM"
+  ],
+  "mlm_port_linear": [
+    "DoubleMLCVAR",
+    "DoubleMLDID",
+    "DoubleMLDIDBinary",
+    "DoubleMLDIDCS",
+    "DoubleMLDIDCSBinary",
+    "DoubleMLDIDCrossSection",
+    "DoubleMLDIDMulti",
+    "DoubleMLIIVM"
+  ],
+  "mlm_relation_no_legal_regressor": true,
+  "mlm_relation_subset": true,
+  "mlm_table": [
+    {
+      "estimator": "DoubleMLAPO",
+      "port": "logistic_regression",
+      "upstream_class": "DoubleMLAPO",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLAPOS",
+      "port": "logistic_regression",
+      "upstream_class": "DoubleMLAPOS",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLCVAR",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLCVAR",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLDID",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLDID",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLDIDBinary",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLDIDBinary",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLDIDCS",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLDIDMulti",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLDIDCSBinary",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLDIDCSBinary",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLDIDCrossSection",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLDIDCS",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLDIDMulti",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLDIDMulti",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLIIVM",
+      "port": "linear_regression",
+      "upstream_class": "DoubleMLIIVM",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLIRM",
+      "port": "logistic_regression",
+      "upstream_class": "DoubleMLIRM",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLLPLR",
+      "port": "logistic_regression",
+      "upstream_class": "DoubleMLLPLR",
+      "upstream_requires_classifier": false
+    },
+    {
+      "estimator": "DoubleMLPQ",
+      "port": "logistic_regression",
+      "upstream_class": "DoubleMLPQ",
+      "upstream_requires_classifier": true
+    },
+    {
+      "estimator": "DoubleMLQTE",
+      "port": "logistic_regression",
+      "upstream_class": "DoubleMLQTE",
+      "upstream_requires_classifier": null
+    },
+    {
+      "estimator": "DoubleMLSSM",
+      "port": "logistic_regression",
+      "upstream_class": "DoubleMLSSM",
+      "upstream_requires_classifier": true
+    }
+  ],
+  "package": {
+    "blackbox": 129,
+    "new_definitions": 34,
+    "other": 0,
+    "production": 65,
+    "total_mbt": 220,
+    "whitebox": 26
+  },
+  "port2up": {
+    "DoubleMLAPO": "DoubleMLAPO",
+    "DoubleMLAPOS": "DoubleMLAPOS",
+    "DoubleMLBLP": "DoubleMLBLP",
+    "DoubleMLCVAR": "DoubleMLCVAR",
+    "DoubleMLDID": "DoubleMLDID",
+    "DoubleMLDIDBinary": "DoubleMLDIDBinary",
+    "DoubleMLDIDCS": "DoubleMLDIDMulti",
+    "DoubleMLDIDCSBinary": "DoubleMLDIDCSBinary",
+    "DoubleMLDIDCrossSection": "DoubleMLDIDCS",
+    "DoubleMLDIDCrossSectionData": "DoubleMLDIDCrossSectionData",
+    "DoubleMLDIDMulti": "DoubleMLDIDMulti",
+    "DoubleMLData": "DoubleMLData",
+    "DoubleMLIIVM": "DoubleMLIIVM",
+    "DoubleMLIIVMData": "DoubleMLIIVMData",
+    "DoubleMLIRM": "DoubleMLIRM",
+    "DoubleMLLPLR": "DoubleMLLPLR",
+    "DoubleMLLPQ": "DoubleMLLPQ",
+    "DoubleMLPLIV": "DoubleMLPLIV",
+    "DoubleMLPLIVData": "DoubleMLPLIVData",
+    "DoubleMLPLPR": "DoubleMLPLPR",
+    "DoubleMLPLR": "DoubleMLPLR",
+    "DoubleMLPQ": "DoubleMLPQ",
+    "DoubleMLPolicyTree": "DoubleMLPolicyTree",
+    "DoubleMLQTE": "DoubleMLQTE",
+    "DoubleMLRDD": "DoubleMLRDD",
+    "DoubleMLSSM": "DoubleMLSSM"
+  },
+  "port_did_params": {
+    "DoubleMLDID": {
+      "anticipation_periods": false,
+      "control_group": false
+    },
+    "DoubleMLDIDBinary": {
+      "anticipation_periods": true,
+      "control_group": true
+    },
+    "DoubleMLDIDCS": {
+      "anticipation_periods": true,
+      "control_group": true
+    },
+    "DoubleMLDIDCSBinary": {
+      "anticipation_periods": true,
+      "control_group": true
+    },
+    "DoubleMLDIDCrossSection": {
+      "anticipation_periods": false,
+      "control_group": false
+    },
+    "DoubleMLDIDCrossSectionData": {
+      "anticipation_periods": false,
+      "control_group": false
+    },
+    "DoubleMLDIDMulti": {
+      "anticipation_periods": true,
+      "control_group": true
+    }
+  },
+  "port_score": {
+    "did.mbt": [
+      "experimental",
+      "observational"
+    ],
+    "did_binary.mbt": [
+      "experimental",
+      "observational"
+    ],
+    "did_cross_section.mbt": [
+      "experimental",
+      "observational"
+    ],
+    "did_cs_binary.mbt": [
+      "observational"
+    ],
+    "lplr.mbt": [
+      "instrument",
+      "nuisance_space"
+    ],
+    "plpr.mbt": [
+      "IV-type",
+      "partialling out"
+    ],
+    "plr.mbt": [
+      "IV-type",
+      "iv-type",
+      "partialling out",
+      "partialling-out"
+    ]
+  },
+  "provenance_evidence": {
+    "DoubleMLDID": {
+      "anticipation_periods": false,
+      "control_group": false,
+      "data_types": [
+        "DoubleMLDIDData"
+      ]
+    },
+    "DoubleMLDIDCS": {
+      "anticipation_periods": false,
+      "control_group": false,
+      "data_types": [
+        "DoubleMLDIDData"
+      ]
+    },
+    "DoubleMLDIDMulti": {
+      "anticipation_periods": true,
+      "control_group": true,
+      "data_types": [
+        "DoubleMLPanelData"
+      ]
+    }
+  },
+  "upstream_defaults": {
+    "DoubleMLAPO": {
+      "draw_sample_splitting": "True",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "False",
+      "ps_processor_config": "None",
+      "score": "APO",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01",
+      "weights": "None"
+    },
+    "DoubleMLAPOS": {
+      "draw_sample_splitting": "True",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "False",
+      "ps_processor_config": "None",
+      "score": "APO",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01",
+      "weights": "None"
+    },
+    "DoubleMLBLP": {
+      "is_gate": "False"
+    },
+    "DoubleMLCVAR": {
+      "draw_sample_splitting": "True",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "True",
+      "ps_processor_config": "None",
+      "quantile": "0.5",
+      "score": "CVaR",
+      "treatment": "1",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01"
+    },
+    "DoubleMLClusterData": {
+      "force_all_x_finite": "True",
+      "s_col": "None",
+      "t_col": "None",
+      "use_other_treat_as_covariate": "True",
+      "x_cols": "None",
+      "z_cols": "None"
+    },
+    "DoubleMLCore": {
+      "cluster_dict": "None",
+      "is_cluster_data": "False",
+      "sensitivity_elements": "None"
+    },
+    "DoubleMLDID": {
+      "clipping_threshold": "0.01",
+      "draw_sample_splitting": "True",
+      "in_sample_normalization": "True",
+      "ml_m": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "score": "observational"
+    },
+    "DoubleMLDIDCS": {
+      "clipping_threshold": "0.01",
+      "draw_sample_splitting": "True",
+      "in_sample_normalization": "True",
+      "ml_m": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "score": "observational"
+    },
+    "DoubleMLDIDData": {
+      "cluster_cols": "None",
+      "force_all_d_finite": "True",
+      "force_all_x_finite": "True",
+      "t_col": "None",
+      "use_other_treat_as_covariate": "True",
+      "x_cols": "None",
+      "z_cols": "None"
+    },
+    "DoubleMLDIDMulti": {
+      "anticipation_periods": "0",
+      "control_group": "never_treated",
+      "draw_sample_splitting": "True",
+      "gt_combinations": "standard",
+      "in_sample_normalization": "True",
+      "ml_m": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "panel": "True",
+      "print_periods": "False",
+      "ps_processor_config": "None",
+      "score": "observational",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01"
+    },
+    "DoubleMLData": {
+      "cluster_cols": "None",
+      "force_all_d_finite": "True",
+      "force_all_x_finite": "True",
+      "use_other_treat_as_covariate": "True",
+      "x_cols": "None",
+      "z_cols": "None"
+    },
+    "DoubleMLFramework": {
+      "treatment_names": "None"
+    },
+    "DoubleMLIIVM": {
+      "draw_sample_splitting": "True",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "False",
+      "ps_processor_config": "None",
+      "score": "LATE",
+      "subgroups": "None",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01"
+    },
+    "DoubleMLIRM": {
+      "draw_sample_splitting": "True",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "False",
+      "ps_processor_config": "None",
+      "score": "ATE",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01",
+      "weights": "None"
+    },
+    "DoubleMLLPLR": {
+      "draw_sample_splitting": "True",
+      "error_on_convergence_failure": "False",
+      "ml_a": "None",
+      "n_folds": "5",
+      "n_folds_inner": "5",
+      "n_rep": "1",
+      "score": "nuisance_space"
+    },
+    "DoubleMLLPQ": {
+      "draw_sample_splitting": "True",
+      "kde": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "True",
+      "ps_processor_config": "None",
+      "quantile": "0.5",
+      "score": "LPQ",
+      "treatment": "1",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01"
+    },
+    "DoubleMLPLIV": {
+      "draw_sample_splitting": "True",
+      "ml_g": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "score": "partialling out"
+    },
+    "DoubleMLPLPR": {
+      "approach": "fd_exact",
+      "draw_sample_splitting": "True",
+      "ml_g": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "score": "partialling out"
+    },
+    "DoubleMLPLR": {
+      "draw_sample_splitting": "True",
+      "ml_g": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "score": "partialling out"
+    },
+    "DoubleMLPQ": {
+      "draw_sample_splitting": "True",
+      "kde": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "True",
+      "ps_processor_config": "None",
+      "quantile": "0.5",
+      "score": "PQ",
+      "treatment": "1",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01"
+    },
+    "DoubleMLPanelData": {
+      "datetime_unit": "M",
+      "force_all_x_finite": "True",
+      "static_panel": "False",
+      "use_other_treat_as_covariate": "True",
+      "x_cols": "None",
+      "z_cols": "None"
+    },
+    "DoubleMLPolicyTree": {
+      "depth": "2"
+    },
+    "DoubleMLQTE": {
+      "draw_sample_splitting": "True",
+      "kde": "None",
+      "ml_m": "None",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "True",
+      "ps_processor_config": "None",
+      "quantiles": "0.5",
+      "score": "PQ",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01"
+    },
+    "DoubleMLRDDData": {
+      "cluster_cols": "None",
+      "force_all_d_finite": "True",
+      "force_all_x_finite": "True",
+      "use_other_treat_as_covariate": "True",
+      "x_cols": "None",
+      "z_cols": "None"
+    },
+    "DoubleMLSSM": {
+      "draw_sample_splitting": "True",
+      "n_folds": "5",
+      "n_rep": "1",
+      "normalize_ipw": "False",
+      "ps_processor_config": "None",
+      "score": "missing-at-random",
+      "trimming_rule": "truncate",
+      "trimming_threshold": "0.01"
+    },
+    "DoubleMLSSMData": {
+      "cluster_cols": "None",
+      "force_all_d_finite": "True",
+      "force_all_x_finite": "True",
+      "s_col": "None",
+      "use_other_treat_as_covariate": "True",
+      "x_cols": "None",
+      "z_cols": "None"
+    }
+  },
+  "upstream_score": {
+    "did/did.py": {
+      "accepts": [
+        "observational",
+        "experimental"
+      ],
+      "default": "observational"
+    },
+    "did/did_binary.py": {
+      "accepts": [
+        "observational",
+        "experimental"
+      ],
+      "default": "observational"
+    },
+    "did/did_cs.py": {
+      "accepts": [
+        "observational",
+        "experimental"
+      ],
+      "default": "observational"
+    },
+    "did/did_cs_binary.py": {
+      "accepts": [
+        "observational",
+        "experimental"
+      ],
+      "default": "observational"
+    },
+    "did/did_multi.py": {
+      "accepts": [
+        "observational",
+        "experimental"
+      ],
+      "default": "observational"
+    },
+    "irm/apo.py": {
+      "accepts": [
+        "APO"
+      ],
+      "default": "APO"
+    },
+    "irm/apos.py": {
+      "accepts": [
+        "APO"
+      ],
+      "default": "APO"
+    },
+    "irm/cvar.py": {
+      "accepts": [
+        "CVaR"
+      ],
+      "default": "CVaR"
+    },
+    "irm/iivm.py": {
+      "accepts": [
+        "LATE"
+      ],
+      "default": "LATE"
+    },
+    "irm/irm.py": {
+      "accepts": [
+        "ATE",
+        "ATTE"
+      ],
+      "default": "ATE"
+    },
+    "irm/lpq.py": {
+      "accepts": [
+        "LPQ"
+      ],
+      "default": "LPQ"
+    },
+    "irm/pq.py": {
+      "accepts": [
+        "PQ"
+      ],
+      "default": "PQ"
+    },
+    "irm/qte.py": {
+      "accepts": [
+        "PQ",
+        "LPQ",
+        "CVaR"
+      ],
+      "default": "PQ"
+    },
+    "irm/ssm.py": {
+      "accepts": [
+        "missing-at-random",
+        "nonignorable"
+      ],
+      "default": "missing-at-random"
+    },
+    "plm/lplr.py": {
+      "accepts": [
+        "nuisance_space",
+        "instrument"
+      ],
+      "default": "nuisance_space"
+    },
+    "plm/pliv.py": {
+      "accepts": [
+        "partialling out",
+        "IV-type"
+      ],
+      "default": "partialling out"
+    },
+    "plm/plpr.py": {
+      "accepts": [
+        "IV-type",
+        "partialling out"
+      ],
+      "default": "partialling out"
+    },
+    "plm/plr.py": {
+      "accepts": [
+        "IV-type",
+        "partialling out"
+      ],
+      "default": "partialling out"
+    }
+  },
+  "upstream_version": "0.11.3"
+}

@@ -1,0 +1,96 @@
+upstream doubleml 0.11.3
+
+DoubleMLDID
+    n_folds=5
+    n_rep=1
+    score='observational'
+    in_sample_normalization=True
+
+DoubleMLDIDCS
+    n_folds=5
+    n_rep=1
+    score='observational'
+    in_sample_normalization=True
+
+DoubleMLIRM
+    n_folds=5
+    n_rep=1
+    score='ATE'
+    trimming_threshold=0.01
+    normalize_ipw=False
+
+DoubleMLIIVM
+    n_folds=5
+    n_rep=1
+    score='LATE'
+    trimming_threshold=0.01
+    normalize_ipw=False
+
+DoubleMLAPO
+    n_folds=5
+    n_rep=1
+    score='APO'
+    trimming_threshold=0.01
+    normalize_ipw=False
+
+DoubleMLCVAR
+    n_folds=5
+    n_rep=1
+    score='CVaR'
+    trimming_threshold=0.01
+    normalize_ipw=True
+    quantile=0.5
+    treatment=1
+
+DoubleMLSSM
+    n_folds=5
+    n_rep=1
+    score='missing-at-random'
+    trimming_threshold=0.01
+    normalize_ipw=False
+
+DoubleMLLPLR
+    n_folds=5
+    n_rep=1
+    score='nuisance_space'
+    n_folds_inner=5
+
+DoubleMLPQ
+    n_folds=5
+    n_rep=1
+    score='PQ'
+    trimming_threshold=0.01
+    normalize_ipw=True
+    quantile=0.5
+    treatment=1
+
+DoubleMLQTE
+    n_folds=5
+    n_rep=1
+    score='PQ'
+    trimming_threshold=0.01
+    normalize_ipw=True
+
+======================================================================
+upstream learner defaults (ml_g / ml_m / ml_l / ml_r)
+======================================================================
+  DoubleMLDID      ml_g = type
+  DoubleMLDID      ml_m = NoneType
+  DoubleMLDIDCS    ml_g = type
+  DoubleMLDIDCS    ml_m = NoneType
+  DoubleMLIRM      ml_g = type
+  DoubleMLIRM      ml_m = type
+  DoubleMLIIVM     ml_g = type
+  DoubleMLIIVM     ml_m = type
+  DoubleMLIIVM     ml_r = type
+  DoubleMLAPO      ml_g = type
+  DoubleMLAPO      ml_m = type
+  DoubleMLCVAR     ml_g = type
+  DoubleMLCVAR     ml_m = type
+  DoubleMLSSM      ml_g = type
+  DoubleMLSSM      ml_m = type
+  DoubleMLLPLR     ml_m = type
+  DoubleMLPQ       ml_g = type
+  DoubleMLPQ       ml_m = type
+  DoubleMLQTE      ml_g = type
+  DoubleMLQTE      ml_m = NoneType

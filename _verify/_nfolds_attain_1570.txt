@@ -1,0 +1,17 @@
+﻿Total tests: 0, passed: 0, failed: 0. [wasm]
+moon : Warning: no test entry found.
+所在位置 行:3 字符: 1
++ moon test -f 'panic_ROW_N*' 2>&1 | Out-File -FilePath '_verify\_nfold ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: no test entry found.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+f5 n=1600 begin
+f5 n=4000 begin
+f5 n=16000 begin
+CONTROL f2 n=1600 begin
+CONTROL f2 n=1600 SURVIVED coef=-2.072397380129173
+[riantr/moonbit_doubleML] test _probe_nfolds_1570_test.mbt:156 ("panic_ROW_N_CONTROL_didcs_f2_at_1600_must_fit") failed: panic is expected
+Total tests: 4, passed: 3, failed: 1. [wasm-gc]
+Warning: no test entry found.
+Total tests: 0, passed: 0, failed: 0. [native]

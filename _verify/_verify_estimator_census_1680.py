@@ -61,6 +61,56 @@ def check(label, cond, detail=""):
         fails.append("%s -- %s" % (label, detail))
 
 
+def upstream_facts():
+    """Read the installed upstream package for the facts the provenance
+    grouping depends on: each class's docstring and the data classes it uses.
+
+    Returns {class name: {"doc": str, "data": set}}.
+    """
+    import inspect
+    import doubleml
+    root = os.path.dirname(inspect.getfile(doubleml))
+    out = {}
+    for dp, _dn, fns in os.walk(root):
+        if os.sep + "tests" in dp:
+            continue
+        for fn in sorted(fns):
+            if not fn.endswith(".py"):
+                continue
+            ap = os.path.join(dp, fn)
+            src = io.open(ap, encoding="utf-8", errors="replace").read()
+            for m in re.finditer(r"^class\s+(\w+)\s*[:(]", src, re.M):
+                name = m.group(1)
+                doc = ""
+                dm = re.search(r'"""(.*?)"""', src[m.end():], re.S)
+                if dm:
+                    doc = " ".join(dm.group(1).split())
+                out.setdefault(name, {"doc": doc,
+                                      "data": set(re.findall(r"DoubleML\w*Data", src)),
+                                      "file": os.path.relpath(ap, root).replace("\\", "/")})
+    return out
+
+
+def file_header(src):
+    """The leading comment block of a MoonBit source file.
+
+    That is where a file states what it models -- and it is at the TOP of the
+    file, so a window taken from just before the constructor would miss it.
+    """
+    head = []
+    for ln in src.split("\n"):
+        s = ln.strip()
+        if s.startswith("///") or s.startswith("//"):
+            head.append(s)
+            continue
+        if s == "":
+            if head:
+                break
+            continue
+        break
+    return " ".join(head)
+
+
 # --------------------------------------------------------- the file census
 check("220 .mbt files", len(files) == 220, "got %d" % len(files))
 check("65 production .mbt files", len(production) == 65, "got %d" % len(production))
@@ -121,19 +171,90 @@ if model_rows:
     portonly = [n for n, _, d in model_rows if "no upstream counterpart" in d]
     print("  *(upstream)*: %d  renamed: %d  port-only: %d"
           % (len(plain), len(renamed), len(portonly)))
-    check("20 rows are marked *(upstream)*", len(plain) == 20, "got %d" % len(plain))
-    check("exactly one is *(upstream, renamed)*", len(renamed) == 1,
-          "got %d: %s" % (len(renamed), renamed))
-    check("exactly one is *(no upstream counterpart)*", len(portonly) == 1,
-          "got %d: %s" % (len(portonly), portonly))
+
+    # ------------------------------------------------------------ provenance
+    # The EXPECTED grouping is DERIVED from the installed upstream package and
+    # the port's own headers -- not written down as a literal.  The previous
+    # version of this file asserted "20 upstream / 1 renamed / 1 port-only",
+    # and that literal is precisely what made the README's claim
+    # unchallengeable: the README was wrong ("DoubleMLDIDCrossSection has no
+    # upstream counterpart"), and this file agreed with it.
+    #
+    # The derivation:
+    #   * NAME-IDENTICAL -- upstream has a class of the same name;
+    #   * RENAMED -- upstream implements the same design under another name.
+    #     The two renamed pairs are recognised by SHARED DESIGN MARKERS read
+    #     from BOTH sides: upstream's `DoubleMLDIDCS` docstring and the port's
+    #     `DoubleMLDIDCrossSection` header both say "repeated cross-sections";
+    #     upstream's `DoubleMLDIDMulti` docstring and the port's
+    #     `DoubleMLDIDCS` header both say "multi-period".  The third renamed
+    #     row is upstream's RDD estimator, which is the class `RDFlex` -- found
+    #     as the only non-Data upstream class that uses `DoubleMLRDDData`;
+    #   * PORT-ONLY -- no upstream class implements it.
+    upc = upstream_facts()
+    port_header = {}
+    for fn in sorted(os.listdir(LIB)):
+        if fn.endswith(".mbt"):
+            src = open(os.path.join(LIB, fn), encoding="utf-8", errors="replace").read()
+            hdr = file_header(src)
+            for m in re.finditer(r"pub fn (DoubleML\w+)::new\s*\(", src):
+                port_header.setdefault(m.group(1), hdr)
+
+    markers = [("DoubleMLDIDCrossSection", "DoubleMLDIDCS", "repeated cross-sections"),
+               ("DoubleMLDIDCS", "DoubleMLDIDMulti", "multi-period")]
+    expected_renamed = {}
+    for port_est, up_est, phrase in markers:
+        up_doc = upc.get(up_est, {}).get("doc", "")
+        p_hdr = port_header.get(port_est, "")
+        ok = phrase in up_doc and phrase in p_hdr
+        check("the %s <-> upstream %s pair shares the design marker %r"
+              % (port_est, up_est, phrase), ok,
+              "upstream doc has it: %s / port header has it: %s"
+              % (phrase in up_doc, phrase in p_hdr))
+        if ok:
+            expected_renamed[port_est] = up_est
+
+    rdd_up = [n for n, c in upc.items()
+              if "DoubleMLRDDData" in c["data"] and not n.endswith("Data")
+              and c["file"].startswith("rdd/")]
+    check("upstream's RDD estimator is a class named RDFlex", rdd_up == ["RDFlex"],
+          "got %s" % rdd_up)
+    if rdd_up == ["RDFlex"]:
+        expected_renamed["DoubleMLRDD"] = "RDFlex"
+
+    up_names = set(upc)
+    expected_plain = sorted(n for n in ests
+                            if n not in expected_renamed and n in up_names)
+    expected_portonly = sorted(n for n in ests
+                               if n not in expected_renamed and n not in up_names)
+
+    print("  derived: plain=%d renamed=%d port-only=%d"
+          % (len(expected_plain), len(expected_renamed), len(expected_portonly)))
+    check("the derived grouping has no port-only estimator",
+          expected_portonly == [],
+          "got %s" % expected_portonly)
+
+    check("the *(upstream)* rows are the derived name-identical ones",
+          sorted(plain) == expected_plain,
+          "README: %s / derived: %s" % (sorted(plain), expected_plain))
+    check("the *(upstream, renamed)* rows are the derived renamed ones",
+          sorted(renamed) == sorted(expected_renamed),
+          "README: %s / derived: %s" % (sorted(renamed), sorted(expected_renamed)))
+    check("the *(no upstream counterpart)* rows are the derived port-only ones",
+          sorted(portonly) == expected_portonly,
+          "README: %s / derived: %s" % (sorted(portonly), expected_portonly))
     check("the three groups cover all 22 rows",
           len(plain) + len(renamed) + len(portonly) == len(model_rows))
-    check("the README's '20 are marked (upstream)' matches the table",
-          "**20** are marked *(upstream)*" in readme)
-    check("the renamed one is DoubleMLRDD", renamed == ["DoubleMLRDD"],
-          "got %s" % renamed)
-    check("the port-only one is DoubleMLDIDCrossSection",
-          portonly == ["DoubleMLDIDCrossSection"], "got %s" % portonly)
+    check("the README's '19 are marked *(upstream)*' matches the table",
+          "**19** are marked *(upstream)*" in readme,
+          "the table says %d" % len(plain))
+    check("the README's '3 are marked *(upstream, renamed)*' matches the table",
+          "**3** are marked\n*(upstream, renamed)*" in readme
+          or "**3** are marked *(upstream, renamed)*" in readme,
+          "the table says %d" % len(renamed))
+    check("the renamed rows name the upstream classes they correspond to",
+          all(("upstream `%s`" % u) in readme for u in expected_renamed.values()),
+          "expected %s" % expected_renamed)
 
 print("")
 print("checks failed: %d" % len(fails))

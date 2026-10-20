@@ -1,0 +1,94 @@
+// _probe_cvar_cf_1570_test.mbt
+//
+// Row P: does `cvar.mbt:354-357` earn the words "for upstream parity"?
+//
+// The comment claims cf_y / cf_d "are passed through to the result for upstream
+// parity". Passing a value through is a storage claim; parity is a behavioural
+// one. This measures whether anything COMPUTED changes with cf.
+//
+// It also checks a structural point. The port's `SensitivityResult`
+// (sensitivity.mbt:534) is:
+//
+//     rv, sigma2, nu2, cf_y, cf_d, max_bias
+//
+// Upstream's `sensitivity_params`, read by introspection this session, is:
+//
+//     theta{lower,upper}, se{lower,upper}, ci{lower,upper}, rv, rva, input
+//
+// cf was measured to control the theta BAND WIDTH upstream (+/-6.88 SE). The
+// port's result type has no band and no CI at all -- so it structurally cannot
+// carry the quantity cf is supposed to move. That is the sharpest form of the
+// answer; the sweep below is the empirical confirmation.
+//
+// Same instruction the census uses: an arm that prints identical numbers is
+// either inert or genuinely unaffected, and this is the measurement that tells
+// us which.
+
+fn p_data() -> DoubleMLData {
+  let n = 400
+  let x = Matrix::zeros(n, 2)
+  let y : Array[Double] = Array::make(n, 0.0)
+  let d : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    d[i] = if i % 2 == 0 { 1.0 } else { 0.0 }
+    y[i] = d[i] + (i % 100).to_double() / 100.0
+  }
+  DoubleMLData::new(x, y, d)
+}
+
+test "ROW_P_cvar_cf_is_inert" {
+  let data = p_data()
+  let f = DoubleMLCVAR::new(data, treatment=1.0, quantile=0.5).fit()
+  println(
+    "CVAR coef=" +
+    f.coef().to_string() +
+    " se=" +
+    f.se().to_string(),
+  )
+  let mut ref_rv = 0.0
+  let mut ref_mb = 0.0
+  let mut ref_s2 = 0.0
+  let mut ref_n2 = 0.0
+  let mut first = true
+  for cf in [0.0, 0.03, 0.05, 0.10, 0.20] {
+    let r = f.sensitivity_analysis(cf_y=cf, cf_d=cf)
+    println(
+      "cf=" +
+      cf.to_string() +
+      " rv=" +
+      r.rv.to_string() +
+      " max_bias=" +
+      r.max_bias.to_string() +
+      " sigma2=" +
+      r.sigma2.to_string() +
+      " nu2=" +
+      r.nu2.to_string() +
+      " stored_cf_y=" +
+      r.cf_y.to_string() +
+      " stored_cf_d=" +
+      r.cf_d.to_string(),
+    )
+    if first {
+      ref_rv = r.rv
+      ref_mb = r.max_bias
+      ref_s2 = r.sigma2
+      ref_n2 = r.nu2
+      first = false
+    } else {
+      let drv = (r.rv - ref_rv).abs()
+      let dmb = (r.max_bias - ref_mb).abs()
+      let ds2 = (r.sigma2 - ref_s2).abs()
+      let dn2 = (r.nu2 - ref_n2).abs()
+      println(
+        "   delta vs cf=0.0 : rv=" +
+        drv.to_string() +
+        " max_bias=" +
+        dmb.to_string() +
+        " sigma2=" +
+        ds2.to_string() +
+        " nu2=" +
+        dn2.to_string(),
+      )
+    }
+  }
+}

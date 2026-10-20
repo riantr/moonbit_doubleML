@@ -1,0 +1,15 @@
+﻿Total tests: 0, passed: 0, failed: 0. [wasm]
+moon : Warning: no test entry found.
+所在位置 行:7 字符: 1
++ moon test -f 'panic_ROW_O*' 2>&1 | Out-File -FilePath '_verify\_bince ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: no test entry found.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+bin f2 SURVIVED subset=600
+bin f4 SURVIVED subset=600
+[riantr/moonbit_doubleML] test _probe_binceil_1570_test.mbt:77 ("panic_ROW_O_bin_f2_fits") failed: panic is expected
+[riantr/moonbit_doubleML] test _probe_binceil_1570_test.mbt:82 ("panic_ROW_O_bin_f4_fits") failed: panic is expected
+Total tests: 3, passed: 1, failed: 2. [wasm-gc]
+Total tests: 0, passed: 0, failed: 0. [native]
+Warning: no test entry found.

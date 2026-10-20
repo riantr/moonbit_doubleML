@@ -1,10 +1,39 @@
 # Port-vs-upstream constructor default divergences — v0.154.x
 
+> **Re-audited 2026-10-20 against the `v0.164.9` tree.** Written in the
+> v0.154.0 round; committed 2026-10-20 in `5b0b364` (v0.164.4). The
+> **divergence table itself is exact** — every row and every site count still
+> measures true. What had rotted is the **scope**, the **line pointers**, and
+> the `score` callout, which quoted §2 of
+> `SCORE_VOCABULARY_1550.md` before that document was corrected.
+> Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
+>
+> | | as written (v0.154.0) | now (`v0.164.9`) |
+> |---|---|---|
+> | `.mbt` files scanned | 216 | **220** |
+> | `DoubleMLXxx::new` definitions | 34 | 34, unchanged |
+> | the divergence table | 6 diverging parameters | **unchanged** — every row re-measured |
+> | `did.mbt` `require(n_folds <= data.n_obs())` | `:245` | **`:276`** |
+> | `did_cs.mbt` — `nu2` / `rr` formulas | `:1388` / `:1394` | **`:1390` / `:1394`** (`:1394` unchanged) |
+> | `did_cs.mbt` — the `1 / mean(d1t0)` division | `:1328` | **`:1407`** |
+> | `did_cs.mbt` — `let ti = self.data.t[i].to_double()` | `:1347` | **`:1426`** (also `:1455`, `:1489`) |
+> | `did_cs.mbt` — the four condition masks | `:1259-1275` | **`:1334-1345`** |
+> | `did_cs.mbt` — the "MAY be NaN" note | `:635` | **`:667`** |
+> | the `score` callout | "the port's accepted set and upstream's intersect only at `\"IV-type\"`" | **withdrawn** — see §"the score callout" below |
+>
+> **What is NOT verified here.** No estimator was re-run. The `nu2` / `sigma2`
+> / ATT measurements below are quoted from the original record and were not
+> reproduced. The method scripts the record names
+> (`_verify/_upstream_defaults_1540.py`, `_verify/_enum_all_defaults_1540.py`)
+> and the raw capture (`_verify/_upstream_defaults_1540.txt`) were **not
+> tracked**; they are now tracked, and the capture was re-encoded UTF-8 and
+> regenerated so it is byte-identical to the script's current output.
+
 **Measured, not recalled.** Upstream values come from
 `_verify/_upstream_defaults_1540.py`, which calls `inspect.signature` on the
 **installed** `doubleml 0.11.3`. Port values come from
 `_verify/_enum_all_defaults_1540.py`, which parses every
-`pub fn DoubleMLXxx::new(` body in 216 `.mbt` files with balanced-paren
+`pub fn DoubleMLXxx::new(` body in **220** `.mbt` files with balanced-paren
 slicing (comments stripped first, so a commented-out default cannot be
 counted).
 
@@ -38,12 +67,19 @@ produced the same confident, wrong answer.
 > **CORRECTED by `_verify/SCORE_VOCABULARY_1550.md`.** The `score` row above
 > counts only constructor defaults (bodies of `::new`), which is why it lists
 > `'partialling out'` ×1 and misses the three `'partialling-out'` (hyphen)
-> sites in `plr.mbt:388`, `plr.mbt:649` and `tune.mbt:355` — those are `fit`
+> sites in `plr.mbt:417`, `plr.mbt:676` and `tune.mbt:355` — those are `fit`
 > parameters, not constructor defaults. That scoping choice was never stated in
 > this table and reads as a complete census; it is not. Upstream's real
-> `valid_scores` per estimator are in `SCORE_VOCABULARY_1550.md`, along with the
-> measured finding that the port's accepted set and upstream's intersect only at
-> `"IV-type"`.
+> `valid_scores` per estimator are in `SCORE_VOCABULARY_1550.md`.
+>
+> **The sentence that quoted a single intersection is WITHDRAWN.** It claimed
+> that the port's accepted set and upstream's shared only the `"IV-type"`
+> spelling. That was the `DoubleMLPLR`-scoped intersection, when the port's
+> accepted set was `{partialling-out, iv-type, IV-type}`. The port now also
+> accepts `"partialling out"` (v0.155.0, `8308f09`), so for `DoubleMLPLR` the
+> intersection is `{partialling out, IV-type}` — two spellings, not one. The
+> intersection is **per estimator**, and `SCORE_VOCABULARY_1550.md` now
+> tabulates it that way.
 
 Matching upstream already: `n_rep = 1` (16 sites), `seed = 3141` (19 sites,
 port-specific), `quantile = 0.5`, `treatment = 1`, `anticipation_periods = 0`,
@@ -63,7 +99,7 @@ passes the flag explicitly.
 
 ### MEASURED blast radius of flipping it — and it cuts BOTH ways
 
-`did_cs.mbt:1388` and `:1394` select between two materially different formulas
+`did_cs.mbt:1390` and `:1394` select between two materially different formulas
 for `m_alpha` and `rr`. Measured on `make_did_cs_CS2021(800, 3, 1.0, seed)`,
 true ATT = 1.0:
 
@@ -81,7 +117,7 @@ true ATT = 1.0:
 same values v0.152.0 measured when it found `max |att − 1.0| = 14.41`.
 
 *Against* the flip: **`nu2` is NaN on all four seeds** under the upstream
-branch. The `true` formula divides by `mean(d1t0)` (`did_cs.mbt:1328`), which is
+branch. The `true` formula divides by `mean(d1t0)` (`did_cs.mbt:1407`), which is
 zero on this fixture's empty `(d=1, t=0)` cell — the structural emptiness
 recorded in the v0.147.0 header. So the flip would trade a finite `nu2` for a
 NaN one, on the very estimator whose sensitivity analysis this release thread
@@ -93,7 +129,7 @@ unaffected either way.
 **Therefore: do not flip this default on the evidence so far.** The
 `in_sample_normalization = true` branch is the upstream-faithful one *and* it is
 broken on staggered panels with an empty `(d=1, t=0)` cell. Fixing the NaN (or
-documenting when it is correct — `did_cs.mbt:635` already argues NaN can be
+documenting when it is correct — `did_cs.mbt:667` already argues NaN can be
 correct here) has to come before the default can move.
 
 ### Is the NaN a formula bug, or a consequence of the empty cell? — MEASURED
@@ -109,7 +145,7 @@ canonical fixture's **400 / 200 / 0 / 200**.
 
 **The NaN is caused by the empty cell, not by a broken formula.** The upstream
 branch returns a finite value wherever `mean(d1t0)` is defined. So
-`did_cs.mbt:635`'s "MAY be NaN, AND THAT IS CORRECT" survives — with the
+`did_cs.mbt:667`'s "MAY be NaN, AND THAT IS CORRECT" survives — with the
 mechanism stated precisely: it is structural, not arithmetic error.
 
 **But the control run raises a second, larger problem.** Where the branch *is*
@@ -132,7 +168,7 @@ is worth changing.
 
 ## ROOT CAUSE FOUND — and it is not a normalisation bug
 
-`did_cs.mbt:1347` reads
+`did_cs.mbt:1426` reads
 
 ```moonbit
 let ti = self.data.t[i].to_double()
@@ -171,7 +207,7 @@ So **both** symptoms have one cause:
 
 An earlier report in this file described the fix as narrow — "make `t[i]` yield
 a 0/1 post-treatment indicator". Reading the g-function construction refutes
-that. `did_cs.mbt:1259-1275` builds the four condition masks like this:
+that. `did_cs.mbt:1334-1345` builds the four condition masks like this:
 
 ```moonbit
 let ti = self.data.t[i]
@@ -217,10 +253,10 @@ Upstream `5` at every estimator read; this port `2` at 17 of 19 sites. The
 obvious reading is "the port chose 2 over upstream's 5". **Measurement refutes
 that.**
 
-`n_folds = 5` **aborts** on the canonical fixture, at `did.mbt:245`:
+`n_folds = 5` **aborts** on the canonical fixture, at `did.mbt:276`:
 
 ```
-precondition failed at did.mbt:245:5-245:37
+precondition failed at did.mbt:276:5-276:37
     require(n_folds <= data.n_obs())
 ```
 

@@ -3,10 +3,11 @@
 A pure-MoonBit port of the
 [`doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py) Python
 package -- the Python ecosystem's most mature Double / Debiased Machine
-Learning implementation -- 22 estimators in total. **20** match a
-class of the same name in upstream; `DoubleMLRDD` is upstream's RDD
-estimator renamed (upstream calls it `RDFlex`); and
-`DoubleMLDIDCrossSection` has no upstream counterpart at all. Those
+Learning implementation -- 22 estimators in total. **19** match a
+class of the same name in upstream; three are upstream estimators under
+a different name -- `DoubleMLRDD` is upstream's RDD estimator (upstream
+calls it `RDFlex`), `DoubleMLDIDCS` is upstream's `DoubleMLDIDMulti`,
+and `DoubleMLDIDCrossSection` is upstream's `DoubleMLDIDCS`. Those
 provenance labels are re-measured against the published `doubleml`
 0.11.4 sdist, not asserted -- see the estimator table below.
 `DoubleMLPLPR`, `DoubleMLLPLR` and `DoubleMLDIDCSBinary` were for
@@ -30,7 +31,7 @@ pipeline (24 / 24 Python reference scripts PASS) -- on `native`,
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.9** |
+| `moon.mod` version | **0.164.10** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -51,10 +52,15 @@ estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,
 `DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
 `DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
 `DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
-in 19 source files. **20** are marked *(upstream)* and mirror a
-name-identical `doubleml-for-py` class. `DoubleMLRDD` is marked
-*(upstream, renamed)* -- upstream calls it `RDFlex`. One row,
-`DoubleMLDIDCrossSection`, is marked *(no upstream counterpart)*.
+in 19 source files. **19** are marked *(upstream)* and mirror a
+name-identical `doubleml-for-py` class; **3** are marked
+*(upstream, renamed)* -- `DoubleMLRDD` (upstream `RDFlex`),
+`DoubleMLDIDCS` (upstream `DoubleMLDIDMulti`) and
+`DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`). The last two are a
+**crossed pair**: upstream's `DoubleMLDIDCS` is the *repeated
+cross-sections* estimator, which is this port's
+`DoubleMLDIDCrossSection`, and upstream's `DoubleMLDIDMulti` is the
+*multi-period panel* estimator, which is this port's `DoubleMLDIDCS`.
 Three rows -- `DoubleMLDIDCSBinary`, `DoubleMLLPLR`, `DoubleMLPLPR`
 -- were previously marked *(extra)*, which was wrong: all three ship
 upstream, so they had a reference implementation all along.
@@ -1597,10 +1603,11 @@ one struct each, and three holding two (`apo.mbt`: `DoubleMLAPO` +
 `DoubleMLPolicyTree`; `quantile.mbt`: `DoubleMLPQ` + `DoubleMLQTE`) --
 out of 220 `.mbt` files in the package (65 production, 129 blackbox
 test, 26 whitebox test). All are reachable through the same
-`DoubleMLXxx::new(...).fit()` interface. 20 are marked *(upstream)*
-against a name-identical `doubleml-for-py` class, `DoubleMLRDD` is
-marked *(upstream, renamed)* because upstream calls it `RDFlex`, and
-`DoubleMLDIDCrossSection` is marked *(no upstream counterpart)*:
+`DoubleMLXxx::new(...).fit()` interface. 19 are marked *(upstream)*
+against a name-identical `doubleml-for-py` class; three are marked
+*(upstream, renamed)* -- `DoubleMLRDD` (upstream `RDFlex`),
+`DoubleMLDIDCS` (upstream `DoubleMLDIDMulti`) and
+`DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`):
 
 | Model | Score | Description |
 |-------|-------|-------------|
@@ -1610,10 +1617,10 @@ marked *(upstream, renamed)* because upstream calls it `RDFlex`, and
 | `DoubleMLIIVM` | LATE | interactive IV model *(upstream)* |
 | `DoubleMLDID` | observational | difference-in-differences *(upstream)* |
 | `DoubleMLDIDBinary` | observational | DID with binary outcome *(upstream)* |
-| `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(upstream)* |
+| `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(upstream, renamed)* -- upstream `DoubleMLDIDMulti` |
 | `DoubleMLDIDCSBinary` | observational | CS-DID with binary outcome *(upstream)* |
 | `DoubleMLDIDMulti` | observational | multi-period DID with group-time ATT aggregation *(upstream)* |
-| `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(no upstream counterpart)* -- port-only |
+| `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(upstream, renamed)* -- upstream `DoubleMLDIDCS` |
 | `DoubleMLSSM` | MAR | sample selection (missing-at-random) *(upstream)* |
 | `DoubleMLAPO` | policy score | average potential outcomes for one treatment level *(upstream)* |
 | `DoubleMLAPOS` | policy score | average potential outcomes across several treatment levels *(upstream)* |
@@ -1649,20 +1656,43 @@ measurement below.
 
 Provenance was re-measured against the **0.11.4 sdist** itself
 (`_verify/doubleml-0.11.4.tar.gz`, 388 members) rather than read off a
-table. Result: **20** rows have a name-identical `class DoubleMLXxx`
-upstream; `DoubleMLRDD` corresponds to upstream's `RDFlex`; and
-`DoubleMLDIDCrossSection` has **no upstream estimator**.
+table. Result: **19** rows have a name-identical `class DoubleMLXxx`
+upstream, and **3** are upstream estimators under a different name --
+`DoubleMLRDD` is upstream's `RDFlex`, `DoubleMLDIDCS` is upstream's
+`DoubleMLDIDMulti`, and `DoubleMLDIDCrossSection` is upstream's
+`DoubleMLDIDCS`.
 
-For that last one the scan is specific, because "not upstream" and
-"nothing upstream" are different claims. Over the sdist's 322 `.py`
-members: `class DoubleMLDIDCrossSection` 0 hits, the bare identifier 0,
-`did_cross_section` as a module name 0, any `class *CrossSection` 0. But
-`cross_sectional_data` appears 25 times and `Sant'Anna` 13 -- upstream
-ships `make_did_SZ2020` in `doubleml/did/datasets/dgp_did_SZ2020.py`,
-"Generates data from a difference-in-differences model used in Sant'Anna
-and Zhao (2020)". So the **design is known upstream and the DGP ships
-there**; it is the *estimator* that is not ported. Labelled
-`*(no upstream counterpart)*`, which refers to the estimator class.
+> **CORRECTED 2026-10-20.** This paragraph previously said **20**
+> name-identical rows, and that `DoubleMLDIDCrossSection` had **no upstream
+> estimator** -- marked `*(no upstream counterpart)*`. Both were wrong, and
+> the scan behind them could not have found the answer: it looked for the
+> *name* `DoubleMLDIDCrossSection` (0 hits over the sdist's 322 `.py`
+> members), which shows there is no upstream class **by that name** -- not
+> that no upstream estimator implements the same design.
+>
+> Upstream's `DoubleMLDIDCS` (`did/did_cs.py:17`) is *"Double machine
+> learning for difference-in-difference with **repeated cross-sections**"*,
+> takes a `DoubleMLDIDData` (one observation per unit, binary post-period
+> indicator `t`), and fits the same 4 g-functions over `(d, t) ∈ {0,1}²` plus
+> one propensity that this port's `DoubleMLDIDCrossSection` fits. This
+> repository had known it all along: `validate_did_cross_section_with_python.py`
+> mirrors `doubleml.DoubleMLDIDCS._score_elements` to produce the port's
+> reference estimate. The port's `DoubleMLDIDCS` is the **panel**, group-time
+> ATT estimator, and **upstream's `DoubleMLDIDMulti`** (`did/did_multi.py:46`,
+> takes a `DoubleMLPanelData`, emits per-`(cohort, pre, eval)` ATTs) is its
+> counterpart -- the tell is that `control_group` and `anticipation_periods`
+> exist on upstream's `DoubleMLDIDMulti` and on **neither** upstream's
+> `DoubleMLDIDCS` nor its `DoubleMLDID`, and the port's `DoubleMLDIDCS` has
+> both.
+>
+> The design *is* known upstream and the DGP ships there -- upstream's
+> `make_did_SZ2020` is *"Generates data from a difference-in-differences
+> model used in Sant'Anna and Zhao (2020)"*. What was wrong was the
+> conclusion drawn from it. The same crossed pair had already produced a
+> **wrong headline measurement** in `_verify/IN_SAMPLE_NORMALIZATION_1570.md`
+> §5, which compared the port's panel `DoubleMLDIDCS` against upstream's
+> cross-section `DoubleMLDIDCS` and called the result a 20× sensitivity gap;
+> that section is withdrawn there.
 
 Three rows were previously marked *(extra)* -- `DoubleMLDIDCSBinary`,
 `DoubleMLLPLR`, `DoubleMLPLPR`. That was wrong: all three ship
@@ -1707,7 +1737,7 @@ zero when all the variation is between leaves.
 ##Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.9, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.10, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -1971,7 +2001,7 @@ and a simulator that lies about what CI does is worse than no simulator.
 python .github/scripts/ci_local.py list        # which jobs exist, and their steps
 python .github/scripts/ci_local.py provision   # build the WSL guest toolchain
 python .github/scripts/ci_local.py run --jobs "qa-loop"
-python .github/scripts/ci_local.py run --all --release-tag v0.164.9
+python .github/scripts/ci_local.py run --all --release-tag v0.164.10
 python .github/scripts/ci_local.py selftest    # prove the simulator can fail
 ```
 
@@ -2171,9 +2201,9 @@ classes are re-implemented in pure MoonBit with the same score
 formulae and variance estimators, as is its RDD implementation
 (`RDFlex` upstream, `DoubleMLRDD` here). `DoubleMLPLPR`,
 `DoubleMLLPLR` and `DoubleMLDIDCSBinary` are **not** MoonBit-only -- all
-three ship upstream, and are compared against it. The one genuinely
-port-only estimator is `DoubleMLDIDCrossSection`, which has no
-upstream counterpart in 0.11.4.
+three ship upstream, and are compared against it. There is now **no**
+port-only estimator: the last candidate, `DoubleMLDIDCrossSection`, is
+upstream's `DoubleMLDIDCS` under a different name.
 
 #### Differences from upstream `doubleml-for-py`
 

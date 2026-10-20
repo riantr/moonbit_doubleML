@@ -1,0 +1,61 @@
+// _probe_cellgrid_1570_test.mbt
+//
+// ROW N, arm 4. Re-run purely to produce the missing raw artifact: the cell
+// count was measured but only ever printed to the console, so the claim "16
+// cells, smallest 100 / 250 rows" had no saved evidence behind it.
+//
+// dgp_did_CS2021.mbt:50-52 fixes n_periods = 4, n_groups = 4, and
+// n_per_cohort = n_obs / n_groups / n_periods, so there are 16 (g,t) cells.
+// An earlier pass looped gi in [0,1,2] and ti in [0,1,2] -- 9 of the 16 -- and
+// reported that as the full grid. This sweeps the full 4x4 and also prints
+// EXPECTED next to EXAMINED so a truncated sweep cannot read as a clean result.
+
+test "ROW_N4_cell_grid_full_sweep" {
+  for n_obs in [1600, 4000] {
+    let raw = make_did_CS2021(n_obs, 3, 1.0, 11)
+    let g = raw.g_get()
+    let t = raw.t_get()
+    let n = if g.length() < t.length() { g.length() } else { t.length() }
+    let mut nonempty = 0
+    let mut smallest = 1000000
+    let mut counted = 0
+    let mut histogram = ""
+    for gi in [0, 1, 2, 3] {
+      for ti in [0, 1, 2, 3] {
+        let mut c = 0
+        for i = 0; i < n; i = i + 1 {
+          if g[i] == gi && t[i] == ti {
+            c = c + 1
+          }
+        }
+        counted = counted + 1
+        histogram = histogram + " (" + gi.to_string() + "," + ti.to_string() + ")=" + c.to_string()
+        if c > 0 {
+          nonempty = nonempty + 1
+          if c < smallest {
+            smallest = c
+          }
+        }
+      }
+    }
+    // dgp_did_CS2021.mbt:50-52 implies n_obs / 4 / 4 rows per cell.
+    let implied = n_obs / 4 / 4
+    println(
+      "n_obs_arg=" +
+      n_obs.to_string() +
+      " rows=" +
+      n.to_string() +
+      " cells_examined=" +
+      counted.to_string() +
+      " cells_expected=16" +
+      " cells_nonempty=" +
+      nonempty.to_string() +
+      " smallest_cell=" +
+      smallest.to_string() +
+      " implied_by_dgp=" +
+      implied.to_string() +
+      " histogram=" +
+      histogram,
+    )
+  }
+}

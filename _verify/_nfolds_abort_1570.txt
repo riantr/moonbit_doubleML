@@ -1,0 +1,23 @@
+﻿Total tests: 0, passed: 0, failed: 0. [wasm]
+moon : Warning: no test entry found.
+所在位置 行:3 字符: 1
++ moon test -f 'ROW_N_didcs_nfolds5_abort_site' 2>&1 | Out-File -FilePa ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: no test entry found.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+attempting didcs n_obs=1600 with n_folds=5
+[riantr/moonbit_doubleML] test _probe_nfolds_1570_test.mbt:98 ("ROW_N_didcs_nfolds5_abort_site") failed: Error
+    at @moonbitlang/core/abort.abort[@riantr/moonbit_doubleML.DoubleMLDID] C:\Users\31379\.moon\lib\core\abort\abort.mbt:29
+    at @riantr/moonbit_doubleML.DoubleMLDID::new.inner D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\did.mbt:286
+    at @riantr/moonbit_doubleML.DoubleMLDID::new D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\did.mbt:235
+    at @riantr/moonbit_doubleML.DoubleMLDIDBinary::new.inner D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\did_binary.mbt:435
+    at @riantr/moonbit_doubleML.DoubleMLDIDBinary::new D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\did_binary.mbt:376
+    at @riantr/moonbit_doubleML.DoubleMLDIDCS::fit.inner D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\did_cs.mbt:1603
+    at @riantr/moonbit_doubleML.DoubleMLDIDCS::fit D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\did_cs.mbt:1216
+    at @riantr/moonbit_doubleML_blackbox_test.__test_5f70726f62655f6e666f6c64735f313537305f746573742e6d6274_1 D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\_probe_nfolds_1570_test.mbt:115
+    at @riantr/moonbit_doubleML_blackbox_test.__test_5f70726f62655f6e666f6c64735f313537305f746573742e6d6274_1.dyncall
+    at @riantr/moonbit_doubleML_blackbox_test.moonbit_test_driver_internal_catch_error D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\moonbit_doubleML\__generated_driver_for_blackbox_test.mbt:432
+Total tests: 1, passed: 0, failed: 1. [wasm-gc]
+Total tests: 0, passed: 0, failed: 0. [native]
+Warning: no test entry found.
