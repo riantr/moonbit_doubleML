@@ -89,7 +89,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.13",
+  "riantr/moonbit_doubleML@0.164.14",
 }
 ```
 
@@ -291,11 +291,12 @@ which constructors qualify.
 
 The migrations do NOT all have the same margin, and the gates are shaped
 accordingly. `DoubleMLIRM` on a saturated-propensity fixture (true `ATE = 1.5`)
-across three seeds: default recovers within `0.198`, an OLS propensity misses
-by at least `72.8` -- a 366x separation on the coefficient. `DoubleMLAPO`
-(true `E[Y | D=1] = 1.2`): default within `0.531`, OLS misses by as little as
-`5.246` -- only ~10x. APO's standard error is the honest discriminator
-(`0.270` vs `86.28`, a 300x separation), because the mechanism is that an
+across three seeds: the default's worst bias is `0.1983`, the OLS arm's
+smallest bias is `72.797` -- a 367x separation on the coefficient.
+`DoubleMLAPO` (true `E[Y | D=1] = 1.2`): the default's worst bias is `0.5307`,
+the OLS arm's smallest bias is `5.2464` -- only ~10x. APO's standard error is
+the honest discriminator (`0.270` vs `86.28`, a 320x separation), because the
+mechanism is that an
 unbounded propensity makes `1 / m_hat` explode and takes the variance with it.
 
 `DoubleMLSSM` has the largest margin of the four, because its score carries
@@ -560,7 +561,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.13** |
+| `moon.mod` version | **0.164.14** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -671,7 +672,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.13, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.14, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

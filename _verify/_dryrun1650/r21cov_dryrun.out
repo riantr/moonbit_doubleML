@@ -1,0 +1,103 @@
+
+A. the README's numbers
+  PASS  the README has number-bearing prose lines
+  142 number-bearing prose lines, 146 distinct numbers
+  32 tracked verifiers read the README
+  PASS  the propensity_clip default is in the source
+  PASS  the README's `1e6` is 1 / the propensity_clip default
+  PASS  the fuzz harness names its master seed
+  PASS  the pointer irm.py:157 is recorded in a tracked file (moonbit_doubleML/irm_wbtest.mbt)
+  SKIP  irm.py:157: _verify/_upstream_ps/doubleml-0.11.4/doubleml/irm/irm.py is not in this checkout (the upstream copy is local, not tracked) -- the recorded pointer above is the promise
+  PASS  the pointer irm.py:161 is recorded in a tracked file (moonbit_doubleML/irm_wbtest.mbt)
+  SKIP  irm.py:161: _verify/_upstream_ps/doubleml-0.11.4/doubleml/irm/irm.py is not in this checkout (the upstream copy is local, not tracked) -- the recorded pointer above is the promise
+  PASS  the pointer did.mbt:708 names a tracked file (moonbit_doubleML/did.mbt)
+  PASS  the pointer did.mbt:708 resolves to content in moonbit_doubleML/did.mbt
+  PASS  the pointer ssm.mbt:73-74 names a tracked file (moonbit_doubleML/ssm.mbt)
+  PASS  the pointer ssm.mbt:73-74 resolves to content in moonbit_doubleML/ssm.mbt
+
+B. every number is guarded, derived, or witnessed
+  *** FAIL ***  every number in the README is accounted for -- no witness: ['0.999123456']
+  guarded: 74, derived: 5, witnessed: 67, total: 146
+
+C. the witnesses
+  0.00050      <- CHANGELOG.md
+  0.001        <- CHANGELOG.md
+  0.007        <- CHANGELOG.md
+  0.017        <- CHANGELOG.md
+  0.02         <- CHANGELOG.md
+  0.043        <- CHANGELOG.md
+  0.053        <- _probe/TODO-9-handoff.md
+  0.0776       <- CHANGELOG.md
+  0.0982       <- CHANGELOG.md
+  0.1119       <- CHANGELOG.md
+  0.152        <- CHANGELOG.md
+  0.153        <- CHANGELOG.md
+  0.162        <- CHANGELOG.md
+  0.198        <- CHANGELOG.md
+  0.249        <- CHANGELOG.md
+  0.270        <- CHANGELOG.md
+  0.50         <- .github/scripts/qa_loop/checks.py
+  0.531        <- CHANGELOG.md
+  0.761        <- CHANGELOG.md
+  0.842        <- CHANGELOG.md
+  0.90         <- .github/scripts/qa_loop/checks.py
+  0.98         <- CHANGELOG.md
+  0.987        <- CHANGELOG.md
+  1.015        <- CHANGELOG.md
+  1.031        <- CHANGELOG.md
+  1.103        <- CHANGELOG.md
+  1.177        <- CHANGELOG.md
+  1.4e-14      <- .githooks/README.md
+  1.583        <- CHANGELOG.md
+  1.667        <- CHANGELOG.md
+  1.685        <- CHANGELOG.md
+  1.9e-15      <- .githooks/README.md
+  106          <- CHANGELOG.md
+  113          <- CHANGELOG.md
+  122          <- CHANGELOG.md
+  13.85        <- CHANGELOG.md
+  157          <- CHANGELOG.md
+  161          <- CHANGELOG.md
+  172149       <- CHANGELOG.md
+  185.45       <- CHANGELOG.md
+  1900         <- CHANGELOG.md
+  1e-6         <- .githooks/README.md
+  2.300        <- CHANGELOG.md
+  2.373        <- CHANGELOG.md
+  2.5          <- CHANGELOG.md
+  242          <- CHANGELOG.md
+  242.116      <- CHANGELOG.md
+  25           <- .github/scripts/ci_local.py
+  2509.11381   <- CHANGELOG.md
+  3.1e-15      <- .githooks/README.md
+  3.21         <- CHANGELOG.md
+  3.5          <- CHANGELOG.md
+  366          <- CHANGELOG.md
+  436.11       <- CHANGELOG.md
+  452          <- CHANGELOG.md
+  5.18e+70     <- CHANGELOG.md
+  5.246        <- CHANGELOG.md
+  5.9e-3       <- CHANGELOG.md
+  6.2e-15      <- .githooks/README.md
+  6.842        <- CHANGELOG.md
+  648          <- CHANGELOG.md
+  72.8         <- CHANGELOG.md
+  7353         <- CHANGELOG.md
+  7358         <- CHANGELOG.md
+  8.07e-05     <- CHANGELOG.md
+  8.44e+122    <- CHANGELOG.md
+  86.28        <- CHANGELOG.md
+
+D. the derived figures
+  1e6          1 / the propensity_clip default (moonbit_doubleML/apo.mbt = 1e-06 in moonbit_doubleML/apo.mbt)
+  20260824     the seed the fuzz harness passes to chacha8 (examples/fuzz/main.mbt)
+  708          the line number in the pointer did.mbt:708 (moonbit_doubleML/did.mbt)
+  73           the line number in the pointer ssm.mbt:73-74 (moonbit_doubleML/ssm.mbt)
+  74           the line number in the pointer ssm.mbt:73-74 (moonbit_doubleML/ssm.mbt)
+
+========================================================================
+11 checks, 1 failed
+*** FAIL ***
+  - every number in the README is accounted for
+
+EXACT failure count: 1

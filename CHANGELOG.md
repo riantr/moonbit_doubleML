@@ -9,6 +9,103 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.14] -- the margins the README quoted were never right
+
+`moon.mod` moves 0.164.13 -> 0.164.14. No estimator behaviour changed: the
+two `.mbt` files that changed are two test files, and they changed by
+**asserting**, not by estimating. The test counts stay **1117 / 1123 / 1117 / 1117** (native /
+wasm-gc / wasm / js).
+
+Round 21 turned the README audit from a habit into a map, and the map found
+four figures that had been wrong since v0.132.0: three in `DoubleMLIRM`'s
+margin sentence, one in `DoubleMLAPO`'s.
+
+### Fixed -- four measured figures the measurements never supported
+
+- The README said `DoubleMLIRM`'s default propensity "recovers within
+  `0.198`", that "an OLS propensity misses by at least `72.8`", and that the
+  two are "a **366x** separation". Both arms of both fixtures were re-run
+  against the current tree, and the measurements are:
+  - worst default `|bias|` **0.19827515142504515** -- so "within `0.198`"
+    was false by 0.00028;
+  - best OLS `|bias|` **72.7973000454581** -- so "at least `72.8`" was
+    false by 0.0027;
+  - separation **367.15x**, not 366x.
+- `DoubleMLAPO`'s standard-error separation was quoted as "a **300x**
+  separation". The measured ratio is **320.03x** (86.2780366255941 /
+  0.2695805382351013). The v0.134.0 CHANGELOG entry already said `320x` in
+  its own thresholds line while its prose said `300x`, so the entry
+  contradicted itself and the README inherited the wrong half.
+- The figures are now stated as the measured worst / smallest, at enough
+  precision that the separation is **derivable from the two numbers the
+  reader can see**: `72.797 / 0.1983 = 367.06` -> "367x", and
+  `86.28 / 0.270 = 319.56` -> "320x". A reader who divides now gets the
+  figure the document states, instead of a second claim to take on trust.
+- The `366x` had been copied through six places: the v0.132.0 CHANGELOG
+  entry, the v0.134.0 CHANGELOG entry's cross-reference to it, the
+  v0.132.0 gate's comment, the v0.134.0 gate's comment, the README, and
+  the ledger. **Five** now say **367x**. The sixth is the ledger's body,
+  which is the README as it stood at v0.164.11 and must stay word for
+  word -- so the correction is recorded in the ledger's **banner**,
+  beside the corrected figures.
+
+### Fixed -- the figures are re-derived by the gates, not just quoted
+
+- `expand_v132_test.mbt` and `expand_v134_test.mbt` now **re-derive** the
+  figures the README quotes, in the same test that measures them. Each
+  assertion is the ROUNDING band of the quoted figure, so the document
+  cannot quote a separation the code no longer produces. These are
+  assertions added to existing tests, so the test counts do not move.
+- The measurement is recorded in full precision in
+  `_verify/_hazard_margins_1650.json`, with the fixture and the gate that
+  produced it.
+
+### Added -- the README's numbers now have a map
+
+- `_verify/_verify_hazard_margins_1650.py` (**31** checks) checks
+  every figure in the margin paragraph against that record: each quoted
+  figure must be the correctly-rounded rendering of the measured value, the
+  separation must be derivable from the printed pair, the paragraph must
+  contain no number other than a measured one, and the withdrawn renderings
+  must be **absent**. Dry-run against `147cc71` -- the release that shipped
+  the wrong figures -- it reports **13 failures**, and the dry-run
+  counter is checked against the verifier's own summary.
+- `_verify/_verify_number_coverage_1650.py` (**13** checks) replaces
+  twenty rounds of one-at-a-time auditing with a **map of every number in
+  the README**: each one must be guarded by a tracked verifier that reads
+  the README, derived from the tree by a rule the verifier states, or
+  witnessed in a tracked file that records it. The ledger
+  (`ENGINEERING.md`) is deliberately excluded from the witness set: it is
+  the README as it stood at v0.164.11, so letting it vouch for the README
+  would make the check circular. Dry-run against a tree with one unsourced
+  figure written into it, it reports **1 failure**.
+- The map is honest about its own limit, and says so in its docstring: it
+  finds an **unsourced** number, not a **wrong** one. At `147cc71` the
+  CHANGELOG witnessed `0.198` and `366x`, so the figures were witnessed and
+  the witness was itself wrong -- which is the job of the hazard verifier.
+
+### Changed -- the README is generated, so the fix lives in the generator
+
+- The README is built by `_verify/_r18_build_readme_1650.py`, so an edit
+  made to `README.mbt.md` directly would be reverted by the next bump. The
+  correction is a (old, new) pair in that builder's `PATCHES`, next to a
+  comment that carries the measurement it was derived from, and the builder
+  aborts if the patch matches anything other than exactly once.
+- `ENGINEERING.md` is the README as it stood at v0.164.11, word for word,
+  and the round-18 verifier asserts that it stays so -- so its body still
+  carries the old `366x`, and the correction is recorded in its **banner**
+  instead, with the corrected figures beside it.
+
+### Gate for this release
+
+**48** local gate steps, **0** failed: `moon build` and
+`moon test --deny-warn` green on all four backends; `moon fmt --check` clean
+at the package root and at the workspace root, which is the one CI runs; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19,
+SKIP=10, WARN=2 with no FAIL; the two service checks
+PASS=2, WARN=0; the validator meta-gate PASS with 0 problems.
+
 ## [0.164.13] -- the differences the API reference promised to name
 
 `moon.mod` moves 0.164.12 -> 0.164.13. No `.mbt` file changed, and no estimator
@@ -7139,25 +7236,25 @@ Three DGP seeds, saturated-but-legitimate propensity, true `E[Y | D=1] = 1.2`
 | seed | default coef | \|bias\| | default SE | OLS coef | \|bias\| | OLS SE |
 |---|---|---|---|---|---|---|
 | 3141 | 1.697814 | 0.4978 | 0.035119 | −112.7738 | 113.97 | 86.278 |
-| 2718 | 1.730684 | 0.5307 | 0.087709 | 6.4464 | **5.246** | 320.414 |
+| 2718 | 1.730684 | 0.5307 | 0.087709 | 6.4464 | **5.2464** | 320.414 |
 | 1618 | 1.459053 | 0.2591 | 0.269581 | −246.9455 | 248.15 | 248.460 |
 
 ### The gates are shaped by what the measurement actually shows
 
-**APO's coefficient separation is ~10x, not IRM's 366x.** The smallest OLS
-`|bias|` here is **5.246** (seed 2718) against a worst default `|bias|` of
-**0.531**. A gate of the v0.132.0 IRM shape -- "default bias < X, OLS bias >
+**APO's coefficient separation is ~10x, not IRM's 367x.** The smallest OLS
+`|bias|` here is **5.2464** (seed 2718) against a worst default `|bias|` of
+**0.5307**. A gate of the v0.132.0 IRM shape -- "default bias < X, OLS bias >
 100X" -- would either fail here or need a threshold so loose it stops
 discriminating.
 
 So the **standard error carries the load**, and it is also the mechanism: an
 OLS propensity is unbounded, `1 / m_hat` explodes, and the variance goes with
 it. The measured SE ratio (default/OLS) is at worst
-`0.2696 / 86.28 = 0.0031` -- a 300x separation versus 10x on the
+`0.2696 / 86.28 = 0.0031` -- a 320x separation versus 10x on the
 coefficient. GATE 2 asserts the coefficient only as a calibration sanity
 bound and lets the SE separate.
 
-Thresholds, with margin: worst default `|bias|` 0.531 vs guard 1.0 (1.9x);
+Thresholds, with margin: worst default `|bias|` 0.5307 vs guard 1.0 (1.9x);
 worst default SE 0.270 vs guard 1.0 (3.7x); smallest OLS SE 86.28 vs guard
 20.0 (4.3x); SE-ratio guard 0.1 against a measured 0.0031 (320x).
 
@@ -7335,11 +7432,11 @@ Both arms measured in one run, three DGP seeds, saturated propensity, true
 
 | seed | default (`LogisticRegression`) | \\|bias\\| | `LinearRegression` | \\|bias\\| |
 |---|---|---|---|---|
-| 3141 | 1.3017 | **0.198** | -153.31 | 154.81 |
-| 2718 | 1.5078 | **0.0078** | -71.30 | 72.80 |
-| 1618 | 1.6167 | **0.117** | -229.40 | 230.90 |
+| 3141 | 1.3017 | **0.1983** | -153.3121 | 154.8121 |
+| 2718 | 1.5078 | **0.0078** | -71.2973 | 72.7973 |
+| 1618 | 1.6167 | **0.1167** | -229.4006 | 230.9006 |
 
-Worst default bias **0.198** vs best OLS bias **72.80** -- a 366x separation,
+Worst default bias **0.1983** vs best OLS bias **72.7973** -- a 367x separation,
 which is what lets one threshold hold across all three seeds instead of a
 threshold fitted to a single draw.
 

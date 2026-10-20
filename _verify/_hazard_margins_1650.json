@@ -1,0 +1,73 @@
+{
+  "record": "the propensity-margin measurements the README quotes",
+  "round": 21,
+  "measured_on": "2026-10-21",
+  "measured_against_commit": "147cc71",
+  "how": "a temporary MoonBit test in the package, one process, both arms, three DGP seeds; the DGP and the fit parameters are copied verbatim from the tracked gates named below, so the numbers are comparable with the original v0.132.0 / v0.134.0 measurements",
+  "why_it_exists": "The README quotes these margins as facts about the library. Round 21 found three of the quoted figures were not supported by the measurement: 'recovers within 0.198' (the bias is 0.19828), 'misses by at least 72.8' (the smallest miss is 72.7973), and 'a 366x separation' (it is 367.15x). APO's 'a 300x separation' was 320x. Every figure below is what the code actually produces, at full precision, so a reader can check the rounding and the ratio instead of taking them on trust.",
+  "estimates": {
+    "DoubleMLIRM": {
+      "true_value": 1.5,
+      "fixture": "v1320_dgp(800, 3, seed); seeds 3141, 2718, 1618; saturated propensity",
+      "gate": "moonbit_doubleML/expand_v132_test.mbt",
+      "arms": {
+        "default": [
+          {"seed": 3141, "coef": 1.3017248485749549, "absbias": 0.19827515142504515, "se": 0.2992988870235157},
+          {"seed": 2718, "coef": 1.5077802846216557, "absbias": 0.0077802846216556976, "se": 0.11227250452652136},
+          {"seed": 1618, "coef": 1.6167338997504463, "absbias": 0.11673389975044635, "se": 0.14761565168581192}
+        ],
+        "ols": [
+          {"seed": 3141, "coef": -153.3121149501807, "absbias": 154.8121149501807, "se": 248.7036087163558},
+          {"seed": 2718, "coef": -71.2973000454581, "absbias": 72.7973000454581, "se": 307.45896978576},
+          {"seed": 1618, "coef": -229.40061170000578, "absbias": 230.90061170000578, "se": 221.70101515201847}
+        ]
+      },
+      "readme_figures": {
+        "prose": {
+          "worst_default_absbias": 4,
+          "best_ols_absbias": 3,
+          "separation_x": 0
+        },
+        "table": {}
+      }
+    },
+    "DoubleMLAPO": {
+      "true_value": 1.2,
+      "fixture": "v1340_data(600, 2, seed); seeds 3141, 2718, 1618; saturated propensity",
+      "gate": "moonbit_doubleML/expand_v134_test.mbt",
+      "arms": {
+        "default": [
+          {"seed": 3141, "coef": 1.6978140074095915, "absbias": 0.4978140074095916, "se": 0.035118700076864975},
+          {"seed": 2718, "coef": 1.7306843118134536, "absbias": 0.5306843118134537, "se": 0.08770942428580046},
+          {"seed": 1618, "coef": 1.4590533878464313, "absbias": 0.2590533878464314, "se": 0.2695805382351013}
+        ],
+        "ols": [
+          {"seed": 3141, "coef": -112.7738109125025, "absbias": 113.9738109125025, "se": 86.2780366255941},
+          {"seed": 2718, "coef": 6.446423466298135, "absbias": 5.246423466298134, "se": 320.4136322891901},
+          {"seed": 1618, "coef": -246.94554665778395, "absbias": 248.14554665778394, "se": 248.4602684887372}
+        ]
+      },
+      "readme_figures": {
+        "prose": {
+          "worst_default_absbias": 4,
+          "best_ols_absbias": 4,
+          "worst_default_se": 3,
+          "best_ols_se": 2,
+          "separation_x": 0,
+          "se_separation_x": 0
+        },
+        "table": {
+          "worst_default_absbias": 3,
+          "best_ols_absbias": 3
+        }
+      }
+    }
+  },
+  "withdrawn_renderings": [
+    "default recovers within `0.198`",
+    "misses by at least `72.8`",
+    "a 366x separation",
+    "a 300x separation",
+    "IRM's 366x"
+  ]
+}

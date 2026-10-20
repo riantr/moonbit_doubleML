@@ -18,6 +18,14 @@
 >
 > The records that hold the *measurements* are in `_verify/` and are
 > referenced from both documents.
+>
+> **One correction, 2026-10-21 (round 21).** The propensity-margin paragraph
+> further down quotes a **366x** separation for `DoubleMLIRM` and a **300x**
+> one for `DoubleMLAPO`. Both figures were re-measured against the current
+> tree and are **367x** and **320x**. The ledger's body is left exactly as it
+> was published, because this document is a snapshot; `README.mbt.md` carries
+> the corrected figures, and the measurement is in
+> `_verify/_hazard_margins_1650.json`.
 
 ## The README as it stood at v0.164.11
 

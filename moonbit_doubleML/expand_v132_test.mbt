@@ -22,13 +22,22 @@
 //| Every threshold below is MEASURED, not guessed. `_verify/probe_v1320_dgp.mbt`
 //| runs both arms across three DGP seeds in one process:
 //|
-//|     seed 3141: default coef  1.3017 (|bias| 0.198)  OLS coef -153.31
-//|     seed 2718: default coef  1.5078 (|bias| 0.0078) OLS coef  -71.30
-//|     seed 1618: default coef  1.6167 (|bias| 0.117)  OLS coef -229.40
+//|     seed 3141: default  1.3017 (|bias|   0.1983)  OLS -153.3121 (|bias| 154.8121)
+//|     seed 2718: default  1.5078 (|bias|   0.0078)  OLS  -71.2973 (|bias|  72.7973)
+//|     seed 1618: default  1.6167 (|bias|   0.1167)  OLS -229.4006 (|bias| 230.9006)
 //|
-//| true ATE = 1.5 throughout. Worst default bias 0.198 vs best OLS bias
-//| 72.80: a 366x separation, which is what makes a single threshold safe
+//| true ATE = 1.5 throughout. Worst default bias 0.1983 vs best OLS bias
+//| 72.797: a 367x separation, which is what makes a single threshold safe
 //| across all three seeds rather than a threshold fitted to one draw.
+//|
+//| ROUND 21 RE-MEASURED THIS (2026-10-21). The figures used to be quoted at 3
+//| and 2 decimals -- "worst default bias 0.198 vs best OLS bias 72.80: a 366x
+//| separation" -- and the 366x was a slip: the measured separation is 367.15x,
+//| and "recovers within 0.198" was false, because the worst default bias is
+//| 0.19827515142504515. The full-precision measurement is in
+//| `_verify/_hazard_margins_1650.json`, the README quotes the corrected
+//| figures, and GATE 2 below re-derives them -- so this comment cannot go
+//| stale without a test failing.
 
 ///|
 fn v1320_dgp(n : Int32, p : Int32, seed : Int32) -> DoubleMLData {
@@ -104,12 +113,20 @@ test "v1320_irm_default_ml_m_is_a_classifier_and_ml_g_is_not" {
 /// because the "default" arm becomes the OLS arm.
 test "v1320_irm_default_recovers_true_ate_where_ols_does_not" {
   let ols = LearnerDispatch::linear_regression()
+  let mut worst_default = 0.0
+  let mut best_ols = 0.0
   for seed in [3141, 2718, 1618] {
     let data = v1320_dgp(800, 3, seed)
     let dflt = DoubleMLIRM::new(data, n_folds=2, seed=3141).fit()
     let with_ols = DoubleMLIRM::new(data, n_folds=2, seed=3141, ml_m=ols).fit()
     let d_bias = (dflt.coef() - 1.5).abs()
     let o_bias = (with_ols.coef() - 1.5).abs()
+    if d_bias > worst_default {
+      worst_default = d_bias
+    }
+    if best_ols == 0.0 || o_bias < best_ols {
+      best_ols = o_bias
+    }
     assert_true(d_bias < 0.5)
     assert_true(o_bias > 20.0)
     // the separation itself, not just the two bounds
@@ -118,4 +135,19 @@ test "v1320_irm_default_recovers_true_ate_where_ols_does_not" {
     assert_true(dflt.se() < 1.0)
     assert_true(with_ols.se() > 20.0)
   }
+  // ROUND 21: the margins the README quotes for this measurement, re-derived
+  // HERE so the document cannot quote a separation the code no longer
+  // produces.  Measured 2026-10-21 against this tree: worst default |bias|
+  // 0.19827515142504515, best OLS |bias| 72.7973000454581, separation 367.15x.
+  // The README says "the default's worst bias is 0.1983, the OLS arm's
+  // smallest bias is 72.797 -- a 367x separation"; these four assertions are
+  // what make that sentence true rather than merely plausible.
+  //
+  // Each band is the ROUNDING band of the quoted figure -- the README quotes a
+  // rounded measurement, so the measured value must still round to it.  They
+  // are tight on purpose: if the estimator's numerics move, the quoted
+  // separation is a different number and the document has to say so.
+  assert_true((worst_default - 0.1983).abs() <= 0.00005)
+  assert_true((best_ols - 72.797).abs() <= 0.0005)
+  assert_true((best_ols / worst_default - 367.0).abs() <= 0.5)
 }

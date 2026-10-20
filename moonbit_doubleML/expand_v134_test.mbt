@@ -19,13 +19,13 @@
 //|
 //|     seed  default coef  |bias|  default SE |  OLS coef   |bias|    OLS SE
 //|     3141     1.697814     0.4978      0.035119   -112.7738    113.97    86.278
-//|     2718     1.730684     0.5307      0.087709      6.44642     5.246   320.414
+//|     2718     1.730684     0.5307      0.087709      6.44642     5.2464   320.414
 //|     1618     1.459053     0.2591      0.269581   -246.9455    248.15   248.460
 //|
 //| IMPORTANT -- and the reason the gates below are shaped the way they are:
 //| APO's COEFFICIENT separation is much weaker than IRM's was. The SMALLEST
-//| OLS |bias| here is 5.246 (seed 2718), against a worst default |bias| of
-//| 0.531 -- about 10x, where the v0.132.0 IRM fixture separated by 366x.
+//| OLS |bias| here is 5.2464 (seed 2718), against a worst default |bias| of
+//| 0.5307 -- about 10x, where the v0.132.0 IRM fixture separated by 367x.
 //| A gate of the IRM shape ("default bias < X, OLS bias > 100*X") would
 //| therefore either fail here or need a threshold so loose it stops
 //| discriminating.
@@ -33,9 +33,16 @@
 //| The STANDARD ERROR is the honest discriminator, and it is the mechanism:
 //| an OLS propensity is unbounded, so `1 / m_hat` explodes and the variance
 //| goes with it. Measured SE ratio (default/OLS) is at worst
-//| 0.2696 / 86.28 = 0.0031 -- a 300x separation, versus 10x on the
+//| 0.2696 / 86.28 = 0.0031 -- a 320x separation, versus 10x on the
 //| coefficient. GATE 2 asserts the coefficient as a sanity bound and lets the
 //| SE carry the load.
+//|
+//| ROUND 21 RE-MEASURED THIS (2026-10-21). The `300x` above was a slip for
+//| 320x (86.278 / 0.269581 = 320.03), and the `366x` reference to the
+//| v0.132.0 fixture was a slip for 367x (72.797 / 0.1983 = 367.06). Both
+//| were carried by the README. The full-precision measurement is in
+//| `_verify/_hazard_margins_1650.json`, the README quotes the corrected
+//| figures, and GATE 2 below re-derives them.
 
 ///|
 fn v1340_data(n : Int32, p : Int32, seed : Int32) -> DoubleMLData {
@@ -111,6 +118,10 @@ test "v1340_apo_default_ml_m_is_a_classifier_and_ml_g_is_not" {
 /// because the "default" arm becomes the OLS arm.
 test "v1340_apo_default_is_calibrated_where_ols_propensity_is_not" {
   let ols = LearnerDispatch::linear_regression()
+  let mut worst_default_bias = 0.0
+  let mut best_ols_bias = 0.0
+  let mut worst_default_se = 0.0
+  let mut best_ols_se = 0.0
   for seed in [3141, 2718, 1618] {
     let data = v1340_data(600, 2, seed)
     let dflt = DoubleMLAPO::new(data, treatment_level=1.0, n_folds=2, seed=3141).fit()
@@ -121,6 +132,20 @@ test "v1340_apo_default_is_calibrated_where_ols_propensity_is_not" {
       seed=3141,
       ml_m=ols,
     ).fit()
+    let d_bias = (dflt.coef() - 1.2).abs()
+    let o_bias = (with_ols.coef() - 1.2).abs()
+    if d_bias > worst_default_bias {
+      worst_default_bias = d_bias
+    }
+    if best_ols_bias == 0.0 || o_bias < best_ols_bias {
+      best_ols_bias = o_bias
+    }
+    if dflt.se() > worst_default_se {
+      worst_default_se = dflt.se()
+    }
+    if best_ols_se == 0.0 || with_ols.se() < best_ols_se {
+      best_ols_se = with_ols.se()
+    }
     // calibration under the default
     assert_true((dflt.coef() - 1.2).abs() < 1.0)
     assert_true(dflt.se() < 1.0)
@@ -129,6 +154,22 @@ test "v1340_apo_default_is_calibrated_where_ols_propensity_is_not" {
     // and the separation itself, which is what makes the pair non-vacuous
     assert_true(dflt.se() * 10.0 < with_ols.se())
   }
+  // ROUND 21: the figures the README quotes for this measurement, re-derived
+  // HERE so the document cannot quote a separation the code no longer
+  // produces.  Measured 2026-10-21 against this tree: worst default |bias|
+  // 0.5306843118134537, smallest OLS |bias| 5.246423466298134, worst default
+  // SE 0.2695805382351013, smallest OLS SE 86.2780366255941, SE separation
+  // 320.03x.  The README says "the default's worst bias is 0.5307, the OLS
+  // arm's smallest bias is 5.2464 -- only ~10x" and "(`0.270` vs `86.28`, a
+  // 320x separation)".
+  //
+  // Each band is the ROUNDING band of the quoted figure: the README quotes a
+  // rounded measurement, so the measured value must still round to it.
+  assert_true((worst_default_bias - 0.5307).abs() <= 0.00005)
+  assert_true((best_ols_bias - 5.2464).abs() <= 0.00005)
+  assert_true((worst_default_se - 0.270).abs() <= 0.0005)
+  assert_true((best_ols_se - 86.28).abs() <= 0.005)
+  assert_true((best_ols_se / worst_default_se - 320.0).abs() <= 0.5)
 }
 
 ///|

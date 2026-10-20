@@ -1,0 +1,65 @@
+
+A. the measurement record
+  PASS  the measurement record is TRACKED -- the README names it, so a path in prose is a promise
+  PASS  the record names the round and the date it was measured
+  PASS  the record names the tree it was measured against
+  PASS  the record holds both estimators the README quotes
+
+B. the figures the document quotes are the measured ones
+  *** FAIL ***  DoubleMLIRM: the README quotes 72.797 for best_ols_absbias -- expected the literal '`72.797`'
+  *** FAIL ***  DoubleMLIRM: the README quotes 367 for separation_x -- expected the literal '(?<![\\w.])367x(?![\\d]|\\.\\d)'
+  *** FAIL ***  DoubleMLIRM: the README quotes 0.1983 for worst_default_absbias -- expected the literal '`0.1983`'
+  *** FAIL ***  DoubleMLAPO: the README quotes 5.2464 for best_ols_absbias -- expected the literal '`5.2464`'
+  PASS  DoubleMLAPO: the README quotes 86.28 for best_ols_se
+  *** FAIL ***  DoubleMLAPO: the README quotes 320 for se_separation_x -- expected the literal '(?<![\\w.])320x(?![\\d]|\\.\\d)'
+  PASS  DoubleMLAPO: the README quotes 10 for separation_x
+  *** FAIL ***  DoubleMLAPO: the README quotes 0.5307 for worst_default_absbias -- expected the literal '`0.5307`'
+  PASS  DoubleMLAPO: the README quotes 0.270 for worst_default_se
+
+B2. the hazard table carries the same measurement, at table precision
+  SKIP  DoubleMLIRM: its table row reports a different fixture
+  PASS  the hazard table has a header
+  PASS  the hazard table has a row for DoubleMLAPO
+  PASS  DoubleMLAPO: the hazard table quotes 5.246 for best_ols_absbias
+  PASS  DoubleMLAPO: the hazard table quotes 0.531 for worst_default_absbias
+
+C. the separations are DERIVABLE from the numbers the reader can see
+  PASS  IRM coefficient separation: 72.797 / 0.1983 = 367x, and the document states 367x
+  PASS  APO coefficient separation: 5.2464 / 0.5307 = 10x, and the document states 10x
+  PASS  APO standard-error separation: 86.28 / 0.27 = 320x, and the document states 320x
+
+D. the margin paragraph carries no number without a witness
+  PASS  the margin paragraph is where the document says it is
+  *** FAIL ***  every number in the margin paragraph is a measured one -- unexpected: [0.198, 0.531, 5.246, 72.8, 300.0, 366.0] / missing: [0.1983, 0.5307, 5.2464, 72.797, 320.0, 367.0]
+
+E. the withdrawn renderings are absent
+  *** FAIL ***  the README does not say 'default recovers within `0.198`'
+  *** FAIL ***  the README does not say 'misses by at least `72.8`'
+  *** FAIL ***  the README does not say 'a 366x separation'
+  *** FAIL ***  the README does not say 'a 300x separation'
+  PASS  the README does not say "IRM's 366x"
+  *** FAIL ***  the README contains no standalone '366x'
+  *** FAIL ***  the README contains no standalone '300x'
+
+F. the shipped copy
+  PASS  the shipped README is byte-identical to the edited one
+  PASS  the README is LF-only with no BOM
+
+========================================================================
+31 checks, 13 failed
+*** FAIL ***
+  - DoubleMLIRM: the README quotes 72.797 for best_ols_absbias
+  - DoubleMLIRM: the README quotes 367 for separation_x
+  - DoubleMLIRM: the README quotes 0.1983 for worst_default_absbias
+  - DoubleMLAPO: the README quotes 5.2464 for best_ols_absbias
+  - DoubleMLAPO: the README quotes 320 for se_separation_x
+  - DoubleMLAPO: the README quotes 0.5307 for worst_default_absbias
+  - every number in the margin paragraph is a measured one
+  - the README does not say 'default recovers within `0.198`'
+  - the README does not say 'misses by at least `72.8`'
+  - the README does not say 'a 366x separation'
+  - the README does not say 'a 300x separation'
+  - the README contains no standalone '366x'
+  - the README contains no standalone '300x'
+
+EXACT failure count: 13

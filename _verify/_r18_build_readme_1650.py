@@ -62,6 +62,22 @@ The fix is a (old, new) pair applied to the assembled text, so the README is
 still generated from one source and the fix travels with it.  A later round
 that edits the README should add its own pair to PATCHES, not edit
 README.mbt.md.
+
+ROUND 21 ADDED A SECOND PAIR
+----------------------------
+Same mechanism, for a different kind of defect: two measured figures that the
+measurements do not support.  The pair lives in PATCHES below, next to a
+comment that carries the measurement it was derived from.  Two things follow
+for whoever comes next:
+
+  * The pair is applied to the ASSEMBLED text, so it must match exactly once.
+    The builder aborts if it matches any other number of times -- that is the
+    check that stops a patch from silently doing nothing.
+  * A patch that changes a NUMBER is only as good as the measurement behind
+    it.  The measurement is a tracked record
+    (`_verify/_hazard_margins_1650.json`) and a tracked verifier
+    (`_verify/_verify_hazard_margins_1650.py`) that checks the README against
+    it.  A patched number with no witness is a new unverified claim.
 """
 import io
 import os
@@ -142,6 +158,14 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >
 > The records that hold the *measurements* are in `_verify/` and are
 > referenced from both documents.
+>
+> **One correction, 2026-10-21 (round 21).** The propensity-margin paragraph
+> further down quotes a **366x** separation for `DoubleMLIRM` and a **300x**
+> one for `DoubleMLAPO`. Both figures were re-measured against the current
+> tree and are **367x** and **320x**. The ledger's body is left exactly as it
+> was published, because this document is a snapshot; `README.mbt.md` carries
+> the corrected figures, and the measurement is in
+> `_verify/_hazard_margins_1650.json`.
 
 """
 
@@ -439,6 +463,53 @@ Constructor arguments also differ in ways a table cannot show:
 its own data type."""
 
 PATCHES = [(OLD_API, NEW_API)]
+
+# ==============================================================================
+# 3b.  THE ROUND-21 PATCH -- two measured figures that were never right
+# ==============================================================================
+#
+# The propensity-margin paragraph quoted three figures that the measurements do
+# not support.  Round 21 re-ran both arms of both fixtures against the CURRENT
+# tree and got:
+#
+#   DoubleMLIRM   worst default |bias| 0.19827515142504515
+#                 best OLS      |bias| 72.7973000454581
+#                 separation 367.15x
+#   DoubleMLAPO   worst default |bias| 0.5306843118134537
+#                 best OLS      |bias|  5.246423466298134
+#                 worst default SE   0.2695805382351013
+#                 best OLS      SE   86.2780366255941
+#                 SE separation 320.03x
+#
+# So "recovers within 0.198" was false (the bias is 0.19828), "misses by at
+# least 72.8" was false (the smallest miss is 72.7973), and "366x" and "300x"
+# were both mis-ratios.  The 366x was a slip that had been copied through the
+# v0.132.0 CHANGELOG entry, the v0.132.0 gate's comment, the v0.134.0 gate's
+# comment, the README and the ledger.
+#
+# The figures are now stated as the MEASURED worst / smallest, at enough
+# precision that the separation is DERIVABLE from the two numbers the reader
+# can see: 72.797 / 0.1983 = 367.06 -> "367x", and 86.28 / 0.270 = 319.56 ->
+# "320x".  A reader who divides gets the figure the document states.
+#
+# `_verify/_verify_hazard_margins_1650.py` checks every number in this
+# paragraph against `_verify/_hazard_margins_1650.json`, so the paragraph and
+# the measurement cannot drift apart.
+
+OLD_MARGINS = """across three seeds: default recovers within `0.198`, an OLS propensity misses
+by at least `72.8` -- a 366x separation on the coefficient. `DoubleMLAPO`
+(true `E[Y | D=1] = 1.2`): default within `0.531`, OLS misses by as little as
+`5.246` -- only ~10x. APO's standard error is the honest discriminator
+(`0.270` vs `86.28`, a 300x separation), because the mechanism is that an"""
+
+NEW_MARGINS = """across three seeds: the default's worst bias is `0.1983`, the OLS arm's
+smallest bias is `72.797` -- a 367x separation on the coefficient.
+`DoubleMLAPO` (true `E[Y | D=1] = 1.2`): the default's worst bias is `0.5307`,
+the OLS arm's smallest bias is `5.2464` -- only ~10x. APO's standard error is
+the honest discriminator (`0.270` vs `86.28`, a 320x separation), because the
+mechanism is that an"""
+
+PATCHES.append((OLD_MARGINS, NEW_MARGINS))
 
 for _old, _new in PATCHES:
     _n = text.count(_old)
