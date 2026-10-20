@@ -9,6 +9,140 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.13] -- the differences the API reference promised to name
+
+`moon.mod` moves 0.164.12 -> 0.164.13. No `.mbt` file changed, and no estimator
+behaviour changed: this round is entirely about the claims, the checks that
+guard them, and one gap in the document the claims live in. The test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the API reference promised the differences and listed half of them
+
+- The API reference opens with "every estimator is built
+  `DoubleMLXxx::new(...).fit()`, with `n_folds` / `n_rep` / `seed` among the
+  labelled options ... and the six exceptions are listed here rather than
+  discovered later", and then lists **six** estimators -- the ACCESSOR
+  exceptions.
+- The CONSTRUCTOR differences are a **different six**, and the two sets
+  overlap in only three estimators:
+  - `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLLPQ` take `n_folds` and `seed` but
+    **no `n_rep`** -- they cross-fit once, and `solve_pq` has no repetition
+    loop, so there is no `n_rep` to set;
+  - `DoubleMLBLP`, `DoubleMLRDD`, `DoubleMLPolicyTree` take **none** of the
+    three -- `DoubleMLBLP` is given a basis and an orth signal, `DoubleMLRDD`
+    fits locally around a cutoff, and `DoubleMLPolicyTree` splits the sample
+    once for its honest split (its own `split_seed`).
+- So a reader of `DoubleMLPQ` or `DoubleMLRDD` found nothing in that table --
+  which is exactly the "discovered later" the sentence promised to prevent.
+  `DoubleMLPQ::new(data, n_rep = 5)` does not compile, and
+  `DoubleMLRDD::new(data, n_folds = 2)` does not either.
+- The README now names **both** sets and says that they are two different sets
+  of six. The groups are **derived** from the constructors' signatures by
+  `_verify/_verify_ctor_options_1650.py` and compared against the README, so
+  the table cannot rot: adding an estimator, or changing what it takes,
+  changes what the README must say.
+- The README is **generated**, so the fix lives in the generator. The builder
+  `_verify/_r18_build_readme_1650.py` gained a patch step, because an edit
+  made to `README.mbt.md` directly would be reverted by the next bump. The
+  builder's own note said as much.
+
+### Fixed -- a verifier that could not fail, and the number it checked had rotted
+
+- `_verify/_verify_testcounts_1610.py` guards the README's headline test
+  counts -- the most prominent numeric claim in the document -- and it was
+  broken three ways.
+- It pinned a **literal**: it was written at round 6, when the package had
+  1114 tests, and it compared against that number forever. The library grew
+  to 1117; the literal did not. So it went on printing "static and runtime
+  counts DISAGREE -- investigate before trusting either" -- an alarming
+  verdict that was really just the script's own age, because the number it
+  disagreed with was the one the README was RIGHT about.
+- It printed its verdict and returned **0 unconditionally**. A verifier that
+  cannot fail is a warning nobody is obliged to read, and the suite reported
+  it as a green row carrying a red sentence.
+- It pinned a **number** instead of an **invariant**. The claim worth
+  checking is not "the library has 1117 tests" -- a fact about today -- but
+  "the number the README states IS the number the tree has". The verifier now
+  reads the expected numbers from the README and derives the actual ones from
+  the tree, and exits non-zero when they disagree.
+- The dry-run witness is `0fbe5d3c6` -- the most recent commit whose README
+  said 1116 while the package carried 1117 tests -- where it reports exactly
+  **3** failures, and its counter agrees with the verifier's own summary. A
+  scan of the 234 commits that touched the package or the README found **84**
+  in which the README's count and the tree's count disagreed, so this is a
+  recurring failure and not a one-off.
+
+### Added -- the suite now checks itself
+
+- `_verify/_verify_suite_bites_1650.py` asks every tracked verifier whether it
+  has a failure notion at all and whether it can be made to exit non-zero, and
+  FAILS if a tracked verifier has one but cannot. A verifier that cannot fail
+  occupies a green row while its own message says the opposite, and nothing
+  in a pass/fail summary reveals that.
+- The audit that found the defect also found where it was hiding: of the 42
+  scripts the runner picked up, 29 were tracked and 13 were untracked local
+  material -- and the untracked ones included the four checks that matter most
+  to a reader of the README. All four are now tracked:
+  `_verify_readme_commands_1680.py` (re-runs every command the README tells a
+  reader to run and checks the quoted output against it),
+  `_verify_examples_table_1680.py` (the Examples table's DGP and true-value
+  columns against the drivers), `_verify_example_kinds_1680.py` (the 21
+  example packages, driver or fixture), and
+  `_verify_adjust_ps_sites_1641.py` (which DERIVES the `adjust_ps` call sites
+  and which of them forward `cv`, instead of pinning the list). All four pass
+  against the current README, and each derives its root from its own
+  location rather than from a hard-coded absolute path.
+- The suite runner now reports **two** sections -- the tracked contract and
+  the scratch -- because "42 scripts" counted scratch as if it were contract.
+  It also reports an exit code of 2 as UNKNOWN rather than FAIL: the scripts
+  that use it distinguish "the check failed" from "the check could not ask",
+  and collapsing the two turns an outage into a regression.
+
+### Fixed -- the published read-back checked the repository, not the artefact
+
+- `_verify/_verify_published_readme_1644.py` failed against the just-published
+  v0.164.12 with 8 failures, all of them the acceptance-criteria traceability
+  paragraph -- which is PROJECT-FACING, and round 18 moved it to
+  `ENGINEERING.md` with the rest of the project's material. The published
+  README is the only file the registry serves, so a paragraph that is not in
+  it is not in the artefact.
+- The check now asserts the two things that are actually true: the published
+  README does **not** carry the project traceability paragraph, and the counts
+  the project document states still agree with the feature file as it now
+  stands. It is **tracked** now -- it was the only post-publish check a reader
+  could not open -- its version is derived from `moon.mod` rather than the
+  literal it had been defaulting to since round 9, and its root is derived
+  from its own location.
+
+### Changed -- path-portability and the ignore rules
+
+- Six tracked scripts hard-coded one machine's absolute path in a `REPO`
+  constant, so they only ran on the machine that wrote them. They now derive
+  the repository root from their own location. This finishes the
+  path-portability work round 17 started for the method scripts: a script that
+  names a hard-coded drive is a script nobody else can run.
+- `.gitignore` now covers what the verification runs leave behind: the
+  dry-run work trees (a full local clone of a previous release, hundreds of
+  megabytes, recreated on every run) and the pinned-typos gate's own exports.
+  The rules name DIRECTORIES, so the dry-run's own `.out` witness stays
+  trackable -- it is the evidence that the counter agreed with the verifier.
+
+### Gate for this release
+
+**48** local gate steps, **0** failed: `moon build` and
+`moon test --deny-warn` green on all four backends; `moon fmt --check` clean
+at the package root and at the workspace root, which is the one CI runs; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19,
+SKIP=10, WARN=2 with no FAIL; the two service checks
+PASS=2, WARN=0; the validator meta-gate PASS with 0 problems;
+pinned `typos` v1.19.0 exit 0 on the exported tree.
+
+The verifier suite: **35** tracked contract scripts, **0**
+failed; **9** scratch scripts, **0** failed. The round-18
+README verifier makes **145** checks and the new constructor-options
+verifier **10**, both green.
+
 ## [0.164.12] -- the README, and the record the whole LPLR story rests on
 
 `moon.mod` moves 0.164.11 -> 0.164.12. No `.mbt` file changed, and no estimator

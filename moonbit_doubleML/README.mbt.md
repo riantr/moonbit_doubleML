@@ -89,7 +89,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.12",
+  "riantr/moonbit_doubleML@0.164.13",
 }
 ```
 
@@ -197,9 +197,12 @@ per estimator.
 ## API reference
 
 **One API shape, with the differences named** -- every estimator is built
-`DoubleMLXxx::new(...).fit()`, with `n_folds` / `n_rep` / `seed` among the
-labelled options. The *shape* is uniform; the signature and the accessor set
-are not, and the six exceptions are listed here rather than discovered later:
+`DoubleMLXxx::new(...).fit()`. The *shape* is uniform; the signature and the
+accessor set are not, and **both** sets of differences are listed here rather
+than discovered later. They are two different sets of six, and they overlap in
+only three estimators.
+
+**The accessor differences:**
 
 | estimator | instead of | because |
 |---|---|---|
@@ -211,10 +214,28 @@ are not, and the six exceptions are listed here rather than discovered later:
 | `DoubleMLPolicyTree` | no scalar coefficient at all | `leaf_influence`, `leaf_se`, `policy_value`, `policy_value_se` |
 
 The other 16 expose `.coef()` / `.se()` / `.confint()` / `.bootstrap()`.
-Constructor arguments differ for the same reason: `DoubleMLDIDBinary` needs
-`g_value` / `t_value_pre` / `t_value_eval`, `DoubleMLAPOS` needs
-`treatment_levels`, `DoubleMLPolicyTree` needs `features` / `orth_signal` /
-`depth` / `honest`, and each DID variant takes its own data type.
+
+**The constructor differences** -- which estimators take `n_folds` / `n_rep` /
+`seed`. This is a different partition from the accessor table above, so the
+two groups of "the other 16" are not the same sixteen:
+
+| estimators | `n_folds` | `n_rep` | `seed` |
+|---|---|---|---|
+| the other 16 | yes | yes | yes |
+| `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLLPQ` | yes | **no** | yes |
+| `DoubleMLBLP`, `DoubleMLRDD`, `DoubleMLPolicyTree` | no | no | no |
+
+The quantile estimators cross-fit once -- `solve_pq` has no repetition loop,
+so there is no `n_rep` to set. The last three take no cross-fitting option
+at all: `DoubleMLBLP` is given a basis and an orth signal, `DoubleMLRDD`
+fits locally around a cutoff, and `DoubleMLPolicyTree` splits the sample
+once for its honest split (its own `split_seed`).
+
+Constructor arguments also differ in ways a table cannot show:
+`DoubleMLDIDBinary` needs `g_value` / `t_value_pre` / `t_value_eval`,
+`DoubleMLAPOS` needs `treatment_levels`, `DoubleMLPolicyTree` needs
+`features` / `orth_signal` / `depth` / `honest`, and each DID variant takes
+its own data type.
 
 **Learner injection via `LearnerDispatch`** -- every estimator's
 `new()` / `fit()` accept `ml_g` / `ml_m` / `ml_l` / `ml_r` typed
@@ -539,7 +560,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.12** |
+| `moon.mod` version | **0.164.13** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -650,7 +671,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.12, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.13, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

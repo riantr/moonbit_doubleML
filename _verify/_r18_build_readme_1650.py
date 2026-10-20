@@ -53,6 +53,15 @@ round 18.  A later round that edits the README must either update SRC_TAG
 and the block ranges, or stop using this builder and edit the README
 directly.  The round-18 verifier's pinned-literal census would catch such a
 reversion, but the fix belongs to the round that caused it.
+
+ROUND 20 ADDED A PATCH STEP, AND THAT IS THE MECHANISM
+------------------------------------------------------
+Round 20 found a gap in the API reference and fixed it here rather than in
+README.mbt.md, because a direct edit would be reverted by the next bump.
+The fix is a (old, new) pair applied to the assembled text, so the README is
+still generated from one source and the fix travels with it.  A later round
+that edits the README should add its own pair to PATCHES, not edit
+README.mbt.md.
 """
 import io
 import os
@@ -350,7 +359,97 @@ if OLD_V and OLD_V != V:
     text = text.replace("(moon.mod v%s," % OLD_V, "(moon.mod v%s," % V)
 
 # ==============================================================================
-# 3.  WRITE
+# 3.  THE ROUND-20 PATCH
+# ==============================================================================
+#
+# The API reference promised that the differences between the estimators were
+# "listed here rather than discovered later", and then listed only the
+# ACCESSOR differences.  The CONSTRUCTOR differences are a different six --
+# `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLLPQ` take `n_folds` and `seed` but
+# no `n_rep`, and `DoubleMLBLP`, `DoubleMLRDD`, `DoubleMLPolicyTree` take
+# none of the three -- and the two sets overlap in only three estimators.  A
+# reader of `DoubleMLPQ` or `DoubleMLRDD` found nothing in the table, which
+# is exactly the "discovered later" the sentence promised to prevent.
+#
+# The README is GENERATED, so the fix has to live here: an edit made to
+# README.mbt.md directly would be reverted by the next bump.
+#
+# `_verify/_verify_ctor_options_1650.py` derives the groups from the
+# constructors' signatures and checks the README against them.
+
+OLD_API = """**One API shape, with the differences named** -- every estimator is built
+`DoubleMLXxx::new(...).fit()`, with `n_folds` / `n_rep` / `seed` among the
+labelled options. The *shape* is uniform; the signature and the accessor set
+are not, and the six exceptions are listed here rather than discovered later:
+
+| estimator | instead of | because |
+|---|---|---|
+| `DoubleMLAPOS` | `coef` / `se` -> `coefs` / `ses` | one estimate per treatment level |
+| `DoubleMLQTE` | `coef` / `se` -> `coefs` / `ses` | one estimate per quantile |
+| `DoubleMLDIDCS` | `coef` / `se` -> `coef_at` / `se_at` | one ATT per (group, period) |
+| `DoubleMLDIDMulti` | `coef` / `se` -> `coef_at_idx` / `se_at_idx` | the same cells, by row-major index |
+| `DoubleMLBLP` | `confint` -> `confint_joint` | the interval is for a contrast of the IV coefficient vector |
+| `DoubleMLPolicyTree` | no scalar coefficient at all | `leaf_influence`, `leaf_se`, `policy_value`, `policy_value_se` |
+
+The other 16 expose `.coef()` / `.se()` / `.confint()` / `.bootstrap()`.
+Constructor arguments differ for the same reason: `DoubleMLDIDBinary` needs
+`g_value` / `t_value_pre` / `t_value_eval`, `DoubleMLAPOS` needs
+`treatment_levels`, `DoubleMLPolicyTree` needs `features` / `orth_signal` /
+`depth` / `honest`, and each DID variant takes its own data type."""
+
+NEW_API = """**One API shape, with the differences named** -- every estimator is built
+`DoubleMLXxx::new(...).fit()`. The *shape* is uniform; the signature and the
+accessor set are not, and **both** sets of differences are listed here rather
+than discovered later. They are two different sets of six, and they overlap in
+only three estimators.
+
+**The accessor differences:**
+
+| estimator | instead of | because |
+|---|---|---|
+| `DoubleMLAPOS` | `coef` / `se` -> `coefs` / `ses` | one estimate per treatment level |
+| `DoubleMLQTE` | `coef` / `se` -> `coefs` / `ses` | one estimate per quantile |
+| `DoubleMLDIDCS` | `coef` / `se` -> `coef_at` / `se_at` | one ATT per (group, period) |
+| `DoubleMLDIDMulti` | `coef` / `se` -> `coef_at_idx` / `se_at_idx` | the same cells, by row-major index |
+| `DoubleMLBLP` | `confint` -> `confint_joint` | the interval is for a contrast of the IV coefficient vector |
+| `DoubleMLPolicyTree` | no scalar coefficient at all | `leaf_influence`, `leaf_se`, `policy_value`, `policy_value_se` |
+
+The other 16 expose `.coef()` / `.se()` / `.confint()` / `.bootstrap()`.
+
+**The constructor differences** -- which estimators take `n_folds` / `n_rep` /
+`seed`. This is a different partition from the accessor table above, so the
+two groups of "the other 16" are not the same sixteen:
+
+| estimators | `n_folds` | `n_rep` | `seed` |
+|---|---|---|---|
+| the other 16 | yes | yes | yes |
+| `DoubleMLPQ`, `DoubleMLQTE`, `DoubleMLLPQ` | yes | **no** | yes |
+| `DoubleMLBLP`, `DoubleMLRDD`, `DoubleMLPolicyTree` | no | no | no |
+
+The quantile estimators cross-fit once -- `solve_pq` has no repetition loop,
+so there is no `n_rep` to set. The last three take no cross-fitting option
+at all: `DoubleMLBLP` is given a basis and an orth signal, `DoubleMLRDD`
+fits locally around a cutoff, and `DoubleMLPolicyTree` splits the sample
+once for its honest split (its own `split_seed`).
+
+Constructor arguments also differ in ways a table cannot show:
+`DoubleMLDIDBinary` needs `g_value` / `t_value_pre` / `t_value_eval`,
+`DoubleMLAPOS` needs `treatment_levels`, `DoubleMLPolicyTree` needs
+`features` / `orth_signal` / `depth` / `honest`, and each DID variant takes
+its own data type."""
+
+PATCHES = [(OLD_API, NEW_API)]
+
+for _old, _new in PATCHES:
+    _n = text.count(_old)
+    if _n != 1:
+        print("!! a README patch matched %d times (expected 1) -- ABORT" % _n)
+        sys.exit(1)
+    text = text.replace(_old, _new)
+    print("   patched the API reference: %d -> %d chars" % (len(_old), len(_new)))
+
+# ==============================================================================
+# 4.  WRITE
 # ==============================================================================
 io.open("ENGINEERING.md", "w", encoding="utf-8", newline="\n").write(ledger)
 io.open("README.mbt.md", "w", encoding="utf-8", newline="\n").write(text)
