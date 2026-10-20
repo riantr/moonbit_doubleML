@@ -1,0 +1,46 @@
+### case    : b2_double_cmp
+### command : (cd _verify/upstream_prove_1649/cases/b2_double_cmp && moon prove)
+### exit    : 1
+
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b2_double_cmp\case.mbt:10:18 ]
+    │
+ 10 │   proof_require: x < 1.5,
+    │                  ───┬───  
+    │                     ╰───── unsupported primitive operator in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b2_double_cmp\case.mbt:10:22 ]
+    │
+ 10 │   proof_require: x < 1.5,
+    │                      ─┬─  
+    │                       ╰─── only Bool, Byte, Int, UInt, Int64, and UInt64 constants are supported in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b2_double_cmp\case.mbt:12:38 ]
+    │
+ 12 │   proof_ensure: result => result == (x < 1.5),
+    │                                      ───┬───  
+    │                                         ╰───── unsupported primitive operator in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b2_double_cmp\case.mbt:12:42 ]
+    │
+ 12 │   proof_ensure: result => result == (x < 1.5),
+    │                                          ─┬─  
+    │                                           ╰─── only Bool, Byte, Int, UInt, Int64, and UInt64 constants are supported in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b2_double_cmp\case.mbt:14:3 ]
+    │
+ 14 │   x < 1.5
+    │   ───┬───  
+    │      ╰───── unsupported primitive operator in contracted function body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b2_double_cmp\case.mbt:14:7 ]
+    │
+ 14 │   x < 1.5
+    │       ─┬─  
+    │        ╰─── only Bool, Byte, Int, UInt, Int64, and UInt64 constants are supported in contracted function body
+────╯

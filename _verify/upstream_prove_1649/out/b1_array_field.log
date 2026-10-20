@@ -1,0 +1,32 @@
+### case    : b1_array_field
+### command : (cd _verify/upstream_prove_1649/cases/b1_array_field && moon prove)
+### exit    : 1
+
+Warning: [0009]
+   ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b1_array_field\case.mbt:8:12 ]
+   │
+ 8 │ pub struct Holder {
+   │            ───┬──  
+   │               ╰──── Warning (struct_never_constructed): The struct Holder is never constructed
+───╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b1_array_field\case.mbt:14:18 ]
+    │
+ 14 │   proof_require: h.data.length() > 0,
+    │                  ───────┬───────  
+    │                         ╰───────── unsupported primitive operator in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b1_array_field\case.mbt:18:18 ]
+    │
+ 18 │   for i = 0; i < h.data.length(); i = i + 1 {
+    │                  ───────┬───────  
+    │                         ╰───────── unsupported primitive operator in contracted function body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b1_array_field\case.mbt:19:21 ]
+    │
+ 19 │     total = total + h.data[i]
+    │                     ────┬────  
+    │                         ╰────── unsupported primitive operator in contracted function body
+────╯

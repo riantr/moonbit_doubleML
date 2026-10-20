@@ -1,0 +1,20 @@
+### case    : b4_foreach
+### command : (cd _verify/upstream_prove_1649/cases/b4_foreach && moon prove)
+### exit    : 1
+
+Error: [4207]
+   ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b4_foreach\case.mbt:8:18 ]
+   │
+ 8 │   proof_require: arr.length() > 0,
+   │                  ──────┬─────  
+   │                        ╰─────── unsupported primitive operator in logic body
+───╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b4_foreach\case.mbt:12:3 ]
+    │
+ 12 │ ╭─▶   for x in arr {
+    ┆ ┆   
+ 14 │ ├─▶   }
+    │ │         
+    │ ╰───────── only single-binder I32 range foreach loops are supported in contracted function bodies
+────╯

@@ -1,0 +1,11 @@
+### case    : blkA_call_whitelist
+### command : (cd _verify/upstream_prove_1649/cases/blkA_call_whitelist && moon prove)
+### exit    : 1
+
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\blkA_call_whitelist\case.mbt:20:3 ]
+    │
+ 20 │   helper(x)
+    │   ────┬────  
+    │       ╰────── only contracted functions, imported proof-callable functions, pure functions, and primitive operators can be called in contracted function bodies
+────╯

@@ -1,0 +1,25 @@
+### case    : b4c_style_control
+### command : (cd _verify/upstream_prove_1649/cases/b4c_style_control && moon prove)
+### exit    : 1
+
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b4c_style_control\case.mbt:10:18 ]
+    │
+ 10 │   proof_require: arr.length() > 0,
+    │                  ──────┬─────  
+    │                        ╰─────── unsupported primitive operator in logic body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b4c_style_control\case.mbt:14:18 ]
+    │
+ 14 │   for i = 0; i < arr.length(); i = i + 1 {
+    │                  ──────┬─────  
+    │                        ╰─────── unsupported primitive operator in contracted function body
+────╯
+Error: [4207]
+    ╭─[ D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\upstream_prove_1649\cases\b4c_style_control\case.mbt:15:21 ]
+    │
+ 15 │     total = total + arr[i]
+    │                     ───┬──  
+    │                        ╰──── unsupported primitive operator in contracted function body
+────╯

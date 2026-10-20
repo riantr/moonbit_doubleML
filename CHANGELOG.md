@@ -9,6 +9,177 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.9] -- the upstream proof-restriction records, re-audited on the current toolchain
+
+`moon.mod` moves 0.164.8 -> 0.164.9. No `.mbt` file changed, and no estimator
+behaviour changed: this round is entirely about the claims. The test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Rounds 1-11 audited the README, the shipped documents, the acceptance
+features, the QA LOOP registry and the dated session records; round 12 audited
+the nine `pyexample_*` upstream-parity gates; round 13 audited the 27
+repo-root Python scripts that print their own verdict. Round 14 took the
+**seven `_verify/UPSTREAM_*.md` records** -- the master blockers document and
+the six upstream issue drafts -- and, for the first time, **re-ran the
+restrictions they describe on the current toolchain**.
+
+### Re-audited -- 11 cases, 2 controls, on `moonc v0.10.16+b1a0e846e`
+
+- `_verify/upstream_prove_1649/` is a self-contained harness: one MoonBit
+  package per restriction, each with its own `moon.mod` and a `moon.pkg`
+  carrying `options("proof-enabled": true)`, a runner, a summariser, and the
+  raw logs. The cases are self-contained because the records' own command,
+  `moon prove _prove_pilot`, no longer runs -- the package moved into
+  `moonbit_doubleML/`, and the command now hard-errors with "not inside any
+  known module".
+- **Two controls** make every result attributable: `b0_control` uses no
+  restricted construct, and `b1c_fixed_control` is the `FixedArray` + C-style
+  shape the `_prove_pilot` package actually uses. A run in which a control is
+  rejected is void, and the runner exits non-zero.
+- **Blocker 2 reproduced exactly**: 6 frontend errors with the same four-way
+  split the record gives (2x comparison in logic, 2x literal in logic, 1x
+  comparison in body, 1x literal in body). Blockers 1 and the two new blocks
+  still fire with the same error classes. The `FixedArray` workaround shape is
+  **accepted**.
+- **What the proof outcome is is still not measured**: `moon prove` cannot
+  create its Why3 output directory on native Windows
+  (`anomaly: Unix.Unix_error(Unix.EINVAL, "mkdir", "\\?")`), so the
+  re-audit measures what the proof *frontend* accepts and rejects. The
+  records now say so.
+
+### Fixed -- audit findings A3 and A4 no longer describe the toolchain
+
+- Finding **A3** said a `raise` in a contracted body makes `moonc prove` die
+  with the help-text error `moonc prove [options] <input files>`, so "a user
+  will not see a clean diagnostic". The current toolchain reports a clean,
+  specific `unsupported expression in contracted function body`.
+- Finding **A4** said the same for `for x in arr`. The current toolchain
+  reports `only single-binder I32 range foreach loops are supported in
+  contracted function bodies` -- a message more precise than anything the
+  record contains. A4 was already too strong for the main package: the
+  record's own tracked Pilot 2 log, `_prove_pilot2_error.txt`, contains that
+  exact string for `quantile.mbt:20:3`.
+- The restriction itself is unchanged in both cases: the `raise` and the
+  `for x in arr` are still rejected.
+
+### Fixed -- a claim that is now false, and a "verified" workaround that no longer verifies
+
+- ISSUE 04 said the same help-text error fires for `for x in 0..<n` too. The
+  current toolchain **accepts** a single-binder Int range foreach: zero
+  frontend errors against 2 for the `for x in arr` shape.
+- ISSUE 04's "Workaround (verified)" showed the C-style range over
+  `Array[Int]` and claimed it "compiles and proves (no errors)". On the
+  current toolchain that exact snippet produces **3** frontend errors, all of
+  them Blocker 1. The C-style rewrite fixes the *foreach*; it does not fix
+  the `Array[T]` lowering. The shape the frontend accepts is `FixedArray` +
+  C-style range.
+
+### Fixed -- a witness that did not witness
+
+- The records cite `_verify/audit_bucket3_raise/raise_test.mbt` as the
+  Bucket 3 reproducer. That file holds the **Bucket 2** Double source
+  (`double_cmp(x : Double, n : Int)` with `x < 1.5`) and carries the header
+  comment "Minimal reproducer for Blocker 2". The source that actually
+  contains a `raise` in a contracted body is
+  `_verify/test-bucket3-raise/raise_test.mbt`, which the master document
+  listed only as an "intermediate test directory".
+
+### Fixed -- "21 estimators", which was 22 then and is 22 now
+
+- The records said "21 DML estimators" in fourteen places. The census is
+  **22** `DoubleML*` structs minus `*Data` -- and it was 22 at `v0.52.0`
+  too, so the number was wrong even where the record was describing history.
+  The parenthetical list that introduced it ("PLR / IRM / PLIV / IIVM / DID
+  family / PLPR / LPLR / LPQ / bootstrap / quantiles / resampling /
+  cluster-robust SE") was a *third* set again, naming things that are not
+  estimator structs. The count is now machine-checked against the tree.
+
+### Fixed -- a path that was never where the document said
+
+- `_verify/QUANTILE_HANDOFF.md` is cited three times. The file is at the
+  **repository root**, and has been tracked there since before `v0.52.0`.
+
+### Fixed -- a tracking claim that was false, and evidence that is not in the repository
+
+- The master document said "the bucket minimal reproducers remain tracked
+  because their path is predictable", two paragraphs after saying they
+  should be git-ignored. Measured: `_verify/audit-bucket2-double/`,
+  `_verify/audit_bucket3_raise/` and `_verify/audit_bucket4_foreach/` are
+  **not tracked** -- `.gitignore` matches them via `_verify/audit-bucket*`
+  and `_verify/audit_bucket*`.
+- The same applied to the audit-scratch logs the records call "preserved
+  siblings" and "the source of truth for the 45 / 80 = 56% figure". They are
+  git-ignored and were never committed, so that figure is not re-derivable
+  from a clone. The records now say the artefacts are local-only, and the
+  re-audit re-derives the behaviour from tracked cases instead.
+
+### Fixed -- the symptom text, the error form, and a mojibake
+
+- Blocker 1's symptom is quoted as Why3 reporting `unbound type symbol
+  'array'`. The current toolchain reports "unsupported primitive operator".
+  The classification the record itself uses is unchanged.
+- ISSUE 01 said Pilot 2's 8 errors were "all of the form ... or 'unbound type
+  symbol'". The tracked log shows 3x "unsupported primitive operator in logic
+  body", 3x "... in contracted function body", 1x "unsupported expression in
+  contracted function body" and 1x the foreach message. No
+  "unbound type symbol" appears in it.
+- Four lines of the master document carried a GBK-mangled arrow (`鈫?`).
+  The count of **8** real errors in the Pilot 2 log is confirmed: the
+  transcript mentions the string 9 times, and the ninth is a PowerShell
+  formatting duplicate.
+
+### Fixed -- pointers that had rotted, and a banner that was missing
+
+- The `kfold.mbt:NNN` pointers are line numbers in `kfold.mbt` **at
+  `v0.52.0`**, where that file was 657 lines and sat at the repository root.
+  Today's `moonbit_doubleML/kfold.mbt` is 826 lines, so the pointers no
+  longer resolve; they are now anchored to the revision they describe, and
+  the verifier resolves each one against `v0.52.0` (including the claim that
+  lines 331, 338 and 342 are C-style range, and that 266-274 is the
+  `try { ... } catch { ... }` shim).
+- None of the seven records had a dated-record banner. Each now carries the
+  round-6 shape: the commit that introduced it, a measured "what has changed
+  since" table, and an explicit statement of what is **not** verified.
+
+### The README, against the two reference pages
+
+- Re-measured every headline number against the tree: **220** `.mbt` files
+  (65 production + 129 blackbox + 26 whitebox), **22** estimator structs in
+  19 source files, the per-backend test counts, and 24/24 cross-checks. All
+  confirmed unchanged.
+- Both reference pages (`Ridge-Lab/capnp@0.1.0`, `gaato/discord@0.10.0`)
+  state their toolchain version up front; the README mentioned
+  `moon 0.1.20261016` only in measurement notes. The Status table now has a
+  **Toolchain** row saying which version every number in the table was
+  measured on.
+
+### A new verifier for the class
+
+- `_verify/_verify_round14_upstream_1649.py` makes **317** checks.
+  Every expectation is DERIVED: the estimator count is recomputed from the
+  tree and compared with every count word in every record; each record's
+  banner must name the commit that introduced it, taken from `git log`; every
+  path promise in the seven records is resolved on disk and against
+  `git ls-files`, unless the paragraph that names it says the artefact is
+  local-only; the Bucket 3 witness is opened and must contain a `raise`; the
+  re-audit's results table is compared with the `Error: [4207]` count in each
+  log; the Pilot 2 error count is recomputed from the tracked transcript,
+  counting the PowerShell duplicate for what it is; and the `kfold.mbt`
+  pointers are resolved against the `v0.52.0` revision.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.8 it reports **133 failures**; against the corrected tree it
+  reports **0**.
+
+### Gate for this release
+
+**48** local gate steps, 0 failed: `moon build` and `moon test --deny-warn`
+green on all four backends; `moon fmt --check` clean at the package root and
+at the workspace root, which is the one CI runs; both READMEs byte-identical;
+->24/24 Python cross-checks PASS; 9/9 upstream `pyexample_*` gates PASS; the QA
+LOOP fast scope PASS=19, SKIP=10, WARN=2 with no FAIL;
+->the two service checks PASS=2, WARN=0; the validator meta-gate
+PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on the exported tree.
+
 ## [0.164.8] -- the cross-validator suite's own docstrings, and what they measure
 
 `moon.mod` moves 0.164.7 -> 0.164.8. No `.mbt` file changed except two
