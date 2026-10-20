@@ -9,6 +9,142 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.11] -- the upstream provenance map, which was never in the repository
+
+`moon.mod` moves 0.164.10 -> 0.164.11. No `.mbt` file changed, and no estimator
+behaviour changed: this round is entirely about the claims. The test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Round 15 audited the six constructor-defaults records and fixed the README's
+provenance table. Round 16 went after the record the whole provenance story
+rests on -- `_verify/UPSTREAM_PROVENANCE.md` -- and found that the round-15
+correction was itself incomplete.
+
+### Fixed -- the repository's upstream authority map was not in the repository
+
+- `_verify/UPSTREAM_PROVENANCE.md` maps every port estimator to its upstream
+  counterpart. It was **never tracked**: `git ls-files` did not list it and
+  `git log --follow` had no entry for it, so it existed only as a local file.
+  The repository shipped a README that leans on an upstream authority map no
+  reader could obtain.
+- It is now tracked, with a dated banner, re-anchored to the **installed**
+  `doubleml` 0.11.3 package, and the four upstream source files it quotes are
+  tracked with it. The sdist (1.1 MB) is deliberately **not** committed -- it
+  is a vendored upstream artefact -- and the record now says so and gives the
+  PyPI URL instead.
+
+### Fixed -- the README gave one upstream class two port estimators
+
+- Round 15's grouping -- "19 name-identical + 3 renamed + 0 port-only", with
+  `DoubleMLDIDCS` marked as upstream's `DoubleMLDIDMulti` -- claimed upstream's
+  `DoubleMLDIDMulti` **twice**: once for the port's `DoubleMLDIDCS` (as
+  "renamed") and once for the port's `DoubleMLDIDMulti` (as name-identical).
+  A 1:1 map cannot express that, so the label was not checkable, and the rule
+  that produced it -- match a shared design marker, else a shared name --
+  cannot see a many-to-one.
+- The decisive test is a **distinguishing parameter**, not a family
+  signature. `gt_combinations` is a parameter of **upstream's
+  `DoubleMLDIDMulti` and no other upstream DID class**
+  (`did/did_multi.py:65-68`), with the keywords `'standard'`, `'all'`,
+  `'universal'` (`did/utils/_did_utils.py:127`) and results labelled
+  `ATT(g, t_pre, t_eval)` (`did/did_multi.py:197`). On the port side
+  `gt_combinations` is a parameter of **the port's `DoubleMLDIDMulti` and no
+  other port DID estimator**.
+- So upstream's `DoubleMLDIDMulti` is the port's `DoubleMLDIDMulti`, 1:1, and
+  upstream's single multi-period class is **split** across two port
+  estimators: the port's `DoubleMLDIDCS` is the `(g, t)` grid *without* the
+  selector (it derives the grid itself and transcribes upstream's
+  `did_cs.py` machinery -- lines 110, 445, 451, 456, 462, 464, 466, 470, 527,
+  529), and the port's `DoubleMLDIDMulti` is a thin wrapper over it that adds
+  the selector. The port's own header says exactly that: *"a thin top-level
+  wrapper over `DoubleMLDIDCS`"*.
+- The grouping is now **19 name-identical + 2 renamed + 1 with no 1:1
+  upstream class**: `DoubleMLRDD` -> `RDFlex`, `DoubleMLDIDCrossSection` ->
+  `DoubleMLDIDCS`, and `DoubleMLDIDCS` marked *(upstream design, no 1:1
+  class)*. The README's "there is now **no** port-only estimator" line is
+  gone: a class with no 1:1 counterpart is a different thing from a class
+  with no upstream counterpart, and the sentence claimed the wrong one.
+
+### Fixed -- the record contradicted itself, and promised files nobody could get
+
+- Its table said upstream's `DoubleMLDIDCS` is the port's `DoubleMLDIDCS`;
+  its own prose two paragraphs below said the port's `DoubleMLDIDCS` is
+  upstream's `DoubleMLDID`. **Both** were wrong. Upstream's
+  `DoubleMLDIDCS` is the *repeated cross-sections* estimator, which is the
+  port's `DoubleMLDIDCrossSection`; and upstream's `DoubleMLDID` is the
+  *two-time-period panel* DiD, which is the port's `DoubleMLDID`.
+- Its "Files kept in this directory" promised **6** files. **5 of the 6 were
+  untracked**, so a reader who cloned the repository got one of them. One of
+  the five is also **stale**: `double_ml_linear_score.py` is upstream's
+  *predecessor* of `double_ml_score_mixins.py` and exists in neither 0.11.3
+  nor the 0.11.4 sdist -- the record listed the old file while quoting the
+  new one's contents. The four current copies are now tracked and verified
+  byte-identical (sha256) to the installed package.
+- The pointers it quotes are still **correct**, and are now checked rather
+  than assumed: `did/did_cs.py:16` is the
+  `class DoubleMLDIDCS(LinearScoreMixin, DoubleML):` line in both 0.11.3 and
+  the 0.11.4 sdist, and `LinearScoreMixin`'s `_compute_score`,
+  `_compute_score_deriv` and `_est_coef` are at
+  `double_ml_score_mixins.py:35`, `:39` and `:42`.
+
+### One derivation, not two
+
+- `_verify/_audit_r16_provenance_1650.py` is now the **only** derivation of the
+  grouping in the tree, and both `_verify/_verify_estimator_census_1680.py`
+  and `_verify/_verify_provenance_1640.py` import it. Two derivations would
+  drift, and two derivations disagreeing is the failure this round exists to
+  repair. It derives the port's estimator set from the source -- a hardcoded
+  file map silently dropped four estimators during development, and the
+  derivation's own assertion caught it -- and it asserts that **no upstream
+  class is claimed twice**.
+- `_verify/_verify_provenance_1640.py` now reads the **installed package**
+  instead of `_verify/doubleml-0.11.4.tar.gz`. The sdist is untracked, so a
+  tracked verifier that depended on it could only ever run on the machine
+  that happened to have it.
+- The **round-15** verifier needed the same treatment, and it is where this
+  round's lesson bit hardest. Two of its checks had rotted: one pinned the
+  exact label `DoubleMLDIDCS` was to carry -- a literal, so it would have
+  failed the moment the label was corrected -- and the other pinned the
+  README's version to a literal list of recent versions ("0.164.9" or
+  "0.164.10"), which is a list that rots on the next release. It failed on
+  v0.164.11 for exactly that reason. The version check is now **derived** from
+  `moon.mod`, and the DIDCS label is checked as a **property** (the row must
+  not claim upstream's `DoubleMLDIDMulti`, and must carry the no-1:1 label)
+  rather than as a string. The verifier now makes **109** checks instead of
+  108, and its dry-run against v0.164.9 still reports **46** failures.
+
+### A new verifier for the class
+
+- `_verify/_verify_round16_provenance_1650.py` makes **42** checks, and
+  `_verify/_audit_r16_provenance_1650.py` is the shipped method it re-derives
+  from. It pins the **invariant** rather than a count: the correspondence is
+  one-to-one, every port estimator is covered, the record is **tracked** (not
+  merely present on disk), every file the record promises exists **and** is
+  tracked, the withdrawn claims are absent from the record's **body** (the
+  banner is excluded, because a correct "was -> now" banner legitimately
+  quotes the old value), and `did/did_cs.py:16` is resolved **and**
+  content-checked -- a pointer that resolves to the wrong line is still wrong.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.10 it reports **18 failures**; against the corrected tree it
+  reports **0**.
+
+### Gate for this release
+
+**48** local gate steps, 0 failed: `moon build` and `moon test --deny-warn`
+green on all four backends; `moon fmt --check` clean at the package root and
+at the workspace root, which is the one CI runs; both READMEs byte-identical;
+24/24 Python cross-checks PASS; 9/9 upstream `pyexample_*` gates PASS; the QA
+LOOP fast scope PASS=19, SKIP=10, WARN=2 with no FAIL;
+the two service checks PASS=2, WARN=0; the validator meta-gate
+PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on the exported tree.
+
+A census of the records (`_verify/_survey_unaudited_1650.py`) puts **15** of
+the **160** `_verify/*.md` records on a re-audit banner; the rest are the
+queue. The census itself was re-calibrated during this round: its first
+version looked for a literal phrase that the round-15 records express as a
+pointer table, and it mis-sorted them as unaudited -- a census that is wrong
+about its own subject is worse than no census.
+
 ## [0.164.10] -- the constructor-defaults records, and a crossed provenance table
 
 `moon.mod` moves 0.164.9 -> 0.164.10. No `.mbt` file changed, and no estimator

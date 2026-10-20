@@ -1,64 +1,67 @@
-"""Audit the README's upstream-provenance claims against the real sdist.
+"""Audit the README's upstream-provenance claims against the REAL upstream.
 
-The README says: "Those provenance labels are re-measured against the published
-`doubleml` 0.11.4 sdist, not asserted -- see the estimator table below."
+The README's estimator table labels every row with how it relates to
+upstream's `doubleml-for-py`:
 
-So the table's labels must match the sdist:
-  * rows marked *(upstream)*          -> a name-identical class exists
-  * rows marked *(upstream, renamed)* -> an upstream class exists under the
-    name the row gives
-  * rows marked *(no upstream counterpart)* -> no upstream class implements it
+  * rows marked *(upstream)*                  -> a name-identical class exists
+  * rows marked *(upstream, renamed)*         -> an upstream class exists under
+    the name the row gives
+  * rows marked *(upstream design, no 1:1 class)* -> the port estimator has no
+    1:1 upstream counterpart
 
-**RE-AUDITED 2026-10-20.** This file used to assert "20 rows marked
-*(upstream)*" and that `DoubleMLDIDCrossSection` was marked
+**RE-AUDITED 2026-10-20 (round 15).** This file used to assert "20 rows
+marked *(upstream)*" and that `DoubleMLDIDCrossSection` was marked
 *(no upstream counterpart)*. Both were the README's own belief, checked by a
 **name scan** -- and a name scan cannot establish that no upstream estimator
 implements a design, only that no upstream class carries a given NAME.
-Upstream's `DoubleMLDIDCS` is the *repeated cross-sections* estimator, which
-is the counterpart of the port's `DoubleMLDIDCrossSection`; the port's
-`DoubleMLDIDCS` is the panel estimator, whose upstream counterpart is
-`DoubleMLDIDMulti`. The grouping is now **19 name-identical + 3 renamed + 0
-port-only**, and the counts below are DERIVED from the table rather than
-written down. The estimator-level evidence is in
-`_verify/_verify_estimator_census_1680.py` (design markers read from both
-sides) and `_verify/_verify_round15_defaults_1650.py`.
 
-The sdist is at `_verify/doubleml-0.11.4.tar.gz` (a local copy of the
-published `doubleml` 0.11.4).
+**RE-AUDITED 2026-10-20 (round 16).** Round 15's own correction was still
+wrong, in a way its rule could not see: it matched the port's
+`DoubleMLDIDCS` to upstream's `DoubleMLDIDMulti` on a shared design marker,
+while ALSO matching the port's `DoubleMLDIDMulti` to upstream's
+`DoubleMLDIDMulti` by name -- one upstream class, two port estimators. A 1:1
+map cannot express that, so the README's labels were not checkable.
+
+The decisive test is a **distinguishing parameter**, not a family
+signature, and then the **1:1 constraint**: an upstream class may be the
+counterpart of at most one port estimator. The derivation lives in
+`_verify/_audit_r16_provenance_1650.py` and is the only one in the tree.
+
+THIS FILE READS THE INSTALLED PACKAGE, not the sdist.  The previous version
+read `_verify/doubleml-0.11.4.tar.gz`, which is **not tracked** -- so the
+verifier could only ever run on the machine that had it.  A tracked verifier
+that depends on an untracked artefact is a promise nobody can keep.
 """
 import io
 import os
 import re
 import sys
-import tarfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
-SDIST = os.path.join(ROOT, "_verify", "doubleml-0.11.4.tar.gz")
 README = os.path.join(ROOT, "README.mbt.md")
 readme = io.open(README, encoding="utf-8").read()
 
-if not os.path.isfile(SDIST):
-    print("no sdist at %s" % SDIST)
-    sys.exit(1)
+sys.path.insert(0, os.path.join(ROOT, "_verify"))
+import _audit_r16_provenance_1650 as audit
 
-print("sdist: %s (%d bytes)" % (SDIST, os.path.getsize(SDIST)))
+derived = audit.derive()
+pkg = derived["upstream_package"]
+print("upstream package: %s" % pkg)
+print()
 
-# ---- collect the upstream class names -------------------------------------
-# The estimators are NOT all under plm/: upstream splits them across
-# doubleml/irm/, doubleml/did/, doubleml/plm/, doubleml/rdd/ and
-# doubleml/irm/... -- so scan every .py in the sdist.
+# the upstream class names, read from the installed package
 classes = set()
 modules = []
-with tarfile.open(SDIST, "r:gz") as tf:
-    for m in tf.getmembers():
-        if not m.isfile() or not m.name.endswith(".py"):
+for dp, dn, fns in os.walk(pkg):
+    if os.sep + "tests" in dp:
+        continue
+    for fn in sorted(fns):
+        if not fn.endswith(".py"):
             continue
-        if "/tests/" in m.name:
-            continue
-        modules.append(m.name)
-        src = tf.extractfile(m).read().decode("utf-8", "replace")
+        modules.append(fn)
+        src = io.open(os.path.join(dp, fn), encoding="utf-8", errors="replace").read()
         for c in re.findall(r"^class\s+(\w+)", src, re.M):
             classes.add(c)
 
@@ -81,12 +84,13 @@ rows = re.findall(r"^\|\s*`(DoubleML\w+)`\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$"
 model_rows = [(n, sc, d) for n, sc, d in rows
                if "upstream" in d or "port-only" in d]
 plain = [n for n, _, d in model_rows
-         if "*(upstream)*" in d and "renamed" not in d and "no upstream" not in d]
+         if "*(upstream)*" in d and "renamed" not in d and "no upstream" not in d
+         and "no 1:1" not in d]
 renamed = [n for n, _, d in model_rows if "upstream, renamed" in d]
-portonly = [n for n, _, d in model_rows if "no upstream counterpart" in d]
+variant = [n for n, _, d in model_rows if "no 1:1 class" in d]
 
-print("README table: %d *(upstream)*, %d renamed, %d port-only"
-      % (len(plain), len(renamed), len(portonly)))
+print("README table: %d *(upstream)*, %d renamed, %d no-1:1-class"
+      % (len(plain), len(renamed), len(variant)))
 print()
 
 # every *(upstream)* row must have a name-identical upstream class
@@ -103,11 +107,12 @@ for n, _s, d in model_rows:
     if not m:
         renamed_missing.append("%s: names no upstream class" % n)
     elif m.group(1) not in classes:
-        renamed_missing.append("%s: upstream `%s` is not in the sdist" % (n, m.group(1)))
+        renamed_missing.append("%s: upstream `%s` is not in the package"
+                               % (n, m.group(1)))
 check("every *(upstream, renamed)* row names an upstream class that exists",
       not renamed_missing, "; ".join(renamed_missing))
 
-# the renamed one: upstream calls it RDFlex
+# upstream calls the RDD estimator RDFlex
 check("upstream has RDFlex", "RDFlex" in classes)
 check("upstream does NOT have DoubleMLRDD (it is renamed)",
       "DoubleMLRDD" not in classes,
@@ -115,14 +120,67 @@ check("upstream does NOT have DoubleMLRDD (it is renamed)",
 check("the README says upstream calls it RDFlex",
       "upstream `RDFlex`" in readme or "upstream calls it `RDFlex`" in readme)
 
-# the port-only one: there is none, and the README says so
+# ---- the row with no 1:1 upstream class -----------------------------------
 check("upstream has no class NAMED DoubleMLDIDCrossSection",
       "DoubleMLDIDCrossSection" not in classes,
       "upstream DID classes: %s" % sorted(c for c in classes if "DID" in c))
-check("the README marks no row *(no upstream counterpart)*",
-      not portonly, "marked: %s" % portonly)
-check("the README states there is no port-only estimator",
-      re.search(r"\*\*no\*\*\s*\n?\s*port-only estimator", readme) is not None)
+check("exactly one row is marked *(no 1:1 class)*",
+      len(variant) == 1, "marked: %s" % variant)
+check("the *(no 1:1 class)* row is the derived one",
+      sorted(variant) == derived["no_upstream_class"],
+      "README: %s / derived: %s" % (sorted(variant), derived["no_upstream_class"]))
+check("the README states the count of rows with no 1:1 upstream class",
+      re.search(r"\*\*1\*\*,?\s*`?DoubleMLDIDCS`?,?\s*has\s+\*\*no 1:1 upstream", readme)
+      is not None
+      or "**1** are upstream estimators under a different name" in readme
+      or "no 1:1 upstream\nclass" in readme,
+      "the README must not claim there is no such estimator")
+
+# ---- THE decisive check: the correspondence is one-to-one ------------------
+# An upstream class claimed by two port rows is the defect this round exists
+# to repair, so it is checked directly against the README's own rows.
+claimed = {}
+for n, _s, d in model_rows:
+    m = re.search(r"upstream `(\w+)`", d)
+    if m:
+        claimed.setdefault(m.group(1), []).append(n)
+dupes = {u: v for u, v in claimed.items() if len(v) > 1}
+check("no upstream class is claimed by two rows of the table",
+      not dupes, "claimed twice: %s" % dupes)
+
+# and the derived map agrees with the table
+check("the derived map claims no upstream class twice",
+      derived["upstream_class_claimed_twice"] == [],
+      "claimed twice: %s" % derived["upstream_class_claimed_twice"])
+check("the table's groups are the derived groups",
+      sorted(plain) == derived["plain"]
+      and sorted(renamed) == sorted(derived["renamed"])
+      and sorted(variant) == derived["no_upstream_class"],
+      "table: %d/%d/%d / derived: %d/%d/%d"
+      % (len(plain), len(renamed), len(variant),
+         len(derived["plain"]), len(derived["renamed"]),
+         len(derived["no_upstream_class"])))
+
+# ---- the DID facts the labels rest on -------------------------------------
+up_params = derived["upstream_params"]
+port_params = derived["port_params"]
+multi_carriers = sorted(p for p, ps in port_params.items()
+                        if "gt_combinations" in ps)
+check("gt_combinations is a parameter of upstream's DoubleMLDIDMulti",
+      "gt_combinations" in up_params.get("DoubleMLDIDMulti", []))
+check("gt_combinations is a parameter of NO other upstream DID class",
+      [c for c in ("DoubleMLDID", "DoubleMLDIDBinary", "DoubleMLDIDCS",
+                   "DoubleMLDIDCSBinary") if "gt_combinations" in up_params.get(c, [])] == [],
+      "the DID classes carrying it: %s"
+      % [c for c in up_params if "gt_combinations" in up_params[c]])
+check("on the port side only DoubleMLDIDMulti carries gt_combinations",
+      multi_carriers == ["DoubleMLDIDMulti"], "carried by: %s" % multi_carriers)
+check("the port's DoubleMLDIDCS does NOT carry gt_combinations",
+      "gt_combinations" not in port_params.get("DoubleMLDIDCS", []))
+check("the port's DoubleMLDIDMulti is the 1:1 counterpart of upstream's",
+      derived["upstream_class_of"].get("DoubleMLDIDMulti") == "DoubleMLDIDMulti")
+check("the port's DoubleMLDIDCrossSection is upstream's DoubleMLDIDCS",
+      derived["upstream_class_of"].get("DoubleMLDIDCrossSection") == "DoubleMLDIDCS")
 
 # and print the upstream DID classes for context
 print()

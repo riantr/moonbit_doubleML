@@ -166,11 +166,12 @@ if model_rows:
     # a row "marked (upstream)" carries the marker; it need not END with it
     # (the PolicyTree row continues "... + v0.98.0 honest split (...)").
     plain = [n for n, _, d in model_rows
-             if "*(upstream)*" in d and "renamed" not in d and "no upstream" not in d]
+             if "*(upstream)*" in d and "renamed" not in d and "no upstream" not in d
+             and "no 1:1" not in d]
     renamed = [n for n, _, d in model_rows if "upstream, renamed" in d]
-    portonly = [n for n, _, d in model_rows if "no upstream counterpart" in d]
-    print("  *(upstream)*: %d  renamed: %d  port-only: %d"
-          % (len(plain), len(renamed), len(portonly)))
+    variant = [n for n, _, d in model_rows if "no 1:1 class" in d]
+    print("  *(upstream)*: %d  renamed: %d  no-1:1-class: %d"
+          % (len(plain), len(renamed), len(variant)))
 
     # ------------------------------------------------------------ provenance
     # The EXPECTED grouping is DERIVED from the installed upstream package and
@@ -180,59 +181,36 @@ if model_rows:
     # unchallengeable: the README was wrong ("DoubleMLDIDCrossSection has no
     # upstream counterpart"), and this file agreed with it.
     #
-    # The derivation:
-    #   * NAME-IDENTICAL -- upstream has a class of the same name;
-    #   * RENAMED -- upstream implements the same design under another name.
-    #     The two renamed pairs are recognised by SHARED DESIGN MARKERS read
-    #     from BOTH sides: upstream's `DoubleMLDIDCS` docstring and the port's
-    #     `DoubleMLDIDCrossSection` header both say "repeated cross-sections";
-    #     upstream's `DoubleMLDIDMulti` docstring and the port's
-    #     `DoubleMLDIDCS` header both say "multi-period".  The third renamed
-    #     row is upstream's RDD estimator, which is the class `RDFlex` -- found
-    #     as the only non-Data upstream class that uses `DoubleMLRDDData`;
-    #   * PORT-ONLY -- no upstream class implements it.
-    upc = upstream_facts()
-    port_header = {}
-    for fn in sorted(os.listdir(LIB)):
-        if fn.endswith(".mbt"):
-            src = open(os.path.join(LIB, fn), encoding="utf-8", errors="replace").read()
-            hdr = file_header(src)
-            for m in re.finditer(r"pub fn (DoubleML\w+)::new\s*\(", src):
-                port_header.setdefault(m.group(1), hdr)
+    # Round 15 replaced the literal with a derivation of its own, but that
+    # derivation could not see a MANY-TO-ONE: it matched the port's
+    # `DoubleMLDIDCS` to upstream's `DoubleMLDIDMulti` on a shared design
+    # marker ("multi-period"), while ALSO matching the port's
+    # `DoubleMLDIDMulti` to upstream's `DoubleMLDIDMulti` by name.  One
+    # upstream class, two port estimators.
+    #
+    # The derivation now used is `_verify/_audit_r16_provenance_1650.py`, and
+    # it is the ONLY one in the tree: it decides the correspondence by the
+    # upstream class's DISTINGUISHING parameter and then applies the 1:1
+    # constraint.  Two derivations in one tree would drift, and two
+    # derivations disagreeing is the failure this round exists to repair.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _audit_r16_provenance_1650 as audit
+    derived = audit.derive()
 
-    markers = [("DoubleMLDIDCrossSection", "DoubleMLDIDCS", "repeated cross-sections"),
-               ("DoubleMLDIDCS", "DoubleMLDIDMulti", "multi-period")]
-    expected_renamed = {}
-    for port_est, up_est, phrase in markers:
-        up_doc = upc.get(up_est, {}).get("doc", "")
-        p_hdr = port_header.get(port_est, "")
-        ok = phrase in up_doc and phrase in p_hdr
-        check("the %s <-> upstream %s pair shares the design marker %r"
-              % (port_est, up_est, phrase), ok,
-              "upstream doc has it: %s / port header has it: %s"
-              % (phrase in up_doc, phrase in p_hdr))
-        if ok:
-            expected_renamed[port_est] = up_est
+    expected_plain = derived["plain"]
+    expected_renamed = derived["renamed"]
+    expected_variant = derived["no_upstream_class"]
 
-    rdd_up = [n for n, c in upc.items()
-              if "DoubleMLRDDData" in c["data"] and not n.endswith("Data")
-              and c["file"].startswith("rdd/")]
-    check("upstream's RDD estimator is a class named RDFlex", rdd_up == ["RDFlex"],
-          "got %s" % rdd_up)
-    if rdd_up == ["RDFlex"]:
-        expected_renamed["DoubleMLRDD"] = "RDFlex"
-
-    up_names = set(upc)
-    expected_plain = sorted(n for n in ests
-                            if n not in expected_renamed and n in up_names)
-    expected_portonly = sorted(n for n in ests
-                               if n not in expected_renamed and n not in up_names)
-
-    print("  derived: plain=%d renamed=%d port-only=%d"
-          % (len(expected_plain), len(expected_renamed), len(expected_portonly)))
-    check("the derived grouping has no port-only estimator",
-          expected_portonly == [],
-          "got %s" % expected_portonly)
+    print("  derived: plain=%d renamed=%d no-1:1=%d"
+          % (len(expected_plain), len(expected_renamed), len(expected_variant)))
+    print("  derived renamed pairs: %s" % sorted(expected_renamed.items()))
+    check("the derivation covers all 22 estimators",
+          len(expected_plain) + len(expected_renamed) + len(expected_variant) == 22,
+          "got %d" % (len(expected_plain) + len(expected_renamed)
+                     + len(expected_variant)))
+    check("no upstream class is claimed by two port estimators",
+          derived["upstream_class_claimed_twice"] == [],
+          "claimed twice: %s" % derived["upstream_class_claimed_twice"])
 
     check("the *(upstream)* rows are the derived name-identical ones",
           sorted(plain) == expected_plain,
@@ -240,19 +218,19 @@ if model_rows:
     check("the *(upstream, renamed)* rows are the derived renamed ones",
           sorted(renamed) == sorted(expected_renamed),
           "README: %s / derived: %s" % (sorted(renamed), sorted(expected_renamed)))
-    check("the *(no upstream counterpart)* rows are the derived port-only ones",
-          sorted(portonly) == expected_portonly,
-          "README: %s / derived: %s" % (sorted(portonly), expected_portonly))
+    check("the *(no 1:1 class)* rows are the derived ones",
+          sorted(variant) == sorted(expected_variant),
+          "README: %s / derived: %s" % (sorted(variant), sorted(expected_variant)))
     check("the three groups cover all 22 rows",
-          len(plain) + len(renamed) + len(portonly) == len(model_rows))
+          len(plain) + len(renamed) + len(variant) == len(model_rows))
     check("the README's '19 are marked *(upstream)*' matches the table",
           "**19** are marked *(upstream)*" in readme,
           "the table says %d" % len(plain))
-    check("the README's '3 are marked *(upstream, renamed)*' matches the table",
-          "**3** are marked\n*(upstream, renamed)*" in readme
-          or "**3** are marked *(upstream, renamed)*" in readme,
+    check("the README's renamed count matches the table",
+          ("**2** are marked\n*(upstream, renamed)*" in readme
+           or "**2** are marked *(upstream, renamed)*" in readme),
           "the table says %d" % len(renamed))
-    check("the renamed rows name the upstream classes they correspond to",
+    check("the README names the upstream class of every renamed row",
           all(("upstream `%s`" % u) in readme for u in expected_renamed.values()),
           "expected %s" % expected_renamed)
 

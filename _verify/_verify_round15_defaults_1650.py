@@ -486,15 +486,28 @@ check("README: no longer claims 20 name-identical",
 check("README: no longer claims DIDCrossSection has no upstream counterpart",
       "has no upstream counterpart at all" not in README
       and "`DoubleMLDIDCrossSection` has no upstream counterpart" not in README)
-check("README: the estimator table marks DIDCS as renamed",
-      "| `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(upstream, renamed)* -- upstream `DoubleMLDIDMulti` |" in README)
+check("README: the estimator table's DIDCS row no longer claims upstream's DIDMulti",
+      "*(upstream, renamed)* -- upstream `DoubleMLDIDMulti` |" not in README,
+      "round 16 moved DIDCS to *(upstream design, no 1:1 class)*: upstream's "
+      "DoubleMLDIDMulti is the port's DoubleMLDIDMulti, 1:1")
+check("README: the estimator table marks DIDCS as having no 1:1 upstream class",
+      "| `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) "
+      "*(upstream design, no 1:1 class)*" in README)
 check("README: the estimator table marks DIDCrossSection as renamed",
       "| `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(upstream, renamed)* -- upstream `DoubleMLDIDCS` |" in README)
 check("README: no longer claims a port-only estimator",
       "The one genuinely\nport-only estimator" not in README)
 check("README: the Status table file count is still 220/65/129/26",
       "**220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test)" in README)
-check("README: the Status table version is not stale", "0.164.9" in README or "0.164.10" in README)
+# The version is DERIVED from moon.mod, not pinned to a list of recent
+# versions: a pinned list is a list that rots on the next release, and this
+# check is exactly what rotted -- it failed on v0.164.11 because the literal
+# still said 0.164.9 / 0.164.10.
+_moon_mod = read(ROOT / "moonbit_doubleML" / "moon.mod")
+_m = re.search(r'version\s*=\s*"([0-9.]+)"', _moon_mod)
+check("README: the Status table version matches moon.mod",
+      bool(_m) and _m.group(1) in README,
+      "moon.mod says %s" % (_m.group(1) if _m else "?"))
 
 # ------------------------------------------------------------------ report
 print()
