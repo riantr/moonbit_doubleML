@@ -20,8 +20,18 @@ the cmd binary to cross-check; the MoonBit output is
 parsed from the cmd log.
 
 `MODEL_TOL = 0.3` — the v0.49.0 / v0.50.0 convention.
-PRNG drift between chacha8 and numpy default_rng
-drives ~0.2 SE offsets at this DGP size.
+
+The reason this file used to give for that window -- "PRNG drift between
+chacha8 and numpy default_rng drives ~0.2 SE offsets at this DGP size" --
+does not hold for the DGP as it stands. The outcome in `make_dgp` is
+DETERMINISTIC: `y = 1.0` for the treated cohort in the post period and
+`0.0` everywhere else, and only the covariates are drawn at random. There
+is therefore no outcome noise for two implementations to drift over: the
+hand-rolled reference, the upstream estimator and the MoonBit port all land
+on the same ATT with a zero SE, and the 0.3 window is slack that this DGP
+never exercises. The run prints the measured gap beside every comparison,
+so the live number is the one to read -- and a reader who wants a tighter
+gate has the measurement to justify it.
 """
 
 from __future__ import annotations
@@ -386,14 +396,18 @@ def main() -> int:
         print(f"  FAIL  hand-rolled ATT {hr['coef']:.4f} vs true {dgp['theta0']:.4f}")
         ok = False
     else:
-        print(f"  PASS  hand-rolled ATT within {MODEL_TOL} of true ({hr['coef']:.4f})")
+        print(f"  PASS  hand-rolled ATT within {MODEL_TOL} of true "
+              f"({hr['coef']:.4f}), measured gap "
+              f"{abs(hr['coef'] - dgp['theta0']):.4f}")
 
     if up is not None:
         if abs(up["coef"] - hr["coef"]) > MODEL_TOL:
             print(f"  FAIL  upstream vs hand-rolled ATT gap {abs(up['coef'] - hr['coef']):.4f} > {MODEL_TOL}")
             ok = False
         else:
-            print(f"  PASS  upstream ATT within {MODEL_TOL} of hand-rolled ({up['coef']:.4f})")
+            print(f"  PASS  upstream ATT within {MODEL_TOL} of hand-rolled "
+                  f"({up['coef']:.4f}), measured gap "
+                  f"{abs(up['coef'] - hr['coef']):.4f}")
 
     # v0.104.0: this used to be `if mb is not None:`. A failed
     # `moon run`, or output without the `ATT_hat` / `se` lines,
@@ -410,12 +424,16 @@ def main() -> int:
             print(f"  FAIL  MoonBit vs hand-rolled ATT gap {abs(mb['coef'] - hr['coef']):.4f} > {MODEL_TOL}")
             ok = False
         else:
-            print(f"  PASS  MoonBit ATT within {MODEL_TOL} of hand-rolled ({mb['coef']:.4f})")
+            print(f"  PASS  MoonBit ATT within {MODEL_TOL} of hand-rolled "
+                  f"({mb['coef']:.4f}), measured gap "
+                  f"{abs(mb['coef'] - hr['coef']):.4f}")
         if up is not None and abs(mb["coef"] - up["coef"]) > MODEL_TOL:
             print(f"  FAIL  MoonBit vs upstream ATT gap {abs(mb['coef'] - up['coef']):.4f} > {MODEL_TOL}")
             ok = False
         elif up is not None:
-            print(f"  PASS  MoonBit ATT within {MODEL_TOL} of upstream ({mb['coef']:.4f})")
+            print(f"  PASS  MoonBit ATT within {MODEL_TOL} of upstream "
+                  f"({mb['coef']:.4f}), measured gap "
+                  f"{abs(mb['coef'] - up['coef']):.4f}")
 
     if ok:
         print("\nAll checks PASSED.")

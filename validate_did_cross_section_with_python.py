@@ -39,9 +39,14 @@ printed:
      different RNG streams cannot separate a 0.15 bias from
      sampling noise at any reasonable tolerance, but a
      variance formula whose 1/n has been algebraically
-     cancelled gives a FLAT SE: the pre-v0.102.0 code read
-     0.3654 / 0.3708 / 0.3613 at n = 300 / 600 / 2400. The
-     correct ratio at 4x the sample size is ~0.5.
+     cancelled gives a FLAT SE. The pre-v0.102.0 code read
+     0.3654 / 0.3708 / 0.3613 -- a flat SE -- at the example's
+     then-current sizes of n = 300 / 600 / 2400. Those three
+     numbers are a historical measurement of a tree that no
+     longer exists: the example now runs n = 500 / 2000, so
+     they cannot be re-read off it. The live ratio at 4x is
+     what to read, and the run prints it; a correct estimator
+     gives ~0.5, and the asserted band is 0.35 < ratio < 0.7.
 
 This file FAILS CLOSED. If `moon run` cannot be executed or its
 output cannot be parsed, the verdict is FAIL, not a warning --

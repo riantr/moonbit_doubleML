@@ -9,6 +9,172 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.8] -- the cross-validator suite's own docstrings, and what they measure
+
+`moon.mod` moves 0.164.7 -> 0.164.8. No `.mbt` file changed except two
+comment blocks, and no estimator behaviour changed: this round is entirely
+about the claims. The test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Rounds 1-11 audited the README, the shipped documents, the acceptance
+features, the QA LOOP registry and the dated session records. Round 12
+audited the nine `pyexample_*` upstream-parity gates. Round 13 audited the
+rest of the verification code: the **27 Python scripts at the repository root
+that print their own verdict** -- the 24 `validate_*_with_python.py`
+cross-validators plus the three repo-level harnesses
+(`validate_plotting_scope.py`, `validate_splitting_contract.py`,
+`validate_suite_meta.py`). Thirteen of their claims were false.
+
+### Fixed -- a meta-gate that described a set which was empty
+
+- `validate_suite_meta.py`'s docstring said "**Eight** reference-only
+  validators still print a literal `PASS`" and that the set was "written out
+  here". The set was `KNOWN_HARDCODED_VERDICT = set()` -- **empty** -- and the
+  gate itself printed `known typed verdicts: 0` on every run. The code
+  comment beside the set said "EMPTY, and empty on purpose"; the docstring
+  above it still described the tree that existed before
+  `emits_computed_verdict` learned to recognise the `parity_helper.report()`
+  delegation.
+- The count is now MACHINE-CHECKED: the gate reads its own docstring and
+  fails if the number it states is not the number of entries in the set, so
+  adding an entry without updating the prose is a red gate.
+
+### Fixed -- a "wider" tolerance that was the same number and a smaller bound
+
+- `validate_apos_with_python.py` said "The upstream Python is checked with a
+  wider `UPSTREAM_TOL = 0.3`". Both constants are 0.3, and the two bounds have
+  different SHAPES: the MoonBit side must clear
+  `max(MODEL_TOL, 2 * handrolled_se)` and the upstream side clears
+  `UPSTREAM_TOL or 2 * handrolled_se` -- the SMALLER of the two. Upstream was
+  never checked more loosely; it is checked differently. The docstring now
+  says which shape is which.
+
+### Fixed -- a window attributed to a validator that never had it
+
+- `validate_quantile_with_python.py` said its estimator rows use "0.02, the
+  window the v0.49.0 APOS validator already used for the same DGP". The APOS
+  validator has no 0.02 window at all -- it uses
+  `max(MODEL_TOL=0.3, 2 * handrolled_se)` -- and its DGP is a randomised
+  2-level IRM DGP at n = 500, p = 3, not the deterministic alternating panel.
+  Both halves of the attribution were wrong.
+- The same file said the estimator rows are checked "at the accuracy a 2-fold
+  estimate on n=200 can actually reach". The panel is **400** rows.
+  `validate_cvar_with_python.py` made the same slip about its own panel.
+
+### Fixed -- a "factor of 15" that is 4.73x
+
+- `validate_quantile_with_python.py` said its 0.02 band "separates the true
+  1.49 from the observed 1.4942 by a factor of 15". The observed coefficient
+  is 1.494230173, so the deviation is 0.004230 and the margin is **4.73x**.
+  The band is now justified by the margin it actually has, the validator
+  PRINTS the measured deviation and the margin on every run, and it FAILS if
+  the margin ever falls below 1.5x.
+
+### Fixed -- a 5-seed study quoted as a 30-seed sweep, and reports called assertions
+
+- `validate_cluster_iv_with_python.py` said "Across 5 seeds, the cluster / row
+  SE ratio on upstream DoubleMLPLIV ranges from 0.88 to 5.69 (median ~1.27)".
+  The sweep runs **30** seeds, and the sweep is not reproducible run to run
+  at all: `DoubleMLPLIV` is built without `draw_sample_splitting=False`, so
+  upstream draws its own fold split, unseeded, on every call. Two runs of the
+  same tree gave medians of 1.082 and 1.194. A quoted range from an
+  unrepeatable draw is not a fact, so the docstring now quotes no number and
+  the gate prints the whole distribution instead.
+- The file also presented three REPORTS as assertions: a coefficient
+  comparison that is not made, a "5x factor" that is a diagnostic on the band
+  [0.1, 10.0] and fires on some seeds, and a "[0.3, 5.0]" band that no
+  assertion enforces and that several seeds fall outside. The docstring now
+  separates what is asserted from what is reported.
+- The coefficient agreement was quoted as "3.5%", a number nothing in the file
+  measured. It is measured now: the median relative gap is a third of the
+  estimate and the worst seed is two orders of magnitude out, so it is
+  reported, not asserted.
+
+### Fixed -- a census with a hole in it
+
+- The same file's ratio-distribution table had buckets starting at 0.1, so a
+  ratio below 0.1 fell outside every bucket: the table was headed "n = 30
+  seeds" and listed **29**. A census with a hole in it is the defect this
+  file exists to catch. The buckets now start at 0, and the bucket counts are
+  checked against the total -- an incomplete census fails the gate.
+
+### Fixed -- a measurement that had gone stale in four places at once
+
+- `validate_ssm_with_python.py`, its code comment and `examples/ssm/main.mbt`
+  all said the SSM 1/sqrt(n) ratios were 0.5255 (seed 99) and 0.4866 (seed 7).
+  The live values are **0.532589** and **0.485435**. Nothing failed, because
+  the assertion is on the RELATION (`0.40 < ratio < 0.65`) and a quoted
+  measurement that no assertion reads cannot announce that the code moved
+  underneath it. The same stale pair also sat in
+  `moonbit_doubleML/expand_v107_test.mbt`'s docstring -- the one place a
+  reader would look to check it.
+- All four now state the same numbers, and the round-13 verifier runs the
+  validator and compares the live ratios with the prose, because three
+  sources can be stale TOGETHER and a static consistency check cannot see
+  that. Seed 3141, which a test DOES pin, had not drifted.
+
+### Fixed -- a factor that was true of neither end of its range
+
+- `validate_bootstrap_with_python.py` said "Each is 2-3x the measured
+  deviation". The four factors are 6.7x (mean), 3.1x (var), 3.7x (m3) and
+  **1.9x** (m4) -- the range runs from 1.9x to 6.7x. The docstring's table
+  now carries the factor on each row, and the validator prints the live
+  deviation and margin per quantity.
+
+### Fixed -- "one ulp apart" that is two
+
+- `validate_cluster_plr_with_python.py` said the singleton identity is "one
+  ulp apart at n=200". The quoted pair differs by 2.78e-17 against a ULP of
+  1.39e-17 -- exactly **2.000 ULP**. The validator now prints the ULP count
+  on every row, and the round-13 verifier recomputes it from the two doubles
+  the docstring quotes, so the prose and the arithmetic cannot drift apart.
+
+### Fixed -- a historical measurement presented as a current one
+
+- `validate_did_cross_section_with_python.py` said the pre-v0.102.0 code read
+  "0.3654 / 0.3708 / 0.3613 at n = 300 / 600 / 2400" and that "the correct
+  ratio at 4x the sample size is ~0.5". The example now runs n = 500 / 2000,
+  so those three numbers cannot be re-read off it. The docstring marks them
+  historical and states the asserted band and the current sizes.
+
+### Fixed -- a PRNG-drift justification for a DGP with no noise
+
+- `validate_did_cs_binary_with_python.py` justified its 0.3 window with
+  "PRNG drift between chacha8 and numpy default_rng drives ~0.2 SE offsets
+  at this DGP size". The DGP's outcome is DETERMINISTIC -- `y = 1.0` for the
+  treated cohort in the post period and 0.0 elsewhere -- and only the
+  covariates are drawn at random. There is no outcome noise for two
+  implementations to drift over: the hand-rolled reference, the upstream
+  estimator and the MoonBit port all land on the same ATT with a zero SE, and
+  the measured gap is 0.0000 on every comparison. The validator now prints
+  that gap beside each verdict.
+
+### A new verifier for the class
+
+- `_verify/_verify_round13_validators_1648.py` makes **81** checks.
+  Every expectation is DERIVED from the code the claim is about: the meta
+  gate's stated count is compared with `len(KNOWN_HARDCODED_VERDICT)`; the
+  APOS constants are parsed and the "wider" wording is rejected when they
+  are equal; the quantile and CVaR sample sizes are parsed from `N` and
+  compared with the size the docstring attributes to the estimator; the
+  cluster_iv seed count is derived from `range(100, 130)`; the SSM ratios are
+  compared across four files and against a live run; the bootstrap margins
+  are recomputed as `tol / dev` from the docstring's own table and compared
+  with the code's `TOL`; and the cluster_plr ULP count is COMPUTED from the
+  two doubles the docstring quotes rather than typed into the verifier.
+- It is dry-run against the previous release before it is trusted: against
+  v0.164.7 it reports **35 failures**; against the corrected tree it
+  reports **0**.
+
+### Gate for this release
+
+**48** local gate steps, 0 failed: `moon build` and `moon test --deny-warn`
+green on all four backends; `moon fmt --check` clean at the package root and
+at the workspace root, which is the one CI runs; both READMEs byte-identical;
+24/24 Python cross-checks PASS; 9/9 upstream `pyexample_*` gates PASS; the QA
+LOOP fast scope PASS=19, SKIP=10, WARN=2 with no FAIL;
+the two service checks PASS=2, WARN=0; the validator meta-gate
+PASS with 0 problems; pinned `typos` v1.19.0 exit 0 on the exported tree.
+
 ## [0.164.7] -- the upstream gates' own docstrings, and what they check
 
 `moon.mod` moves 0.164.6 -> 0.164.7. No `.mbt` file changed except one

@@ -37,8 +37,11 @@ things are asserted, in decreasing order of sharpness:
      `cluster_sandwich_se(singletons)` must reproduce `se()`. There
      is no sampling content in this claim at all, so it is asserted
      at a relative 1e-14 rather than a Monte-Carlo band. Measured
-     on the example: bit-identical at n=800 and one ulp apart at
-     n=200 (`0.08850001538500225` vs `0.08850001538500228`).
+     on the example: bit-identical at n=800 and two ULP apart at
+     n=200 (`0.08850001538500225` vs `0.08850001538500228` -- a gap
+     of 2.78e-17 against a ULP of 1.39e-17, i.e. 2.000 ULP, not
+     the one ULP this file used to claim). The run prints the ULP
+     count on every row, so the live number is the one to read.
   2. Each of the three SEs falls by ~1/sqrt(4) when the unit count
      goes 50 -> 200. This is the check the ratio could not make.
   3. The cluster SE exceeds the row SE at BOTH sizes, which is the
@@ -56,6 +59,7 @@ implementation instead of on MoonBit's own output.
 This file FAILS CLOSED.
 """
 
+import math
 import re
 import subprocess
 import sys
@@ -404,13 +408,19 @@ def main() -> None:
         row_se = mb[tag]["row_se"]
         sing = mb[tag]["singleton_se"]
         rel = abs(sing - row_se) / row_se if row_se != 0 else float("inf")
+        # The gap in ULPs, not just in relative terms: "one ulp apart" is a
+        # claim about the last bit, and a relative gap alone does not say
+        # which bit. This file used to say "one ulp" and the measurement is
+        # 2.000, so the count is printed and the prose can point at it.
+        ulp = math.ulp(row_se) if row_se != 0 else 0.0
+        ulps = (abs(sing - row_se) / ulp) if ulp > 0.0 else float("inf")
         good = rel < SINGLETON_REL_TOL
         if not good:
             ok = False
         print(
             f"  singleton identity ({tag}): rel |singleton_se - row_se| = "
-            f"{rel:.3e} < {SINGLETON_REL_TOL:.0e} -> "
-            f"{'PASS' if good else 'FAIL'}"
+            f"{rel:.3e} < {SINGLETON_REL_TOL:.0e} "
+            f"({ulps:.3f} ULP) -> {'PASS' if good else 'FAIL'}"
         )
     print(
         "    (exact algebra: one cluster per observation makes the cluster"

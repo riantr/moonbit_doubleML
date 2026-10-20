@@ -41,13 +41,23 @@ For every `validate_*_with_python.py`:
 
 KNOWN-HARDCODED-VERDICT
 =======================
-Eight reference-only validators still print a literal `PASS`. That
-is a real defect and it is not this version's job to fix eight
-files, so instead of hiding it, the set is written out here and
-asserted against what is on disk. Fixing one means deleting it from
-this list in the same commit, which puts the fix in the diff. The
-point is that the defect is now a reviewable list rather than a
-sentence in a changelog.
+`KNOWN_HARDCODED_VERDICT` below holds 0 files, and the gate prints
+the number of typed verdicts it actually detects on every run. This
+paragraph used to say "Eight reference-only validators still print a
+literal `PASS`" and to say that the set was "written out here"; both
+described a tree that no longer exists, and the code comment beside
+the set said so in the very next file. The exemption was needed while
+the ten files that delegate to `parity_helper.report()` carried no
+verdict expression of their own; `emits_computed_verdict` now
+recognises the delegation directly, so the exemption is unnecessary.
+
+What replaced the list is a RULE, not a sentence: a file that prints a
+hard-coded '...PASS' literal and does not compute a verdict of its own
+is a FAIL (rule 2), and an entry left on the list that no longer prints
+one is also a FAIL. Both directions are checked, so neither the set nor
+this paragraph can go stale unnoticed. The count above is machine-checked
+against the set in `main()` -- add an entry and this paragraph must be
+updated in the same commit, or the gate fails.
 
 FAIL-CLOSED: any classification error exits non-zero.
 """
@@ -350,6 +360,27 @@ def main() -> int:
         problems.append(
             f"{stale}: on KNOWN_HARDCODED_VERDICT but no longer prints a "
             "hard-coded verdict -- remove it from the list (that is good news)"
+        )
+
+    # The docstring's count of known hard-coded verdicts is read and checked
+    # against the set. A number in prose that no code reads is the exact
+    # defect this gate exists to prevent: the docstring said "Eight" while
+    # the set below was empty, and the run stayed green for a release. The
+    # count is now machine-checked in BOTH directions -- adding an entry to
+    # the set without updating the docstring fails the gate.
+    doc = (HERE / "validate_suite_meta.py").read_text(encoding="utf-8")
+    m = re.search(r"`KNOWN_HARDCODED_VERDICT` below holds (\d+) files", doc)
+    if not m:
+        problems.append(
+            "the module docstring no longer states how many files "
+            "KNOWN_HARDCODED_VERDICT holds; that count must be present and "
+            "machine-checked"
+        )
+    elif int(m.group(1)) != len(KNOWN_HARDCODED_VERDICT):
+        problems.append(
+            "the docstring says KNOWN_HARDCODED_VERDICT holds %s file(s) but "
+            "the set holds %d -- update the docstring in the same commit"
+            % (m.group(1), len(KNOWN_HARDCODED_VERDICT))
         )
 
     print("-" * 78)

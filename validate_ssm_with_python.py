@@ -35,9 +35,13 @@ WHAT IS ASSERTED, and why that ordering
    excluded from the sandwich API entirely for related reasons.
 
 2. **The SE falls like `1/sqrt(n)`** across a 4x step, on two seeds.
-   Band (0.40, 0.65) against measurements of 0.5255 and 0.4866. This
-   is the statistical half, and unlike check 1 it can only be as
-   sharp as the estimator's own stability allows.
+   Band (0.40, 0.65). The two measured ratios are 0.5326 (seed 99) and
+   0.4854 (seed 7); the run prints the live value for each seed, and
+   those two numbers were re-measured when this paragraph was last
+   corrected -- the previous pair (0.5255 / 0.4866) had gone stale
+   because nothing read it. This is the statistical half, and unlike
+   check 1 it can only be as sharp as the estimator's own stability
+   allows.
 
 3. **The coefficient converges** and lands near the true 1.0.
 
@@ -75,15 +79,15 @@ from sklearn.model_selection import KFold
 # tighter than any statistical claim in this file.
 HC0_REL_TOL = 1.0e-15
 
-# 1/sqrt(n) band for a 4x step. Measured: 0.5255 (seed 99) and 0.4866
+# 1/sqrt(n) band for a 4x step. Measured: 0.5326 (seed 99) and 0.4854
 # (seed 7). A variance with its 1/n cancelled reads ~1.0; one missing
 # an n (i.e. sqrt(n) * the right answer, the v0.90.0 HC0 defect) reads
 # ~2.0.
 SE_RATIO_LO = 0.40
 SE_RATIO_HI = 0.65
 
-# Coefficient bands. Measured |theta - 1|: 0.0434 / 0.0196 (seed 99)
-# and 0.0394 / 0.0062 (seed 7), at n = 500 / 2000.
+# Coefficient bands. Measured |theta - 1|: 0.0437 / 0.0207 (seed 99)
+# and 0.0391 / 0.0045 (seed 7), at n = 500 / 2000.
 THETA_TOL_SMALL_N = 0.10
 THETA_TOL_BIG_N = 0.05
 

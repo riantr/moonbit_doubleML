@@ -8,31 +8,67 @@ Strong-IV DGP (alpha noise ±0.25, iv_strength = 4.0,
 n_units = 200, n_periods = 5): both the row-level path's
 `J = mean(psi_a)` and the cluster path's fold-weighted J are
 non-zero, so the variance estimate is meaningful in both cases.
-Across 5 seeds, the cluster / row SE ratio on upstream
-DoubleMLPLIV ranges from 0.88 to 5.69 (median ~1.27); the
-cross-implementation agreement on the cluster coefficient is
-much tighter (3.5% on the same DGP).
 
-Assertions:
-  1. Upstream cluster SE is finite and positive; cluster
-     coefficient is in the same ballpark as the row-level
-     coefficient (|c_coef - r_coef| < 5.0 on this DGP; the
-     binary-instrument design has a wide coefficient range
-     driven by the unit-level alpha effect on both Y and D).
-  2. Hand-rolled cluster SE is finite, positive, and within
-     a 5x factor of the upstream cluster SE.
-  3. Cluster SE and row SE are in the SAME ORDER OF MAGNITUDE
-     (cluster SE / row SE in [0.3, 5.0]): the cluster path
-     doesn't blow up by 100x (which would indicate a math bug),
-     and it doesn't collapse to zero (which would indicate
-     the fold-weighted ratio is stuck at a degenerate
-     point). Both extremes have been observed in pre-v0.30.0
-     path simulations on weak-IV DGPs; this DGP is
-     specifically tuned to exercise the well-conditioned region.
-  4. The MoonBit side, read from `examples/cluster` at two sample
-     sizes. See the v0.106.0 note in `main()` for exactly which of
-     the four quantities are asserted there and which are printed
-     without an assertion, and why.
+THE SEED COUNT AND THE RATIO DISTRIBUTION
+==========================================
+The upstream sweep runs 30 seeds (`range(100, 130)`). This paragraph
+used to describe a 5-seed study and quote its numbers ("0.88 to 5.69,
+median ~1.27") as if they described the sweep. They do not: on the 30
+seeds the cluster/row SE ratio is much wider, and several seeds sit
+outside the [0.3, 5.0] band the 5-seed study suggested.
+
+The sweep is also NOT reproducible from run to run. `DoubleMLPLIV` is
+built here without `draw_sample_splitting=False`, so upstream draws its
+own fold split, unseeded, on every call, and the distribution below
+changes between two runs of the same tree -- the median moves and the
+worst seed can change by orders of magnitude. That is the deeper reason
+no number from this sweep is quoted in prose: a quoted one would be a
+snapshot of a single unrepeatable draw. The gate prints the whole
+distribution -- every bucket with its count, plus the median, the
+minimum and the maximum -- on every run, and that output is the number
+to read. The bucket table is COMPLETE: a ratio below 0.1 used to fall
+outside every bucket and vanish from a table whose header said
+"n = 30", and a census with a hole in it is the defect this file exists
+to catch, so the bucket counts are now checked against the total and an
+incomplete census fails the gate.
+
+WHAT IS ASSERTED, and what is only REPORTED
+============================================
+The upstream sweep asserts three things PER SEED, all of them
+finiteness and positivity:
+
+  1. The upstream cluster SE is finite and positive.
+  2. The hand-rolled cluster SE is finite and positive.
+  3. The upstream row SE is positive.
+
+Everything else on the upstream side is REPORTED, not asserted. This
+file used to present three of those reports as assertions:
+
+  * "the cluster coefficient is within 5.0 of the row-level
+    coefficient" -- no coefficient is compared against anything here.
+  * "the hand-rolled cluster SE is within 5x of the upstream cluster
+    SE" -- the factor check is a diagnostic on the band [0.1, 10.0],
+    and it fires on some of the 30 seeds, so the 5x claim was never
+    true on this DGP.
+  * "the cluster/row SE ratio lies in [0.3, 5.0]" -- a printed
+    expectation, not an assertion, and the measurement contradicts it
+    for a minority of the seeds.
+
+The cross-implementation agreement on the cluster COEFFICIENT is
+measured and printed (median and worst relative gap over the 30 seeds),
+and it is NOT tight. The old text called it "much tighter" than the SE
+ratio and quoted a percentage for it that nothing in this file measured;
+the measured gaps are a sizeable fraction of the estimate on a typical
+seed and two orders of magnitude out on the worst one. The printed number
+is the one to read, and it is a diagnostic rather than an assertion for
+exactly that reason.
+
+The MoonBit side, read from `examples/cluster` at two sample sizes, IS
+asserted: the singleton identity, the 1/sqrt(4) band on the cluster-side
+SEs, the cluster/row ratio at the base size, the agreement of the two
+cluster-robust implementations, and the coefficient band. See the
+v0.106.0 note in `main()` for which of those are printed without an
+assertion, and why.
 """
 
 import re
@@ -433,8 +469,9 @@ def main() -> None:
         f"iv_strength={iv_strength}, alpha in [-0.25, 0.25]"
     )
     print(
-        f"Across {len(seeds)} seeds, expect cluster_se / row_se in [0.3, 5.0] "
-        f"(median ~1.3 on upstream)."
+        f"Across {len(seeds)} seeds the upstream cluster_se / row_se ratio is "
+        f"REPORTED, not asserted. The measured distribution -- every bucket "
+        f"with its count, the median, and the range -- is printed below."
     )
     print()
 
@@ -499,6 +536,27 @@ def main() -> None:
         f"our handrolled ref; both are mathematically valid."
     )
 
+    # Cross-implementation agreement on the cluster COEFFICIENT. The module
+    # docstring used to quote a percentage for this that nothing in this file
+    # measured; it is measured here instead and printed, so the claim has a
+    # live source. Reported only -- upstream's fold-weighted estimator and
+    # the hand-rolled one are different algorithms, and on a pathological
+    # split they can land far apart.
+    coef_gaps = sorted(
+        (abs(th_c_up - th_hr) / abs(th_hr), seed)
+        for seed, th_c_up, _se_c, _th_r, _se_r, th_hr, _se_h, _ratio in rows
+        if th_hr != 0
+    )
+    if coef_gaps:
+        coef_med = coef_gaps[len(coef_gaps) // 2][0]
+        coef_worst, coef_worst_seed = coef_gaps[-1]
+        print(
+            f"\nUpstream/handrolled cluster COEFFICIENT relative gap: "
+            f"median {coef_med:.4f}, worst {coef_worst:.4f} "
+            f"(seed {coef_worst_seed}) over {len(coef_gaps)} seeds "
+            f"(diagnostic only)."
+        )
+
     # Diagnostic summary across all seeds (v0.34.0 statistical
     # study). Cluster/row SE ratios span a much wider range than
     # v0.30.0's 5-seed study suggested — the 30-seed study on
@@ -509,11 +567,13 @@ def main() -> None:
     if se_ratios:
       n_total = len(se_ratios)
       buckets = [
+          ("[0, 0.1)", sum(1 for r in se_ratios if 0.0 <= r < 0.1)),
           ("[0.1, 0.3)", sum(1 for r in se_ratios if 0.1 <= r < 0.3)),
           ("[0.3, 5.0]", sum(1 for r in se_ratios if 0.3 <= r < 5.0)),
           ("[5.0, 1e3)", sum(1 for r in se_ratios if 5.0 <= r < 1e3)),
           ("[1e3, inf)", sum(1 for r in se_ratios if r >= 1e3)),
       ]
+      counted = sum(c for _, c in buckets)
       print(
           f"\nCluster/row SE ratio distribution (n={n_total} seeds):"
       )
@@ -525,6 +585,27 @@ def main() -> None:
       print(
           f"  median: {median_se_ratio:.3f}"
       )
+      print(
+          f"  min / max: {se_ratios[0]:.3f} / {se_ratios[-1]:.3f}"
+      )
+      outside = sum(1 for r in se_ratios if not (0.3 <= r < 5.0))
+      print(
+          f"  outside the [0.3, 5.0] band the v0.30.0 study saw: "
+          f"{outside} of {n_total}"
+      )
+      # A census with a hole in it is the defect this file exists to catch.
+      # A ratio below 0.1 used to fall outside every bucket, so the table
+      # said "n = 30" and listed 29 seeds and nobody could tell which one
+      # had gone missing. The bucket counts are now checked against the
+      # total, and an incomplete census fails the gate.
+      if counted != n_total:
+          ok = False
+          print(
+              f"  FAIL the bucket table accounts for {counted} of {n_total} "
+              f"seeds -- the census is incomplete"
+          )
+      else:
+          print(f"  bucket table accounts for all {n_total} seeds")
 
     ok = check_moonbit(ok)
 

@@ -16,11 +16,17 @@ full training fold. The estimator averages psi across folds and the
 moment is `mean(psi_b) / mean(psi_a) = -mean(psi_b)`. The variance uses
 the standard cross-fold `var_est` formula.
 
-The MoonBit `DoubleMLAPOS` should match the hand-rolled reference to
-within `MODEL_TOL = 0.3` for the coefficient and `2 * handrolled_se` for
-the SE. The upstream Python is checked with a wider `UPSTREAM_TOL = 0.3`
-because the closed-form `LinearRegression` learner differs from
-sklearn's defaults.
+The MoonBit `DoubleMLAPOS` is checked against the hand-rolled reference
+with the bound `max(MODEL_TOL, 2 * handrolled_se)`, where `MODEL_TOL = 0.3`.
+The upstream Python is checked with a DIFFERENT shape, and this file used
+to misdescribe that as "a wider `UPSTREAM_TOL = 0.3`". The two constants
+are the same number, and the upstream bound is `UPSTREAM_TOL or
+2 * handrolled_se` -- the SMALLER of the two -- so upstream is not checked
+more loosely than MoonBit, it is checked differently: the MoonBit side
+must clear the larger of the two bounds, the upstream side clears either.
+Upstream is compared at all because it fits sklearn's `LinearRegression` /
+`LogisticRegression` where the hand-rolled reference fits a closed-form
+OLS, so the two differ by model class rather than by algorithm.
 
 Test setup
 ----------

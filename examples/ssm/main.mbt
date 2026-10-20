@@ -131,9 +131,19 @@ fn ssm_line(
 /// law. Measured over seeds 99, 7 and 3141 at n = 500 -> 2000
 /// (p = 5):
 ///
-///     seed  99   0.036788 -> 0.019333   ratio 0.5255
-///     seed   7   0.040243 -> 0.019581   ratio 0.4866
+///     seed  99   0.037151 -> 0.019786   ratio 0.5326
+///     seed   7   0.042103 -> 0.020438   ratio 0.4854
 ///     seed 3141  0.154311 -> 0.019593   ratio 0.1270
+///
+/// The 99 and 7 rows were re-measured when this header was last
+/// corrected: they used to read 0.036788 -> 0.019333 (ratio 0.5255)
+/// and 0.040243 -> 0.019581 (ratio 0.4866), and they had gone stale
+/// because nothing read them -- a number no code consults cannot
+/// announce that the code moved underneath it. The 3141 row is
+/// different: `expand_v107_test.mbt::v107_ssm_se_is_fragile_to_the_split`
+/// re-derives it and pins it, so it cannot drift. For the live values
+/// of the other two, run `validate_ssm_with_python.py` -- it prints
+/// each seed's ratio on every run.
 ///
 /// 99 and 7 sit on 1/sqrt(4) = 0.5. 3141 does not: its SE is already
 /// ~4x the others at n = 500, and at n = 8000 the fit diverges

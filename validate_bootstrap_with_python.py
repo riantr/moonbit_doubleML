@@ -46,17 +46,23 @@ weights, putting the error at 0.63.
 TOLERANCES -- measured, then rounded up
 =======================================
 MoonBit vs theory at n = 100_000, largest absolute deviation over the three
-methods:
+methods, and the margin the window leaves over it:
 
-    mean  0.0075   -> tol 0.05
-    var   0.0161   -> tol 0.05
-    m3    0.0806   -> tol 0.30
-    m4    0.5250   -> tol 1.00
+    mean  0.0075   -> tol 0.05    (6.7x)
+    var   0.0161   -> tol 0.05    (3.1x)
+    m3    0.0806   -> tol 0.30    (3.7x)
+    m4    0.5250   -> tol 1.00    (1.9x)
 
-Each is 2-3x the measured deviation, and none of the windows overlap: the
-tightest gap between two methods is m3's 1.087 (Bayes 2.006 vs wild 0.919),
-so a 0.30 window still separates them. A validator that cannot distinguish the
-three methods is not testing the thing it names.
+The factor is NOT uniform -- it runs from 1.9x to 6.7x -- and this paragraph
+used to say "each is 2-3x", which was true of neither end of that range. The
+run prints the live deviation and the live margin for each quantity, so the
+number to read is the printed one.
+
+None of the windows overlap: the tightest gap between two methods is m3's
+1.087 (Bayes 2.006 vs wild 0.919), so a 0.30 window still separates them,
+and on m4 the two methods are 3 units apart while each window is 1 unit wide.
+A validator that cannot distinguish the three methods is not testing the
+thing it names.
 
 RUN
 ===
@@ -237,6 +243,17 @@ def main() -> int:
     print()
     observed = {m: [ph.val(sec, "%s_%s" % (m, key))
                     for key in ("mean", "var", "m3", "m4")] for m in METHODS}
+
+    # The margin each window leaves over the observed deviation. This used to
+    # be one number in the docstring ("each is 2-3x the measured deviation"),
+    # which was true of neither end of the real range, so it is measured here
+    # and printed instead of remembered.
+    for key in ("mean", "var", "m3", "m4"):
+        idx = ("mean", "var", "m3", "m4").index(key)
+        dev = max(abs(observed[m][idx] - THEORY[m][idx]) for m in METHODS)
+        margin = (TOL[key] / dev) if dev > 0.0 else float("inf")
+        print("  %-4s largest deviation %.4f, window %.2f, margin %.1fx"
+              % (key, dev, TOL[key], margin))
     survivors = discriminating(observed)
     if survivors:
         print("FAIL: the check cannot tell the laws apart -- it would still")

@@ -24,11 +24,12 @@ It runs `examples/parity` (section `cvar`). Three kinds of row:
   doubles, so the port and CPython must agree to ~1e-12.
 * **Estimator** -- `cvar_coef` is a cross-fit estimate whose fold split comes
   from `chacha8`. CPython cannot reproduce the split, so this row is checked
-  against the population target at the accuracy a 2-fold estimate on n=200
+  against the population target at the accuracy a 2-fold estimate on n=400
   reaches, and nothing more is claimed.
 
 THE POPULATION TARGET, SPELLED OUT
 ==================================
+The panel is 400 rows with `d` alternating, so the treated half is 200 rows:
 `y[d == 1]` is `1 + r/100` for `r` in {0, 2, ..., 98}, each value repeated 4x:
 200 rows, 50 distinct. The upper half (sorted indices 100..199) is exactly the
 25 distinct values `k = 25..49`, four times each, so

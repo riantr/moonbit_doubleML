@@ -123,11 +123,19 @@ test "v107_ssm_hc0_is_se" {
 ///|
 /// The SE falls like `1/sqrt(n)` across a 4x step.
 ///
-/// Measured on the two seeds the cross-check uses: 0.5255 (seed 99)
-/// and 0.4866 (seed 7), against `1/sqrt(4) = 0.5`. The band is
+/// Measured on the two seeds the cross-check uses: 0.5326 (seed 99)
+/// and 0.4854 (seed 7), against `1/sqrt(4) = 0.5`. The band is
 /// (0.40, 0.65) -- wide enough for the fold-level random component,
 /// narrow enough to exclude a flat SE (~1.0) and a missing `n`
 /// (~2.0, which is what the v0.90.0 HC0 defect produced).
+///
+/// The assertion below is on the RELATION (`0.40 < ratio < 0.65`), not on
+/// these two numbers, which is why the test never failed when the port
+/// moved and the quoted measurements went stale: 0.5255 / 0.4866 were
+/// what this comment said until the numbers were re-measured. A quoted
+/// measurement that no assertion reads cannot announce that the code
+/// moved underneath it. `validate_ssm_with_python.py` prints the live
+/// ratio for each seed on every run.
 ///
 /// Seed 3141 is deliberately absent, and the next test says why.
 test "v107_ssm_se_scales_like_inverse_sqrt_n" {
