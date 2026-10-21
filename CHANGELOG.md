@@ -9,6 +9,85 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.17] -- the counts that stand for a set
+
+`moon.mod` moves 0.164.16 -> 0.164.17. No `.mbt` changed, so no estimator
+behaviour changed and the test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc /
+wasm / js).
+
+Round 24 audited every COUNT in the README that stands for a set.  Three
+defects, all of one kind: the NUMBER was right and the SET it stood for was
+never written down, so a reader had to guess which set the number counted.
+
+### Fixed -- two counts whose set a reader could not resolve
+
+- "`DoubleMLSSM` has the largest margin of the four" -- which four?  The
+  section offers two candidate fours a few paragraphs apart.  The answer is
+  `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM`: the four
+  estimators whose propensity default was migrated to a classifier by
+  v0.138.0.  The sentence now names all four.
+- "it reproduces all four earlier outcomes" -- the same four.  The sentence
+  now reads "the four hazardous verdicts of v0.132.0-v0.138.0" and names them,
+  so it cannot be confused with the SIX that turned out hazardous later (PQ
+  and QTE, v0.139.0).
+
+Both sets are DERIVED, not asserted.
+`_verify/_verify_count_referents_1650.py` reads the source's own propensity
+defaults, crosses them with the README's migration releases, and checks that
+each of the two sentences names all four.
+
+The archaeology is in the CHANGELOG itself, and it is worth recording because
+the two sentences were written a release apart.  The SSM sentence arrived in
+v0.138.0, where the paragraph above it opened "The four migrations do NOT
+have the same margin" -- the count was NAMED there.  A later condensation
+dropped it ("The migrations do NOT all have the same margin") and left "the
+four" with no antecedent.  The classifier sentence arrived one release
+earlier, in v0.137.0, when the four hazardous verdicts were exactly those
+four; the fifth, `DoubleMLIIVM`, is the case that refutes the classifier.
+
+### Fixed -- a CHANGELOG ordinal that contradicted its own list
+
+- The v0.138.0 entry said "This is the fifth and last estimator to be
+  migrated" and then named four: IRM, APO, APOS and SSM.  The release's own
+  README said "The four migrations", and this file's own headings call
+  v0.132.0 "The first estimator migrated" and v0.134.0 "The second estimator
+  migrated" -- so SSM is the **fourth**.  The entry now says fourth.
+
+### Fixed -- the QA LOOP's gherkin evidence overstated its own split
+
+- The check printed "29/29 mapped test names resolve", although three of the
+  29 are prose citations that name no test at all: they name a method
+  (`padjust validators`), a usage (`storey_m0_hat usage in tsbh/tsby paths`)
+  or a file.  The check's own exemption rule says so, and the project's
+  ledger already recorded the split -- but the message folded the exemption
+  into the numerator.  It now reports the split: "29 mapped names: 26
+  resolve to a real declaration, 3 prose-exempt".  This is the same class as
+  the README's "12 of the 16" that round 22 measured: a number that counts
+  an exemption as a success.
+
+### Added -- a check for every count that stands for a set
+
+- `_verify/_verify_count_referents_1650.py` (**79** checks) checks what the
+  number-coverage verifier cannot: a count whose SET is written down.  It
+  derives the eleven learners and the three classification learners from the
+  README's own learner table and the source's `is_classifier()`, the eight
+  `ml_m`-OLS structs from the source's propensity defaults, the four
+  backends from the CI workflow's target matrix, the four bit-exact mutation
+  cases from the battery's own `MUTATIONS` list, the four probe designs from
+  the v0.136.0 entry's numbered list, and the four migrations from the
+  source crossed with the README's migration releases.  A count that no
+  other tracked verifier owns has to be REGISTERED here, and the inventory
+  check fails on one that is not.
+
+### Added -- a dry-run for the check
+
+- `_verify/_dryrun_round24_1650.py` breaks the counts in six places -- the two
+  sentences lose their named sets, the CHANGELOG's ordinal goes back to
+  "fifth", a source default moves, the QA message goes back to "29/29
+  resolve", and the README grows an unregistered count -- and requires the
+  verifier to fail.  It does: **19** failures, and the counter agrees with
+  the verifier's own summary.
+
 ## [0.164.16] -- the README's shape, checked
 
 `moon.mod` moves 0.164.15 -> 0.164.16. No `.mbt` changed, so no estimator
@@ -6939,7 +7018,7 @@ five new gates, two re-pinned.
 `ml_g` deliberately stays OLS — it models `E[y | x]`, not `P(y = 1 | x)`, so the
 two defaults diverge on purpose.
 
-This is the fifth and last estimator to be migrated: `DoubleMLIRM` (v0.132.0),
+This is the fourth and last estimator to be migrated: `DoubleMLIRM` (v0.132.0),
 `DoubleMLAPO` (v0.134.0), `DoubleMLAPOS` (v0.135.0), and now `DoubleMLSSM`.
 `DoubleMLDIDBinary` was attempted and **abandoned on measurement** (v0.136.0);
 v0.137.0 then measured all eleven remaining defaults one by one and recorded a

@@ -186,6 +186,17 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   README now reads "with **22 estimators** in total".  The arithmetic
 >   itself was never in doubt: `_verify/_verify_round16_provenance_1650.py`
 >   derives the grouping from the INSTALLED upstream package.
+> * **Round 24.** Two sentences used a bare count as a referent -- "the
+>   largest margin of the four" and "all four earlier outcomes" -- without
+>   saying which four.  They are the same four: `DoubleMLIRM`, `DoubleMLAPO`,
+>   `DoubleMLAPOS` and `DoubleMLSSM`, the estimators migrated to a classifier
+>   propensity by v0.138.0.  Both sentences now name them, and the set is
+>   derived by `_verify/_verify_count_referents_1650.py` from the source's own
+>   propensity defaults, so it cannot drift.  The QA LOOP's `gherkin` message
+>   also read "29/29 mapped test names resolve", although 3 of the 29 are
+>   prose citations that name no test at all; it now reports the split
+>   recorded below -- 26 against real declarations, 3 prose-exempt -- so "All
+>   29 resolve" means "29 of 29 under the check's own rule".
 
 """
 
@@ -737,6 +748,75 @@ NEW_V082 = """today -- the public API has been fixed since v0.82, so a future
 release can swap the bodies to a SIMD-vectorised backend (or external
 call to a BLAS-style library) without breaking callers."""
 
+# ==============================================================================
+# 3d.  THE ROUND-24 PATCHES -- two counts whose set a reader could not resolve
+# ==============================================================================
+#
+# Two sentences used a bare count as a referent: "the largest margin of the
+# four" and "all four earlier outcomes".  Both fours are the SAME four --
+# DoubleMLIRM, DoubleMLAPO, DoubleMLAPOS and DoubleMLSSM -- but neither
+# sentence said so, and the section offers two different candidate fours a
+# few paragraphs apart.
+#
+# Where the referents came from, and why they are the same set:
+#
+#   * The SSM sentence was written in v0.138.0, the release that migrated
+#     SSM's propensity default.  At that revision the paragraph above it
+#     opened "The four migrations do NOT have the same margin" and the
+#     paragraph before that listed exactly four migrations -- IRM (v0.132.0),
+#     APO (v0.134.0), APOS (v0.135.0), SSM (v0.138.0).  A later condensation
+#     dropped the count from "The four migrations" ("The migrations do NOT
+#     all have the same margin") and left "the four" with no antecedent.
+#   * The classifier sentence was written one release earlier, in v0.137.0,
+#     when the four hazardous verdicts were exactly those same four; the
+#     fifth, DoubleMLIIVM, is the case that refutes the classifier.
+#
+# Both sets are DERIVED, not asserted: `_verify/_verify_count_referents_1650.py`
+# derives the four from the source (the estimators whose propensity default
+# is a classifier) crossed with the README's own migration releases, and
+# checks that each of these two sentences names all four.  The classifier
+# sentence's own wording changed with it: "all four earlier outcomes" is now
+# "the four hazardous verdicts of v0.132.0-v0.138.0", because "earlier
+# outcomes" pointed at nothing and the release range is what separates these
+# four from the two that turned out hazardous later (PQ and QTE, v0.139.0).
+
+OLD_SSM_MARGIN = """`DoubleMLSSM` has the largest margin of the four, because its score carries
+**two** reciprocals, one per direction (`ssm.mbt:73-74`): the treatment
+propensity `m` and the selection propensity `pi`, so an unbounded regressor
+breaks both denominators independently. On a saturated fixture with true
+`theta = 1.0`, the OLS arm returns `242.116` with SE `185.45` where the
+classifier returns `1.177` with SE `0.0982` -- roughly **200x** on the point
+estimate and **1900x** on the standard error. Across three seeds the OLS
+coefficient also **changes sign** (`+242`, `+106`, `-452`); the classifier's
+spread over the same three seeds is `0.761`."""
+
+NEW_SSM_MARGIN = """`DoubleMLSSM` has the largest margin of the four migrations of
+v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and
+`DoubleMLSSM` -- because its score carries **two** reciprocals, one per
+direction (`ssm.mbt:73-74`): the treatment propensity `m` and the selection
+propensity `pi`, so an unbounded regressor breaks both denominators
+independently. On a saturated fixture with true `theta = 1.0`, the OLS arm
+returns `242.116` with SE `185.45` where the classifier returns `1.177` with
+SE `0.0982` -- roughly **200x** on the point estimate and **1900x** on the
+standard error. Across three seeds the OLS coefficient also **changes sign**
+(`+242`, `+106`, `-452`); the classifier's spread over the same three seeds
+is `0.761`."""
+
+OLD_CLASSIFIER = """A static classifier (read the score: does it carry `1/m`? is it doubly robust?)
+was used to prioritise the probes, and it reproduces all four earlier outcomes
+-- but `DoubleMLIIVM` **refuted** it, carrying `1/m` and `1/(1-m)` on every row
+and still measuring harmless. A reciprocal in the score is not sufficient for
+the hazard; the classifier is a way to decide what to measure first, nothing
+more."""
+
+NEW_CLASSIFIER = """A static classifier (read the score: does it carry `1/m`? is it doubly robust?)
+was used to prioritise the probes, and it reproduces the four hazardous
+verdicts of v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`,
+`DoubleMLAPOS` and `DoubleMLSSM` -- but `DoubleMLIIVM` **refuted** it,
+carrying `1/m` and `1/(1-m)` on every row and still measuring harmless. A
+reciprocal in the score is not sufficient for the hazard; the classifier is a
+way to decide what to measure first, nothing more."""
+
 for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_DID_COUNT, NEW_DID_COUNT),
                     (OLD_EXAMPLE_COUNT, NEW_EXAMPLE_COUNT),
@@ -748,7 +828,9 @@ for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_AGENTS_LINE, NEW_AGENTS_LINE),
                     (OLD_ATTRIB_HEADING, NEW_ATTRIB_HEADING),
                     (OLD_ONE_SCRIPT, NEW_ONE_SCRIPT),
-                    (OLD_V082, NEW_V082)):
+                    (OLD_V082, NEW_V082),
+                    (OLD_SSM_MARGIN, NEW_SSM_MARGIN),
+                    (OLD_CLASSIFIER, NEW_CLASSIFIER)):
     PATCHES.append((_old, _new))
 
 for _old, _new in PATCHES:

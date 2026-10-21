@@ -386,15 +386,24 @@ def c_gherkin():
         s = read(p)
         declared.update(re.findall(r'\btest\s+"([^"]+)"', s))
         declared.update(re.findall(r"\bfn\s+(panic_\w+)\s*\(", s))
-    unresolved = [m for m in mapped
-                  if m.split("(")[0].strip() not in declared
-                  and not re.search(r"\s(?:in|usage|validators|tests)\b|\.", m)]
+    # A cited name that is PROSE -- "padjust validators", "storey_m0_hat usage
+    # in tsbh/tsby paths" -- names a file or a concept, not a test.  The
+    # exemption is the check's own rule and it is not a resolution: the name
+    # still names no declaration.  So the evidence message reports the split
+    # instead of folding the prose into the numerator.  "29/29 mapped test
+    # names resolve" was the same overstatement the README's "12 of the 16"
+    # was: three of the 29 were not test names at all.
+    PROSE = re.compile(r"\s(?:in|usage|validators|tests)\b|\.")
+    prose = [m for m in mapped if PROSE.search(m)]
+    real = [m for m in mapped if not PROSE.search(m)]
+    unresolved = [m for m in real if m.split("(")[0].strip() not in declared]
     if not feats:
         return R("gherkin", "", SKIP, "feature file has no Feature: blocks")
     ok = not unresolved
     return R("gherkin", "", PASS if ok else FAIL,
              f"{len(feats)} Feature / {len(scen)} Scenario / {len(steps)} steps; "
-             f"{len(mapped)-len(unresolved)}/{len(mapped)} mapped test names resolve"
+             f"{len(mapped)} mapped names: {len(real) - len(unresolved)} resolve to a "
+             f"real declaration, {len(prose)} prose-exempt"
              + (f"; {len(wrapped)} wrapped annotation(s) joined" if wrapped else "")
              + (f"; unresolved: {unresolved[:5]}" if unresolved else ""))
 

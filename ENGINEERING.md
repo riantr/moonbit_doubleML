@@ -46,6 +46,17 @@
 >   README now reads "with **22 estimators** in total".  The arithmetic
 >   itself was never in doubt: `_verify/_verify_round16_provenance_1650.py`
 >   derives the grouping from the INSTALLED upstream package.
+> * **Round 24.** Two sentences used a bare count as a referent -- "the
+>   largest margin of the four" and "all four earlier outcomes" -- without
+>   saying which four.  They are the same four: `DoubleMLIRM`, `DoubleMLAPO`,
+>   `DoubleMLAPOS` and `DoubleMLSSM`, the estimators migrated to a classifier
+>   propensity by v0.138.0.  Both sentences now name them, and the set is
+>   derived by `_verify/_verify_count_referents_1650.py` from the source's own
+>   propensity defaults, so it cannot drift.  The QA LOOP's `gherkin` message
+>   also read "29/29 mapped test names resolve", although 3 of the 29 are
+>   prose citations that name no test at all; it now reports the split
+>   recorded below -- 26 against real declarations, 3 prose-exempt -- so "All
+>   29 resolve" means "29 of 29 under the check's own rule".
 
 ## The README as it stood at v0.164.11
 

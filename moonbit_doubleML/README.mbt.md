@@ -89,7 +89,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.16",
+  "riantr/moonbit_doubleML@0.164.17",
 }
 ```
 
@@ -297,15 +297,17 @@ the honest discriminator (`0.270` vs `86.28`, a 320x separation), because the
 mechanism is that an
 unbounded propensity makes `1 / m_hat` explode and takes the variance with it.
 
-`DoubleMLSSM` has the largest margin of the four, because its score carries
-**two** reciprocals, one per direction (`ssm.mbt:73-74`): the treatment
-propensity `m` and the selection propensity `pi`, so an unbounded regressor
-breaks both denominators independently. On a saturated fixture with true
-`theta = 1.0`, the OLS arm returns `242.116` with SE `185.45` where the
-classifier returns `1.177` with SE `0.0982` -- roughly **200x** on the point
-estimate and **1900x** on the standard error. Across three seeds the OLS
-coefficient also **changes sign** (`+242`, `+106`, `-452`); the classifier's
-spread over the same three seeds is `0.761`.
+`DoubleMLSSM` has the largest margin of the four migrations of
+v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and
+`DoubleMLSSM` -- because its score carries **two** reciprocals, one per
+direction (`ssm.mbt:73-74`): the treatment propensity `m` and the selection
+propensity `pi`, so an unbounded regressor breaks both denominators
+independently. On a saturated fixture with true `theta = 1.0`, the OLS arm
+returns `242.116` with SE `185.45` where the classifier returns `1.177` with
+SE `0.0982` -- roughly **200x** on the point estimate and **1900x** on the
+standard error. Across three seeds the OLS coefficient also **changes sign**
+(`+242`, `+106`, `-452`); the classifier's spread over the same three seeds
+is `0.761`.
 
 One caveat worth stating plainly: on a *mild* fixture, where the true
 propensity never reaches the `0.02`/`0.98` clamp, the two learners agree to
@@ -371,11 +373,12 @@ measured evidence** -- no flip was warranted.
 v0.140.0, but it is **not** an `ml_m` defect -- see the note below.
 
 A static classifier (read the score: does it carry `1/m`? is it doubly robust?)
-was used to prioritise the probes, and it reproduces all four earlier outcomes
--- but `DoubleMLIIVM` **refuted** it, carrying `1/m` and `1/(1-m)` on every row
-and still measuring harmless. A reciprocal in the score is not sufficient for
-the hazard; the classifier is a way to decide what to measure first, nothing
-more.
+was used to prioritise the probes, and it reproduces the four hazardous
+verdicts of v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`,
+`DoubleMLAPOS` and `DoubleMLSSM` -- but `DoubleMLIIVM` **refuted** it,
+carrying `1/m` and `1/(1-m)` on every row and still measuring harmless. A
+reciprocal in the score is not sufficient for the hazard; the classifier is a
+way to decide what to measure first, nothing more.
 
 ## Cross-fitting
 
@@ -559,7 +562,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.16** |
+| `moon.mod` version | **0.164.17** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -673,7 +676,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.16, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.17, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

@@ -1,0 +1,121 @@
+
+A. the source's propensity defaults (ground truth for A/B/D)
+   OLS propensity default: 8 -> DoubleMLCVAR, DoubleMLDID, DoubleMLDIDBinary, DoubleMLDIDCS, DoubleMLDIDCSBinary, DoubleMLDIDCrossSection, DoubleMLDIDMulti, DoubleMLPLR
+   classifier default:     8 -> DoubleMLAPO, DoubleMLAPOS, DoubleMLIIVM, DoubleMLIRM, DoubleMLLPLR, DoubleMLPQ, DoubleMLQTE, DoubleMLSSM
+   of which on `ml_m`:     OLS 7, classifier 8
+  ok    the source's propensity defaults were read                     8 OLS, 8 classifier
+  ok    the two `learner_m` owners are PLR and LPLR                    ['DoubleMLPLR']
+
+B. the set the README's 'four' counts
+  ok    the README's migration sentence is findable                    
+   migration releases: {'DoubleMLIRM': 'v0.132.0', 'DoubleMLAPO': 'v0.134.0', 'DoubleMLAPOS': 'v0.135.0', 'DoubleMLSSM': 'v0.138.0', 'DoubleMLPQ': 'v0.139.0', 'DoubleMLQTE': 'v0.139.0', 'DoubleMLLPLR': 'v0.163.3'}
+  ok    the migrations by v0.138.0 are four                            got 4: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
+  ok    the migrations by v0.138.0 are IRM, APO, APOS and SSM          ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
+  ok    every migrated estimator defaults to a classifier in the SOURCE today source classifier set: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
+  *** FAIL ***  the migrated set is EXACTLY the source's `ml_m`-classifier set README says ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM'] / source says ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
+  ok    the SSM margin sentence is findable                            
+  *** FAIL ***  the SSM sentence names all four migrations                 missing: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM']
+  ok    the SSM sentence's count is four                               `DoubleMLSSM` has the largest margin of the four, because its score carries
+  ok    the classifier sentence is findable                            
+  *** FAIL ***  the classifier sentence names all four hazardous verdicts  missing: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
+  ok    the classifier sentence's count is four                        A static classifier (read the score: does it carry `1/m`? is it doubly robust?) 
+  *** FAIL ***  the withdrawn wording 'the largest margin of the four' is gone 
+  *** FAIL ***  the withdrawn wording 'all four earlier outcomes' is gone  
+
+C. the CHANGELOG's v0.138.0 entry agrees with its own list
+  ok    the CHANGELOG calls v0.132.0 the FIRST migration               0.164.17
+  ok    the CHANGELOG calls v0.134.0 the SECOND migration              0.134.0
+  ok    the v0.138.0 entry's ordinal sentence is findable              
+  *** FAIL ***  the v0.138.0 entry says FOURTH, not fifth                  says 'fifth'
+  ok    the v0.138.0 entry names exactly four estimators               ['DoubleMLIRM', 'DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLSSM']
+  ok    the v0.138.0 entry's four are the four the README counts       ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM'] vs ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
+  ok    the v0.138.0 section is findable                               
+  *** FAIL ***  the withdrawn wording is gone from the v0.138.0 entry      still present
+  *** FAIL ***  the v0.138.0 entry says 'fourth'                           
+
+D. the other count claims, derived from the tree
+  ok    the learner table is findable                                  
+  ok    the learner table lists eleven learners                        got 11: ['LinearRegression', 'Ridge', 'Lasso', 'ElasticNet', 'LogisticRegression', 'RFClassifier', 'GBClassifier', 'RFLearner', 'GBLearner', 'ConstantLearner', 'NoopLearner']
+  ok    the learner table marks three as classification                got 3: ['LogisticRegression', 'RFClassifier', 'GBClassifier']
+  ok    the README says the package ships eleven                       
+  ok    the README says three classification learners                  
+  ok    the source's is_classifier() is findable                       
+  ok    the LearnerDispatch enum is findable                           
+  ok    the source's is_classifier() agrees with the table's three     source: ['GBClassifier', 'LogisticRegression', 'RFClassifier'] / table: ['GBClassifier', 'LogisticRegression', 'RFClassifier']
+  ok    the 'Eight structs' sentence is findable                       
+  ok    the 'Eight structs' sentence names eight estimators            ['DoubleMLCVAR', 'DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCrossSection', 'DoubleMLDIDCS', 'DoubleMLDIDCSBinary', 'DoubleMLDIDMulti', 'DoubleMLIIVM']
+  *** FAIL ***  the eight are exactly the source's `ml_m`-OLS estimators   README: ['DoubleMLCVAR', 'DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCS', 'DoubleMLDIDCSBinary', 'DoubleMLDIDCrossSection', 'DoubleMLDIDMulti', 'DoubleMLIIVM'] / source: ['DoubleMLCVAR', 'DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCS', 'DoubleMLDIDCSBinary', 'DoubleMLDIDCrossSection', 'DoubleMLDIDMulti']
+  *** FAIL ***  the source really has eight estimators defaulting `ml_m` to OLS 7: ['DoubleMLCVAR', 'DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCS', 'DoubleMLDIDCSBinary', 'DoubleMLDIDCrossSection', 'DoubleMLDIDMulti']
+  ok    the 'Six rows' sentence is findable                            
+  *** FAIL ***  the six named are exactly the source's classifier-defaulted non-LPLR README: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM'] / source: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
+  *** FAIL ***  the source's classifier-defaulted set minus LPLR is six    ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
+  ok    the CI workflow's target matrix is findable                    
+  ok    CI runs four backends                                          ['native', 'wasm-gc', 'wasm', 'js']
+  ok    the README's four backends are the CI's four                   ['native', 'wasm-gc', 'wasm', 'js']
+  ok    the README says four backends                                  
+  ok    the bit-exact mutation battery is tracked                      
+  ok    the bit-exact battery declares four mutation cases             got 4
+  ok    the README says all four mutations were killed                 
+  ok    the README's 'truncated' and 'mis-tiled' cases are in the battery sign flip on the did contrast a 1e-12 relative nudge on rdd_sse rng key truncated to 8 of 32 bytes rng key tiled once instead of eight times
+
+E. the QA LOOP's gherkin evidence reports the split
+  ok    the gherkin check is green                                     6 Feature / 24 Scenario / 80 steps; 29/29 mapped test names resolve; 1 wrapped annotation(s) joined
+  *** FAIL ***  the gherkin evidence reports the prose-exempt split        6 Feature / 24 Scenario / 80 steps; 29/29 mapped test names resolve; 1 wrapped annotation(s) joined
+  *** FAIL ***  the gherkin evidence reports the resolving count           6 Feature / 24 Scenario / 80 steps; 29/29 mapped test names resolve; 1 wrapped annotation(s) joined
+  *** FAIL ***  the gherkin evidence no longer says '29/29 mapped test names resolve' 6 Feature / 24 Scenario / 80 steps; 29/29 mapped test names resolve; 1 wrapped annotation(s) joined
+  *** FAIL ***  the gherkin evidence's total is the mapped-name count      6 Feature / 24 Scenario / 80 steps; 29/29 mapped test names resolve; 1 wrapped annotation(s) joined
+  ok    the split matches the ledger's recorded counts (26 real, 3 prose-exempt) derived 26/3
+
+F. the inventory: no unregistered count claim
+  ok    the registered claim 'This package ships eleven' is present in the README 
+  ok    the registered claim 'The three classification learners' is present in the README 
+  ok    the registered claim '**Four backends**' is present in the README 
+  *** FAIL ***  the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README NOT FOUND
+  ok    the registered claim '**Eight structs still default `ml_m` to `linea' is present in the README 
+  ok    the registered claim '**Six rows turned out hazardous**' is present in the README 
+  ok    the registered claim 'All six default to a classifier today' is present in the README 
+  *** FAIL ***  the registered claim 'the four hazardous verdicts of v0.132.0-v0.138' is present in the README NOT FOUND
+  ok    the registered claim 'all four mutations killed' is present in the README 
+  ok    the registered claim 'across four probe designs' is present in the README 
+  ok    the registered claim '`mutation` kills three mutants on one kernel' is present in the README 
+  ok    the registered claim 'two different sets of six' is present in the README 
+  ok    the registered claim 'they overlap in only three estimators' is present in the README 
+  ok    the registered claim '**Nine gates whose reference is UPSTREAM, not ' is present in the README 
+  ok    the registered claim 'Three rows -- `DoubleMLDIDCSBinary`' is present in the README 
+  ok    the registered claim 'three vocabularies are in play' is present in the README 
+  ok    the registered claim 'The last three take no cross-fitting option' is present in the README 
+  ok    the registered claim 'all three ship upstream' is present in the README 
+  ok    the owning verifier _verify_ctor_options_1650.py is tracked    _verify_ctor_options_1650.py
+  ok    the owning verifier _verify_ctor_options_1650.py is tracked    _verify_ctor_options_1650.py
+  ok    the owning verifier _verify_round12_pyexample_1647.py is tracked _verify_round12_pyexample_1647.py
+  ok    the owning verifier _verify_shipped_docs_1643.py is tracked    _verify_shipped_docs_1643.py
+  ok    the owning verifier _verify_test_verification_1650.py is tracked _verify_test_verification_1650.py
+  ok    the CHANGELOG's DIDBinary probe section is findable            
+  ok    the CHANGELOG enumerates four probe designs                    got 4
+   scan hits (13): ['Eight structs', 'Four backends', 'Nine gates', 'Seven estimators', 'Six rows', 'Three rows', 'four mutations', 'four probe designs', 'ships eleven', 'three classification learners', 'three estimators', 'three mutants', 'three vocabularies']
+  *** FAIL ***  no unregistered count claim in the README                  ['Seven estimators']
+
+==========================================================================
+79 checks, 19 failed
+*** FAIL ***
+  - the migrated set is EXACTLY the source's `ml_m`-classifier set
+  - the SSM sentence names all four migrations
+  - the classifier sentence names all four hazardous verdicts
+  - the withdrawn wording 'the largest margin of the four' is gone
+  - the withdrawn wording 'all four earlier outcomes' is gone
+  - the v0.138.0 entry says FOURTH, not fifth
+  - the withdrawn wording is gone from the v0.138.0 entry
+  - the v0.138.0 entry says 'fourth'
+  - the eight are exactly the source's `ml_m`-OLS estimators
+  - the source really has eight estimators defaulting `ml_m` to OLS
+  - the six named are exactly the source's classifier-defaulted non-LPLR
+  - the source's classifier-defaulted set minus LPLR is six
+  - the gherkin evidence reports the prose-exempt split
+  - the gherkin evidence reports the resolving count
+  - the gherkin evidence no longer says '29/29 mapped test names resolve'
+  - the gherkin evidence's total is the mapped-name count
+  - the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README
+  - the registered claim 'the four hazardous verdicts of v0.132.0-v0.138' is present in the README
+  - no unregistered count claim in the README
+
+EXACT failure count: 19
