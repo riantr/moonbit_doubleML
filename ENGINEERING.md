@@ -57,6 +57,16 @@
 >   prose citations that name no test at all; it now reports the split
 >   recorded below -- 26 against real declarations, 3 prose-exempt -- so "All
 >   29 resolve" means "29 of 29 under the check's own rule".
+> * **Round 25.** Three NAMES in the README did not survive being used: the
+>   LPLR snippet passed `alpha=1.5` to a constructor that has no `alpha`
+>   (`alpha` is the DGP's), the nonlinear options were named by their
+>   `LearnerDispatch` enum VARIANTS rather than by the package's constructor
+>   functions, and the "21 runnable example binaries" bullet's own
+>   decomposition summed to 19.  All three are fixed in the README, and the
+>   LPLR snippet is fixed in the source docstring too.  The new check
+>   `_verify/_verify_snippet_names_1650.py` derives every constructor's real
+>   parameters from the package, so a snippet that passes a parameter that
+>   does not exist is a failure, not a sentence.
 
 ## The README as it stood at v0.164.11
 

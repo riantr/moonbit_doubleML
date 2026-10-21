@@ -197,6 +197,16 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   prose citations that name no test at all; it now reports the split
 >   recorded below -- 26 against real declarations, 3 prose-exempt -- so "All
 >   29 resolve" means "29 of 29 under the check's own rule".
+> * **Round 25.** Three NAMES in the README did not survive being used: the
+>   LPLR snippet passed `alpha=1.5` to a constructor that has no `alpha`
+>   (`alpha` is the DGP's), the nonlinear options were named by their
+>   `LearnerDispatch` enum VARIANTS rather than by the package's constructor
+>   functions, and the "21 runnable example binaries" bullet's own
+>   decomposition summed to 19.  All three are fixed in the README, and the
+>   LPLR snippet is fixed in the source docstring too.  The new check
+>   `_verify/_verify_snippet_names_1650.py` derives every constructor's real
+>   parameters from the package, so a snippet that passes a parameter that
+>   does not exist is a failure, not a sentence.
 
 """
 
@@ -817,6 +827,65 @@ carrying `1/m` and `1/(1-m)` on every row and still measuring harmless. A
 reciprocal in the score is not sufficient for the hazard; the classifier is a
 way to decide what to measure first, nothing more."""
 
+# ==============================================================================
+# 3e.  THE ROUND-25 PATCHES -- three names that did not survive being used
+# ==============================================================================
+#
+# Round 25 read the published README line by line once more and found three
+# places where the text names something the package does not have.
+#
+# P12. THE LPLR SNIPPET PASSED A PARAMETER THAT DOES NOT EXIST.
+# "DoubleMLLPLR::new(data, alpha=1.5)" -- `DoubleMLLPLR::new` takes `data`,
+# `score`, `n_folds`, `n_folds_inner`, `n_rep`, `seed`, `ml_g` and `ml_m`
+# (`lplr.mbt:352-363`).  There is no `alpha`, on the constructor or on `fit`:
+# `alpha` is the DGP's (`dgp_lplr.mbt:37`), not the estimator's.  The README
+# offers the snippet as copy-pasteable, in a plain `moonbit` fence, so a
+# reader who copies it gets a compile error.  The same wrong line sits in the
+# source docstring at `lplr.mbt:449`; that one is fixed in the source, here.
+#
+# P13. THE NONLINEAR OPTIONS WERE NAMED BY THEIR ENUM VARIANTS.
+# `LearnerDispatch::RandomForestClassifier` and
+# `LearnerDispatch::GradientBoostingClassifier` are VARIANTS of the enum
+# (`learner.mbt:165,169`); the package's own constructors are the functions
+# `LearnerDispatch::random_forest_classifier` and
+# `LearnerDispatch::gradient_boosting_classifier` (`learner.mbt:268,279`).
+# Every other `LearnerDispatch::` name in the README is a function, so this
+# was the one place a reader could copy a name that is not callable the way
+# the rest of the document says it is.
+#
+# P14. A FIGURE AND ITS OWN DECOMPOSITION DID NOT AGREE.
+# "**21 runnable example binaries** -- 16 CLI demos, an HTTP service, a
+# consumer demo and a property-based fuzz harness" sums to 19.  The two
+# missing ones are `examples/bitexact/` and `examples/parity/`, which the
+# README's own Examples section calls "kept as runnable binaries".  Round 22
+# rewrote this bullet from a form with no decomposition at all into one that
+# has one, and the decomposition it wrote was short by two.
+
+OLD_LPLR_SNIPPET = """   ```moonbit
+   let model = DoubleMLLPLR::new(data, alpha=1.5).fit()
+   for w in model.warnings() { println(w) }
+   ```"""
+
+NEW_LPLR_SNIPPET = """   ```moonbit
+   let model = DoubleMLLPLR::new(data).fit()
+   for w in model.warnings() { println(w) }
+   ```"""
+
+OLD_NONLINEAR = """`LearnerDispatch::RandomForestClassifier` and
+`LearnerDispatch::GradientBoostingClassifier` are the nonlinear options."""
+
+NEW_NONLINEAR = """`LearnerDispatch::random_forest_classifier(RFClassifier::new(...))` and
+`LearnerDispatch::gradient_boosting_classifier(GBClassifier::new(...))` are
+the nonlinear options."""
+
+OLD_EXAMPLES_BULLET = """- ✅ **21 runnable example binaries** -- 16 CLI demos, an HTTP service, a
+  consumer demo and a property-based fuzz harness."""
+
+NEW_EXAMPLES_BULLET = """- ✅ **21 runnable example binaries** -- 16 CLI demos, plus
+  `examples/api_server/` (the HTTP service), `examples/consumer_demo/`,
+  `examples/fuzz/`, and the two fixtures `examples/bitexact/` and
+  `examples/parity/`."""
+
 for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_DID_COUNT, NEW_DID_COUNT),
                     (OLD_EXAMPLE_COUNT, NEW_EXAMPLE_COUNT),
@@ -830,7 +899,10 @@ for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_ONE_SCRIPT, NEW_ONE_SCRIPT),
                     (OLD_V082, NEW_V082),
                     (OLD_SSM_MARGIN, NEW_SSM_MARGIN),
-                    (OLD_CLASSIFIER, NEW_CLASSIFIER)):
+                    (OLD_CLASSIFIER, NEW_CLASSIFIER),
+                    (OLD_LPLR_SNIPPET, NEW_LPLR_SNIPPET),
+                    (OLD_NONLINEAR, NEW_NONLINEAR),
+                    (OLD_EXAMPLES_BULLET, NEW_EXAMPLES_BULLET)):
     PATCHES.append((_old, _new))
 
 for _old, _new in PATCHES:

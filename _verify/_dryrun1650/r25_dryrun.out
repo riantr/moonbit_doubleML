@@ -1,0 +1,54 @@
+
+A. the arguments a snippet passes must be real parameters
+  *** FAIL ***  README ```moonbit fence: DoubleMLLPLR::new(alpha=) -- the real parameters are LearnerDispatch, LogisticRegression, data,  
+  *** FAIL ***  the README's fences pass no non-existent argument        1 bad
+  *** FAIL ***  lplr.mbt docstring: DoubleMLLPLR::new(alpha=) -- the real parameters are LearnerDispatch, LogisticRegression, data,  
+  *** FAIL ***  the package's docstrings pass no non-existent argument   1 bad
+  *** FAIL ***  the README's LPLR snippet calls the constructor without `alpha` 
+  *** FAIL ***  the source docstring's LPLR snippet calls it without `alpha` 
+
+B. every `LearnerDispatch::` name the README uses is a public function
+   public functions: constant, elastic_net, gradient_boosting, gradient_boosting_classifier, is_classifier, lasso, linear_regression, logistic_regression, noop, random_forest, random_forest_classifier, ridge
+   enum variants   : 43
+   the README names: GradientBoostingClassifier, RandomForestClassifier, is_classifier, linear_regression, logistic_regression
+  *** FAIL ***  `LearnerDispatch::GradientBoostingClassifier` is a public function it is a VARIANT
+  *** FAIL ***  `LearnerDispatch::RandomForestClassifier` is a public function it is a VARIANT
+  ok    `LearnerDispatch::is_classifier` is a public function          
+  ok    `LearnerDispatch::linear_regression` is a public function      
+  ok    `LearnerDispatch::logistic_regression` is a public function    
+
+C. the example-binaries figure and its decomposition close
+   example packages on disk: 21
+  ok    the example-binaries bullet is findable                        
+  ok    the headline is the tree's example count                       says 21, tree has 21
+  ok    every example path the bullet names exists on disk             []
+  ok    the bullet states a CLI-demo count                             
+  *** FAIL ***  the decomposition closes on the headline                 16 CLI + 0 named = 16, headline 21
+  *** FAIL ***  the bullet names the two fixture examples                []
+
+D. the withdrawn forms are gone
+  *** FAIL ***  'alpha=1.5' appears nowhere                              in 2 place(s)
+  *** FAIL ***  'LearnerDispatch::RandomForestClassifier' appears nowhere in 1 place(s)
+  *** FAIL ***  'LearnerDispatch::GradientBoostingClassifier' appears nowhere in 1 place(s)
+  *** FAIL ***  '16 CLI demos, an HTTP service' appears nowhere          in 1 place(s)
+
+==========================================================================
+21 checks, 14 failed
+*** FAIL ***
+  - README ```moonbit fence: DoubleMLLPLR::new(alpha=) -- the real parameters are LearnerDispatch, LogisticRegression, data, 
+  - the README's fences pass no non-existent argument
+  - lplr.mbt docstring: DoubleMLLPLR::new(alpha=) -- the real parameters are LearnerDispatch, LogisticRegression, data, 
+  - the package's docstrings pass no non-existent argument
+  - the README's LPLR snippet calls the constructor without `alpha`
+  - the source docstring's LPLR snippet calls it without `alpha`
+  - `LearnerDispatch::GradientBoostingClassifier` is a public function
+  - `LearnerDispatch::RandomForestClassifier` is a public function
+  - the decomposition closes on the headline
+  - the bullet names the two fixture examples
+  - 'alpha=1.5' appears nowhere
+  - 'LearnerDispatch::RandomForestClassifier' appears nowhere
+  - 'LearnerDispatch::GradientBoostingClassifier' appears nowhere
+  - '16 CLI demos, an HTTP service' appears nowhere
+
+EXACT failure count: 14
+failure count after each mechanism: [0, 4, 7, 11, 14]

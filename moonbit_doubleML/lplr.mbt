@@ -446,7 +446,7 @@ pub fn DoubleMLLPLR::learner_m(self : DoubleMLLPLR) -> LearnerDispatch {
 /// So warnings are RETURNED, not emitted. The caller asks:
 ///
 /// ```moonbit nocheck
-/// let model = DoubleMLLPLR::new(data, alpha=1.5).fit()
+/// let model = DoubleMLLPLR::new(data).fit()
 /// for w in model.warnings() {
 ///   println(w)          // the CALLER decides whether to print
 /// }

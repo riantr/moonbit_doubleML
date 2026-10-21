@@ -9,6 +9,69 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.18] -- the names that did not survive being used
+
+`moon.mod` moves 0.164.17 -> 0.164.18. One `.mbt` changed -- `lplr.mbt`, and
+only its docstring -- so no estimator behaviour changed and the test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Round 25 read the published README once more and audited the NAMES in it.
+Three did not survive being used.  None of them is a wrong claim about
+behaviour, which is exactly why no claim verifier could see them: a
+well-formed claim about a call that does not compile is still a well-formed
+claim.
+
+### Fixed -- a snippet that passed a parameter that does not exist
+
+- "let model = DoubleMLLPLR::new(data, alpha=1.5).fit()" --
+  `DoubleMLLPLR::new` takes `data`, `score`, `n_folds`, `n_folds_inner`,
+  `n_rep`, `seed`, `ml_g` and `ml_m` (`lplr.mbt:352-363`).  There is no
+  `alpha`, on the constructor or on `fit`: `alpha` is the DGP's
+  (`dgp_lplr.mbt:37`), not the estimator's.  The README offers the snippet as
+  copy-pasteable, in a plain `moonbit` fence, so a reader who copies it gets
+  a compile error.  The same wrong line sat in the source docstring at
+  `lplr.mbt:449`; that one is fixed in the source too.
+
+### Fixed -- the nonlinear options were named by their enum variants
+
+- "`LearnerDispatch::RandomForestClassifier` and
+  `LearnerDispatch::GradientBoostingClassifier` are the nonlinear options" --
+  those are VARIANTS of the enum (`learner.mbt:165,169`); the package's own
+  constructors are the functions `LearnerDispatch::random_forest_classifier`
+  and `LearnerDispatch::gradient_boosting_classifier` (`learner.mbt:268,279`).
+  Every other `LearnerDispatch::` name in the README is a function, so this
+  was the one place a reader could copy a name that is not callable the way
+  the rest of the document says it is.
+
+### Fixed -- a figure and its own decomposition did not agree
+
+- "**21 runnable example binaries** -- 16 CLI demos, an HTTP service, a
+  consumer demo and a property-based fuzz harness" sums to 19.  The two
+  missing ones are `examples/bitexact/` and `examples/parity/`, which the
+  README's own Examples section calls "kept as runnable binaries".  Round 22
+  rewrote this bullet from a form with no decomposition at all into one that
+  has one, and the decomposition it wrote was short by two.  The bullet now
+  names all five.
+
+### Added -- a check that the names the README uses are the package's names
+
+- `_verify/_verify_snippet_names_1650.py` (**21** checks) derives every
+  constructor's real parameters from the package and checks that no snippet --
+  in the README's fences OR in the package's own docstrings, which is what
+  `moon ide doc` shows -- passes a parameter that does not exist.  It checks
+  that every `LearnerDispatch::X` the README names is a public FUNCTION
+  rather than an enum variant, and that the example-binaries figure and its
+  own decomposition close.
+
+### Added -- a dry-run that proves each of its mechanisms
+
+- `_verify/_dryrun_round25_1650.py` breaks the names one mechanism at a time
+  and requires the failure count to GROW at every step: **14** failures at the
+  end, 0 -> 4 -> 7 -> 11 -> 14, and the counter agrees with the verifier's
+  own summary.  Round 24's dry-run had six mechanisms and one of them
+  contributed ZERO failures -- it patched `ml_g` where it meant `ml_m` -- and
+  the dead control hid inside a passing run.  This one cannot hide.
+
 ## [0.164.17] -- the counts that stand for a set
 
 `moon.mod` moves 0.164.16 -> 0.164.17. No `.mbt` changed, so no estimator
