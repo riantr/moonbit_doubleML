@@ -39,6 +39,13 @@
 >   paragraph that opened with half a sentence, a claim that one API shape
 >   covered all 22 estimators when six constructors differ, and an estimator
 >   list that summed to 21 under a headline that said 22.
+> * **Round 23.** The opening sentence's "22 estimators in total" could be read
+>   as UPSTREAM's count.  Upstream has **21** estimator classes -- the 19
+>   name-identical ones plus `RDFlex` and `DoubleMLDIDCS` -- and the 22 is
+>   this port's, which is what the next sentence's 19 + 2 + 1 says.  The
+>   README now reads "with **22 estimators** in total".  The arithmetic
+>   itself was never in doubt: `_verify/_verify_round16_provenance_1650.py`
+>   derives the grouping from the INSTALLED upstream package.
 
 ## The README as it stood at v0.164.11
 

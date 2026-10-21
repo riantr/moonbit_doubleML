@@ -195,6 +195,12 @@ _verify/_lplr_r17_1680/_fuzz_dump_1680.log
 # stays trackable.
 _verify/_dryrun*/r*/
 _verify/_dryrun*/v*/
+# A PROBE checkout of a sibling repository, used to check a claim that
+# lives in ANOTHER project (the "Used By" figures are runtime values from
+# pyroduct's dmlref, and nothing in this tree can falsify them).  Same
+# reasoning as the work trees above: it is recreated on demand, tens of
+# megabytes, and the VERDICT is what matters.
+_verify/_dryrun*/p*/
 
 # The pinned-typos gate's own by-products: the `git archive` export it
 # scans, the archive itself, and the pinned binary it downloads.  The gate

@@ -9,6 +9,89 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.16] -- the README's shape, checked
+
+`moon.mod` moves 0.164.15 -> 0.164.16. No `.mbt` changed, so no estimator
+behaviour changed and the test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc /
+wasm / js).
+
+Round 22 found fourteen defects in the README by reading it.  Two of them
+were not claims at all -- they were SHAPE -- and no claim-verifier can see
+either kind, because a well-formed claim about nothing is still a
+well-formed claim.
+
+### Fixed -- whose 22 estimators?
+
+- The opening sentence read "A pure-MoonBit port of the `doubleml-for-py`
+  Python package -- the Python ecosystem's most mature Double / Debiased
+  Machine Learning implementation -- 22 estimators in total."  The subject
+  of that sentence is the PORT, and the next sentence's 19 + 2 + 1 sums to
+  22, which is the port's count -- but the appositive in the middle names
+  the UPSTREAM package, and a reader who took the number with it is told
+  upstream has 22 estimator classes when it has **21**: the 19 name-identical
+  ones plus `RDFlex` and `DoubleMLDIDCS`.  The README now reads "with **22
+  estimators** in total".
+- The arithmetic itself was never in doubt.  `_verify/_verify_round16_provenance_1650.py`
+  derives the whole grouping from the INSTALLED upstream package, so 21
+  upstream classes plus this port's one estimator with no 1:1 class is
+  already machine-checked; what was left was only the reading.
+
+### Added -- a check for the document's SHAPE
+
+- `_verify/_verify_readme_structure_1650.py` (**21** checks) checks
+  what every other verifier in this repository does not: whether the
+  document is WELL FORMED.  It covers the one-H1 rule, heading levels that
+  never skip a level, closed code fences, tables whose rows agree on their
+  column count and carry a real separator row, paragraphs that do not open
+  mid-sentence, no trailing whitespace, no tabs, no runs of blank lines,
+  **absolute** markdown link targets, and pointers -- "see below", "the
+  table above", a bolded section name -- that resolve to something.
+- The link rule is the repository's own convention made machine-checked: the
+  registry serves exactly one file, so a relative link to a file in the
+  repository is a link to nowhere on the published page.  Paths are code
+  spans, not links.
+- The rules are deliberately narrow, and the file says why.  A paragraph may
+  open with "So", "Because" or "Then" -- a sentence can start with a
+  capitalised conjunction -- and only a LOWERCASE opening word is treated as
+  a cut sentence.  A bold phrase is not a section reference, and only a bold
+  phrase immediately followed by "above" or "below" is treated as a
+  pointer.  An earlier draft of this check flagged four innocent paragraphs
+  and seventeen innocent bold phrases, which is how a structural check
+  learns to be worthless.
+- The dry-run breaks the shape in six places -- a skipped heading level, a
+  paragraph that opens mid-sentence, a relative link, a table row that
+  loses a cell, an unclosed code fence, and a "see below" pointer with
+  nothing below it -- and reports **6** failures, with the counter
+  checked against the verifier's own summary.
+
+### Verified -- the claims that live in ANOTHER repository
+
+- The README's "Used By" section quotes what pyroduct's `dmlref` measures:
+  "same nuisance (OLS), `n = 400`, true `theta = 1.5`, `theta` delta `0.017`
+  (1.667 vs 1.685) and `se` delta `0.001` (0.153 vs 0.152)".  Nothing in
+  THIS tree can falsify those -- they are runtime values from another
+  project -- so they were checked by cloning pyroduct, building it against
+  this package's published **0.163.3**, and running its own comparison
+  report.  The report prints:
+
+      same nuisance (OLS) | 1.667 | 1.685 | 0.017 | 0.167 | 0.185 | 0.153/0.152
+
+  Every quoted figure is exact, and the pin is still `0.163.3`.  The claim
+  needed no correction; it needed checking.
+- pyroduct's `dmlref` test suite also passes against that published pin
+  (6 / 6), so the downstream consumer really is still working against this
+  package.
+
+### Gate for this release
+
+**48** local gate steps, **0** failed: `moon build` and
+`moon test --deny-warn` green on all four backends; `moon fmt --check` clean
+at the package root and at the workspace root, which is the one CI runs; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19,
+SKIP=10, WARN=2 with no FAIL; the two service checks
+PASS=2, WARN=0; the validator meta-gate PASS with 0 problems.
+
 ## [0.164.15] -- the README, read line by line
 
 `moon.mod` moves 0.164.14 -> 0.164.15. No `.mbt` changed, so no estimator

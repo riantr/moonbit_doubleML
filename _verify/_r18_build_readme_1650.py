@@ -179,6 +179,13 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   paragraph that opened with half a sentence, a claim that one API shape
 >   covered all 22 estimators when six constructors differ, and an estimator
 >   list that summed to 21 under a headline that said 22.
+> * **Round 23.** The opening sentence's "22 estimators in total" could be read
+>   as UPSTREAM's count.  Upstream has **21** estimator classes -- the 19
+>   name-identical ones plus `RDFlex` and `DoubleMLDIDCS` -- and the 22 is
+>   this port's, which is what the next sentence's 19 + 2 + 1 says.  The
+>   README now reads "with **22 estimators** in total".  The arithmetic
+>   itself was never in doubt: `_verify/_verify_round16_provenance_1650.py`
+>   derives the grouping from the INSTALLED upstream package.
 
 """
 
@@ -527,6 +534,43 @@ the honest discriminator (`0.270` vs `86.28`, a 320x separation), because the
 mechanism is that an"""
 
 PATCHES.append((OLD_MARGINS, NEW_MARGINS))
+
+# ==============================================================================
+# 3b.  THE ROUND-23 PATCH -- whose 22 estimators?
+# ==============================================================================
+#
+# The opening sentence is:
+#
+#   "A pure-MoonBit port of the `doubleml-for-py` Python package -- the Python
+#    ecosystem's most mature Double / Debiased Machine Learning implementation
+#    -- 22 estimators in total."
+#
+# The subject of that sentence is the PORT, so "22 estimators in total"
+# predicates the port -- and the next sentence ("**19** match a class of the
+# same name in upstream; **2** are renamed; and **1** has no 1:1 upstream
+# class") sums to 22, which is the port's count.  Upstream has **21**
+# estimator classes: the 19 name-identical ones plus `RDFlex` and
+# `DoubleMLDIDCS`.  The arithmetic is right.
+#
+# But the appositive in the middle names the UPSTREAM package, and a reader
+# who takes "22 estimators in total" to belong to it is told upstream has 22
+# when it has 21.  The fix is one word and it makes the count parallel with
+# the 19 / 2 / 1 that follow, which are all bold for exactly this reason.
+#
+# `_verify/_verify_round16_provenance_1650.py` already derives the grouping
+# from the INSTALLED upstream package -- 21 upstream classes plus the one
+# port estimator with no 1:1 class -- so the arithmetic this sentence
+# describes is machine-checked; what was left was only the reading.
+
+OLD_TWENTY_TWO = """package -- the Python ecosystem's most mature Double / Debiased Machine
+Learning implementation -- 22 estimators in total. **19** match a
+class of the same name in upstream; **2** are renamed -- `DoubleMLRDD` is upstream's RDD estimator (upstream"""
+
+NEW_TWENTY_TWO = """package -- the Python ecosystem's most mature Double / Debiased Machine
+Learning implementation -- with **22 estimators** in total. **19** match a
+class of the same name in upstream; **2** are renamed -- `DoubleMLRDD` is upstream's RDD estimator (upstream"""
+
+PATCHES.append((OLD_TWENTY_TWO, NEW_TWENTY_TWO))
 
 # ==============================================================================
 # 3c.  THE ROUND-22 PATCHES -- a line-by-line read of the published text
