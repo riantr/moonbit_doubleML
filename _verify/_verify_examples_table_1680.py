@@ -106,7 +106,16 @@ check("plpr row says 60 units x 4 periods",
 print("")
 print("== the prose above the table ==")
 check("prose says 14 of the 16 print a true value", "**14** of the 16" in readme)
-check("prose says 12 of the 16 print a 95 % CI", "**12** of the 16" in readme)
+# ROUND 22: the figure was 12 and was never right.  The measuring script's
+# CI regex ended with `\[.*\]`, which matches ANY line with a bracket pair,
+# and `examples/pava` prints `case[v0] n=4 pava = 0.625 ...` -- so pava
+# counted as printing an interval.  It prints none.  The README's own
+# breakdown beside the figure already named FIVE demos that print no CI
+# (pava, splitting, apos, cluster, ssm), and 16 - 5 = 11.
+# `_verify/_verify_cli_demo_ci_1650.py` re-derives the count from the
+# drivers' output and pins this line.
+check("prose says 11 of the 16 print a 95 % CI", "**11** of the 16" in readme)
+check("the withdrawn figure 12 is gone", "**12** of the 16" not in readme)
 check("the old blanket claim is gone",
       "demos (print true-vs-estimated theta and a 95 % CI)" not in readme)
 check("the CLI-demos heading no longer overclaims",

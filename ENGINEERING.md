@@ -19,13 +19,26 @@
 > The records that hold the *measurements* are in `_verify/` and are
 > referenced from both documents.
 >
-> **One correction, 2026-10-21 (round 21).** The propensity-margin paragraph
-> further down quotes a **366x** separation for `DoubleMLIRM` and a **300x**
-> one for `DoubleMLAPO`. Both figures were re-measured against the current
-> tree and are **367x** and **320x**. The ledger's body is left exactly as it
-> was published, because this document is a snapshot; `README.mbt.md` carries
-> the corrected figures, and the measurement is in
-> `_verify/_hazard_margins_1650.json`.
+> **Corrections, 2026-10-21.** This document's body is the README as it
+> was published at `v0.164.11`, and a snapshot is not rewritten -- so the
+> corrections live here, beside the corrected figures, and in
+> `README.mbt.md`, which is the document the registry actually serves.
+>
+> * **Round 21.** The propensity-margin paragraph further down quotes a
+>   **366x** separation for `DoubleMLIRM` and a **300x** one for
+>   `DoubleMLAPO`.  Both figures were re-measured against the current tree
+>   and are **367x** and **320x**.  The measurement is in
+>   `_verify/_hazard_margins_1650.json`.
+> * **Round 22.** The Examples section quotes **12** of the 16 CLI demos
+>   printing a 95 % CI.  The count is **11**: the passage's own breakdown
+>   names five demos that print none, and 16 - 5 = 11.  The 12 came from a
+>   measuring regex whose last alternative matched ANY bracketed line, so
+>   `examples/pava`'s `case[v0]` case label counted as an interval.  The
+>   measurement is in `_verify/_cli_demo_ci_1650.json`.  Round 22 also
+>   corrected thirteen passages of prose in the README -- among them a
+>   paragraph that opened with half a sentence, a claim that one API shape
+>   covered all 22 estimators when six constructors differ, and an estimator
+>   list that summed to 21 under a headline that said 22.
 
 ## The README as it stood at v0.164.11
 

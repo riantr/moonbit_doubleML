@@ -9,6 +9,143 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.15] -- the README, read line by line
+
+`moon.mod` moves 0.164.14 -> 0.164.15. No `.mbt` changed, so no estimator
+behaviour changed and the test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc /
+wasm / js).
+
+Round 22 did what the standing brief asks for -- read the README line by
+line and check every claim it makes -- and found fourteen passages that were
+wrong, ambiguous or stale.  One figure was never right, and it had been
+right-looking for a long time.
+
+### Fixed -- a figure the README's own breakdown contradicted
+
+- The Examples section said **12** of the 16 CLI demos print a 95 % CI.  The
+  count is **11**.  The passage names FIVE demos that print no CI --
+  `examples/pava`, `examples/splitting`, `examples/apos`, `examples/cluster`
+  and `examples/ssm` -- and 16 - 5 = 11, so the headline contradicted the
+  breakdown printed beside it.
+- The 12 came from the measuring script, whose CI regex ended with
+  `\[.*\]`: ANY line with a bracket pair counted as an interval.
+  `examples/pava` prints `case[v0] n=4 pava = 0.625 ...`, so pava "printed a
+  CI" because of a case label.  It prints no interval, no confidence bound
+  and no theta at all.  One false positive, one wrong figure.
+- Re-measured with a definition an actual interval has to satisfy -- a
+  named confidence level, a named interval, or both endpoints -- the count
+  is **11**, and the eleven are `apo`, `cvar`, `datasets`, `did_binary`,
+  `did_cross_section`, `did_cs`, `did_cs_binary`, `did_multi`, `lplr`,
+  `main` and `plpr`.
+- The old figure is now measured too, not just remembered: the verifier
+  runs the bracket rule as well, and the difference between 11 and 12 must
+  be exactly `pava`.  If a future driver starts printing something
+  bracket-shaped, the difference grows and the check says so.
+- The v0.163.8 CHANGELOG entry carried the same 12, so it was corrected in
+  place -- following the precedent set in v0.164.14, where historical
+  entries quoting figures the measurements never supported were corrected
+  and the correction recorded here.
+
+### Fixed -- thirteen passages of prose that were wrong, ambiguous or stale
+
+- **A paragraph with no subject.** The "Numerical parity with CPython"
+  section opened mid-sentence with "patterns instead, against
+  `examples/bitexact/`" -- the condensation had dropped the line that said
+  what was being compared, and the heading was followed by half a sentence.
+  The tier statement that goes with it is back.
+- **An API claim that the API reference contradicted.** The pitch promised
+  "a unified `DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` API across
+  all 22 estimators", and the Features list said "One API shape ... Six
+  estimators differ in their accessors".  But the API reference lists TWO
+  different sets of six -- the accessor six and the CONSTRUCTOR six -- and
+  they overlap in only three estimators.  A reader who believed the pitch
+  would write `DoubleMLBLP::new(data, n_folds, n_rep, seed)`, which does not
+  compile.  Both sets are now named in the Features list.
+- **An estimator list that did not sum to its own headline.** The Features
+  bullet said "the DID family (5)", so the list came to 21 under a headline
+  that said 22.  There are six DID-family estimators, and the table has all
+  of them.
+- **A double count.** "21 runnable example binaries, an HTTP service, and a
+  property-based fuzz harness" reads as 23, because the HTTP service and the
+  fuzz harness are two OF the 21.
+- **"The four tree/logistic learners" was three.** The README's own learner
+  table marks exactly three learners as classification, and
+  `learner.mbt:200-202` returns true for exactly those three.  The other two
+  tree learners predict a mean, not a probability.
+- **Two passages that described what the README used to say** -- "were for
+  several releases described here as MoonBit-specific extras" and "were
+  previously marked *(extra)*, which was wrong".  A reader who has only the
+  published page has no earlier releases to compare against; the history
+  lives in the CHANGELOG and in `ENGINEERING.md`, which is where a reader
+  should look for it.
+- **"AMENDED 2026-10-20 (round 16)."**  The naming-map note now opens with
+  "How the names map".  "Round 16" is the project's own review vocabulary
+  and meant nothing to a reader of the published page, and "AMENDED" promises
+  a previous version they never saw.  The substance is unchanged.
+- **"AGENTS.md <- this file".**  Every other line in that tree names its own
+  file, so "this file" had exactly one plausible antecedent -- the document
+  being read.  It now says what the file is.
+- **A heading that skipped a level.**  `## Attribution` was followed by
+  `#### Differences from upstream`, with nothing at the level in between.
+- **"One script per upstream class" was not true of its own table.**
+  `pyexample_pq.py` drives three upstream classes and `pyexample_suite.py`
+  drives a family.
+- **A version promise 80 releases stale.**  "the public API is fixed so a
+  v0.82+ release can swap the bodies" read as a release still to come.  The
+  API has been fixed since v0.82; the package is at v0.164.x.
+
+### Added -- the claims that cannot fail on their own are now derived
+
+- The README's "Not covered, so not claimed" section is the part of the
+  document a reader trusts most -- it says what the project's own
+  verification does NOT cover -- and it is the part that rots silently,
+  because every claim in it is a claim about an ABSENCE.  "No CI workflow
+  runs the fuzz check" is not a measurement, it is a sentence: if somebody
+  wires the fuzz check into a workflow, the README keeps saying the
+  opposite and nothing notices.
+- `_verify/_verify_test_verification_1650.py` (**40** checks)
+  derives those claims from the QA registry itself rather than from grep:
+  the mutation battery's size is the number of elements in its MUTS list,
+  the fuzz check's invocation count is the number of elements in its seed
+  tuple, the `coverage` check's own evidence string says it is a proxy, and
+  "no CI workflow runs it" is decided by scanning the workflow files for
+  the check id in a line that is NOT a comment.  The census, the validator
+  count and the example count are counted from the tree.
+- `_verify/_verify_cli_demo_ci_1650.py` (**34** checks) re-runs the
+  16 CLI demos and pins the counts the README quotes.  The measurement is
+  tracked in `_verify/_cli_demo_ci_1650.json`, and the fresh measurement, the
+  record and the README must all agree -- three-way agreement, or the check
+  fails.
+
+### Changed -- the fixes live in the generator, because the README is built
+
+- `README.mbt.md` is generated by `_verify/_r18_build_readme_1650.py`, so an
+  edit made to it directly would be reverted by the next bump.  Each
+  correction is a (old, new) pair in that builder's `PATCHES`, next to a
+  comment carrying what it was and how it was checked, and the builder
+  aborts if a patch matches anything other than exactly once.
+- `ENGINEERING.md` is the README as it stood at v0.164.11, word for word,
+  and the round-18 verifier asserts that it stays so -- so its body still
+  carries the old wording, and the corrections are recorded in its
+  **banner** instead, with the corrected figures beside them.
+
+### Verified
+
+Both dry-runs bite, and both counters agree with the verifiers' own
+summaries: the test-verification dry-run reports **6 failures** on a
+tree where a census, a battery size, a harness signature and a workflow have
+all been made to contradict the README; the CI dry-run reports **3**
+failures on a tree that quotes the withdrawn figure and whose measurement
+record has been tampered with.
+
+**48** local gate steps, **0** failed: `moon build` and
+`moon test --deny-warn` green on all four backends; `moon fmt --check` clean
+at the package root and at the workspace root, which is the one CI runs; both
+READMEs byte-identical; 24/24 Python cross-checks PASS; 9/9 upstream
+`pyexample_*` gates PASS; the QA LOOP fast scope PASS=19,
+SKIP=10, WARN=2 with no FAIL; the two service checks
+PASS=2, WARN=0; the validator meta-gate PASS with 0 problems.
+
 ## [0.164.14] -- the margins the README quoted were never right
 
 `moon.mod` moves 0.164.13 -> 0.164.14. No estimator behaviour changed: the
@@ -2279,7 +2416,7 @@ separate rows.
 
 - "16 are CLI-style numeric demos (print true-vs-estimated theta and a 95 % CI)"
   was an overclaim. Measured per driver: **14** of the 16 print a true value
-  and **12** of the 16 print a 95 % CI. `examples/pava` and
+  and **11** of the 16 print a 95 % CI. `examples/pava` and
   `examples/splitting` print neither; `examples/apos`, `examples/cluster` and
   `examples/ssm` print a true value but no CI. The README now says so, and
   names which.

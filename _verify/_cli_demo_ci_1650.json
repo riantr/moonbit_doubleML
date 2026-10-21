@@ -1,0 +1,105 @@
+{
+  "drivers": 16,
+  "loose_count": 12,
+  "loose_would_add": [
+    "pava"
+  ],
+  "measured_at": "2026-10-21",
+  "measured_by": "_verify/_verify_cli_demo_ci_1650.py",
+  "no_ci": [
+    "apos",
+    "cluster",
+    "pava",
+    "splitting",
+    "ssm"
+  ],
+  "no_true": [
+    "pava",
+    "splitting"
+  ],
+  "note": "Which of the 16 CLI-style numeric demos print a true value and which print a 95 % CI. Only decisions are recorded, not numbers. 'loose_*' keeps the OLD bracket rule, whose `\\[.*\\]` alternative counted `examples/pava`'s `case[v0]` label as an interval; that is where the withdrawn figure of 12 came from.",
+  "per_driver": {
+    "apo": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "apos": {
+      "ci": false,
+      "loose": false,
+      "true": true
+    },
+    "cluster": {
+      "ci": false,
+      "loose": false,
+      "true": true
+    },
+    "cvar": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "datasets": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "did_binary": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "did_cross_section": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "did_cs": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "did_cs_binary": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "did_multi": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "lplr": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "main": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "pava": {
+      "ci": false,
+      "loose": true,
+      "true": false
+    },
+    "plpr": {
+      "ci": true,
+      "loose": true,
+      "true": true
+    },
+    "splitting": {
+      "ci": false,
+      "loose": false,
+      "true": false
+    },
+    "ssm": {
+      "ci": false,
+      "loose": false,
+      "true": true
+    }
+  },
+  "print_ci": 11,
+  "print_true": 14
+}

@@ -1,0 +1,64 @@
+
+A. the QA registry the README describes
+  PASS  the QA registry loads and has its checks
+
+B. the counts the README states are the counts in the tree
+  PASS  the README states the .mbt census
+  *** FAIL ***  the README's total .mbt files count (220) is the tree's (221)
+  *** FAIL ***  the README's production count (65) is the tree's (66)
+  PASS  the README's blackbox test count (129) is the tree's (129)
+  PASS  the README's whitebox test count (26) is the tree's (26)
+  PASS  the three .mbt classes sum to the total
+  PASS  the README states the Python reference script count
+  PASS  the README's 24 reference scripts are the tree's (24)
+  PASS  the README states the example binary count
+  PASS  the README's 21 example binaries are the tree's (21)
+
+C. the absence claims are still true
+  PASS  the README makes the '`mutation` kills three mutants on one kernel' claim
+  PASS  the README makes the '`examples/fuzz/` has no' claim
+  *** FAIL ***  the mutation battery has three mutants (the tree has 4)
+  PASS  the mutation battery targets ONE kernel (the tree targets ps_processor.mbt)
+  *** FAIL ***  the README's mutation count matches the battery's -- the README says 'three', the battery has 4
+  PASS  no CI workflow runs the mutation check
+  PASS  the mutation check says it is not a CI runner
+  PASS  the fuzz check invokes the harness three times (the tree: 3)
+  PASS  the README states the fuzz invocation count
+  *** FAIL ***  the fuzz harness's `fn main` takes no parameters -- signature: '(seed : Int)'
+  PASS  the fuzz harness names one fixed seed
+  PASS  the README's fixed seed is the harness's fixed seed
+  *** FAIL ***  no CI workflow runs the fuzz check -- run by ['check.yml:439']
+  PASS  examples/fuzz has no crash-regression corpus
+  PASS  the `coverage` check says it is a PROXY, not line coverage
+  PASS  the `coverage` check measures reachability by NAME
+  PASS  the README calls `coverage` a test-reachability proxy
+
+D. there is still no dependency-vulnerability scan
+  PASS  no CI workflow runs a dependency-vulnerability scan
+  PASS  the README says there is no dependency-vulnerability scan
+  PASS  the QA registry's own note says moon update is not an audit
+
+E. the quoted WARN is the WARN the check produces
+  PASS  the README quotes the dependencies WARN
+  PASS  the README's quoted WARN is the live WARN
+  PASS  the dependencies check WARNs rather than passing quietly
+  PASS  the dependency moonbit-community/sqlite3@0.2.3 is still declared
+  PASS  the dependency moonbit-community/sqlite3@0.2.3 is still unreferenced by the library
+  PASS  the dependency moonbitlang/async@0.22.5 is still declared
+  PASS  the dependency moonbitlang/async@0.22.5 is still unreferenced by the library
+
+F. the two copies
+  PASS  the shipped README is byte-identical to the edited one
+  PASS  the README is LF-only with no BOM
+
+========================================================================
+40 checks, 6 failed
+*** FAIL ***
+  - the README's total .mbt files count (220) is the tree's (221)
+  - the README's production count (65) is the tree's (66)
+  - the mutation battery has three mutants (the tree has 4)
+  - the README's mutation count matches the battery's
+  - the fuzz harness's `fn main` takes no parameters
+  - no CI workflow runs the fuzz check
+
+EXACT failure count: 6

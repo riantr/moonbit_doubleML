@@ -218,7 +218,7 @@ USER_FACING = [
     "**1123**",
     "**19** are marked *(upstream)*",
     "no 1:1 upstream class",
-    "AMENDED 2026-10-20 (round 16)",
+    "How the names map",
     "1.0986122886681096",
     "1.0986122886681098",
     "The other 16 expose",

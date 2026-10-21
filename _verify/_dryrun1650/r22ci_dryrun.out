@@ -1,0 +1,73 @@
+
+A. the measurement -- run the 16 drivers and look at what they print
+    apo                true=yes ci=yes loose=yes
+    apos               true=yes ci=NO  loose=NO
+    cluster            true=yes ci=NO  loose=NO
+    cvar               true=yes ci=yes loose=yes
+    datasets           true=yes ci=yes loose=yes
+    did_binary         true=yes ci=yes loose=yes
+    did_cross_section  true=yes ci=yes loose=yes
+    did_cs             true=yes ci=yes loose=yes
+    did_cs_binary      true=yes ci=yes loose=yes
+    did_multi          true=yes ci=yes loose=yes
+    lplr               true=yes ci=yes loose=yes
+    main               true=yes ci=yes loose=yes
+    pava               true=NO  ci=NO  loose=yes
+    plpr               true=yes ci=yes loose=yes
+    splitting          true=NO  ci=NO  loose=NO
+    ssm                true=yes ci=NO  loose=NO
+  PASS  all 16 drivers ran
+  PASS  14 of the 16 print a true value
+  PASS  11 of the 16 print a 95 % CI
+  PASS  the drivers with no true value are pava and splitting
+  PASS  the drivers with no CI are apos, cluster, pava, splitting and ssm
+
+B. the old rule, measured -- the gap must be exactly pava
+  PASS  the old bracket rule would have counted 12
+  PASS  the old bracket rule added exactly one driver
+  PASS  pava prints no interval at all
+  PASS  pava's only bracket is a case label
+
+C. every CI decision rests on a named level or a named interval
+  PASS  apo's interval is named, not merely bracketed
+  PASS  cvar's interval is named, not merely bracketed
+  PASS  datasets's interval is named, not merely bracketed
+  PASS  did_binary's interval is named, not merely bracketed
+  PASS  did_cross_section's interval is named, not merely bracketed
+  PASS  did_cs's interval is named, not merely bracketed
+  PASS  did_cs_binary's interval is named, not merely bracketed
+  PASS  did_multi's interval is named, not merely bracketed
+  PASS  lplr's interval is named, not merely bracketed
+  PASS  main's interval is named, not merely bracketed
+  PASS  plpr's interval is named, not merely bracketed
+
+D. the tracked record agrees with the fresh measurement
+  PASS  the measurement record exists
+  PASS  the record's no-true set matches
+  PASS  the record's no-CI set matches
+  *** FAIL ***  the record's CI count matches -- record 12 vs measured 11
+  PASS  the record's true count matches
+  PASS  the record's withdrawn-figure provenance matches
+
+E. the README quotes the measurement
+  PASS  the README says 14 of the 16 print a true value
+  *** FAIL ***  the README says 11 of the 16 print a 95 % CI
+  *** FAIL ***  the README does not say 12 of the 16
+  PASS  the README names pava and splitting as printing neither
+  PASS  the README names apos, cluster and ssm as true-value-but-no-CI
+  PASS  no demo the README lists as printing no CI actually prints one
+
+F. the two copies
+  PASS  the shipped README is byte-identical to the edited one
+  PASS  the README is LF-only with no BOM
+
+========================================================================
+34 checks, 3 failed
+*** FAIL ***
+  - the record's CI count matches
+  - the README says 11 of the 16 print a 95 % CI
+  - the README does not say 12 of the 16
+D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_dryrun1650\r22ci_mut\_verify\_verify_cli_demo_ci_1650.py:21: SyntaxWarning: invalid escape sequence '\s'
+  CI_RE = re.compile(r"95\s*%|confint|confidence|CI\b|\[.*\]", re.I)
+
+EXACT failure count: 3

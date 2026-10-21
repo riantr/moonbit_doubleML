@@ -290,8 +290,8 @@ check("the README names the no-1:1 estimator",
       "no 1:1 upstream\nclass" in readme or "no 1:1 upstream class" in readme)
 check("the README no longer claims there is no port-only estimator",
       re.search(r"\*\*no\*\*\s*\n?\s*port-only estimator", readme) is None)
-check("the README carries the round-16 amendment",
-      "AMENDED 2026-10-20 (round 16)" in readme)
+check("the README carries the naming-map note",
+      "How the names map" in readme)
 check("the README no longer pairs the port's DIDCS with upstream's DIDMulti",
       "`DoubleMLDIDCS` is upstream's `DoubleMLDIDMulti`" not in readme)
 check("the README points at the record",

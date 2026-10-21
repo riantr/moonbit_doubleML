@@ -159,13 +159,26 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 > The records that hold the *measurements* are in `_verify/` and are
 > referenced from both documents.
 >
-> **One correction, 2026-10-21 (round 21).** The propensity-margin paragraph
-> further down quotes a **366x** separation for `DoubleMLIRM` and a **300x**
-> one for `DoubleMLAPO`. Both figures were re-measured against the current
-> tree and are **367x** and **320x**. The ledger's body is left exactly as it
-> was published, because this document is a snapshot; `README.mbt.md` carries
-> the corrected figures, and the measurement is in
-> `_verify/_hazard_margins_1650.json`.
+> **Corrections, 2026-10-21.** This document's body is the README as it
+> was published at `v0.164.11`, and a snapshot is not rewritten -- so the
+> corrections live here, beside the corrected figures, and in
+> `README.mbt.md`, which is the document the registry actually serves.
+>
+> * **Round 21.** The propensity-margin paragraph further down quotes a
+>   **366x** separation for `DoubleMLIRM` and a **300x** one for
+>   `DoubleMLAPO`.  Both figures were re-measured against the current tree
+>   and are **367x** and **320x**.  The measurement is in
+>   `_verify/_hazard_margins_1650.json`.
+> * **Round 22.** The Examples section quotes **12** of the 16 CLI demos
+>   printing a 95 % CI.  The count is **11**: the passage's own breakdown
+>   names five demos that print none, and 16 - 5 = 11.  The 12 came from a
+>   measuring regex whose last alternative matched ANY bracketed line, so
+>   `examples/pava`'s `case[v0]` case label counted as an interval.  The
+>   measurement is in `_verify/_cli_demo_ci_1650.json`.  Round 22 also
+>   corrected thirteen passages of prose in the README -- among them a
+>   paragraph that opened with half a sentence, a claim that one API shape
+>   covered all 22 estimators when six constructors differ, and an estimator
+>   list that summed to 21 under a headline that said 22.
 
 """
 
@@ -207,9 +220,9 @@ FEATURES = """## Features
 - ✅ **22 estimators** in 19 source files -- PLR, IRM, PLIV, IIVM, the DID
   family (5), SSM, APO, APOS, PQ, QTE, LPQ, LPLR, CVAR, RDD, BLP, PLPR and
   PolicyTree. The table is below.
-- ✅ **One API shape** -- `DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()`.
-  Six estimators differ in their accessors; they are named rather than left
-  to be discovered.
+- ✅ **One API shape** -- `DoubleMLXxx::new(...).fit()`. Two different sets of
+  six differ -- six in their accessors, six in their constructors -- and both
+  are named in **API reference** rather than left to be discovered.
 - ✅ **Cross-fitting infrastructure** -- `kfold`, repeated cross-fitting,
   stratified K-fold, a `chacha8_rng(seed)` PRNG, and Kahan summation.
 - ✅ **Robust variance and inference** -- heteroskedasticity-consistent (HC)
@@ -245,22 +258,26 @@ import {
 
 """
 
-# The upstream-correspondence note, condensed.  The full derivation is in
-# ENGINEERING.md; the README keeps the dated marker, because a reader who was
-# told "this port has no upstream counterpart for DIDCS" deserves to see that
-# the claim was corrected and when.
+# The upstream-correspondence note.  The full derivation is in ENGINEERING.md.
+#
+# ROUND 22: the note used to open with "**AMENDED 2026-10-20 (round 16).**".
+# That is the project's own review vocabulary: "round 16" means nothing to a
+# reader who has only the published page, and "AMENDED" promises a previous
+# version they never saw.  The substance -- which names do not map 1:1, and
+# where the derivation is -- is kept; the internal marker is not.  The naming
+# map is already in the estimator table above, so what is left here is a
+# pointer rather than a second copy of it.
 #
 # The paths are CODE SPANS, not links, and that is deliberate: the README
 # that ships is the only file the registry publishes, so a relative link to a
 # file in the repository is a link to nowhere on the published page.  The
 # old README used code spans for the same reason.
-AMENDED = """> **AMENDED 2026-10-20 (round 16).** The naming map above was corrected
-> in round 16: `DoubleMLDIDCS` has **no 1:1 upstream class** -- it is this
-> port's variant of upstream's `DoubleMLDIDMulti` -- and the two *renamed*
-> pairs are `DoubleMLRDD` (upstream `RDFlex`) and `DoubleMLDIDCrossSection`
-> (upstream `DoubleMLDIDCS`). The derivation, and the parameter that
-> distinguishes them, are in `_verify/UPSTREAM_PROVENANCE.md` and in
-> `ENGINEERING.md`.
+AMENDED = """> **How the names map.** `DoubleMLDIDCS` has **no 1:1 upstream class**
+> -- it is this port's variant of upstream's `DoubleMLDIDMulti` -- and the
+> two *renamed* pairs are `DoubleMLRDD` (upstream `RDFlex`) and
+> `DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`). The derivation, and
+> the parameter that distinguishes them, are in
+> `_verify/UPSTREAM_PROVENANCE.md` and in `ENGINEERING.md`.
 
 """
 
@@ -510,6 +527,185 @@ the honest discriminator (`0.270` vs `86.28`, a 320x separation), because the
 mechanism is that an"""
 
 PATCHES.append((OLD_MARGINS, NEW_MARGINS))
+
+# ==============================================================================
+# 3c.  THE ROUND-22 PATCHES -- a line-by-line read of the published text
+# ==============================================================================
+#
+# Round 22 read the built README line by line, the way a reader would, and
+# checked every claim it makes against the tree.  Twelve passages were wrong,
+# ambiguous or stale.  Each is corrected here, in the generator, for the
+# reason round 21 used: README.mbt.md is BUILT, so an edit made to it
+# directly is reverted by the next bump.
+#
+# Four of the twelve are factual and are recorded in the CHANGELOG as
+# corrections; the rest are prose.  The comments below say what each one was
+# and how it was checked, so a later reader can re-derive the correction
+# instead of taking it on trust.
+#
+# P1. THE API CLAIM CONTRADICTED THE API REFERENCE.
+# The pitch promised "a unified `DoubleMLXxx::new(data, n_folds, n_rep,
+# seed).fit()` API across all 22 estimators", and the Features list said
+# "One API shape ... Six estimators differ in their accessors".  But the
+# API reference (added in round 20) lists TWO different sets of six -- the
+# accessor six and the CONSTRUCTOR six -- and they overlap in only three
+# estimators.  A reader who believed the pitch would write
+# `DoubleMLBLP::new(data, n_folds, n_rep, seed)`, which does not compile.
+# The six that differ in their constructor are named in the API reference.
+OLD_API_SHAPE = """inside the MoonBit ecosystem. Delivers a unified
+`DoubleMLXxx::new(data, n_folds, n_rep, seed).fit()` API across all
+22 estimators, robust variance estimation, propensity-score
+processing, multiple-testing correction, and a reproducible validation
+pipeline (24 / 24 Python reference scripts PASS) -- on `native`,"""
+
+NEW_API_SHAPE = """inside the MoonBit ecosystem. Delivers one
+`DoubleMLXxx::new(...).fit()` API across all 22 estimators -- the shape
+is the same, but six take a different constructor, and those six are
+named in **API reference** -- with robust variance estimation,
+propensity-score processing, multiple-testing correction, and a
+reproducible validation pipeline (24 / 24 Python reference scripts PASS)
+-- on `native`,"""
+
+# P2. THE FEATURES LIST DID NOT ADD UP TO ITS OWN HEADLINE.
+# "PLR, IRM, PLIV, IIVM, the DID family (5), SSM, ..." sums to 21, under a
+# headline that says 22.  The estimator table has SIX DID-family estimators
+# -- DID, DIDBinary, DIDCS, DIDCSBinary, DIDMulti, DIDCrossSection -- so
+# "the DID family (6)" is the count that makes the list sum to 22.
+OLD_DID_COUNT = """- ✅ **22 estimators** in 19 source files -- PLR, IRM, PLIV, IIVM, the DID
+  family (5), SSM, APO, APOS, PQ, QTE, LPQ, LPLR, CVAR, RDD, BLP, PLPR and
+  PolicyTree. The table is below."""
+
+NEW_DID_COUNT = """- ✅ **22 estimators** in 19 source files -- PLR, IRM, PLIV, IIVM, the DID
+  family (6), SSM, APO, APOS, PQ, QTE, LPQ, LPLR, CVAR, RDD, BLP, PLPR and
+  PolicyTree. The table is below."""
+
+# P3. THE EXAMPLE COUNT DOUBLE-COUNTED TWO OF ITS OWN ITEMS.
+# "21 runnable example binaries, an HTTP service, and a property-based fuzz
+# harness" reads as 23, because `examples/api_server/` and `examples/fuzz/`
+# are two OF the 21.  The Project layout section names them, and the
+# Examples section counts them separately, so the two figures were already
+# in the same document.
+OLD_EXAMPLE_COUNT = """- ✅ **21 runnable example binaries**, an HTTP service, and a property-based
+  fuzz harness."""
+
+NEW_EXAMPLE_COUNT = """- ✅ **21 runnable example binaries** -- 16 CLI demos, an HTTP service, a
+  consumer demo and a property-based fuzz harness."""
+
+# P4. TWO PASSAGES DESCRIBED WHAT THE README USED TO SAY.
+# "were for several releases described here as MoonBit-specific extras" and
+# "were previously marked *(extra)*, which was wrong" are the document
+# talking about its own history.  A reader who has only the published page
+# has no "several releases" to compare against; the facts survive in the
+# CHANGELOG and in the ledger, which is where a reader should look for them.
+OLD_WAS_EXTRA = """`DoubleMLPLPR`, `DoubleMLLPLR` and `DoubleMLDIDCSBinary` were for
+several releases described here as MoonBit-specific extras; all three
+ship upstream and the table marks them *(upstream)*."""
+
+NEW_WAS_EXTRA = """`DoubleMLPLPR`, `DoubleMLLPLR` and `DoubleMLDIDCSBinary` all ship
+upstream, and the table marks them *(upstream)*."""
+
+OLD_PREVIOUSLY_EXTRA = """partner by name coincidence. Three rows -- `DoubleMLDIDCSBinary`,
+`DoubleMLLPLR`, `DoubleMLPLPR` -- were previously marked *(extra)*,
+which was wrong: all three ship upstream, so they had a reference
+implementation all along."""
+
+NEW_PREVIOUSLY_EXTRA = """partner by name coincidence. Three rows -- `DoubleMLDIDCSBinary`,
+`DoubleMLLPLR`, `DoubleMLPLPR` -- ship upstream, so each has a reference
+implementation."""
+
+# P5. THE "NUMERICAL PARITY" SECTION OPENED WITH A SENTENCE FRAGMENT.
+# The block this section is built from starts at old-README line 1958, which
+# is the SECOND half of a sentence: "patterns instead, against
+# `examples/bitexact/`."  The subject -- and the tier statement that goes
+# with it -- were at 1955-1957 and were dropped by the condensation.  A
+# reader met a heading and then half a sentence.
+OLD_BITEXACT_FRAGMENT = """patterns instead, against `examples/bitexact/`. Measured scope, not assumed --"""
+
+NEW_BITEXACT_FRAGMENT = """**Bit-exact parity is a second, stronger tier.** A tolerance cannot tell "the
+port is arithmetically identical to the reference" apart from "the port lands
+within 1e-4 of it". `validate_bitexact_with_python.py` compares IEEE-754 bit
+patterns instead, against `examples/bitexact/`. Measured scope, not assumed --"""
+
+# P6. "THE FOUR TREE/LOGISTIC LEARNERS" WAS THREE.
+# The README's own learner table marks exactly three learners as
+# classification -- `LogisticRegression`, `RFClassifier`, `GBClassifier` --
+# and `learner.mbt:200-202` (`is_classifier()`) returns true for exactly
+# those three.  `RFLearner` and `GBLearner` are regression learners: they
+# predict a mean, not a probability, so they cannot be among "the four".
+OLD_FOUR_LEARNERS = """learner surface. This package ships eleven. The four tree/logistic
+learners' `predict` returns `P(y = 1 | x)` for classification, never a
+hard label, because DML's AIPW correction divides by the fitted
+propensity."""
+
+NEW_FOUR_LEARNERS = """learner surface. This package ships eleven. The three classification
+learners' `predict` returns `P(y = 1 | x)`, never a hard label, because
+DML's AIPW correction divides by the fitted propensity."""
+
+# P7. "12 OF THE 16 PRINT A 95 % CI" WAS NEVER TRUE.
+# The README's OWN breakdown beside the figure names FIVE demos that print
+# no CI -- pava, splitting, apos, cluster, ssm -- and 16 - 5 = 11, not 12.
+# The 12 came from the measuring script's CI regex, whose last alternative
+# was `\[.*\]`: ANY line with a bracket pair counts as an interval, and
+# `examples/pava` prints `case[v0] n=4 pava = 0.625 ...`.  pava prints no
+# interval at all.  Re-measured with a definition that has to be satisfied by
+# an actual interval -- a confidence level, a named interval, or both
+# endpoints -- the count is 11, and the 11 are apo, cvar, datasets,
+# did_binary, did_cross_section, did_cs, did_cs_binary, did_multi, lplr,
+# main and plpr.  `_verify/_verify_cli_demo_ci_1650.py` re-derives it.
+OLD_CI_COUNT = """demos that print an estimate; measured per driver, **14** of the 16 print a
+true value and **12** of the 16 print a 95 % CI -- `examples/pava` and"""
+
+NEW_CI_COUNT = """demos that print an estimate; measured per driver, **14** of the 16 print a
+true value and **11** of the 16 print a 95 % CI -- `examples/pava` and"""
+
+# P8. "AGENTS.md <- this file" COULD BE READ AS THE README.
+# Every other line in that tree names its own file, so "this file" is
+# ambiguous in the one place where the reader has an antecedent in mind --
+# the document they are reading.
+OLD_AGENTS_LINE = """AGENTS.md                <- this file (per moonbit agent convention)"""
+
+NEW_AGENTS_LINE = """AGENTS.md                <- agent guide for coding agents (MoonBit convention)"""
+
+# P9. A HEADING SKIPPED A LEVEL.
+# `## Attribution` was followed by `#### Differences from upstream`, so the
+# subsection was two levels down with nothing at the level in between.
+OLD_ATTRIB_HEADING = """#### Differences from upstream `doubleml-for-py`"""
+
+NEW_ATTRIB_HEADING = """### Differences from upstream `doubleml-for-py`"""
+
+# P10. "ONE SCRIPT PER UPSTREAM CLASS" WAS NOT TRUE OF ITS OWN TABLE.
+# `pyexample_pq.py` drives three upstream classes and `pyexample_suite.py`
+# drives a family.
+OLD_ONE_SCRIPT = """implementation" but "does the port agree with upstream". Measured designs, one
+script per upstream class:"""
+
+NEW_ONE_SCRIPT = """implementation" but "does the port agree with upstream". Measured designs, one
+script per upstream class or family:"""
+
+# P11. A VERSION PROMISE THAT WAS 80 RELEASES STALE.
+# "a v0.82+ release can swap the bodies" read as a release still to come.
+# The API has been fixed since v0.82; the package is at v0.164.x.
+OLD_V082 = """today -- the public API is fixed so a v0.82+ release can swap
+the bodies to a SIMD-vectorised backend (or external call to
+a BLAS-style library) without breaking callers."""
+
+NEW_V082 = """today -- the public API has been fixed since v0.82, so a future
+release can swap the bodies to a SIMD-vectorised backend (or external
+call to a BLAS-style library) without breaking callers."""
+
+for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
+                    (OLD_DID_COUNT, NEW_DID_COUNT),
+                    (OLD_EXAMPLE_COUNT, NEW_EXAMPLE_COUNT),
+                    (OLD_WAS_EXTRA, NEW_WAS_EXTRA),
+                    (OLD_PREVIOUSLY_EXTRA, NEW_PREVIOUSLY_EXTRA),
+                    (OLD_BITEXACT_FRAGMENT, NEW_BITEXACT_FRAGMENT),
+                    (OLD_FOUR_LEARNERS, NEW_FOUR_LEARNERS),
+                    (OLD_CI_COUNT, NEW_CI_COUNT),
+                    (OLD_AGENTS_LINE, NEW_AGENTS_LINE),
+                    (OLD_ATTRIB_HEADING, NEW_ATTRIB_HEADING),
+                    (OLD_ONE_SCRIPT, NEW_ONE_SCRIPT),
+                    (OLD_V082, NEW_V082)):
+    PATCHES.append((_old, _new))
 
 for _old, _new in PATCHES:
     _n = text.count(_old)
