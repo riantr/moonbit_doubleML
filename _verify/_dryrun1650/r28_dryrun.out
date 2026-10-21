@@ -163,13 +163,17 @@
   ok    15 re-derive the hand-rolled reference                           got 15
   ok    the skills document states the 15 / 9 split                      
 
+== 7. the published check count, witnessed ==
+  ok    the CHANGELOG publishes this verifier's check count              published 133 (of 2 occurrences, newest first)
+  ok    the published check count is the count this run made             published 133, this run makes 133
+
 ==============================================================================
-131 checks, 0 failed
+133 checks, 0 failed
 ==============================================================================
 
 == the dry-run: each mechanism, one at a time ==
 === cloning locally and checking out HEAD ===
-  HEAD -> 54e6d03d31e013cf41af2b564590562fb32b26f5
+  HEAD -> (the commit this log is committed with)
   copied in README.mbt.md
   copied in moonbit_doubleML/README.mbt.md
   copied in doc/004_estimators/readme.mbt.md
@@ -184,18 +188,22 @@
   1. doc/004's APO row says 'apo' again                                     failures 0 -> 1  GROW
   2. doc/004's DID row says 'observational' again                           failures 1 -> 2  GROW
   3. doc/004 claims 21 of the 22 take a score argument                      failures 2 -> 4  GROW
-  4. doc/004's score-argument table loses the PLR row                       failures 4 -> 6  GROW
-  5. doc/004's PLPR row claims the hyphen spelling                          failures 6 -> 7  GROW
-  6. the README's port list is the old one, cache-kind tags included        failures 7 -> 9  GROW
-  7. the README's upstream list is the old 9-spelling one                   failures 9 -> 10  GROW
-  8. the README's constructor paragraph stops naming the score argument     failures 10 -> 12  GROW
-  9. the skills document folds LPLR into the six                            failures 12 -> 15  GROW
-  10. the skills document says all 24 re-derive the hand-rolled reference    failures 15 -> 16  GROW
-  11. the SOURCE loses a score parameter, so the derived counts move         failures 16 -> 30  GROW
-  12. the vendored upstream tree drops a spelling                            failures 30 -> 34  GROW
+  4. doc/004's score-argument table loses the PLR row                       failures 4 -> 7  GROW
+  5. doc/004's PLPR row claims the hyphen spelling                          failures 7 -> 8  GROW
+  6. the README's port list is the old one, cache-kind tags included        failures 8 -> 10  GROW
+  7. the README's upstream list is the old 9-spelling one                   failures 10 -> 11  GROW
+  8. the README's constructor paragraph stops naming the score argument     failures 11 -> 13  GROW
+  9. the skills document folds LPLR into the six                            failures 13 -> 16  GROW
+  10. the skills document says all 24 re-derive the hand-rolled reference    failures 16 -> 17  GROW
+  11. the SOURCE loses a score parameter, so the derived counts move         failures 17 -> 31  GROW
+  12. the vendored upstream tree drops a spelling                            failures 31 -> 35  GROW
 
 === the counter and the verifier's own summary ===
-  the driver counted 34 failures
-  the verifier says  127 checks, 34 failed
+  the driver counted 35 failures
+  the verifier says  129 checks, 35 failed
+
+=== the published failure count, witnessed ===
+  the CHANGELOG publishes 35; this run measured 35
+  OK -- the published number is the number this run measured
 
 OK: every mechanism contributed, and the counter agrees with the summary

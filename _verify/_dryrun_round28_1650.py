@@ -302,5 +302,35 @@ if rc == 0:
     print("!! the broken tree still exits 0 -- ABORT")
     sys.exit(1)
 
+# --- the published failure count, witnessed -----------------------------------
+# The CHANGELOG publishes the number of failures this dry-run ends at.  A
+# published exact number with nothing asserting it goes stale silently, so the
+# dry-run ASSERTS its own published number: it measures the final failure
+# count and compares that with the number the CHANGELOG states.
+#
+# The count is TREE-DEPENDENT on purpose -- the verifier checks one thing per
+# doc/004 row, per score site and per source file, so a tree with fewer rows
+# runs fewer checks, and the tree under test here is deliberately broken.
+# That is why the number this dry-run ends at is NOT the number the verifier
+# makes on the tree as it stands.
+CHANGELOG = os.path.join(WORK, "CHANGELOG.md")
+# The CHANGELOG is in DESCENDING order -- the newest entry is at the TOP -- so
+# the CURRENT published number is the FIRST occurrence.  (Taking the last one
+# binds the witness to an entry that has already shipped.)
+_found = re.findall(r"requires the failure count to GROW at every step: "
+                    r"\*\*(\d+)\*\* failures at the",
+                    io.open(CHANGELOG, encoding="utf-8", errors="replace").read())
+published = int(_found[0]) if _found else None
+print()
+print("=== the published failure count, witnessed ===")
+if published is None:
+    print("  the CHANGELOG publishes no failure count for this dry-run -- ABORT")
+    sys.exit(1)
+print("  the CHANGELOG publishes %d; this run measured %d" % (published, n))
+if published != n:
+    print("!! the published failure count and the measured one disagree -- ABORT")
+    sys.exit(1)
+print("  OK -- the published number is the number this run measured")
+
 print()
 print("OK: every mechanism contributed, and the counter agrees with the summary")

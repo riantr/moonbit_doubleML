@@ -635,6 +635,44 @@ check("the skills document states the 15 / 9 split",
 
 # ==============================================================================
 print()
+print("== 7. the published check count, witnessed ==")
+# ------------------------------------------------------------------------------
+# The CHANGELOG publishes this verifier's check count.  A published exact
+# number with nothing asserting it goes stale silently -- that is how
+# v0.164.21 shipped "127 checks", which was the count on the DRY-RUN's
+# deliberately-broken tree, not the count on the tree as it stands (131).
+#
+# ⇒ The verifier ASSERTS its own published count.  It reads the CHANGELOG,
+# finds the number published for it, and compares that with the number of
+# checks it actually ran.
+#
+# The count is TREE-DEPENDENT on purpose: this verifier checks one thing per
+# doc/004 row, per score site and per source file, so a tree with fewer rows
+# runs fewer checks.  That is the point -- the number moves when the thing
+# being watched moves, and the witness says so instead of letting the
+# published number drift.
+#
+# The comparison is against NCHECK + 1, because THIS check is one of the
+# checks it is counting.
+# ==============================================================================
+CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
+# The CHANGELOG is in DESCENDING order -- the newest entry is at the TOP -- so
+# the CURRENT published number is the FIRST occurrence.  (Taking the last one
+# binds the witness to the oldest entry, which is the number of a release
+# that has already shipped.)
+_found = re.findall(r"_verify_score_argument_1650\.py` \(\*\*(\d+)\*\* checks\)",
+                    read(CHANGELOG))
+published = int(_found[0]) if _found else None
+check("the CHANGELOG publishes this verifier's check count",
+      published is not None,
+      "the '(**N** checks)' line for this verifier is absent" if published is None
+      else "published %d (of %d occurrences, newest first)" % (published, len(_found)))
+check("the published check count is the count this run made",
+      published is not None and published == NCHECK + 1,
+      "published %s, this run makes %d" % (published, NCHECK + 1))
+
+# ==============================================================================
+print()
 print("=" * 78)
 print("%d checks, %d failed" % (NCHECK, len(FAILS)))
 if FAILS:

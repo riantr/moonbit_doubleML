@@ -9,6 +9,50 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.22] -- a published count that was measured on the wrong tree
+
+`moon.mod` moves 0.164.21 -> 0.164.22. The only `.mbt` changed is
+`examples/api_server/main.mbt`, and only the library version string it echoes --
+so no estimator behaviour changed and the test counts stay
+**1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js), re-measured by the
+local gate.
+
+### Fixed -- the v0.164.21 entry published a count measured on the BROKEN tree
+
+v0.164.21's entry said `_verify/_verify_score_argument_1650.py` runs **127**
+checks. It runs **131** on the tree as it stands. The 127 was a real number --
+but it was the number the dry-run's transcript reports, and the dry-run
+measures the verifier on a DELIBERATELY BROKEN tree, where two of its loops
+are shorter: doc/004's score-site table has one row fewer, and the source has
+one score parameter fewer, so four checks do not execute.
+
+A number of the wrong thing is still a wrong number, and the two counts sat
+side by side in one tracked log with nothing saying which was which. The
+v0.164.21 entry is corrected to what v0.164.21 actually shipped, and the
+v0.164.22 entry publishes the current count with a witness.
+
+### Added -- a witness for each published number
+
+- `_verify/_verify_score_argument_1650.py` (**133** checks) now reads the
+  CHANGELOG, finds the check count published for it, and ASSERTS that it is
+  the number of checks the run actually made. The count is tree-dependent on
+  purpose: the verifier checks one thing per doc/004 row, per score site and
+  per source file, so a tree with fewer rows runs fewer checks. That is the
+  point -- the number moves when the thing being watched moves, and the
+  witness says so instead of letting the published number drift.
+- `_verify/_dryrun_round28_1650.py` now does the same for the failure count it
+  ends at, and ABORTS if the published number and the measured one disagree.
+  On the tree as it stands it breaks the claims one mechanism at a time and
+  requires the failure count to GROW at every step: **35** failures at the
+  end, 0 -> 1 -> 2 -> 4 -> 7 -> 8 -> 10 -> 11 -> 13 -> 16 -> 17 -> 31 -> 35, and the counter agrees with the verifier's own summary.
+
+### Also confirmed, and changed nothing
+
+- The v0.164.21 content itself: the five false statements it corrected, the
+  22-estimator catalogue, the 9 score parameters at 7 estimators, the 8
+  spellings the port accepts and the 15 upstream uses, and the 15 / 9 split of
+  the `validate_*` family.
+
 ## [0.164.21] -- where the `score` argument actually lives
 
 `moon.mod` moves 0.164.20 -> 0.164.21.  The only `.mbt` changed is
@@ -68,7 +112,7 @@ one difference that moves between `new()` and `fit()`.
 
 ### Added -- a check that derives the score argument's shape from the source
 
-- `_verify/_verify_score_argument_1650.py` (**127** checks) derives the 22
+- `_verify/_verify_score_argument_1650.py` (**131** checks) derives the 22
   estimators, the 9 score parameters and their owning methods, the accepted
   set at each site (read from the guarding `require(...)`, with the
   `*_is_*_score` helper predicates resolved, and cross-checked against every

@@ -140,6 +140,17 @@
 >   site, the cache-kind tags, and both vocabularies -- the upstream one
 >   measured on the vendored 0.11.4 tree AND on the installed 0.11.3, which
 >   agree.
+>
+>   The published count was wrong once, and the error is worth recording.  The
+>   first entry said the new verifier runs **127** checks.  It runs **131** on
+>   the tree as it stands.  The 127 was a real number -- but it was the number
+>   the dry-run's transcript reports, and the dry-run measures the verifier on
+>   a DELIBERATELY BROKEN tree, where two of its loops are shorter (one fewer
+>   score site in doc/004's table, one fewer score parameter in the source), so
+>   four checks do not execute.  A number of the wrong thing is still a wrong
+>   number, and the two counts sat side by side in one tracked log with
+>   nothing saying which was which.  The verifier now ASSERTS its own
+>   published count, and the dry-run asserts the failure count it ends at.
 
 ## The README as it stood at v0.164.11
 
