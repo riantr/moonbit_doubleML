@@ -98,12 +98,14 @@ surface and anti-patterns).
   pack into 19 `<name>.mbt` files (some files hold 2 structs:
   `apo.mbt` for APO+APOS, `quantile.mbt` for PQ+QTE,
   `blp_policy.mbt` for BLP+PolicyTree). Each estimator has a
-  sibling `<name>_test.mbt`. 20 mirror upstream `doubleml-for-py`
-  by name; `DoubleMLRDD` is upstream's `RDFlex` renamed; and
-  `DoubleMLDIDCrossSection` has no upstream counterpart (port-only).
-  `DoubleMLDIDCSBinary`, `DoubleMLLPLR` and `DoubleMLPLPR` all ship
-  upstream too -- an earlier revision of this file called them
-  MoonBit extras, which was wrong.
+  sibling `<name>_test.mbt`. 19 mirror upstream `doubleml-for-py`
+  by name; two are upstream's under another name -- `DoubleMLRDD` is
+  upstream's `RDFlex` and `DoubleMLDIDCrossSection` is upstream's
+  `DoubleMLDIDCS`; and `DoubleMLDIDCS` is the one with no 1:1 upstream
+  class (a port-side variant of upstream's multi-period
+  `DoubleMLDIDMulti`). `DoubleMLDIDCSBinary`, `DoubleMLLPLR` and
+  `DoubleMLPLPR` all ship upstream too -- an earlier revision of this
+  file called them MoonBit extras, which was wrong.
 
 - 17 DGP modules live at root as `dgp_*.mbt` with sibling
   `dgp_*_test.mbt` (35 files in all). The shared Box-Muller helper is in

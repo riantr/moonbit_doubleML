@@ -3,8 +3,9 @@
 `riantr/moonbit_doubleML` is a pure-MoonBit port of the
 [`doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py) Python
 package. It covers all 21 estimator classes upstream ships in
-0.11.4, plus one port-only estimator (`DoubleMLDIDCrossSection`),
-for 22 in total.
+0.11.4 -- 19 under the same name, `DoubleMLRDD` for upstream's `RDFlex`
+and `DoubleMLDIDCrossSection` for upstream's `DoubleMLDIDCS` -- and adds
+one port-only estimator (`DoubleMLDIDCS`), for 22 in total.
 
 ## What is Double / Debiased Machine Learning?
 
@@ -43,7 +44,7 @@ The pure-MoonBit implementation:
   `ml_m` defaults to the logistic classifier wherever the
   propensity enters the score as `1 / m_hat`.
 
-## Status at v0.164.18
+## Status at v0.164.19
 
 - **22 estimators** — PLR, IRM, PLIV, IIVM, DID (6 variants),
   SSM, APO(S), PQ/QTE, LPQ, LPLR, PLPR, CVaR, RDD, BLP, PolicyTree.
@@ -52,7 +53,7 @@ The pure-MoonBit implementation:
   `make_*_data` factories.
 - **1117 / 1117 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
-- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.18`.
+- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.19`.
 
 ## Next
 

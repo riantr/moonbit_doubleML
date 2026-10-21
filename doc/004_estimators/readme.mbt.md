@@ -11,7 +11,7 @@
 | `DoubleMLIIVM` | — (fixed: LATE) | interactive IV model | `iivm.mbt` |
 | `DoubleMLDID` | `observational` | difference-in-differences | `did.mbt` |
 | `DoubleMLDIDBinary` | `observational` | DID with panel data, binary (group, time) design | `did_binary.mbt` |
-| `DoubleMLDIDCS` | `observational` | DID with repeated cross-sections (Callaway-Sant'Anna) | `did_cs.mbt` |
+| `DoubleMLDIDCS` | `observational` | DID with staggered adoption (Callaway-Sant'Anna) | `did_cs.mbt` |
 | `DoubleMLDIDCSBinary` | `observational` | CS-DID with repeated cross-sections, binary (group, time) design | `did_cs_binary.mbt` |
 | `DoubleMLDIDMulti` | — (fixed) | multi-period DID with group-time ATT aggregation | `did_multi.mbt` |
 | `DoubleMLDIDCrossSection` | `observational` | Sant'Anna-Zhao 2020 cross-section DID | `did_cross_section.mbt` |
@@ -38,11 +38,14 @@ argument at all** for `RDFlex`, `DoubleMLBLP` or
 third vocabulary -- a prose estimand label such as "partialling-out"
 or "policy score" -- and is reconciled with this one by that note.
 
-Of the 22, **20** match a class of the same name upstream,
-`DoubleMLRDD` is upstream's `RDFlex` renamed, and
-`DoubleMLDIDCrossSection` has no upstream estimator -- though upstream
-does ship the Sant'Anna-Zhao (2020) DGP (`make_did_SZ2020`), so the
-design is upstream and only the estimator is port-only. The package
+Of the 22, **19** match a class of the same name upstream. Two are
+upstream's under another name: `DoubleMLRDD` is upstream's `RDFlex`,
+and `DoubleMLDIDCrossSection` is upstream's `DoubleMLDIDCS` -- the
+*repeated cross-sections* estimator, which upstream still ships, along
+with the Sant'Anna-Zhao (2020) DGP (`make_did_SZ2020`) it is built on.
+One has no 1:1 upstream class: `DoubleMLDIDCS`, this port's variant of
+upstream's multi-period `DoubleMLDIDMulti`, which upstream keeps in a
+single class that this port splits in two. The package
 README's estimator table records the provenance of each row and notes
 the few that are importable but absent from upstream's `__all__`.
 Several here (e.g. `DoubleMLDID` and its 5 variants) live in

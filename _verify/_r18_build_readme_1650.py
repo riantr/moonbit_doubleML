@@ -207,6 +207,24 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   `_verify/_verify_snippet_names_1650.py` derives every constructor's real
 >   parameters from the package, so a snippet that passes a parameter that
 >   does not exist is a failure, not a sentence.
+> * **Round 26.** The upstream-provenance GROUPING was audited, and it was
+>   right in the published README and wrong in three sibling documents.
+>   `doc/001_introduction` named `DoubleMLDIDCrossSection` as "the one
+>   port-only estimator"; `doc/004_estimators` stated the old grouping (20
+>   name-matched, one renamed, one port-only) and called the port's
+>   `DoubleMLDIDCS` "DID with repeated cross-sections" -- which is UPSTREAM's
+>   `DoubleMLDIDCS`, the estimator this port calls
+>   `DoubleMLDIDCrossSection`; and `skills/moonbit_doubleML.md` said "20
+>   mirror upstream by name" and that `DoubleMLDIDCrossSection` "has no
+>   upstream counterpart (port-only)".  All three predate
+>   `_verify/UPSTREAM_PROVENANCE.md`, which was first tracked in v0.164.11,
+>   so they were never reconciled with it.  The new check
+>   `_verify/_verify_provenance_grouping_1650.py` derives the grouping from
+>   the INSTALLED upstream package and the port's own source -- the one
+>   shared name that is a coincidence is found mechanically (`DoubleMLDIDCS`:
+>   upstream consumes the id-less `DoubleMLDIDData`, the port consumes the
+>   id-bearing `DoubleMLDIDCSData`) -- and then checks that every document
+>   which states the grouping states THAT one.
 
 """
 

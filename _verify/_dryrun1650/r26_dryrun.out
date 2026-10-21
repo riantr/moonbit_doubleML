@@ -1,0 +1,116 @@
+== 1. upstream estimator classes, from the installed package ==
+  upstream estimator modules found: 21 of 21
+  upstream estimator classes: 21
+
+== 2. the port's estimators, from the library source ==
+  port estimators: 22 (in 19 source files)
+
+== 3. the grouping, derived ==
+  names shared by an upstream class and a port estimator: 20 ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLBLP', 'DoubleMLCVAR', 'DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCS', 'DoubleMLDIDCSBinary', 'DoubleMLDIDMulti', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLLPQ', 'DoubleMLPLIV', 'DoubleMLPLPR', 'DoubleMLPLR', 'DoubleMLPQ', 'DoubleMLPolicyTree', 'DoubleMLQTE', 'DoubleMLSSM']
+  coincidence: DoubleMLDIDCS -- upstream CROSS-SECTION vs the port's MULTI-PERIOD
+  name-identical            : 19 ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLBLP', 'DoubleMLCVAR', 'DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCSBinary', 'DoubleMLDIDMulti', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLLPQ', 'DoubleMLPLIV', 'DoubleMLPLPR', 'DoubleMLPLR', 'DoubleMLPQ', 'DoubleMLPolicyTree', 'DoubleMLQTE', 'DoubleMLSSM']
+  upstream classes unclaimed: 2 ['DoubleMLDIDCS', 'RDFlex']
+  port estimators unmatched : 3 ['DoubleMLDIDCS', 'DoubleMLDIDCrossSection', 'DoubleMLRDD']
+  derived renamed pairs     : [('DoubleMLDIDCS', 'DoubleMLDIDCrossSection'), ('RDFlex', 'DoubleMLRDD')]
+  derived port-only         : ['DoubleMLDIDCS']
+  upstream DIDCS has no DID-control parameters      : True
+  upstream DIDMulti carries gt_combinations         : True
+  the port's DIDCSData carries id AND g             : True
+  the port's DIDCrossSectionData carries neither    : True
+  the port's DIDMulti carries gt_combinations        : True
+  the port's DIDCS does not                          : True
+
+== 4. the derivation holds against the source ==
+  ok    the installed upstream package yields 21 estimator classes     got 21
+  ok    the port yields 22 estimators                                  got 22
+  ok    upstream's DIDCS consumes the id-less DoubleMLDIDData          got DoubleMLDIDData
+  ok    upstream's DIDMulti consumes the id-bearing DoubleMLPanelData  got DoubleMLPanelData
+  ok    upstream's DIDCS has no DID-control parameters                 
+  ok    upstream's DIDMulti carries gt_combinations                    
+  ok    the port's DIDCSData carries a per-unit id and a group         
+  ok    the port's DIDCrossSectionData carries neither id nor group    
+  ok    the port's DIDMulti carries gt_combinations                    
+  ok    the port's DIDCS does not carry gt_combinations                
+  ok    exactly one shared name is a coincidence                       got ['DoubleMLDIDCS']
+  ok    that coincidence is the name DoubleMLDIDCS                     got ['DoubleMLDIDCS']
+  ok    upstream's DIDCS pairs with the port's DIDCrossSection         renamed=[('DoubleMLDIDCS', 'DoubleMLDIDCrossSection'), ('RDFlex', 'DoubleMLRDD')]
+  ok    upstream's RDFlex pairs with the port's DoubleMLRDD            renamed=[('DoubleMLDIDCS', 'DoubleMLDIDCrossSection'), ('RDFlex', 'DoubleMLRDD')]
+  ok    exactly 19 estimators are name-identical                       got 19
+  ok    exactly 2 are upstream's under another name                    got 2
+  ok    exactly 1 has no 1:1 upstream class                            got 1
+  ok    the port-only estimator is DoubleMLDIDCS                       got ['DoubleMLDIDCS']
+
+== 5. every document that states the grouping states THIS one ==
+  *** FAIL ***  README.mbt.md states '**19** match a class of the same name in upstream' 
+  ok    README.mbt.md states '**19** are marked *(upstream)*'          
+  ok    README.mbt.md states "Upstream's 19 name-matched estimator"    
+  ok    README.mbt.md states "`DoubleMLDIDCrossSection` is upstream's" 
+  ok    README.mbt.md states '`DoubleMLDIDCS`; and **1**, `DoubleMLDIDCS`, has' 
+  *** FAIL ***  README.mbt.md does not state '**20** match a class of the same name in upstream' 
+  ok    README.mbt.md does not state '**20** are marked *(upstream)*'  
+  ok    README.mbt.md does not state "Upstream's 20 name-matched estimator" 
+  *** FAIL ***  moonbit_doubleML/README.mbt.md states '**19** match a class of the same name in upstream' 
+  ok    moonbit_doubleML/README.mbt.md states '**19** are marked *(upstream)*' 
+  ok    moonbit_doubleML/README.mbt.md states "Upstream's 19 name-matched estimator" 
+  ok    moonbit_doubleML/README.mbt.md states "`DoubleMLDIDCrossSection` is upstream's" 
+  ok    moonbit_doubleML/README.mbt.md states '`DoubleMLDIDCS`; and **1**, `DoubleMLDIDCS`, has' 
+  *** FAIL ***  moonbit_doubleML/README.mbt.md does not state '**20** match a class of the same name in upstream' 
+  ok    moonbit_doubleML/README.mbt.md does not state '**20** are marked *(upstream)*' 
+  ok    moonbit_doubleML/README.mbt.md does not state "Upstream's 20 name-matched estimator" 
+  ok    ENGINEERING.md states '**19 name-identical + 2 renamed + 1 with no 1:1' 
+  ok    ENGINEERING.md states "Upstream's 19 name-matched estimator"   
+  *** FAIL ***  doc/001_introduction/readme.mbt.md states '19 under the same name' 
+  ok    doc/001_introduction/readme.mbt.md states "`DoubleMLDIDCrossSection` for upstream's" 
+  *** FAIL ***  doc/001_introduction/readme.mbt.md states 'one port-only estimator (`DoubleMLDIDCS`)' 
+  *** FAIL ***  doc/001_introduction/readme.mbt.md does not state '20 under the same name' 
+  *** FAIL ***  doc/001_introduction/readme.mbt.md does not state 'plus one port-only estimator' 
+  *** FAIL ***  doc/004_estimators/readme.mbt.md states 'Of the 22, **19** match a class of the same name' 
+  *** FAIL ***  doc/004_estimators/readme.mbt.md states "`DoubleMLDIDCrossSection` is upstream's" 
+  ok    doc/004_estimators/readme.mbt.md states 'One has no 1:1 upstream class: `DoubleMLDIDCS`' 
+  *** FAIL ***  doc/004_estimators/readme.mbt.md does not state 'Of the 22, **20** match a class of the same name' 
+  *** FAIL ***  doc/004_estimators/readme.mbt.md does not state '`DoubleMLDIDCrossSection` has no upstream estimator' 
+  ok    doc/004_estimators/readme.mbt.md does not state '`DoubleMLDIDCS` has no upstream estimator' 
+  *** FAIL ***  skills/moonbit_doubleML.md states '19 mirror upstream `doubleml-for-py` by name' 
+  *** FAIL ***  skills/moonbit_doubleML.md states "`DoubleMLDIDCrossSection` is upstream's" 
+  *** FAIL ***  skills/moonbit_doubleML.md states '`DoubleMLDIDCS` is the one with no 1:1 upstream' 
+  *** FAIL ***  skills/moonbit_doubleML.md does not state '20 mirror upstream `doubleml-for-py` by name' 
+  *** FAIL ***  skills/moonbit_doubleML.md does not state '`DoubleMLDIDCrossSection` has no upstream' 
+  ok    the shipped README copy is byte-identical to the root README   
+
+== 6. the DID-family descriptions agree, scoped to their table row ==
+  ok    README.mbt.md has a table row for DoubleMLDIDCS                
+  ok    README.mbt.md's DIDCS row describes the staggered-adoption design | `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(ups
+  ok    README.mbt.md's DIDCS row does not call it repeated cross-sections | `DoubleMLDIDCS` | observational | DID with staggered adoption (Callaway-Sant'Anna) *(ups
+  ok    README.mbt.md has a table row for DoubleMLDIDCrossSection      
+  ok    README.mbt.md's DIDCrossSection row names the cross-section design | `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(upst
+  ok    doc/004_estimators/readme.mbt.md has a table row for DoubleMLDIDCS 
+  *** FAIL ***  doc/004_estimators/readme.mbt.md's DIDCS row describes the staggered-adoption design | `DoubleMLDIDCS` | `observational` | DID with repeated cross-sections (Callaway-Sant'Anna
+  *** FAIL ***  doc/004_estimators/readme.mbt.md's DIDCS row does not call it repeated cross-sections | `DoubleMLDIDCS` | `observational` | DID with repeated cross-sections (Callaway-Sant'Anna
+  ok    doc/004_estimators/readme.mbt.md has a table row for DoubleMLDIDCrossSection 
+  ok    doc/004_estimators/readme.mbt.md's DIDCrossSection row names the cross-section design | `DoubleMLDIDCrossSection` | `observational` | Sant'Anna-Zhao 2020 cross-section DID | `d
+
+==============================================================================
+63 checks, 19 failed
+  - README.mbt.md states '**19** match a class of the same name in upstream'
+  - README.mbt.md does not state '**20** match a class of the same name in upstream'
+  - moonbit_doubleML/README.mbt.md states '**19** match a class of the same name in upstream'
+  - moonbit_doubleML/README.mbt.md does not state '**20** match a class of the same name in upstream'
+  - doc/001_introduction/readme.mbt.md states '19 under the same name'
+  - doc/001_introduction/readme.mbt.md states 'one port-only estimator (`DoubleMLDIDCS`)'
+  - doc/001_introduction/readme.mbt.md does not state '20 under the same name'
+  - doc/001_introduction/readme.mbt.md does not state 'plus one port-only estimator'
+  - doc/004_estimators/readme.mbt.md states 'Of the 22, **19** match a class of the same name'
+  - doc/004_estimators/readme.mbt.md states "`DoubleMLDIDCrossSection` is upstream's"
+  - doc/004_estimators/readme.mbt.md does not state 'Of the 22, **20** match a class of the same name'
+  - doc/004_estimators/readme.mbt.md does not state '`DoubleMLDIDCrossSection` has no upstream estimator'
+  - skills/moonbit_doubleML.md states '19 mirror upstream `doubleml-for-py` by name'
+  - skills/moonbit_doubleML.md states "`DoubleMLDIDCrossSection` is upstream's"
+  - skills/moonbit_doubleML.md states '`DoubleMLDIDCS` is the one with no 1:1 upstream'
+  - skills/moonbit_doubleML.md does not state '20 mirror upstream `doubleml-for-py` by name'
+  - skills/moonbit_doubleML.md does not state '`DoubleMLDIDCrossSection` has no upstream'
+  - doc/004_estimators/readme.mbt.md's DIDCS row describes the staggered-adoption design
+  - doc/004_estimators/readme.mbt.md's DIDCS row does not call it repeated cross-sections
+VERDICT: FAIL
+
+EXACT failure count: 19
+failure count after each mechanism: [0, 2, 4, 6, 8, 10, 15, 18]

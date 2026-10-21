@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.18",
+  "riantr/moonbit_doubleML@0.164.19",
 }
 ```
 
@@ -565,7 +565,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.18** |
+| `moon.mod` version | **0.164.19** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -679,7 +679,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.18, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.19, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

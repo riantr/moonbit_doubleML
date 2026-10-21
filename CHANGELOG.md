@@ -9,6 +9,72 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.19] -- the grouping three documents had not caught up with
+
+`moon.mod` moves 0.164.18 -> 0.164.19. No `.mbt` changed, so no estimator
+behaviour changed and the test counts stay **1117 / 1123 / 1117 / 1117**
+(native / wasm-gc / wasm / js).
+
+Round 26 read the published README once more and audited the claim it makes
+ABOUT UPSTREAM: which of the port's 22 estimators correspond to an upstream
+class, and which do not.  The published README was already right -- **19**
+name-identical, **2** renamed (`DoubleMLRDD` for upstream's `RDFlex`,
+`DoubleMLDIDCrossSection` for upstream's `DoubleMLDIDCS`), **1** with no 1:1
+upstream class (`DoubleMLDIDCS`).  Three OTHER tracked documents were not.
+
+### Fixed -- three documents still carried the pre-v0.164.11 grouping
+
+- `doc/001_introduction/readme.mbt.md` said the port covers upstream's 21
+  classes "plus one port-only estimator (`DoubleMLDIDCrossSection`)".
+  `DoubleMLDIDCrossSection` is upstream's `DoubleMLDIDCS` under another name;
+  the one with no upstream counterpart is `DoubleMLDIDCS`.  The sentence now
+  names all three groups.
+- `doc/004_estimators/readme.mbt.md` stated the old grouping -- "Of the 22,
+  **20** match a class of the same name upstream, `DoubleMLRDD` is upstream's
+  `RDFlex` renamed, and `DoubleMLDIDCrossSection` has no upstream estimator"
+  -- and described the port's `DoubleMLDIDCS` as "DID with repeated
+  cross-sections (Callaway-Sant'Anna)".  That is UPSTREAM's `DoubleMLDIDCS`,
+  the estimator the port calls `DoubleMLDIDCrossSection`; the port's
+  `DoubleMLDIDCS` is the multi-period CS-DID grid (`did_cs.mbt`: treatment
+  groups `g`, periods `t`, a `DoubleMLDIDBinary` per `(g, t)` cell).  The row
+  now says "DID with staggered adoption", and the grouping paragraph says
+  19 / 2 / 1.
+- `skills/moonbit_doubleML.md` said "20 mirror upstream `doubleml-for-py` by
+  name" and that `DoubleMLDIDCrossSection` "has no upstream counterpart
+  (port-only)".
+
+All three predate `_verify/UPSTREAM_PROVENANCE.md`, which was first tracked in
+v0.164.11, so they were never reconciled with it.
+
+### Added -- a check that derives the grouping instead of asserting it
+
+- `_verify/_verify_provenance_grouping_1650.py` (**63** checks) reads the 21
+  upstream estimator classes from the INSTALLED `doubleml` package and the
+  port's 22 estimators from the library source, finds the one shared name
+  that is a coincidence -- `DoubleMLDIDCS`, where upstream consumes the
+  id-less `DoubleMLDIDData` and the port consumes the id-bearing
+  `DoubleMLDIDCSData` -- and derives the grouping from that: 19 name-identical,
+  2 renamed, 1 with no 1:1 upstream class.  It then checks that every tracked
+  document which states the grouping states THAT one, and that the withdrawn
+  forms are gone from each file they were corrected in.
+
+### Added -- a dry-run that proves each of its mechanisms
+
+- `_verify/_dryrun_round26_1650.py` breaks the grouping one mechanism at a
+  time and requires the failure count to GROW at every step: **19** failures at
+  the end, 0 -> 2 -> 4 -> 6 -> 8 -> 10 -> 15 -> 18, and the counter agrees with
+  the verifier's own summary.
+
+### Also confirmed, and changed nothing
+
+- pyroduct's `dmlref` -- the downstream consumer the README names -- still
+  pins `riantr/moonbit_doubleML@0.163.3` and reports the figures the README
+  quotes: `theta` delta `0.017` (1.667 vs 1.685) and `se` 0.153 vs 0.152.
+- The README's two upstream version references are both true: the provenance
+  labels were re-measured against the INSTALLED `doubleml` 0.11.3, and the
+  latest published upstream is 0.11.4.  The score vocabulary of all 18
+  upstream classes is identical in the two, which is why both appear.
+
 ## [0.164.18] -- the names that did not survive being used
 
 `moon.mod` moves 0.164.17 -> 0.164.18. One `.mbt` changed -- `lplr.mbt`, and
