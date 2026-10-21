@@ -1,0 +1,201 @@
+== the verifier on the tree as it stands ==
+==============================================================================
+1. the port's score parameters, derived from the source
+==============================================================================
+  ok    the port has 22 estimators                                       got 22
+  ok    the port has 9 score parameters                                  got 9
+        did.mbt              :262   DoubleMLDID            new
+        did_binary.mbt       :367   DoubleMLDIDBinary      new
+        did_cross_section.mbt :191   DoubleMLDIDCrossSection new
+        did_cs_binary.mbt    :731   DoubleMLDIDCSBinary    new
+        lplr.mbt             :354   DoubleMLLPLR           new
+        plpr.mbt             :554   DoubleMLPLPR           new
+        plr.mbt              :417   DoubleMLPLR            fit
+        plr.mbt              :676   DoubleMLPLR            fit_cluster
+        tune.mbt             :355   DoubleMLPLR            tune
+  ok    they sit at 7 estimators                                         got 7: ['DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCSBinary', 'DoubleMLDIDCrossSection', 'DoubleMLLPLR', 'DoubleMLPLPR', 'DoubleMLPLR']
+  ok    six take it on new()                                             ['DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCSBinary', 'DoubleMLDIDCrossSection', 'DoubleMLLPLR', 'DoubleMLPLPR']
+  ok    one takes it on fit()                                            ['DoubleMLPLR']
+  ok    the new() six are the DID family, LPLR and PLPR                  ['DoubleMLDID', 'DoubleMLDIDBinary', 'DoubleMLDIDCSBinary', 'DoubleMLDIDCrossSection', 'DoubleMLLPLR', 'DoubleMLPLPR']
+  ok    15 of the 22 estimators take no score argument                   got 15
+  ok    did.mbt's score guard and its comparisons agree                  guard=['experimental', 'observational'] compared=['experimental', 'observational']
+  ok    did_binary.mbt's score guard and its comparisons agree           guard=['experimental', 'observational'] compared=['experimental', 'observational']
+  ok    did_cross_section.mbt's score guard and its comparisons agree    guard=['experimental', 'observational'] compared=['experimental', 'observational']
+  ok    did_cs_binary.mbt's score guard and its comparisons agree        guard=['observational'] compared=['observational']
+  ok    lplr.mbt's score guard and its comparisons agree                 guard=['instrument', 'nuisance_space'] compared=['instrument', 'nuisance_space']
+  ok    plpr.mbt's score guard and its comparisons agree                 guard=['IV-type', 'partialling out'] compared=['IV-type', 'partialling out']
+  ok    plr.mbt's score guard and its comparisons agree                  guard=['IV-type', 'iv-type', 'partialling out', 'partialling-out'] compared=['IV-type', 'iv-type', 'partialling out', 'partialling-out']
+  ok    plr.mbt's score guard and its comparisons agree                  guard=['IV-type', 'iv-type', 'partialling out', 'partialling-out'] compared=['IV-type', 'iv-type', 'partialling out', 'partialling-out']
+  ok    DoubleMLPLR's score default is the same on every method          partialling-out vs partialling-out
+  ok    tune.mbt's score guard and its comparisons agree                 guard=[] compared=[]
+  ok    DoubleMLPLR's score default is the same on every method          partialling-out vs partialling-out
+  ok    the port's accepted union is 8 spellings                         got 8: ['IV-type', 'experimental', 'instrument', 'iv-type', 'nuisance_space', 'observational', 'partialling out', 'partialling-out']
+  ok    the port's union is the documented one                           ['IV-type', 'experimental', 'instrument', 'iv-type', 'nuisance_space', 'observational', 'partialling out', 'partialling-out']
+  ok    DoubleMLPLR accepts four spellings                               ['IV-type', 'iv-type', 'partialling out', 'partialling-out']
+  ok    DoubleMLDIDCSBinary accepts only observational                   ['observational']
+  ok    DoubleMLPLPR accepts the SPACE spelling, not the hyphen one      ['IV-type', 'partialling out']
+  ok    DoubleMLPLR defaults to the HYPHEN spelling                      partialling-out
+  ok    DoubleMLDID's default is observational                           observational
+  ok    DoubleMLDIDBinary's default is observational                     observational
+  ok    DoubleMLDIDCSBinary's default is observational                   observational
+  ok    DoubleMLDIDCrossSection's default is observational               observational
+  ok    DoubleMLLPLR defaults to nuisance_space                          nuisance_space
+  ok    DoubleMLPLPR defaults to 'partialling out'                       partialling out
+
+==============================================================================
+2. the cache-kind tags -- internal, and never score values
+==============================================================================
+  ok    the cache-kind tags include the seven the documents name         ['apo', 'apos', 'blp', 'cvar', 'did', 'iivm', 'irm', 'lplr', 'lpq', 'pliv', 'plpr', 'plr', 'policy_tree', 'pq', 'qte', 'rdd', 'ssm']
+  ok    NO cache-kind tag is accepted as a score value                   overlap: []
+
+==============================================================================
+3. the upstream vocabulary -- 0.11.4 (vendored) and 0.11.3 (installed)
+==============================================================================
+  ok    the vendored 0.11.4 tree is present                              15 spellings
+  ok    upstream 0.11.4 uses 15 spellings                                got 15
+  ok    the installed wheel is 0.11.3                                    0.11.3
+  ok    the two upstream versions agree on the vocabulary                13-only=[] 14-only=[]
+  ok    upstream's 15 are the documented ones                            ['APO', 'ATE', 'ATTE', 'CVaR', 'IV-type', 'LATE', 'LPQ', 'PQ', 'experimental', 'instrument', 'missing-at-random', 'nonignorable', 'nuisance_space', 'observational', 'partialling out']
+  ok    upstream's RDFlex, DoubleMLBLP and DoubleMLPolicyTree take no score ['RDFlex', 'DoubleMLBLP', 'DoubleMLPolicyTree']
+
+==============================================================================
+4. doc/004_estimators -- the catalogue table and the new section
+==============================================================================
+  ok    doc/004's catalogue still lists 22 rows                          got 22
+  ok    doc/004's catalogue lists exactly the derived estimator set      
+  ok    doc/004's DoubleMLPLR row names the fit() argument               cell='`fit(score=...)`' want='`fit(score=...)`'
+  ok    doc/004's DoubleMLIRM row says the score is fixed                cell='— (fixed: ATE)'
+  ok    doc/004's DoubleMLPLIV row says the score is fixed               cell='— (fixed: partialling-out)'
+  ok    doc/004's DoubleMLIIVM row says the score is fixed               cell='— (fixed: LATE)'
+  ok    doc/004's DoubleMLDID row names the new() argument               cell='`new(score=...)`' want='`new(score=...)`'
+  ok    doc/004's DoubleMLDIDBinary row names the new() argument         cell='`new(score=...)`' want='`new(score=...)`'
+  ok    doc/004's DoubleMLDIDCS row says the score is fixed              cell='— (fixed: `observational`)'
+  ok    doc/004's DoubleMLDIDCSBinary row names the new() argument       cell='`new(score=...)`' want='`new(score=...)`'
+  ok    doc/004's DoubleMLDIDMulti row says the score is fixed           cell='— (fixed)'
+  ok    doc/004's DoubleMLDIDCrossSection row names the new() argument   cell='`new(score=...)`' want='`new(score=...)`'
+  ok    doc/004's DoubleMLSSM row says the score is fixed                cell='— (fixed: missing-at-random)'
+  ok    doc/004's DoubleMLAPO row says the score is fixed                cell='— (fixed: APO)'
+  ok    doc/004's DoubleMLAPOS row says the score is fixed               cell='— (fixed: APO)'
+  ok    doc/004's DoubleMLPQ row says the score is fixed                 cell='— (fixed: PQ)'
+  ok    doc/004's DoubleMLQTE row says the score is fixed                cell='— (fixed: PQ)'
+  ok    doc/004's DoubleMLLPQ row says the score is fixed                cell='— (fixed: LPQ)'
+  ok    doc/004's DoubleMLLPLR row names the new() argument              cell='`new(score=...)`' want='`new(score=...)`'
+  ok    doc/004's DoubleMLPLPR row names the new() argument              cell='`new(score=...)`' want='`new(score=...)`'
+  ok    doc/004's DoubleMLCVAR row says the score is fixed               cell='— (fixed: CVaR)'
+  ok    doc/004's DoubleMLRDD row says the score is fixed                cell='— (fixed)'
+  ok    doc/004's DoubleMLBLP row says the score is fixed                cell='— (fixed)'
+  ok    doc/004's DoubleMLPolicyTree row says the score is fixed         cell='— (fixed)'
+  ok    doc/004 states that only 7 of the 22 take a score argument       
+  ok    doc/004 states that 15 take none                                 
+  ok    doc/004 states the 9 parameters at 7 estimators                  
+  ok    doc/004 says upstream uses 15 spellings                          
+  ok    doc/004's stated score-taking count is the derived one           derived 7 of 22
+  ok    doc/004's stated no-score count is the derived one               derived 15
+  ok    doc/004's stated parameter count is the derived one              derived 9 at 7
+  ok    doc/004's score-argument table has 7 rows                        got 7
+  ok    doc/004's site row for DoubleMLPLR names the right method        doc=fit derived=fit
+  ok    doc/004's site row for DoubleMLPLR states the real default       doc=partialling-out derived=partialling-out
+  ok    doc/004's site row for DoubleMLPLR states the real accepted set  doc=['IV-type', 'iv-type', 'partialling out', 'partialling-out'] derived=['IV-type', 'iv-type', 'partialling out', 'partialling-out']
+  ok    doc/004's site row for DoubleMLDID names the right method        doc=new derived=new
+  ok    doc/004's site row for DoubleMLDID states the real default       doc=observational derived=observational
+  ok    doc/004's site row for DoubleMLDID states the real accepted set  doc=['experimental', 'observational'] derived=['experimental', 'observational']
+  ok    doc/004's site row for DoubleMLDIDBinary names the right method  doc=new derived=new
+  ok    doc/004's site row for DoubleMLDIDBinary states the real default doc=observational derived=observational
+  ok    doc/004's site row for DoubleMLDIDBinary states the real accepted set doc=['experimental', 'observational'] derived=['experimental', 'observational']
+  ok    doc/004's site row for DoubleMLDIDCrossSection names the right method doc=new derived=new
+  ok    doc/004's site row for DoubleMLDIDCrossSection states the real default doc=observational derived=observational
+  ok    doc/004's site row for DoubleMLDIDCrossSection states the real accepted set doc=['experimental', 'observational'] derived=['experimental', 'observational']
+  ok    doc/004's site row for DoubleMLDIDCSBinary names the right method doc=new derived=new
+  ok    doc/004's site row for DoubleMLDIDCSBinary states the real default doc=observational derived=observational
+  ok    doc/004's site row for DoubleMLDIDCSBinary states the real accepted set doc=['observational'] derived=['observational']
+  ok    doc/004's site row for DoubleMLLPLR names the right method       doc=new derived=new
+  ok    doc/004's site row for DoubleMLLPLR states the real default      doc=nuisance_space derived=nuisance_space
+  ok    doc/004's site row for DoubleMLLPLR states the real accepted set doc=['instrument', 'nuisance_space'] derived=['instrument', 'nuisance_space']
+  ok    doc/004's site row for DoubleMLPLPR names the right method       doc=new derived=new
+  ok    doc/004's site row for DoubleMLPLPR states the real default      doc=partialling out derived=partialling out
+  ok    doc/004's site row for DoubleMLPLPR states the real accepted set doc=['IV-type', 'partialling out'] derived=['IV-type', 'partialling out']
+  ok    doc/004's site table covers exactly the 7 estimators with a score 
+  ok    doc/004 names the cache-kind tag 'apo'                           
+  ok    doc/004 names the cache-kind tag 'apos'                          
+  ok    doc/004 names the cache-kind tag 'pq'                            
+  ok    doc/004 names the cache-kind tag 'qte'                           
+  ok    doc/004 names the cache-kind tag 'lpq'                           
+  ok    doc/004 names the cache-kind tag 'cvar'                          
+  ok    doc/004 names the cache-kind tag 'policy_tree'                   
+  ok    doc/004 says the cache-kind tags are not score values            
+  ok    doc/004 says they are cache-kind tags                            
+  ok    doc/004 no longer claims the column is what you pass to fit(score=...) 
+  ok    doc/004 no longer calls the column 'Port `score` string'         
+
+==============================================================================
+5. the README -- the score-vocabulary note and the constructor paragraph
+==============================================================================
+  ok    the README keeps the pinned phrase 'three vocabularies are in play' 
+  ok    the README keeps the pinned upstream prefix                      
+  ok    the README keeps the pinned pointer to the tutorial              
+  ok    the README's score note is findable                              
+  ok    the README's port list is findable                               
+  ok    the README lists exactly the port's accepted spellings           extra=[] missing=[]
+  ok    the README's stated port count is the derived one                doc=8 derived=8
+  ok    the README's upstream list is findable                           
+  ok    the README lists exactly upstream's spellings                    extra=[] missing=[]
+  ok    the README's stated upstream count is the derived one            doc=15 derived=15
+  ok    the README says 7 of the 22 take a score argument                
+  ok    the README's stated score-taking count is the derived one        derived 7 of 22
+  ok    the README says upstream's vocabulary is 15 spellings            
+  ok    the README says DoubleMLPLR takes the score on fit() and six on new() 
+  ok    the README no longer calls apo / pq / lpq / cvar / policy_tree score values 
+  ok    the README's constructor-differences paragraph is findable       
+  ok    the README names the six that take the score on new()            []
+  ok    the README says DoubleMLPLR takes the score on fit()             
+
+==============================================================================
+6. skills/moonbit_doubleML.md -- the classifier set and the validators
+==============================================================================
+  ok    7 estimators default ml_m to the classifier                      got 7: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
+  ok    DoubleMLLPLR is one of them                                      
+  ok    DoubleMLDID is not one of them                                   
+  ok    the skills document names the six 1/m_hat estimators             []
+  ok    the skills document accounts for the seventh (LPLR) as an exception 
+  ok    the skills document says the 1/m_hat set is SIX                  
+  ok    the skills document does not call the 1/m_hat set seven          
+  ok    9 of the 24 validate_* scripts import the upstream wheel in code got 9: ['validate_apos_with_python.py', 'validate_cluster_iv_with_python.py', 'validate_cluster_plr_with_python.py', 'validate_did_cs_binary_with_python.py', 'validate_iivm_with_python.py', 'validate_irm_with_python.py', 'validate_lplr_with_python.py', 'validate_pliv_with_python.py', 'validate_plpr_with_python.py']
+  ok    15 re-derive the hand-rolled reference                           got 15
+  ok    the skills document states the 15 / 9 split                      
+
+==============================================================================
+131 checks, 0 failed
+==============================================================================
+
+== the dry-run: each mechanism, one at a time ==
+=== cloning locally and checking out HEAD ===
+  HEAD -> 54e6d03d31e013cf41af2b564590562fb32b26f5
+  copied in README.mbt.md
+  copied in moonbit_doubleML/README.mbt.md
+  copied in doc/004_estimators/readme.mbt.md
+  copied in skills/moonbit_doubleML.md
+  copied in _verify/_verify_score_argument_1650.py
+  copied in _verify/_upstream_ps/doubleml-0.11.4 (directory)
+
+=== baseline: the tree as it stands ===
+  exit=0  failures=0
+
+=== the mechanisms, one at a time ===
+  1. doc/004's APO row says 'apo' again                                     failures 0 -> 1  GROW
+  2. doc/004's DID row says 'observational' again                           failures 1 -> 2  GROW
+  3. doc/004 claims 21 of the 22 take a score argument                      failures 2 -> 4  GROW
+  4. doc/004's score-argument table loses the PLR row                       failures 4 -> 6  GROW
+  5. doc/004's PLPR row claims the hyphen spelling                          failures 6 -> 7  GROW
+  6. the README's port list is the old one, cache-kind tags included        failures 7 -> 9  GROW
+  7. the README's upstream list is the old 9-spelling one                   failures 9 -> 10  GROW
+  8. the README's constructor paragraph stops naming the score argument     failures 10 -> 12  GROW
+  9. the skills document folds LPLR into the six                            failures 12 -> 15  GROW
+  10. the skills document says all 24 re-derive the hand-rolled reference    failures 15 -> 16  GROW
+  11. the SOURCE loses a score parameter, so the derived counts move         failures 16 -> 30  GROW
+  12. the vendored upstream tree drops a spelling                            failures 30 -> 34  GROW
+
+=== the counter and the verifier's own summary ===
+  the driver counted 34 failures
+  the verifier says  127 checks, 34 failed
+
+OK: every mechanism contributed, and the counter agrees with the summary

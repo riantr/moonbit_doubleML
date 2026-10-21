@@ -9,6 +9,94 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.21] -- where the `score` argument actually lives
+
+`moon.mod` moves 0.164.20 -> 0.164.21.  The only `.mbt` changed is
+`examples/api_server/main.mbt`, and only the library version string it echoes --
+so no estimator behaviour changed and the test counts stay
+**1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js), re-measured by the
+local gate.
+
+Round 28 audited the `score` argument -- the one API parameter that is not
+where the README's own shape said it would be -- across `doc/004_estimators`,
+the published README and `skills/moonbit_doubleML.md`.
+
+### Fixed -- doc/004_estimators: the score column was right for one estimator out of 22
+
+The port has **9** `score` parameters at **7** estimators. `DoubleMLPLR` takes
+the argument on `fit()` (also on `fit_cluster()` and `tune()`), six others take
+it on `new()`, and **15 of the 22 take no score argument at all**. The column
+was headed "the value you pass to `fit(score=...)`" -- true for exactly ONE
+estimator -- and the rows for the estimators with no score argument were
+filled with the strings `apo`, `apos`, `pq`, `qte`, `lpq`, `cvar` and
+`policy_tree`.
+
+Those are the port's INTERNAL cache-kind tags: the `hash_hyperparams(...)`
+kind, and `policy_tree` the `estimator_kind`. A reader following the document
+wrote `DoubleMLAPO::new(data).fit(score="apo")`, which does not compile.
+
+The table now names the ARGUMENT and where it lives, and a new section
+"The `score` argument" gives the seven sites with their defaults and their
+accepted sets -- and says plainly which strings are not score values.
+
+### Fixed -- the README: five of the eight strings it called score values are not
+
+The "three vocabularies" note listed the port's accepted spellings as
+`partialling-out`, `apo`, `pq`, `lpq`, `cvar`, `policy_tree`, `nuisance_space`
+and `observational`. Five of those are cache-kind tags. The port's real
+accepted union is **8** spellings -- `partialling-out`, `partialling out`,
+`iv-type`, `IV-type`, `observational`, `experimental`, `nuisance_space` and
+`instrument` -- spread over only 7 of the 22 estimators.
+
+Upstream's list was 9 of the **15** spellings upstream actually uses: `ATTE`,
+`LATE`, `experimental`, `instrument`, `nonignorable` and `IV-type` were
+missing. The upstream vocabulary is measured on the vendored 0.11.4 tree AND
+on the installed 0.11.3 wheel, and the two agree.
+
+The API reference's "constructor arguments also differ" paragraph now names the
+one difference that moves between `new()` and `fit()`.
+
+### Fixed -- skills/moonbit_doubleML.md: six estimators that named seven, and a family of 24 that did not all do the same thing
+
+- `ml_m` defaults to the classifier "for the six estimators whose propensity
+  enters the score as `1 / m_hat`" -- and then named **seven**. The seventh,
+  `DoubleMLLPLR`, is not one of them: its propensity enters its score as
+  `d - m_hat`, not `1 / m_hat`.
+- All 24 `validate_*_with_python.py` scripts do not re-derive the hand-rolled
+  reference. **15** do; the other **9** import upstream's `doubleml` wheel and
+  take the reference from there.
+
+### Added -- a check that derives the score argument's shape from the source
+
+- `_verify/_verify_score_argument_1650.py` (**127** checks) derives the 22
+  estimators, the 9 score parameters and their owning methods, the accepted
+  set at each site (read from the guarding `require(...)`, with the
+  `*_is_*_score` helper predicates resolved, and cross-checked against every
+  `score == "..."` comparison in the same file), the cache-kind tags, the
+  port's accepted union and upstream's. It then checks that every document
+  states the DERIVED values -- a document that says "7" while the source has 6
+  fails -- and that the withdrawn forms are gone from the files they were
+  corrected in.
+
+### Added -- a dry-run that proves each of its mechanisms
+
+- `_verify/_dryrun_round28_1650.py` breaks the claims one mechanism at a time
+  and requires the failure count to GROW at every step: **34** failures at the
+  end, 0 -> 1 -> 2 -> 4 -> 6 -> 7 -> 9 -> 10 -> 12 -> 15 -> 16 -> 30 -> 34, and
+  the counter agrees with the verifier's own summary. The last two mechanisms
+  prove the derivation is live: one deletes a `score~` parameter from the
+  SOURCE, so the derived counts move and every document that stated them is
+  caught; the other mutates the vendored upstream tree, so the two upstream
+  versions stop agreeing.
+
+### Also confirmed, and changed nothing
+
+- `doc/001_introduction`'s 21 upstream classes, the 19 / 2 / 1 grouping, its
+  learner vocabulary, its 24 validators, its 18 DGP factories and its test
+  total; `doc/004`'s 22-row catalogue and its Port-file column; its accessor
+  exception table (16 of 22 expose `coef` / `se` / `confint` / `bootstrap`,
+  and the six that do not); and its 19 + 2 + 1 upstream-provenance grouping.
+
 ## [0.164.20] -- the four tutorials, and the family the README did not mention
 
 `moon.mod` moves 0.164.19 -> 0.164.20. One `.mbt` changed -- a TEST file, and

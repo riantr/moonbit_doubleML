@@ -112,6 +112,34 @@
 >   `_verify/_verify_tutorial_claims_1650.py` derives the DGP signatures, the
 >   accessor sets, the 22-estimator coverage map and the 9/15 wheel split from
 >   the source, and checks that a witness sits next to every published number.
+> * **Round 28.** The `score` argument was audited -- where it lives, what it
+>   accepts, and which estimators have one at all.  The port has **9** `score`
+>   parameters at **7** estimators: `DoubleMLPLR` takes it on `fit()` (also on
+>   `fit_cluster()` and `tune()`), six others take it on `new()`, and **15 of
+>   the 22 take no score argument at all**.  `doc/004_estimators` said the
+>   column was "the value you pass to `fit(score=...)`" -- true for exactly one
+>   estimator -- and it filled the other rows with the strings `apo`, `apos`,
+>   `pq`, `qte`, `lpq`, `cvar` and `policy_tree`, which are the port's
+>   INTERNAL cache-kind tags (the `hash_hyperparams(...)` kind, and
+>   `policy_tree` the `estimator_kind`), not score values.  The README's
+>   "three vocabularies" note repeated the mistake: five of the eight strings
+>   it listed as accepted by the port are ones no estimator accepts, and the
+>   upstream list gave 9 of the **15** spellings upstream actually uses --
+>   `ATTE`, `LATE`, `experimental`, `instrument`, `nonignorable` and
+>   `IV-type` were missing.  The API reference's "constructor arguments also
+>   differ" paragraph did not name the one difference that moves between
+>   `new()` and `fit()`.  `skills/moonbit_doubleML.md` said `ml_m` defaults to
+>   the classifier "for the six estimators whose propensity enters the score as
+>   `1 / m_hat`" and then named **seven** -- the seventh, `DoubleMLLPLR`, is
+>   not one of them, because its propensity enters its score as `d - m_hat` --
+>   and it said all 24 `validate_*` scripts re-derive the hand-rolled
+>   reference, which is true of **15**: the other nine take theirs from
+>   upstream's wheel.  The new check
+>   `_verify/_verify_score_argument_1650.py` derives all of it from the
+>   source: the score parameters and their owners, the accepted set at each
+>   site, the cache-kind tags, and both vocabularies -- the upstream one
+>   measured on the vendored 0.11.4 tree AND on the installed 0.11.3, which
+>   agree.
 
 ## The README as it stood at v0.164.11
 

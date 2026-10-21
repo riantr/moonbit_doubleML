@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.20",
+  "riantr/moonbit_doubleML@0.164.21",
 }
 ```
 
@@ -178,12 +178,16 @@ port's variant of upstream's `DoubleMLDIDMulti`:
 | `DoubleMLPolicyTree` | policy | policy tree *(upstream)*, + v0.98.0 honest split (`honest = true`) with `leaf_se` / `policy_value_se` |
 
 The **Score** column is a prose label for the estimand family, not a
-machine string, and three vocabularies are in play: the port accepts
-its own lower-case spellings (`partialling-out`, `apo`, `pq`, `lpq`,
-`cvar`, `policy_tree`, `nuisance_space`, `observational`); upstream
-`doubleml-for-py` 0.11.4 uses `APO`, `ATE`, `PQ`, `LPQ`, `CVaR`,
-`nuisance_space`, `partialling out`, `observational` and
-`missing-at-random`, and takes **no score argument at all** for
+machine string, and three vocabularies are in play. The port accepts
+**8** spellings -- `partialling-out`, `partialling out`, `iv-type`,
+`IV-type`, `observational`, `experimental`, `nuisance_space` and
+`instrument` -- and only **7 of the 22 estimators take a `score`
+argument at all**: `DoubleMLPLR` on `fit()`, six others on `new()`.
+The upstream vocabulary is a different set of **15** spellings, and
+upstream `doubleml-for-py` 0.11.4 uses `APO`, `ATE`, `PQ`, `LPQ`,
+`CVaR`, `LATE`, `ATTE`, `IV-type`, `experimental`, `instrument`,
+`missing-at-random`, `nonignorable`, `nuisance_space`, `observational`
+and `partialling out`; it takes **no score argument at all** for
 `RDFlex`, `DoubleMLBLP` or `DoubleMLPolicyTree`. The
 `doc/004_estimators` tutorial lists the port's own strings, one row
 per estimator.
@@ -236,7 +240,11 @@ Constructor arguments also differ in ways a table cannot show:
 `DoubleMLDIDBinary` needs `g_value` / `t_value_pre` / `t_value_eval`,
 `DoubleMLAPOS` needs `treatment_levels`, `DoubleMLPolicyTree` needs
 `features` / `orth_signal` / `depth` / `honest`, and each DID variant takes
-its own data type.
+its own data type. The `score` argument is the one that moves between
+`new()` and `fit()`: `DoubleMLPLR` takes it on `fit()`, and
+`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`,
+`DoubleMLDIDCSBinary`, `DoubleMLLPLR` and `DoubleMLPLPR` take it on
+`new()`.
 
 **Learner injection via `LearnerDispatch`** -- every estimator's
 `new()` / `fit()` accept `ml_g` / `ml_m` / `ml_l` / `ml_r` typed
@@ -565,7 +573,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.20** |
+| `moon.mod` version | **0.164.21** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -691,7 +699,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.20, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.21, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

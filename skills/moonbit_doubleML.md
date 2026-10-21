@@ -130,9 +130,10 @@ surface and anti-patterns).
   `validate_*_with_python.py`, and that glob is what CI runs; three
   more (`validate_plotting_scope.py`, `validate_splitting_contract.py`,
   `validate_suite_meta.py`) are repo-level harnesses the glob does
-  not pick up. They re-derive the hand-rolled reference for one
-  model and compare against the MoonBit output. Keep the script
-  name aligned with the estimator it validates.
+  not pick up. Fifteen of the 24 re-derive the hand-rolled reference
+  for one model and compare against the MoonBit output; the other nine
+  import upstream's `doubleml` wheel and take the reference from
+  there. Keep the script name aligned with the estimator it validates.
 
 # Anti-patterns
 
@@ -174,10 +175,12 @@ surface and anti-patterns).
   `LearnerDispatch::logistic_regression(LogisticRegression::new())`
   for the six estimators whose propensity enters the score as
   `1 / m_hat` -- `DoubleMLIRM` (v0.132.0), `DoubleMLAPO`
-  (v0.134.0), `DoubleMLAPOS` (v0.135.0), `DoubleMLSSM` (v0.138.0),
-  `DoubleMLPQ` / `DoubleMLQTE` (v0.139.0) and `DoubleMLLPLR`
-  (v0.163.3). `ml_g` deliberately stays OLS, because it models
-  `E[y | x]`, not `P(y = 1 | x]`.
+  (v0.134.0), `DoubleMLAPOS` (v0.135.0), `DoubleMLSSM` (v0.138.0)
+  and `DoubleMLPQ` / `DoubleMLQTE` (v0.139.0). A seventh,
+  `DoubleMLLPLR` (v0.163.3), also defaults `ml_m` to the classifier,
+  but its propensity enters the score as `d - m_hat`, not `1 / m_hat`
+  -- so do not add it to the six. `ml_g` deliberately stays OLS,
+  because it models `E[y | x]`, not `P(y = 1 | x]`.
 
 - do NOT bypass `--deny-warn`. The CI runs
   `moon test --target {native,wasm-gc,wasm,js} --deny-warn` and

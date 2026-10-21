@@ -308,7 +308,7 @@ def estimator_table_rows(text, header_key):
 
 
 d4 = docs["004_estimators"]
-rows = estimator_table_rows(d4, "Port `score` string")
+rows = estimator_table_rows(d4, "Score argument")
 check("doc/004 lists exactly the derived estimator set",
       sorted(set(rows)) == sorted(EST) and len(rows) == len(EST),
       "rows=%d est=%d" % (len(rows), len(EST)))
@@ -320,10 +320,18 @@ for n in EXC:
     must("doc/004 names the accessor exception %s" % n, n, d4)
 must_re(r"doc/004 states the accessor count \(derived %d of %d\)" % (len(ALL4), len(EST)),
         r"%d of the %d estimators expose" % (len(ALL4), len(EST)), d4)
-# the port's own score strings must appear
-for s in ("partialling-out", "observational", "nuisance_space", "policy_tree",
-          "apo", "lpq", "cvar", "qte"):
-    must("doc/004 carries the port score string %r" % s, s, d4)
+# the port's own ACCEPTED score strings must appear, and the cache-kind tags
+# must appear TOO -- but as the things they are, not as score values.
+# (Round 28: the column used to claim that `apo` / `pq` / `lpq` / `cvar` /
+# `policy_tree` were score values the port accepts.  They are the internal
+# `hash_hyperparams(...)` kind tags.)
+for s in ("partialling-out", "partialling out", "iv-type", "IV-type",
+          "observational", "experimental", "nuisance_space", "instrument"):
+    must("doc/004 carries the port's accepted score string %r" % s, s, d4)
+for s in ("apo", "apos", "pq", "qte", "lpq", "cvar", "policy_tree"):
+    must("doc/004 names the cache-kind tag %r" % s, s, d4)
+must_re("doc/004 says the cache-kind tags are NOT score values",
+         r"are not\s+score values", d4)
 must_not("doc/004 no longer uses the README's prose label for APO",
          "policy score |", d4)
 

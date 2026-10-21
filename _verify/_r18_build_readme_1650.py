@@ -252,6 +252,34 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   `_verify/_verify_tutorial_claims_1650.py` derives the DGP signatures, the
 >   accessor sets, the 22-estimator coverage map and the 9/15 wheel split from
 >   the source, and checks that a witness sits next to every published number.
+> * **Round 28.** The `score` argument was audited -- where it lives, what it
+>   accepts, and which estimators have one at all.  The port has **9** `score`
+>   parameters at **7** estimators: `DoubleMLPLR` takes it on `fit()` (also on
+>   `fit_cluster()` and `tune()`), six others take it on `new()`, and **15 of
+>   the 22 take no score argument at all**.  `doc/004_estimators` said the
+>   column was "the value you pass to `fit(score=...)`" -- true for exactly one
+>   estimator -- and it filled the other rows with the strings `apo`, `apos`,
+>   `pq`, `qte`, `lpq`, `cvar` and `policy_tree`, which are the port's
+>   INTERNAL cache-kind tags (the `hash_hyperparams(...)` kind, and
+>   `policy_tree` the `estimator_kind`), not score values.  The README's
+>   "three vocabularies" note repeated the mistake: five of the eight strings
+>   it listed as accepted by the port are ones no estimator accepts, and the
+>   upstream list gave 9 of the **15** spellings upstream actually uses --
+>   `ATTE`, `LATE`, `experimental`, `instrument`, `nonignorable` and
+>   `IV-type` were missing.  The API reference's "constructor arguments also
+>   differ" paragraph did not name the one difference that moves between
+>   `new()` and `fit()`.  `skills/moonbit_doubleML.md` said `ml_m` defaults to
+>   the classifier "for the six estimators whose propensity enters the score as
+>   `1 / m_hat`" and then named **seven** -- the seventh, `DoubleMLLPLR`, is
+>   not one of them, because its propensity enters its score as `d - m_hat` --
+>   and it said all 24 `validate_*` scripts re-derive the hand-rolled
+>   reference, which is true of **15**: the other nine take theirs from
+>   upstream's wheel.  The new check
+>   `_verify/_verify_score_argument_1650.py` derives all of it from the
+>   source: the score parameters and their owners, the accepted set at each
+>   site, the cache-kind tags, and both vocabularies -- the upstream one
+>   measured on the vendored 0.11.4 tree AND on the installed 0.11.3, which
+>   agree.
 
 """
 
@@ -989,6 +1017,80 @@ separately gated rows.
 
 Measured designs, one script per upstream class or family:"""
 
+# ==============================================================================
+# 3f.  THE ROUND-28 PATCHES -- the score vocabulary, and WHERE the score
+#      argument lives
+# ==============================================================================
+# Two defects, both measured against the source (the tracked verifier is
+# `_verify/_verify_score_argument_1650.py`):
+#
+#   * The note listed five strings as score values the port accepts --
+#     `apo`, `pq`, `lpq`, `cvar` and `policy_tree`.  The port accepts
+#     NONE of them: they are the internal cache-kind tags passed to
+#     `hash_hyperparams(...)` (and, for `policy_tree`, the
+#     `estimator_kind`).  A reader following the note wrote
+#     `DoubleMLAPO::new(data).fit(score="apo")`, which does not compile.
+#   * The port's own list was 8 wide but only 3 of its 8 were real, and
+#     upstream's was 9 of the 15 it actually uses (ATTE, LATE,
+#     experimental, instrument, nonignorable and IV-type were missing).
+#
+# The port's real accepted union is 8 spellings, spread over only 7 of
+# the 22 estimators: `DoubleMLPLR` takes the argument on `fit()`, six
+# others on `new()`, and 15 estimators take no score argument at all.
+#
+# THREE SUBSTRINGS ARE PINNED by other verifiers and survive unchanged:
+#   "three vocabularies are in play"
+#   "upstream `doubleml-for-py` 0.11.4 uses `APO`, `ATE`, `PQ`, `LPQ`"
+#   "`doc/004_estimators` tutorial lists the port's own strings"
+# The upstream list therefore still opens with APO, ATE, PQ, LPQ.
+
+OLD_SCORE_NOTE = """The **Score** column is a prose label for the estimand family, not a
+machine string, and three vocabularies are in play: the port accepts
+its own lower-case spellings (`partialling-out`, `apo`, `pq`, `lpq`,
+`cvar`, `policy_tree`, `nuisance_space`, `observational`); upstream
+`doubleml-for-py` 0.11.4 uses `APO`, `ATE`, `PQ`, `LPQ`, `CVaR`,
+`nuisance_space`, `partialling out`, `observational` and
+`missing-at-random`, and takes **no score argument at all** for
+`RDFlex`, `DoubleMLBLP` or `DoubleMLPolicyTree`. The
+`doc/004_estimators` tutorial lists the port's own strings, one row
+per estimator."""
+
+NEW_SCORE_NOTE = """The **Score** column is a prose label for the estimand family, not a
+machine string, and three vocabularies are in play. The port accepts
+**8** spellings -- `partialling-out`, `partialling out`, `iv-type`,
+`IV-type`, `observational`, `experimental`, `nuisance_space` and
+`instrument` -- and only **7 of the 22 estimators take a `score`
+argument at all**: `DoubleMLPLR` on `fit()`, six others on `new()`.
+The upstream vocabulary is a different set of **15** spellings, and
+upstream `doubleml-for-py` 0.11.4 uses `APO`, `ATE`, `PQ`, `LPQ`,
+`CVaR`, `LATE`, `ATTE`, `IV-type`, `experimental`, `instrument`,
+`missing-at-random`, `nonignorable`, `nuisance_space`, `observational`
+and `partialling out`; it takes **no score argument at all** for
+`RDFlex`, `DoubleMLBLP` or `DoubleMLPolicyTree`. The
+`doc/004_estimators` tutorial lists the port's own strings, one row
+per estimator."""
+
+# The API reference promises "One API shape, with the differences named",
+# and this paragraph is where the constructor differences are named.  The
+# score argument is a constructor difference in 6 of the 22 estimators --
+# it goes on `new()`, not on `fit()` -- and it was not named.
+
+OLD_CTOR_DIFFS = """Constructor arguments also differ in ways a table cannot show:
+`DoubleMLDIDBinary` needs `g_value` / `t_value_pre` / `t_value_eval`,
+`DoubleMLAPOS` needs `treatment_levels`, `DoubleMLPolicyTree` needs
+`features` / `orth_signal` / `depth` / `honest`, and each DID variant takes
+its own data type."""
+
+NEW_CTOR_DIFFS = """Constructor arguments also differ in ways a table cannot show:
+`DoubleMLDIDBinary` needs `g_value` / `t_value_pre` / `t_value_eval`,
+`DoubleMLAPOS` needs `treatment_levels`, `DoubleMLPolicyTree` needs
+`features` / `orth_signal` / `depth` / `honest`, and each DID variant takes
+its own data type. The `score` argument is the one that moves between
+`new()` and `fit()`: `DoubleMLPLR` takes it on `fit()`, and
+`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`,
+`DoubleMLDIDCSBinary`, `DoubleMLLPLR` and `DoubleMLPLPR` take it on
+`new()`."""
+
 for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_DID_COUNT, NEW_DID_COUNT),
                     (OLD_EXAMPLE_COUNT, NEW_EXAMPLE_COUNT),
@@ -1006,7 +1108,9 @@ for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_LPLR_SNIPPET, NEW_LPLR_SNIPPET),
                     (OLD_NONLINEAR, NEW_NONLINEAR),
                     (OLD_EXAMPLES_BULLET, NEW_EXAMPLES_BULLET),
-                    (OLD_UPSTREAM_OWNED, NEW_UPSTREAM_OWNED)):
+                    (OLD_UPSTREAM_OWNED, NEW_UPSTREAM_OWNED),
+                    (OLD_SCORE_NOTE, NEW_SCORE_NOTE),
+                    (OLD_CTOR_DIFFS, NEW_CTOR_DIFFS)):
     PATCHES.append((_old, _new))
 
 for _old, _new in PATCHES:
