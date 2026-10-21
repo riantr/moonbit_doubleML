@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.19",
+  "riantr/moonbit_doubleML@0.164.20",
 }
 ```
 
@@ -565,7 +565,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.19** |
+| `moon.mod` version | **0.164.20** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -581,11 +581,23 @@ it is what makes the port *no worse* rather than better. Record:
 
 **Nine gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
 family. Every script above compares the port against a second implementation
-written in this repository, which can only catch a disagreement someone already
-thought to look for. The `pyexample_*` scripts instead run upstream's own code
-on the port's rows and compare that: not "does the port agree with our second
-implementation" but "does the port agree with upstream". Measured designs, one
-script per upstream class or family:
+written in this repository, which on its own can only catch a disagreement
+someone already thought to look for. The `pyexample_*` scripts instead run
+upstream's own code on the port's rows and compare that: not "does the port
+agree with our second implementation" but "does the port agree with upstream".
+
+The `validate_*` family is not exclusively ours, though: **9** of its 24
+scripts import the upstream `doubleml` wheel, and **2** of those gate the port
+against upstream rather than only against a hand-rolled reference --
+`validate_did_cs_binary_with_python.py` (the port's ATT against upstream's)
+and `validate_lplr_with_python.py` (the port's coefficient against upstream's
+*and* the hand-rolled one, together). The other **7** import the wheel for
+context (`validate_apos`, `validate_cluster_iv`, `validate_cluster_plr`,
+`validate_iivm`, `validate_irm`, `validate_pliv`, `validate_plpr`); upstream's
+numbers are printed there, and in some of them upstream's own quantities are
+separately gated rows.
+
+Measured designs, one script per upstream class or family:
 
 | script | upstream class | how the two sides get their rows |
 |---|---|---|
@@ -679,7 +691,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.19, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.20, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

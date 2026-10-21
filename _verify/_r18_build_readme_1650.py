@@ -225,6 +225,33 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   upstream consumes the id-less `DoubleMLDIDData`, the port consumes the
 >   id-bearing `DoubleMLDIDCSData`) -- and then checks that every document
 >   which states the grouping states THAT one.
+> * **Round 27.** The four TUTORIAL documents under `doc/` -- the ones a reader
+>   opens AFTER the README, and which the README does not restate -- were
+>   audited for the first time, and three of them carried false claims.
+>   `doc/005_dgps` gave `make_irm_heterogeneous_data` the signature
+>   `(n_obs, theta, seed)` when the source says `(n_obs, dim_x, seed)`, and
+>   claimed every factory exposes `x_get()` / `y_get()` / `d_get()` when
+>   `make_lplr_LZZ2020` returns an `LplrData` carrying `theta_get()` and
+>   `data_get()` instead -- so the document's own usage example did not apply
+>   to it.  `doc/003_quick_start` published three exact numbers and NOTHING
+>   asserted them: the tutorial test called `ignore(fitted.coef())` and never
+>   mentioned `confint()`; the test now asserts all three bit-exactly, which
+>   keeps the test COUNT unchanged.  `doc/006_python_check` described ONE family
+>   of Python cross-checks and claimed "No estimator ships without a Python
+>   cross-check", which was true only because it counted the 9 `pyexample_*`
+>   upstream gates it never mentioned -- three estimators (`DoubleMLAPO`,
+>   `DoubleMLDIDMulti`, `DoubleMLQTE`) are covered ONLY by that family, and
+>   three more (`DoubleMLDIDCS`, `DoubleMLDIDCrossSection`, `DoubleMLPLPR`)
+>   only by the `validate_*` family.  That document's step 2 claimed every
+>   `validate_*` script builds its reference "via the upstream
+>   `doubleml.DoubleMLXxx`" -- true for 9 of the 24, false for the other 15 --
+>   and the README said the `pyexample_*` family was the only one whose
+>   reference is upstream, which 2 of the 9 wheel-importing `validate_*`
+>   scripts also do (`validate_did_cs_binary_with_python.py` and
+>   `validate_lplr_with_python.py`).  The new check
+>   `_verify/_verify_tutorial_claims_1650.py` derives the DGP signatures, the
+>   accessor sets, the 22-estimator coverage map and the 9/15 wheel split from
+>   the source, and checks that a witness sits next to every published number.
 
 """
 
@@ -904,6 +931,64 @@ NEW_EXAMPLES_BULLET = """- ✅ **21 runnable example binaries** -- 16 CLI demos,
   `examples/fuzz/`, and the two fixtures `examples/bitexact/` and
   `examples/parity/`."""
 
+# ==============================================================================
+# 3g.  THE ROUND-27 PATCH -- the `validate_*` family is not exclusively ours
+# ==============================================================================
+#
+# The paragraph said: "Every script above compares the port against a second
+# implementation written in this repository, which can only catch a disagreement
+# someone already thought to look for."  The first half is true of all 24.  The
+# second half is not: 9 of the 24 import the upstream `doubleml` wheel, and 2 of
+# those 9 GATE THE PORT AGAINST UPSTREAM rather than only against a hand-rolled
+# reference --
+#
+#   * validate_did_cs_binary_with_python.py: `if up is not None and
+#     abs(mb["coef"] - up["coef"]) > MODEL_TOL: ok = False`
+#   * validate_lplr_with_python.py: `band_ok = d_up < band and d_hr < band`,
+#     where `d_up = abs(mb_theta - th_up)` and `th_up` is upstream's theta.
+#
+# So the `pyexample_*` family was not the only one able to catch a shared
+# misreading of the model, and the README said it was.  The other 7 wheel
+# importers use upstream for context (upstream's numbers are printed) and, in
+# three of them, for separately gated rows of upstream's own quantities.
+#
+# Measured by _verify/_verify_tutorial_claims_1650.py, which derives the 9/15
+# split from the scripts themselves (the upstream wheel is imported in code,
+# not mentioned in prose) and checks both named gates still compare the port
+# against upstream.
+
+# The anchor runs to the end of the paragraph, so the new text can end with a
+# clean paragraph break and the table's own intro can start on a fresh line.
+# It matches the text as round 25's P10 left it ("class or family:").
+
+OLD_UPSTREAM_OWNED = """**Nine gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
+family. Every script above compares the port against a second implementation
+written in this repository, which can only catch a disagreement someone already
+thought to look for. The `pyexample_*` scripts instead run upstream's own code
+on the port's rows and compare that: not "does the port agree with our second
+implementation" but "does the port agree with upstream". Measured designs, one
+script per upstream class or family:"""
+
+NEW_UPSTREAM_OWNED = """**Nine gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
+family. Every script above compares the port against a second implementation
+written in this repository, which on its own can only catch a disagreement
+someone already thought to look for. The `pyexample_*` scripts instead run
+upstream's own code on the port's rows and compare that: not "does the port
+agree with our second implementation" but "does the port agree with upstream".
+
+The `validate_*` family is not exclusively ours, though: **9** of its 24
+scripts import the upstream `doubleml` wheel, and **2** of those gate the port
+against upstream rather than only against a hand-rolled reference --
+`validate_did_cs_binary_with_python.py` (the port's ATT against upstream's)
+and `validate_lplr_with_python.py` (the port's coefficient against upstream's
+*and* the hand-rolled one, together). The other **7** import the wheel for
+context (`validate_apos`, `validate_cluster_iv`, `validate_cluster_plr`,
+`validate_iivm`, `validate_irm`, `validate_pliv`, `validate_plpr`); upstream's
+numbers are printed there, and in some of them upstream's own quantities are
+separately gated rows.
+
+Measured designs, one script per upstream class or family:"""
+
 for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_DID_COUNT, NEW_DID_COUNT),
                     (OLD_EXAMPLE_COUNT, NEW_EXAMPLE_COUNT),
@@ -920,7 +1005,8 @@ for _old, _new in ((OLD_API_SHAPE, NEW_API_SHAPE),
                     (OLD_CLASSIFIER, NEW_CLASSIFIER),
                     (OLD_LPLR_SNIPPET, NEW_LPLR_SNIPPET),
                     (OLD_NONLINEAR, NEW_NONLINEAR),
-                    (OLD_EXAMPLES_BULLET, NEW_EXAMPLES_BULLET)):
+                    (OLD_EXAMPLES_BULLET, NEW_EXAMPLES_BULLET),
+                    (OLD_UPSTREAM_OWNED, NEW_UPSTREAM_OWNED)):
     PATCHES.append((_old, _new))
 
 for _old, _new in PATCHES:

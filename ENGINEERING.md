@@ -85,6 +85,33 @@
 >   upstream consumes the id-less `DoubleMLDIDData`, the port consumes the
 >   id-bearing `DoubleMLDIDCSData`) -- and then checks that every document
 >   which states the grouping states THAT one.
+> * **Round 27.** The four TUTORIAL documents under `doc/` -- the ones a reader
+>   opens AFTER the README, and which the README does not restate -- were
+>   audited for the first time, and three of them carried false claims.
+>   `doc/005_dgps` gave `make_irm_heterogeneous_data` the signature
+>   `(n_obs, theta, seed)` when the source says `(n_obs, dim_x, seed)`, and
+>   claimed every factory exposes `x_get()` / `y_get()` / `d_get()` when
+>   `make_lplr_LZZ2020` returns an `LplrData` carrying `theta_get()` and
+>   `data_get()` instead -- so the document's own usage example did not apply
+>   to it.  `doc/003_quick_start` published three exact numbers and NOTHING
+>   asserted them: the tutorial test called `ignore(fitted.coef())` and never
+>   mentioned `confint()`; the test now asserts all three bit-exactly, which
+>   keeps the test COUNT unchanged.  `doc/006_python_check` described ONE family
+>   of Python cross-checks and claimed "No estimator ships without a Python
+>   cross-check", which was true only because it counted the 9 `pyexample_*`
+>   upstream gates it never mentioned -- three estimators (`DoubleMLAPO`,
+>   `DoubleMLDIDMulti`, `DoubleMLQTE`) are covered ONLY by that family, and
+>   three more (`DoubleMLDIDCS`, `DoubleMLDIDCrossSection`, `DoubleMLPLPR`)
+>   only by the `validate_*` family.  That document's step 2 claimed every
+>   `validate_*` script builds its reference "via the upstream
+>   `doubleml.DoubleMLXxx`" -- true for 9 of the 24, false for the other 15 --
+>   and the README said the `pyexample_*` family was the only one whose
+>   reference is upstream, which 2 of the 9 wheel-importing `validate_*`
+>   scripts also do (`validate_did_cs_binary_with_python.py` and
+>   `validate_lplr_with_python.py`).  The new check
+>   `_verify/_verify_tutorial_claims_1650.py` derives the DGP signatures, the
+>   accessor sets, the 22-estimator coverage map and the 9/15 wheel split from
+>   the source, and checks that a witness sits next to every published number.
 
 ## The README as it stood at v0.164.11
 

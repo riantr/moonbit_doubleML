@@ -1,0 +1,177 @@
+== the verifier on the tree as it stands ==
+== 1. the port's estimators, from the library source ==
+   port estimators: 22
+
+== 2. doc/003_quick_start: the published table has a witness ==
+   published quantities: ['coef', 'confint', 'se']
+  ok    doc/003 publishes coef()                                       -8.782651064906958
+  ok    doc/003 publishes se()                                         13.75724952565863
+  ok    doc/003 publishes confint()                                    (-35.74634818655666, 18.18104605674274)
+  ok    doc/003's confint() publishes two bounds                       got 2
+  ok    the tutorial test asserts coef = -8.782651064906958            not in using_test.mbt
+  ok    the tutorial test asserts se = 13.75724952565863               not in using_test.mbt
+  ok    the tutorial test asserts confint[0] = -35.74634818655666      not in using_test.mbt
+  ok    the tutorial test asserts confint[1] = 18.18104605674274       not in using_test.mbt
+  ok    the tutorial test asserts coef() against the published value   
+  ok    the tutorial test asserts se() against the published value     
+  ok    the tutorial test calls confint()                              
+  ok    the tutorial test asserts both confint() bounds                got 2
+  ok    the tutorial test still holds exactly one test                 got 1
+  ok    doc/003 names the test that witnesses the table                
+  ok    doc/003 says the values are backend-independent                
+
+== 3. doc/005_dgps: the factory table matches the source ==
+   DGP factories in the source: 18
+   rows in the doc's table: 18
+  ok    the source and the table have the same factories               source-only=[] table-only=[]
+  ok    the table's signature for make_confounded_plr_data matches the source table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_confounded_plr_data matches the source table='dgp_plr_confounded.mbt' source='dgp_plr_confounded.mbt'
+  ok    the table's signature for make_did_CS2021 matches the source   table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_did_CS2021 matches the source        table='dgp_did_CS2021.mbt' source='dgp_did_CS2021.mbt'
+  ok    the table's signature for make_did_SZ2020 matches the source   table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_did_SZ2020 matches the source        table='dgp_did_SZ2020.mbt' source='dgp_did_SZ2020.mbt'
+  ok    the table's signature for make_did_cs_CS2021 matches the source table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_did_cs_CS2021 matches the source     table='dgp_did_cs_CS2021.mbt' source='dgp_did_cs_CS2021.mbt'
+  ok    the table's signature for make_iivm_data matches the source    table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_iivm_data matches the source         table='dgp_iivm.mbt' source='dgp_iivm.mbt'
+  ok    the table's signature for make_irm_confounded_data matches the source table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_irm_confounded_data matches the source table='dgp_irm_confounded.mbt' source='dgp_irm_confounded.mbt'
+  ok    the table's signature for make_irm_data matches the source     table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_irm_data matches the source          table='dgp_irm.mbt' source='dgp_irm.mbt'
+  ok    the table's signature for make_irm_discrete_treatments matches the source table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_irm_discrete_treatments matches the source table='dgp_irm_discrete.mbt' source='dgp_irm_discrete.mbt'
+  ok    the table's signature for make_irm_heterogeneous_data matches the source table='n_obs, dim_x, seed' source='n_obs, dim_x, seed'
+  ok    the table's file for make_irm_heterogeneous_data matches the source table='dgp_irm_heterogeneous.mbt' source='dgp_irm_heterogeneous.mbt'
+  ok    the table's signature for make_lplr_LZZ2020 matches the source table='n, alpha, seed' source='n, alpha, seed'
+  ok    the table's file for make_lplr_LZZ2020 matches the source      table='dgp_lplr.mbt' source='dgp_lplr.mbt'
+  ok    the table's signature for make_pliv_CHS2015 matches the source table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_pliv_CHS2015 matches the source      table='dgp_pliv.mbt' source='dgp_pliv.mbt'
+  ok    the table's signature for make_pliv_data matches the source    table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_pliv_data matches the source         table='dgp_pliv.mbt' source='dgp_pliv.mbt'
+  ok    the table's signature for make_pliv_multiway_cluster matches the source table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_pliv_multiway_cluster matches the source table='dgp_pliv_cluster.mbt' source='dgp_pliv_cluster.mbt'
+  ok    the table's signature for make_plpr_CP2025 matches the source  table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_plpr_CP2025 matches the source       table='dgp_plpr.mbt' source='dgp_plpr.mbt'
+  ok    the table's signature for make_plr_CCDDHNR2018 matches the source table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_plr_CCDDHNR2018 matches the source   table='dgp_plr_CCDDHNR.mbt' source='dgp_plr_CCDDHNR.mbt'
+  ok    the table's signature for make_plr_turrell2018 matches the source table='n_obs, theta, seed' source='n_obs, theta, seed'
+  ok    the table's file for make_plr_turrell2018 matches the source   table='dgp_plr_turrell.mbt' source='dgp_plr_turrell.mbt'
+  ok    the table's signature for make_simple_rdd_dgp matches the source table='n_obs, theta, seed' source='n_obs, theta, seed'
+  ok    the table's file for make_simple_rdd_dgp matches the source    table='dgp_simple_rdd.mbt' source='dgp_simple_rdd.mbt'
+  ok    the table's signature for make_ssm_data matches the source     table='n_obs, dim_x, theta, seed' source='n_obs, dim_x, theta, seed'
+  ok    the table's file for make_ssm_data matches the source          table='dgp_ssm.mbt' source='dgp_ssm.mbt'
+   factories exposing x_get/y_get/d_get: 17
+   factories without the trio: ['make_lplr_LZZ2020']
+  ok    every factory exposes theta_get()                              []
+  ok    exactly one factory lacks the x_get/y_get/d_get trio           got ['make_lplr_LZZ2020']
+  ok    that one is make_lplr_LZZ2020                                  got ['make_lplr_LZZ2020']
+  ok    its return type is LplrData                                    LplrData
+  ok    it exposes data_get() instead                                  ['data_get', 'theta_get']
+  ok    doc/005 states that 17 of the 18 expose the trio               
+  ok    doc/005 names the exception, its type and its accessor         the exact 'LplrData carrying theta_get() and data_get()' phrase is missing
+  ok    doc/005 does not claim the trio for all 18                     the withdrawn 'all 18 expose the trio' claim is still present
+  ok    doc/005's usage example does not apply the trio to the LPLR DGP 
+  ok    doc/005 no longer gives make_irm_heterogeneous_data a theta parameter the corrected row is not present
+
+== 4. doc/006_python_check: the two families and the coverage map ==
+   validate_*_with_python.py: 24   pyexample_*.py: 9
+   family A covers 19, family B covers 19, union 22
+   A-only: ['DoubleMLDIDCS', 'DoubleMLDIDCrossSection', 'DoubleMLPLPR']
+   B-only: ['DoubleMLAPO', 'DoubleMLDIDMulti', 'DoubleMLQTE']
+  ok    the validate_* family has 24 scripts                           got 24
+  ok    the pyexample_* family has 9 scripts                           got 9
+  ok    every one of the 22 estimators is cross-checked                uncovered=[]
+  ok    exactly 3 estimators are covered only by the pyexample_* family got 3
+  ok    they are DoubleMLAPO, DoubleMLDIDMulti and DoubleMLQTE         ['DoubleMLAPO', 'DoubleMLDIDMulti', 'DoubleMLQTE']
+  ok    exactly 3 estimators are covered only by the validate_* family got 3
+  ok    they are DoubleMLDIDCS, DoubleMLDIDCrossSection and DoubleMLPLPR ['DoubleMLDIDCS', 'DoubleMLDIDCrossSection', 'DoubleMLPLPR']
+  ok    the remaining 16 are covered by both                           got 16
+  ok    doc/006 states the two family counts                           
+  ok    doc/006 states that all 22 estimators are cross-checked        
+  ok    doc/006 states that 16 are checked by both                     
+  ok    doc/006 states that 3 are checked only by the validate_* family 
+  ok    doc/006 states that 3 are checked only by the pyexample_* family 
+  ok    doc/006's validate-only table row lists exactly the derived set want DoubleMLDIDCS, DoubleMLDIDCrossSection, DoubleMLPLPR
+  ok    doc/006's pyexample-only table row lists exactly the derived set want DoubleMLAPO, DoubleMLDIDMulti, DoubleMLQTE
+  ok    doc/006 names DoubleMLAPO as pyexample-only                    
+  ok    doc/006 names DoubleMLDIDMulti as pyexample-only               
+  ok    doc/006 names DoubleMLQTE as pyexample-only                    
+  ok    doc/006 names DoubleMLDIDCS as validate-only                   
+  ok    doc/006 names DoubleMLDIDCrossSection as validate-only         
+  ok    doc/006 names DoubleMLPLPR as validate-only                    
+  ok    doc/006 says the pyexample family is not globbed               
+  ok    doc/006 names the two scripts that gate the port against upstream 
+  ok    doc/006 states the 9 / 15 upstream-wheel split                 
+  ok    doc/006 keeps the no-estimator-without-a-cross-check claim     
+  ok    the python-cross-check job needs moon-test                     
+  ok    the validate_* family runs by glob                             
+  ok    the CI step greps the trailing line for an upper-case PASS     
+  ok    CI has an explicit step for pyexample_did.py                   
+  ok    CI has an explicit step for pyexample_did_binary.py            
+  ok    CI has an explicit step for pyexample_did_cs2021.py            
+  ok    CI has an explicit step for pyexample_did_cs_binary.py         
+  ok    CI has an explicit step for pyexample_lplr.py                  
+  ok    CI has an explicit step for pyexample_policytree.py            
+  ok    CI has an explicit step for pyexample_pq.py                    
+  ok    CI has an explicit step for pyexample_rdd.py                   
+  ok    CI has an explicit step for pyexample_suite.py                 
+
+== 5. who takes the reference from the upstream wheel ==
+   import the wheel: 9 -- ['validate_apos_with_python.py', 'validate_cluster_iv_with_python.py', 'validate_cluster_plr_with_python.py', 'validate_did_cs_binary_with_python.py', 'validate_iivm_with_python.py', 'validate_irm_with_python.py', 'validate_lplr_with_python.py', 'validate_pliv_with_python.py', 'validate_plpr_with_python.py']
+   do not:          15
+  ok    9 of the 24 validate_* scripts import the upstream wheel       got 9
+  ok    the other 15 do not                                            got 15
+  ok    validate_did_cs_binary_with_python.py still compares the port against upstream (abs\(mb\[\"coef\"\] -) 
+  ok    validate_did_cs_binary_with_python.py still compares the port against upstream (ok = False) 
+  ok    validate_lplr_with_python.py still compares the port against upstream (d_up\s*=\s*abs\(mb_theta - th_up\)) 
+  ok    validate_lplr_with_python.py still compares the port against upstream (band_ok\s*=\s*d_up\s*<\s*band\s+and\s+d_hr\s) 
+  ok    validate_lplr_with_python.py still compares the port against upstream (if not band_ok:) 
+  ok    validate_lplr_with_python.py still compares the port against upstream (ok = False) 
+  ok    validate_apos_with_python.py does not gate the port against upstream []
+  ok    validate_cluster_iv_with_python.py does not gate the port against upstream []
+  ok    validate_cluster_plr_with_python.py does not gate the port against upstream []
+  ok    validate_iivm_with_python.py does not gate the port against upstream []
+  ok    validate_irm_with_python.py does not gate the port against upstream []
+  ok    validate_pliv_with_python.py does not gate the port against upstream []
+  ok    validate_plpr_with_python.py does not gate the port against upstream []
+  ok    the README says the validate_* family is not exclusively ours  
+  ok    the README states the 9 / 24 wheel split                       
+  ok    the README names the two scripts that gate the port against upstream 
+  ok    the README's upstream-gate count word still parses             
+  ok    the README's gate table still has one row per gate on disk     
+  ok    the shipped README copy is byte-identical to the root README   
+
+==========================================================================
+120 checks, 0 failed
+all green
+
+== the dry-run: each mechanism, one at a time ==
+=== cloning locally and checking out HEAD ===
+  HEAD -> 5d3df641f93010c37cd5f7a9675366778f879832
+  copied in README.mbt.md
+  copied in moonbit_doubleML/README.mbt.md
+  copied in doc/003_quick_start/readme.mbt.md
+  copied in doc/003_quick_start/using_test.mbt
+  copied in doc/005_dgps/readme.mbt.md
+  copied in doc/006_python_check/readme.mbt.md
+  copied in _verify/_verify_tutorial_claims_1650.py
+
+=== baseline: the tree as it stands ===
+  exit=0  failures=0
+
+=== the mechanisms, one at a time ===
+  1. the DGP catalogue gives make_irm_heterogeneous_data a theta parameter  failures 0 -> 2  GROW
+  2. the DGP catalogue claims the x_get/y_get/d_get trio for all 18 again   failures 2 -> 3  GROW
+  3. the DGP catalogue stops naming the LPLR exception                      failures 3 -> 4  GROW
+  4. the quick start publishes a coef() value its test does not assert      failures 4 -> 6  GROW
+  5. the quick start's test stops asserting confint()                       failures 6 -> 9  GROW
+  6. the cross-check document stops naming DoubleMLQTE                      failures 9 -> 11  GROW
+  7. the cross-check document claims 17 estimators are cross-checked        failures 11 -> 12  GROW
+  8. the README's upstream-ownership paragraph is reverted                  failures 12 -> 15  GROW
+  9. pyexample_pq.py disappears, so DoubleMLQTE is no longer cross-checked  failures 15 -> 28  GROW
+
+=== the counter and the verifier's own summary ===
+  the driver counted 28 failures
+  the verifier says  120 checks, 28 failed
+
+OK: every mechanism contributed, and the counter agrees with the summary

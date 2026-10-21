@@ -25,6 +25,17 @@ test "doc/003_quick_start/readme.mbt.md end-to-end PLR" {
     n_rep=1,
     seed=3141,
   ).fit()
-  ignore(fitted.coef())
-  ignore(fitted.se())
+  // v0.164.20: the tutorial readme publishes these three quantities as
+  // exact values, but nothing asserted them -- the test only called
+  // `ignore(fitted.coef())` / `ignore(fitted.se())` and never mentioned
+  // `confint()`. A published number with no executable witness is a
+  // number that goes stale silently, so assert all three bit-exactly.
+  // The fixture is deterministic (the readme's "What this example
+  // actually produces" table), and the values were re-measured
+  // bit-identical on all four backends (native / wasm-gc / wasm / js).
+  inspect(fitted.coef() == -8.782651064906958, content="true")
+  inspect(fitted.se() == 13.75724952565863, content="true")
+  let (lo, hi) = fitted.confint()
+  inspect(lo == -35.74634818655666, content="true")
+  inspect(hi == 18.18104605674274, content="true")
 }

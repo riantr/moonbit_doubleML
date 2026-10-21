@@ -50,13 +50,19 @@ the executable tutorial test (`using_test.mbt`) builds.
 
 The fixture is deterministic, so the numbers are fixed. The same code
 run on `native` and on `wasm-gc` (the backend this tutorial package
-builds for) returns the same values:
+builds for) returns the same values, and all three values below were
+re-measured bit-identical on all four supported backends (`native`,
+`wasm-gc`, `wasm`, `js`):
 
 | quantity | value |
 |---|---|
 | `coef()` | `-8.782651064906958` |
 | `se()` | `13.75724952565863` |
 | `confint()` | `(-35.74634818655666, 18.18104605674274)` |
+
+The tutorial's own test (`using_test.mbt`) asserts all three values
+bit-exactly, so this table cannot drift away from the code it
+documents.
 
 The estimate is far from zero and the interval is wide. That is
 correct, not a bug: the fixture is a deterministic *modular* pattern
@@ -80,11 +86,14 @@ draws are deterministic: `chacha8_rng(seed)` rebuilds the same
 `rng.double()`, and the same `seed` and `n_rep` reproduce the same
 DGP output across runs.
 
-Across backends the *estimates* are not bit-identical: the `did_cs`
-quantities carry a known spread of about 1.5e-15 relative, which is
-why the suite pins those assertions at 1e-12 relative instead of
-`==`. A test that passes on native is not evidence that it passes on
-the other three.
+Across backends the *estimates* are not bit-identical in general: the
+`did_cs` quantities carry a known spread of about 1.5e-15 relative,
+which is why the suite pins those assertions at 1e-12 relative instead
+of `==`. A test that passes on native is not evidence that it passes
+on the other three. This tutorial's PLR fixture happens to be an
+exception — its three published values came out bit-identical on all
+four backends — but that is a property of this fixture, not a general
+licence to assert `==` on any estimate.
 
 ## Next
 

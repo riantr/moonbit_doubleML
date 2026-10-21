@@ -9,6 +9,108 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.20] -- the four tutorials, and the family the README did not mention
+
+`moon.mod` moves 0.164.19 -> 0.164.20. One `.mbt` changed -- a TEST file, and
+only its assertions -- so no estimator behaviour changed and the test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Round 27 audited the four tutorial documents under `doc/` -- the ones a reader
+opens AFTER the README, and which the README does not restate -- for the first
+time. Three of them carried false claims, and one clause of the published
+README was wrong too.
+
+### Fixed -- doc/005_dgps: a wrong signature and a wrong accessor set
+
+- The quick-reference table gave `make_irm_heterogeneous_data` the signature
+  `(n_obs, theta, seed)`. The source says `(n_obs, dim_x, seed)`
+  (`dgp_irm_heterogeneous.mbt:31`) -- a `Double` where an `Int32` belongs, so
+  the published call does not compile. The other 17 rows were checked against
+  their own sources and were right.
+- The prose said every factory returns a struct with `x_get()` / `y_get()` /
+  `d_get()`. `make_lplr_LZZ2020` returns an `LplrData` carrying `theta_get()`
+  and `data_get()` -- a ready-made `DoubleMLBinaryData`, because LPLR fits a
+  binary treatment -- so the document's own usage example
+  (`DoubleMLData::new(dgp.x_get(), dgp.y_get(), dgp.d_get())`) does not apply
+  to it. The text now says 17 of the 18 expose the trio, names the exception,
+  and says the LPLR DGP goes straight into `DoubleMLLPLR::new`.
+
+### Fixed -- doc/003_quick_start: a published table with nothing asserting it
+
+The tutorial publishes three exact numbers -- `coef()` = `-8.782651064906958`,
+`se()` = `13.75724952565863`, `confint()` = `(-35.74634818655666,
+18.18104605674274)` -- and NOTHING asserted them: `using_test.mbt` called
+`ignore(fitted.coef())` / `ignore(fitted.se())` and never mentioned
+`confint()`. The numbers are right -- re-measured bit-identical on all four
+backends -- but a published number with no executable witness is a number that
+goes stale silently. The test now asserts all three bit-exactly, and says in
+the document that it does. The assertions were added to the EXISTING test
+rather than as a new one, so the published test COUNT does not move.
+
+### Fixed -- doc/006_python_check: one family where there are two
+
+The document described the 24 `validate_*_with_python.py` scripts and claimed
+"No estimator ships without a Python cross-check." The claim was true only
+because it counted the 9 `pyexample_*` upstream gates it never mentioned. The
+derived coverage map:
+
+| covered by | estimators |
+|---|---|
+| `validate_*` only | `DoubleMLDIDCS`, `DoubleMLDIDCrossSection`, `DoubleMLPLPR` |
+| `pyexample_*` only | `DoubleMLAPO`, `DoubleMLDIDMulti`, `DoubleMLQTE` |
+| both | the other 16 |
+
+The document now describes both families, states that the `pyexample_*` family
+is wired into CI by EXPLICIT steps rather than by a glob, and says how each
+family is checked: the `validate_*` scripts by a trailing `PASS` grep plus the
+exit code, the `pyexample_*` scripts by the exit code alone -- their last line
+is `fixture restored byte for byte: True`, not the verdict.
+
+Its step 2 also claimed every `validate_*` script builds its reference "via
+the upstream `doubleml.DoubleMLXxx`". That is true for **9** of the 24 and
+false for the other **15**, which re-derive it by hand.
+
+### Fixed -- the README: the upstream family was not the only one
+
+The README said "Every script above compares the port against a second
+implementation written in this repository, which can only catch a disagreement
+someone already thought to look for", and presented the `pyexample_*` family as
+the one whose reference is upstream. Two of the 9 wheel-importing `validate_*`
+scripts gate the port against upstream too:
+`validate_did_cs_binary_with_python.py` (the port's ATT against upstream's)
+and `validate_lplr_with_python.py` (the port's coefficient against upstream's
+*and* the hand-rolled one, together). The README now says so. The fix lives
+in the generator (`_verify/_r18_build_readme_1650.py`), because the README is
+BUILT and a direct edit would be reverted by the next bump.
+
+### Added -- a check that derives the claims instead of asserting them
+
+- `_verify/_verify_tutorial_claims_1650.py` (**120** checks) derives the 18
+  DGP factories and their real parameter lists from `dgp_*.mbt`, each
+  factory's accessor set from its return type, the 22-estimator cross-check
+  coverage map from the scripts themselves, and the 9/15 upstream-wheel split
+  from the imports in code. It then checks that every document states the
+  derived values, that a witness sits next to every published number, and that
+  the withdrawn forms are gone from the files they were corrected in.
+
+### Added -- a dry-run that proves each of its mechanisms
+
+- `_verify/_dryrun_round27_1650.py` breaks the claims one mechanism at a time
+  and requires the failure count to GROW at every step: **28** failures at the
+  end, 0 -> 2 -> 3 -> 4 -> 6 -> 9 -> 11 -> 12 -> 15 -> 28, and the counter
+  agrees with the verifier's own summary. The last mechanism deletes
+  `pyexample_pq.py`, which proves the coverage map is re-derived rather than
+  hard-coded: `DoubleMLQTE` falls out of the union and the verifier notices.
+
+### Also confirmed, and changed nothing
+
+- `doc/002_installation`'s "1117 / 1117" test total, its "CI runs them on
+  3.12", the `rdrobust` note and the CI install line; `doc/006`'s
+  `case "$line" in *PASS*)` grep, the `python-cross-check` job with
+  `needs: moon-test`, the 24-script count and both quoted trailing lines; and
+  `doc/005`'s 18 factories / 17 modules / 35 files, its 3 recovery tests and
+  the 12-seed recovery band.
+
 ## [0.164.19] -- the grouping three documents had not caught up with
 
 `moon.mod` moves 0.164.18 -> 0.164.19. No `.mbt` changed, so no estimator

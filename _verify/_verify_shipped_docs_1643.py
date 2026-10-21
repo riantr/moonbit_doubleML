@@ -363,7 +363,8 @@ print("H. doc/006 -- script count, transcript, glob, PASS token")
 print("=" * 78)
 d6 = docs["006_python_check"]
 must_re(r"doc/006 states the real script count \(derived %d\)" % len(VAL),
-        r"^%d Python scripts" % len(VAL), d6, flags=re.M)
+        r"(^%d Python scripts)|(^\| `validate_\*_with_python\.py` \| %d \|)"
+        % (len(VAL), len(VAL)), d6, flags=re.M)
 for m in re.finditer(r"=== (validate_\w+\.py) === (.+)", d6):
     s, tail = m.group(1), m.group(2)
     check("doc/006 transcript names a real script: %s" % s, s in VAL, "not a validator")

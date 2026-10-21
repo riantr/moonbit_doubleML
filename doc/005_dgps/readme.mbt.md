@@ -6,11 +6,15 @@ upstream doubleml-for-py. They live in **17** `dgp_*.mbt` modules
 at the package root, each with a sibling `dgp_*_test.mbt` --
 **35 files** in all.
 
-Every factory takes **positional** arguments and returns a DGP
-struct with `x_get()` / `y_get()` / `d_get()` accessors (plus
-`theta_get()` where the design has a single causal parameter). The
-randomness is a `chacha8_rng(seed)` draw rebuilt from the `seed`
-argument, so the same arguments always give the same sample.
+Every factory takes **positional** arguments. All 18 return a struct
+with a `theta_get()` accessor for the true causal parameter, and 17
+of the 18 also expose `x_get()` / `y_get()` / `d_get()`. The one
+exception is `make_lplr_LZZ2020`, which returns an `LplrData`
+carrying `theta_get()` and `data_get()` -- the latter a ready-made
+`DoubleMLBinaryData` for `DoubleMLLPLR::new`, because LPLR fits a
+binary treatment. The randomness is a `chacha8_rng(seed)` draw
+rebuilt from the `seed` argument, so the same arguments always give
+the same sample.
 
 ## Quick reference
 
@@ -20,7 +24,7 @@ argument, so the same arguments always give the same sample.
 | `make_confounded_plr_data` | PLR, confounded | `(n_obs, dim_x, theta, seed)` | `dgp_plr_confounded.mbt` |
 | `make_plr_turrell2018` | PLR, Turrell 2018 | `(n_obs, theta, seed)` | `dgp_plr_turrell.mbt` |
 | `make_irm_data` | IRM | `(n_obs, dim_x, theta, seed)` | `dgp_irm.mbt` |
-| `make_irm_heterogeneous_data` | IRM, heterogeneous effects | `(n_obs, theta, seed)` | `dgp_irm_heterogeneous.mbt` |
+| `make_irm_heterogeneous_data` | IRM, heterogeneous effects | `(n_obs, dim_x, seed)` | `dgp_irm_heterogeneous.mbt` |
 | `make_irm_confounded_data` | IRM, confounded | `(n_obs, dim_x, theta, seed)` | `dgp_irm_confounded.mbt` |
 | `make_irm_discrete_treatments` | IRM, discrete treatments | `(n_obs, dim_x, theta, seed)` | `dgp_irm_discrete.mbt` |
 | `make_iivm_data` | IIVM | `(n_obs, dim_x, theta, seed)` | `dgp_iivm.mbt` |
@@ -60,8 +64,12 @@ let fitted = @moonbit_doubleML.DoubleMLPLR::new(
 
 The panel and DID DGPs return their own data types
 (`DoubleMLPanelData`, `DoubleMLDIDCSData`, ...) and carry the extra
-`t` / `g` / `id` accessors, so the wrapper differs per model --
-see `dgp_recovery_test.mbt` for a worked example of each shape.
+`t` / `g` / `id` accessors, so the wrapper differs per model. The
+LPLR DGP is the same shape of exception: it hands back a
+`DoubleMLBinaryData` through `data_get()` rather than the
+`x_get()` / `y_get()` / `d_get()` trio, so it goes straight into
+`DoubleMLLPLR::new` -- see `dgp_recovery_test.mbt` for a worked
+example of each shape.
 
 The deterministic `chacha8_rng(seed)` is the only randomness
 source — given the same seed, two runs produce bit-identical
