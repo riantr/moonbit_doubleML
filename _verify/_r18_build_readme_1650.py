@@ -506,6 +506,50 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   every line is true as printed (`5.2464 / 0.5307 = 9.9`), and a
 >   percentage prints both the fraction and the percentage (`17 / 40 =
 >   0.4250 = 42.5%`).
+>
+> * **Round 33.** The propensity table's four measurements had never been
+>   checked, and its third column could not be read at all.
+>
+>   The README writes every measured value in a CODE SPAN, and the check that
+>   holds a table cell to the record reads a cell's numbers out of those
+>   spans.  The propensity table wrote its numbers in bold and plain instead,
+>   so `-225.86`, `0.043`, `1.44` and `0.842` fell outside the rule that was
+>   supposed to cover them.  They were checkable all along: the v0.131.9
+>   record holds `-225.86204067169143`, `0.043343170315623715`,
+>   `1.4426392091401607` and `0.8419771777915093`.  The table now writes them
+>   the way the rest of the document does, and the cell set grows from 20 to
+>   **27** -- every new cell witnessed by the record that measured it.
+>
+>   The table's third column is headed `rv`, and the README never said what
+>   `rv` IS.  It is upstream's **robustness value** -- the sensitivity-
+>   analysis reading of how much confounding the estimate survives, so
+>   **higher is more robust**.  The direction comes from this repository's own
+>   records: v0.131.7 says a `nu2` pinned at 1 "claimed a robustness value of
+>   19.6, i.e. 'robust to enormous confounding', where the correct value is
+>   0.84", and v0.131.5 says a DID ATT of 1.02 "scored `rv = 7.77` (visibly
+>   robust) when the correct value is `1.73` (fragile)".  Two other rows
+>   broke the same convention -- the QTE row's tau bounds and the DIDBinary
+>   row's `~1e-4` -- and are fixed the same way.
+>
+>   The fourth invariant makes the convention a CHECK rather than an
+>   assumption: a table's measurements must be written in code spans.  A
+>   convention nobody enforces decays, and this one decayed unnoticed for
+>   twenty releases.  `_verify/_verify_measurements_1650.py` now runs **66**
+>   checks over four invariants.
+>
+>   `_verify/_dryrun_round33_1650.py` breaks each of the seven mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **9** failures.  The last mechanism moves the SET SIZE -- a
+>   measurement loses its code span -- so it runs last, because it would
+>   otherwise break the checks the other mechanisms are aimed at.  The sixth
+>   breaks the CONVENTION without moving the cell set, so the new rule's
+>   verdict is visible on its own rather than riding along with the set-size
+>   check.
+>
+>   The v0.164.26 entry's published failure count is corrected from 9 to
+>   **10**: that count is tree-dependent by design, and round 33 added a
+>   check.  Each dry-run reads its count from the entry that names it, so
+>   neither can be read in place of the other.
 
 """
 
@@ -1411,6 +1455,60 @@ NEW_IIVM_ROW = ("| `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031`; "
 
 PATCHES.append((OLD_LPLR_FACTOR, NEW_LPLR_FACTOR))
 PATCHES.append((OLD_IIVM_ROW, NEW_IIVM_ROW))
+
+# ---------------------------------------------------------------------------
+# Round 33: the propensity table -- four measurements nobody was checking,
+# and a column nobody could read.
+#
+# The table's third column is headed `rv`, and the README never says what `rv`
+# is.  Upstream's `sensitivity_params` carries `theta`, `se`, `ci`, `rv` and
+# `rva`; `rv` is the ROBUSTNESS VALUE, the sensitivity-analysis reading of how
+# much confounding the estimate survives.  The direction is fixed by this
+# repo's own records: v0.131.7 says a `nu2` pinned at 1 "claimed a robustness
+# value of 19.6, i.e. 'robust to enormous confounding', where the correct
+# value is 0.84", and v0.131.5 says a DID ATT of 1.02 "scored `rv = 7.77`
+# (visibly robust) when the correct value is `1.73` (fragile)".  So HIGHER is
+# MORE ROBUST.
+#
+# The same table also broke the document's own convention: every measured
+# value elsewhere in the README is written in a CODE SPAN, and the table's
+# cells were bold and plain instead.  That is not only a style point -- the
+# verifier's I2 collects a table cell's numbers from the code spans, so those
+# four measurements (`-225.86`, `0.043`, `1.44`, `0.842`) were NEVER checked.
+# The v0.131.9 record holds all four (`-225.86204067169143`,
+# `0.043343170315623715`, `1.4426392091401607`, `0.8419771777915093`), so they
+# were checkable all along.
+#
+# The two other rows that broke the convention are fixed the same way: the
+# QTE row's tau bounds and the DIDBinary row's `~1e-4`.
+
+OLD_PROP_TABLE = """| `linear_regression` | **-225.86** | 0.043 |
+| `logistic_regression` | **1.44** | 0.842 |"""
+
+NEW_PROP_TABLE = """| `linear_regression` | **`-225.86`** | `0.043` |
+| `logistic_regression` | **`1.44`** | `0.842` |
+
+`coef` is the estimated effect; `rv` is upstream's **robustness value** -- the
+sensitivity-analysis reading of how much confounding the estimate survives, so
+**higher is more robust**. The OLS propensity lands at `0.043`; the classifier
+reaches `0.842`."""
+
+OLD_QTE_TAU = ("| `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at "
+               "`-1.583` for tau 0.50-0.90 |")
+
+NEW_QTE_TAU = ("| `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at "
+               "`-1.583` for tau `0.50`-`0.90` |")
+
+OLD_DIDBIN = ("| `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, "
+              "~14 configs, ~1e-4 |")
+
+NEW_DIDBIN = ("| `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, "
+              "~14 configs, ~`1e-4` |")
+
+PATCHES.append((OLD_PROP_TABLE, NEW_PROP_TABLE))
+PATCHES.append((OLD_QTE_TAU, NEW_QTE_TAU))
+PATCHES.append((OLD_DIDBIN, NEW_DIDBIN))
+
 
 for _old, _new in PATCHES:
     _n = text.count(_old)

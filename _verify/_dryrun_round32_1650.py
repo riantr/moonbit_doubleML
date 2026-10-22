@@ -104,23 +104,38 @@ def patch(path, old, new, count=1):
 
 
 def set_witness_count(path, n):
-    """Rewrite the CHANGELOG's published check count for this verifier."""
+    """Rewrite the CHANGELOG's published check count for this verifier.
+
+    Only the NEWEST occurrence is rewritten: the CHANGELOG keeps one entry
+    per release, and the verifier reads the newest one -- that is the entry
+    describing the tree under test.  An older entry's count is history and is
+    left alone.
+    """
     text = read(path)
-    hits = WITNESS.findall(text)
-    if len(hits) != 1:
-        raise SystemExit("!! the witness appears %d times (expected 1)" % len(hits))
-    write(path, WITNESS.sub(lambda m: m.group(0).replace(
-        "(**%s** checks)" % hits[0], "(**%d** checks)" % n), text))
+    hits = list(WITNESS.finditer(text))
+    if not hits:
+        raise SystemExit("!! the witness is absent")
+    m = hits[0]
+    write(path, text[:m.start()]
+          + m.group(0).replace("(**%s** checks)" % m.group(1), "(**%d** checks)" % n)
+          + text[m.end():])
 
 
 def drop_witness_block(path):
-    """Delete the CHANGELOG block that publishes this verifier's check count."""
+    """Delete the CHANGELOG blocks that publish this verifier's check count.
+
+    ALL of them, not just the newest: the point of this mechanism is that the
+    count becomes ABSENT, which is a different failure from a count that is
+    WRONG.  Dropping only the newest would leave an older entry's count
+    behind, and the verdict would not move.
+    """
     text = read(path)
-    hits = WITNESS_BLOCK.findall(text)
-    if len(hits) != 1:
-        raise SystemExit("!! the witness block appears %d times (expected 1)"
-                         % len(hits))
-    write(path, WITNESS_BLOCK.sub("", text))
+    hits = list(WITNESS_BLOCK.finditer(text))
+    if not hits:
+        raise SystemExit("!! the witness block is absent")
+    for m in reversed(hits):
+        text = text[:m.start()] + text[m.end():]
+    write(path, text)
 
 
 def verify(work):
@@ -134,6 +149,20 @@ def verify(work):
 def check_count(out):
     m = re.search(r"(\d+) checks, (\d+) failed", out)
     return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+
+
+def entry_naming(text, filename):
+    """The CHANGELOG entry that names `filename` -- the newest one.
+
+    The lookup below is scoped to the entry that names THIS driver.  Without
+    the scope, a LATER round's entry -- which sits higher in the file and
+    carries the same sentence -- would be read in its place.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        if filename in m.group(2):
+            return m.group(2)
+    return None
 
 
 if os.path.isdir(WORK):
@@ -174,10 +203,9 @@ CHANGELOG = os.path.join(WORK, "CHANGELOG.md")
 README = os.path.join(WORK, "README.mbt.md")
 
 PUBLISHED = WITNESS.findall(read(CHANGELOG))
-if len(PUBLISHED) != 1:
-    raise SystemExit("!! the CHANGELOG publishes this verifier's count %d times "
-                     "(expected 1)" % len(PUBLISHED))
-PUBLISHED = int(PUBLISHED[0])
+if not PUBLISHED:
+    raise SystemExit("!! the CHANGELOG does not publish this verifier's count")
+PUBLISHED = int(PUBLISHED[0])          # the NEWEST entry -- the one under test
 print("  the CHANGELOG publishes %d checks" % PUBLISHED)
 
 # ---------------------------------------------------------------- the baseline
@@ -293,9 +321,10 @@ if rc == 0:
 #
 # The CHANGELOG is in DESCENDING order -- the newest entry is at the TOP -- so
 # the CURRENT published number is the FIRST occurrence.
+_entry = entry_naming(read(CHANGELOG), "_dryrun_round32_1650.py")
 _found = re.findall(r"requires the failure count to GROW at every step:\s*"
                     r"\*\*(\d+)\*\*\s+failures at the",
-                    read(CHANGELOG))
+                    _entry or "")
 published = int(_found[0]) if _found else None
 print()
 print("=== the published failure count, witnessed ===")

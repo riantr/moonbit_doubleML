@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.26",
+  "riantr/moonbit_doubleML@0.164.27",
 }
 ```
 
@@ -283,8 +283,13 @@ fixture with true `ATE = 1.5`:
 
 | `ml_m` | `coef` | `rv` |
 |---|---|---|
-| `linear_regression` | **-225.86** | 0.043 |
-| `logistic_regression` | **1.44** | 0.842 |
+| `linear_regression` | **`-225.86`** | `0.043` |
+| `logistic_regression` | **`1.44`** | `0.842` |
+
+`coef` is the estimated effect; `rv` is upstream's **robustness value** -- the
+sensitivity-analysis reading of how much confounding the estimate survives, so
+**higher is more robust**. The OLS propensity lands at `0.043`; the classifier
+reaches `0.842`.
 
 The port used to default `ml_m` to `LearnerDispatch::linear_regression()`
 everywhere. **`DoubleMLIRM` was migrated in v0.132.0**,
@@ -356,11 +361,11 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLIRM` | hazardous | coef `-225.86` vs `1.44` |
 | `DoubleMLAPO` | hazardous | bias `5.246` vs `0.531`; SE `86.28` vs `0.270` |
 | `DoubleMLAPOS` | hazardous | per-level bias to `436.11` |
-| `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~1e-4 |
+| `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~`1e-4` |
 | `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti` | not demonstrated | doubly robust -- `1/m` enters treated rows only |
 | `DoubleMLSSM` | **hazardous -- fixed in v0.138.0** | coef `242.116` vs `1.177` |
 | `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
-| `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau 0.50-0.90 |
+| `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau `0.50`-`0.90` |
 | `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031`; SE `0.0047` vs `0.0747` (16x *smaller*) |
 | `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
 | `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0-v0.142.0** | not an `ml_m` hazard; two failure modes; see below |
@@ -578,7 +583,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.26** |
+| `moon.mod` version | **0.164.27** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -704,7 +709,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.26, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.27, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

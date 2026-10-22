@@ -9,6 +9,72 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.27] -- the table whose measurements nobody was checking
+
+`moon.mod` moves 0.164.26 -> 0.164.27. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the propensity table's measurements, and a column nobody could read
+
+- The README writes every measured value in a CODE SPAN.  The propensity
+  table wrote its four in bold and plain instead -- and the verifier's cell
+  rule reads a table's numbers out of those spans, so `-225.86`, `0.043`,
+  `1.44` and `0.842` had **never** been checked.  They were checkable all
+  along: the v0.131.9 record holds `-225.86204067169143`,
+  `0.043343170315623715`, `1.4426392091401607` and `0.8419771777915093`.
+  The table now writes them the way the rest of the document does.
+- The table's third column is headed `rv`, and the README never said what
+  `rv` IS.  It is upstream's **robustness value** -- the sensitivity-analysis
+  reading of how much confounding the estimate survives, so **higher is more
+  robust**.  The direction is fixed by this repository's own records:
+  v0.131.7 says a `nu2` pinned at 1 "claimed a robustness value of 19.6, i.e.
+  'robust to enormous confounding', where the correct value is 0.84", and
+  v0.131.5 says a DID ATT of 1.02 "scored `rv = 7.77` (visibly robust) when
+  the correct value is `1.73` (fragile)".
+- Two other rows broke the same convention and are fixed the same way: the
+  QTE row's tau bounds and the DIDBinary row's `~1e-4`.
+
+### Added -- the convention becomes a check
+
+- (`_verify/_verify_measurements_1650.py` (**66** checks)) holds the README's
+  quoted measurements to FOUR invariants.  The first three are unchanged: every
+  RATIO the document states must be DERIVABLE from the numbers its own
+  passage prints; every number in a TABLE CELL must be the correctly-ROUNDED
+  rendering of a value in the CHANGELOG entry that names that row's estimator;
+  every SMALL-N figure must be the correctly-rounded rendering of a value in
+  the record the README cites.
+
+  The fourth is new: a table's measurements must be WRITTEN IN CODE SPANS.
+  That is the README's own convention, and a convention nobody enforces
+  decays -- the propensity table proves it, unnoticed, for twenty releases.
+  The new rule makes the convention a check, so the next table that breaks it
+  fails here instead of going unchecked.
+
+  With the table fixed, the cell set grows from 20 to 27, and every new cell
+  is witnessed by the record that measured it.
+
+- The v0.164.26 entry's published dry-run failure count is corrected from 9
+  to **10**, at byte level.  That count is tree-dependent by design -- the
+  dry-run reports one failure per broken claim -- so it moves when the
+  verifier gains a check, and round 33 added one.  The v0.164.27 entry's own
+  count is 9, and the two are read from their OWN entries, so neither can be
+  read in place of the other.
+
+- (`_verify/_dryrun_round33_1650.py`) breaks each of the seven mechanisms one
+  at a time and requires the failure count to GROW at every step: **9**
+  failures at the end.  The last one moves the SET SIZE -- a measurement loses
+  its code span -- so it runs last, because it would otherwise break the
+  checks the other mechanisms are aimed at.  The sixth breaks the CONVENTION
+  without moving the cell set, so the new rule's verdict is visible on its
+  own rather than riding along with the set-size check.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 49 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.26] -- the ratios the README states, checked against its own numbers
 
 `moon.mod` moves 0.164.25 -> 0.164.26. No estimator behaviour changed and the
@@ -66,7 +132,7 @@ test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
   beside them was not.
 
 - (`_verify/_dryrun_round32_1650.py`) breaks each of the six mechanisms one
-  at a time and requires the failure count to GROW at every step: **9**
+  at a time and requires the failure count to GROW at every step: **10**
   failures at the end. The last one moves the SET SIZE -- a new table row
   appears -- so it runs last, because it would otherwise break the checks the
   other mechanisms are aimed at.

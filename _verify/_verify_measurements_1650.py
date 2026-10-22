@@ -17,11 +17,10 @@ the v0.132.0-v0.142.0 measurement rounds with nothing re-deriving them, and
 the small-n regime figures (`6.842`, `-8.07e-05`, the `2.56`/`3.39`/`[-3.21,
 13.85]` spread) were quoted from a record that nothing tied back to.
 
-THREE INVARIANTS
+FOUR INVARIANTS
 ================
 I1 -- EVERY RATIO THE README STATES MUST BE DERIVABLE FROM THE NUMBERS ITS
       OWN PASSAGE PRINTS.
-
       A separation, a factor, a percentage: the reader divides the numbers
       the passage gives and gets the same number.  This is the invariant
       that found the defect round 32 opened with.  The README said the
@@ -49,11 +48,22 @@ I3 -- EVERY SMALL-N FIGURE MUST BE THE CORRECTLY-ROUNDED RENDERING OF A
       `_verify/LPLR_GATE_BLINDNESS_1680.md`, which the README names for that
       passage.
 
+I4 -- A TABLE'S MEASUREMENTS MUST BE WRITTEN IN CODE SPANS.
+
+      The README writes every measured value in a code span, and I2 reads a
+      cell's numbers out of those spans.  A convention nobody enforces decays:
+      the propensity table wrote its four measurements in bold and plain, so
+      they were NEVER checked -- and the v0.131.9 record holds all four, so
+      they were checkable all along.  I4 makes the convention a check, so the
+      next table that breaks it fails here rather than going unchecked for
+      another twenty releases.
+
 WHAT IS DERIVED, NOT ASSERTED
 =============================
   * the passages, the tables, the cells and the ratios, from the README;
   * the witness set for I2, from the CHANGELOG's own entries;
   * the witness set for I3, from the record the README cites;
+  * the measured rows for I4, from the README's own tables;
   * the set sizes, declared here and asserted in section 1, so an added
     measurement cannot slip in without the declaration moving with it.
 
@@ -73,8 +83,9 @@ CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
 RECORD = os.path.join(ROOT, "_verify", "LPLR_GATE_BLINDNESS_1680.md")
 
 # The declared set sizes.  A change to either is a change to the SET.
-EXPECTED_CELLS = 20
+EXPECTED_CELLS = 27
 EXPECTED_RATIOS = 9
+EXPECTED_MEASURED_ROWS = 12
 
 NCHECK = 0
 FAILS = []
@@ -115,6 +126,17 @@ RATIO = re.compile(
 
 # a table row: a leading key cell, then the cells
 ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|$")
+
+# a CODE SPAN holding exactly one number.  This is the README's own
+# convention for a measured value, and it is what makes a cell checkable: the
+# extractor below reads a cell's numbers out of these spans.  The exponent
+# form is part of it (`1e-4`), so the span may carry one.
+CODE_CELL = re.compile(r"`(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)`")
+
+# a code span holding ANYTHING else -- `ln(3.0)`, `make_did_SZ2020`,
+# `moonbitlang/async@0.22.5`.  A number inside one of these is part of a
+# name or an argument, not a measurement.
+CODE_ANY = re.compile(r"`[^`]*`")
 
 
 def sig_digits(s):
@@ -327,7 +349,7 @@ for p in paragraphs:
         key = m.group(1)
         if key.startswith("---"):
             continue
-        for tok in re.findall(r"`(-?\d+(?:\.\d+)?)`", m.group(2) + " " + m.group(3)):
+        for tok in CODE_CELL.findall(m.group(2) + " " + m.group(3)):
             cells.append((key, tok))
 
 check("the cell set is the declared size",
@@ -349,7 +371,69 @@ for key, n in cells:
 # ==============================================================================
 print()
 print("=" * 78)
-print("3. I3 -- every small-n figure is witnessed by the cited record")
+print("3. I4 -- a table's measurements are written in code spans")
+print("=" * 78)
+#
+# The README writes every measured value in a CODE SPAN, and section 2 reads
+# a table cell's numbers out of those spans.  That is a convention, and a
+# convention nobody enforces is a convention that decays: the propensity
+# table wrote its four measurements in bold and plain, so they were never
+# checked -- and they were checkable all along (the v0.131.9 record holds
+# all four).
+#
+# So the convention becomes a check.  A MEASUREMENT is a number carrying a
+# decimal point or an exponent:
+#
+#   * a bare integer is a count, a year or an identifier, not a measurement;
+#   * a number inside a code span holding anything else (`ln(3.0)`) is part
+#     of a name or an argument, not a measurement;
+#   * a version token (`v0.138.0`, `async@0.20.3`) yields no number at all,
+#     because NUMVAL already rejects it.
+#
+# Every measurement in a table row must be written in a code span of its own.
+
+
+def unspanned_measurements(cell_text):
+    """The measurements in a cell that are NOT in a code span of their own."""
+    text = CODE_CELL.sub(" ", cell_text)      # the conforming ones
+    text = CODE_ANY.sub(" ", text)             # every other code span
+    out = []
+    for m in NUMVAL.finditer(text):
+        tok = m.group(0)
+        if "." in tok or "e" in tok.lower():
+            out.append(tok)
+    return out
+
+
+measured_rows = []
+for p in paragraphs:
+    for line in p.split("\n"):
+        m = ROW.match(line)
+        if not m:
+            continue
+        key = m.group(1)
+        if key.startswith("---"):
+            continue
+        body = m.group(2) + " " + m.group(3)
+        nums = [t for t in NUMVAL.findall(body) if "." in t or "e" in t.lower()]
+        if nums:
+            measured_rows.append((key, body, nums))
+
+check("the measured-row set is the declared size",
+      len(measured_rows) == EXPECTED_MEASURED_ROWS,
+      "found %d, declared %d" % (len(measured_rows), EXPECTED_MEASURED_ROWS))
+
+for key, body, nums in measured_rows:
+    bad = unspanned_measurements(body)
+    check("the measurements of %-22s are code-spanned" % key[:22],
+          not bad,
+          "not in a code span: %s" % ", ".join(bad) if bad
+          else "%d measurement(s), all code-spanned" % len(nums))
+
+# ==============================================================================
+print()
+print("=" * 78)
+print("4. I3 -- every small-n figure is witnessed by the cited record")
 print("=" * 78)
 
 record = read(RECORD)
@@ -377,7 +461,7 @@ for tok in figs:
 # ==============================================================================
 print()
 print("=" * 78)
-print("4. the published check count, witnessed")
+print("5. the published check count, witnessed")
 print("=" * 78)
 # The CHANGELOG publishes this verifier's check count.  The count is fixed on
 # every tree that passes: the set sizes are declared and asserted above, so a
