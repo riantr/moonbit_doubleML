@@ -262,6 +262,57 @@
 >   name where the code was THEN; round 30 moved some of those lines again.
 >   The CURRENT pointers live in the records under `_verify/`, and round 30
 >   re-anchored the four of them that round 30's own repairs had moved.
+>
+> * **Round 31.** The **21** example manifests under `examples/` each import
+>   the library BY VERSION, and every one of them named a version long gone:
+>   **19** pinned `0.52.0` and **2** (`examples/bitexact/`,
+>   `examples/parity/`) pinned `0.162.0`, against a package at `0.164.24` --
+>   **159** and **34** releases behind respectively, counted from the
+>   CHANGELOG's own version headings.  Nothing could see it: inside the
+>   WORKSPACE the pin is INERT, because the workspace member wins, so every
+>   example built against the current library while its manifest named an
+>   ancient one.  Outside the workspace the pin decides what gets installed,
+>   and the README invites the reader to copy an example out of the tree.
+>   All **21** now pin the library's current version, and the manifests are
+>   **bump sites**: `_verify/_bump_1636.py` re-pins them with every release,
+>   so they cannot drift again.  That was not optional -- the round-9 check
+>   requires every tracked file carrying a current-version literal to be a
+>   site the bump script covers, so re-pinning the examples without adding
+>   them there would have failed that check on the next release.
+>
+>   The new check `_verify/_verify_example_pins_1650.py` runs **28** checks:
+>   one per manifest, the derived library version, the declared count of
+>   **21** examples, a stale-literal scan over the version SITES (the set the
+>   bump script owns, so "every site" is a NAMED set rather than a guess),
+>   the README's own install block, and the published count itself.  The scan
+>   covers the version sites only: a historical record may name an old
+>   version on purpose -- `CHANGELOG.md` and the `_verify/` records are
+>   exactly where an old version belongs -- while a MANIFEST is a promise
+>   about what to install, and a promise of an old version is a defect.
+>
+>   `_verify/_dryrun_round31_1650.py` breaks each of the five mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **8** failures.  The last mechanism moves the SET SIZE -- a new
+>   example manifest appears -- so it runs last, because it would otherwise
+>   break the checks the other mechanisms are aimed at.
+>
+>   Two numbers in the tree were wrong in the same way, and both are fixed
+>   here.  The api_server's `/version` handler said the package was "109
+>   releases ahead"; the CHANGELOG's version headings put it at **124** --
+>   the gap at the last release that still advertised `0.52.0`, and also
+>   the number of releases the drift went unnoticed for.  Its closing
+>   sentence said a version bump "touches FOUR places" -- it touched that
+>   many when it was written, and it touches every place the version lives
+>   now, so it names `_verify/_bump_1636.py` instead of counting.  The bump
+>   script's own docstring said "Nine sites" and listed seven; it now lists
+>   every place instead of counting them.
+>
+>   Not touched: the examples' OWN `version` fields.  Those are the example
+>   packages' versions, they are never published, and they do not track the
+>   library today (`examples/parity` says `0.1.0`), so changing them would
+>   be a new convention rather than a broken promise.  Nor is
+>   `examples/api_server`'s `moonbitlang/async@0.20.3` pin -- a published
+>   third-party dependency, out of scope here.
 
 ## The README as it stood at v0.164.11
 

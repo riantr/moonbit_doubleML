@@ -315,7 +315,7 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // NOTE: this literal is pinned to moonbit_doubleML/moon.mod's `version` and
   // is asserted by the qa_loop `api_test` check, which GETs /version and
   // compares against the real moon.mod. It had silently drifted to 0.52.0
-  // while the package was 109 releases ahead; nothing in CI or the test
+  // while the package was 124 releases ahead; nothing in CI or the test
   // suite could see it, because the previous assertion only checked that
   // the substring appeared at all.
   //
@@ -333,11 +333,10 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // It drifted a THIRD time, to 0.163.0, on the 0.163.1 bump. The first pass
   // edited the root README and moon.mod and stopped; `readme-sync`
   // caught the shipped copy and `api_test` caught this literal, in the
-  // same run. Both are real gates doing their job -- a version bump
-  // touches FOUR places: moon.mod, the edited README, the shipped
-  // README copy, and this literal.
+  // same run. Both are real gates doing their job -- a version bump touches
+  // every place the version lives, and `_verify/_bump_1636.py` is that list.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.164.24",
+    library: "riantr/moonbit_doubleML@0.164.25",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })

@@ -9,6 +9,104 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.25] -- the example manifests pinned a 159-release-old library
+
+`moon.mod` moves 0.164.24 -> 0.164.25. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- 21 example manifests pinned the wrong library
+
+`examples/<name>/moon.mod` import the library:
+
+```
+import {
+  "riantr/moonbit_doubleML@0.52.0",
+}
+```
+
+That version was current when the examples were written. It was never
+revisited, and **nothing in CI could see it**: in the WORKSPACE the pin is
+INERT -- the workspace member wins -- so every example built against the
+current library while its manifest named an ancient one.
+
+Outside the workspace the pin decides what gets installed. A user who copies
+an example -- which is exactly what the README's Examples section invites --
+and runs `moon update` there resolves `riantr/moonbit_doubleML@0.52.0` from
+the registry: a library whose API is nothing like the one the example was
+written against. The README describes `examples/consumer_demo/` as "the
+library-user pattern that mirrors what an external
+`moon add riantr/moonbit_doubleML` consumer would write", and it pinned a
+version **159 releases** old.
+
+**19** manifests pinned `0.52.0` and **2** (`examples/bitexact/` and
+`examples/parity/`) pinned `0.162.0`. Against the package's `0.164.24` that
+is **159** and **34** releases behind, counted from this file's own version
+headings. All **21** now pin the library's current version.
+
+The same drift happened once already, in the api_server example's ADVERTISED
+version, and it took 124 releases to notice: the QA loop's `/version` check
+only asserted that the substring appeared at all. The manifest pin is the
+same promise in a different file, and nobody was looking at it.
+
+### Fixed -- two numbers that were wrong
+
+- The api_server's `/version` handler said the package was "109 releases
+  ahead". This file's own version headings put it at **124** -- the gap at
+  the last release that still advertised `0.52.0`, and also the number of
+  releases the drift went unnoticed for.
+- The same handler's closing sentence said a version bump "touches FOUR
+  places". It touched that many when it was written; it touches every place
+  the version lives now, so it names `_verify/_bump_1636.py` instead of
+  counting. The bump script's own docstring said "Nine sites" and listed
+  seven; it now lists every place.
+
+### Added -- a verifier for the pins, and a bump site for each manifest
+
+- (`_verify/_verify_example_pins_1650.py` (**28** checks)) asks every
+  example manifest whether its import pin names the library version
+  the package is actually at.
+
+  The set is DERIVED rather than listed: the library's version comes from
+  `moonbit_doubleML/moon.mod`, the manifests from the filesystem, and the set
+  of version SITES from the bump script's own `os.path.join(ROOT, ...)`
+  calls -- so "every site" is a NAMED set rather than a guess. The count of
+  examples is declared and asserted, which is what keeps the published check
+  count FIXED: an example cannot be added or removed without the declaration
+  moving with it.
+
+  The stale-literal scan covers the version SITES only. A historical record
+  may name an old version on purpose -- `CHANGELOG.md` and the `_verify/`
+  records are exactly where an old version belongs -- while a MANIFEST is a
+  promise about what to install, and a promise of an old version is a defect.
+
+- The 21 manifests are now **bump sites**: `_verify/_bump_1636.py` updates
+  their pins with every release, so they cannot drift again. This was not
+  optional: `_verify/_verify_round9_docs_1644.py` requires every tracked file
+  carrying a current-version literal to be a site the bump script covers, so
+  re-pinning the examples without adding them there would have failed that
+  check on the next release.
+
+- (`_verify/_dryrun_round31_1650.py`) breaks each of the five mechanisms one
+  at a time and requires the failure count to GROW at every step: **8**
+  failures at the end. The last one moves the SET SIZE -- a new example
+  manifest appears -- so it runs last, because it would otherwise break the
+  checks the other mechanisms are aimed at.
+
+### Changed -- the README says what a copied example installs
+
+The Examples section now says that every example's `moon.mod` pins the
+library at the release the document describes. The sentence carries no
+version number on purpose: a number there would be a literal that goes stale
+at the next release, and `_verify/_verify_example_pins_1650.py` is what pins
+it.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 48 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.24] -- the `file:line` citations in the prose
 
 `moon.mod` moves 0.164.23 -> 0.164.24. No estimator behaviour changed: every
