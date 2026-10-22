@@ -9,6 +9,82 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.28] -- the tree that is released must be the tree that was tested
+
+`moon.mod` moves 0.164.27 -> 0.164.28. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- a stale pin that the release shipped
+
+- The `v0.164.27` tree carried `examples/api_server/moon.mod` pinning
+  `riantr/moonbit_doubleML@0.164.26` while the library at that tag was
+  `0.164.27` -- the exact defect round 31 was created to eliminate, and a
+  promise of an old version is a defect.
+
+  Nothing was wrong with the checks.  The round-31 pin verifier READ THE
+  WORKING TREE, and on disk the manifest was correct.  The COMMIT captured the
+  INDEX, and the index still held round 32's blob, because the `git add` list
+  for that release was HAND-WRITTEN and had missed the file.  The tree that
+  was tested and the tree that was released were DIFFERENT TREES, and nothing
+  in the release sequence noticed.
+
+  The tag is not moved, and never will be: a tag is never reused.  The branch
+  is repaired, and this release carries the corrected manifest.
+
+### Added -- a check that reads a REF, not the files on disk
+
+- (`_verify/_verify_release_tree_1650.py` (**34** checks)) checks the tree at
+  a REF.  Its default is HEAD -- the tree the registry was last given -- and
+  the release procedure runs it against the new commit BEFORE the tag is
+  made:
+
+      git commit ...
+      python _verify/_verify_release_tree_1650.py HEAD
+      git tag -a vX.Y.Z ...
+
+  What it checks at that ref: the library's version is readable; every
+  example manifest pins THAT version; every other bump site carries that
+  version and names no other library version; the two README copies are
+  byte-identical; and the README names that version.
+
+  The site set is DERIVED from the bump script's own `EDITS` table -- "every
+  place the version lives" is a NAMED set, not a guess -- and the manifests
+  are derived from the tree itself.  The set sizes are declared and asserted.
+
+  Against `v0.164.27` it reports one failure; against `v0.164.26`, none.
+
+### Added -- the small-n passage's integer measurements join I3
+
+- (`_verify/_verify_measurements_1650.py` (**69** checks)) holds the README's
+  quoted measurements to four invariants: every RATIO derivable from the
+  numbers its own passage prints, every TABLE CELL witnessed by the record
+  that measured it, a table's measurements written in CODE SPANS, and every
+  SMALL-N figure witnessed by the record the README cites.
+
+  I3 held the small-n passage's figures to the decimal-and-exponent rule,
+  which left the passage's INTEGER measurements out: `-1381` (the first
+  Newton step) and `-648` and `172149` (two of the absurd coefficients).
+  They were left out because a bare-integer scan also picks up file:line
+  numbers such as `149`.  The code-span convention removes the need for that
+  exclusion: a code span holding exactly one number is a measurement, so
+  `-648` and `172149` are figures while `double_ml_score_mixins.py:149` -- a
+  span holding more than a number -- is a citation.  All three are witnessed
+  by the record the README cites, and the figure set is now **15**.
+
+- (`_verify/_dryrun_round34_1650.py`) breaks each of the seven mechanisms one
+  at a time and requires the failure count to GROW at every step: **7**
+  failures at the end.  Each mechanism COMMITS its breakage, because a
+  verifier that reads a ref cannot see an uncommitted edit.  The last one
+  moves the SET SIZE -- a manifest appears -- so it runs last, because it
+  would otherwise break the checks the other mechanisms are aimed at.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 50 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.27] -- the table whose measurements nobody was checking
 
 `moon.mod` moves 0.164.26 -> 0.164.27. No estimator behaviour changed and the

@@ -550,6 +550,49 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   **10**: that count is tree-dependent by design, and round 33 added a
 >   check.  Each dry-run reads its count from the entry that names it, so
 >   neither can be read in place of the other.
+>
+> * **Round 34.** The tree that is RELEASED must be the tree that was
+>   TESTED, and until this round nothing checked that.
+>
+>   The `v0.164.27` tree carried `examples/api_server/moon.mod` pinning
+>   `riantr/moonbit_doubleML@0.164.26` while the library at that tag was
+>   `0.164.27` -- the exact defect round 31 was created to eliminate.  The
+>   checks were not wrong: the round-31 pin verifier READ THE WORKING TREE,
+>   and on disk the manifest was correct.  The COMMIT captured the INDEX,
+>   and the index still held round 32's blob, because the `git add` list
+>   for that release was HAND-WRITTEN and had missed the file.  The tree
+>   that was tested and the tree that were released were DIFFERENT TREES.
+>
+>   Round 31's own staging script derives its list from `git status
+>   --porcelain`, so it cannot miss a file; round 33 stopped using it.  That
+>   is the regression.  The tag is not moved, and never will be: a tag is
+>   never reused.  The branch is repaired, and v0.164.28 carries the
+>   corrected manifest.
+>
+>   The new check `_verify/_verify_release_tree_1650.py` runs **34** checks
+>   over the tree at a REF rather than the files on disk.  Its default is
+>   HEAD -- the tree the registry was last given -- and the release
+>   procedure runs it against the new commit BEFORE the tag is made.  What
+>   it checks at that ref: the library's version is readable; every example
+>   manifest pins THAT version; every other bump site carries that version
+>   and names no other library version; the two README copies are
+>   byte-identical; and the README names that version.  The site set is
+>   DERIVED from the bump script's own `EDITS` table -- "every place the
+>   version lives" is a NAMED set, not a guess -- and the manifests are
+>   derived from the tree itself.
+>
+>   I3 also grew: the small-n passage's INTEGER measurements were left out
+>   because a bare-integer scan also picks up file:line numbers such as
+>   `149`.  The code-span convention removes the need for that exclusion --
+>   a code span holding exactly one number is a measurement, so `-1381`,
+>   `-648` and `172149` are figures while `double_ml_score_mixins.py:149`
+>   is a citation.  All three are witnessed by the record the README cites,
+>   and the figure set is now **15**.
+>
+>   `_verify/_dryrun_round34_1650.py` breaks each of the seven mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **7** failures.  Each mechanism COMMITS its breakage, because a
+>   verifier that reads a ref cannot see an uncommitted edit.
 
 """
 

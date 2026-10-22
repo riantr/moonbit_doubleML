@@ -86,6 +86,7 @@ RECORD = os.path.join(ROOT, "_verify", "LPLR_GATE_BLINDNESS_1680.md")
 EXPECTED_CELLS = 27
 EXPECTED_RATIOS = 9
 EXPECTED_MEASURED_ROWS = 12
+EXPECTED_SMALLN_FIGURES = 15
 
 NCHECK = 0
 FAILS = []
@@ -132,6 +133,40 @@ ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|$")
 # extractor below reads a cell's numbers out of these spans.  The exponent
 # form is part of it (`1e-4`), so the span may carry one.
 CODE_CELL = re.compile(r"`(-?\d+(?:\.\d+)?(?:e[+-]?\d+)?)`")
+
+# any code span, whatever it holds
+CODE_SPAN = re.compile(r"`([^`]*)`")
+
+
+def span_measurements(content):
+    """The numbers a code span STATES, when it states numbers.
+
+    The span's content must be a number, or a bracketed list or range of
+    numbers: `[-3.21, 13.85]` states two.  Anything else is a name, an
+    argument or a fragment -- `ln(3.0)`, `double_ml_score_mixins.py:149`,
+    `moonbitlang/async@0.20.3`, `e+70`, `nan` -- and states no measurement.
+
+    `nan` and `inf` are excluded even though they PARSE as floats: they are
+    what a broken fit produces, not a value somebody measured.
+    """
+    c = content.strip()
+    if not c:
+        return []
+    if c.startswith("[") and c.endswith("]"):
+        c = c[1:-1]
+    out = []
+    for part in c.split(","):
+        part = part.strip()
+        if not part:
+            return []
+        try:
+            v = float(part)
+        except ValueError:
+            return []
+        if v != v or v in (float("inf"), float("-inf")):
+            return []
+        out.append(part)
+    return out
 
 # a code span holding ANYTHING else -- `ln(3.0)`, `make_did_SZ2020`,
 # `moonbitlang/async@0.22.5`.  A number inside one of these is part of a
@@ -444,15 +479,35 @@ rec_values = NUMVAL.findall(record)
 # with the analysis and the selection follows it.
 smalln = "\n\n".join(p for p in paragraphs
                      if "17 of 40" in p or "basin edge" in p)
+
+# A figure is a measured value.  Two rules, and they are complementary:
+#
+#   * a number with a decimal point or an exponent is one -- `0.1983`,
+#     `5.18e+70`, and the `2.56` and `3.39` of "mean 2.56, sd 3.39";
+#   * a code span holding exactly one number is one -- that is how the
+#     document writes a measured value, and it is what separates `-648` and
+#     `172149` (measured coefficients) from the counts around them.
+#
+# The second rule is what lets an INTEGER be a figure without a file:line
+# number joining it: `double_ml_score_mixins.py:149` is a span holding more
+# than a number, so it is a citation, not a measurement.  A bare integer in
+# prose -- "17 of 40", "18 of 40", "x 4" -- is a count and stays out.
 figs = []
 for m in NUMVAL.finditer(smalln):
     tok = m.group(0)
     if "." not in tok and "e" not in tok.lower():
-        continue                      # a count, not a measured value
+        continue                      # a count, unless a code span says so
     if tok not in figs:
         figs.append(tok)
 
-check("the small-n figure set is not empty", bool(figs), "%d figures" % len(figs))
+for m in CODE_SPAN.finditer(smalln):
+    for tok in span_measurements(m.group(1)):
+        if tok not in figs:
+            figs.append(tok)
+
+check("the small-n figure set is the declared size",
+      len(figs) == EXPECTED_SMALLN_FIGURES,
+      "found %d, declared %d" % (len(figs), EXPECTED_SMALLN_FIGURES))
 for tok in figs:
     hits = [v for v in rec_values if renders_as(v, tok)]
     check("the figure %s is in the cited record" % tok, bool(hits),
