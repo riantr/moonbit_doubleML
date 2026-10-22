@@ -9,6 +9,75 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.26] -- the ratios the README states, checked against its own numbers
+
+`moon.mod` moves 0.164.25 -> 0.164.26. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- two ratios a reader could not divide out
+
+- The LPLR pitfall said the derivative was `-8.07e-05` "against a score of
+  `-0.1119`, a factor of **344** down". That quotient is **1387**. The 344
+  is real: it is the derivative's fall from `-0.0277` at `theta0 = 1.003` to
+  `-8.07e-05` at `theta0 = 6.842`, which is what the witness script
+  `_verify/_lplr_basin_scan_1680.py` prints ("derivative falls by a factor of
+  343.5") and what `_verify/LPLR_GATE_BLINDNESS_1680.md` section 27f says.
+  The passage attached the number to the wrong pair, so nobody could check
+  it. It now names both start values, and 344 is the quotient of the two
+  derivatives the passage prints.
+- The hazard table's `DoubleMLIIVM` row said "`0.987` vs `1.031` (16x
+  *smaller* SE)" without printing the standard errors, so the 16 had no
+  arithmetic behind it in the document. The row now prints them (`0.0047` vs
+  `0.0747`), in the OLS-first order the table uses everywhere else.
+- The v0.163.4 entry that carried the first wording is corrected too, at
+  byte level, with the same invariants the splice asserts.
+
+### Added -- a verifier for the README's quoted measurements
+
+- (`_verify/_verify_measurements_1650.py` (**46** checks)) holds the README's
+  quoted measurements to three invariants.
+
+  Every RATIO the document states must be DERIVABLE from the numbers its own
+  passage prints -- a table row is its own passage, so a ratio in a cell is
+  measured against that cell and not against the table. The rule is general:
+  it is not a list of the ratios, it is the arithmetic of every ratio the
+  document states.
+
+  Every number in a TABLE CELL must be the correctly-ROUNDED rendering of a
+  value in the CHANGELOG entry that names that row's estimator. The witness
+  set is derived from the entries, not listed. The hazard table's cells had
+  been quoted from the v0.132.0-v0.142.0 measurement rounds since they were
+  written, and this is the first check that re-derives them.
+
+  Every SMALL-N figure must be the correctly-rounded rendering of a value in
+  the record the README cites for that passage.
+
+  The rounding is by SIGNIFICANT DIGITS, so `0.531` is accepted against a
+  measured `0.5307` and `8.07e-05` against `-8.06571e-05`: a rendering of the
+  measured value, not a different value.
+
+  The verifier's own evidence lines carry the dividend and the divisor in
+  ORDER, so every one of them is an equality that is true as printed:
+  `5.2464 / 0.5307 = 9.9`, and a percentage prints both the fraction and the
+  percentage (`17 / 40 = 0.4250 = 42.5%`). The first version of the verifier
+  stored the pair in whichever order the loop reached it, and printed
+  `0.5307 / 5.2464 = 9.9` -- a false equality in the very tool that checks
+  the README's arithmetic. The verdicts were right; the evidence printed
+  beside them was not.
+
+- (`_verify/_dryrun_round32_1650.py`) breaks each of the six mechanisms one
+  at a time and requires the failure count to GROW at every step: **9**
+  failures at the end. The last one moves the SET SIZE -- a new table row
+  appears -- so it runs last, because it would otherwise break the checks the
+  other mechanisms are aimed at.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 49 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.25] -- the example manifests pinned a 159-release-old library
 
 `moon.mod` moves 0.164.24 -> 0.164.25. No estimator behaviour changed and the
@@ -3528,7 +3597,8 @@ been validated end-to-end to `|diff| = 0`:
   `root_scalar(score, x0=..., fprime=..., method="newton")` -- an unbracketed
   Newton from `np.average(beta)`, which is what this port does too.
 - The mechanism is a **derivative collapse**: at `theta0 = 6.842` the score is
-  `-0.1119` but the derivative is `-8.07e-05`, 344x smaller, so the first step
+  `-0.1119` but the derivative is `-8.07e-05` -- down 344x from the `-0.0277`
+  at upstream's start value `theta0 = 1.003` -- so the first step
   `theta - score/deriv` overshoots to about `-1381` and overflows. The Newton
   basin for that draw is `x0 in [0, 3.5]`, draw-specific -- elsewhere in the
   same sweep `3.5491` and `3.7774` both converged.

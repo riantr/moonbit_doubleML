@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.25",
+  "riantr/moonbit_doubleML@0.164.26",
 }
 ```
 
@@ -361,7 +361,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLSSM` | **hazardous -- fixed in v0.138.0** | coef `242.116` vs `1.177` |
 | `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
 | `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau 0.50-0.90 |
-| `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` (16x *smaller* SE) |
+| `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031`; SE `0.0047` vs `0.0747` (16x *smaller*) |
 | `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
 | `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0-v0.142.0** | not an `ml_m` hazard; two failure modes; see below |
 | `DoubleMLPQ` | **hazardous -- fixed in v0.139.0** | ignored its `quantile` entirely |
@@ -509,8 +509,9 @@ Upstream never sets `_coef_bounds` for LPLR, so `double_ml_score_mixins.py:149`
 runs `root_scalar(..., method="newton")` -- an **unbracketed** Newton from that
 same start. This port is structurally identical; the clamp is standing in for a
 robustness upstream does not have either. On the n = 66 rows the score is nearly
-flat past `theta ≈ 3.5`: at `theta0 = 6.842` the derivative is `-8.07e-05`
-against a score of `-0.1119`, a factor of **344** down, so the first step
+flat past `theta ≈ 3.5`: at `theta0 = 6.842` the score is `-0.1119` but the
+derivative is `-8.07e-05` -- down a factor of **344** from the `-0.0277` it
+was at upstream's start value `theta0 = 1.003` -- so the first step
 `theta - score/deriv` overshoots to about `-1381` and overflows. That is the
 `e+70` / `e+122` / `NaN` mechanism, and the basin edge is draw-specific.
 
@@ -577,7 +578,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.25** |
+| `moon.mod` version | **0.164.26** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -703,7 +704,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.25, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.26, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

@@ -453,6 +453,59 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   be a new convention rather than a broken promise.  Nor is
 >   `examples/api_server`'s `moonbitlang/async@0.20.3` pin -- a published
 >   third-party dependency, out of scope here.
+>
+> * **Round 32.** The README's quoted MEASUREMENTS were audited for the first
+>   time as a set, and two of the ratios it states were not the numbers they
+>   claimed to be.  The LPLR pitfall said the derivative was `-8.07e-05`
+>   "against a score of `-0.1119`, a factor of **344** down" -- but that
+>   quotient is **1387**.  The 344 is real: it is the derivative's fall from
+>   `-0.0277` at `theta0 = 1.003` to `-8.07e-05` at `theta0 = 6.842`, which
+>   is what the witness script prints ("derivative falls by a factor of
+>   343.5") and what the record's section 27f says.  The passage attached the
+>   number to the wrong pair, so a reader could not check it; it now names
+>   both start values, and 344 is the quotient of the two derivatives it
+>   prints.  And the hazard table's `DoubleMLIIVM` row said "`0.987` vs
+>   `1.031` (16x *smaller* SE)" without printing the standard errors, so the
+>   16 was a number with no arithmetic behind it in the document; the row now
+>   prints them (`0.0047` vs `0.0747`), in the OLS-first order the table uses
+>   everywhere else.  The v0.163.4 entry that carried the first wording is
+>   corrected too.
+>
+>   The new check `_verify/_verify_measurements_1650.py` runs **46** checks
+>   over three invariants:
+>
+>   * every RATIO the README states must be DERIVABLE from the numbers its
+>     own passage prints -- and a table row is its own passage, so a ratio in
+>     a cell is measured against that cell and not against the table.  The
+>     rule is general: it is not a list of the ratios, it is the arithmetic
+>     of every ratio the document states.
+>   * every number in a TABLE CELL must be the correctly-ROUNDED rendering of
+>     a value in the CHANGELOG entry that names that row's estimator -- the
+>     witness set is derived from the entries, not listed.
+>   * every SMALL-N figure must be the correctly-rounded rendering of a value
+>     in the record the README cites for that passage.
+>
+>   The rounding is by SIGNIFICANT DIGITS, so `0.531` is accepted against a
+>   measured `0.5307` and `8.07e-05` against `-8.06571e-05` -- a rendering of
+>   the measured value, not a different value.  The hazard table's cells had
+>   been quoted from the v0.132.0-v0.142.0 measurement rounds since they were
+>   written, and this is the first check that re-derives them.
+>
+>   `_verify/_dryrun_round32_1650.py` breaks each of the six mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **9** failures.  The last mechanism moves the SET SIZE -- a new
+>   table row appears -- so it runs last, because it would otherwise break
+>   the checks the other mechanisms are aimed at.
+>
+>   The check's own EVIDENCE was wrong at first, and it is worth recording
+>   because it is the same failure the round exists to remove.  The verifier
+>   stored the dividend and the divisor in whichever order the loop reached
+>   them, and printed `0.5307 / 5.2464 = 9.9` -- a false equality in the
+>   very tool that checks the README's arithmetic.  The verdicts were right;
+>   the evidence printed beside them was not.  The pair is now ordered, so
+>   every line is true as printed (`5.2464 / 0.5307 = 9.9`), and a
+>   percentage prints both the fraction and the percentage (`17 / 40 =
+>   0.4250 = 42.5%`).
 
 """
 
@@ -1313,6 +1366,51 @@ describes, so an example copied out of the tree and resolved there with
 """
 
 PATCHES.append((OLD_EXAMPLE_PINS, NEW_EXAMPLE_PINS))
+
+# ==============================================================================
+# 3h.  THE ROUND-32 PATCHES -- two ratios a reader cannot divide out
+# ==============================================================================
+#
+# The README states ratios: a separation, a factor, a percentage.  Round 32
+# added the rule that EVERY stated ratio must be derivable from the numbers
+# its own passage prints -- the reader divides and gets the same number --
+# and two ratios failed it.
+#
+# THE 344.  The LPLR pitfall said the derivative was `-8.07e-05` "against a
+# score of `-0.1119`, a factor of **344** down".  That quotient is **1387**.
+# The 344 is real, but it is the DERIVATIVE's fall from `-0.0277` at
+# `theta0 = 1.003` to `-8.07e-05` at `theta0 = 6.842` -- which is what the
+# witness script prints ("derivative falls by a factor of 343.5") and what
+# `_verify/LPLR_GATE_BLINDNESS_1680.md` section 27f says.  The passage
+# attached the number to the wrong pair, so nobody could check it.  It now
+# names both start values, and 344 is the quotient of the two derivatives the
+# passage prints.
+#
+# THE 16x.  The hazard table's `DoubleMLIIVM` row said "`0.987` vs `1.031`
+# (16x *smaller* SE)" without printing the standard errors, so the 16 was a
+# number with no arithmetic behind it in the document.  The v0.137.0 record
+# holds them (`0.0047` vs `0.0747`), so the row now prints them, in the same
+# OLS-first order the table uses everywhere else.
+
+OLD_LPLR_FACTOR = """flat past `theta ≈ 3.5`: at `theta0 = 6.842` the derivative is `-8.07e-05`
+against a score of `-0.1119`, a factor of **344** down, so the first step
+`theta - score/deriv` overshoots to about `-1381` and overflows. That is the
+`e+70` / `e+122` / `NaN` mechanism, and the basin edge is draw-specific."""
+
+NEW_LPLR_FACTOR = """flat past `theta ≈ 3.5`: at `theta0 = 6.842` the score is `-0.1119` but the
+derivative is `-8.07e-05` -- down a factor of **344** from the `-0.0277` it
+was at upstream's start value `theta0 = 1.003` -- so the first step
+`theta - score/deriv` overshoots to about `-1381` and overflows. That is the
+`e+70` / `e+122` / `NaN` mechanism, and the basin edge is draw-specific."""
+
+OLD_IIVM_ROW = ("| `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031` "
+                "(16x *smaller* SE) |")
+
+NEW_IIVM_ROW = ("| `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031`; "
+                "SE `0.0047` vs `0.0747` (16x *smaller*) |")
+
+PATCHES.append((OLD_LPLR_FACTOR, NEW_LPLR_FACTOR))
+PATCHES.append((OLD_IIVM_ROW, NEW_IIVM_ROW))
 
 for _old, _new in PATCHES:
     _n = text.count(_old)
