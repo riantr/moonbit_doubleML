@@ -929,7 +929,7 @@ pub fn DoubleMLLPQ::cluster_sandwich_se(
 
 ///|
 /// v0.93.0+: returns `coef` UNCHANGED -- a documented no-op, not a
-/// bias correction. Identical in reasoning to the twelve
+/// bias correction. Identical in reasoning to the thirteen
 /// `bias_corrected_coef` methods added in v0.86.0 - v0.92.0; see
 /// `DoubleMLIRM::bias_corrected_coef` and `bias_corrected_theta`
 /// in `sandwich.mbt` for the full argument.

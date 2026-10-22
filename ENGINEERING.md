@@ -151,6 +151,57 @@
 >   number, and the two counts sat side by side in one tracked log with
 >   nothing saying which was which.  The verifier now ASSERTS its own
 >   published count, and the dry-run asserts the failure count it ends at.
+> * **Round 29.** The PUBLIC API DOCSTRINGS -- the `///` blocks a user reads in
+>   an IDE -- were audited for numbers for the first time, and three carried
+>   counts that had gone stale.  `DoubleMLLPQ::bias_corrected_coef` said it was
+>   "Identical in reasoning to the **twelve** `bias_corrected_coef` methods
+>   added in v0.86.0 - v0.92.0", but that range holds **thirteen** (the twelve
+>   that landed at v0.91.0, plus `DoubleMLLPLR` at v0.92.0);
+>   `DoubleMLPQ::bias_corrected_coef` said "**thirteen** ... v0.86.0 - v0.93.0",
+>   which holds **fourteen**; and the canonical `bias_corrected_theta` docstring
+>   in `sandwich.mbt` -- the one every other docstring cites as "the full
+>   argument" -- said "All **twelve** `bias_corrected_coef` methods are now
+>   documented no-ops" when there are **fifteen** by that name.  The pattern is
+>   exact: each author counted the family as of the version BEFORE the
+>   immediately preceding addition.  `DoubleMLLPLR` (v0.92.0) says twelve and
+>   is RIGHT; `DoubleMLLPQ` (v0.93.0) says twelve and is wrong by one;
+>   `DoubleMLPQ` (v0.94.0) says thirteen and is wrong by one; `DoubleMLQTE`
+>   (v0.95.0) says fifteen and is RIGHT.  The new check
+>   `_verify/_verify_docstring_counts_1650.py` derives the `bias_corrected*`
+>   family from the SOURCE -- its members, each one's self-declared
+>   `vX.Y.Z+:` version, and the count of members in any stated range -- and
+>   asks the five docstrings that publish a count of that family whether they
+>   agree.  It also gates the other package-wide counts in the public
+>   docstrings, each derived rather than asserted: the 22-estimator roster, the
+>   15-estimator sandwich family, upstream 0.11.4's 17 estimator classes,
+>   upstream's 7 `_sensitivity_implemented` estimators and 12
+>   `init_ps_processor` callers, the 5 `RDDKernel` variants and the 3 of them
+>   that are negative outside `|u| <= h`, the policy tree's 5-slot encoding,
+>   the `GainStatsResult` field count, the `DoubleMLDIDBinary` delegation
+>   count, the `hash_data` row sample and the logistic defaults.
+>
+>   Two things about how it reads the tree are worth recording.  It reads the
+>   DOCSTRING, not the file: `fit_cache.mbt` says "first 10 + last 10" in a
+>   `//` code comment as well as in the `hash_data` docstring, and a
+>   whole-file search is satisfied by the comment a reader never sees.  And
+>   its check count is FIXED, not tree-dependent: the five publishing sites
+>   are a named list and every other check is an aggregate, so a site whose
+>   docstring is destroyed reports a FAILED CHECK rather than a skipped one
+>   and the count cannot move.  That is the lesson from v0.164.22, where the
+>   published count was the one measured on the dry-run's broken tree.
+>   `_verify/_dryrun_round29_1650.py` breaks each of the fifteen claims one at
+>   a time and requires the failure count to GROW at every step, and it ends
+>   at **29** failures.  Two of its mechanisms are worth noting: one moves a
+>   member's self-declared version and one removes a member from the SOURCE,
+>   so the derived counts change and the publishers that still state them are
+>   caught -- nothing in the verifier is hard-coded to "the family has fifteen
+>   members".  An early draft of that driver had a mechanism that REPAIRED an
+>   earlier one's failure -- moving one publisher's range moved the derived
+>   count onto exactly the value the previous mechanism had broken -- so the
+>   failure count went flat on a tree that was still broken.  Each mechanism
+>   now has a site of its own, and the one that changes the derived family
+>   SIZE runs last, because it would otherwise break the checks the other
+>   mechanisms are aimed at.
 
 ## The README as it stood at v0.164.11
 

@@ -626,7 +626,7 @@ pub fn cluster_sandwich_variance(
 ///      i.e. twice the estimate, so the accessor returned
 ///      `3 * coef` (algebraically, for every estimator). That
 ///      is not a bias estimate; it is a guaranteed-wrong
-///      number. All twelve `bias_corrected_coef` methods are
+///      number. All fifteen `bias_corrected_coef` methods are
 ///      now documented no-ops that return `coef` unchanged
 ///      (see e.g. `DoubleMLIRM::bias_corrected_coef`).
 ///

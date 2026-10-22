@@ -1,0 +1,146 @@
+== the verifier on the tree as it stands ==
+==============================================================================
+1. the bias_corrected family, derived from the source
+==============================================================================
+        DoubleMLAPO              bias_corrected_coef    v0.91.0    apo.mbt
+        DoubleMLCVAR             bias_corrected_coef    v0.91.0    cvar.mbt
+        DoubleMLDID              bias_corrected_coef    v0.91.0    did.mbt
+        DoubleMLDIDBinary        bias_corrected_coef    v0.91.0    did_binary.mbt
+        DoubleMLDIDCSBinary      bias_corrected_coef    v0.91.0    did_cs_binary.mbt
+        DoubleMLDIDCrossSection  bias_corrected_coef    v0.91.0    did_cross_section.mbt
+        DoubleMLIIVM             bias_corrected_coef    v0.91.0    iivm.mbt
+        DoubleMLIRM              bias_corrected_coef    v0.91.0    irm.mbt
+        DoubleMLPLIV             bias_corrected_coef    v0.91.0    pliv.mbt
+        DoubleMLPLPR             bias_corrected_coef    v0.91.0    plpr.mbt
+        DoubleMLPLR              bias_corrected_coef    v0.91.0    plr.mbt
+        DoubleMLSSM              bias_corrected_coef    v0.91.0    ssm.mbt
+        DoubleMLLPLR             bias_corrected_coef    v0.92.0    lplr.mbt
+        DoubleMLLPQ              bias_corrected_coef    v0.93.0    lpq.mbt
+        DoubleMLPQ               bias_corrected_coef    v0.94.0    quantile.mbt
+  ok    every plain `bias_corrected_coef` method carries a self-declared version []
+  ok    every index-suffixed `bias_corrected*` method carries one too    []
+  ok    the plain family and the index-suffixed one are disjoint         plain=15 suffixed=4
+  ok    a raw signature scan finds the same plain family                 scan=15 parsed=15
+
+==============================================================================
+2. the five sites that publish a count of the family
+==============================================================================
+  ok    lplr.mbt:bias_corrected_coef publishes a count of the family     phrase='the twelve `bias_corrected_coef` methods added in v0.86.0 - v0.91.0'
+  ok    lplr.mbt:bias_corrected_coef's count is the derived one          stated=twelve derived=12
+  ok    lplr.mbt:bias_corrected_coef's version range is the derived one  stated hi=0.91.0 derived hi=0.91.0
+  ok    lplr.mbt:bias_corrected_coef's range covers every member up to its bound lo=0.86.0 earliest member=0.91.0
+  ok    lpq.mbt:bias_corrected_coef publishes a count of the family      phrase='the thirteen `bias_corrected_coef` methods added in v0.86.0 - v0.92.0'
+  ok    lpq.mbt:bias_corrected_coef's count is the derived one           stated=thirteen derived=13
+  ok    lpq.mbt:bias_corrected_coef's version range is the derived one   stated hi=0.92.0 derived hi=0.92.0
+  ok    lpq.mbt:bias_corrected_coef's range covers every member up to its bound lo=0.86.0 earliest member=0.91.0
+  ok    quantile.mbt:bias_corrected_coef publishes a count of the family phrase='the fourteen `bias_corrected_coef` methods added in v0.86.0 - v0.93.0'
+  ok    quantile.mbt:bias_corrected_coef's count is the derived one      stated=fourteen derived=14
+  ok    quantile.mbt:bias_corrected_coef's version range is the derived one stated hi=0.93.0 derived hi=0.93.0
+  ok    quantile.mbt:bias_corrected_coef's range covers every member up to its bound lo=0.86.0 earliest member=0.91.0
+  ok    quantile.mbt:bias_corrected_coef_at publishes a count of the family phrase='the fifteen `bias_corrected_coef` methods added in v0.86.0 - v0.94.0'
+  ok    quantile.mbt:bias_corrected_coef_at's count is the derived one   stated=fifteen derived=15
+  ok    quantile.mbt:bias_corrected_coef_at's version range is the derived one stated hi=0.94.0 derived hi=0.94.0
+  ok    quantile.mbt:bias_corrected_coef_at's range covers every member up to its bound lo=0.86.0 earliest member=0.91.0
+  ok    sandwich.mbt:bias_corrected_theta publishes a count of the family phrase='All fifteen `bias_corrected_coef` methods'
+  ok    sandwich.mbt:bias_corrected_theta's count is the derived one     stated=fifteen derived=15
+  ok    sandwich.mbt:bias_corrected_theta states the CURRENT total, not a historical one range=None
+  ok    exactly five sites publish a count of the family                 got 5: [('lplr.mbt', 'DoubleMLLPLR::bias_corrected_coef'), ('lpq.mbt', 'DoubleMLLPQ::bias_corrected_coef'), ('quantile.mbt', 'DoubleMLPQ::bias_corrected_coef'), ('quantile.mbt', 'DoubleMLQTE::bias_corrected_coef_at'), ('sandwich.mbt', 'bias_corrected_theta')]
+  ok    the publishing sites are the ones this verifier gates            [('lplr.mbt', 'DoubleMLLPLR::bias_corrected_coef'), ('lpq.mbt', 'DoubleMLLPQ::bias_corrected_coef'), ('quantile.mbt', 'DoubleMLPQ::bias_corrected_coef'), ('quantile.mbt', 'DoubleMLQTE::bias_corrected_coef_at'), ('sandwich.mbt', 'bias_corrected_theta')]
+
+==============================================================================
+3. the other package-wide counts in the public docstrings
+==============================================================================
+  ok    the port has 22 estimators                                       got 22
+  ok    the Learner trait's docstring says all 22 estimators             
+  ok    its count is the derived one                                     derived 22
+  ok    JointSensitivityInput's docstring says all 22 estimators         
+  ok    its count is the derived one                                     derived 22
+  ok    DoubleMLRDD::tau_bc's docstring says 15 other estimators have it 
+  ok    its count is the derived plain-family size                       derived 15
+  ok    the RDD estimator is not one of them                             
+  ok    DoubleMLAPOS::m_inv_1x1_at's docstring says the fifteen other estimators 
+  ok    its count is the derived sandwich family                         derived 15
+  ok    APOS is not in that family, so 'other' is right                  
+  ok    the vendored upstream 0.11.4 tree is present                     7 files with the flag
+  ok    upstream sets _sensitivity_implemented = True at 7 estimators    got 7: ['apo', 'did', 'did_binary', 'did_cs', 'did_cs_binary', 'irm', 'plr']
+  ok    irm_style_sensitivity's docstring says the seven upstream estimators 
+  ok    its seven are exactly upstream's seven                           ['apo', 'did', 'did_binary', 'did_cs', 'did_cs_binary', 'irm', 'plr']
+  ok    init_ps_processor's docstring says twelve upstream estimators    
+  ok    upstream's init_ps_processor callers are 12                      got 12: ['apo', 'apos', 'cvar', 'did_binary', 'did_cs_binary', 'did_multi', 'iivm', 'irm', 'lpq', 'pq', 'qte', 'ssm']
+  ok    it names exactly upstream's 12 callers                           named=['apo', 'apos', 'cvar', 'did_binary', 'did_cs_binary', 'did_multi', 'iivm', 'irm', 'lpq', 'pq', 'qte', 'ssm'] derived=['apo', 'apos', 'cvar', 'did_binary', 'did_cs_binary', 'did_multi', 'iivm', 'irm', 'lpq', 'pq', 'qte', 'ssm']
+  ok    DoubleMLCVAR::sensitivity_analysis's docstring says all 17 of upstream's 
+  ok    upstream 0.11.4 has 17 estimator classes                         got 17
+  ok    RDDKernel has 5 variants                                         got 5: ['Epanechnikov', 'Normal', 'Quadratic', 'Triangular', 'Uniform']
+  ok    RDDKernel::weight's docstring says three of the five are negative 
+  ok    exactly 3 of the kernels are negative outside |u| <= h           ['Epanechnikov', 'Quadratic', 'Triangular']
+  ok    the docstring names exactly those three                          ['Epanechnikov', 'Quadratic', 'Triangular']
+  ok    the encoder pushes exactly as many slots as its stride           pushes=5 stride=5
+  ok    the encoder's docstring says 5 slots per node                    
+  ok    its slot count is the derived stride                             derived 5
+  ok    GainStatsResult has 4 fields                                     got 4
+  ok    its docstring says 'The four fields are'                         
+  ok    its field count is the derived one                               derived 4
+        the package's sandwich API: ['bias_corrected_coef', 'cluster_sandwich_se', 'sandwich_se']
+  ok    the sandwich API is derived from the 15-vs-7 estimator split     family=15 other=7 api=['bias_corrected_coef', 'cluster_sandwich_se', 'sandwich_se']
+  ok    DoubleMLDIDBinary delegates 3 of the sandwich API's methods      got 3: ['bias_corrected_coef', 'cluster_sandwich_se', 'sandwich_se']
+  ok    its docstring says the three methods are delegated               
+  ok    its count is the derived one                                     derived 3
+  ok    logistic.mbt's max_iter default is 25                            25
+  ok    its docstring says max_iter = 25                                 
+  ok    logistic.mbt's ridge default is 1e-8                             1.0e-8
+  ok    its docstring says the default of 1e-8                           
+  ok    hash_data samples 10 rows from each end                          (10, 10)
+  ok    its docstring says 'first 10 + last 10'                          
+  ok    its slice count is the derived one                               derived (10, 10)
+  ok    the ElasticNet docstring names Lasso and Ridge as the two families 
+  ok    the package has both Lasso and Ridge                             
+  ok    plr_is_po_score's docstring says the two spellings this package has used 
+  ok    the package really uses both spellings                           ['partialling out', 'partialling-out']
+
+== 4. the published check count, witnessed ==
+  ok    the CHANGELOG publishes this verifier's check count              published 72 (of 1 occurrences, newest first)
+  ok    the published check count is the count this run made             published 72, this run makes 72
+
+==============================================================================
+72 checks, 0 failed
+==============================================================================
+
+== the dry-run: each mechanism, one at a time ==
+=== cloning locally and checking out HEAD ===
+  HEAD -> (the commit this log is committed with)
+  copied in CHANGELOG.md
+  copied in moonbit_doubleML/lpq.mbt
+  copied in moonbit_doubleML/quantile.mbt
+  copied in moonbit_doubleML/sandwich.mbt
+  copied in _verify/_verify_docstring_counts_1650.py
+  copied in _verify/_upstream_0114 (directory)
+
+=== baseline: the tree as it stands ===
+  exit=0  failures=0
+
+=== the mechanisms, one at a time ===
+  1. lpq.mbt's count goes back to 'twelve'                                  failures 0 -> 1  GROW
+  2. quantile.mbt's PQ count goes back to 'thirteen'                        failures 1 -> 2  GROW
+  3. sandwich.mbt's canonical 'All twelve' comes back                       failures 2 -> 3  GROW
+  4. quantile.mbt's QTE range loses its upper bound                         failures 3 -> 5  GROW
+  5. lplr.mbt's member is re-versioned, so the derived counts move          failures 5 -> 7  GROW
+  6. lplr.mbt stops publishing a count at all                               failures 7 -> 11  GROW
+  7. rdd.mbt says 14 other estimators have the bias correction              failures 11 -> 13  GROW
+  8. sensitivity.mbt says eight upstream estimators set the flag            failures 13 -> 14  GROW
+  9. blp_policy.mbt says the tree node has 4 slots                          failures 14 -> 16  GROW
+  10. fit_cache.mbt says the hash samples 5 rows from each end               failures 16 -> 18  GROW
+  11. logistic.mbt says max_iter = 50                                        failures 18 -> 19  GROW
+  12. sensitivity.mbt says GainStatsResult has three fields                  failures 19 -> 21  GROW
+  13. did_binary.mbt says four methods are delegated                         failures 21 -> 23  GROW
+  14. ps_processor.mbt says thirteen upstream estimators call it             failures 23 -> 24  GROW
+  15. the source loses a `bias_corrected_coef` member                        failures 24 -> 29  GROW
+
+=== the counter and the verifier's own summary ===
+  the driver counted 29 failures
+  the verifier says  72 checks, 29 failed
+
+=== the published failure count, witnessed ===
+  the CHANGELOG publishes 29; this run measured 29
+  OK -- the published number is the number this run measured
+
+OK: every mechanism contributed, and the counter agrees with the summary

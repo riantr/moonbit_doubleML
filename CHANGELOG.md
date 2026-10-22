@@ -9,6 +9,85 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.23] -- the numbers in the public API docstrings
+
+`moon.mod` moves 0.164.22 -> 0.164.23. The only `.mbt` changed are three
+DOCSTRINGS -- no estimator behaviour changed and the test counts stay
+**1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js), re-measured by the
+local gate.
+
+### Fixed -- three stale counts in the public API docstrings
+
+The `///` docstrings on the public API are what a user reads in an IDE, and no
+earlier round had ever checked them for numbers. They carry the same failure
+mode as everything else: a COUNT of a set of package members, written once and
+never revisited when the set grew.
+
+- `moonbit_doubleML/lpq.mbt` -- `DoubleMLLPQ::bias_corrected_coef` said it was
+  "Identical in reasoning to the **twelve** `bias_corrected_coef` methods added
+  in v0.86.0 - v0.92.0". That range holds **thirteen**: the twelve that landed
+  together at v0.91.0 plus `DoubleMLLPLR` at v0.92.0. Now **thirteen**.
+- `moonbit_doubleML/quantile.mbt` -- `DoubleMLPQ::bias_corrected_coef` said
+  "**thirteen** ... added in v0.86.0 - v0.93.0". That range holds
+  **fourteen**: the twelve, plus LPLR (v0.92.0), plus `DoubleMLLPQ`
+  (v0.93.0). Now **fourteen**.
+- `moonbit_doubleML/sandwich.mbt` -- the canonical `bias_corrected_theta`
+  docstring, which every other docstring cites as "the full argument", said
+  "All **twelve** `bias_corrected_coef` methods are now documented no-ops".
+  There are **fifteen** methods by that name now; the sentence was written
+  when the family was twelve and was never revisited. Now **fifteen**.
+
+The pattern in the first two is exact: each author counted the family as of
+the version BEFORE the immediately preceding addition.
+`DoubleMLLPLR` (v0.92.0) says twelve and is RIGHT -- twelve existed before it.
+`DoubleMLLPQ` (v0.93.0) says twelve and is wrong by one. `DoubleMLPQ`
+(v0.94.0) says thirteen and is wrong by one. `DoubleMLQTE` (v0.95.0) says
+fifteen and is RIGHT.
+
+### Added -- a verifier for the numbers in the public docstrings
+
+- `_verify/_verify_docstring_counts_1650.py` (**72** checks) derives the
+  `bias_corrected*` family from the SOURCE -- its members, each one's
+  self-declared `vX.Y.Z+:` version, and the count of members in any stated
+  range -- and then asks the five docstrings that publish a count of that
+  family whether they agree.
+
+  It also gates the other package-wide counts in the public docstrings, each
+  derived rather than asserted: the 22-estimator roster, the 15-estimator
+  sandwich family, upstream 0.11.4's 17 estimator classes, upstream's 7
+  `_sensitivity_implemented` estimators and 12 `init_ps_processor` callers,
+  the 5 RDDKernel variants and the 3 of them that are negative outside
+  `|u| <= h`, the policy tree's 5-slot encoding, the `GainStatsResult` field
+  count, the `DoubleMLDIDBinary` delegation count, the `hash_data` row sample
+  and the logistic defaults.
+
+  Two things are worth stating about how it reads the tree. It reads the
+  DOCSTRING, not the file: `fit_cache.mbt` says "first 10 + last 10" in a `//`
+  code comment as well, and a whole-file search would be satisfied by a
+  comment a reader never sees. And the check count is FIXED, not
+  tree-dependent: the five publishing sites are a named list and every other
+  check is an aggregate, so a site whose docstring is destroyed reports a
+  FAILED CHECK rather than a skipped one and the count cannot move. (Round
+  28's verifier ran one check per document row, so its published count moved
+  with the tree -- which is how v0.164.21 shipped "127 checks", the count
+  measured on the dry-run's broken tree.) The verifier asserts its own
+  published count and binds to the FIRST match in this file, which is in
+  descending order.
+
+- `_verify/_dryrun_round29_1650.py` breaks each of the fifteen claims one at
+  a time and requires the failure count to GROW at every step: **29**
+  failures at the end. The last two mechanisms move a member's self-declared
+  version and remove a member from the SOURCE, so the derived counts change
+  and the publishers that still state them are caught -- nothing in the
+  verifier is hard-coded to "the family has fifteen members".
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 46 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.22] -- a published count that was measured on the wrong tree
 
 `moon.mod` moves 0.164.21 -> 0.164.22. The only `.mbt` changed is
