@@ -4,9 +4,10 @@ This is the gate that `_verify/DID_BINARY_PANIC_1680.md` said could not exist.
 It could: the recorded "defect" was a misdiagnosis, and this file is the
 evidence. The short version --
 
-    `DoubleMLDIDBinary::new` builds a FOUR-ROW dummy inner model so that
-    construction does not trip `require(n_folds <= data.n_obs())`
-    (`did_binary.mbt:445`). That caps `n_folds` at 4 on this type.
+    `DoubleMLDIDBinary::new` builds a FOUR-ROW dummy inner model
+    (`DoubleMLDIDData::new(Matrix::zeros(4, ...), ...)`, `did_binary.mbt:440-441`)
+    so that construction does not trip `require(n_folds <= data.n_obs())`.
+    That caps `n_folds` at 4 on this type.
 
 The first attempt at this gate passed upstream's default `n_folds = 5`, hit
 that ceiling, and aborted at `did.mbt:276`. It was recorded as a row-count

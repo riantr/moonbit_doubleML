@@ -125,7 +125,7 @@ it were both measured FALSE:
     own control." They agree for INTEGER `g`. `_get_never_treated_value` is
     dtype-dependent -- `0` for integer, `inf` for floating, `NaT` for datetime
     -- and `0` is exactly this port's rule (`discover_groups_times`,
-    `did_cs.mbt:89-95`). The `inf` that broke the attempt came from
+    `did_cs.mbt:84-95`). The `inf` that broke the attempt came from
     `time_type="float"`; recoding to integer reconciles them.
 
 Both claims were refuted by running the thing rather than reading the module

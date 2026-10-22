@@ -73,8 +73,8 @@ test "v1590_isotonic_tied_x_returns_the_shared_pooled_value" {
 ///
 /// FIX: `folds_to_cv_partition` (ps_processor.mbt) converts the estimator's
 /// `Array[Fold]` into the `Array[(Array[Int32], Array[Int32])]` shape
-/// `isotonic_calibrate_cv` expects, and `irm.mbt:417` / `iivm.mbt:513` now
-/// pass it.
+/// `isotonic_calibrate_cv` expects, and `folds_to_cv_partition(folds)`
+/// (`irm.mbt:430` / `iivm.mbt:525`) now pass it.
 ///
 /// WHAT THIS PINS: the conversion is only sound because `kfold`'s `Fold`
 /// guarantees disjoint test indices that COVER `[0, n_obs)`
@@ -158,7 +158,7 @@ fn v1590_data(n : Int32, seed : Int32) -> DoubleMLData {
 /// coefficient, then built `psi` from the `g` cross-fit. Two different
 /// functionals of the data: the reported coefficient did not satisfy the
 /// estimating equation the estimator publishes. (The repo documented this at
-/// `expand_v094_test.mbt:525` without fixing it.)
+/// `mean(psi(theta)) = 0`, `expand_v094_test.mbt:520-532`, without fixing it.)
 ///
 /// ORACLE: the IPW root is PRELIMINARY. `pq.py:378` solves it only to build
 /// `g`'s target (`pq.py:390` fits `ml_g(x_treat, y_treat <= ipw_est)`), then
@@ -233,9 +233,10 @@ test "v1590_pq_reports_a_root_of_its_own_orthogonal_score" {
 ///
 /// MECHANISM: the score's theta-derivative was computed as a central difference
 /// of the step function, so it was identically zero whenever no observation lay
-/// within `+/- h` of theta. `DoubleMLQTE::fit` scales `psi` by `1 / deriv` with
-/// no guard of its own -- `quantile.mbt:2411-2415` documents exactly this -- so
-/// `0/0 = NaN` reached `ses[j]`. Measured on the five-quantile sweep fixture:
+/// within `+/- h` of theta. `DoubleMLQTE::fit` scales `psi` by `1 / deriv`
+/// (`quantile.mbt:2415-2422`) with no guard of its own -- the section comment
+/// there documents exactly this -- so `0/0 = NaN` reached `ses[j]`. Measured on
+/// the five-quantile sweep fixture:
 /// `ses = [NaN, 0.3019, 0.1758, 0.1994, 1.6937]`.
 ///
 /// The Gaussian KDE derivative makes this STRUCTURALLY unreachable rather than

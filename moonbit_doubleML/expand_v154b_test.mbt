@@ -12,15 +12,16 @@
 // ---------------------------------------------------------------------------
 // THE DEFECT
 //
-// `did_cs.mbt:1259-1275` builds the four g-function condition masks hardcoded
-// to period labels 0 and 1:
+// `cond_d0_t0` (`did_cs.mbt:1336-1348`) builds the four g-function condition
+// masks hardcoded to period labels 0 and 1:
 //
 //     let ti = self.data.t[i]
 //     if ti == 0 { ... cond_d0_t0 / cond_d1_t0 }
 //     else if ti == 1 { ... cond_d0_t1 / cond_d1_t1 }
 //     // ti >= 2 falls through and is DISCARDED
 //
-// and `did_cs.mbt:1347` then uses `t[i]` as a 0/1 post-treatment INDICATOR:
+// and `let ti = self.data.t[i].to_double()` (`did_cs.mbt:1428`) then uses
+// `t[i]` as a 0/1 post-treatment INDICATOR:
 //
 //     let ti = self.data.t[i].to_double()
 //     let c = di * (1.0 - ti)          // negative when ti > 1

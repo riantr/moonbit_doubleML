@@ -1163,7 +1163,7 @@ pub fn DoubleMLLPLR::fit(
         // surfaces stay green but the gated gaps get 4.6x and 5.1x WORSE
         // (0.007307 -> 0.033977 and 0.010609 -> 0.054513), and n=160 moves
         // from a 0.169 gap to 3.14. Combined with the unclamped Newton it
-        // still aborts at `var_est.mbt:79`.
+        // still aborts at `require(jacobian.abs() > 0.0)` (`var_est.mbt:79`).
         //
         // The other is `a_hat["preds"]` itself, the vector that feeds
         // `r_hat`. Upstream builds it by summing EVERY inner model's
@@ -1185,7 +1185,7 @@ pub fn DoubleMLLPLR::fit(
         // this file's own construction that used sklearn `.predict` -- hard
         // 0/1 labels -- where upstream uses `predict_proba` (`lplr.py:166`,
         // `:150`). This port is on the probability side too: `predict` returns
-        // `sigmoid(eta)` clipped into `(1e-15, 1-1e-15)` (`logistic.mbt:217`)
+        // `sigmoid(eta)` clipped into `(1e-15, 1-1e-15)` (`logistic.mbt:229-233`)
         // and the labels are a separate `predict_class` (`logistic.mbt:250`).
         // The old control measured labels-against-probabilities, which
         // guarantees a large answer for a reason that has nothing to do with

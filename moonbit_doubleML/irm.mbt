@@ -1065,8 +1065,8 @@ pub fn DoubleMLIRM::tune(
 ///     (`irm.py:249`) and this port exposes no user-supplied weights, so
 ///     `weights == weights_bar == 1` on both the ATE branch (`irm.py:258-263`)
 ///     and -- via the absent `weights_bar` key -- identically. The ATTE branch
-///     (`irm.py:265-272`) does not apply: the port is ATE-only (`irm.mbt:588`,
-///     "Score (ATE, weights=1, weights_bar=1)").
+///     (`irm.py:265-272`) does not apply: the port is ATE-only
+///     (`Score (ATE, weights=1, weights_bar=1)`, `irm.mbt:602`).
 ///
 ///   * `m_hat_adj = _propensity_score_adjustment(m_hat, d, normalize_ipw)`
 ///     returns `m_hat` unchanged when `normalize_ipw` is False. That is

@@ -7,6 +7,12 @@
 > tree sides with §3.
 > Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
 >
+> **Line pointers refreshed 2026-10-22 (v0.164.24).** Round 30's repair of
+> 64 stale `file:line` citations edited prose inside `did_cs.mbt`, which
+> moved the code lines below it; the line pointers in this record were moved
+> to the lines the code now occupies. **The code did not change and nothing
+> in this record was re-derived.**
+>
 > | | as written (v0.153.0) | now (`v0.164.9`) |
 > |---|---|---|
 > | `.mbt` files in scope | 213 | **220** |
@@ -168,7 +174,7 @@ The bottom row had **no** `ml_g` / `ml_m` field on the struct at all. `DoubleMLD
 `DoubleMLDIDBinary::new` (`did_binary.mbt:343`) accept no learner parameter;
 the learner appears only as a `::fit` argument defaulting to OLS:
 
-- `did_cs.mbt:1126-1127` — `DoubleMLDIDCS::fit`
+- `did_cs.mbt:1128-1129` — `DoubleMLDIDCS::fit`
 - `did_cs_binary.mbt:1038-1039` — `DoubleMLDIDCSBinary::fit`
 - `did_binary.mbt:750-751` — `DoubleMLDIDBinary::fit`
 
@@ -184,9 +190,9 @@ Two, both in files this audit had to read, both of the same shape: a comment
 claiming a parameter is ignored or hardcoded when the surrounding code routes
 it.
 
-**`did_cs.mbt:1129`** — a vestigial `ignore(ml_g)` stood above the v0.146.0
+**`did_cs.mbt:1131`** — a vestigial `ignore(ml_g)` stood above the v0.146.0
 note. `ml_g` has driven the four conditional `(d, t)` outcome nuisances since
-v0.146.0 (`did_cs.mbt:1228`, `1235`, `1242`, `1249`, forwarded at `1518`), so
+v0.146.0 (`did_cs.mbt:1230`, `1235`, `1242`, `1249`, forwarded at `1518`), so
 the line claimed a drop that does not exist. **Fixed** in this round.
 
 **`did_cs_binary.mbt:11-23`** — the header's "Simplifications vs. upstream"
@@ -196,7 +202,7 @@ release". That was true at v0.51.0 and went stale at **v0.62.0**, which made
 both slots pluggable: `fit` routes `ml_g` through `fit_cs_bin_g` for the four
 conditional g-functions (`:274-285`) and `ml_m` through
 `fit_predict_one_dispatch` (`:290`), and `tune` forwards the grid's best pair
-(`:1671`). The file's own inline comments at `:271-273` and `:288-290` already
+(`:1673`). The file's own inline comments at `:271-273` and `:288-290` already
 said so, so the header contradicted the body. **Fixed** in this round.
 
 This one mattered beyond tidiness: the stale header is what makes the default
@@ -210,7 +216,7 @@ Both changes are comment-only (one deleted line, one rewritten doc block), so
 no numeric pin is involved and no cross-backend spread can be introduced.
 Proportionate gate run: `moon check` exit 0, `moon test --target native`
 **1087 / 1087**. The full four-target run at the released baseline
-(`1087 / 1087 / 1093 / 1087`) was confirmed after the `did_cs.mbt:1129` fix.
+(`1087 / 1087 / 1093 / 1087`) was confirmed after the `did_cs.mbt:1131` fix.
 
 ## 5. v0.153.0 — the fix, and the evidence it discriminates
 

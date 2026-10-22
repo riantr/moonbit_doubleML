@@ -333,8 +333,8 @@ test "v130_cs_binary_sensitivity_cluster_shares_the_residual_vector" {
 /// returns `psi_a`/`psi_b`, `_sensitivity_element_est` returns `riesz_rep`.
 ///
 /// This gate recomputes `m_alpha` and `rr` from the PUBLIC accessors using
-/// upstream's `in_sample_normalization = false` branch -- which is the branch
-/// this estimator's default selects (`did_cs_binary.mbt:712`) -- and asserts
+/// upstream's `in_sample_normalization = false` branch (`did_cs_binary.mbt:732`)
+/// -- which is the branch this estimator's default selects -- and asserts
 /// the reported `nu2` is exactly their mean.
 ///
 /// MEASURED, staggered fixture (720 subset rows):

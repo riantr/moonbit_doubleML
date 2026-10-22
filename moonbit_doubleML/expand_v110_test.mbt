@@ -188,7 +188,8 @@ test "v110_different_kernel_changes_the_estimate" {
 /// different sets of weights. Two paths, one setting.
 ///
 /// `cluster_hac_se` takes one cluster id per BANDWIDTH-RESTRICTED LOCAL
-/// ROW, not per observation (`rdd.mbt:1409-1412`), so the id array has to
+/// ROW, not per observation (`cluster_ids.length()` must equal `n_local()`,
+/// `rdd.mbt:1425-1429`), so the id array has to
 /// be sized from `n_local()` after fitting. Sizing it to the full sample
 /// aborts, which is the guard working.
 test "v110_cluster_path_uses_the_same_kernel" {

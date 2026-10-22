@@ -25,7 +25,7 @@ CS2021. Both were measured and BOTH ARE FALSE:
      floating. Recoding `g` to INTEGER maps never-treated to 0, which is
      exactly the port's convention. Measured:
      `_get_never_treated_value(g) == 0 == min(g)`, and every `_is_never_treated`
-     verdict then matches the port's own `discover_groups_times` (`did_cs.mbt:89-95`).
+     verdict then matches the port's own `discover_groups_times` (`did_cs.mbt:84-95`).
 
 WHY ONLY 6 OF UPSTREAM'S 12 CELLS
 =================================
@@ -34,8 +34,8 @@ yields 6. This is a structural difference, and it is measured rather than
 asserted (measured, not copied from the upstream source):
 
   * the port's `DoubleMLDIDCS` fixes its base period at `g_value - 1`
-    (`did_cs.mbt:1563`) and restricts the panel to
-    `(g == g_value) U (g == never_treated)` (`did_cs.mbt:1589`);
+    (`did_cs.mbt:1565`) and restricts the panel to
+    `(g == g_value) U (g == never_treated)` (`did_cs.mbt:1591`);
   * upstream's `_construct_gt_combinations` picks
     `t_pre = t_values[t_values < g][-1]`, then `min(t_values[i], t_pre)`;
   * so the two agree EXACTLY on the 6 cells where upstream landed on
@@ -166,7 +166,7 @@ def build_cs2021():
     # the never-treated cohort is never exposed.
     #
     # NOTE, measured: this column is DECORATIVE for the port's DID-CS fit.
-    # `did_cs.mbt:1594` recomputes the sub-DID indicator from the panel itself
+    # `did_cs.mbt:1596` recomputes the sub-DID indicator from the panel itself
     # (`if gv == g_value && tv == eval_period`) and overwrites whatever `d` the
     # caller passed. A mutation battery confirmed it: permuting `d` left every
     # coefficient bit-identical, while permuting `g` killed the gate.
@@ -234,8 +234,8 @@ def comparable_cells():
     out = []
     for gv, tp, te in combos:
         gv, tp, te = int(gv), int(tp), int(te)
-        # The port's base is g-1 (`did_cs.mbt:1563`); upstream must have landed
-        # there too, or the two are estimating different things.
+        # The port's base is g-1 (`g_value - 1`, `did_cs.mbt:1565`); upstream must
+        # have landed there too, or the two are estimating different things.
         if tp == gv - 1 and te >= gv:
             out.append((gv, tp, te))
     return out

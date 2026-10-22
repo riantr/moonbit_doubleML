@@ -101,7 +101,8 @@ test "v1350_apos_default_ml_m_is_a_classifier_and_ml_g_is_not" {
 /// The contrast arm is an EXPLICIT `linear_regression()`, never "the old
 /// default": a gate phrased against the default silently changes subject the
 /// moment the default moves. That trap was hit twice in this migration --
-/// v0.134.0 at `expand_v133_test.mbt:90`, v0.135.0 at `:131` -- and is why
+/// v0.134.0 at `ml_m=logit` (`expand_v133_test.mbt:92`), v0.135.0 at
+/// `ml_m=logit` (`expand_v133_test.mbt:134`) -- and is why
 /// every gate here names the learner.
 ///
 /// Mutation: reverting the default fails every assertion, because the

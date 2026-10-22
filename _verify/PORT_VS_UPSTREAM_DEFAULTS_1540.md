@@ -8,17 +8,25 @@
 > `SCORE_VOCABULARY_1550.md` before that document was corrected.
 > Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
 >
+> **Line pointers refreshed 2026-10-22 (v0.164.24).** Round 30 audited
+> the `file:line` citations in the tracked prose and repaired 64 that no
+> longer pointed at the code they named; four of those repairs were inside
+> `did_cs.mbt` and `plr.mbt`, and a prose edit moves the code lines below it.
+> The line pointers in this record were moved to the lines the code now
+> occupies. **The code did not change and nothing in this record was
+> re-derived.**
+>
 > | | as written (v0.154.0) | now (`v0.164.9`) |
 > |---|---|---|
 > | `.mbt` files scanned | 216 | **220** |
 > | `DoubleMLXxx::new` definitions | 34 | 34, unchanged |
 > | the divergence table | 6 diverging parameters | **unchanged** — every row re-measured |
 > | `did.mbt` `require(n_folds <= data.n_obs())` | `:245` | **`:276`** |
-> | `did_cs.mbt` — `nu2` / `rr` formulas | `:1388` / `:1394` | **`:1390` / `:1394`** (`:1394` unchanged) |
-> | `did_cs.mbt` — the `1 / mean(d1t0)` division | `:1328` | **`:1407`** |
-> | `did_cs.mbt` — `let ti = self.data.t[i].to_double()` | `:1347` | **`:1426`** (also `:1455`, `:1489`) |
-> | `did_cs.mbt` — the four condition masks | `:1259-1275` | **`:1334-1345`** |
-> | `did_cs.mbt` — the "MAY be NaN" note | `:635` | **`:667`** |
+> | `did_cs.mbt` — `nu2` / `rr` formulas | `:1388` / `:1394` | **`:1392` / `:1396`** (both moved at v0.164.24) |
+> | `did_cs.mbt` — the `1 / mean(d1t0)` division | `:1328` | **`:1409`** |
+> | `did_cs.mbt` — `let ti = self.data.t[i].to_double()` | `:1347` | **`:1428`** (also `:1457`, `:1491`) |
+> | `did_cs.mbt` — the four condition masks | `:1259-1275` | **`:1336-1347`** |
+> | `did_cs.mbt` — the "MAY be NaN" note | `:635` | **`:669`** |
 > | the `score` callout | "the port's accepted set and upstream's intersect only at `\"IV-type\"`" | **withdrawn** — see §"the score callout" below |
 >
 > **What is NOT verified here.** No estimator was re-run. The `nu2` / `sigma2`
@@ -99,7 +107,7 @@ passes the flag explicitly.
 
 ### MEASURED blast radius of flipping it — and it cuts BOTH ways
 
-`did_cs.mbt:1390` and `:1394` select between two materially different formulas
+`did_cs.mbt:1392` and `:1396` select between two materially different formulas
 for `m_alpha` and `rr`. Measured on `make_did_cs_CS2021(800, 3, 1.0, seed)`,
 true ATT = 1.0:
 
@@ -117,7 +125,7 @@ true ATT = 1.0:
 same values v0.152.0 measured when it found `max |att − 1.0| = 14.41`.
 
 *Against* the flip: **`nu2` is NaN on all four seeds** under the upstream
-branch. The `true` formula divides by `mean(d1t0)` (`did_cs.mbt:1407`), which is
+branch. The `true` formula divides by `mean(d1t0)` (`did_cs.mbt:1409`), which is
 zero on this fixture's empty `(d=1, t=0)` cell — the structural emptiness
 recorded in the v0.147.0 header. So the flip would trade a finite `nu2` for a
 NaN one, on the very estimator whose sensitivity analysis this release thread
@@ -129,7 +137,7 @@ unaffected either way.
 **Therefore: do not flip this default on the evidence so far.** The
 `in_sample_normalization = true` branch is the upstream-faithful one *and* it is
 broken on staggered panels with an empty `(d=1, t=0)` cell. Fixing the NaN (or
-documenting when it is correct — `did_cs.mbt:667` already argues NaN can be
+documenting when it is correct — `did_cs.mbt:669` already argues NaN can be
 correct here) has to come before the default can move.
 
 ### Is the NaN a formula bug, or a consequence of the empty cell? — MEASURED
@@ -145,7 +153,7 @@ canonical fixture's **400 / 200 / 0 / 200**.
 
 **The NaN is caused by the empty cell, not by a broken formula.** The upstream
 branch returns a finite value wherever `mean(d1t0)` is defined. So
-`did_cs.mbt:667`'s "MAY be NaN, AND THAT IS CORRECT" survives — with the
+`did_cs.mbt:669`'s "MAY be NaN, AND THAT IS CORRECT" survives — with the
 mechanism stated precisely: it is structural, not arithmetic error.
 
 **But the control run raises a second, larger problem.** Where the branch *is*
@@ -168,7 +176,7 @@ is worth changing.
 
 ## ROOT CAUSE FOUND — and it is not a normalisation bug
 
-`did_cs.mbt:1426` reads
+`did_cs.mbt:1428` reads
 
 ```moonbit
 let ti = self.data.t[i].to_double()
@@ -207,7 +215,7 @@ So **both** symptoms have one cause:
 
 An earlier report in this file described the fix as narrow — "make `t[i]` yield
 a 0/1 post-treatment indicator". Reading the g-function construction refutes
-that. `did_cs.mbt:1334-1345` builds the four condition masks like this:
+that. `did_cs.mbt:1336-1347` builds the four condition masks like this:
 
 ```moonbit
 let ti = self.data.t[i]

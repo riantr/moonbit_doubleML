@@ -983,10 +983,9 @@ pub fn DoubleMLDIDMulti::p_adjust(
         // diagnostic is actionable if the abort ever fires.
         //
         // Same dead-code pattern as v0.37.0's
-        // `did_multi.mbt:558` (originally skipped with
-        // documentation), v0.45.0's `plpr.mbt:447`
-        // (`transform_panel` else-branch), and v0.42.0's
-        // removed `solve_pq` lower-bracket dead abort.
+        // `DoubleMLDIDMulti::p_adjust` (originally skipped with
+        // documentation), v0.45.0's `transform_panel` else-branch, and
+        // v0.42.0's removed `solve_pq` lower-bracket dead abort.
         abort(
           "DoubleMLDIDMulti::p_adjust: unknown method (set in DoubleMLDIDMulti::p_adjust): " +
           method_name,

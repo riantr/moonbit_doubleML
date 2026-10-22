@@ -754,7 +754,7 @@ pub fn DoubleMLBLP::confint_joint(
       // quantile the rest of the package uses for `confint`), so the
       // default path is unchanged.
       let z = if (level - 0.95).abs() < 1.0e-12 {
-        // Same convention as `did_cross_section.mbt:485`: keep the
+        // Same convention as `did_cross_section.mbt:485-490`: keep the
         // canonical 95% value bit-exact so the default path (and the
         // test contract) are unchanged, and use `norm_ppf` for every
         // other level.

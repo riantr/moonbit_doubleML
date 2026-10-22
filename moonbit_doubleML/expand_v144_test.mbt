@@ -1,8 +1,8 @@
 // v0.144.0 -- GATES for the DoubleMLPLR sensitivity nu2/sigma2 correction.
 //
 // WHAT THESE ASSERT, AND WHY THE OLD GATE WAS BLIND. The pre-existing gate
-// (`v066_wbtest.mbt:44 plr_sensitivity_returns_finite_result`) asserts only
-// `!is_nan` on all four returned fields. A gate written on finiteness cannot
+// (`plr_sensitivity_returns_finite_result`, `v066_wbtest.mbt:44`) asserts
+// only `!is_nan` on all four returned fields. A gate written on finiteness cannot
 // see a value being wrong by a factor of 60, so the defect it was supposed to
 // cover was invisible to it -- the v0.138.0 lesson (a gate whose inputs do not
 // read the thing under test is decoration) in its purest form.

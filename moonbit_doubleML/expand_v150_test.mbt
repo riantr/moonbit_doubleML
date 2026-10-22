@@ -10,8 +10,8 @@
 //
 // Why that was not merely a missing feature. On the canonical fixture
 // `make_did_cs_CS2021(800, 3, 1.0, 3141)` the panel is groups=[1], times=[0,1],
-// so `t > g` admits NOTHING at all. `final_coef` is zero-initialised
-// (`did_cs.mbt:1581`), so `coef_at(0, 1)` returned the 0.0 it was created with,
+// so `t > g` admits NOTHING at all. `final_coef` (`did_cs.mbt:1722`) is
+// zero-initialised, so `coef_at(0, 1)` returned the 0.0 it was created with,
 // and `dgp_recovery_test`'s `max_abs_err < 5.0` passed on `|0 - 1| = 1.0` while
 // claiming to recover an ATT of 1.0. That test had been asserting against a
 // hardcoded zero since it was written. The fixture's own DGP treats cohort 1

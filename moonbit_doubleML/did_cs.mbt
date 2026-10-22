@@ -347,10 +347,11 @@ pub fn DoubleMLDIDCS::new(
     // and the rest all carry one). `n_folds` is instead bound DOWNSTREAM, and
     // against a HARDCODED FOUR-ROW PLACEHOLDER rather than any real data:
     //
-    //   did_cs.mbt:1620   DoubleMLDIDCS::fit -> DoubleMLDIDBinary::new
+    //   did_cs.mbt:1622   DoubleMLDIDBinary::new(  (in DoubleMLDIDCS::fit)
     //   did_binary.mbt:352   pub fn DoubleMLDIDBinary::new
     //   did_binary.mbt:439     inner: DoubleMLDID::new(
-    //   did_binary.mbt:441       DoubleMLDIDData::new(Matrix::zeros(4, ...), ...)
+    //   did_binary.mbt:440       DoubleMLDIDData::new(
+    //   did_binary.mbt:441         Matrix::zeros(4, data.n_features()),
     //   did.mbt:276          require(n_folds <= data.n_obs())
     //   did.mbt:317          abort(...)   <- the failure
     //
@@ -368,7 +369,8 @@ pub fn DoubleMLDIDCS::new(
     //   n_folds = 5 -> aborts
     // 4 still fits at n_obs = 1600 AND 4000, pinning the ceiling at the dummy's
     // 4 rows. The real DIDCS cells are nowhere near it: this DGP makes 16
-    // (g,t) cells (`dgp_did_CS2021.mbt:50-52`), the smallest holding 100 rows
+    // (g,t) cells (`n_groups = 4` and `n_periods = 4`,
+    // `dgp_did_CS2021.mbt:50-51`), the smallest holding 100 rows
     // at n_obs = 1600 and 250 at n_obs = 4000.
     //
     // Consequence: `n_folds = 2` is not a fidelity gap to be closed here. Do

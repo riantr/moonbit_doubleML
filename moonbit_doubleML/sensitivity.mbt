@@ -130,7 +130,7 @@ pub fn irm_style_sensitivity_from_elements(
 /// Build a `SensitivityResult` from the two variance BASELINES alone.
 ///
 /// v0.144.0, added with the `DoubleMLPLR` nu2 fix. Proven at
-/// `compute_sensitivity_bias` (sensitivity.mbt:522-550) and reproduced below:
+/// `compute_sensitivity_bias` (sensitivity.mbt:565) and reproduced below:
 /// `max_bias[i] = sqrt(sigma2 * nu2)` for EVERY `i`, `psi_max_bias` is
 /// discarded by every caller in this file (`let (max_bias_arr, _) = ...`),
 /// `robustness_value` divides `|theta|` by `mean(max_bias)`, and `max_bias` is

@@ -18,7 +18,7 @@
 //     the other side by mutating the default path.
 //
 //   * `solve_pq` gained a matching optional parameter. It is `pub`
-//     (documented at `quantile.mbt:173`) and is called by PQ, QTE and
+//     (documented at `quantile.mbt:236`) and is called by PQ, QTE and
 //     `quantile_test.mbt`, so the parameter defaults to `None` and no
 //     caller had to change.
 //
@@ -36,7 +36,8 @@
 // Upstream `pq.py` adjusts twice: `m_hat_prelim` on the first sample
 // split's training rows (`pq.py:365`) and `m_hat["preds"]` on the full
 // data (`pq.py:410`). This port's `solve_pq` performs exactly ONE
-// propensity cross-fit on the full data (`quantile.mbt:190`), so there
+// propensity cross-fit on the full data (`fit_propensity`, `quantile.mbt:254`),
+// so there
 // is one site here and no preliminary stage to route. Recorded rather
 // than papered over: this is a genuine structural difference from
 // upstream, not a wiring omission.

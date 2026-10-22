@@ -4,8 +4,9 @@
 //| Context. v0.137.0 measured the `ml_m` hazard across all remaining defaults
 //| and recorded `DoubleMLPQ` as "not demonstrated -- defect", having observed
 //| that PQ returns the IDENTICAL coefficient at every tau under the shipped
-//| default. v0.137.1 root-caused it: `score[i] = treated[i]/m[i] *
-//| 1{y[i] <= theta} - q` (`quantile.mbt:127`), `pq_adjust` clips `m` to
+//| default. v0.137.1 root-caused it:
+//| `score[i] = treated[i]/m[i] * 1{y[i] <= theta} - q` (`quantile.mbt:126-127`),
+//| `pq_adjust` clips `m` to
 //| [propensity_clip, 1-propensity_clip] (`:175-177`, default 1e-6), and an
 //| unbounded regressor propensity saturates treated rows at `m = 1e-6`, giving
 //| them weight 1e6. The IPW distribution is then dominated by whichever rows
@@ -53,7 +54,8 @@
 //! (on a second fixture, PQ separates all five: -0.215 / 0.565 / 0.830 / 1.602
 //! / 1.853 at seed 23). The flip reduced QTE's frozen tail from three taus to
 //! one, but did not remove it, and the cause is NOT established -- the
-//! bisection is 60 iterations over a bracketed range (`quantile.mbt:267-275`),
+//! bisection is 60 iterations over a bracketed range (`_iter < 60`,
+//! `quantile.mbt:311`),
 //! so it is not a convergence-budget artefact, and the residual is most likely a
 //! gap in the IPW-weighted outcome distribution at the upper tail. That is
 //! recorded as an open item rather than asserted as fixed.

@@ -8,12 +8,18 @@
 > findings describe a tree that no longer exists.
 > Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
 >
+> **Line pointers refreshed 2026-10-22 (v0.164.24).** Round 30's repair of
+> 64 stale `file:line` citations edited prose inside `plr.mbt`, which moved
+> the code lines below it; the line pointers in this record were moved to the
+> lines the code now occupies. **The code did not change and nothing in this
+> record was re-derived.**
+>
 > | | as written (`v0.155.0`) | now (`v0.164.9`) |
 > |---|---|---|
 > | `DoubleMLPLR` accepted `score` spellings | `{partialling-out, iv-type, IV-type}` | `{partialling-out, partialling out, iv-type, IV-type}` |
 > | port ∩ upstream, for `DoubleMLPLR` | `{"IV-type"}` — *"one shared spelling out of two on each side"* | `{"partialling out", "IV-type"}` — **two** |
 > | upstream classes that validate a `score` | 13 read (the `valid_scores` mechanism only) | **18** — 5 more validate through a different mechanism |
-> | `plr.mbt` score default | `:388` / `:649` | `:417` / `:676` |
+> | `plr.mbt` score default | `:388` / `:649` | `:418` / `:677` |
 > | `did.mbt` / `lplr.mbt` score default | `:231` / `:350` | `:262` / `:354` |
 >
 > **What is NOT verified here.** No estimator was re-run for this re-audit.
@@ -95,7 +101,7 @@ the **live default** on `plr.py` and `plpr.py`, both in `__init__`:
 | `did_cs_binary.mbt:731` | `"observational"` | `{observational}` | `{observational, experimental}` — **narrower** |
 | `lplr.mbt:354` | `"nuisance_space"` | `{nuisance_space, instrument}` | same — **match** |
 | `plpr.mbt:554` | `"partialling out"` | `{partialling out, IV-type}` | same — **match** |
-| **`plr.mbt:417` / `:676`** | **`"partialling-out"`** | `{partialling-out, partialling out, iv-type, IV-type}` | `{partialling out, IV-type}` |
+| **`plr.mbt:418` / `:677`** | **`"partialling-out"`** | `{partialling-out, partialling out, iv-type, IV-type}` | `{partialling out, IV-type}` |
 
 So 5 of 6 `score` defaults match upstream. The one that does not is
 `DoubleMLPLR` — and it still does not: the port's default is the **hyphen**
@@ -106,8 +112,8 @@ spelling, which upstream rejects.
 > IV-type}`. It now accepts **four** — `8308f09` (v0.155.0) added
 > `"partialling out"`, which is exactly the fix §4 recommends. The port's
 > guard is now `require(plr_is_po_score(score) || plr_is_iv_score(score))`
-> (`plr.mbt:421`), with the two spellings resolved by `plr_is_po_score`
-> (`plr.mbt:394-396`).
+> (`plr.mbt:422`), with the two spellings resolved by `plr_is_po_score`
+> (`plr.mbt:395-397`).
 
 ### The set arithmetic
 
@@ -358,7 +364,7 @@ from "coincidental on this fixture".
 - **Not licensed**: flipping the default to `"partialling out"`. That would break
   every caller that passes `score="partialling-out"` explicitly, including
   `plr_iv_type_wbtest.mbt:199-201`. (It has not been flipped — the default is
-  still the hyphen, `plr.mbt:417` / `:676`.)
+  still the hyphen, `plr.mbt:418` / `:677`.)
 - **Not licensed**: any claim that PLPR's `coef()` is a bug. It is measured to
   be score-invariant; it is *not* measured to be wrong, and the mechanism is
   open.

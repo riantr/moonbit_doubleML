@@ -12,7 +12,8 @@
 //| NOT raw `d`. The target is therefore binary for ANY treatment level, so a
 //| classifier is correct by construction rather than by convention. (Contrast
 //| `DoubleMLDID`, whose treatment can be continuous, and where a logistic
-//| default would hit the `logistic.mbt:134` binary precondition.)
+//| default would hit the binary precondition `require(yi == 0.0 || yi == 1.0)`
+//| (`logistic.mbt:134`).)
 //
 //| MEASURED, both arms in one run, three DGP seeds, saturated propensity,
 //| true E[Y | D=1] = 1.2 (`_verify/probe_v1340.mbt`):
@@ -81,8 +82,9 @@ fn v1340_data(n : Int32, p : Int32, seed : Int32) -> DoubleMLData {
 /// equally wrong the other way (`ml_g` models `E[Y | X]`).
 ///
 /// Mutation: reverting the default to `linear_regression()` fails this.
-/// Flipping `ml_g` to logistic is caught earlier by the `logistic.mbt:134`
-/// binary precondition, since APO's `ml_g` fits `y`, not a 0/1 target.
+/// Flipping `ml_g` to logistic is caught earlier by the binary precondition
+/// `require(yi == 0.0 || yi == 1.0)` (`logistic.mbt:134`), since APO's `ml_g`
+/// fits `y`, not a 0/1 target.
 test "v1340_apo_default_ml_m_is_a_classifier_and_ml_g_is_not" {
   let data = v1340_data(200, 2, 3141)
   let m = DoubleMLAPO::new(data, treatment_level=1.0, n_folds=2, seed=3141)

@@ -482,7 +482,7 @@ fn transform_panel(
       // if the abort ever fires.
       //
       // Same dead-code pattern as v0.37.0's
-      // `did_multi.mbt:558` (p_adjust fallback), which was
+      // `DoubleMLDIDMulti::p_adjust` fallback, which was
       // documented and skipped.
       abort(
         "DoubleMLPLPR: unknown approach (set in DoubleMLPLPR::new): " + approach,

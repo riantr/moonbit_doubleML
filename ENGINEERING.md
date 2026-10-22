@@ -202,6 +202,66 @@
 >   now has a site of its own, and the one that changes the derived family
 >   SIZE runs last, because it would otherwise break the checks the other
 >   mechanisms are aimed at.
+> * **Round 30.** The `file:line` CITATIONS in the tracked prose -- the last
+>   prose surface no earlier round had audited -- were checked for the first
+>   time.  A citation is a PROMISE: the thing this sentence names is AT that
+>   line.  Nothing kept that promise, because the port's `.mbt` files are
+>   edited every release and a citation written for one release points at
+>   whatever happened to be on that line in the next one -- and the sentence
+>   still READS FINE, because the sentence is never re-read.
+>
+>   Measured at v0.164.23: the tracked prose carried **102** citations into
+>   this repo, in **42** files, and **64 of them** did not point at a line
+>   that mentions the thing the sentence names.  The four that had broken
+>   worst were `did_binary.mbt:445` (cited for the four-row dummy inner
+>   model; line 445 is a `catch` arm), `lplr.mbt:1630` (cited for
+>   `set_sample_splitting`; line 1630 is a prediction assignment, the
+>   function is at 2022), `lplr.mbt:758` (cited for the `kfold` draw; line
+>   758 is a loop header, the draw is at 781) and `did_cs.mbt:1263` (cited
+>   for the panic on a 3-row stub; line 1263 is an unrelated `require`, the
+>   panic site is `did.mbt:276`).  All 64 are repaired, and the prose now
+>   carries **103** citations in **40** files that all resolve.
+>
+>   The new check `_verify/_verify_citations_1650.py` asks a mechanical
+>   question of each of them: does the cited line MENTION the thing the
+>   sentence names?  It uses the LONGEST IDENTIFIER the sentence names rather
+>   than the whole quoted string, because the prose is allowed to write the
+>   maths where the code writes numpy and the identifier is what both
+>   spellings share.  It reads the prose in PARAGRAPHS, so a claim whose
+>   quote and whose citation sit on adjacent wrapped lines still binds, and it
+>   takes the anchor from the quoted token CLOSEST to the citation, with the
+>   one BEFORE winning when the two sides are within eight characters.  A
+>   citation with no code beside it is UNCHECKABLE and FAILS: the fix is to
+>   quote the code, not to loosen the check.
+>
+>   Only the citations that name a file IN THIS REPO are checked.  A citation
+>   that names an upstream Python file is a promise about a pinned third-party
+>   package (`doubleml` 0.11.4) that this repo does not ship, and the
+>   vendored upstream tree is not tracked, so a tracked verifier could not
+>   check them anyway.  That count -- **266** -- is DECLARED and asserted too,
+>   so the set cannot move silently in either direction, and both counts
+>   being declared is what keeps the published check count FIXED at **108**.
+>
+>   `_verify/_dryrun_round30_1650.py` breaks each of the eight mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **9** failures.  Two of its mechanisms are worth recording, both
+>   because the first draft got them WRONG.  The mechanism that reproduces
+>   the rot itself -- a source file grows a line above a cited one -- was
+>   first aimed at `dgp_did_CS2021.mbt:50-51`, a RANGE citation, and it
+>   contributed NOTHING: inserting a line above a two-line range leaves the
+>   content inside the window, so the citation still resolved.  And the
+>   mechanism that truncates a file was first aimed at `ps_processor.mbt`,
+>   whose tail carries an upstream-side citation: the truncation moved the
+>   upstream count from 266 to 265 as a SIDE EFFECT, and the mechanism that
+>   moves that count on purpose put it back, so the failure count went flat
+>   on a tree that was still broken.  That is the same trap as round 29's,
+>   and the fix is the same: each mechanism has a site of its own, and the
+>   one that changes the derived set SIZE runs last.
+>
+>   The ledger body below is a `v0.164.11` snapshot, so its own line pointers
+>   name where the code was THEN; round 30 moved some of those lines again.
+>   The CURRENT pointers live in the records under `_verify/`, and round 30
+>   re-anchored the four of them that round 30's own repairs had moved.
 
 ## The README as it stood at v0.164.11
 

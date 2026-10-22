@@ -27,7 +27,8 @@
 /// a run without generation still COMPLETES and the validator can report "the
 /// fixture was never generated" -- instead of the emitter dying deep inside a
 /// 3-row panel, which is what a bare stub produced (measured: a panic at
-/// `did_cs.mbt:1263`, n_folds=2 on three observations).
+/// `require(n_folds <= data.n_obs())`, `did.mbt:276`, n_folds=2 on three
+/// observations).
 fn pyexample_generated() -> Int32 {
   0
 }

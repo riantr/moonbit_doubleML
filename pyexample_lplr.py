@@ -34,7 +34,7 @@ therefore measure the LEARNER CHOICE, not the estimator. The default
 configuration is still emitted, so that effect stays visible.
 
 The residual the band must absorb is the INNER split: the port's
-`set_sample_splitting` replaces the outer partition only (`lplr.mbt:1630`),
+`set_sample_splitting` replaces the outer partition only (`lplr.mbt:2022`),
 so its inner draw still comes from `self.seed + r * 1000 + 7`. Both sides'
 inner spreads are MEASURED here and the band is built from them, not from
 an assumption about their size.

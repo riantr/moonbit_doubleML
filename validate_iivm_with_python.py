@@ -26,7 +26,7 @@ TODO #7 additionally cross-checks n_rep=5:
     aggregates via the MoonBit formula
     `theta_hat = median(theta_1..R)`,
     `se_hat = (median(theta + 1.96*se) - theta_hat) / 1.96`
-    (see `aggregator.mbt:32-60`).
+    (the port's `aggregate_coef_se`, `aggregator.mbt:32-60`).
   * `upstream_iivm_n_rep5` calls `DoubleMLIIVM(..., n_rep=5)` and returns
     its `(coef, se)`.
   * The MoonBit side is parsed from the section

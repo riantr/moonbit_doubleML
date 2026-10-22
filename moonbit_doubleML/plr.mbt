@@ -382,11 +382,12 @@ fn plr_score_elements(
 /// its `__init__` default is `score="partialling out"`. This port has always
 /// spelled it `"partialling-out"` (hyphen), so the port's default was a value
 /// upstream rejects, and `DoubleMLPLR` aborted on upstream's own spelling.
-/// `DoubleMLPLPR::new` (plpr.mbt:554) uses the SPACE spelling, matching
+/// `DoubleMLPLPR::new` (plpr.mbt:551-554) uses the SPACE spelling, matching
 /// upstream, so the two estimators in this package did not share a vocabulary.
 ///
 /// Accepting both is strictly additive and cannot move a number:
-/// `plr_score_elements` (plr.mbt:356) selects the IV branch only on an
+/// `plr_score_elements` (`if plr_is_iv_score(score)`, `plr.mbt:356`) selects the
+/// IV branch only on an
 /// iv-type spelling and falls through to partialling-out for everything
 /// else, so `"partialling out"` already computed the identical PO score --
 /// it was only the `require` that rejected it. No default is changed, so no
@@ -1048,7 +1049,7 @@ pub fn DoubleMLPLR::bootstrap(
 /// factor.
 ///
 /// The old call passed `self.psi_a` to `irm_style_sensitivity`, which squares
-/// its third argument (sensitivity.mbt:41). But the DML score's `psi_a` is
+/// its third argument (sensitivity.mbt:42). But the DML score's `psi_a` is
 /// `-v^2` (plr.mbt:369), so the reported baseline was the FOURTH moment
 /// `mean((-v^2)^2) = mean(v^4)` -- a different functional form, not a
 /// differently-scaled version of the intended quantity. The Riesz

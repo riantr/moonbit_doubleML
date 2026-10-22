@@ -8,9 +8,15 @@
 > `PORT_VS_UPSTREAM_DEFAULTS_1540.md`.
 > Method (shipped, tracked): `_verify/_audit_r15_defaults_1650.py`.
 >
+> **Line pointers refreshed 2026-10-22 (v0.164.24).** Round 30's repair of
+> 64 stale `file:line` citations edited prose inside `did_cs.mbt`, which
+> moved the code lines below it; the line pointer in this record was moved to
+> the line the code now occupies. **The code did not change and nothing in
+> this record was re-derived.**
+>
 > | pointer | as written | now (`v0.164.9`) |
 > |---|---|---|
-> | `DoubleMLDIDCS::fit` | did_cs.mbt:1620 | **`did_cs.mbt:1240`** |
+> | `DoubleMLDIDCS::fit` | did_cs.mbt:1620 | **`did_cs.mbt:1242`** |
 > | `DoubleMLDIDBinary::new` | `did_binary.mbt:352` | `did_binary.mbt:352` — unchanged |
 > | inner `DoubleMLDID::new` | `did_binary.mbt:439` | `did_binary.mbt:439` — unchanged |
 > | `require(n_folds <= data.n_obs())` | `did.mbt:276` | `did.mbt:276` — unchanged |
@@ -106,7 +112,7 @@ exactly 4 and rules out any sample-size explanation.
 ### Abort chain (line numbers at `8308f09`+v0.156.0)
 
 ```
-DoubleMLDIDCS::fit              did_cs.mbt:1240
+DoubleMLDIDCS::fit              did_cs.mbt:1242
 DoubleMLDIDBinary::new          did_binary.mbt:352
   inner: DoubleMLDID::new(      did_binary.mbt:439
     DoubleMLDIDData::new(Matrix::zeros(4, ...))   did_binary.mbt:441

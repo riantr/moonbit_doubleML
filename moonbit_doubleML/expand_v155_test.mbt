@@ -15,11 +15,12 @@
 ///     `DoubleMLPLPR::new(score="partialling-out")` -> abort   (this port's)
 ///   So a user who corrected the spelling for one estimator broke the other.
 ///
-/// WHAT THIS CHANGES: only `plr_is_po_score` (plr.mbt:394), which now
+/// WHAT THIS CHANGES: only `plr_is_po_score` (plr.mbt:395), which now
 /// accepts `"partialling out"` alongside `"partialling-out"`.
 ///
 /// WHAT THIS DOES NOT CHANGE, and GATE 1 proves it: no default changed, and
-/// the branch selector `plr_score_elements` (plr.mbt:356) tests only for an
+/// the branch selector `plr_score_elements` (`if plr_is_iv_score(score)`,
+/// `plr.mbt:356`) tests only for an
 /// iv-type spelling and falls through to partialling-out otherwise -- so
 /// `"partialling out"` already computed the identical PO score. Only the
 /// `require` rejected it. MEASURED bit-identical, all three spellings:

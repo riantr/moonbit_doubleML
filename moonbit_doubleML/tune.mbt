@@ -261,7 +261,7 @@ fn tune_argmin(scores : Array[Double], scoring : TuneScoring) -> Int32 {
 /// v0.108.0: the previous version of this comment gave
 /// "an RFLearner with 0 trees" as the example, and that was wrong.
 /// `RFLearner::fit` raises `PreconditionError` on `n_trees=0` and its
-/// own `catch` escalates it to `abort` (`rfl.mbt:404`), so the
+/// own `catch` escalates it to `abort` (`rfl.mbt:649`), so the
 /// process dies before any caller sees a vector - let alone a
 /// wrong-length one. No learner in the current `LearnerDispatch` set
 /// can reach the sentinel: they all return `x.rows()`-length vectors.

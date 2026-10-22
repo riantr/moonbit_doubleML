@@ -44,7 +44,7 @@ test "DIDCS_data_groups_times_discovered_correctly" {
 ///|
 test "Panel_data_struct_constructible" {
   // DoubleMLPanelData is constructed from (x, y, d, t, id);
-  // transform_panel() (in plpr.mbt:311) consumes the struct
+  // `transform_panel` (`plpr.mbt:317`) consumes the struct
   // and applies the within-transformation.
   let n_units = 5
   let n_periods = 3

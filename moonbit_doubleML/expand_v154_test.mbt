@@ -16,7 +16,8 @@
 ///|
 /// v0.150.0 corrected `DoubleMLDIDCS` to base period `g - 1` with live cells
 /// `t >= g`, which made `ATT(g, g)` estimable. `DoubleMLDIDMulti` was never
-/// updated: `did_multi.mbt:242` still emits `(g, g, t)` only when `t > g`, and
+/// updated: `t > g - anticipation_periods && t > g` (`did_multi.mbt:242`) still
+/// emits `(g, g, t)` only when that holds, and
 /// `:246` emits `(g, g, t)` for every `t != g`.
 ///
 /// MEASURED on the 4-period panel (`make_did_CS2021(1600, 3, 1.0, 3141)`,

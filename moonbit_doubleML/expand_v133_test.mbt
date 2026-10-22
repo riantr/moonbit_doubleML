@@ -3,8 +3,10 @@
 //
 //| Context. `DoubleMLAPOS::new` accepts `ml_g` / `ml_m` and stores them, and
 //| THREE of its four child-construction sites already forwarded them
-//| (`bootstrap` apo.mbt:2017, both sensitivity paths :2239 and :2288). The
-//| fourth -- the `fit` path, apo.mbt:1489 -- did not, so the child fell back
+//| (`DoubleMLAPO::new` at `apo.mbt:2058` -- bootstrap; `DoubleMLAPO::new` at
+//| `apo.mbt:2280` and `DoubleMLAPO::new` at `apo.mbt:2329` -- the sensitivity
+//| paths). The fourth -- the `fit` path (`DoubleMLAPO::new`, `apo.mbt:1528`)
+//| -- did not, so the child fell back
 //| to `DoubleMLAPO`'s own defaults. The parent's `ml_m` therefore reached the
 //| bootstrap and the sensitivity analyses but NOT the coefficient.
 //|
@@ -75,7 +77,7 @@ fn v1330_data(n : Int32, p : Int32, seed : Int32) -> DoubleMLData {
 /// two things at once.
 ///
 /// Mutation: deleting `ml_m=self.ml_m` from the child constructor at
-/// apo.mbt:1489 fails BOTH -- the first by 203.0, the second by 0.0.
+/// apo.mbt:1528-1538 fails BOTH -- the first by 203.0, the second by 0.0.
 /// Measured against the pre-fix values: A was -201.3232415863109.
 test "v1330_apos_fit_forwards_ml_m_to_the_child_apo" {
   let data = v1330_data(400, 2, 3141)

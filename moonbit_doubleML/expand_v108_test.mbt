@@ -173,7 +173,7 @@ test "tune_grid_ols_score_is_exactly_zero" {
 /// named) is excluded by scoring `TUNE_SCORE_FAIL_SENTINEL`. It does
 /// not, and never did: `RFLearner::fit` raises `PreconditionError` on
 /// `n_trees=0` and its own `catch` converts that to `abort`
-/// (`rfl.mbt:404`), which no caller can intercept. The test killed
+/// (`rfl.mbt:649`), which no caller can intercept. The test killed
 /// the test binary with `moonbit_panic`.
 ///
 /// The guard is kept — a future learner could return a short vector
@@ -336,7 +336,7 @@ test "v108_plpr_tune_winner_lands_in_learner" {
       id[row] = u
       // Staggered adoption, which PLPR needs: PLPR's score divides by the
       // weighted sum of `psi_a` over treated units and requires it to be
-      // non-zero (plpr.mbt:218). A panel where EVERY unit is treated
+      // non-zero (plpr.mbt:212-218). A panel where EVERY unit is treated
       // leaves no comparison group, that sum collapses to 0, and the
       // fit aborts -- so the treatment must vary across units, not just
       // across periods.
@@ -377,7 +377,7 @@ test "v108_plpr_tune_winner_lands_in_learner" {
 ///
 /// It needs its own DGP, not `v108_dgp`, because
 /// `DoubleMLBinaryData::new` requires a BINARY outcome
-/// (`lplr.mbt:52`: `yi == 0.0 || yi == 1.0`) and LPLR is the binary-outcome
+/// (`lplr.mbt:56`: `yi == 0.0 || yi == 1.0`) and LPLR is the binary-outcome
 /// estimator.
 ///
 /// And a binary outcome changes what margin is even available: the best

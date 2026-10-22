@@ -9,6 +9,101 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.24] -- the `file:line` citations in the prose
+
+`moon.mod` moves 0.164.23 -> 0.164.24. No estimator behaviour changed: every
+`.mbt` edit is inside a `///` docstring or a `//` comment, and the test counts
+stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- 64 citations that no longer pointed at what they named
+
+A `file:line` citation is a PROMISE: the thing this sentence names is AT that
+line. Nothing kept that promise. The port's `.mbt` files are edited every
+release, so a citation written for one release points at whatever happened to
+be on that line in the next one -- and the sentence still reads perfectly,
+because the sentence was never re-read.
+
+Measured at v0.164.23 with the new verifier: the tracked prose carried **102**
+citations into this repo, in **42** files. **64 of them** did not point at a
+line that mentions the thing the sentence names.
+
+The four that had broken worst:
+
+- `did_binary.mbt:445`, cited for the FOUR-ROW dummy inner model -- line 445
+  is a `catch` arm; the dummy is built at 439-441.
+- `lplr.mbt:1630`, cited for `set_sample_splitting` -- line 1630 is a
+  prediction assignment; the function is at 2022.
+- `lplr.mbt:758`, cited for the `kfold` draw -- line 758 is a loop header; the
+  draw is at 781.
+- `did_cs.mbt:1263`, cited for the panic on a 3-row stub -- line 1263 is an
+  unrelated `require`; the panic site is `did.mbt:276`.
+
+All 64 are repaired. The prose now carries **103** citations in **40** files
+and every one of them resolves: **54** were withdrawn and **55** written in
+their place. The set is larger by one because the dummy-model table in
+`did_cs.mbt` now lists `did_binary.mbt:439`, `:440` AND `:441` -- the middle
+row was missing, and it is the row that names the data constructor.
+
+Two kinds of repair, and the second is the one that reads better. Most were a
+MOVE: the citation now points at the line that holds the construct. The rest
+were a QUOTE: the sentence now names the code it points at
+(`DoubleMLDIDData::new(`), so the claim is checkable by a reader and by the
+verifier alike. Four citations pointed into a DEAD VERSION's tree
+(`did_multi.mbt:558`, `plpr.mbt:447`, `apo.mbt:2017`, `irm.mbt:588`) and were
+replaced by the SYMBOL they referred to: a line number into a version that no
+longer exists is not a promise anyone can keep.
+
+### Added -- a verifier for the citations in the prose
+
+- (`_verify/_verify_citations_1650.py` (**108** checks)) derives the port-side
+  citation set from the tracked prose and asks every one of them whether the
+  line it names mentions the thing the sentence names.
+
+  The check is deliberately mechanical, and three things about it are worth
+  stating. It uses the LONGEST IDENTIFIER the sentence names, not the whole
+  quoted string, because the prose is allowed to write the maths
+  (`nu2 = mean(2 * m_alpha - rr^2)`) where the code writes numpy
+  (`np.multiply(2.0, m_alpha) - np.square(rr)`) -- the identifier is what
+  both spellings share, and it is what makes the citation rot when the code
+  moves away. It reads the prose in PARAGRAPHS, so a claim whose quote and
+  whose citation sit on adjacent wrapped lines still binds, and it takes the
+  anchor from the quoted token CLOSEST to the citation, with the one BEFORE
+  winning when the two sides are within eight characters. And a citation with
+  no code beside it is UNCHECKABLE and FAILS: the fix is to quote the code,
+  not to loosen the check.
+
+  Only the citations that name a file IN THIS REPO are checked. A citation
+  that names an upstream Python file is a promise about a pinned third-party
+  package (`doubleml` 0.11.4) that this repo does not ship; its line numbers
+  are the pin's business, and the vendored upstream tree is not tracked, so a
+  tracked verifier could not check them anyway. That count -- **266** -- is
+  DECLARED and asserted too, so the set cannot move silently in either
+  direction.
+
+  The check count is FIXED, not tree-dependent: both citation counts are
+  declared and asserted in section 1, so a citation cannot be added or removed
+  without the declaration moving with it, and the published number cannot
+  drift. (Round 28's verifier ran one check per document row, so its published
+  count moved with the tree -- which is how v0.164.21 shipped "127 checks", the
+  count measured on the dry-run's broken tree.) The verifier asserts its own
+  published count and binds to the FIRST match in this file, which is in
+  descending order.
+
+- (`_verify/_dryrun_round30_1650.py`) breaks each mechanism one at a time and
+  requires the failure count to GROW at every step: **9** failures at the
+  end. The first mechanism is the rot itself: a source file grows a line above
+  a cited one, so every citation into that file above the insertion point now
+  points at the wrong line with nothing in the prose changing. The last one
+  removes a citation from the prose entirely, so the derived set shrinks and
+  the declared counts notice.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 47 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.23] -- the numbers in the public API docstrings
 
 `moon.mod` moves 0.164.22 -> 0.164.23. The only `.mbt` changed are three

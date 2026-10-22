@@ -194,21 +194,21 @@ ANCHORS = {
     ("did_cs_binary.mbt", 756): r'require\(score == "observational"\)',
     ("lplr.mbt", 354): r'score~ : String = "nuisance_space"',
     ("plpr.mbt", 554): r'score~ : String = "partialling out"',
-    ("plr.mbt", 417): r'score~ : String = "partialling-out"',
-    ("plr.mbt", 676): r'score~ : String = "partialling-out"',
-    ("plr.mbt", 421): r"require\(plr_is_po_score\(score\) \|\| plr_is_iv_score\(score\)\)",
-    ("plr.mbt", 394): r"fn plr_is_po_score",
-    ("plr.mbt", 395): r'"partialling-out" \|\| score == "partialling out"',
-    ("plr.mbt", 400): r'"iv-type" \|\| score == "IV-type"',
+    ("plr.mbt", 418): r'score~ : String = "partialling-out"',
+    ("plr.mbt", 677): r'score~ : String = "partialling-out"',
+    ("plr.mbt", 422): r"require\(plr_is_po_score\(score\) \|\| plr_is_iv_score\(score\)\)",
+    ("plr.mbt", 395): r"fn plr_is_po_score",
+    ("plr.mbt", 396): r'"partialling-out" \|\| score == "partialling out"',
+    ("plr.mbt", 401): r'"iv-type" \|\| score == "IV-type"',
     ("tune.mbt", 355): r'score~ : String = "partialling-out"',
     ("did_cs.mbt", 320): r"pub fn DoubleMLDIDCS::new",
-    ("did_cs.mbt", 1240): r"pub fn DoubleMLDIDCS::fit",
-    ("did_cs.mbt", 667): r"NaN",
-    ("did_cs.mbt", 1390): r"nu2",
-    ("did_cs.mbt", 1394): r"nu2",
-    ("did_cs.mbt", 1407): r"mean\(d1t0\)",
-    ("did_cs.mbt", 1426): r"let ti = self\.data\.t\[i\]\.to_double\(\)",
-    ("did_cs.mbt", 1334): r"cond_d0_t0",
+    ("did_cs.mbt", 1242): r"pub fn DoubleMLDIDCS::fit",
+    ("did_cs.mbt", 669): r"NaN",
+    ("did_cs.mbt", 1392): r"nu2",
+    ("did_cs.mbt", 1396): r"nu2",
+    ("did_cs.mbt", 1409): r"mean\(d1t0\)",
+    ("did_cs.mbt", 1428): r"let ti = self\.data\.t\[i\]\.to_double\(\)",
+    ("did_cs.mbt", 1336): r"cond_d0_t0",
     ("did_cross_section.mbt", 1476): r"p_hat = mean\(d\)",
     ("sensitivity.mbt", 534): r"pub struct SensitivityResult",
     ("apo.mbt", 50): r"ml_m",
@@ -443,7 +443,7 @@ check("SCORE: names the five classes the old table missed",
                                  "irm/ssm.py", "plm/pliv.py")))
 
 check("N_FOLDS: the rotted DIDCS::fit pointer is gone", "`did_cs.mbt:1620`" not in R_NF)
-check("N_FOLDS: states the current pointer", "`did_cs.mbt:1240`" in R_NF)
+check("N_FOLDS: states the current pointer", "`did_cs.mbt:1242`" in R_NF)
 
 check("ISN: the 20x headline is withdrawn",
       "**The port's `DoubleMLDIDCS` is ~20× more sensitive to this flag than" in B_ISN

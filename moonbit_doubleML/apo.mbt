@@ -46,7 +46,7 @@ pub struct DoubleMLAPO {
   //
   // The old "not yet consumed internally" note was STALE and is removed:
   // since v0.61.0 both reach the cross-fit through `cross_fit_apo`
-  // (apo.mbt:290-295) -- `ml_g` fits the conditional outcome on the TREATED
+  // (apo.mbt:274) -- `ml_g` fits the conditional outcome on the TREATED
   // subset, `ml_m` fits the propensity on the FULL training fold.
   //
   // v0.134.0: the two defaults now DIVERGE, deliberately.
@@ -1069,9 +1069,11 @@ pub fn DoubleMLAPOS::tune(
 ///     argument -- only IRM's does, and only for ATTE.
 ///   * `m_hat_adj = _propensity_score_adjustment(m_hat, treated, normalize_ipw)`
 ///     (`apo.py:365-367`), which returns `m_hat` unchanged when
-///     `normalize_ipw` is False. This port HAS the flag (`apo.mbt:44`) and
-///     calls the same helper at `apo.mbt:319`, so the adjusted propensity is
-///     available directly rather than needing a new implementation.
+///     `normalize_ipw` is False. This port HAS the flag (`normalize_ipw : Bool`,
+///     `apo.mbt:44`) and calls the same helper at
+///     `PSProcessor::from_config(ps_processor_config)` (`apo.mbt:320`), so the
+///     adjusted propensity is available directly rather than needing a new
+///     implementation.
 ///
 /// With both weight factors equal to 1:
 ///
@@ -1081,7 +1083,7 @@ pub fn DoubleMLAPOS::tune(
 ///   nu2     = mean( 2*m_alpha - rr^2 )
 /// ```
 ///
-/// `treated[i] = 1{d[i] == treatment_level}` (`apo.mbt:62`), matching
+/// `treated[i] = 1{d[i] == treatment_level}` (`apo.mbt:355`), matching
 /// upstream's `self.treated`.
 ///
 /// The default path previously computed `mean(psi_a^2)`, upstream's documented

@@ -200,7 +200,7 @@ test "panic_plr_new_n_rep_zero" {
 /// a silent catch-all that quietly runs every typo as partialling-out.
 /// The accepted set is now
 ///   { "partialling-out", "partialling out", "iv-type", "IV-type" }
-/// via `plr_is_po_score` / `plr_is_iv_score` (plr.mbt:394, :399).
+/// via `plr_is_po_score` / `plr_is_iv_score` (plr.mbt:395-400).
 /// This driver pins that an UNRELATED spelling is still rejected; the
 /// positive half (both partialling-out spellings agreeing bit-for-bit) is in
 /// `expand_v155_test.mbt::v1550_score_upstream_spelling_bit_identical`.
@@ -263,7 +263,7 @@ test "panic_policy_tree_predict_before_fit" {
 ///|
 /// `DoubleMLIIVM::new` must abort when the propensity clip parameter
 /// is >= 0.5. The panic path goes through
-/// `require(propensity_clip < 0.5)` inside `iivm.mbt:102`. (The companion
+/// `require(propensity_clip < 0.5)` inside `iivm.mbt:212`. (The companion
 /// `require(propensity_clip > 0.0` site has an analogous panic that is
 /// already exercised by `panic_irm_new_propensity_clip_zero` for the
 /// IRM variant; the IIVM constructor is a separate call site.)

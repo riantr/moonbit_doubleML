@@ -66,10 +66,12 @@ whatever basis it is handed, storing exactly `basis.shape[1]` numbers in
 `_all_coef`.
 
 The port's `LinearRegression::fit` ALWAYS prepends an intercept
-(`linear.mbt:102`), and `DoubleMLBLP::fit` stores that whole augmented vector,
+(`augment_with_intercept`, `linear.mbt:102`), and `DoubleMLBLP::fit` stores
+that whole augmented vector,
 so the port's `coef` is `basis.cols() + 1` long with the intercept at index 0.
 That is deliberate and internally consistent -- `predictions` reads
-`self.coef[0]` as the intercept (`blp_policy.mbt:677`) and `n_params()` is
+`self.coef[0]` as the intercept (`blp_policy.mbt:677` reads `self.coef[0]`)
+and `n_params()` is
 documented as `basis.cols() + 1` -- so it is an API divergence from upstream,
 not a slip.
 

@@ -30,7 +30,7 @@ TODO #7 additionally cross-checks n_rep=5:
     `KFold(n_splits=2, shuffle=True, random_state=3141 + r)`) and
     aggregates via the MoonBit formula
     `theta_hat = median(theta_1..R)`, `se_hat = (median(theta + 1.96*se) - theta_hat) / 1.96`
-    (see `aggregator.mbt:32-60`).
+    (the port's `aggregate_coef_se`, `aggregator.mbt:32-60`).
   * `upstream_irm_n_rep5` calls `DoubleMLIRM(..., n_rep=5)` and returns
     its `(coef, se)`.
   * The MoonBit side is parsed from the section
