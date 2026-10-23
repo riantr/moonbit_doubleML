@@ -453,6 +453,53 @@
 >   at a time and requires the failure count to GROW at every step, and it
 >   ends at **7** failures.  Each mechanism COMMITS its breakage, because a
 >   verifier that reads a ref cannot see an uncommitted edit.
+>
+> * **Round 35.** The README's API promises and its source citations were
+>   both unchecked, and one of each was wrong.
+>
+>   The API-snippet check matched only snippets written with the
+>   `@moonbit_doubleML.` prefix -- **4** of the **10** constructors the README
+>   states.  The other six were written unqualified or inside a fenced block,
+>   and no check could see them.  That is how
+>   `DoubleMLLPLR::new(data, alpha=1.5)` -- a parameter that does not exist --
+>   survived until a reader found it by hand: the check's wording said "the
+>   README's API snippets" while its extraction reached 40 % of them.  The
+>   check now reaches every constructor, and asserts that it reached them all.
+>
+>   Nothing checked the README's source citations either.  The DID paragraph
+>   cited `did.mbt:708` for "the observational DID score", and line 708 is
+>   `let w_d = d_i / m_i`, which lives in the `else` branch opened at
+>   `did.mbt:704` -- the **experimental** score.  The observational branch is
+>   `did.mbt:659-689`, and its default form computes
+>   `(D - m) / (p_hat * (1 - m))`, where `1 / m` appears **nowhere**: `m` is in
+>   the numerator, and for a treated row the `m` dependence cancels.  The
+>   README's explanation of why the DID family's OLS default is safe was
+>   describing a branch the shipped default never runs.
+>
+>   Two smaller drifts travel with it.  "A bare `moon test` runs every declared
+>   backend" is false: measured on the toolchain this release was cut with, a
+>   bare run prints `[wasm]`, `[wasm-gc]` and `[native]` and reports
+>   `no test entry found` for `js` -- 1117 js tests it never runs, which reads
+>   as a false green.  And the RNG keys are 32-byte ChaCha8 keys compared
+>   **byte-for-byte** (`validate_bitexact_with_python.py:377`), not IEEE-754
+>   doubles, so "25 of the 25 bit-exact items and 6 / 6 RNG keys are IEEE-754
+>   identical" was wrong about the keys.
+>
+>   The two checks are `_verify/_verify_api_snippets_1680.py` (**135**
+>   checks -- every constructor the README states, every named argument
+>   against the source's parameters and defaults, every positional argument's
+>   name against the source's name at that position, every `LearnerDispatch`
+>   function it names, and the API reference's accessor promises) and
+>   `_verify/_verify_citations_1650.py` (**45** checks -- C1: the cited range
+>   must carry the token the sentence claims; C2: a citation that names a
+>   configuration must sit in the branch that configuration selects, and a
+>   doc-comment citation must NAME it).  The configurations C2 knows about are
+>   DERIVED from the source's own `score == "..."` comparisons, not listed.
+>
+>   `_verify/_dryrun_round35_1650.py` breaks each of the seven mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **8** failures.
+>
 
 ## The README as it stood at v0.164.11
 

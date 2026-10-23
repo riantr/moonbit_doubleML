@@ -9,6 +9,91 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.29] -- the citation that named the wrong branch
+
+`moon.mod` moves 0.164.28 -> 0.164.29. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- a citation that pointed at a branch the default never runs
+
+- The DID paragraph cited `did.mbt:708` for "the observational DID score".
+  Line 708 is `let w_d = d_i / m_i`, and it lives in the `else` branch opened
+  at `did.mbt:704` -- the **experimental** score.  The observational branch is
+  `did.mbt:659-689`, and its default form computes
+
+      psi_b[i] = (d[i] - m[i]) / (p_hat * (1 - m[i])) * resid_d0[i]
+
+  so `m` is in the NUMERATOR and `1 / m` appears **nowhere**: for a treated row
+  the `m` dependence cancels, and `m` reaches the control rows only.  The
+  README's explanation of why the DID family's OLS `ml_m` default is safe was
+  describing a branch the shipped default never runs.  The passage now cites
+  `did.mbt:97` -- the line that states the weight -- and describes the weight
+  the code actually computes.  The hazard table's DID row said the same thing
+  ("`1/m` enters treated rows only") and is corrected with it.
+- "A bare `moon test` runs every declared backend" was false.  Measured on
+  `moon 0.1.20261016`, a bare run prints `[wasm]`, `[wasm-gc]` and `[native]`
+  and reports `no test entry found` for `js` -- 1117 js tests it never runs.
+  A reader could infer that js "reported 0", which is a false green; the
+  per-target counts come from explicit `--target` runs, and the sentence now
+  says so.  The "four declared backends" it names is not asserted:
+  `_verify/_verify_count_referents_1650.py` registers the phrase and derives
+  the four from the package's own `supported_targets`, and checks that they are
+  the CI's four.
+- The RNG keys are 32-byte ChaCha8 keys compared **byte-for-byte**
+  (`validate_bitexact_with_python.py:377`), not IEEE-754 doubles.  "25 of the
+  25 bit-exact items and 6 / 6 RNG keys are IEEE-754 identical to CPython"
+  was wrong about the keys; the items and the keys are now stated separately.
+- `DoubleMLPolicyTree::new`'s first parameter is `features`
+  (`blp_policy.mbt:1583`), not `x`.  Every other constructor the README
+  states uses the library's own parameter names, and this one did not.
+
+### Added -- the citations become a check
+
+- (`_verify/_verify_citations_1650.py` (**45** checks)) holds the README's
+  source citations to two rules.  **C1**: the cited range must carry the
+  token the sentence claims -- a code span that looks like a source
+  expression must occur, verbatim modulo whitespace, within the range the
+  sentence cites.  **C2**: a citation that names a score configuration must
+  sit in the branch that configuration selects, and a doc-comment citation
+  must NAME it.  The configurations C2 knows about are DERIVED from the
+  source's own `score == "..."` comparisons, not listed.
+
+  C2 is the rule that catches the `did.mbt:708` defect: the observational
+  branch spans `did.mbt:659-694`, and 708 is not in it.
+
+- (`_verify/_verify_api_snippets_1680.py` (**135** checks)) now reaches every
+  constructor the README states, not only the ones written with the
+  `@moonbit_doubleML.` prefix.  It used to reach **4** of the **10** -- the
+  other six were written unqualified or inside a fenced block, and no check
+  could see them.  That is how `DoubleMLLPLR::new(data, alpha=1.5)` -- a
+  parameter that does not exist -- survived until a reader found it by hand.
+  The check now covers: the type exists; every named argument is a real
+  parameter and is optional in the source; every named argument's stated
+  default equals the source's default; every positional argument's NAME
+  equals the source's parameter name at that position; every
+  `LearnerDispatch` function the README names exists; and the API reference's
+  accessor promises hold -- the names in its "instead of" column exist on the
+  estimator they name, "the other 16" is 16, and each of the 16 exposes the
+  four methods the sentence promises.  The estimator set is derived from the
+  source (a `DoubleML*` type with a `::fit` method), so the check cannot
+  confirm whatever the README says about itself.
+
+  A COVERAGE check asserts that the number of constructor calls the README
+  states is the number the check reached, so the gap cannot reopen silently.
+
+- (`_verify/_dryrun_round35_1650.py`) breaks each of the seven mechanisms one
+  at a time and requires the failure count to GROW at every step: **8**
+  failures at the end.  The last two move a SET SIZE -- a constructor call is
+  added, then a citation -- so they run last, because a set that moves would
+  otherwise break the checks the other mechanisms are aimed at.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 50 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.28] -- the tree that is released must be the tree that was tested
 
 `moon.mod` moves 0.164.27 -> 0.164.28. No estimator behaviour changed and the

@@ -593,6 +593,53 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   at a time and requires the failure count to GROW at every step, and it
 >   ends at **7** failures.  Each mechanism COMMITS its breakage, because a
 >   verifier that reads a ref cannot see an uncommitted edit.
+>
+> * **Round 35.** The README's API promises and its source citations were
+>   both unchecked, and one of each was wrong.
+>
+>   The API-snippet check matched only snippets written with the
+>   `@moonbit_doubleML.` prefix -- **4** of the **10** constructors the README
+>   states.  The other six were written unqualified or inside a fenced block,
+>   and no check could see them.  That is how
+>   `DoubleMLLPLR::new(data, alpha=1.5)` -- a parameter that does not exist --
+>   survived until a reader found it by hand: the check's wording said "the
+>   README's API snippets" while its extraction reached 40 % of them.  The
+>   check now reaches every constructor, and asserts that it reached them all.
+>
+>   Nothing checked the README's source citations either.  The DID paragraph
+>   cited `did.mbt:708` for "the observational DID score", and line 708 is
+>   `let w_d = d_i / m_i`, which lives in the `else` branch opened at
+>   `did.mbt:704` -- the **experimental** score.  The observational branch is
+>   `did.mbt:659-689`, and its default form computes
+>   `(D - m) / (p_hat * (1 - m))`, where `1 / m` appears **nowhere**: `m` is in
+>   the numerator, and for a treated row the `m` dependence cancels.  The
+>   README's explanation of why the DID family's OLS default is safe was
+>   describing a branch the shipped default never runs.
+>
+>   Two smaller drifts travel with it.  "A bare `moon test` runs every declared
+>   backend" is false: measured on the toolchain this release was cut with, a
+>   bare run prints `[wasm]`, `[wasm-gc]` and `[native]` and reports
+>   `no test entry found` for `js` -- 1117 js tests it never runs, which reads
+>   as a false green.  And the RNG keys are 32-byte ChaCha8 keys compared
+>   **byte-for-byte** (`validate_bitexact_with_python.py:377`), not IEEE-754
+>   doubles, so "25 of the 25 bit-exact items and 6 / 6 RNG keys are IEEE-754
+>   identical" was wrong about the keys.
+>
+>   The two checks are `_verify/_verify_api_snippets_1680.py` (**135**
+>   checks -- every constructor the README states, every named argument
+>   against the source's parameters and defaults, every positional argument's
+>   name against the source's name at that position, every `LearnerDispatch`
+>   function it names, and the API reference's accessor promises) and
+>   `_verify/_verify_citations_1650.py` (**45** checks -- C1: the cited range
+>   must carry the token the sentence claims; C2: a citation that names a
+>   configuration must sit in the branch that configuration selects, and a
+>   doc-comment citation must NAME it).  The configurations C2 knows about are
+>   DERIVED from the source's own `score == "..."` comparisons, not listed.
+>
+>   `_verify/_dryrun_round35_1650.py` breaks each of the seven mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **8** failures.
+>
 
 """
 
@@ -1551,6 +1598,100 @@ NEW_DIDBIN = ("| `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, "
 PATCHES.append((OLD_PROP_TABLE, NEW_PROP_TABLE))
 PATCHES.append((OLD_QTE_TAU, NEW_QTE_TAU))
 PATCHES.append((OLD_DIDBIN, NEW_DIDBIN))
+
+
+# ==============================================================================
+# 4.  THE ROUND-35 PATCH -- a citation that named the WRONG BRANCH
+# ==============================================================================
+#
+# The DID paragraph cited `did.mbt:708` for "the observational DID score".
+# Line 708 is `let w_d = d_i / m_i`, and it lives in the `else` branch opened at
+# did.mbt:704 -- the EXPERIMENTAL score.  The observational branch is
+# did.mbt:659-689, and its default form (in_sample_normalization = false,
+# did.mbt:678-688) computes, at did.mbt:685-687:
+#
+#     let denom = p_hat * one_minus_m
+#     psi_b[i] = (d[i] - m_i) / denom * resid_d0[i]
+#
+# The source's own doc comment (did.mbt:97) states the weight as
+# `(D - m) / (p_hat * (1 - m))`: `m` is in the NUMERATOR and `1 / m` appears
+# nowhere.  For a TREATED row the `m` dependence cancels -- (1 - m) / (1 - m) --
+# so `m` reaches the control rows only.  `score` defaults to "observational"
+# (did_binary.mbt:367), so this is the branch the shipped default runs.
+#
+# Three smaller drifts travel with it:
+#
+#   * "A bare `moon test` runs every declared backend" is false.  Measured on
+#     moon 0.1.20261016, a bare run prints [wasm], [wasm-gc] and [native] and
+#     reports "no test entry found" for `js` -- 1117 js tests it never runs.
+#   * The RNG keys are 32-byte ChaCha8 keys compared BYTE-FOR-BYTE
+#     (validate_bitexact_with_python.py:377), not IEEE-754 doubles.
+#   * `DoubleMLPolicyTree::new`'s first parameter is `features`
+#     (blp_policy.mbt:1583), not `x`.
+
+OLD_DID_SCORE = """BETTER of the pair. The reason is structural. In the observational DID score
+(`did.mbt:708`) `w_d = d_i / m_i`, so `1 / m` enters **only for treated
+rows** (controls get `w_d = 0`), and the score is **doubly robust** -- a
+correct `g` carries identification, leaving `m` second-order. IRM and APO need
+`m` for the estimand itself, which is why they showed a ~200-point error and
+DID shows ~0.001. The sharpest DID case: at n=200 the CLASSIFIER default is
+worse on both bias (0.0776 vs 0.00050) and SE."""
+
+NEW_DID_SCORE = """BETTER of the pair. The reason is structural. In the observational DID score
+(`did.mbt:97`) the residual weight is `(D - m) / (p_hat * (1 - m))`, so the
+score never divides by `m`: for a **treated** row the `m` dependence cancels,
+and `m` reaches the control rows only. The score is **doubly robust** -- a
+correct `g` carries identification, leaving `m` second-order. IRM and APO need
+`m` for the estimand itself, which is why they showed a ~200-point error and
+DID shows ~0.001. The sharpest DID case: at n=200 the CLASSIFIER default is
+worse on both bias (0.0776 vs 0.00050) and SE."""
+
+OLD_DID_ROW = ("| `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, "
+               "`DoubleMLDIDCrossSection`, `DoubleMLDIDMulti` | not demonstrated | "
+               "doubly robust -- `1/m` enters treated rows only |")
+
+NEW_DID_ROW = ("| `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, "
+               "`DoubleMLDIDCrossSection`, `DoubleMLDIDMulti` | not demonstrated | "
+               "doubly robust -- `m` cancels for treated rows |")
+
+OLD_BARE_TEST = """per-target numbers are in the Status table. A bare `moon test` runs every
+declared backend, and on `moon 0.1.20261016` it prints `Total tests: 0` for
+the backends other than the preferred one, so the per-target counts here
+come from explicit `--target` runs."""
+
+NEW_BARE_TEST = """per-target numbers are in the Status table. A bare `moon test` runs only
+three of the four declared backends -- on `moon 0.1.20261016` it prints
+`Total tests: 0` for `wasm` and `native` and reports `no test entry found`
+for `js`, which it never runs -- so the per-target counts here come from
+explicit `--target` runs."""
+
+OLD_RNG_ITEMS = """- ✅ **24 / 24 Python reference scripts PASS** -- 25 of the 25 bit-exact items
+  and 6 / 6 RNG keys are IEEE-754 identical to CPython."""
+
+NEW_RNG_ITEMS = """- ✅ **24 / 24 Python reference scripts PASS** -- 25 of the 25 bit-exact items
+  are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical."""
+
+OLD_RNG_CELL = ("| Python cross-checks | **24 / 24 PASS** "
+                "(`validate_*_with_python.py`); 25 of the 25 bit-exact items "
+                "and 6 / 6 RNG keys are IEEE-754 identical to CPython |")
+
+NEW_RNG_CELL = ("| Python cross-checks | **24 / 24 PASS** "
+                "(`validate_*_with_python.py`); 25 of the 25 bit-exact items "
+                "are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are "
+                "byte-identical |")
+
+OLD_POLICY_CTOR = """`DoubleMLPolicyTree::new(x, orth_signal, depth = 1, honest = false,
+split_seed = 2024, min_leaf_n = 5)` splits the sample when `honest` is on:"""
+
+NEW_POLICY_CTOR = """`DoubleMLPolicyTree::new(features, orth_signal, depth = 1, honest = false,
+split_seed = 2024, min_leaf_n = 5)` splits the sample when `honest` is on:"""
+
+PATCHES.append((OLD_DID_SCORE, NEW_DID_SCORE))
+PATCHES.append((OLD_DID_ROW, NEW_DID_ROW))
+PATCHES.append((OLD_BARE_TEST, NEW_BARE_TEST))
+PATCHES.append((OLD_RNG_ITEMS, NEW_RNG_ITEMS))
+PATCHES.append((OLD_RNG_CELL, NEW_RNG_CELL))
+PATCHES.append((OLD_POLICY_CTOR, NEW_POLICY_CTOR))
 
 
 for _old, _new in PATCHES:

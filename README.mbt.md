@@ -45,7 +45,7 @@ reproducible validation pipeline (24 / 24 Python reference scripts PASS)
 - ✅ **Four backends** -- `native`, `wasm`, `wasm-gc`, `js` -- all green under
   `moon test --deny-warn`.
 - ✅ **24 / 24 Python reference scripts PASS** -- 25 of the 25 bit-exact items
-  and 6 / 6 RNG keys are IEEE-754 identical to CPython.
+  are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical.
 - ✅ **No runtime third-party dependency** -- the library imports nothing
   outside `moonbitlang/core`.
 - ✅ **21 runnable example binaries** -- 16 CLI demos, plus
@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.28",
+  "riantr/moonbit_doubleML@0.164.29",
 }
 ```
 
@@ -120,10 +120,11 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 
 `--target native` is spelled out because the package's `preferred_target` is
 `wasm-gc`, where the suite is **1123** -- 1117 plus 6 doc tutorials; the
-per-target numbers are in the Status table. A bare `moon test` runs every
-declared backend, and on `moon 0.1.20261016` it prints `Total tests: 0` for
-the backends other than the preferred one, so the per-target counts here
-come from explicit `--target` runs.
+per-target numbers are in the Status table. A bare `moon test` runs only
+three of the four declared backends -- on `moon 0.1.20261016` it prints
+`Total tests: 0` for `wasm` and `native` and reports `no test entry found`
+for `js`, which it never runs -- so the per-target counts here come from
+explicit `--target` runs.
 
 ```moonbit nocheck
 let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]
@@ -349,8 +350,9 @@ Migrating `DoubleMLDIDBinary` was attempted and abandoned on the evidence:
 across four probe designs and ~14 configurations its OLS default matched a
 logistic one to within ~1e-4, and where they differed the OLS default was the
 BETTER of the pair. The reason is structural. In the observational DID score
-(`did.mbt:708`) `w_d = d_i / m_i`, so `1 / m` enters **only for treated
-rows** (controls get `w_d = 0`), and the score is **doubly robust** -- a
+(`did.mbt:97`) the residual weight is `(D - m) / (p_hat * (1 - m))`, so the
+score never divides by `m`: for a **treated** row the `m` dependence cancels,
+and `m` reaches the control rows only. The score is **doubly robust** -- a
 correct `g` carries identification, leaving `m` second-order. IRM and APO need
 `m` for the estimand itself, which is why they showed a ~200-point error and
 DID shows ~0.001. The sharpest DID case: at n=200 the CLASSIFIER default is
@@ -362,7 +364,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLAPO` | hazardous | bias `5.246` vs `0.531`; SE `86.28` vs `0.270` |
 | `DoubleMLAPOS` | hazardous | per-level bias to `436.11` |
 | `DoubleMLDIDBinary` | **not demonstrated** | 4 designs, ~14 configs, ~`1e-4` |
-| `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti` | not demonstrated | doubly robust -- `1/m` enters treated rows only |
+| `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti` | not demonstrated | doubly robust -- `m` cancels for treated rows |
 | `DoubleMLSSM` | **hazardous -- fixed in v0.138.0** | coef `242.116` vs `1.177` |
 | `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
 | `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau `0.50`-`0.90` |
@@ -583,7 +585,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.28** |
+| `moon.mod` version | **0.164.29** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -592,7 +594,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Tests (native / wasm / js) | **1117 / 1117 / 1117** |
 | Tests (wasm-gc) | **1123 / 1123** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
-| Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items and 6 / 6 RNG keys are IEEE-754 identical to CPython |
+| Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
 ### Validated against upstream, not only against ourselves
@@ -675,7 +677,7 @@ passing quietly. Removing them is an open call, not an oversight.
 
 ### Honest policy trees (v0.98.0)
 
-`DoubleMLPolicyTree::new(x, orth_signal, depth = 1, honest = false,
+`DoubleMLPolicyTree::new(features, orth_signal, depth = 1, honest = false,
 split_seed = 2024, min_leaf_n = 5)` splits the sample when `honest` is on:
 `policy_tree_build` sees only
 the splitting half, and every reported leaf statistic (`leaf_assignment`,
@@ -709,7 +711,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.28, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.29, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

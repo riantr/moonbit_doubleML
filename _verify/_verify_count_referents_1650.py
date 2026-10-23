@@ -320,6 +320,22 @@ if m4:
           all("`%s`" % b in readme for b in backends), str(backends))
 check("the README says four backends", "**Four backends**" in readme)
 
+# The round-35 sentence says a bare `moon test` runs "only three of the four
+# declared backends".  The FOUR is the package's own `supported_targets`, and
+# it is derived here rather than asserted.
+pkgmod = read(os.path.join(PKG, "moon.mod"))
+m5 = re.search(r'supported_targets\s*=\s*"([^"]+)"', pkgmod)
+check("the package's supported_targets is findable", m5 is not None)
+declared = []
+if m5:
+    declared = [t for t in m5.group(1).split("+") if t]
+    check("the package declares four backends", len(declared) == 4, str(declared))
+    check("the package's declared backends are the CI's four",
+          sorted(declared) == sorted(backends), "%s / %s" % (sorted(declared), sorted(backends)))
+    check("the README's 'four declared backends' are the package's four",
+          "four declared backends" in readme_flat
+          and all("`%s`" % t in readme for t in declared), str(declared))
+
 # --- the bit-exact mutation cases -------------------------------------------
 check("the bit-exact mutation battery is tracked", os.path.exists(BITEXACT_MUT))
 muts = []
@@ -402,6 +418,7 @@ REGISTERED = {
     "This package ships eleven": 11,
     "The three classification learners": 3,
     "**Four backends**": 4,
+    "four declared backends": 4,
     "the four migrations of v0.132.0-v0.138.0": 4,
     "**Eight structs still default `ml_m` to `linear_regression()`**": 8,
     "**Six rows turned out hazardous**": 6,
