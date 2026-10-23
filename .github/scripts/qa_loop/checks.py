@@ -1446,6 +1446,31 @@ def c_sast():
 # --------------------------------------------------------------------------- #
 # 12. fuzz
 # --------------------------------------------------------------------------- #
+def fuzz_scale():
+    """The fuzz harness's REAL scale: how many surfaces, how many trials each.
+
+    Derived from the harness source so the evidence string cannot rot: if the
+    harness gains a surface, or changes its trial count, the number this check
+    reports follows it.  The surfaces are the calls that take a trial count --
+    `fuzz_plpr_panel` is a helper, not a surface, and it takes no trials.
+
+    Added in round 36, when this check's evidence called the three invocations
+    a re-run of a single test case rather than a fuzz.  One invocation is 11
+    surfaces at 300 trials each, so each invocation is a real property-based
+    run; what the check repeats is that ONE run, because the seed ARGUMENT is
+    ignored.  The limit is the missing seed sweep, not a missing fuzzer.
+    """
+    src = read(os.path.join(ROOT, "examples", "fuzz", "main.mbt"))
+    if not src:
+        return None
+    surfaces = len(re.findall(
+        r"fuzz_[a-z0-9_]+\(@moonbit_doubleML\.chacha8_rng\(s\d+\), trials\)", src))
+    m = re.search(r"let trials\s*=\s*(\d+)", src)
+    if not m or surfaces == 0:
+        return None
+    return surfaces, int(m.group(1))
+
+
 @check("fuzz", "examples/fuzz across seeds", "full")
 def c_fuzz():
     d = os.path.join(ROOT, "examples", "fuzz")
@@ -1466,11 +1491,16 @@ def c_fuzz():
     # times -- coverage that did not exist. Distinct outputs across distinct
     # seed arguments are the only evidence the seed is actually consumed.
     distinct = len(set(outputs.values()))
+    scale = fuzz_scale()
+    scale_note = ("%d surfaces, %d trials per surface" % scale if scale
+                  else "an unknown number of surfaces")
     seed_note = (f"seed argument IS consumed ({distinct} distinct output(s) "
                  f"over {len(outputs)} seeds)") if distinct > 1 else (
         "seed argument is IGNORED by examples/fuzz -- `fn main` takes no "
         f"parameters, so all {len(outputs)} invocations replay ONE fixed "
-        "seed (20260824); this is re-running one case, not fuzzing")
+        f"master seed (20260824); each invocation is a real property-based "
+        f"run ({scale_note}), so what repeats is that one run, not a sweep "
+        "of seeds")
     verdict = FAIL if bad else (PASS if distinct > 1 else WARN)
     body = (f"{len(outputs)} invocation(s); no crash" if not bad
             else f"{len(bad)} crash(es): {bad}")

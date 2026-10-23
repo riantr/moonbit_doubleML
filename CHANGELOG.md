@@ -9,6 +9,91 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.30] -- a limit that overstated the truth
+
+`moon.mod` moves 0.164.29 -> 0.164.30. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- a limit that was bigger than the truth
+
+- The README's "Not covered, so not claimed" section said the `fuzz` check
+  "replays one fixed seed (20260824) three times rather than sweeping seeds:
+  it is a re-run of one case, not a fuzz".  One invocation is NOT one case.
+  `examples/fuzz/main.mbt` drives **11 surfaces** at **300 trials each** -- the
+  harness's own banner prints "300 trials per surface, fixed seed 20260824",
+  and `_verify/LPLR_GATE_BLINDNESS_1680.md` records "ALL 11 SURFACES PASSED".
+  So each invocation is a real property-based run, and what the check repeats
+  is that ONE run, because the seed ARGUMENT is ignored.  The limit is the
+  missing seed sweep, not a missing fuzzer -- and "not a fuzz" contradicted
+  the README's own Examples table, which calls the same binary
+  "Random-property fuzz harness across 11 surfaces".  The section now says
+  exactly that, and states the scale, so a reader can see how much one run
+  covers.
+- The QA `fuzz` check's evidence string carried the same overstatement ("this
+  is re-running one case, not fuzzing").  It now reports the scale it
+  measured, DERIVED from the harness source (`fuzz_scale()`), so the number
+  cannot rot if the harness gains a surface or changes its trial count.
+- The section's lead-in repeated the heading above it word for word
+  ("**Still not covered, so not claimed.**"), and the "Still" asserted a
+  continuity with a previous state that nothing in the document supports.  The
+  heading carries the same fact, so the lead-in is gone.
+
+### Added -- the negative claims become a check
+
+- (`_verify/_verify_not_covered_1650.py` (**52** checks)) re-derives every
+  negative claim the section makes.  Round 22's
+  `_verify/_verify_test_verification_1650.py` already re-derived MOST of them
+  -- that the `mutation` and `fuzz` checks run in no CI workflow, that
+  `coverage` is a proxy and not instrumented line coverage, that the harness
+  ignores its seed argument, that the battery is three mutants on one kernel,
+  that the two declared `moon.mod` dependencies are imported by nothing, and
+  that no CI step invokes a dependency-vulnerability scanner.  What it could
+  not see was the SIZE of the thing the limit was about: it checked that the
+  seed argument is ignored, and stopped there, so the "one case" overstatement
+  left every check green.
+
+  The new check adds the other half.  It measures the harness's scale from the
+  source, requires the README to name it, and fails if the README or the
+  check's evidence calls a fuzz run "one case".  It also decides "does CI run
+  this check?" by the runner's OWN selection rule -- selected AND (scope is not
+  `full` OR `--full` was passed), read out of the workflow YAML -- where round
+  22's check greps the workflows for the check's ID.  That grep has a hole: a
+  workflow that selects the full scope WITHOUT naming any ID would run the
+  `fuzz` check, and the grep would still report "no workflow runs it".  The
+  `dependencies` check is CALLED rather than re-implemented, its verdict is
+  asserted to be WARN, and the README's quote is checked to be a PREFIX of the
+  message the check actually emits.  The claims are matched against a
+  whitespace-normalised copy of the document, because a hard-wrapped README
+  breaks a raw substring match -- the first version of this check reported five
+  failures that were all its own line-wrapping, not the README's.
+
+- (`_verify/_dryrun_round36_1650.py`) breaks each of the twelve mechanisms one
+  at a time and requires the failure count to GROW at every step: **18**
+  failures at the end.  One of the twelve is the `--full`-without-`--only`
+  hole above -- the old grep would not have seen it.
+
+### Changed -- a checker's extraction follows the wording
+
+- `_verify/_verify_test_verification_1650.py` matched the README's fuzz
+  sentence with `replays one fixed seed (N) W times`.  The README now says
+  "one fixed MASTER seed" -- the harness derives its 11 per-surface RNGs from
+  that one master -- so the word is optional in the pattern.  The FACT the
+  check asserts is unchanged: the count word the README states must equal the
+  number of invocations the check makes.
+- The round-18 pin on the section's lead-in moved with the text: the pin now
+  names the heading, which is the fact it was pinning.
+- `_verify/_verify_release_tree_1650.py` printed the two README copies' size
+  with `len()` on the DECODED text, so it counted CHARACTERS and called them
+  bytes -- the README carries multi-byte characters, and the number it showed
+  was 35 short.  The blob's own size is the byte count.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 51 passed / 0 failed / 0 unknown
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.29] -- the citation that named the wrong branch
 
 `moon.mod` moves 0.164.28 -> 0.164.29. No estimator behaviour changed and the

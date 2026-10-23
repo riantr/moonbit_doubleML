@@ -500,6 +500,53 @@
 >   at a time and requires the failure count to GROW at every step, and it
 >   ends at **8** failures.
 >
+> * **Round 36.** The README's NEGATIVE claims -- the whole "Not covered, so
+>   not claimed" section -- were only HALF checked, and one of them OVERSTATED
+>   the limit it described.
+>
+>   Round 22's `_verify/_verify_test_verification_1650.py` already re-derives
+>   the absence claims: that the `mutation` and `fuzz` checks run in no CI
+>   workflow, that the `coverage` check is a proxy and not instrumented line
+>   coverage, that the fuzz harness ignores its seed argument, that the
+>   mutation battery is three mutants on one kernel, that the two declared
+>   `moon.mod` dependencies are imported by nothing, and that no CI step
+>   invokes a dependency-vulnerability scanner.  What it could not see was the
+>   SIZE of the thing the limit was about.  It checked that the seed argument
+>   is ignored, and stopped there -- so the README was free to say the
+>   consequence was "a re-run of one case, not a fuzz", and the check stayed
+>   green.
+>
+>   One invocation is **11 surfaces at 300 trials each**: the harness's own
+>   banner prints "300 trials per surface", and
+>   `_verify/LPLR_GATE_BLINDNESS_1680.md` records "ALL 11 SURFACES PASSED".
+>   So each invocation is a real property-based run, and what the check
+>   repeats is that ONE run, because the seed ARGUMENT is ignored.  The limit
+>   is the missing seed sweep, not a missing fuzzer -- and "not a fuzz"
+>   contradicted the README's own Examples table, which calls the same binary
+>   "Random-property fuzz harness across 11 surfaces".  The QA `fuzz` check's
+>   evidence carried the same overstatement; it now reports the scale it
+>   measured, derived from the harness source so it cannot rot.
+>
+>   The new check `_verify/_verify_not_covered_1650.py` (**52** checks) closes
+>   the other half.  It measures the harness's scale, requires the README to
+>   name it, and fails if the README or the check's evidence calls a fuzz run
+>   "one case".  It also decides "does CI run this check?" by the runner's OWN
+>   selection rule -- selected AND (scope is not `full` OR `--full` was
+>   passed) -- read out of the workflow YAML, where round 22's check greps
+>   the workflows for the check's ID.  That grep has a hole: a workflow that
+>   selects the full scope without naming any ID would run the `fuzz` check,
+>   and the grep would still report "no workflow runs it".  The
+>   `dependencies` check is CALLED rather than re-implemented, and the claims
+>   are matched against a whitespace-normalised copy of the document, because
+>   a hard-wrapped README breaks a raw substring match.
+>
+>   The section's lead-in repeated the heading above it word for word, and the
+>   "Still" in it asserted a continuity no document supports; it is gone.
+>
+>   `_verify/_dryrun_round36_1650.py` breaks each of the **12** mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **18** failures.
+>
 
 ## The README as it stood at v0.164.11
 

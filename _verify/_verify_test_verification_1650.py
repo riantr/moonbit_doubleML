@@ -253,7 +253,11 @@ if "fuzz" in REG:
     n_inv = len(seeds)
     check("the fuzz check invokes the harness three times (the tree: %d)"
           % n_inv, n_inv == 3)
-    m = re.search(r"replays one fixed seed \((\d+)\) (\w+) times", doc)
+    # Round 36: the README now says "one fixed MASTER seed" -- the harness
+    # derives its 11 per-surface RNGs from that one master -- so the word is
+    # optional here.  The FACT this check asserts is unchanged: the count word
+    # the README states must equal the number of invocations the check makes.
+    m = re.search(r"replays one fixed (?:master )?seed \((\d+)\) (\w+) times", doc)
     check("the README states the fuzz invocation count",
           m is not None and WORDS.get(m.group(2)) == n_inv,
           "the README says %r, the check makes %d" % (m.group(2) if m else None,

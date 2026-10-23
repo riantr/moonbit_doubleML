@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.29",
+  "riantr/moonbit_doubleML@0.164.30",
 }
 ```
 
@@ -585,7 +585,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.29** |
+| `moon.mod` version | **0.164.30** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -659,16 +659,17 @@ truncated and a mis-tiled RNG key.
 
 ### Not covered, so not claimed
 
-**Still not covered, so not claimed.** The `coverage` check is a
+The `coverage` check is a
 test-reachability proxy, not instrumented line coverage. There is no
 dependency-vulnerability scan -- `moon update` resolves versions, it is not an
 audit. `mutation` kills three mutants on one kernel, not a whole-codebase
 surviving-mutant ledger, and no CI workflow runs it. `examples/fuzz/` has no
 crash-regression corpus, and its seed argument is **ignored** -- `fn main`
-takes no parameters -- so the fuzz check replays one fixed seed (20260824)
-three times rather than sweeping seeds: it is a re-run of one case, not a
-fuzz, and no CI workflow runs it either. And the two declared `moon.mod`
-dependencies -- `moonbit-community/sqlite3@0.2.3`
+takes no parameters -- so the fuzz check replays one fixed master seed
+(20260824) three times rather than sweeping seeds. Each invocation is a real
+property-based run -- 11 surfaces, 300 trials per surface -- so the check
+repeats that one run, and no CI workflow runs it either. And the two
+declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
 and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
 ['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
@@ -711,7 +712,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.29, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.30, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

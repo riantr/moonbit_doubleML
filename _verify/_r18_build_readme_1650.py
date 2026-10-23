@@ -640,6 +640,53 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   at a time and requires the failure count to GROW at every step, and it
 >   ends at **8** failures.
 >
+> * **Round 36.** The README's NEGATIVE claims -- the whole "Not covered, so
+>   not claimed" section -- were only HALF checked, and one of them OVERSTATED
+>   the limit it described.
+>
+>   Round 22's `_verify/_verify_test_verification_1650.py` already re-derives
+>   the absence claims: that the `mutation` and `fuzz` checks run in no CI
+>   workflow, that the `coverage` check is a proxy and not instrumented line
+>   coverage, that the fuzz harness ignores its seed argument, that the
+>   mutation battery is three mutants on one kernel, that the two declared
+>   `moon.mod` dependencies are imported by nothing, and that no CI step
+>   invokes a dependency-vulnerability scanner.  What it could not see was the
+>   SIZE of the thing the limit was about.  It checked that the seed argument
+>   is ignored, and stopped there -- so the README was free to say the
+>   consequence was "a re-run of one case, not a fuzz", and the check stayed
+>   green.
+>
+>   One invocation is **11 surfaces at 300 trials each**: the harness's own
+>   banner prints "300 trials per surface", and
+>   `_verify/LPLR_GATE_BLINDNESS_1680.md` records "ALL 11 SURFACES PASSED".
+>   So each invocation is a real property-based run, and what the check
+>   repeats is that ONE run, because the seed ARGUMENT is ignored.  The limit
+>   is the missing seed sweep, not a missing fuzzer -- and "not a fuzz"
+>   contradicted the README's own Examples table, which calls the same binary
+>   "Random-property fuzz harness across 11 surfaces".  The QA `fuzz` check's
+>   evidence carried the same overstatement; it now reports the scale it
+>   measured, derived from the harness source so it cannot rot.
+>
+>   The new check `_verify/_verify_not_covered_1650.py` (**52** checks) closes
+>   the other half.  It measures the harness's scale, requires the README to
+>   name it, and fails if the README or the check's evidence calls a fuzz run
+>   "one case".  It also decides "does CI run this check?" by the runner's OWN
+>   selection rule -- selected AND (scope is not `full` OR `--full` was
+>   passed) -- read out of the workflow YAML, where round 22's check greps
+>   the workflows for the check's ID.  That grep has a hole: a workflow that
+>   selects the full scope without naming any ID would run the `fuzz` check,
+>   and the grep would still report "no workflow runs it".  The
+>   `dependencies` check is CALLED rather than re-implemented, and the claims
+>   are matched against a whitespace-normalised copy of the document, because
+>   a hard-wrapped README breaks a raw substring match.
+>
+>   The section's lead-in repeated the heading above it word for word, and the
+>   "Still" in it asserted a continuity no document supports; it is gone.
+>
+>   `_verify/_dryrun_round36_1650.py` breaks each of the **12** mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **18** failures.
+>
 
 """
 
@@ -1692,6 +1739,77 @@ PATCHES.append((OLD_BARE_TEST, NEW_BARE_TEST))
 PATCHES.append((OLD_RNG_ITEMS, NEW_RNG_ITEMS))
 PATCHES.append((OLD_RNG_CELL, NEW_RNG_CELL))
 PATCHES.append((OLD_POLICY_CTOR, NEW_POLICY_CTOR))
+
+
+# ==============================================================================
+# 5.  THE ROUND-36 PATCH -- a limit that OVERSTATED the truth
+# ==============================================================================
+#
+# "### Not covered, so not claimed" is the only part of the document that
+# makes NEGATIVE claims: "no CI workflow runs it", "its seed argument is
+# ignored", "nothing imports them".  Until this round NOTHING checked any of
+# them -- the section was trusted, and the whole point of a section about what
+# is NOT covered is that it must not be trusted.
+#
+# Read against the tree, the claims hold.  But one of them OVERSTATED the
+# limit, and an overstated limit is as false as an understated one:
+#
+#   "...so the fuzz check replays one fixed seed (20260824) three times
+#    rather than sweeping seeds: it is a re-run of one case, not a fuzz"
+#
+# One invocation is not one case.  `examples/fuzz/main.mbt` drives 11 surfaces
+# (`[1/11]` .. `[11/11]`) at `let trials = 300`; the harness's own banner
+# prints "300 trials per surface, fixed seed 20260824", and
+# `_verify/LPLR_GATE_BLINDNESS_1680.md` records "ALL 11 SURFACES PASSED".  Each
+# invocation is a real property-based run over thousands of randomised cases.
+# What the check repeats is that ONE RUN, three times, because the seed
+# ARGUMENT is ignored.  "Not a fuzz" also contradicted the README's own
+# Examples table, which calls the same binary "Random-property fuzz harness
+# across 11 surfaces".
+#
+# The correction states the limit exactly -- the run is not SEED-SWEEPABLE --
+# and states the scale, so a reader can see how much one run covers.  A limit
+# that is written down is a limit; a limit that is exaggerated is a lie.
+#
+# The second edit is a redundancy.  The section's first line repeated the
+# heading above it word for word ("Still not covered, so not claimed."), and
+# the "Still" asserted a continuity with a previous state that nothing in the
+# document supports.  The heading carries the same fact, so the lead-in goes.
+
+OLD_NOT_COVERED = """**Still not covered, so not claimed.** The `coverage` check is a
+test-reachability proxy, not instrumented line coverage. There is no
+dependency-vulnerability scan -- `moon update` resolves versions, it is not an
+audit. `mutation` kills three mutants on one kernel, not a whole-codebase
+surviving-mutant ledger, and no CI workflow runs it. `examples/fuzz/` has no
+crash-regression corpus, and its seed argument is **ignored** -- `fn main`
+takes no parameters -- so the fuzz check replays one fixed seed (20260824)
+three times rather than sweeping seeds: it is a re-run of one case, not a
+fuzz, and no CI workflow runs it either. And the two declared `moon.mod`
+dependencies -- `moonbit-community/sqlite3@0.2.3`
+and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
+`dependencies` already WARNs about exactly that (`2 declared; non-conforming:
+['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
+['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.5']`) rather than
+passing quietly. Removing them is an open call, not an oversight."""
+
+NEW_NOT_COVERED = """The `coverage` check is a
+test-reachability proxy, not instrumented line coverage. There is no
+dependency-vulnerability scan -- `moon update` resolves versions, it is not an
+audit. `mutation` kills three mutants on one kernel, not a whole-codebase
+surviving-mutant ledger, and no CI workflow runs it. `examples/fuzz/` has no
+crash-regression corpus, and its seed argument is **ignored** -- `fn main`
+takes no parameters -- so the fuzz check replays one fixed master seed
+(20260824) three times rather than sweeping seeds. Each invocation is a real
+property-based run -- 11 surfaces, 300 trials per surface -- so the check
+repeats that one run, and no CI workflow runs it either. And the two
+declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
+and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
+`dependencies` already WARNs about exactly that (`2 declared; non-conforming:
+['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
+['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.5']`) rather than
+passing quietly. Removing them is an open call, not an oversight."""
+
+PATCHES.append((OLD_NOT_COVERED, NEW_NOT_COVERED))
 
 
 for _old, _new in PATCHES:

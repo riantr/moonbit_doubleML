@@ -224,8 +224,12 @@ if r1 is None or r2 is None:
     check("the two README copies are byte-identical", False,
           "a copy is missing from the tree at %s" % REF)
 else:
+    # `read_at` returns the DECODED text, so len() would count characters,
+    # not bytes -- the README carries multi-byte characters and the number
+    # would be short.  The blob's own size is the byte count.
+    _rc, _sz = git("cat-file", "-s", "%s:README.mbt.md" % REF)
     check("the two README copies are byte-identical", r1 == r2,
-          "both are %d bytes" % len(r1) if r1 == r2
+          "both are %s bytes" % _sz.strip() if r1 == r2
           else "the edited copy and the shipped copy differ")
 
 # ------------------------------------------------------------------- R5

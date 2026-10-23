@@ -228,7 +228,10 @@ USER_FACING = [
     "**eight**, in seven files",
     "gates whose reference is UPSTREAM",
     "shipped default arm is still the one absence",
-    "Still not covered",
+    # Round 36 removed the section's lead-in, which repeated the heading word
+    # for word.  The fact it pinned is the HEADING, and that is what is pinned
+    # now -- the wording it carried is the section's own.
+    "Not covered, so not claimed",
     "moon test --target native --deny-warn",
     "Total tests: 1117",
     "Run these from the **repository root**",
