@@ -69,6 +69,31 @@ other_robust = sorted(
     if any(re.match(r"(cluster_)?hac_se$", m) for m in methods.get(e, ())))
 no_robust = sorted(e for e in none if e not in other_robust)
 
+
+def hac_version(est):
+    """The version that introduced this estimator's OWN `hac_se`.
+
+    Read from the doc-comment above the definition -- the source marks it
+    "v0.96.0+:" -- and NOT typed in here, so a rename or a re-version moves
+    the answer with the code.
+    """
+    for name in sorted(os.listdir(LIB)):
+        if not name.endswith(".mbt"):
+            continue
+        src = io.open(os.path.join(LIB, name), encoding="utf-8",
+                      errors="replace").read()
+        m = re.search(r"pub fn %s::hac_se\(" % est, src)
+        if not m:
+            continue
+        for line in reversed(src[:m.start()].rstrip("\n").split("\n")):
+            s = line.strip()
+            if not s.startswith("//"):
+                break
+            v = re.search(r"v(\d+\.\d+\.\d+)\+", s)
+            if v:
+                return v.group(1)
+    return None
+
 # the version that INTRODUCED the sandwich family, read out of the
 # CHANGELOG's own headings rather than typed in here
 cl = io.open(CHANGELOG, encoding="utf-8", errors="replace").read()
@@ -153,6 +178,30 @@ if row:
         for e in no_robust:
             check("the table says %s has no robust SE at all" % e,
                   e in body and "no robust SE at all" in body, body[-200:])
+
+    # ---- round 39: the version<->estimator PAIRING, not just the set -------
+    # The disclosure read "`DoubleMLBLP` and `DoubleMLRDD` do expose a
+    # heteroskedasticity-robust `hac_se` under their own name (v0.96.0 /
+    # v0.97.0)".  Read positionally -- the way this document pairs names
+    # with versions everywhere else -- that asserts BLP = v0.96.0 and
+    # RDD = v0.97.0, and BOTH are false: rdd.mbt marks its `hac_se`
+    # "v0.96.0+", blp_policy.mbt marks its own "v0.97.0+", and the
+    # CHANGELOG's headings agree.  The SET of two versions was right, so
+    # the defect was the ORDER -- and an order that reads as a claim is a
+    # claim.
+    for e in other_robust:
+        src_ver = hac_version(e)
+        chg_ver = None
+        for mm in re.finditer(r"^## \[(\d+\.\d+\.\d+)\] -- (.*)$", cl, re.M):
+            if e in mm.group(2) and "hac_se" in mm.group(2):
+                chg_ver = mm.group(1)
+                break
+        check("the source and the CHANGELOG agree on %s's hac_se version" % e,
+              src_ver is not None and src_ver == chg_ver,
+              "source=v%s changelog=v%s" % (src_ver, chg_ver))
+        check("the table pairs %s with v%s" % (e, src_ver),
+              ("`%s` (v%s)" % (e, src_ver)) in body,
+              "the pairing is not name-then-version")
 
 print("")
 print("checks run: %d" % checks)

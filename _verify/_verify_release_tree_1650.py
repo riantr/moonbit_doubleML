@@ -70,8 +70,11 @@ REF = sys.argv[1] if len(sys.argv) > 1 else "HEAD"
 
 # The declared set sizes.  A change to either is a change to the SET.
 EXPECTED_MANIFESTS = 21
-EXPECTED_SITES = 26
-EXPECTED_OTHER_SITES = 5
+# Round 39: the bump script gained a NINTH kind of site -- the AGENT SKILL,
+# which quotes the api_server's declared library pin.  It is the 27th site,
+# and the 6th that is not an example manifest.
+EXPECTED_SITES = 27
+EXPECTED_OTHER_SITES = 6
 
 NCHECK = 0
 FAILS = []

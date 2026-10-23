@@ -2,10 +2,11 @@
 //
 // WHY THIS FILE EXISTS EVEN THOUGH IT IS NEVER USED FOR A COMPARISON
 // ================================================================
-// MoonBit 0.1.20261016 has no file I/O (measured: `@std/env`, `@std/fs`,
-// `@std/io`, `@std/process` all fail to resolve; the builtin `read_file`
-// does not exist), so Python-generated data cannot be handed to the port as
-// a file. It has to arrive as literals in a compiled `.mbt` source.
+// MoonBit 0.1.20261023 has no file I/O (measured: `@std/env`, `@std/fs`,
+// `@std/io`, `@std/process` all fail to resolve -- `Cannot find import
+// '@std/env'`; the builtin `read_file` does not exist, error 4021), so
+// Python-generated data cannot be handed to the port as a file. It has to
+// arrive as literals in a compiled `.mbt` source.
 //
 // That means the symbol `sec_did_pyexample` in `main.mbt` has to exist in
 // every build of this package -- including `moon build` and `moon test` at

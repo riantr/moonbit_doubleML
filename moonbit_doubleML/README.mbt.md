@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.32",
+  "riantr/moonbit_doubleML@0.164.33",
 }
 ```
 
@@ -121,7 +121,7 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 `--target native` is spelled out because the package's `preferred_target` is
 `wasm-gc`, where the suite is **1123** -- 1117 plus 6 doc tutorials; the
 per-target numbers are in the Status table. A bare `moon test` runs only
-three of the four declared backends -- on `moon 0.1.20261016` it prints
+three of the four declared backends -- on `moon 0.1.20261023` it prints
 `Total tests: 0` for `wasm` and `native` and reports `no test entry found`
 for `js`, which it never runs -- so the per-target counts here come from
 explicit `--target` runs.
@@ -606,15 +606,15 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.32** |
-| Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
+| `moon.mod` version | **0.164.33** |
+| Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
 | Tests (native / wasm / js) | **1117 / 1117 / 1117** |
 | Tests (wasm-gc) | **1123 / 1123** (lib + 6 doc tutorials) |
-| Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none of that API (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`) -- but `DoubleMLBLP` and `DoubleMLRDD` do expose a heteroskedasticity-robust `hac_se` under their own name (v0.96.0 / v0.97.0); `DoubleMLPolicyTree` exposes no robust SE at all. Introduced v0.79.0 (on `DoubleMLIRM` and `DoubleMLPLR`), extended to **19 / 22** by v0.100.0 |
+| Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none of that API (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`) -- but `DoubleMLRDD` (v0.96.0) and `DoubleMLBLP` (v0.97.0) do expose a heteroskedasticity-robust `hac_se` under their own name; `DoubleMLPolicyTree` exposes no robust SE at all. Introduced v0.79.0 (on `DoubleMLIRM` and `DoubleMLPLR`), extended to **19 / 22** by v0.100.0 |
 | Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -658,7 +658,7 @@ Measured designs, one script per upstream class or family:
 port is arithmetically identical to the reference" apart from "the port lands
 within 1e-4 of it". `validate_bitexact_with_python.py` compares IEEE-754 bit
 patterns instead, against `examples/bitexact/`. Measured scope, not assumed --
-re-measured on `moon 0.1.20261016` vs CPython 3.13.14, unchanged from the
+re-measured on `moon 0.1.20261023` vs CPython 3.13.14, unchanged from the
 `moon 0.1.20261012` vs CPython 3.14 pair it was first taken on:
 
 | operation | bit-exact | why |
@@ -705,7 +705,7 @@ split_seed = 2024, min_leaf_n = 5)` splits the sample when `honest` is on:
 the splitting half, and every reported leaf statistic (`leaf_assignment`,
 `leaf_signal_mean`, `leaf_count`, `leaf_se`) is computed on the
 estimation half. That is the honesty of Athey & Imbens (2016, PNAS
-113(27):7353-7358), and it makes their property a property rather
+113(27):7353-7360), and it makes their property a property rather
 than a claim: with the partition held fixed, a leaf value is a plain
 sample mean, so `leaf_se[k] = sd(y_k) / sqrt(n_k)` has its usual
 sampling interpretation. `is_honest()` reports which regime produced a
@@ -733,7 +733,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.32, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.33, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

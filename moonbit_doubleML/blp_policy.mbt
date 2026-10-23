@@ -1439,7 +1439,7 @@ pub struct DoubleMLPolicyTree {
   // tree.
   leaf_count : Array[Int32]
   // v0.98.0+: HONESTY (Athey & Imbens 2016, PNAS 113(27):
-  // 7353-7358). `honest = true` splits the training sample in
+  // 7353-7360). `honest = true` splits the training sample in
   // two: `policy_tree_build` sees ONLY `split_indices` (the
   // splitting half) and every reported leaf statistic --
   // `leaf_assignment`, `leaf_signal_mean`, `leaf_count`,

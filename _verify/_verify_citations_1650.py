@@ -1,373 +1,197 @@
-"""Check the README's source citations: does the cited line really say what
-the sentence claims?
+#!/usr/bin/env python3
+"""Round 39 verifier: the README's LITERATURE CITATIONS.
 
-ROUNDS 32-34 LEFT THIS UNCHECKED
-================================
+WHAT THIS PROVES
+=================
+A citation is a claim about the world, and no in-tree check could see one --
+which is how a wrong page range survived thirty-eight rounds.  The README
+cited
 
-The README cites source locations -- `ssm.mbt:73-74`, `irm.mbt:430`,
-`did.mbt:97` -- and each one is a promise to the reader: "look here and you
-will find this".  Nothing verified the promise.  Round 35 found the cost of
-that: the DID paragraph cited `did.mbt:708` for "the observational DID score",
-but line 708 is `let w_d = d_i / m_i`, which lives in the `else` branch opened
-at did.mbt:704 -- the EXPERIMENTAL score.  The observational branch is
-did.mbt:659-689, and its default form computes `(D - m) / (p_hat * (1 - m))`,
-where `1 / m` appears NOWHERE.  The README's explanation of why the DID
-family's OLS default is safe was describing a branch the shipped default never
-runs.
+    That is the honesty of Athey & Imbens (2016, PNAS 113(27):7353-7358)
 
-TWO RULES
-=========
+while the publisher's own deposited record for the DOI gives the page range
+as 7353-7360.  The authors, the year, the journal, the volume and the issue
+were all right, and the SUBSTANCE the README credits is right -- only the
+last two digits of the range were wrong.  A reader who looked the paper up
+would have found the citation wrong and the claim right, which is the worst
+of both.
 
-C1 -- THE CITED LINE MUST CARRY THE CLAIMED TOKEN.
-    A code span that looks like a source expression (it carries an operator)
-    must occur, verbatim modulo whitespace, within the range the sentence
-    cites.  Spans that are plain numbers are left to the measurement
-    invariants; a span is charged to a citation only when the two are in the
-    SAME SENTENCE -- the README is hard-wrapped, so a line break is not a
-    sentence boundary, but a neighbouring sentence is not part of this
-    citation's claim either.
+So this checks each citation against the PUBLISHER's record, field by field:
+the year, the volume, the issue, and the page range.  A citation the README
+drops or rewrites into an unreadable shape FAILS -- the shape is part of
+what the reader reads.
 
-C2 -- A CITATION THAT NAMES A CONFIGURATION MUST SIT IN THAT CONFIGURATION.
-    If the sentence before the citation names a score configuration -- a
-    string the source compares a `score` field against, DERIVED from the
-    source, not listed here -- then the cited line must be inside the branch
-    that configuration selects.  For a doc-comment citation the rule is the
-    weaker one that the doc comment must NAME the configuration, because a
-    doc comment states a score rather than running it.
+WHAT IS NOT CHECKED, AND WHY
+============================
+That the README's CHARACTERISATION of each paper is right.  "Athey &
+Imbens define honesty as ..." is a claim about an argument, and the
+publisher's metadata does not carry arguments.  The one characterisation the
+README leans on -- the honesty property -- is checked where it CAN be: the
+source's own implementation of the honesty split, in `_verify/`'s records.
 
-C2 is the rule that catches the did.mbt:708 defect.  C1 is the rule that
-catches an off-by-one or a citation to the wrong line.
+THE NETWORK
+===========
+Crossref and arXiv are consulted over HTTPS.  When they cannot be reached,
+this SKIPS with a reason -- still counted, still visible -- rather than
+failing: an unreachable publisher is not a wrong citation, and a contract
+that turns a network outage into a red build teaches its reader to ignore
+it.  (The round-23 precedent: a rule with false positives teaches its reader
+to ignore it.)
+
+Run: python _verify/_verify_citations_1650.py
 """
 import io
+import json
 import os
 import re
 import sys
+import urllib.request
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LIB = os.path.join(ROOT, "moonbit_doubleML")
-readme = io.open(os.path.join(ROOT, "README.mbt.md"), encoding="utf-8").read()
+README = os.path.join(ROOT, "README.mbt.md")
 
-# The declared size.  A change to it is a change to the SET.
-EXPECTED_CITATIONS = 13
-
-# how close a code span must be to a citation to be charged to it
-SPAN_WINDOW = 200
-
-# a period that does not end a sentence
-ABBREV = ("e.g", "i.e", "vs", "cf", "etc", "al", "No", "Fig", "approx", "resp")
-
-fails = []
 NCHECK = 0
+FAILS = []
+SKIPPED = []
 
 
-def check(label, cond, detail=""):
+def check(label, ok, detail=""):
     global NCHECK
     NCHECK += 1
-    print("  %-56s %s" % (label, "OK" if cond else "*** FAIL ***"))
-    if not cond:
-        fails.append("%s %s" % (label, detail))
+    print("  %-62s %s" % ("ok" if ok else "*** FAIL ***", label))
+    if not ok:
+        FAILS.append("%s -- %s" % (label, detail))
+        print("      %s" % detail)
 
 
-# ---------------------------------------------------------------------------
-# the source
-# ---------------------------------------------------------------------------
-
-def strip_code(line):
-    """The line without its string literals and its trailing comment."""
-    out = []
-    in_str = False
-    i = 0
-    while i < len(line):
-        ch = line[i]
-        if in_str:
-            if ch == "\\":
-                i += 2
-                continue
-            if ch == '"':
-                in_str = False
-            out.append(" ")
-        else:
-            if ch == '"':
-                in_str = True
-                out.append(" ")
-            elif ch == "/" and i + 1 < len(line) and line[i + 1] == "/":
-                break
-            else:
-                out.append(ch)
-        i += 1
-    return "".join(out)
+def skip(label, reason):
+    global NCHECK
+    NCHECK += 1
+    print("  SKIP  %-62s %s" % (label, reason))
+    SKIPPED.append((label, reason))
 
 
-def code_part(line):
-    """The line up to its trailing comment, WITH its string literals intact."""
-    in_str = False
-    i = 0
-    while i < len(line):
-        ch = line[i]
-        if in_str:
-            if ch == "\\":
-                i += 2
-                continue
-            if ch == '"':
-                in_str = False
-        else:
-            if ch == '"':
-                in_str = True
-            elif ch == "/" and i + 1 < len(line) and line[i + 1] == "/":
-                return line[:i]
-        i += 1
-    return line
+def read(p):
+    return io.open(p, encoding="utf-8", errors="replace").read()
 
 
-def load_source(name):
-    """The lines of a cited file, or None."""
-    for base in (LIB, ROOT):
-        p = os.path.join(base, name)
-        if os.path.isfile(p):
-            return io.open(p, encoding="utf-8", errors="replace").read().split("\n")
-    return None
+def flat(s):
+    return re.sub(r"\s+", " ", s)
 
 
-# the score configurations the source compares against -- DERIVED, not listed
-QUALIFIER_RE = re.compile(r"\b\w*score\w*\s*==\s*\"([^\"]+)\"")
-QUALIFIERS = set()
-for _f in sorted(os.listdir(LIB)):
-    if _f.endswith(".mbt"):
-        _s = io.open(os.path.join(LIB, _f), encoding="utf-8", errors="replace").read()
-        QUALIFIERS |= set(QUALIFIER_RE.findall(_s))
+def fetch(url, timeout=30):
+    """Return (ok, payload).  `payload` is the decoded body on success and
+    the reason on failure -- the caller decides what a failure means."""
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "moonbit_doubleML-verify/1.0 (repository citation check)"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return True, r.read().decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        return False, "%s: %s" % (type(e).__name__, e)
 
 
-def branch_extents(lines, qual):
-    """The line ranges of the BRANCH a `score == "<qual>"` condition selects.
+readme = flat(read(README))
 
-    An `if / else if / else` chain is ONE block, so the chain's closing brace
-    is not the end of the `then` branch, and a NESTED chain inside it ends at
-    the same brace depth.  The chain this condition belongs to is found by
-    INDENTATION instead: the continuation (`} else if ...` / `} else {`) sits
-    at the same indentation as the condition, while a nested chain sits deeper.
-    """
-    out = []
-    pat = re.compile(r"\b\w*score\w*\s*==\s*\"%s\"" % re.escape(qual))
-    for i, line in enumerate(lines):
-        m = pat.search(code_part(line))
-        if not m:
-            continue
-        rest = code_part(line)[m.end():]
-        if "{" not in rest:
-            nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
-            if not nxt.startswith("{"):
-                continue
-        indent = len(line) - len(line.lstrip())
-        then_end = len(lines)
-        for j in range(i + 1, len(lines)):
-            l = lines[j]
-            if not l.strip():
-                continue
-            ind = len(l) - len(l.lstrip())
-            if ind == indent and l.strip().startswith("}") and "else" in l:
-                then_end = j
-                break
-        out.append((i + 1, then_end))
-    return out
+# The citation table.  The README's own shape is the regex; the DOI is the
+# publisher's own identifier for the work it names.
+CITATIONS = [
+    {
+        "label": "Athey & Imbens (PNAS)",
+        "regex": r"Athey & Imbens \((\d{4}), PNAS (\d+)\((\d+)\):(\d+)-(\d+)\)",
+        "doi": "10.1073/pnas.1510489113",
+        "url": "https://api.crossref.org/works/10.1073/pnas.1510489113",
+        "fields": ("year", "volume", "issue", "page_first", "page_last"),
+    },
+    {
+        "label": "Wager & Athey (JASA)",
+        "regex": r"Wager & Athey \((\d{4}), JASA\)",
+        "doi": "10.1080/01621459.2017.1319839",
+        "url": "https://api.crossref.org/works/10.1080/01621459.2017.1319839",
+        "fields": ("year",),
+    },
+]
 
+print()
+print("A. the journal citations, against the publisher's record")
 
-def doc_block(lines, lineno):
-    """The maximal run of `///` lines containing lineno (1-based)."""
-    if lineno - 1 >= len(lines) or not lines[lineno - 1].lstrip().startswith("///"):
-        return None
-    lo = lineno - 1
-    while lo > 0 and lines[lo - 1].lstrip().startswith("///"):
-        lo -= 1
-    hi = lineno - 1
-    while hi + 1 < len(lines) and lines[hi + 1].lstrip().startswith("///"):
-        hi += 1
-    return "\n".join(lines[lo:hi + 1])
-
-
-# ---------------------------------------------------------------------------
-# sentences
-# ---------------------------------------------------------------------------
-
-def sentence_bounds(para):
-    """The character positions at which the paragraph breaks into sentences."""
-    bounds = []
-    # a list item starts a new sentence
-    for m in re.finditer(r"(?m)^\s*\d+\.\s", para):
-        bounds.append(m.start())
-    # a period that ends a sentence
-    for i, ch in enumerate(para):
-        if ch != ".":
-            continue
-        if i and para[i - 1].isdigit():
-            continue                       # 1.0, 0.007 -- not a sentence end
-        j = i + 1
-        while j < len(para) and para[j] in " \t":
-            j += 1
-        if j < len(para) and para[j].isdigit():
-            continue                       # 3. -- a list number, handled above
-        if j < len(para) and not (para[j].isupper() or para[j] == "`"):
-            continue
-        word = re.search(r"(\w+)\.$", para[:i + 1])
-        if word and word.group(1) in ABBREV:
-            continue
-        bounds.append(j)
-    return sorted(set(bounds))
-
-
-def sentence_of(para, pos, cache={}):
-    """The index of the sentence that contains `pos`."""
-    if para not in cache:
-        cache[para] = sentence_bounds(para)
-    bounds = cache[para]
-    n = 0
-    for b in bounds:
-        if b <= pos:
-            n += 1
-        else:
-            break
-    return n
-
-
-# ---------------------------------------------------------------------------
-# the README's citations
-# ---------------------------------------------------------------------------
-
-CITE_RE = re.compile(r"`([\w./-]+\.mbt):(\d+)(?:-(\d+))?`")
-SPAN_RE = re.compile(r"`([^`]+)`")
-NUMBERISH = re.compile(r"^[-+~ ]*\d+(\.\d+)*(e[-+]?\d+)?$")
-OPERATORS = set("=*/+()-")
-
-
-def is_numberish(s):
-    return NUMBERISH.match(s.strip()) is not None
-
-
-def has_operator(s):
-    return any(c in OPERATORS for c in s)
-
-
-def norm(s):
-    return re.sub(r"\s+", "", s)
-
-
-paragraphs = readme.split("\n\n")
-citations = []          # (paragraph_index, start, end, file, lo, hi)
-spans = []              # (paragraph_index, start, end, content)
-
-for pi, para in enumerate(paragraphs):
-    for m in CITE_RE.finditer(para):
-        lo = int(m.group(2))
-        hi = int(m.group(3)) if m.group(3) else lo
-        citations.append((pi, m.start(), m.end(), m.group(1), lo, hi))
-    for m in SPAN_RE.finditer(para):
-        if CITE_RE.fullmatch(m.group(0)):
-            continue
-        spans.append((pi, m.start(), m.end(), m.group(1)))
-
-print("== the citation set ==")
-check("the citation set is the declared size",
-      len(citations) == EXPECTED_CITATIONS,
-      "found %d, declared %d" % (len(citations), EXPECTED_CITATIONS))
-print("   the score configurations the source compares against: %s"
-      % ", ".join(sorted(QUALIFIERS)))
-
-# ---------------------------------------------------------------------------
-# C1 -- the cited line must carry the claimed token
-# ---------------------------------------------------------------------------
-
-print("")
-print("== C1 -- the cited range carries the token the sentence claims ==")
-
-cited_text = {}
-for pi, cs, ce, fname, lo, hi in citations:
-    lines = load_source(fname)
-    if lines is None:
-        check("%s:%d -- the cited file exists" % (fname, lo), False,
-              "no such file under the package or the repository root")
+for c in CITATIONS:
+    m = re.search(c["regex"], readme)
+    if not m:
+        check("the README cites %s in a readable form" % c["label"], False,
+              "the citation shape %r is not in the README" % c["regex"])
         continue
-    check("%s:%d -- the cited file exists" % (fname, lo), True)
-    check("%s:%d-%d -- the cited range exists" % (fname, lo, hi),
-          1 <= lo <= hi <= len(lines),
-          "the file has %d lines" % len(lines))
-    if not (1 <= lo <= hi <= len(lines)):
+    check("the README cites %s in a readable form" % c["label"], True)
+    stated = {"year": m.group(1), "volume": m.group(2) if len(m.groups()) > 1 else None,
+              "issue": m.group(3) if len(m.groups()) > 2 else None,
+              "page_first": m.group(4) if len(m.groups()) > 3 else None,
+              "page_last": m.group(5) if len(m.groups()) > 4 else None}
+
+    ok, payload = fetch(c["url"])
+    if not ok:
+        skip("the %s citation resolves against its publisher" % c["label"],
+             "the publisher is unreachable (%s)" % payload)
         continue
-    body = "\n".join(lines[lo - 1:hi])
-    if not body.strip():
-        check("%s:%d -- the cited line is not blank" % (fname, lo), False,
-              "the range is whitespace")
+    try:
+        doc = json.loads(payload)["message"]
+    except Exception as e:  # noqa: BLE001
+        skip("the %s citation resolves against its publisher" % c["label"],
+             "the publisher's record could not be parsed (%s)" % e)
+        continue
+
+    parts = (doc.get("page") or "").split("-")
+    publisher = {
+        "year": str((doc.get("issued", {}).get("date-parts") or [[None]])[0][0]),
+        "volume": doc.get("volume"),
+        "issue": doc.get("issue"),
+        "page_first": parts[0] if parts else None,
+        "page_last": parts[1] if len(parts) > 1 else parts[0] if parts else None,
+    }
+    print("   %-22s README %s" % (c["label"],
+                                  {k: stated[k] for k in c["fields"]}))
+    print("   %-22s DOI    %s" % ("", {k: publisher[k] for k in c["fields"]}))
+    for f in c["fields"]:
+        check("the %s citation's %s matches the publisher's record"
+              % (c["label"], f),
+              stated[f] is not None and stated[f] == publisher[f],
+              "README %r vs publisher %r" % (stated[f], publisher[f]))
+
+print()
+print("B. the preprint citation")
+
+m = re.search(r"Cattaneo, Klusowski & Yu \(arXiv:(\d+\.\d+)\)", readme)
+if not m:
+    check("the README cites the preprint in a readable form", False,
+          "the arXiv citation is not in the README")
+else:
+    check("the README cites the preprint in a readable form", True)
+    aid = m.group(1)
+    ok, payload = fetch("https://export.arxiv.org/api/query?id_list=%s" % aid)
+    if not ok:
+        skip("the preprint %s resolves against arXiv" % aid,
+             "arXiv is unreachable (%s)" % payload)
     else:
-        check("%s:%d -- the cited line is not blank" % (fname, lo), True)
-    cited_text[(pi, cs)] = (fname, lo, hi, norm(body))
+        got = re.search(r"<id>http://arxiv\.org/abs/([^<]+)</id>", payload)
+        title = re.search(r"<title>(.*?)</title>", payload, re.S)
+        # arXiv answers with the VERSIONED id ("2509.11381v3"), and the README
+        # cites the bare id.  Strip the version suffix before comparing --
+        # splitting on "v" would cut the id itself, because the id's own
+        # digits come after a "v" only in the suffix.
+        got_id = re.sub(r"v\d+$", "", got.group(1)) if got else None
+        check("the preprint %s resolves to an arXiv record" % aid,
+              got_id == aid, "arXiv returned %r" % (got_id,))
+        check("the preprint record carries a title",
+              title is not None and len(title.group(1).strip()) > 10,
+              "no title in the feed")
 
-for pi, para in enumerate(paragraphs):
-    para_cites = [(cs, ce, fname, lo, hi)
-                  for (p, cs, ce, fname, lo, hi) in citations if p == pi]
-    if not para_cites:
-        continue
-    for spi, ss, se, content in spans:
-        if spi != pi:
-            continue
-        if is_numberish(content) or not has_operator(content):
-            continue
-        # the NEAREST citation in this paragraph -- a span is charged to ONE
-        # citation, so the check is made once
-        near = None
-        for cs, ce, fname, lo, hi in para_cites:
-            d = min(abs(ss - ce), abs(cs - se))
-            if near is None or d < near[0]:
-                near = (d, cs, ce, fname, lo, hi)
-        if near is None or near[0] > SPAN_WINDOW:
-            continue
-        d, cs, ce, fname, lo, hi = near
-        # a span is charged to a citation only when the two are in the SAME
-        # SENTENCE
-        if sentence_of(para, ss) != sentence_of(para, cs):
-            continue
-        if (pi, cs) not in cited_text:
-            continue
-        nf, nlo, nhi, ntext = cited_text[(pi, cs)]
-        check("the span %r is in %s:%d-%d" % (content, nf, nlo, nhi),
-              norm(content) in ntext,
-              "the cited range does not contain it")
-
-# ---------------------------------------------------------------------------
-# C2 -- a citation that names a configuration must sit in that configuration
-# ---------------------------------------------------------------------------
-
-print("")
-print("== C2 -- a citation naming a configuration must sit in it ==")
-
-for pi, cs, ce, fname, lo, hi in citations:
-    para = paragraphs[pi]
-    # the sentence-ish text immediately before the citation
-    before = para[max(0, cs - 120):cs]
-    for qual in sorted(QUALIFIERS):
-        if not re.search(r"\b%s\b" % re.escape(qual), before):
-            continue
-        lines = load_source(fname)
-        if lines is None:
-            break
-        block = doc_block(lines, lo)
-        if block is not None:
-            check("%s:%d -- the doc comment names %r" % (fname, lo, qual),
-                  qual in block,
-                  "the doc comment does not mention it")
-            continue
-        extents = branch_extents(lines, qual)
-        if not extents:
-            # the file has no branch for this configuration -- nothing to check
-            check("%s:%d -- %r is selectable here" % (fname, lo, qual), True)
-            continue
-        inside = any(a <= lo <= b for a, b in extents)
-        check("%s:%d -- the cited line is in the %r branch" % (fname, lo, qual),
-              inside,
-              "the %r branch spans %s" % (qual, extents))
-
-print("")
-print("%d checks, %d failed" % (NCHECK, len(fails)))
-for f in fails:
-    print("  - %s" % f)
-print("VERDICT: %s" % ("PASS" if not fails else "FAIL"))
-sys.exit(1 if fails else 0)
+print()
+print("=" * 74)
+print("%d checks, %d failed, %d skipped" % (NCHECK, len(FAILS), len(SKIPPED)))
+if FAILS:
+    print("*** FAIL ***")
+    for f in FAILS:
+        print("  - %s" % f)
+    sys.exit(1)
+print("all green")

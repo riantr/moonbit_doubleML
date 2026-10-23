@@ -712,6 +712,97 @@
 >   own `N checks, M failed` summaries, because that is the number the
 >   CHANGELOG publishes.
 >
+> * **Round 39.** A SECOND USER-FACING DOCUMENT had never been audited, and
+>   TWO of the README's claims had no check that could see them.
+>
+>   *The second document.*  `skills/moonbit_doubleML.md` is what a coding
+>   agent READS before writing code against this library, so every claim in
+>   it is a promise the tree has to keep -- exactly like the README's.  No
+>   check read it at all, and the rot showed immediately: the skill quoted
+>   the api_server's declared library pin as
+>
+>   > the library pin `0.52.0`
+>
+>   while `examples/api_server/moon.mod` declared 0.164.32.  That is the SAME
+>   rot the two tutorials had -- fixed in v0.164.3, when the bump script
+>   gained sites 5 and 6 for exactly this reason -- in the same shape, missed
+>   for **132** releases because the file is a DOCUMENT and nothing read it.
+>   The skill is now bump site **9**, and `_verify/_verify_skill_claims_1650.py`
+>   (**58** checks) audits it: its pin, the **26** whitebox files and the
+>   **169** test cases in them, the **21** driver binaries and the `main.mbt`
+>   each one carries, the **24** cross-validators and the three repo-level
+>   harnesses the glob does not pick up, the **9** scripts that take their
+>   reference from the upstream wheel, the **11** learner variants by NAME,
+>   the **16** estimators that expose all four accessors and the six that do
+>   not, the **19** estimator files and the three that hold two structs, the
+>   **17** DGP modules and the **35** files in all, and every concrete file
+>   the skill names.  Every one of those numbers was RIGHT; only the pin had
+>   rotted.
+>
+>   *A citation no check could see.*  The honesty section cited "Athey &
+>   Imbens (2016, PNAS 113(27):7353-7358)".  The publisher's own deposited
+>   record for the DOI gives the page range as **7353-7360**, and OpenAlex
+>   agrees.  The authors, the year, the journal, the volume and the issue
+>   were all right, and the SUBSTANCE the README credits is right -- only
+>   the last two digits of the range were wrong.  A reader who looked the
+>   paper up would have found the citation wrong and the claim right, which
+>   is the worst of both.  No in-tree check can see a literature citation,
+>   which is why it survived thirty-eight rounds;
+>   `_verify/_verify_citations_1650.py` (**11** checks) now resolves each
+>   citation against the PUBLISHER's record -- Crossref for the two journal
+>   articles, arXiv for the preprint -- and compares the year, the volume,
+>   the issue and the page range field by field.  When the publisher cannot
+>   be reached the check SKIPS with a reason: an unreachable publisher is
+>   not a wrong citation, and a contract that turns a network outage into a
+>   red build teaches its reader to ignore it.
+>
+>   *An order that reads as a claim.*  The sandwich-variance row said
+>   "`DoubleMLBLP` and `DoubleMLRDD` do expose a heteroskedasticity-robust
+>   `hac_se` under their own name (v0.96.0 / v0.97.0)".  Read positionally
+>   -- the way this document pairs names with versions everywhere else --
+>   that asserts BLP = v0.96.0 and RDD = v0.97.0, and BOTH are false:
+>   `rdd.mbt` marks its `hac_se` "v0.96.0+" and `blp_policy.mbt` marks its
+>   own "v0.97.0+", and the CHANGELOG's own headings agree.  The SET of two
+>   versions was right, so the defect was the ORDER -- and an order that
+>   reads as a claim is a claim.
+>   `_verify/_verify_sandwich_coverage_1680.py` (now **20** checks) derives
+>   each `hac_se` version from the SOURCE's own doc-comment, cross-checks it
+>   against the CHANGELOG's heading, and then requires the table to PAIR
+>   them.
+>
+>   Two smaller gaps closed with them.  The README's "the library imports
+>   nothing outside `moonbitlang/core`" had NO check behind it; the library's
+>   sources declare no import of their own and the package's whole import
+>   surface is `moon.pkg`'s `moonbitlang/core/*` block, and that is now
+>   asserted.  And round 38's layout check matched only `.mbt` / `.pkg` /
+>   `.mod`, so every DIRECTORY the Project-layout block names -- and
+>   `moon.work`, `AGENTS.md` and `skills/moonbit_doubleML.md` -- went
+>   unchecked; a path in prose is a promise whether or not it ends in an
+>   extension, and all **24** of them are now checked.
+>
+>   `_verify/_dryrun_round39_1650.py` breaks each of the **8** mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **13** failures.  It needs the network, because one of the
+>   mechanisms is exercised by the citation check; the pre-flight refuses to
+>   run without the publisher rather than measuring nothing.
+>
+>   *The toolchain moved under the release.*  The local `moon` went from
+>   `0.1.20261016` to `0.1.20261023` while this release was being cut, and the
+>   README's Toolchain row is checked against the INSTALLED toolchain -- so the
+>   row, and every claim that names a toolchain, had to be RE-DERIVED rather
+>   than re-labelled.  All four held: a bare `moon test` still prints
+>   `Total tests: 0` for `wasm` and `native` and reports "no test entry
+>   found" for `js`; `@std/env`, `@std/fs`, `@std/io` and `@std/process` still
+>   do not resolve and the builtin `read_file` still does not exist (error
+>   4021); and the operator bit-exactness table is unchanged, because
+>   `_verify/_verify_op_table_1640.py` re-measures it on whatever toolchain is
+>   installed NOW.  ONE claim did not survive the move: `train` was a hard
+>   error on `moon 0.1.20261016` and is NOT reserved on `moon 0.1.20261023` --
+>   it compiles as a local and as a field -- so the agent skill's "all are
+>   reserved in current MoonBit" was corrected to say which ones are and which
+>   one moved.
+
+>
 
 ## The README as it stood at v0.164.11
 

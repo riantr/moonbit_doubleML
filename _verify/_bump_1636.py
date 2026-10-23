@@ -10,6 +10,7 @@ examples/api_server/main.mbt:
   6. doc/002_installation/readme.mbt.md   the pinned import "riantr/moonbit_doubleML@X"
   7. examples/api_server/README.md        the /version response sample
   8. examples/<name>/moon.mod  (21 of them)  the pinned import "riantr/moonbit_doubleML@X"
+  9. skills/moonbit_doubleML.md  the agent skill's quoted api_server pin
 
 Places 2 and 3 are not text-replaced: round 18 moved the README into
 `_verify/_r18_build_readme_1650.py`, which takes the version from
@@ -33,6 +34,15 @@ and 2 at 0.162.0, against a package at 0.164.24.  A version that a file
 names but the bump script does not update is a version that goes stale, and
 an example's pin is a promise about what a reader who copies the example out
 of the tree will install.
+
+Site 9 was added in v0.164.33 (round 39): the AGENT SKILL quotes the
+api_server's declared library pin, and it was still at 0.52.0 -- the same
+rot sites 5 and 6 had, in the same shape, missed for 132 releases because
+the skill is a DOCUMENT and no check read it.  The skill is a user-facing
+surface: it is what a coding agent reads before writing code against this
+library, so a stale literal in it is a promise the tree cannot keep.  The
+skill is now audited by `_verify/_verify_skill_claims_1650.py`, and its
+pin is bumped with the rest.
 
 The `--release-tag v0.164.11` example used to live in the README's CI
 section; round 18 moved the CI section to `ENGINEERING.md`, which is the
@@ -60,6 +70,12 @@ EDITS = [
     (os.path.join(ROOT, "doc", "002_installation", "readme.mbt.md"),
      [("riantr/moonbit_doubleML@%s" % OLD, "riantr/moonbit_doubleML@%s" % NEW)]),
     (os.path.join(ROOT, "examples", "api_server", "README.md"),
+     [("riantr/moonbit_doubleML@%s" % OLD, "riantr/moonbit_doubleML@%s" % NEW)]),
+    # The AGENT SKILL quotes the api_server's declared library pin.  It is a
+    # document a coding agent reads before writing code against this library,
+    # so a literal in it is a promise the tree has to keep -- and it had been
+    # frozen at 0.52.0 because nothing read it.  Site 9, round 39.
+    (os.path.join(ROOT, "skills", "moonbit_doubleML.md"),
      [("riantr/moonbit_doubleML@%s" % OLD, "riantr/moonbit_doubleML@%s" % NEW)]),
     # the EXAMPLE manifests: an example's import pin names the library
     # version, and a copied example must resolve the library it was

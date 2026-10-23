@@ -122,7 +122,7 @@ surface and anti-patterns).
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.52.0"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.33"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside
@@ -138,7 +138,7 @@ surface and anti-patterns).
 # Anti-patterns
 
 - do NOT introduce a `Map[K, V]` **for estimator / DGP kernel
-  code**. The built-in Map is deprecated: on `moon 0.1.20261016`,
+  code**. The built-in Map is deprecated: on `moon 0.1.20261023`,
   `Map::of(...)` emits `Warning (deprecated): Use Map([(k, v),
   ...]) or Map::from_array instead`. Use `Array[(K, V)]` and a
   linear scan, or a per-key fixed-size array when the key range is
@@ -149,16 +149,21 @@ surface and anti-patterns).
   `moon build --deny-warn` over every workspace member, so
   `Map::of` there would turn the build red.
 
-- do NOT name a field `train` or `test`. Both are reserved in
-  current MoonBit; use `train_idx` / `test_idx`.
+- do NOT name a field `train` or `test`. `test` is reserved in
+  current MoonBit — a hard parse error, as a local and as a field
+  — while `train` was reserved on `moon 0.1.20261016` and is not
+  on `moon 0.1.20261023` (measured: it compiles as a local and as
+  a field). Either way, use `train_idx` / `test_idx`.
 
 - do NOT use `ref`, `dyn`, `with`, `assert`, `var`, `method`,
   `test`, or `train` as identifiers — all are reserved in current
-  MoonBit. Measured on `moon 0.1.20261016`: `with`, `var`, `train`
-  and `test` are hard errors, while `ref`, `dyn`, `assert` and
+  MoonBit. Measured on `moon 0.1.20261023`: `with`, `var` and `test`
+  are hard errors, while `ref`, `dyn`, `assert` and
   `method` emit `Warning (reserved_keyword): The word ... is
   reserved for possible future use` — which still fails the build,
-  because CI runs `--deny-warn`. In particular, `method` shows up
+  because CI runs `--deny-warn`. (`train` is the one that moved: it
+  was a hard error on `moon 0.1.20261016` and is not reserved now.)
+  In particular, `method` shows up
   often in HTTP handlers; use `method_` (or another non-reserved
   name) instead.
 

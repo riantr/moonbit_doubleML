@@ -16,6 +16,27 @@ hold in substance -- so the fix is the label, not the claim:
   * the operator bit-exactness table -> re-measured on 0.1.20261016 vs
     CPython 3.13.14: identical numbers.
 
+ROUND 39: THE TOOLCHAIN MOVED AGAIN
+------------------------------------
+The local toolchain is now `moon 0.1.20261023`, and every claim above was
+RE-DERIVED on it -- not assumed:
+
+  * a bare `moon test` still prints `Total tests: 0` for `wasm` and `native`
+    and reports "no test entry found" for `js`, and still runs `wasm-gc`;
+  * `@std/env`, `@std/fs`, `@std/io` and `@std/process` still do not resolve
+    ("Cannot find import '@std/env'") and the builtin `read_file` still does
+    not exist (error 4021);
+  * the operator bit-exactness table is unchanged -- `_verify_op_table_1640.py`
+    re-measures it on whatever toolchain is installed NOW, and it still gives
+    `sqrt` 6/6, `cos`/`sin` 6/6 and `ln` 5/6 with `ln(3.0)` off by 1 ULP.
+
+One claim did NOT survive the move, and the label was not the whole of it:
+`train` was a hard error on `moon 0.1.20261016` and is NOT reserved on
+`moon 0.1.20261023` -- it compiles as a local and as a field.  The agent
+skill's anti-pattern list said "all are reserved in current MoonBit", which
+stopped being true, so the skill now states which ones are reserved and
+which one moved.
+
 What this verifier forbids is the opposite mistake: rewriting history. A
 STALE mention is only allowed where the text explicitly marks it as the
 ORIGINAL measurement. CHANGELOG.md is a historical record and is exempt, but
@@ -30,7 +51,7 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CURRENT = "0.1.20261016"
+CURRENT = "0.1.20261023"
 STALE = "0.1.20261012"
 
 # a STALE mention is legitimate only when the text marks it as the original

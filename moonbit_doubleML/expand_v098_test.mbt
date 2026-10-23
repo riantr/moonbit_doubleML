@@ -17,7 +17,7 @@
 /// whose `orth_signal` then produced `leaf_signal_mean`. Every
 /// observation therefore influenced both which leaf it landed in
 /// and that leaf's reported value. That is the adaptive estimator
-/// of Athey & Imbens (2016, PNAS 113(27):7353-7358,
+/// of Athey & Imbens (2016, PNAS 113(27):7353-7360,
 /// https://www.pnas.org/doi/10.1073/pnas.1510489113), whose bias
 /// does not vanish at a usable rate and whose interval coverage can
 /// fall well below nominal. This file pins the honest replacement

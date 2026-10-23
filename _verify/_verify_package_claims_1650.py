@@ -125,6 +125,45 @@ check("the layout does not name the file that never existed",
 check("the layout names the package's real interface file",
       "moon.pkg" in layout, "the layout does not name moon.pkg")
 
+# ---- round 39: the layout names DIRECTORIES and plain FILES too ------------
+# Round 38's check matched only `.mbt` / `.pkg` / `.mod`, so every DIRECTORY
+# the layout names -- `001_introduction/`, `main/`, `did_binary/`, ... -- and
+# every plain file (`moon.work`, `AGENTS.md`, `skills/moonbit_doubleML.md`)
+# went unchecked.  A path in prose is a promise whether or not it ends in an
+# extension.
+parent = ""
+layout_paths = []
+for line in layout.split("\n"):
+    if "<-" in line:
+        head = line.split("<-", 1)[0]
+    else:
+        head = line
+    if not head.strip():
+        continue
+    indented = head[:1] in (" ", "\t")
+    for tok in head.split(","):
+        tok = tok.strip()
+        if not tok or tok == "...":
+            continue
+        if not re.search(r"[/\w]\.\w{2,}$", tok) and not tok.endswith("/"):
+            continue
+        if indented and parent:
+            layout_paths.append(parent + tok)
+        else:
+            layout_paths.append(tok)
+            if tok.endswith("/"):
+                parent = tok
+print("   the layout names %d path(s): %s" % (len(layout_paths), layout_paths))
+for p in sorted(set(layout_paths)):
+    full = p if p.endswith("/") else p
+    probe = full.rstrip("/")
+    ok = os.path.isdir(os.path.join(ROOT, probe)) \
+        or os.path.isfile(os.path.join(ROOT, probe))
+    tracked_p = probe in tracked or (probe + "/") in tracked \
+        or any(t.startswith(probe + "/") for t in tracked)
+    check("the layout's %s exists and is tracked" % p, ok and tracked_p,
+          "exists=%s tracked=%s" % (ok, tracked_p))
+
 # --------------------------------------------------------------------------- #
 # B. the library's JSON surface
 # --------------------------------------------------------------------------- #
@@ -223,6 +262,42 @@ check("the row names the recorded taus", sorted(readme_taus) == sorted(taus),
 check("the row does not present the taus as a range",
       not re.search(r"`[\d.]+`-`[\d.]+`", cell),
       "the row still reads as a range")
+
+# --------------------------------------------------------------------------- #
+# E. the import isolation the README promises
+# --------------------------------------------------------------------------- #
+print()
+print("E. the import isolation the README promises")
+
+pkg_src = "\n".join(strip_comments(read(os.path.join(PKG, f))) for f in prod)
+src_imports = sorted(set(re.findall(r'^\s*import\s+["\']([^"\']+)["\']',
+                                    pkg_src, re.M)))
+print("   the library's sources declare %d import(s) of their own: %s"
+      % (len(src_imports), src_imports))
+check("the library's sources import nothing outside the package manifest",
+      not src_imports, str(src_imports))
+check("the README says the library imports nothing outside `moonbitlang/core`",
+      "outside `moonbitlang/core`" in readme_flat,
+      "the README does not carry the claim")
+
+pkgfile = os.path.join(PKG, "moon.pkg")
+if not os.path.isfile(pkgfile):
+    check("the package's moon.pkg exists", False, "it is missing")
+else:
+    pkg_body = strip_comments(read(pkgfile))
+    m = re.search(r"import\s*\{(.*?)\}", pkg_body, re.S)
+    pkg_imports = sorted(set(re.findall(r'"([^"]+)"', m.group(1)))) if m else []
+    print("   moon.pkg's import block: %s" % pkg_imports)
+    check("the package's manifest declares an import block", bool(pkg_imports),
+          "the import block is missing or empty")
+    check("the package's manifest imports only `moonbitlang/core`",
+          all(i.startswith("moonbitlang/core") for i in pkg_imports),
+          str(pkg_imports))
+    check("the library's whole import surface is `moonbitlang/core`",
+          bool(pkg_imports)
+          and all(i.startswith("moonbitlang/core") for i in pkg_imports)
+          and not src_imports,
+          "manifest=%s sources=%s" % (pkg_imports, src_imports))
 
 print()
 print("=" * 74)
