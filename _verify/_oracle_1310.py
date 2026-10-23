@@ -10,8 +10,9 @@ Also reported: what the port would give if its default matched upstream's, so
 the size of the DEFAULT divergence is on the record too.
 """
 import sys
+import os
 
-_VEND = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4"
+_VEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_upstream_ps", "doubleml-0.11.4")
 sys.path.insert(0, _VEND)
 
 import numpy as np
@@ -26,7 +27,7 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 import re
 
 print(f"oracle doubleml {doubleml.__version__}")
-BASE = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify"
+BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify")
 rows = []
 for line in open(BASE + r"\_dump_1290.txt", encoding="utf-8"):
     line = line.strip()

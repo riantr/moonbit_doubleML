@@ -22,7 +22,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIB = os.path.join(ROOT, "moonbit_doubleML")
 API = os.path.join(ROOT, "examples", "api_server")
 README = os.path.join(ROOT, "README.mbt.md")

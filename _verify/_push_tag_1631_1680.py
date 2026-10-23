@@ -18,10 +18,11 @@ The tag is never deleted or moved, on failure or otherwise.
 """
 
 import subprocess
+import os
 import sys
 import time
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TAG = "v0.163.1"
 ATTEMPTS = 6
 

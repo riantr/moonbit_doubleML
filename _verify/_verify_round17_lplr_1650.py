@@ -50,7 +50,7 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.environ.get("ROUND17_ROOT") or \
-    r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
 REC = "_verify/LPLR_GATE_BLINDNESS_1680.md"

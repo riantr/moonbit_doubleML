@@ -547,6 +547,86 @@
 >   at a time and requires the failure count to GROW at every step, and it
 >   ends at **18** failures.
 >
+> * **Round 37.** The README's API PROMISES were checked against the tree
+>   for the first time, and **two** of them were false; and the tracked
+>   verifier contract was not SELF-CONTAINED, so a green suite was a
+>   statement about one working directory rather than about the repository.
+>
+>   *The two document defects.*  The API reference said "every estimator's
+>   `new()` / `fit()` accept `ml_g` / `ml_m` / `ml_l` / `ml_r` typed
+>   optionals".  Measured by the parameter's TYPE -- not its name, which
+>   is how `ml_pi` was missed -- the **22** estimators take **8** distinct
+>   argument sets: `ml_g` / `ml_m` on **11**, `ml_l` / `ml_m` on
+>   `DoubleMLPQ` and `DoubleMLQTE`, `ml_g` / `ml_m` / `ml_r` on
+>   `DoubleMLIIVM`, `ml_g` / `ml_m` / `ml_pi` on `DoubleMLSSM`, `ml_g`
+>   alone on `DoubleMLBLP` and `DoubleMLRDD`, `learner_l` / `learner_m`
+>   on `DoubleMLPLR`, `learner` on `DoubleMLPLIV` and `DoubleMLPLPR`,
+>   and NO learner at all on `DoubleMLLPQ` and `DoubleMLPolicyTree`.  The
+>   same paragraph's "Default is `LearnerDispatch::linear_regression()`
+>   (OLS)" is true for `ml_g` everywhere and FALSE for `ml_m` on the
+>   **seven** structs migrated to a classifier -- which the README itself
+>   names further down, so the page contradicted itself.  The promise is
+>   now the table of argument sets, derived from the source.
+>
+>   The Status table's sandwich-variance row said "Introduced v0.89.0".
+>   The CHANGELOG's own headings say **v0.79.0** introduced the family
+>   (HC0-HC3 + cluster) on `DoubleMLIRM` and `DoubleMLPLR`, v0.86.0 and
+>   v0.87.0 extended it, and v0.89.0 was ONE step of that extension
+>   (10 -> 12 of 22).  The row's counts were right -- **15** scalar,
+>   **4** per-cell, **3** with none of that API -- so the defect was in
+>   the version literal, which rots silently because nothing else on the
+>   page repeats it.  The row also said "**3** expose none", true of the
+>   sandwich API and misleading about robustness: `DoubleMLBLP` and
+>   `DoubleMLRDD` expose a heteroskedasticity-robust `hac_se` under their
+>   own name (v0.96.0 and v0.97.0), and the README did not mention
+>   `hac_se` AT ALL.  A limit that is understated is as false as one that
+>   is overstated.
+>
+>   The API reference said "each DID variant takes its own data type".  It
+>   does not: `DoubleMLDIDCS`, `DoubleMLDIDCSBinary` and `DoubleMLDIDMulti`
+>   all take `DoubleMLDIDCSData`.  The sentence now names the four types
+>   the DID family actually takes.
+>
+>   *The contract was not self-contained.*  The local suite is the tracked
+>   `_verify/` contract, and it was measured in a FRESH CLONE: **3** of the
+>   tracked verifiers FAILED there, and **15** of them located their tree by
+>   the ABSOLUTE path of the working copy -- in a clone they read the
+>   ORIGINAL tree, so they went green for the wrong reason.  Two verifiers
+>   also depended on files git does not track
+>   (`_verify/_probe_ops_1640.mbt`, `_verify/_qa_fast_1639.json`), and two
+>   more FAILED on a clone because they check a downloaded third-party tree
+>   that a clone does not have, with no notion of "the subject is not here".
+>
+>   The fixes: **61** tracked verifiers now derive their root from
+>   `__file__`; the two upstream-dependent verifiers SKIP with a reason
+>   when the vendored tree is absent (still counted, still visible); the
+>   commands verifier builds the example before it checks the built path;
+>   the fmt gate copies the package OUTSIDE the workspace and WARMS the
+>   copy before each arm mangles it -- the copy's deleted `_build` left the
+>   toolchain's format task "up to date" with its output missing, and the
+>   warm-up itself runs `moon fmt`, so warming a MANGLED copy would format
+>   it and the check would exit 0 for the wrong reason; the
+>   upstream-records verifier resolves a cited path against the REPOSITORY
+>   ROOT -- it used to resolve against the PARENT of the checkout, so its
+>   green depended on the checkout's directory NAME -- treats a citation
+>   to a path the repository IGNORES as the LOCAL promise it is, and skips
+>   with a reason; and the two missing files are now TRACKED.  After the
+>   fixes the whole tracked contract runs GREEN in a fresh clone.
+>
+>   The new check `_verify/_verify_contract_selfcontained_1650.py` holds
+>   the contract to it: no tracked verifier may name an absolute path,
+>   every tracked verifier's root must resolve to THIS repository, every
+>   repository-relative file a tracked verifier READS must be a TRACKED
+>   file, and a verifier over a downloaded tree must have a SKIP path.
+>
+>   The three checks are `_verify/_verify_api_promises_1650.py`
+>   (**42** checks), the extended
+>   `_verify/_verify_sandwich_coverage_1680.py` (**16** checks) and
+>   `_verify/_verify_contract_selfcontained_1650.py` (**8** checks).
+>   `_verify/_dryrun_round37_1650.py` breaks each of the **16**
+>   mechanisms one at a time and requires the failure count to GROW at
+>   every step, and it ends at **23** failures.
+>
 
 ## The README as it stood at v0.164.11
 

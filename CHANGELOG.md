@@ -9,6 +9,148 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.31] -- the promise the source does not keep
+
+`moon.mod` moves 0.164.30 -> 0.164.31. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- an API promise the source does not keep
+
+- The API reference said "every estimator's `new()` / `fit()` accept `ml_g` /
+  `ml_m` / `ml_l` / `ml_r` typed optionals".  Measured by the parameter's
+  TYPE -- not its name, which is how `ml_pi` was missed -- the **22**
+  estimators take **8** distinct argument sets: `ml_g` / `ml_m` on **11**,
+  `ml_l` / `ml_m` on `DoubleMLPQ` and `DoubleMLQTE`, `ml_g` / `ml_m` /
+  `ml_r` on `DoubleMLIIVM`, `ml_g` / `ml_m` / `ml_pi` on `DoubleMLSSM`,
+  `ml_g` alone on `DoubleMLBLP` and `DoubleMLRDD`, `learner_l` /
+  `learner_m` on `DoubleMLPLR`, `learner` on `DoubleMLPLIV` and
+  `DoubleMLPLPR`, and NO learner at all on `DoubleMLLPQ` and
+  `DoubleMLPolicyTree`.  Two estimators take no learner, one takes a single
+  `learner`, and `ml_pi` is a fifth argument name the sentence never
+  mentioned.  The same paragraph's "Default is
+  `LearnerDispatch::linear_regression()` (OLS)" is true for `ml_g`
+  everywhere and FALSE for `ml_m` on the **seven** structs migrated to a
+  classifier -- which the README itself names further down, so the page
+  contradicted itself.  The promise is now a table of the argument sets,
+  and the table is derived from the source.
+- The Status table's sandwich-variance row said "Introduced v0.89.0".  The
+  CHANGELOG's own headings say **v0.79.0** introduced the family (HC0-HC3 +
+  cluster) on `DoubleMLIRM` and `DoubleMLPLR`; v0.86.0 and v0.87.0
+  extended it, and v0.89.0 was ONE step of that extension (10 -> 12 of 22).
+  The row's counts were right -- **15** scalar, **4** per-cell, **3** with
+  none of that API -- so the defect was the version literal, which rots
+  silently because nothing else on the page repeats it.
+- The same row said "**3** expose none", which is true of the sandwich API
+  and misleading about robustness: `DoubleMLBLP` and `DoubleMLRDD` expose a
+  heteroskedasticity-robust `hac_se` / `cluster_hac_se` under their own name
+  (v0.96.0 and v0.97.0), and the README did not mention `hac_se` AT ALL.
+  `DoubleMLPolicyTree` is the only estimator with no robust SE of any kind.
+  A limit that is understated is as false as one that is overstated.
+- The API reference said "each DID variant takes its own data type".  It
+  does not: `DoubleMLDIDCS`, `DoubleMLDIDCSBinary` and `DoubleMLDIDMulti`
+  all take `DoubleMLDIDCSData`.  The sentence now names the four types the
+  DID family actually takes.
+
+### Fixed -- the tracked contract was not self-contained
+
+- The local suite is the tracked `_verify/` contract, and it was measured in
+  a FRESH CLONE of the repository: **3** of the tracked verifiers FAILED
+  there, and **15** of them located their tree by the ABSOLUTE path of the
+  working copy -- so in a clone they read the ORIGINAL tree and went green
+  for the wrong reason.  A green suite row was a statement about one working
+  directory, not about the repository.
+- **61** tracked verifiers now derive their root from `__file__`.
+- Two tracked verifiers depended on files git does not track
+  (`_verify/_probe_ops_1640.mbt`, `_verify/_qa_fast_1639.json`); a clone
+  had no copy of them.  Both are TRACKED now.
+- Two tracked verifiers check a DOWNLOADED third-party tree, which a clone
+  does not have; they had no notion of "the subject is not here" and
+  FAILED instead.  They now SKIP with a reason -- still counted, still
+  visible -- and so does `_verify/_verify_shipped_docs_1643.py` when the
+  upstream sdist is absent.
+- `_verify/_verify_readme_commands_1680.py` checked a built path without
+  building it, so it failed on any tree that had not been built.  It now
+  runs the README's own documented build command first.
+- `_verify/_verify_fmt_gate_1640.py` copied `examples/main` into `_verify/`
+  and DELETED the copy's `_build`, which left the toolchain's format task
+  "up to date" with its output missing -- so `moon fmt --check` failed on a
+  missing FILE rather than on a formatting difference.  The copy now lives
+  OUTSIDE the workspace (inside it, `moon fmt --check` also formats the
+  workspace's other members and needs the workspace's build state, which is
+  not a statement about the copy) and is WARMED before each arm mangles it.
+  The warm-up runs `moon fmt`, so warming a MANGLED copy would FORMAT it and
+  the check that follows would run against a clean tree and exit 0 for the
+  wrong reason; putting the sources back afterwards does not help, because
+  touching a source makes the toolchain drop the stale artefact without
+  regenerating it.  The verdict is about formatting again.
+- `_verify/_verify_round14_upstream_1649.py` resolved a cited path against
+  the PARENT of the checkout, so its green depended on the checkout's
+  DIRECTORY NAME and not on the repository.  The upstream records write
+  their paths as `moonbit_doubleML/_verify/audit_bucket*/...` -- the
+  PROJECT's own name prefixed onto a repository-relative path, the shape
+  the paths had when the package was flat at the repository root -- and
+  that resolves only in a directory named `moonbit_doubleML`; in a clone
+  **8** of the cited paths FAILED.  A cited path is now resolved against
+  the REPOSITORY ROOT, with the project's own name accepted as an
+  optional leading segment -- and that name is read from the tracked
+  package manifest, NOT from the name of the directory the checkout
+  happens to sit in.  A citation to a path the repository IGNORES is a
+  local promise: the check skips with a reason -- still counted, still
+  visible -- and `git check-ignore` is the repository's own answer, so the
+  rule cannot drift from `.gitignore`.
+- That verifier's EXEMPT test ran against the RAW paragraph text, so a
+  record whose own declaration is wrapped across a line -- "were moved out
+  of / the working tree at v0.52.0 release time" -- did not match, and a
+  file that lives OUTSIDE the repository was counted as a path promise the
+  repository had to keep.  The test now runs against a whitespace-
+  normalised copy, so "the document does not say this" is no longer
+  confused with "the typesetter put this on two lines".
+
+### Added -- the promises and the contract become checks
+
+- (`_verify/_verify_api_promises_1650.py` (**42** checks)) derives the
+  learner-argument sets, the constructor defaults, the classifier-migrated
+  list, the OLS-defaulted list and the DID data types FROM THE SOURCE and
+  requires the README to state them.  Nothing in it is hard-coded, so a
+  future round that changes an estimator's signature fails the check until
+  the README follows it.  The source is read with comments and docstrings
+  stripped and the argument list is scanned with a BALANCED parenthesis: a
+  naive `\(([^)]*)\)` stops at the first `)`, which hides any parameter
+  written after a nested call -- that mistake made three estimators look
+  learner-less in the first measurement of this round.
+- (`_verify/_verify_sandwich_coverage_1680.py`, now **16** checks) keeps
+  the coverage arithmetic and adds the two things the row also asserts: the
+  "Introduced" literal is DERIVED from the CHANGELOG's own headings, and
+  the disclosure of the non-sandwich robust SE is checked against the
+  source.  Its "expose none" pattern was widened to match the wording the
+  row now uses.
+- (`_verify/_verify_contract_selfcontained_1650.py` (**8** checks)) holds
+  the contract to the invariant: no tracked verifier may name an absolute
+  path; every tracked verifier that declares a root must resolve it to
+  THIS repository; every repository-relative file a tracked verifier READS
+  must be a TRACKED file; and a verifier over a downloaded tree must have
+  a SKIP path.  The reads are resolved through the AST, so a verifier that
+  builds a path by concatenation is seen the same way as one that names it
+  literally.
+- (`_verify/_dryrun_round37_1650.py`) breaks each of the sixteen mechanisms
+  one at a time and requires the failure count to GROW at every step:
+  **23** failures at the end.  Two of the sixteen are the contract
+  itself -- a verifier that hardcodes an absolute path, and a verifier that
+  reads a file git does not track -- and the dry-run caught a subtlety in
+  its own construction: breaking a verifier that is UNDER TEST makes it
+  read the original tree, which HIDES the failures the earlier mechanisms
+  had produced.  That is the defect this round is about, reproducing itself
+  inside the check for it.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 53 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **53** fail, and **0** of
+  them locate their tree by an absolute path
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.30] -- a limit that overstated the truth
 
 `moon.mod` moves 0.164.29 -> 0.164.30. No estimator behaviour changed and the

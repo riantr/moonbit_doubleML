@@ -24,7 +24,7 @@ VER = "v1.19.0"
 # decides what this gate reports.
 URL = ("https://github.com/crate-ci/typos/releases/download/%s/"
        "typos-%s-x86_64-pc-windows-msvc.zip" % (VER, VER))
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def main():

@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.30",
+  "riantr/moonbit_doubleML@0.164.31",
 }
 ```
 
@@ -240,16 +240,37 @@ once for its honest split (its own `split_seed`).
 Constructor arguments also differ in ways a table cannot show:
 `DoubleMLDIDBinary` needs `g_value` / `t_value_pre` / `t_value_eval`,
 `DoubleMLAPOS` needs `treatment_levels`, `DoubleMLPolicyTree` needs
-`features` / `orth_signal` / `depth` / `honest`, and each DID variant takes
-its own data type. The `score` argument is the one that moves between
+`features` / `orth_signal` / `depth` / `honest`, and the DID variants take
+four data types, not one each: `DoubleMLDIDData` for `DoubleMLDID`,
+`DoubleMLDIDBinaryData` for `DoubleMLDIDBinary`, `DoubleMLDIDCSData` for
+`DoubleMLDIDCS`, `DoubleMLDIDCSBinary` AND `DoubleMLDIDMulti`, and
+`DoubleMLDIDCrossSectionData` for `DoubleMLDIDCrossSection`. The `score` argument is the one that moves between
 `new()` and `fit()`: `DoubleMLPLR` takes it on `fit()`, and
 `DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`,
 `DoubleMLDIDCSBinary`, `DoubleMLLPLR` and `DoubleMLPLPR` take it on
 `new()`.
 
-**Learner injection via `LearnerDispatch`** -- every estimator's
-`new()` / `fit()` accept `ml_g` / `ml_m` / `ml_l` / `ml_r` typed
-optionals. Default is `LearnerDispatch::linear_regression()` (OLS).
+**Learner injection via `LearnerDispatch`** -- the learner arguments are
+`LearnerDispatch` optionals, and **the set differs by estimator**, so there is
+no single argument to pass:
+
+| learner arguments | estimators |
+|---|---|
+| `ml_g` / `ml_m` | `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti`, `DoubleMLIRM`, `DoubleMLLPLR` |
+| `ml_l` / `ml_m` | `DoubleMLPQ`, `DoubleMLQTE` |
+| `ml_g` / `ml_m` / `ml_r` | `DoubleMLIIVM` |
+| `ml_g` / `ml_m` / `ml_pi` | `DoubleMLSSM` |
+| `ml_g` | `DoubleMLBLP`, `DoubleMLRDD` |
+| `learner_l` / `learner_m` | `DoubleMLPLR` |
+| `learner` | `DoubleMLPLIV`, `DoubleMLPLPR` |
+| none | `DoubleMLLPQ`, `DoubleMLPolicyTree` |
+
+That is **8** argument sets over the **22** estimators. `ml_r` is
+`DoubleMLIIVM`'s instrument propensity (at `fit()` it reuses the
+constructor's choice) and `ml_pi` is `DoubleMLSSM`'s selection propensity
+(at `fit()` it reuses the `ml_m` choice). The constructor default is
+`LearnerDispatch::linear_regression()` (OLS) -- except `ml_m` on the seven
+structs migrated to a classifier, named below.
 Built-in learners:
 
 | learner | kind | `sample_weight` | note |
@@ -585,7 +606,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.30** |
+| `moon.mod` version | **0.164.31** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -593,7 +614,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
 | Tests (native / wasm / js) | **1117 / 1117 / 1117** |
 | Tests (wasm-gc) | **1123 / 1123** (lib + 6 doc tutorials) |
-| Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`). Introduced v0.89.0 |
+| Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none of that API (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`) -- but `DoubleMLBLP` and `DoubleMLRDD` do expose a heteroskedasticity-robust `hac_se` under their own name (v0.96.0 / v0.97.0); `DoubleMLPolicyTree` exposes no robust SE at all. Introduced v0.79.0 (on `DoubleMLIRM` and `DoubleMLPLR`), extended to **19 / 22** by v0.100.0 |
 | Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
 
@@ -712,7 +733,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.30, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.31, 220 .mbt files)
   moonbit_doubleML.mbt   <- main re-export file (the import surface)
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

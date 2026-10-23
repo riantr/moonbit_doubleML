@@ -63,7 +63,7 @@ def main():
                 if n.endswith(".txt"):
                     text.append(zf.read(n).decode("utf-8", "replace"))
         log = "\n".join(text)
-        outp = os.path.join(r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML",
+        outp = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "_verify", "_ci_qa_log_1680.txt")
         with io.open(outp, "w", encoding="utf-8", newline="\n") as f:
             f.write(log)

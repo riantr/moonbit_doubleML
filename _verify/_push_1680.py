@@ -5,10 +5,11 @@ gitee/github split. Retry because the network here is intermittent.
 """
 
 import subprocess
+import os
 import sys
 import time
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REMOTE = "origin"
 BRANCH = "master"
 ATTEMPTS = 6

@@ -436,6 +436,10 @@ REGISTERED = {
     "three vocabularies are in play": 3,
     "The last three take no cross-fitting option": 3,
     "all three ship upstream": 3,
+    # Round 37: the learner-default sentence qualifies the OLS default with
+    # the SEVEN structs migrated to a classifier.  The count is re-derived
+    # by `_verify_api_promises_1650.py`, from the source's own defaults.
+    "seven structs": 7,
 }
 OWNERS = {
     "two different sets of six": "_verify_ctor_options_1650.py",
@@ -443,6 +447,7 @@ OWNERS = {
     "**Nine gates whose reference is UPSTREAM, not ours**": "_verify_round12_pyexample_1647.py",
     "three vocabularies are in play": "_verify_shipped_docs_1643.py",
     "`mutation` kills three mutants on one kernel": "_verify_test_verification_1650.py",
+    "seven structs": "_verify_api_promises_1650.py",
 }
 
 for phrase in REGISTERED:

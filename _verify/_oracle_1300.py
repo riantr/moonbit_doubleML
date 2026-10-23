@@ -20,9 +20,10 @@ Three questions, answered in order:
    583x gap should not survive it.
 """
 import re
+import os
 import sys
 
-_VEND = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4"
+_VEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_upstream_ps", "doubleml-0.11.4")
 sys.path.insert(0, _VEND)
 
 import numpy as np
@@ -36,7 +37,7 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 
 print(f"oracle doubleml {doubleml.__version__} from {doubleml.__file__}")
 
-BASE = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify"
+BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify")
 
 # ---- load the full panel (from the v0.129.0 dump) -----------------------
 rows = []

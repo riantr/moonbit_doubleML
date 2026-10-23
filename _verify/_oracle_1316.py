@@ -25,8 +25,9 @@ SEEDED. v0.131.0's oracle was not, and its own `nu2` moved 22.71 -> 24.60 over
 four runs -- an ~8% spread on the very number a "15.3% gap" was measured against.
 """
 import sys
+import os
 
-_VEND = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4"
+_VEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_upstream_ps", "doubleml-0.11.4")
 sys.path.insert(0, _VEND)
 
 import numpy as np
@@ -38,7 +39,7 @@ from doubleml.data import DoubleMLDIDData
 from doubleml.utils.propensity_score_processing import PSProcessorConfig
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-BASE = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify"
+BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify")
 
 
 def port_nu2(d, m, in_sample_normalization, score):

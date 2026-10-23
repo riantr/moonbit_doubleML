@@ -1,6 +1,7 @@
 import io
+import os
 
-PATH = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\.github\workflows\check.yml"
+PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".github", "workflows", "check.yml")
 
 # Anchor: the qa-loop job's typos install block, which is the last step before
 # "Update dependencies". Insert the Python-dependency install between typos and

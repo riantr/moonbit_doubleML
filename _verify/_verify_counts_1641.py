@@ -31,7 +31,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIB = os.path.join(ROOT, "moonbit_doubleML")
 # `git show` needs a REPO-RELATIVE path, not the absolute one used above
 GITLIB = "moonbit_doubleML"

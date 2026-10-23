@@ -31,10 +31,11 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE = os.path.join(ROOT, "_verify")
 SRC = os.path.join(ROOT, "examples", "main")
 MANGLER = ("fn   mangled_probe(  a : Int ,b : Int )->Int {\n"
@@ -52,12 +53,60 @@ def check(label, cond, detail=""):
 
 
 def fresh(name):
-    dst = os.path.join(BASE, name)
-    if os.path.isdir(dst):
-        shutil.rmtree(dst, ignore_errors=True)
+    """A COPY of `examples/main`, OUTSIDE the workspace.
+
+    Inside the workspace, `moon fmt --check` also formats the workspace's
+    OTHER members, so it needs the workspace's build state -- which a
+    checkout does not have, and which is not a statement about the copy.
+    The copy therefore lives in a temp directory: the tool then formats
+    the copy alone.
+
+    Returns (the temp directory, the copy).
+    """
+    parent = tempfile.mkdtemp(prefix="fmtctl_")
+    dst = os.path.join(parent, name)
     shutil.copytree(SRC, dst)
     shutil.rmtree(os.path.join(dst, "_build"), ignore_errors=True)
-    return dst
+    return parent, dst
+
+
+def snapshot(dst):
+    """Every source file in the copy, by bytes."""
+    out = {}
+    for root, _dirs, files in os.walk(dst):
+        if "_build" in root:
+            continue
+        for f in files:
+            p = os.path.join(root, f)
+            with open(p, "rb") as fh:
+                out[os.path.relpath(p, dst)] = fh.read()
+    return out
+
+
+def warm(dst):
+    """Materialise the toolchain's format artefacts for this copy.
+
+    `moon fmt --check` DIFFS the source against the formatted output the
+    format task produces under `_build/<target>/release/format/`.  The
+    task is keyed by the source's CONTENT, so a copy whose `_build` was
+    deleted can be reported "up to date" with its output missing -- and
+    the check then fails on a missing file rather than on a formatting
+    difference.  That is a statement about the toolchain's cache, not
+    about the tree, so the copy is warmed first.
+
+    The warm-up runs `moon fmt`, which REWRITES mis-formatted sources.
+    That is why the arms warm BEFORE they mangle: the warm-up's only
+    lasting effect on the subject is the artefact it was after.  Whether
+    it rewrote anything is reported, because "the tree is already
+    formatted" is a fact about the tree and the copy's warm-up is where
+    it shows up.
+    """
+    before = snapshot(dst)
+    run(dst, "fmt")
+    after = snapshot(dst)
+    changed = sorted(k for k in set(before) | set(after)
+                     if before.get(k) != after.get(k))
+    return changed
 
 
 def run(cwd, *a):
@@ -69,7 +118,8 @@ ver = run(ROOT, "version").stdout.strip()
 print("toolchain: %s" % ver)
 print()
 print("=== arm A: does `moon fmt` rewrite the mangled file? ===")
-aA = fresh("_fmtctl_vA")
+pA, aA = fresh("_fmtctl_vA")
+warm(aA)
 tA = os.path.join(aA, "main.mbt")
 sA = io.open(tA, encoding="utf-8", newline="").read()
 io.open(tA, "w", encoding="utf-8", newline="").write(sA + "\n" + MANGLER)
@@ -78,18 +128,25 @@ run(aA, "fmt")
 aA_after = io.open(tA, encoding="utf-8", newline="").read()
 check("A: `moon fmt` rewrites the mangled file (so it WAS mis-formatted)",
       bA != aA_after)
-shutil.rmtree(aA, ignore_errors=True)
+shutil.rmtree(pA, ignore_errors=True)
 
 print()
 print("=== arm B: `moon fmt --check` on a CLEAN copy ===")
-aB = fresh("_fmtctl_vB")
+pB, aB = fresh("_fmtctl_vB")
+warm(aB)
 rB = run(aB, "fmt", "--check")
 check("B: clean copy exits 0", rB.returncode == 0, "exit %d" % rB.returncode)
-shutil.rmtree(aB, ignore_errors=True)
+shutil.rmtree(pB, ignore_errors=True)
 
 print()
 print("=== arm C: `moon fmt --check` on a MANGLED copy ===")
-aC = fresh("_fmtctl_vC")
+pC, aC = fresh("_fmtctl_vC")
+# WARM FIRST, then mangle.  The warm-up runs `moon fmt`, which REWRITES a
+# mis-formatted source -- so warming a mangled copy would FORMAT it and the
+# check that follows would be run against a clean tree, and it would exit 0
+# for the wrong reason.  Warming first leaves the artefact in place and the
+# mangling as the only difference.
+warm(aC)
 tC = os.path.join(aC, "main.mbt")
 sC = io.open(tC, encoding="utf-8", newline="").read()
 io.open(tC, "w", encoding="utf-8", newline="").write(sC + "\n" + MANGLER)
@@ -98,7 +155,7 @@ cC = (rC.stdout or "") + (rC.stderr or "")
 check("C: mangled copy exits non-zero", rC.returncode != 0,
       "exit %d" % rC.returncode)
 check("C: the output names main.mbt", "main.mbt" in cC)
-shutil.rmtree(aC, ignore_errors=True)
+shutil.rmtree(pC, ignore_errors=True)
 
 print()
 print("=== the project document and the workflows say what was measured ===")

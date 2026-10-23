@@ -25,8 +25,9 @@ SEEDED (`np.random.seed(3141)`) -- v0.131.0's oracle was not, and its own nu2
 drifted 22.71 -> 24.60 over four runs.
 """
 import sys
+import os
 
-_VEND = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4"
+_VEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_upstream_ps", "doubleml-0.11.4")
 sys.path.insert(0, _VEND)
 
 import numpy as np
@@ -37,7 +38,7 @@ from doubleml import DoubleMLAPO, DoubleMLIRM
 from doubleml.data import DoubleMLData
 from sklearn.linear_model import LinearRegression, LogisticRegression
 
-BASE = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify"
+BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify")
 
 PORT_NU2 = {"IRM": 540.5547419191752, "APO": 290.2904525219809}
 PORT_PRIMARY = {"IRM": -488.8297898618956, "APO": None}

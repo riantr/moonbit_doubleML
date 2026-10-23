@@ -16,7 +16,7 @@ import tempfile
 import urllib.request
 import zipfile
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VER = "v1.19.0"
 URL = ("https://github.com/crate-ci/typos/releases/download/%s/"
        "typos-%s-x86_64-pc-windows-msvc.zip" % (VER, VER))

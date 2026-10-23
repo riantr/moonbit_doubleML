@@ -10,7 +10,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 tracked = set(subprocess.run(["git", "-C", REPO, "ls-files"], capture_output=True,
                              text=True, encoding="utf-8", errors="replace"
                              ).stdout.splitlines())

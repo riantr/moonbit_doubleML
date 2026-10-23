@@ -32,7 +32,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASE = os.path.join(ROOT, "_verify", "upstream_prove_1649", "cases")
 
 PKG = 'options(\n  "proof-enabled": true,\n)\n'

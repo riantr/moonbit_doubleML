@@ -13,7 +13,7 @@ import tarfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VD = os.path.join(REPO, "_verify")
 PKG = r"C:\Users\31379\AppData\Local\Programs\Python\Python313\Lib\site-packages\doubleml"
 TARBALL = os.path.join(VD, "doubleml-0.11.4.tar.gz")

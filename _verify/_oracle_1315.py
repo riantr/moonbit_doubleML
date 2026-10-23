@@ -25,8 +25,9 @@ Either branch reproducing its own number proves the formula. Both reproducing
 proves the gap is entirely the input m_hat, not the port.
 """
 import sys
+import os
 
-_VEND = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4"
+_VEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_upstream_ps", "doubleml-0.11.4")
 sys.path.insert(0, _VEND)
 
 import numpy as np
@@ -40,7 +41,7 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 
 import re
 
-BASE = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify"
+BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify")
 
 
 def port_nu2(d, t, m):

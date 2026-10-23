@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "examples", "parity", "main.mbt")
 GATE = os.path.join(REPO, "pyexample_rdd.py")
 

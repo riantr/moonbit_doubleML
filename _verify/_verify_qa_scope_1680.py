@@ -28,7 +28,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHECKS = os.path.join(ROOT, ".github", "scripts", "qa_loop", "checks.py")
 README = os.path.join(ROOT, "README.mbt.md")
 PROJ = os.path.join(ROOT, "ENGINEERING.md")

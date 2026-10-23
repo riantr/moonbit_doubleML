@@ -12,11 +12,12 @@ Output goes to console AND to `_verify/validate_results.txt`.
 """
 
 import subprocess
+import os
 import sys
 import time
 from pathlib import Path
 
-ROOT = Path(r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML")
+ROOT = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = ROOT / "_verify" / "validate_results.txt"
 OUT.parent.mkdir(parents=True, exist_ok=True)
 

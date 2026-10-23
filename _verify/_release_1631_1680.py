@@ -18,7 +18,7 @@ has a CRLF header and an LF body.
 import io
 import os
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OLD_V, NEW_V = "0.163.0", "0.163.1"
 
 README = os.path.join(REPO, "README.mbt.md")

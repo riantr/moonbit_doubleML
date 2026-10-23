@@ -65,7 +65,7 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.environ.get(
-    "ROUND13_ROOT", r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML")
+    "ROUND13_ROOT", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # The dry-run against the previous release sets this: the live check needs a
 # buildable tree, and the point of the dry-run is to see the STATIC checks
 # fail on the old text.

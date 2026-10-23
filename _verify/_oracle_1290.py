@@ -3,6 +3,7 @@
 v0.128.0 recorded a "nuisance divergence": it claimed upstream regresses `ml_m`
 on `d` and this port on `g_indicator`. That claim is WRONG. It was inferred
 from the LOCAL VARIABLE NAME `d`, not from the data.
+import os
 
 The decisive source line is `did_cs_binary.py:472`:
 
@@ -25,7 +26,7 @@ serialises, must equal G_indicator and must NOT equal the per-period `d`.
 import re
 import sys
 
-_VEND = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_upstream_ps\doubleml-0.11.4"
+_VEND = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_upstream_ps", "doubleml-0.11.4")
 sys.path.insert(0, _VEND)
 
 import numpy as np
@@ -39,7 +40,7 @@ from sklearn.linear_model import LinearRegression, LogisticRegression
 
 print(f"oracle doubleml {doubleml.__version__} from {doubleml.__file__}")
 
-DUMP = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_dump_1290.txt"
+DUMP = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_dump_1290.txt")
 
 rows, m01, m03 = [], [], []
 with open(DUMP, "r", encoding="utf-8") as fh:

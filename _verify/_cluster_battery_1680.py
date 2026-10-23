@@ -34,7 +34,7 @@ import subprocess
 import sys
 import time
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(REPO, "moonbit_doubleML", "plpr.mbt")
 
 MY_TEST = "plpr_var_est_cluster_matches_upstream_var_one_way_cluster"

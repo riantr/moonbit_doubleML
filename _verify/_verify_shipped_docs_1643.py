@@ -53,7 +53,7 @@ import tarfile
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = (sys.argv[1] if len(sys.argv) > 1
-        else r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML")
+        else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if not os.path.isabs(ROOT):
     ROOT = os.path.abspath(ROOT)
 LIB = os.path.join(ROOT, "moonbit_doubleML")
@@ -111,6 +111,15 @@ def must_not(label, needle, hay):
     if not ok:
         fails.append("%s -- %r still present" % (label, needle[:70]))
     return ok
+
+
+def skip(label, reason):
+    """A check that could not run.  It still COUNTS, so the verifier's
+    published check count does not depend on what is present on disk, and
+    it is PRINTED, so a transcript never loses checks silently."""
+    global checks
+    checks += 1
+    print("  SKIP  %-64s %s" % (label, reason))
 
 
 # ------------------------------------------------------------------ artefacts
@@ -404,6 +413,18 @@ if UPSRC:
     for s in ("APO", "PQ", "LPQ", "nuisance_space", "partialling out",
               "observational", "missing-at-random"):
         check("upstream sdist still declares the score string %r" % s, s in UPSRC, "")
+else:
+    # The upstream sdist is a DOWNLOADED artifact: it is not tracked, so a
+    # checkout without it is not broken.  The checks below still COUNT --
+    # otherwise the published check count would depend on what happens to be
+    # on disk -- and they are PRINTED, so a transcript never loses them
+    # silently.
+    skip("upstream sdist never says 'prescriptive'",
+         "the upstream sdist is not in this checkout")
+    for s in ("APO", "PQ", "LPQ", "nuisance_space", "partialling out",
+              "observational", "missing-at-random"):
+        skip("upstream sdist still declares the score string %r" % s,
+             "the upstream sdist is not in this checkout")
 must_re(r"README reconciles the three score vocabularies",
         r"three vocabularies are in play", readme)
 

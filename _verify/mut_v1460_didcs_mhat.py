@@ -27,7 +27,7 @@ import re
 import subprocess
 import sys
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join(REPO, "moonbit_doubleML")
 DIDCS = os.path.join(PKG, "did_cs.mbt")
 

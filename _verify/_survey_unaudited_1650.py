@@ -15,7 +15,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 VD = os.path.join(REPO, "_verify")
 
 files = sorted(glob.glob(os.path.join(VD, "*.md")))

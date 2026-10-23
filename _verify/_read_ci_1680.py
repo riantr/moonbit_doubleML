@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 
 try:
@@ -6,7 +7,7 @@ try:
 except Exception:
     pass
 
-PATH = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_ci_sim_1631_1680.txt"
+PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify", "_ci_sim_1631_1680.txt")
 # PowerShell's Tee-Object writes UTF-16LE, so a naive utf-8 decode turns every
 # other byte into U+FFFD and every status line silently stops matching. That
 # is the same trap as a truncated pipe: the file looks plausible and the

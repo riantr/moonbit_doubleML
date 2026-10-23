@@ -22,7 +22,7 @@ import sys
 import urllib.error
 import urllib.request
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PKG = os.path.join(REPO, "moonbit_doubleML")
 QUICK = "--quick" in sys.argv
 

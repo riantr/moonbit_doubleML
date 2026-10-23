@@ -21,7 +21,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-REPO = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TAG = sys.argv[1] if len(sys.argv) > 1 else "v0.164.11"
 WORK = os.path.join(REPO, "_verify", "_dryrun1650",
                     "r18_%s" % TAG.replace("v", "").replace(".", ""))

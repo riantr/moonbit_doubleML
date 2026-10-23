@@ -74,6 +74,22 @@ print("== 2. the README must not quote a path that does not exist ==")
 m = re.search(r"^\$ (_build\S*api_server\S*\.exe)", readme, re.M)
 if m:
     rel = m.group(1)
+    # The path is a BUILD PRODUCT, so it is only there after the command the
+    # README documents above it has been run.  The check runs that command,
+    # so it does not depend on the tree having been built already -- a fresh
+    # clone used to FAIL here for no reason of its own.
+    cmd = None
+    for line in reversed(readme[:m.start()].rstrip("\n").split("\n")[-4:]):
+        if line.strip().startswith("$ "):
+            cmd = line.strip()[2:].strip()
+            break
+    if cmd:
+        rc, out = run(cmd.split(), timeout=1200)
+        check("the documented build command runs (%s)" % cmd[:34], rc == 0,
+              out[-200:])
+    else:
+        check("the README documents a build command for its binary path", False,
+              "no $ command line above %s" % rel)
     full = os.path.join(ROOT, rel.replace("/", os.sep))
     check("the documented binary %s exists" % rel, os.path.isfile(full))
 else:

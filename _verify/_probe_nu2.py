@@ -19,8 +19,9 @@ This isolates the CONVENTION itself, using the port's OWN quantities:
 Only needs the v0.130.0 dump plus m_hat, which is dumped here.
 """
 import re
+import os
 
-BASE = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify"
+BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "_verify")
 
 ys, gs, ts, g00, g01, g10, g11, pa = ([] for _ in range(8))
 for line in open(BASE + r"\_dump_1300.txt", encoding="utf-8"):

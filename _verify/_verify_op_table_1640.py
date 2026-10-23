@@ -12,6 +12,7 @@ re-measures it on whatever toolchain is installed NOW, and checks the
 README's concrete numbers against it.
 """
 import math
+import os
 import re
 import struct
 import subprocess
@@ -19,7 +20,7 @@ import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-ROOT = r"D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROBE = "_verify/_probe_ops_1640.mbt"
 README = ROOT + r"\README.mbt.md"
 

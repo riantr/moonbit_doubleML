@@ -1,0 +1,201 @@
+{
+  "tool": "moon 0.1.20261012 (748b63c 2026-10-12)",
+  "mode": "fast",
+  "iterations": 1,
+  "allow_inert": true,
+  "runs": [
+    [
+      {
+        "id": "format",
+        "verdict": "PASS",
+        "seconds": 0.85,
+        "evidence": "clean, and the control arm confirms the check turns red on bad input (moon 0.1.20261012 (748b63c 2026-10-12))"
+      },
+      {
+        "id": "static_analysis",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "static_code_check",
+        "verdict": "PASS",
+        "seconds": 1.44,
+        "evidence": "typos: 3209 finding(s) in 13 UNTRACKED file(s) (_verify/_audit_floats_trace_1610.py, _verify/_audit_floats_trace_v2_1610.py) -- none are tracked, so the release gate is clean; this working tree has scratch files CI will not check"
+      },
+      {
+        "id": "duplicate_code",
+        "verdict": "PASS",
+        "seconds": 0.38,
+        "evidence": "6859 duplicated 40-token window(s) across 50 file(s) = 4.03% of 169992 sliding windows (threshold 5.0%); largest cluster repeats in 18 files (estimator boilerplate, no jscpd/PMD-CPD in the toolchain)"
+      },
+      {
+        "id": "dependencies",
+        "verdict": "WARN",
+        "seconds": 0.04,
+        "evidence": "2 declared; non-conforming: ['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code: ['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.5']  [no vulnerability scanner in CI; moon update is not an audit]"
+      },
+      {
+        "id": "unit_tests",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "component_tests",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "gherkin",
+        "verdict": "PASS",
+        "seconds": 0.16,
+        "evidence": "6 Feature / 24 Scenario / 80 steps; 29/29 mapped test names resolve; 1 wrapped annotation(s) joined"
+      },
+      {
+        "id": "qa_process",
+        "verdict": "PASS",
+        "seconds": 0.0,
+        "evidence": "31 checks registered, 22 required activities  [no standalone QA/test-plan document in the repo]"
+      },
+      {
+        "id": "integration",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "pyexample",
+        "verdict": "PASS",
+        "seconds": 6.55,
+        "evidence": "pyexample: port vs upstream make_did_SZ2020: PASS | coef: sd 0.011280  ->  port is 0.03 sd from upstream"
+      },
+      {
+        "id": "pyexample_suite",
+        "verdict": "PASS",
+        "seconds": 7.51,
+        "evidence": "pyexample: port vs upstream estimator family (9 estimators, 3 datasets): PASS | checked 36 item(s) against the MoonBit build | BLP band in force: 1e-12  (measured max |diff| 6.8e-14, ~15x headroom)"
+      },
+      {
+        "id": "pyexample_did_cs_binary",
+        "verdict": "PASS",
+        "seconds": 10.14,
+        "evidence": "pyexample: port vs upstream DoubleMLDIDCSBinary (6 cells, CS2021 panel): PASS | 6 cell(s), each REQUESTED explicitly on both sides -- no cell is"
+      },
+      {
+        "id": "pyexample_did_binary",
+        "verdict": "PASS",
+        "seconds": 9.17,
+        "evidence": "pyexample: port vs upstream DoubleMLDIDBinary (6 cells, CS2021 panel): PASS | 6 cell(s), all REQUESTED explicitly on both sides"
+      },
+      {
+        "id": "pyexample_lplr",
+        "verdict": "PASS",
+        "seconds": 8.05,
+        "evidence": "identical: True | nuisance_space port=0.399521 upstream=0.392214  gap=0.007307  band=0.206242 -> OK | instrument     port=0.402073 upstream=0.412682  gap=0.010609  band=0.180625 -> OK"
+      },
+      {
+        "id": "pyexample_pq",
+        "verdict": "PASS",
+        "seconds": 9.97,
+        "evidence": "agree: True | pq_coef   mean=1.016168926 sd=2.803e-03 | qte[1]    mean=1.005914376 sd=2.215e-03 | pq_coef        port=1.018888787 upstream=1.016168926  gap=2.720e-03  band=9.726e-03 -> OK | qte[0]_coef    port=1.041323011 upstream=1.055867575  gap=1.454e-02  band=1.966e-02 -> OK   (truth 1.000) | qt"
+      },
+      {
+        "id": "pyexample_policytree",
+        "verdict": "PASS",
+        "seconds": 5.79,
+        "evidence": "split feature : port 0  upstream 0  ok | labels        : all 500 rows agree  (ones=250, first 1 at row 250) | split feature : port 0  upstream 0  ok | labels        : all 500 rows agree  (ones=250, first 1 at row 250) | RESULT: PolicyTree upstream parity: PASS"
+      },
+      {
+        "id": "pyexample_rdd",
+        "verdict": "PASS",
+        "seconds": 5.13,
+        "evidence": "tau_bc         port 2.0089050907775863 | tau_bc_se_rb   port 0.13164869924415856 | RESULT: RDD upstream parity: PASS"
+      },
+      {
+        "id": "pyexample_cs2021",
+        "verdict": "PASS",
+        "seconds": 7.21,
+        "evidence": "pyexample: port vs upstream make_did_CS2021: PASS | upstream DoubleMLDIDMulti -> 12 cells; 6 are comparable with the port"
+      },
+      {
+        "id": "contract",
+        "verdict": "PASS",
+        "seconds": 62.48,
+        "evidence": "validate_splitting_contract.py executed (exit=0). NOTE: this script does NOT match CI's `validate_*_with_python.py` glob, so no workflow runs it."
+      },
+      {
+        "id": "e2e",
+        "verdict": "PASS",
+        "seconds": 28.56,
+        "evidence": "20 example(s) executed natively; exit code, final-line prefix, final-line length and output length asserted on each; examples/api_server excluded (service, never returns)"
+      },
+      {
+        "id": "api_test",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "security_dast",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "security_sast",
+        "verdict": "WARN",
+        "seconds": 0.17,
+        "evidence": "pattern-based (no CodeQL/semgrep in toolchain). 1159 hit(s) over 65 files: require() abort is uncatchable=1087, unwrap-style force access=0, unbounded allocation by literal size=0, float equality comparison=71, string concat in a loop guard=1; first: require() abort is uncatchable@moonbit_doubleML\\aggregator.mbt:18; float equality comparison@moonbit_doubleML\\apo.mbt:1777; string concat in a loop guard@moonbit_doubleML\\rdd.mbt:2837"
+      },
+      {
+        "id": "fuzz",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "mutation",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "perf_test",
+        "verdict": "PASS",
+        "seconds": 1.19,
+        "evidence": "median 0.392s over 3 runs (min 0.377, max 0.418), drift vs baseline 1.10x"
+      },
+      {
+        "id": "benchmark",
+        "verdict": "PASS",
+        "seconds": 0.75,
+        "evidence": "6 printed value(s) bit-identical across 2 runs"
+      },
+      {
+        "id": "load_stress",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "scope=full; pass --full to run"
+      },
+      {
+        "id": "coverage",
+        "verdict": "PASS",
+        "seconds": 4.71,
+        "evidence": "PROXY, not line coverage: 267/267 production functions (100.0%) are referenced by name somewhere in the test suite. `moon test --enable-coverage` instruments but emits no report in this toolchain, so no line/branch figure is available. Least-reached: []"
+      },
+      {
+        "id": "quality_metrics",
+        "verdict": "SKIP",
+        "seconds": 0.0,
+        "evidence": "no prior results to aggregate"
+      }
+    ]
+  ],
+  "tally": {
+    "PASS": 19,
+    "SKIP": 10,
+    "WARN": 2
+  }
+}
