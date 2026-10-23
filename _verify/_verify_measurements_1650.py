@@ -83,7 +83,13 @@ CHANGELOG = os.path.join(ROOT, "CHANGELOG.md")
 RECORD = os.path.join(ROOT, "_verify", "LPLR_GATE_BLINDNESS_1680.md")
 
 # The declared set sizes.  A change to either is a change to the SET.
-EXPECTED_CELLS = 27
+#
+# Round 38: the hazard table's QTE row now names the THREE sampled taus the
+# v0.139.0 release actually measured (`0.50` / `0.75` / `0.90`), where the
+# range spelling it replaced (`0.50`-`0.90`) carried TWO code spans.  The
+# declaration moves with the measurement, which is the whole point of
+# declaring it.
+EXPECTED_CELLS = 28
 EXPECTED_RATIOS = 9
 EXPECTED_MEASURED_ROWS = 12
 EXPECTED_SMALLN_FIGURES = 15

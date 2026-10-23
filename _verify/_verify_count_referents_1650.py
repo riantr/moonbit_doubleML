@@ -406,12 +406,33 @@ print("F. the inventory: no unregistered count claim")
 # distributive ("one struct each", "one estimate per treatment level") is not
 # a set, and a count of 1 or 2 is evident from its own sentence.
 ARTEFACT = (r"estimators?|learners?|backends?|migrations?|structs?|rows?|"
-            r"verdicts?|mutations?|mutants?|gates?|vocabularies?|designs?")
+            r"verdicts?|mutations?|mutants?|gates?|vocabularies?|designs?|"
+            r"data\s+types?|files?|spellings?|classes?|packages?|"
+            r"implementations?|modes?|jobs?|surfaces?|scripts?|binaries?|"
+            r"examples?|tests?|arguments?")
 SCAN = re.compile(r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"
-                   r"(?:\s+\w+){0,3}\s+(%s)\b" % ARTEFACT, re.I)
+                   r"(?:\s+[\w`'-]+){0,3}\s+(%s)\b" % ARTEFACT, re.I)
+# Round 38: the DIGIT form, and the word form past twelve.  The round-24 scan
+# could only see a count written as a WORD, at most twelve, beside one of
+# twelve nouns -- so it could not see "**22** estimators" (the README's most
+# repeated count), nor "four data types", nor "seven files", nor "24 Python
+# reference scripts".  A registry that cannot SEE a claim cannot own it, and
+# an unowned count rots: the tree's own `_verify/validate_results.txt` still
+# said "Total: 23" ninety-six releases after the twenty-fourth validator
+# landed.
+SCAN_DIGIT = re.compile(r"(?<![\w.])(\d{1,3})(?![\w.])(?:\s+[^\s\d]+){0,3}\s+(%s)\b"
+                        % ARTEFACT, re.I)
+SCAN_WORD = re.compile(r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+                       r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|"
+                       r"eighteen|nineteen|twenty)\b"
+                       r"(?:\s+[\w`'-]+){0,3}\s+(%s)\b" % ARTEFACT, re.I)
 DISTRIBUTIVE = re.compile(r"\b(each|per)\b")
+# a SAMPLE SIZE is not an artefact count: "at n = 200", "the n = 66 rows"
+SAMPLE_SIZE = re.compile(r"\bn\s*=\s*$", re.I)
 NUM = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-       "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
+       "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+       "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+       "seventeen": 17, "eighteen": 18, "nineteen": 19, "twenty": 20}
 
 # Registered: phrase -> the count it states.
 REGISTERED = {
@@ -440,6 +461,38 @@ REGISTERED = {
     # the SEVEN structs migrated to a classifier.  The count is re-derived
     # by `_verify_api_promises_1650.py`, from the source's own defaults.
     "seven structs": 7,
+    # Round 38: the counts the round-24 scan could not SEE, because they are
+    # written as DIGITS or sit beside a noun outside its vocabulary.  A
+    # registry that cannot see a claim cannot own it.
+    "22 estimators": 22,
+    "19 source files": 19,
+    "19 production files": 19,
+    "220 `.mbt` files": 220,
+    "129 blackbox": 129,
+    "26 whitebox": 26,
+    "24 Python reference scripts": 24,
+    "7 of the 22 estimators": 7,
+    "four data types": 4,
+    "seven files": 7,
+    # the SAME claims, in the README's other spellings.  The registry keys on
+    # the phrase, so a re-worded count is a NEW phrase -- and a phrase the
+    # registry does not know is a claim nobody re-derives.
+    "11 surfaces": 11,
+    "19 name-matched estimator classes": 19,
+    "21 driver binaries": 21,
+    "21 examples": 21,
+    "21 runnable example binaries": 21,
+    "22 `DoubleML*` estimators": 22,
+    "22 estimators (`DoubleML*` structs": 22,
+    "220 .mbt files": 220,
+    "24 scripts": 24,
+    "26 whitebox test": 26,
+    "129 blackbox test": 129,
+    "12 estimators": 12,
+    # the hazard table's DIGIT spelling of the probe designs; the prose
+    # registers the word spelling, and the CHANGELOG's own section derives
+    # the count below.
+    "4 designs": 4,
 }
 OWNERS = {
     "two different sets of six": "_verify_ctor_options_1650.py",
@@ -448,6 +501,12 @@ OWNERS = {
     "three vocabularies are in play": "_verify_shipped_docs_1643.py",
     "`mutation` kills three mutants on one kernel": "_verify_test_verification_1650.py",
     "seven structs": "_verify_api_promises_1650.py",
+    # Round 38:
+    "11 surfaces": "_verify_counts_1641.py",
+    "21 driver binaries": "_verify_example_kinds_1680.py",
+    "7 of the 22 estimators": "_verify_score_argument_1650.py",
+    "19 name-matched estimator": "_verify_provenance_grouping_1650.py",
+    "four data types": "_verify_api_promises_1650.py",
 }
 
 for phrase in REGISTERED:
@@ -458,6 +517,51 @@ for phrase, owner in OWNERS.items():
     check("the owning verifier %s is tracked" % owner,
           os.path.exists(os.path.join(ROOT, "_verify", owner)), owner)
 
+# --------------------------------------------------------------------------- #
+# G.  the counts this verifier OWNS, derived from the tree
+# --------------------------------------------------------------------------- #
+#
+# A registered claim without an owner is this verifier's to derive -- one
+# verifier per fact.  Every count below is measured from the tree, never
+# transcribed: the round-24 table could hold a wrong number because nothing
+# recomputed it.
+print()
+print("G. the counts this verifier owns, derived from the tree")
+
+pkg_mbt = sorted(f for f in os.listdir(PKG) if f.endswith(".mbt"))
+pkg_prod = [f for f in pkg_mbt if not f.endswith("_test.mbt")
+            and not f.endswith("_wbtest.mbt")]
+pkg_black = [f for f in pkg_mbt if f.endswith("_test.mbt")]
+pkg_white = [f for f in pkg_mbt if f.endswith("_wbtest.mbt")]
+lib_src = "\n".join(io.open(os.path.join(PKG, f), encoding="utf-8",
+                             errors="replace").read() for f in pkg_prod)
+est_structs = sorted(s for s in set(re.findall(r"pub\s+struct\s+(DoubleML\w+)",
+                                               lib_src))
+                      if not s.endswith("Data"))
+def _file_has_estimator(f):
+    """Does this file declare an ESTIMATOR struct (not a `*Data` type)?"""
+    src = io.open(os.path.join(PKG, f), encoding="utf-8", errors="replace").read()
+    return any(not s.endswith("Data")
+               for s in re.findall(r"pub\s+struct\s+(DoubleML\w+)", src))
+
+
+est_files = sorted(f for f in pkg_prod if _file_has_estimator(f))
+validators = sorted(f for f in os.listdir(ROOT)
+                     if f.startswith("validate_") and f.endswith("_with_python.py"))
+
+check("the 22 estimators are 22 estimator structs in the source",
+      len(est_structs) == 22, "got %d" % len(est_structs))
+check("the 19 source files are the files that hold an estimator struct",
+      len(est_files) == 19, "got %d: %s" % (len(est_files), est_files))
+check("the 220 .mbt files are the package's .mbt files",
+      len(pkg_mbt) == 220, "got %d" % len(pkg_mbt))
+check("the 129 blackbox test files are the *_test.mbt files",
+      len(pkg_black) == 129, "got %d" % len(pkg_black))
+check("the 26 whitebox test files are the *_wbtest.mbt files",
+      len(pkg_white) == 26, "got %d" % len(pkg_white))
+check("the 24 Python reference scripts are the validate_*_with_python.py files",
+      len(validators) == 24, "got %d" % len(validators))
+
 # the four probe designs are enumerated in the CHANGELOG's v0.136.0 entry
 probe = re.search(r"### `DoubleMLDIDBinary`: what was tried(.*?)\n### ", changelog, re.S)
 check("the CHANGELOG's DIDBinary probe section is findable", probe is not None)
@@ -466,18 +570,36 @@ if probe:
     check("the CHANGELOG enumerates four probe designs", len(designs) == 4, "got %d" % len(designs))
 
 # now the scan: every count-artefact pair the README uses must be registered
+#
+# ROUND 38: the scan runs in THREE forms -- the round-24 word form, the word
+# form past twelve, and the DIGIT form -- so a count the README writes as
+# "**22** estimators" is as visible as one it writes as "twenty-two".
+# The intervening words may be ANY non-space token ("220 `.mbt` files" has
+# two), because the noun is what the claim is about and the words between
+# are decoration.
 unregistered = []
 hits = []
-for mm in SCAN.finditer(readme_flat):
-    phrase = mm.group(0).strip()
-    tail = readme_flat[mm.end():mm.end() + 12]
+
+
+def consider(count, phrase, pos):
+    tail = readme_flat[pos + len(phrase):pos + len(phrase) + 12]
     if DISTRIBUTIVE.search(phrase) or DISTRIBUTIVE.search(tail):
-        continue
-    if NUM.get(mm.group(1).lower(), 99) <= 2:
-        continue
+        return
+    if count <= 2:
+        return
+    if SAMPLE_SIZE.search(readme_flat[max(0, pos - 8):pos]):
+        return
     hits.append(phrase)
     if not any(phrase in p or p in phrase for p in REGISTERED):
         unregistered.append(phrase)
+
+
+for mm in SCAN.finditer(readme_flat):
+    consider(NUM.get(mm.group(1).lower(), 99), mm.group(0).strip(), mm.start())
+for mm in SCAN_WORD.finditer(readme_flat):
+    consider(NUM.get(mm.group(1).lower(), 99), mm.group(0).strip(), mm.start())
+for mm in SCAN_DIGIT.finditer(readme_flat):
+    consider(int(mm.group(1)), mm.group(0).strip(), mm.start())
 # "This package ships eleven" has no artefact noun beside it
 for mm in re.finditer(r"\bships\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b",
                       readme_flat, re.I):
@@ -486,7 +608,8 @@ for mm in re.finditer(r"\bships\s+(one|two|three|four|five|six|seven|eight|nine|
         if not any("ships " + mm.group(1) in p for p in REGISTERED):
             unregistered.append("ships " + mm.group(1))
 print("   scan hits (%d): %s" % (len(hits), sorted(set(hits))))
-check("no unregistered count claim in the README", not unregistered, str(sorted(set(unregistered))[:6]))
+check("no unregistered count claim in the README", not unregistered, str(sorted(set(unregistered))[:8]))
+
 
 # --------------------------------------------------------------------------- #
 print()

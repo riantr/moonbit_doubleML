@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""Drive all 23 validate_*.py cross-validators sequentially and
+"""Drive every validate_*_with_python.py cross-validator sequentially and
 aggregate PASS/FAIL counts.
+
+The COUNT is derived, never written here: the script globs the validators
+it finds.  A literal in this docstring ("all 23 ...") went stale the moment
+the 24th validator was added, and the capture it writes
+(`_verify/validate_results.txt`) went stale with it -- it still said
+"Total: 23" 96 releases later.  So the docstring states the rule and the
+script states the number.
 
 Each script is invoked as `python validate_*.py 2>&1`. The
 script's exit code 0 means PASS; non-zero means FAIL. We also

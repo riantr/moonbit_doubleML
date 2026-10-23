@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.31",
+  "riantr/moonbit_doubleML@0.164.32",
 }
 ```
 
@@ -388,7 +388,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, `DoubleMLDIDCrossSection`, `DoubleMLDIDMulti` | not demonstrated | doubly robust -- `m` cancels for treated rows |
 | `DoubleMLSSM` | **hazardous -- fixed in v0.138.0** | coef `242.116` vs `1.177` |
 | `DoubleMLCVAR` | not demonstrated | `2.300` vs `2.373` |
-| `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | frozen at `-1.583` for tau `0.50`-`0.90` |
+| `DoubleMLQTE` | **hazardous -- fixed in v0.139.0** | OLS arm frozen at `-1.583` at the three measured taus `0.50` / `0.75` / `0.90` |
 | `DoubleMLIIVM` | not demonstrated | `0.987` vs `1.031`; SE `0.0047` vs `0.0747` (16x *smaller*) |
 | `DoubleMLPLR` | not demonstrated | `1.015` vs `1.103` -- OLS better |
 | `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0-v0.142.0** | not an `ml_m` hazard; two failure modes; see below |
@@ -606,7 +606,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.31** |
+| `moon.mod` version | **0.164.32** |
 | Toolchain | `moon 0.1.20261016` -- the version every number in this table was measured on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -733,8 +733,8 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.31, 220 .mbt files)
-  moonbit_doubleML.mbt   <- main re-export file (the import surface)
+moonbit_doubleML/        <- the library (moon.mod v0.164.32, 220 .mbt files)
+  moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
 
@@ -807,16 +807,20 @@ and `_verify/UPSTREAM_PROVENANCE.md`.
   regression, stratified K-fold, ChaCha8 PRNG, and Kahan summation
   in MoonBit; **no NumPy / scikit-learn dependency**.
 - `DoubleMLData` / `DoubleMLXxx::new().fit()` as the canonical
-  MoonBit-idiomatic API, with optional JSON in/out for native /
-  wasm-gc / wasm / js backends (Serverless / Wasm / edge
-  deployments).
+  MoonBit-idiomatic API, on native / wasm-gc / wasm / js backends
+  (Serverless / Wasm / edge deployments). The library exports
+  **no** JSON in/out -- the JSON surface is `examples/api_server/`'s
+  own request/response encoding.
 - Behaviour-level parity check via the 24 Python reference scripts: 23
   compare under `within-tolerance equivalence`, and one
   (`validate_bitexact_with_python.py`) compares IEEE-754 bit patterns
   instead. The tolerance tier keeps the port resilient to upstream
   refactors; the bit-exact tier is where it must not drift at all.
 - Strict dependency rule (see above): only `moonbitlang/*` official
-  packages. Minimal supply-chain surface.
+  packages -- **one declared line does not meet it today**
+  (`moonbit-community/sqlite3`, which nothing imports). The
+  library's runtime supply chain is still `moonbitlang/core`
+  only.
 
 ## Used By
 
