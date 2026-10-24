@@ -62,14 +62,17 @@ let fitted = @moonbit_doubleML.DoubleMLPLR::new(
 ).fit()
 ```
 
-The panel and DID DGPs return their own data types
-(`DoubleMLPanelData`, `DoubleMLDIDCSData`, ...) and carry the extra
-`t` / `g` / `id` accessors, so the wrapper differs per model. The
+The DID DGPs return their own data types (`DidCsData`, `DidMultiData`)
+and carry the extra `t` / `g` / `id` accessors, so the wrapper differs
+per model. The panel DGP is the exception: it returns a `PlprData`,
+which has no `t` / `g` / `id` accessors, so the caller builds the `t`
+and `id` vectors itself and wraps them into `DoubleMLPanelData`. The
 LPLR DGP is the same shape of exception: it hands back a
 `DoubleMLBinaryData` through `data_get()` rather than the
 `x_get()` / `y_get()` / `d_get()` trio, so it goes straight into
 `DoubleMLLPLR::new` -- see `dgp_recovery_test.mbt` for a worked
-example of each shape.
+example of the DID and PLPR shapes, and `dgp_lplr_test.mbt` for the
+LPLR one.
 
 The deterministic `chacha8_rng(seed)` is the only randomness
 source — given the same seed, two runs produce bit-identical

@@ -282,14 +282,14 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   agree.
 >
 >   The published count was wrong once, and the error is worth recording.  The
->   first entry said the new verifier runs **127** checks.  It runs **131** on
->   the tree as it stands.  The 127 was a real number -- but it was the number
->   the dry-run's transcript reports, and the dry-run measures the verifier on
->   a DELIBERATELY BROKEN tree, where two of its loops are shorter (one fewer
->   score site in doc/004's table, one fewer score parameter in the source), so
->   four checks do not execute.  A number of the wrong thing is still a wrong
->   number, and the two counts sat side by side in one tracked log with
->   nothing saying which was which.  The verifier now ASSERTS its own
+>   first entry said the new verifier runs **127** checks.  It runs **135** checks
+>   on the tree as it stands.  The 127 was a real number -- but it was the
+>   number the dry-run's transcript reports, and the dry-run measures the
+>   verifier on a DELIBERATELY BROKEN tree, where two of its loops are shorter
+>   (one fewer score site in doc/004's table, one fewer score parameter in the
+>   source), so four checks do not execute.  A number of the wrong thing is
+>   still a wrong number, and the two counts sat side by side in one tracked
+>   log with nothing saying which was which.  The verifier now ASSERTS its own
 >   published count, and the dry-run asserts the failure count it ends at.
 > * **Round 29.** The PUBLIC API DOCSTRINGS -- the `///` blocks a user reads in
 >   an IDE -- were audited for numbers for the first time, and three carried
@@ -534,7 +534,7 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   The fourth invariant makes the convention a CHECK rather than an
 >   assumption: a table's measurements must be written in code spans.  A
 >   convention nobody enforces decays, and this one decayed unnoticed for
->   twenty releases.  `_verify/_verify_measurements_1650.py` now runs **66**
+>   twenty releases.  `_verify/_verify_measurements_1650.py` now runs **70**
 >   checks over four invariants.
 >
 >   `_verify/_dryrun_round33_1650.py` breaks each of the seven mechanisms one
@@ -569,7 +569,7 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   never reused.  The branch is repaired, and v0.164.28 carries the
 >   corrected manifest.
 >
->   The new check `_verify/_verify_release_tree_1650.py` runs **34** checks
+>   The new check `_verify/_verify_release_tree_1650.py` runs **36** checks
 >   over the tree at a REF rather than the files on disk.  Its default is
 >   HEAD -- the tree the registry was last given -- and the release
 >   procedure runs it against the new commit BEFORE the tag is made.  What
@@ -830,7 +830,7 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   cannot bridge over a comma and read "65 production, 129 blackbox test" as
 >   a count of 65.
 >
->   The new check `_verify/_verify_package_claims_1650.py` (**19** checks)
+>   The new check `_verify/_verify_package_claims_1650.py` (**48** checks)
 >   holds the README to what the package IS and PROVIDES: every file the
 >   layout names must be a TRACKED file; the JSON surface is derived from the
 >   package's sources with comments and docstrings stripped, because a JSON
@@ -941,6 +941,78 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   it compiles as a local and as a field -- so the agent skill's "all are
 >   reserved in current MoonBit" was corrected to say which ones are and which
 >   one moved.
+>
+> * **Round 40.** The LEDGER nobody read.
+>
+>   *The last stale pin.*  `doc/moon.mod` -- the DOC PROJECT's own manifest --
+>   named the library at **0.52.0**, and it was the LAST file in the tree still
+>   carrying that literal.  The round-31 sweep fixed all 21 example manifests
+>   and the round-39 sweep fixed the agent skill; neither of them read this
+>   file, because it is a THIRD kind of file.  In-tree the pin is inert --
+>   `doc` is a member of `moon.work`, so the workspace member wins and the six
+>   tutorials build against the current library -- and outside the tree it is
+>   the only thing that decides what gets installed.  It is now bump site **10**
+>   of `_verify/_bump_1636.py`, so it moves with the release, and the
+>   release-tree check holds it to the version like every other site.
+>
+>   *Four numbers in this banner that no check owned.*  This banner publishes
+>   a count for the checks it names, and every one of those numbers is a claim
+>   about the TREE -- but nothing could see them: the CHANGELOG publishes its
+>   own counts and the checks that publish one assert it against their own
+>   run, while the BANNER's numbers were asserted by nobody.  Four were false:
+>   `_verify/_verify_measurements_1650.py` published **66** and makes **70**;
+>   `_verify/_verify_release_tree_1650.py` published **34** and makes **36**;
+>   `_verify/_verify_package_claims_1650.py` published **19** and makes **48**;
+>   and `_verify/_verify_score_argument_1650.py` published **131** and makes
+>   **133**.  The third of the four is the one worth recording: **19** was
+>   never true -- that check has run more checks than it ever published, and
+>   it has done so since the day it was written.
+>
+>   The new check `_verify/_verify_ledger_counts_1650.py` (**32** checks) owns
+>   the class.  It reads the counts this banner publishes, RUNS each check it
+>   names, and requires the published number to be the number that check makes
+>   on this tree; and it requires the CHANGELOG's publication of the same
+>   count to agree with the banner's, because the two documents are read side
+>   by side and must not contradict each other.  The count is MEASURED, not
+>   read: a check's count is what its checks add up to, so no literal in the
+>   source can stand in for it.
+>
+>   *Eight sentences that were false.*  A fresh-eyes audit of the README, the
+>   agent skill and the six tutorials found eight claims that were FALSE, and
+>   not one of them was a number that had rotted: they were prose asserting
+>   something the tree does not do, and a sentence can only be rewritten.
+>   The agent skill said all 16 CLI-style demos "print true-vs-estimated
+>   theta and a 95% CI" -- **14** of the 16 print a true value and **11**
+>   print a CI, and the README had said so for releases.  The estimators
+>   tutorial said the port has **9** `score` parameters and told the reader
+>   to pass one to `fit_cluster(...)`: there are **8**, at 7 estimators, and
+>   `fit_cluster` is a PRIVATE dispatch target, so a reader who followed the
+>   sentence got "Type DoubleMLPLR has no method fit_cluster".  The same
+>   tutorial gave `DoubleMLDIDMulti` a panel-form `DoubleMLDIDData`; it
+>   takes `DoubleMLDIDCSData`.  The README pointed at "the full curl recipe"
+>   in a file whose recipe is a PowerShell one, and offered a
+>   `moonrun --port 4000` invocation that moonrun REJECTS and that the
+>   service ignores anyway -- its listen port is hard-coded.  The estimators
+>   tutorial also promised a note about upstream's `__all__` that the
+>   package README does not carry.  And the DGP tutorial said the panel and
+>   DID DGPs return `DoubleMLPanelData` / `DoubleMLDIDCSData` and carry
+>   `t` / `g` / `id` accessors: they return `DidCsData`, `DidMultiData` and
+>   `PlprData`, the panel one carries no `t` / `g` / `id` at all, and the
+>   worked example it pointed at held no LPLR test.
+>
+>   The new check `_verify/_verify_doc_claims_1650.py` (**32** checks)
+>   derives every one of those from the SOURCE: the demo split from the
+>   record the measuring verifier writes, the `score` parameters from their
+>   signatures with the parentheses BALANCED -- a `[^)]*` matcher cuts a
+>   signature short at the first ")" and loses one of the eight -- the DGP
+>   factories' return types and accessors, the api_server's port, and the
+>   test names in the files the tutorials cite.
+>
+>   `_verify/_dryrun_round40_1650.py` breaks each of the **5** mechanisms one
+>   at a time and requires the failure count to GROW at every step, and it
+>   ends at **7** failures.  Three of the mechanisms break this banner's
+>   own numbers, one breaks the pin and one breaks a tutorial's count, so
+>   the classes are proved from both sides.
 
 >
 
@@ -2321,6 +2393,37 @@ NEW_39_PARITY = "re-measured on `moon 0.1.20261023` vs CPython 3.13.14"
 
 PATCHES.append((OLD_39_TOOLCHAIN_ROW, NEW_39_TOOLCHAIN_ROW))
 PATCHES.append((OLD_39_PARITY, NEW_39_PARITY))
+
+
+# ==============================================================================
+# 10.  THE ROUND-40 PATCHES -- the api_server's wasm invocation
+# ==============================================================================
+#
+# (i) THE `moonrun` LINE WAS WRONG TWICE OVER.  It read
+#
+#     The same `api_server.wasm` also runs under `moonrun --port 4000`
+#     (see `examples/api_server/README.md` for the full curl recipe).
+#
+# and BOTH halves were false.  `moonrun` takes a PATH and then the program's
+# arguments, so `--port 4000` before the path is an unknown flag and the
+# command is rejected outright.  And the flag would have done nothing anyway:
+# `examples/api_server/main.mbt` hard-codes `DEFAULT_PORT = 4000` and never
+# parses an argument, so the service binds 4000 whatever it is told.
+#
+# The cross-reference was false too: `examples/api_server/README.md` has no
+# curl recipe -- its recipe is the PowerShell one -- and it points the other
+# way, at the root README's curl block.  A path in prose is a promise: the
+# pointer has to name something that is there.
+OLD_40_API_RUN = (
+    "The same `api_server.wasm` also runs under `moonrun --port 4000`\n"
+    "(see `examples/api_server/README.md` for the full curl recipe).")
+NEW_40_API_RUN = (
+    "The same `api_server.wasm` also runs under `moonrun <path-to-the-wasm>`.\n"
+    "The listen port is hard-coded to `4000` in `main.mbt`, so the service\n"
+    "ignores any argument it is given (see `examples/api_server/README.md`\n"
+    "for the full PowerShell smoke recipe).")
+
+PATCHES.append((OLD_40_API_RUN, NEW_40_API_RUN))
 
 
 for _old, _new in PATCHES:

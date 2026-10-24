@@ -73,8 +73,11 @@ EXPECTED_MANIFESTS = 21
 # Round 39: the bump script gained a NINTH kind of site -- the AGENT SKILL,
 # which quotes the api_server's declared library pin.  It is the 27th site,
 # and the 6th that is not an example manifest.
-EXPECTED_SITES = 27
-EXPECTED_OTHER_SITES = 6
+# Round 40: it gained a TENTH kind -- the DOC PROJECT's own manifest,
+# `doc/moon.mod`, which pins the library for the six tutorials.  It is the
+# 28th site, and the 7th that is not an example manifest.
+EXPECTED_SITES = 28
+EXPECTED_OTHER_SITES = 7
 
 NCHECK = 0
 FAILS = []

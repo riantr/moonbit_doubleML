@@ -65,7 +65,7 @@ estimator list:
 
 ```json
 {
-  "library": "riantr/moonbit_doubleML@0.164.33",
+  "library": "riantr/moonbit_doubleML@0.164.34",
   "service": "example/api_server@0.1.0",
   "estimators": ["plr", "irm"]
 }
@@ -97,14 +97,13 @@ is kept as-is.
 ```console
 $ moon build --target wasm --release examples/api_server
 $ "$USERPROFILE/.moon/bin/moonrun.exe" \
-    _build/wasm/release/build/example/api_server/api_server.wasm \
-    --port 4000
+    _build/wasm/release/build/example/api_server/api_server.wasm
 ```
 
-The same `.wasm` binary also runs under `moonrun.exe`; the default
-listen port is hard-coded to `4000` (`DEFAULT_PORT` in `main.mbt`).
-Override by editing the constant or wiring in a CLI arg parser once
-`moonbitlang/x` becomes importable as a non-meta sub-package.
+The same `.wasm` binary also runs under `moonrun.exe`; the listen
+port is hard-coded to `4000` (`DEFAULT_PORT` in `main.mbt`) and the
+service ignores any argument it is given -- there is no CLI parser
+yet. Override by editing the constant or wiring in one.
 
 ## Smoke-test recipe (PowerShell)
 

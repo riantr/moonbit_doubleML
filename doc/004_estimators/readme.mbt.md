@@ -55,14 +55,13 @@ with the Sant'Anna-Zhao (2020) DGP (`make_did_SZ2020`) it is built on.
 One has no 1:1 upstream class: `DoubleMLDIDCS`, this port's variant of
 upstream's multi-period `DoubleMLDIDMulti`, which upstream keeps in a
 single class that this port splits in two. The package
-README's estimator table records the provenance of each row and notes
-the few that are importable but absent from upstream's `__all__`.
+README's estimator table records the provenance of each row.
 Several here (e.g. `DoubleMLDID` and its 5 variants) live in
 separate `.mbt` files for parallel maintainability.
 
 ## The `score` argument
 
-The port has **9 `score` parameters, at 7 estimators**. Because the
+The port's public API has **8 `score` parameters, at 7 estimators**. Because the
 argument sits in a different place per estimator, read the argument
 column before writing the call:
 
@@ -76,8 +75,9 @@ column before writing the call:
 | `DoubleMLLPLR` | `new(score=...)` | `nuisance_space` | `nuisance_space`, `instrument` |
 | `DoubleMLPLPR` | `new(score=...)` | `partialling out` | `partialling out`, `IV-type` |
 
-`DoubleMLPLR` also takes the argument on `fit_cluster(...)` and
-`tune(...)`, with the same default and the same accepted set.
+`DoubleMLPLR` also takes the argument on `tune(...)`, with the same
+default and the same accepted set. Its `fit_cluster(...)` is an internal
+dispatch target, not a public call site.
 
 **`apo`, `apos`, `pq`, `qte`, `lpq`, `cvar` and `policy_tree` are not
 score values.** They are the internal cache-kind tags the port passes to
@@ -135,7 +135,7 @@ do not:
 ## Estimator-specific arguments
 
 - `DoubleMLPLR` / `DoubleMLIRM`: `DoubleMLData` (x, y, d).
-- `DoubleMLDIDMulti`: panel-form `DoubleMLDIDData` (x, y, d, t, g, id).
+- `DoubleMLDIDMulti`: `DoubleMLDIDCSData` (x, y, d, t, id, g).
 - `DoubleMLPQ` / `DoubleMLQTE` / `DoubleMLLPQ`: extra `quantile` arg.
 - `DoubleMLPolicyTree`: extra `depth` arg (default 1).
 - `DoubleMLRDD`: `DoubleMLRDDData` with explicit running variable.

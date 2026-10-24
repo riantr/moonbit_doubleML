@@ -167,12 +167,18 @@ def mbt_files():
             and not f.endswith("_wbtest.mbt")]
 
 
-# `pub fn DoubleMLDID::new(` -- group 1 is the TYPE, group 2 the METHOD.
-FUNC_RE = re.compile(r"^\s*(?:pub\s+)?fn\s+([A-Za-z_]\w*)\s*(?:::([A-Za-z_]\w*))?\s*\(")
+# `pub fn DoubleMLDID::new(` -- group 1 is the visibility, group 2 the TYPE,
+# group 3 the METHOD.  The VISIBILITY matters: a PRIVATE method's parameter
+# is not something a caller can pass, and the tutorial's count is a count of
+# what a caller can pass.  `DoubleMLPLR::fit_cluster` is private, so it was
+# counted here and not there -- and the tutorial told the reader to pass the
+# argument to it.
+FUNC_RE = re.compile(r"^\s*(pub\s+)?fn\s+([A-Za-z_]\w*)\s*(?:::([A-Za-z_]\w*))?\s*\(")
 
 
 def owner_of(lines, idx):
-    """-> (type, method) of the function whose signature holds line `idx`.
+    """-> (type, method, is_public) of the function whose signature holds
+    line `idx`.
 
     Walk BACKWARDS: the score parameter sits in a signature, so the nearest
     preceding header is the one that owns it.  A free function (no `::`) is
@@ -181,9 +187,9 @@ def owner_of(lines, idx):
     """
     for i in range(idx, -1, -1):
         fm = FUNC_RE.match(lines[i])
-        if fm and fm.group(2):
-            return fm.group(1), fm.group(2)
-    return None, None
+        if fm and fm.group(3):
+            return fm.group(2), fm.group(3), bool(fm.group(1))
+    return None, None, False
 
 
 def fn_span(lines, header_idx):
@@ -222,16 +228,27 @@ SITES = []
 for f, lines in SRC.items():
     for i, ln in enumerate(lines):
         if re.search(r"score~\s*:\s*String", ln):
-            t, m = owner_of(lines, i)
+            t, m, is_pub = owner_of(lines, i)
             d = ""
             if "=" in ln:
                 d = ln.split("=", 1)[1].strip().rstrip(",").strip().strip('"')
-            SITES.append((f, i + 1, t, m, d))
+            SITES.append((f, i + 1, t, m, d, is_pub))
 SITES.sort(key=lambda s: (s[0], s[1]))
+# The PUBLIC sites are the ones a caller can reach.  The private ones are
+# internal dispatch targets: `fit()` reaches `fit_cluster()` and passes the
+# argument on, so the port has the parameter twice over, but a reader has it
+# once.
+PUBLIC_SITES = [s for s in SITES if s[5]]
+PRIVATE_SITES = [s for s in SITES if not s[5]]
 
 check("the port has 9 score parameters", len(SITES) == 9, "got %d" % len(SITES))
 for s in SITES:
-    print("        %-20s :%-5d %-22s %s" % (s[0], s[1], s[2], s[3]))
+    print("        %-20s :%-5d %-22s %s%s" % (s[0], s[1], s[2], s[3],
+                                              "" if s[5] else "   (private)"))
+check("8 of them are PUBLIC", len(PUBLIC_SITES) == 8, "got %d" % len(PUBLIC_SITES))
+check("the ninth is private, and it is DoubleMLPLR::fit_cluster",
+      [(s[2], s[3]) for s in PRIVATE_SITES] == [("DoubleMLPLR", "fit_cluster")],
+      str([(s[2], s[3]) for s in PRIVATE_SITES]))
 
 OWNER_TYPES = sorted(set(s[2] for s in SITES))
 check("they sit at 7 estimators", len(OWNER_TYPES) == 7,
@@ -272,7 +289,7 @@ def file_accepted(f):
 
 
 ACCEPTED = {}
-for f, ln, t, m, d in SITES:
+for f, ln, t, m, d, _pub in SITES:
     guarded, compared = file_accepted(f)
     check("%s's score guard and its comparisons agree" % f, guarded == compared,
           "guard=%s compared=%s" % (sorted(guarded), sorted(compared)))
@@ -466,8 +483,10 @@ for r in rows:
 check("doc/004 states that only 7 of the 22 take a score argument",
       "**Only 7 of the 22 estimators take a `score` argument**" in D4)
 check("doc/004 states that 15 take none", "**15 take no `score` argument at all**" in D4)
-check("doc/004 states the 9 parameters at 7 estimators",
-      "**9 `score` parameters, at 7 estimators**" in D4)
+check("doc/004 states the 8 parameters at 7 estimators",
+      "**%d `score` parameters, at %d estimators**"
+      % (len(PUBLIC_SITES), len(ACCEPTED)) in D4,
+      "derived %d at %d" % (len(PUBLIC_SITES), len(ACCEPTED)))
 check("doc/004 says upstream uses 15 spellings", "set of **15** spellings" in D4)
 
 # the COUNTS the document states must be the DERIVED ones -- a document that
@@ -481,8 +500,8 @@ check("doc/004's stated no-score count is the derived one",
       "derived %d" % len(NO_SCORE))
 check("doc/004's stated parameter count is the derived one",
       "**%d `score` parameters, at %d estimators**"
-      % (len(SITES), len(ACCEPTED)) in D4,
-      "derived %d at %d" % (len(SITES), len(ACCEPTED)))
+      % (len(PUBLIC_SITES), len(ACCEPTED)) in D4,
+      "derived %d at %d" % (len(PUBLIC_SITES), len(ACCEPTED)))
 
 site_rows = re.findall(
     r"^\|\s*`DoubleML(\w+)`\s*\|\s*`(\w+)\(score=\.\.\.\)`\s*\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|$",
@@ -601,7 +620,7 @@ for f, lines in SRC.items():
     for i, ln in enumerate(lines):
         if re.search(r"ml_m~\s*:\s*LearnerDispatch\s*=\s*LearnerDispatch::logistic_regression",
                      ln):
-            t, m = owner_of(lines, i)
+            t, m, _pub = owner_of(lines, i)
             if t:
                 LOGISTIC.add(t)
 check("7 estimators default ml_m to the classifier", len(LOGISTIC) == 7,

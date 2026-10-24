@@ -11,6 +11,7 @@ examples/api_server/main.mbt:
   7. examples/api_server/README.md        the /version response sample
   8. examples/<name>/moon.mod  (21 of them)  the pinned import "riantr/moonbit_doubleML@X"
   9. skills/moonbit_doubleML.md  the agent skill's quoted api_server pin
+ 10. doc/moon.mod  the doc project's own library pin
 
 Places 2 and 3 are not text-replaced: round 18 moved the README into
 `_verify/_r18_build_readme_1650.py`, which takes the version from
@@ -43,6 +44,18 @@ surface: it is what a coding agent reads before writing code against this
 library, so a stale literal in it is a promise the tree cannot keep.  The
 skill is now audited by `_verify/_verify_skill_claims_1650.py`, and its
 pin is bumped with the rest.
+
+Site 10 was added in v0.164.34 (round 40): the DOC PROJECT's own manifest,
+`doc/moon.mod`, named the library at 0.52.0 -- the LAST file in the tree
+still carrying that pin, and the same rot sites 5, 6 and 9 had.  It was
+missed by rounds 31 and 39 because both of those read the EXAMPLE manifests
+and the SKILL: `doc/moon.mod` is a third kind of file, and the round-31
+stale-literal scan covers the version SITES only -- the files this script
+owns.  The doc project is a member of `moon.work`, so in-tree the pin is
+INERT (the workspace member wins) and the examples build against the current
+library while the manifest names a version from 159 releases ago; outside
+the tree it is the only thing that decides what gets installed.  It is now
+bump site 10, so it moves with the release.
 
 The `--release-tag v0.164.11` example used to live in the README's CI
 section; round 18 moved the CI section to `ENGINEERING.md`, which is the
@@ -77,6 +90,15 @@ EDITS = [
     # frozen at 0.52.0 because nothing read it.  Site 9, round 39.
     (os.path.join(ROOT, "skills", "moonbit_doubleML.md"),
      [("riantr/moonbit_doubleML@%s" % OLD, "riantr/moonbit_doubleML@%s" % NEW)]),
+    # the DOC PROJECT's own manifest.  It names the library version the six
+    # tutorials were written against, and it was the last file in the tree
+    # still carrying 0.52.0.  In-tree the pin is inert -- the project is a
+    # member of `moon.work`, so the workspace member wins -- and outside the
+    # tree it is the only thing that decides what gets installed.  Site 10,
+    # round 40.
+    (os.path.join(ROOT, "doc", "moon.mod"),
+     [('"riantr/moonbit_doubleML@%s"' % OLD,
+       '"riantr/moonbit_doubleML@%s"' % NEW)]),
     # the EXAMPLE manifests: an example's import pin names the library
     # version, and a copied example must resolve the library it was
     # written against -- not the version it happened to be created at.

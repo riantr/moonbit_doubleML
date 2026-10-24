@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.33",
+  "riantr/moonbit_doubleML@0.164.34",
 }
 ```
 
@@ -512,8 +512,10 @@ $ curl -s -X POST http://127.0.0.1:4000/fit/plr \
 {"estimator":"plr","coef":2,"se":0,"ci_lo":2,"ci_hi":2,"n_obs":6,"n_features":2}
 ```
 
-The same `api_server.wasm` also runs under `moonrun --port 4000`
-(see `examples/api_server/README.md` for the full curl recipe).
+The same `api_server.wasm` also runs under `moonrun <path-to-the-wasm>`.
+The listen port is hard-coded to `4000` in `main.mbt`, so the service
+ignores any argument it is given (see `examples/api_server/README.md`
+for the full PowerShell smoke recipe).
 The service is built directly on `moonbitlang/async@0.20.3` --
 no third-party HTTP framework is pulled in.
 
@@ -606,7 +608,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.33** |
+| `moon.mod` version | **0.164.34** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -733,7 +735,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.33, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.34, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

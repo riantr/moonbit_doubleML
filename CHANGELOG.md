@@ -9,6 +9,107 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.34] -- the ledger nobody read
+
+`moon.mod` moves 0.164.33 -> 0.164.34. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the last stale pin
+
+- `doc/moon.mod` -- the DOC PROJECT's own manifest -- imported
+  `"riantr/moonbit_doubleML@0.52.0"` while the library was at **0.164.33**:
+  the LAST file in the tree still carrying that literal.  The round-31 sweep
+  fixed all 21 example manifests and the round-39 sweep fixed the agent
+  skill; neither read this file, because it is a THIRD kind of file.  In-tree
+  the pin is inert -- `doc` is a member of `moon.work`, so the workspace
+  member wins and the six tutorials build against the current library -- and
+  outside the tree it is the only thing that decides what gets installed.
+  It is now bump site **10** of `_verify/_bump_1636.py`, so it moves with the
+  release, and the stale-literal scan and the release-tree check now hold it
+  to the version like every other site.
+
+### Fixed -- four numbers in the ledger that no check owned
+
+- The ENGINEERING banner publishes a count for the checks it names, and every
+  one of those numbers is a claim about the TREE -- but nothing could see
+  them.  The CHANGELOG publishes its own counts and the checks that publish
+  one assert it against their own run; the BANNER's numbers were asserted by
+  nobody, and four were false.  Each is now the number the check makes:
+  `_verify/_verify_measurements_1650.py` (**70** checks),
+  `_verify/_verify_release_tree_1650.py` (**36** checks),
+  `_verify/_verify_package_claims_1650.py` (**48** checks) and
+  `_verify/_verify_score_argument_1650.py` (**135** checks).  The third of the
+  four is the one worth recording: the banner published **19** for it, and
+  **19** was never true -- that check has made more checks than it ever
+  published, since the day it was written.
+
+### Fixed -- eight sentences that were false
+
+- A fresh-eyes audit of the README, the agent skill and the six tutorials
+  found eight claims that were FALSE, and not one of them was a number that
+  had rotted: they were prose asserting something the tree does not do, and
+  a sentence can only be rewritten.
+- The agent skill said all 16 CLI-style demos "print true-vs-estimated theta
+  and a 95% CI".  **14** of the 16 print a true value and **11** print a CI:
+  `examples/pava` and `examples/splitting` print neither, and `examples/apos`,
+  `examples/cluster` and `examples/ssm` print a true value but no CI.  The
+  README had said so for releases; the skill had not.
+- The estimators tutorial said the port has **9** `score` parameters and
+  told the reader to pass one to `fit_cluster(...)`.  There are **8**, at 7
+  estimators -- and `fit_cluster` is a PRIVATE dispatch target, so a reader
+  who followed the sentence got "Type DoubleMLPLR has no method fit_cluster".
+- The same tutorial gave `DoubleMLDIDMulti` a panel-form `DoubleMLDIDData`
+  (x, y, d, t, g, id).  It takes `DoubleMLDIDCSData`, and `DoubleMLDIDData`
+  has no `t`, `g` or `id` at all.
+- The README pointed at "the full curl recipe" in
+  `examples/api_server/README.md` -- whose recipe is the PowerShell one --
+  and offered a `moonrun --port 4000` invocation that moonrun REJECTS
+  (`moonrun` takes a PATH and then the program's arguments) and that the
+  service ignores anyway: its listen port is hard-coded to 4000.
+- The estimators tutorial promised a note about upstream's `__all__` that the
+  package README does not carry.
+- The DGP tutorial said the panel and DID DGPs return `DoubleMLPanelData` /
+  `DoubleMLDIDCSData` and carry the extra `t` / `g` / `id` accessors.  They
+  return `DidCsData`, `DidMultiData` and `PlprData`; the panel one carries
+  no `t` / `g` / `id` at all, so the caller builds those vectors itself.  The
+  worked example it pointed at, `dgp_recovery_test.mbt`, holds no LPLR test;
+  `dgp_lplr_test.mbt` does.
+
+### Added -- the checks that own the classes
+
+- (`_verify/_verify_ledger_counts_1650.py` (**32** checks)) reads the counts
+  the ENGINEERING banner publishes, RUNS each check it names, and requires
+  the published number to be the number that check makes on this tree; and
+  it requires the CHANGELOG's publication of the same count to agree with
+  the banner's, because the two documents are read side by side and must not
+  contradict each other.  The count is MEASURED, not read: a check's count
+  is what its checks add up to, so no literal in the source can stand in for
+  it.
+- (`_verify/_verify_doc_claims_1650.py` (**32** checks)) derives every one
+  of the eight prose claims above from the SOURCE: the demo split from the
+  record the measuring verifier writes, the `score` parameters from their
+  signatures with the parentheses BALANCED (a `[^)]*` matcher cuts a
+  signature short at the first ")" and loses one of the eight), the DGP
+  factories' return types and accessors, the api_server's port, and the
+  test names in the files the tutorials cite.
+- (`_verify/_verify_release_tree_1650.py` (**36** checks)) declares the size of
+  its bump-site set, and the doc project's manifest became the **28**th site,
+  so the declaration moves with the set: **28** sites, **7** of them not
+  example manifests.
+- (`_verify/_dryrun_round40_1650.py`) breaks each of the **5** mechanisms one
+  at a time and requires the failure count to GROW at every step: **7**
+  failures at the end.  Three of the mechanisms break the ledger's own
+  numbers, one breaks the pin and one breaks a tutorial's count, so the
+  classes are proved from both sides.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 57 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **57** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.33] -- the second document
 
 `moon.mod` moves 0.164.32 -> 0.164.33. No estimator behaviour changed and the

@@ -115,14 +115,17 @@ surface and anti-patterns).
   - 16 (`apo`, `apos`, `cluster`, `cvar`, `datasets`, `did_binary`,
     `did_cross_section`, `did_cs`, `did_cs_binary`, `did_multi`,
     `lplr`, `main`, `pava`, `plpr`, `splitting`, `ssm`) are CLI-style
-    numeric demos that print true-vs-estimated θ and a 95% CI.
+    numeric demos. **14** of the 16 print a true value and **11** of the 16
+    print a 95% CI: `examples/pava` and `examples/splitting` print neither,
+    and `examples/apos`, `examples/cluster` and `examples/ssm` print a true
+    value but no CI.
   - `examples/fuzz/` is the property-based fuzz harness (native-only:
     it needs `--target native`), `examples/bitexact/` and
     `examples/parity/` are the fixtures the bit-exact and LPLR parity
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.164.33"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.34"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside
