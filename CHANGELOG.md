@@ -9,6 +9,90 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.35] -- the count that moved with the network
+
+`moon.mod` moves 0.164.34 -> 0.164.35. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- a check count that moved with the network
+
+- Two fresh-eyes audits -- one for the numbers, one for the promises --
+  independently found the same defect.  `_verify/_verify_citations_1650.py`
+  publishes **11** checks and made only ten of them whenever arXiv was
+  unreachable, because the skip that stood in for the preprint's two checks
+  was ONE skip.  The check that owns the ENGINEERING banner's counts compares
+  the published number with the number the check MAKES, so a publisher's rate
+  limit turned the whole tracked contract red -- and the release's own claim,
+  "57 passed / 0 failed", was true only while the network was up.  One auditor
+  watched arXiv answer 429 and watched the contract fail; the other read the
+  same thing off two runs of the same script.
+- A skip now stands for EXACTLY the check it replaces: one per field that could
+  not be compared, and one per arXiv check.  The count is the number of checks
+  DEFINED -- a property of the file, not of the network -- and it is measured
+  both ways: **11** checks with the publishers reachable, and **11** with every
+  request failing.
+
+### Fixed -- a number the ledger published that no check could see
+
+- Round 40's entry records its four corrections in a shape with no "checks"
+  word in it, so the check that reads the banner's counts never saw it -- and
+  the number it carried was false.
+  `_verify/_verify_score_argument_1650.py` makes **135** checks and the banner
+  said **131**.  `_verify/_verify_ledger_counts_1650.py` (**34** checks) reads
+  that shape now, and its live half is the count the check makes; the other
+  half is history, the way "v0.164.21's entry said ... runs **127**" is
+  history here.  A prose claim that no check can see is a claim that rots in
+  silence.
+- The banner published three counts for one checker -- **108** in round 30,
+  **45** in round 35 and **11** in round 39 -- and the file was REWRITTEN in
+  v0.164.33, so the rules round 35 describes (C1 and C2) are not in it any
+  more.  Round 30's entry now says what it measured then, and round 35's
+  carries the note.
+
+### Fixed -- upstream's estimator roster, which is 21 and not 17
+
+- Round 29's entry published "upstream 0.11.4's 17 estimator classes", and the
+  check that derived it matched `^class (DoubleML\w+)\(` -- which needs BOTH
+  the prefix and the parentheses, and upstream declares `DoubleMLBLP`,
+  `DoubleMLPolicyTree` and `RDFlex` without them.  The number was wrong, and
+  it was wrong in a way that AGREED with the docstring it checked: the `cf`
+  default of `0.03` really does reach **17** classes, and that is a different
+  seventeen.  A check that agrees with a document for the wrong reason is not a
+  check.
+- `_verify/_verify_docstring_counts_1650.py` (**76** checks) derives the roster
+  from the AST -- upstream's class graph, walked -- and from the port's own
+  provenance record, which names the upstream classes the port ports.  The
+  `cvar.mbt` docstring says "17 of its 21 estimator classes", and the check
+  measures both numbers and names the four upstream classes with no
+  `sensitivity_analysis` at all.  The tracked record that had published the
+  reach as **16** -- and had said "17 is not the measured number" -- was
+  corrected in place, with the re-measurement that shows why.
+
+### Fixed -- a workflow, and two paths that pointed at nothing
+
+- `.github/workflows/nightly.yml` said the package was "flat-layout (no
+  moon.work)" and that it checked "the package root directly rather than
+  iterating over workspace members".  The REPOSITORY root carries the
+  workspace -- the library, `doc/` and the examples -- and `moon check`
+  resolves UP to that root from any directory inside it, so the step checks
+  every member.  Measured: the same task list from the repository root and
+  from the package directory.  `_verify/_verify_layout_1680.py` owns the claim
+  now.
+- `examples/api_server/README.md` named two files under `.archived/` that exist
+  in a local working tree and are git-ignored, so a clone does not have them;
+  it says so now.
+- `doc/moon.mod` -- the DOC PROJECT's manifest -- declared
+  `readme = "README.md"`, a file that does not exist; the doc project has the
+  landing page its manifest promises now, at `doc/README.mbt.md`.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 57 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **57** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.34] -- the ledger nobody read
 
 `moon.mod` moves 0.164.33 -> 0.164.34. No estimator behaviour changed and the

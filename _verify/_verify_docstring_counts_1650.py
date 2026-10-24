@@ -76,7 +76,9 @@ number in the CHANGELOG cannot drift.
 
 Run: python _verify/_verify_docstring_counts_1650.py
 """
+import ast
 import io
+import json
 import os
 import re
 import sys
@@ -131,6 +133,70 @@ def up_check(label, ok, detail=""):
 
 def read(p):
     return io.open(p, encoding="utf-8", errors="replace").read()
+
+
+def upstream_classes(src):
+    """(name, bases, own cf_y default) for every class in one upstream file.
+
+    The AST is used rather than a regular expression, and that is the whole
+    point of this function.  The matcher this replaces was
+    `^class (DoubleML\\w+)\\(`, which needs BOTH the "DoubleML" prefix AND
+    the parentheses -- and upstream declares `class DoubleMLBLP:`,
+    `class DoubleMLPolicyTree:` and `class RDFlex:` without either.  It
+    counted 17 and called that upstream's estimator roster; upstream has 21.
+
+    A regex also reads only the FIRST line of a base list, and upstream
+    spreads some of them over several lines, so the inheritance walk below
+    would have been wrong as well.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return []
+    out = []
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        bases = []
+        for b in node.bases:
+            if isinstance(b, ast.Name):
+                bases.append(b.id)
+            elif isinstance(b, ast.Attribute):
+                bases.append(b.attr)
+        own_cf = None
+        for f in node.body:
+            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                    and f.name == "sensitivity_analysis":
+                seg = ast.get_source_segment(src, f) or ""
+                m = re.search(r"cf_y\s*(?::[^=]+)?=\s*([0-9.]+)", seg)
+                if m:
+                    own_cf = m.group(1)
+        out.append((node.name, bases, own_cf))
+    return out
+
+
+def cf_resolves(name, classes, seen=None):
+    """The cf_y default a class resolves to, or None if it has none.
+
+    Upstream's `DoubleML` base class (double_ml.py) defines
+    `sensitivity_analysis(self, cf_y=0.03, cf_d=0.03, ...)`, so every
+    estimator class that INHERITS it resolves that default; `DoubleMLAPOS`
+    and `DoubleMLDIDMulti` define their own, with the same defaults.  The
+    four that have no `sensitivity_analysis` at all are BLP, PolicyTree, QTE
+    and RDFlex.
+    """
+    seen = set() if seen is None else seen
+    if name in seen or name not in classes:
+        return None
+    seen.add(name)
+    bases, own_cf = classes[name]
+    if own_cf is not None:
+        return own_cf
+    for b in bases:
+        got = cf_resolves(b, classes, seen)
+        if got is not None:
+            return got
+    return None
 
 
 def mbt_flat(p):
@@ -467,7 +533,7 @@ check("APOS is not in that family, so 'other' is right",
 # --- upstream: the 7 with `_sensitivity_implemented = True` ------------------
 UP_TRUE = set()
 UP_CALLERS = set()
-UP_ESTIMATORS = set()
+UP_CLASSES = {}
 if os.path.isdir(UPSTREAM):
     for dirpath, dirnames, filenames in os.walk(UPSTREAM):
         rel = os.path.relpath(dirpath, UPSTREAM).replace("\\", "/")
@@ -483,9 +549,8 @@ if os.path.isdir(UPSTREAM):
                 UP_TRUE.add(fn[:-3])
             if "init_ps_processor" in s and "def init_ps_processor" not in s:
                 UP_CALLERS.add(fn[:-3])
-            for m in re.finditer(r"^class\s+(DoubleML\w+)\s*\(", s, re.M):
-                if not m.group(1).endswith("Data"):
-                    UP_ESTIMATORS.add(m.group(1))
+            for name, bases, own_cf in upstream_classes(s):
+                UP_CLASSES[name] = (bases, own_cf)
 up_check("the vendored upstream 0.11.4 tree is present", bool(UP_TRUE),
          "%d files with the flag" % len(UP_TRUE))
 up_check("upstream sets _sensitivity_implemented = True at 7 estimators",
@@ -508,12 +573,38 @@ NAMED = set(re.findall(r"`(apo|apos|cvar|iivm|irm|lpq|pq|qte|ssm|did_binary|"
 up_check("it names exactly upstream's 12 callers",
          NAMED == UP_CALLERS, "named=%s derived=%s" % (sorted(NAMED), sorted(UP_CALLERS)))
 
-# --- cvar.mbt: upstream's 17 estimators -------------------------------------
+# --- the upstream roster, DERIVED from the port's own provenance record ------
+# The provenance record maps each of the port's 22 estimators to the upstream
+# class it ports, so upstream's roster is derived and not listed: 21 classes.
+# 19 keep their name, two are renamed (upstream's `RDFlex` is the port's
+# `DoubleMLRDD`, upstream's `DoubleMLDIDCS` is the port's
+# `DoubleMLDIDCrossSection`), and the port's own `DoubleMLDIDCS` has no
+# upstream counterpart.
+PROV = os.path.join(ROOT, "_verify", "_provenance_audit_1650.json")
+UP_CLASS_OF = {}
+if os.path.isfile(PROV):
+    UP_CLASS_OF = json.load(io.open(PROV, encoding="utf-8")).get("upstream_class_of", {})
+UP_ROSTER = set(v for v in UP_CLASS_OF.values() if v)
+check("the port's provenance record maps all 22 of its estimators",
+      len(UP_CLASS_OF) == 22, "got %d" % len(UP_CLASS_OF))
+check("upstream's estimator classes are 21",
+      len(UP_ROSTER) == 21, "got %d: %s" % (len(UP_ROSTER), sorted(UP_ROSTER)))
+up_check("every upstream class the port ports exists in the vendored tree",
+         UP_ROSTER <= set(UP_CLASSES),
+         "missing: %s" % sorted(UP_ROSTER - set(UP_CLASSES)))
+CF_REACH = set(n for n in UP_ROSTER if cf_resolves(n, UP_CLASSES) == "0.03")
+
+# --- cvar.mbt: upstream's cf default ---------------------------------------
 CVAR = doc_of_sig("cvar.mbt", "fn DoubleMLCVAR::sensitivity_analysis(")
-check("DoubleMLCVAR::sensitivity_analysis's docstring says all 17 of upstream's",
-      "at all 17 of its" in CVAR, "")
-up_check("upstream 0.11.4 has 17 estimator classes", len(UP_ESTIMATORS) == 17,
-         "got %d" % len(UP_ESTIMATORS))
+check("DoubleMLCVAR::sensitivity_analysis's docstring says 17 of upstream's 21",
+      "at 17 of its 21" in CVAR, "")
+up_check("upstream's cf default of 0.03 reaches 17 of those classes",
+         len(CF_REACH) == 17,
+         "got %d: %s" % (len(CF_REACH), sorted(CF_REACH)))
+up_check("the four it does not reach are the four without a method",
+         sorted(UP_ROSTER - CF_REACH) == ["DoubleMLBLP", "DoubleMLPolicyTree",
+                                          "DoubleMLQTE", "RDFlex"],
+         str(sorted(UP_ROSTER - CF_REACH)))
 
 # --- rdd.mbt: the kernels ----------------------------------------------------
 KERNELDOC = doc_of_sig("rdd.mbt", "fn rdd_weight_at(")

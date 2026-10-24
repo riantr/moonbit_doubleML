@@ -41,9 +41,10 @@ jobs:
       - name: Update dependencies
         run: moon update
 
-      # All four supported backends. The moonbit_doubleML package is
-      # flat-layout (no moon.work), so we check the package root
-      # directly rather than iterating over workspace members.
+      # All four supported backends.  The repo root carries a `moon.work`
+      # workspace -- the library, `doc/` and the examples -- and `moon check`
+      # resolves UP to that workspace root from any directory inside it, so
+      # this step checks every member and not just the package.
       - name: Check package
         run: |
           set -o pipefail

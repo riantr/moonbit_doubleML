@@ -173,8 +173,9 @@
 >   asks the five docstrings that publish a count of that family whether they
 >   agree.  It also gates the other package-wide counts in the public
 >   docstrings, each derived rather than asserted: the 22-estimator roster, the
->   15-estimator sandwich family, upstream 0.11.4's 17 estimator classes,
->   upstream's 7 `_sensitivity_implemented` estimators and 12
+>   15-estimator sandwich family, upstream 0.11.4's 21 estimator classes and
+>   the 17 of them whose `cf` default is `0.03`, upstream's 7
+>   `_sensitivity_implemented` estimators and 12
 >   `init_ps_processor` callers, the 5 `RDDKernel` variants and the 3 of them
 >   that are negative outside `|u| <= h`, the policy tree's 5-slot encoding,
 >   the `GainStatsResult` field count, the `DoubleMLDIDBinary` delegation
@@ -219,8 +220,8 @@
 >   function is at 2022), `lplr.mbt:758` (cited for the `kfold` draw; line
 >   758 is a loop header, the draw is at 781) and `did_cs.mbt:1263` (cited
 >   for the panic on a 3-row stub; line 1263 is an unrelated `require`, the
->   panic site is `did.mbt:276`).  All 64 are repaired, and the prose now
->   carries **103** citations in **40** files that all resolve.
+>   panic site is `did.mbt:276`).  All 64 are repaired, and the prose
+>   carried **103** citations in **40** files that all resolved.
 >
 >   The new check `_verify/_verify_citations_1650.py` asks a mechanical
 >   question of each of them: does the cited line MENTION the thing the
@@ -238,9 +239,10 @@
 >   that names an upstream Python file is a promise about a pinned third-party
 >   package (`doubleml` 0.11.4) that this repo does not ship, and the
 >   vendored upstream tree is not tracked, so a tracked verifier could not
->   check them anyway.  That count -- **266** -- is DECLARED and asserted too,
->   so the set cannot move silently in either direction, and both counts
->   being declared is what keeps the published check count FIXED at **108**.
+>   check them anyway.  That count -- **266** -- was DECLARED and asserted
+>   too, so the set could not move silently in either direction, and both
+>   counts being declared is what kept the published check count FIXED at
+>   **108**.
 >
 >   `_verify/_dryrun_round30_1650.py` breaks each of the eight mechanisms one
 >   at a time and requires the failure count to GROW at every step, and it
@@ -495,6 +497,15 @@
 >   configuration must sit in the branch that configuration selects, and a
 >   doc-comment citation must NAME it).  The configurations C2 knows about are
 >   DERIVED from the source's own `score == "..."` comparisons, not listed.
+>
+>   *That checker was replaced.*  The `file:line` checker this entry describes
+>   was REWRITTEN in v0.164.33: the same file,
+>   `_verify/_verify_citations_1650.py`, is now the PUBLISHER-record checker
+>   described in round 39, and it makes **11** checks and asks a different
+>   question.  The **45** above, and round 30's **103** citations in **40**
+>   files, its **266** upstream citations and its fixed **108**, are what that
+>   checker measured THEN; nothing in the tree measures them today, and a
+>   reader who went looking for C1 and C2 in the file would not find them.
 >
 >   `_verify/_dryrun_round35_1650.py` breaks each of the seven mechanisms one
 >   at a time and requires the failure count to GROW at every step, and it
@@ -824,7 +835,7 @@
 >   `_verify/_verify_release_tree_1650.py` published **34** and makes **36**;
 >   `_verify/_verify_package_claims_1650.py` published **19** and makes **48**;
 >   and `_verify/_verify_score_argument_1650.py` published **131** and makes
->   **133**.  The third of the four is the one worth recording: **19** was
+>   **135**.  The third of the four is the one worth recording: **19** was
 >   never true -- that check has run more checks than it ever published, and
 >   it has done so since the day it was written.
 >
@@ -873,6 +884,83 @@
 >   ends at **7** failures.  Three of the mechanisms break this banner's
 >   own numbers, one breaks the pin and one breaks a tutorial's count, so
 >   the classes are proved from both sides.
+>
+> * **Round 41.** The count that moved with the network.
+>
+>   *A number that was true only while a publisher answered.*  Two
+>   fresh-eyes audits -- one for the numbers, one for the promises --
+>   independently found the same defect.  The citation check
+>   `_verify/_verify_citations_1650.py` publishes **11** checks, and it made
+>   ten of them whenever arXiv was unreachable, because the skip that stood
+>   in for the preprint's two checks was ONE skip.  The check that owns this
+>   banner's counts compares the published number with the number the check
+>   MAKES, so a publisher's rate limit turned the whole tracked contract
+>   red -- and the release's own claim, "57 passed / 0 failed", was true
+>   only while the network was up.  One auditor watched arXiv answer 429
+>   and watched the contract fail; the other read the same thing off two
+>   runs of the same script.
+>
+>   A skip now stands for EXACTLY the check it replaces: one per field that
+>   could not be compared, and one per arXiv check.  The count is the
+>   number of checks DEFINED, which is a property of the file and not of
+>   the network -- the round-29 precedent, applied to the reachability of a
+>   third party rather than to the shape of the tree.  Measured both ways:
+>   `_verify/_verify_citations_1650.py` makes **11** checks with the
+>   publishers reachable, and **11** with every request failing.
+>
+>   *A number this banner published that no check could see.*  Round 40's
+>   entry records its four corrections in a shape with no "checks" word in
+>   it -- a published count and the count the check actually makes -- so
+>   the check that reads this banner's counts never saw it.  The
+>   score-argument one was FALSE: `_verify/_verify_score_argument_1650.py`
+>   makes **135** checks, and the banner said **131**.
+>   `_verify/_verify_ledger_counts_1650.py` (**34** checks) reads that shape
+>   now, and its live half is the count the check makes; the other half is
+>   history, the way "v0.164.21's entry said ... runs **127**" is history in
+>   the CHANGELOG.  A prose claim that no check can see is a claim that rots
+>   in silence, and silence is what let this one rot.
+>
+>   *One checker, three counts, and a file that was rewritten.*  This banner
+>   published **108** for the citation check in round 30, **45** in round
+>   35 and **11** in round 39 -- and the file was REWRITTEN in v0.164.33,
+>   so the rules round 35 describes (C1 and C2) are not in it any more.  A
+>   reader who went looking for them would not find them.  Round 30's entry
+>   now says what it measured then, and round 35's carries the note.
+>
+>   *The upstream roster was 17, and upstream has 21.*  Round 29's entry
+>   published "upstream 0.11.4's 17 estimator classes", and the check that
+>   derived it matched `^class (DoubleML\w+)\(` -- which needs BOTH the
+>   prefix and the parentheses, and upstream declares `DoubleMLBLP`,
+>   `DoubleMLPolicyTree` and `RDFlex` without them.  The number was wrong,
+>   and it was wrong in a way that AGREED with the docstring it checked:
+>   the `cf` default of `0.03` really does reach **17** classes, and that
+>   is a different seventeen.  A check that agrees with a document for the
+>   wrong reason is not a check.  The count is derived from the AST now --
+>   upstream's class graph, walked -- and from the port's own provenance
+>   record, which names the upstream classes the port ports.  The
+>   `cvar.mbt` docstring says "17 of its 21 estimator classes", and
+>   `_verify/_verify_docstring_counts_1650.py` (**76** checks) measures both
+>   numbers and names the four upstream classes with no
+>   `sensitivity_analysis` at all.  The tracked record that had published
+>   the reach as **16** -- and had said "17 is not the measured number" --
+>   was corrected in place, with the re-measurement that shows why.
+>
+>   *A workflow that described a layout the tree no longer had.*  The
+>   nightly workflow said the package was "flat-layout (no moon.work)" and
+>   that it checked "the package root directly rather than iterating over
+>   workspace members".  The REPOSITORY root carries the workspace -- the
+>   library, `doc/` and the examples -- and `moon check` resolves UP to
+>   that root from any directory inside it, so the step checks every
+>   member.  Measured: the same task list from the repository root and from
+>   the package directory.  `_verify/_verify_layout_1680.py` owns the claim
+>   now.
+>
+>   *Two paths in prose that pointed at nothing.*  The api_server's README
+>   named two files under `.archived/` that exist in a local working tree
+>   and are git-ignored, so a clone does not have them; it says so now.  And
+>   `doc/moon.mod` -- the DOC PROJECT's manifest -- declared
+>   `readme = "README.md"`, a file that does not exist; the doc project
+>   has the landing page its manifest promises now.
 
 >
 

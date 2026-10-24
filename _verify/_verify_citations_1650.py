@@ -38,6 +38,24 @@ that turns a network outage into a red build teaches its reader to ignore
 it.  (The round-23 precedent: a rule with false positives teaches its reader
 to ignore it.)
 
+THE CHECK COUNT IS FIXED AT 11
+=============================
+The count this verifier publishes is 11, and it is 11 in EVERY network
+condition.  That is not automatic: a skip that stands in for SEVERAL checks
+would make the count move, and it did.  When arXiv was unreachable the
+preprint's two checks collapsed into ONE skip, so the run reported 10
+instead of 11 -- and the check that owns the banner's published counts
+(`_verify/_verify_ledger_counts_1650.py`) compares the banner's number with
+the number this run MAKES, so the whole tracked contract turned red on a
+publisher's rate limit.  Two independent fresh-eyes audits reproduced it,
+one of them by watching arXiv answer 429.
+
+So a skip now stands for EXACTLY the check it replaces: one skip per field
+that could not be compared, and one per arXiv check.  The count is the
+number of checks DEFINED, which is a property of this file and not of the
+network.  This is the round-29 precedent -- the docstring-count verifier's
+count is fixed, not tree-dependent -- applied to the network.
+
 Run: python _verify/_verify_citations_1650.py
 """
 import io
@@ -131,14 +149,21 @@ for c in CITATIONS:
 
     ok, payload = fetch(c["url"])
     if not ok:
-        skip("the %s citation resolves against its publisher" % c["label"],
-             "the publisher is unreachable (%s)" % payload)
+        # One skip PER FIELD: the online path below makes one check per
+        # field, so a single skip standing in for all of them would move the
+        # check count with the network.  See THE CHECK COUNT IS FIXED AT 11.
+        for f in c["fields"]:
+            skip("the %s citation's %s matches the publisher's record"
+                 % (c["label"], f),
+                 "the publisher is unreachable (%s)" % payload)
         continue
     try:
         doc = json.loads(payload)["message"]
     except Exception as e:  # noqa: BLE001
-        skip("the %s citation resolves against its publisher" % c["label"],
-             "the publisher's record could not be parsed (%s)" % e)
+        for f in c["fields"]:
+            skip("the %s citation's %s matches the publisher's record"
+                 % (c["label"], f),
+                 "the publisher's record could not be parsed (%s)" % e)
         continue
 
     parts = (doc.get("page") or "").split("-")
@@ -170,7 +195,12 @@ else:
     aid = m.group(1)
     ok, payload = fetch("https://export.arxiv.org/api/query?id_list=%s" % aid)
     if not ok:
-        skip("the preprint %s resolves against arXiv" % aid,
+        # TWO skips: the online path below makes two checks, so the count
+        # must not shrink when arXiv is unreachable.  See THE CHECK COUNT IS
+        # FIXED AT 11.
+        skip("the preprint %s resolves to an arXiv record" % aid,
+             "arXiv is unreachable (%s)" % payload)
+        skip("the preprint record carries a title",
              "arXiv is unreachable (%s)" % payload)
     else:
         got = re.search(r"<id>http://arxiv\.org/abs/([^<]+)</id>", payload)

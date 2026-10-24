@@ -15,7 +15,7 @@
 > | `sensitivity.mbt` — `SensitivityResult` | `:534` | `:534` — unchanged |
 > | upstream `apo.py:107 / :119 / :120 / :131` | — | all unchanged |
 > | upstream `iivm.py:43 / :164` | — | all unchanged |
-> | upstream `cf_y` / `cf_d` default | "0.03 at all 17 estimators" | **0.03 at 16 classes** — 15 re-exported at the top level, plus `DoubleMLDIDMulti`; and it is the default of the `sensitivity_analysis()` **method**, not of a constructor |
+> | upstream `cf_y` / `cf_d` default | "0.03 at all 17 estimators" | **0.03 at 17 of upstream's 21 estimator classes** — 15 inherit upstream's `DoubleML` base, which is where the method is defined, and `DoubleMLAPOS` and `DoubleMLDIDMulti` define their own with the same defaults; and it is the default of the `sensitivity_analysis()` **method**, not of a constructor |
 >
 > **What is NOT verified here.** No estimator was re-run. The CFAR `cf` sweep
 > (§2) and the IIVM learner comparison (§3) are quoted from the original record
@@ -118,16 +118,30 @@ claim.
 0.03 — see ROW O. The comment documents the port's value without marking it as
 a divergence.
 
-> **Re-measured 2026-10-20.** Upstream's `cf_y` / `cf_d` are **not**
-> constructor parameters — they are the defaults of the `sensitivity_analysis()`
+> **Re-measured 2026-10-20, and again 2026-10-24.** Upstream's `cf_y` / `cf_d`
+> are **not** constructor parameters — they are the defaults of the `sensitivity_analysis()`
 > **method** (`double_ml.py:1665`, `double_ml_framework.py:681`,
-> `did/did_multi.py:791`, `irm/apos.py:558`). The value is `0.03` for **16**
-> upstream classes — the 15 re-exported at the top level, plus
-> `DoubleMLDIDMulti`, which is not. (The original text counted 17; 17 is not
-> the measured number.) The port, by contrast, takes
+> `did/did_multi.py:791`, `irm/apos.py:558`). The value is `0.03` for **17**
+> upstream classes: the 15 that inherit upstream's `DoubleML` base, which is
+> where the method is defined, plus `DoubleMLAPOS` and `DoubleMLDIDMulti`,
+> which define their own with the same defaults. (The original text counted
+> 17. The 2026-10-20 re-measurement said **16**, and that was itself wrong:
+> it counted the 15 inheritors and `DoubleMLDIDMulti` and missed
+> `DoubleMLAPOS`, and it called the inheritors "the 15 re-exported at the
+> top level" when only 13 of them are.) Upstream's estimator roster is
+> **21**, not 17 — the four that have no `sensitivity_analysis` at all are
+> `DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLQTE` and `RDFlex`. The port,
+> by contrast, takes
 > `cf_y` / `cf_d` as **constructor** parameters defaulting to `0.05`
 > (`cvar.mbt:377-378`) — so the two "defaults" are not even the same kind of
 > thing, and comparing them is comparing a knob with a method argument.
+>
+> The 2026-10-24 measurement is derived by
+> `_verify/_verify_docstring_counts_1650.py`, which walks upstream's class
+> graph with the AST rather than a regular expression: a matcher that
+> requires both the `DoubleML` prefix and the parentheses misses
+> `DoubleMLBLP`, `DoubleMLPolicyTree` and `RDFlex`, which is how the 17
+> came about.
 
 ---
 

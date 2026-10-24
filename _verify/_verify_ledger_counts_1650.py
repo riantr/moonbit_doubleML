@@ -15,9 +15,9 @@ their own run, but the BANNER's numbers were asserted by nobody.  Four of
 them were false when this verifier was written:
 
     `_verify/_verify_measurements_1650.py`     published  66, makes 70
-    `_verify/_verify_release_tree_1650.py`     published  34, makes 35
+    `_verify/_verify_release_tree_1650.py`     published  34, makes 36
     `_verify/_verify_package_claims_1650.py`   published  19, makes 48
-    `_verify/_verify_score_argument_1650.py`   published 131, makes 133
+    `_verify/_verify_score_argument_1650.py`   published 131, makes 135
 
 The fourth is the one worth recording: it was never true.  The banner entry
 that introduced the check published 19, and the check has made 48 checks since
@@ -73,6 +73,21 @@ since the day it was written", and the phrase was read as the live claim of
 the check named two sentences earlier.  The check caught its own author,
 which is the only reason the rule is written down here.
 
+THERE ARE TWO SHAPES, AND THE SECOND ONE USED TO BE INVISIBLE
+=============================================================
+The banner writes a count about a named check in two ways: the "**N**
+checks" shape, and the "published **X** and makes **Y**" shape the round-40
+entry uses to record a correction.  The second shape carries no "checks"
+word, so this verifier did not see it -- and the number it carried was
+FALSE for the whole release it shipped in, because the check it names grew
+two checks in the very round that wrote the sentence.
+
+So the second shape is read now, and its LIVE half is the "makes" number:
+the first is what the banner used to publish, which is history, exactly as
+"v0.164.21's entry said ... runs **127**" is history in the CHANGELOG.
+A prose claim that no check can see is a claim that rots in silence, and
+silence is what let this one rot.
+
 WHAT IS NOT CHECKED, AND WHY
 ============================
 Whether the banner's prose about a round is accurate.  This checks the
@@ -113,9 +128,22 @@ def read(path):
 NAME = re.compile(r"_verify/_verify_[A-Za-z0-9_]+\.py")
 PHRASE = re.compile(r"\*\*(\d+)\*\*\s+checks?\b")
 
+# The SECOND shape the banner uses for a count about a named check.  The
+# round-40 entry records a correction as
+#
+#     `_verify/_verify_score_argument_1650.py` published **131** and makes
+#     **135**
+#
+# which carries no "checks" word, so PHRASE never saw it -- and the number it
+# carried was FALSE for the whole release it shipped in.  The FIRST number is
+# what the banner used to publish: history, the way "entry said ... runs
+# **127**" is history in the CHANGELOG.  The SECOND is what the check makes
+# now, which is the LIVE claim, and it is owned like any other.
+MAKES = re.compile(r"\*\*(\d+)\*\*\s+and\s+makes\s*\*\*(\d+)\*\*")
+
 # How far back a count may look for the check it counts.  The banner's
 # entries refer to checks named in an EARLIER paragraph ("The published count
-# was wrong once ... It runs **133** checks on the tree as it stands"), and
+# was wrong once ... It runs **135** checks on the tree as it stands"), and
 # the longest such reach in the banner is under 500 characters.
 WINDOW = 800
 
@@ -169,6 +197,20 @@ def claims(text, lmap):
     names = [(m.start(), m.group(0)) for m in NAME.finditer(text)]
     for m in PHRASE.finditer(text):
         n = int(m.group(1))
+        line = lmap[m.start()]
+        before = [t for t in names if t[0] < m.start()]
+        if not before:
+            unowned.append((n, line, 0))
+            continue
+        best = before[-1]
+        reach = m.start() - best[0]
+        if reach > WINDOW:
+            unowned.append((n, line, reach))
+            continue
+        owned.append((best[1], n, line, m.start()))
+    for m in MAKES.finditer(text):
+        # The live half of the pair: what the check makes NOW.
+        n = int(m.group(2))
         line = lmap[m.start()]
         before = [t for t in names if t[0] < m.start()]
         if not before:

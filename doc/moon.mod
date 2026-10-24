@@ -3,10 +3,10 @@ name = "riantr/moonbit_doubleML-doc"
 version = "0.1.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.34",
+  "riantr/moonbit_doubleML@0.164.35",
 }
 
-readme = "README.md"
+readme = "README.mbt.md"
 
 repository = "https://gitee.com/ren-yongxiang/moonbit_doubleml.git"
 

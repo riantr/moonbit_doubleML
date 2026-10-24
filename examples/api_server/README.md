@@ -65,7 +65,7 @@ estimator list:
 
 ```json
 {
-  "library": "riantr/moonbit_doubleML@0.164.34",
+  "library": "riantr/moonbit_doubleML@0.164.35",
   "service": "example/api_server@0.1.0",
   "estimators": ["plr", "irm"]
 }
@@ -139,10 +139,13 @@ Stop-Process -Id $proc.Id -Force
   `moonbitlang/async`'s `@http.get/post` helpers raise `ReaderClosed`
   when reading the response body on Windows, which blocks an
   `assert_eq`-style integration test inside the test driver. The
-  earlier attempts are kept for reference under `.archived/`
-  (`main_test.attempted.archived`, `main_test.crescent.archived`).
-  Endpoint correctness is verified via the PowerShell smoke recipe
-  above (and the matching curl recipe in the root `README.mbt.md`).
+  earlier attempts live in a local working tree under `.archived/`
+  (`main_test.attempted.archived`, `main_test.crescent.archived`),
+  and that directory is git-ignored: they are kept for reference
+  only, are **not** part of the package, and a clone does not have
+  them. Endpoint correctness is verified via the PowerShell smoke
+  recipe above (and the matching curl recipe in the root
+  `README.mbt.md`).
 - The body cap is 16 MiB. Larger uploads are rejected with
   `400 {"error":"request body exceeds 16 MiB limit"}`.
 - Only GET and POST are accepted. PUT/PATCH/DELETE/HEAD/CONNECT/
@@ -163,5 +166,6 @@ examples/api_server/
   main.mbt          <- router + JSON parser + handler + entry point
   README.md         <- this file
   LICENSE           <- Apache-2.0, same terms as the library
-  .archived/        <- previously-archived crescent-based main.mbt (kept for reference)
+  .archived/        <- local only: previously-archived crescent-based main.mbt
+                      (git-ignored; not part of the package)
 ```

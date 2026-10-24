@@ -6,11 +6,21 @@ Claims under test:
   * "moon.work  <- 23-member workspace aggregator (the library, doc/, 21 examples)"
   * "doc/       <- wasm-gc-targeted numbered tutorials" ... 006_python_check
   * the wasm-gc test total is "lib + 6 doc tutorials"
+  * the nightly workflow's own claim about what it checks
 
 `examples/main` prints one banner per RUN, not per estimator: five estimators
 get a second `(n_rep=5)` arm and RDD runs twice (sharp and fuzzy), so 12
 estimators produce 18 banners. "one perfect-DGP run each" is therefore the
 kind of phrase that only looks right until the driver is read.
+
+The nightly workflow is the last claim here, and it was the last one nobody
+read: its comment said the package was "flat-layout (no moon.work)" and that
+it checked "the package root directly rather than iterating over workspace
+members" -- which was true when it was written and stopped being true when
+`moon.work` arrived.  The repository root carries the workspace, the package
+directory does not, and `moon check` resolves UP to the workspace root from
+any directory inside it, so the step checks every member.  The comment now
+says that, and these checks keep it saying it.
 """
 import io
 import os
@@ -104,6 +114,26 @@ check("the layout says '23-member workspace aggregator'",
       "23-member workspace aggregator" in readme)
 check("the wasm-gc count says 'lib + 6 doc tutorials'",
       "lib + 6 doc tutorials" in readme)
+
+# ------------------------------------------------- the nightly workflow's claim
+# The workflow file is TRACKED, so a clone has it, and the claims it makes
+# about the tree can be checked against the tree.
+NIGHTLY = os.path.join(ROOT, ".github", "workflows", "nightly.yml")
+nightly = io.open(NIGHTLY, encoding="utf-8").read()
+pkg_work = os.path.join(ROOT, "moonbit_doubleML", "moon.work")
+
+check("the repository root carries the workspace", os.path.isfile(
+      os.path.join(ROOT, "moon.work")))
+check("the package directory carries no workspace of its own",
+      not os.path.exists(pkg_work))
+check("the nightly workflow claims no flat layout",
+      "flat-layout" not in nightly and "no moon.work" not in nightly,
+      "the stale claim is still in the file")
+check("the nightly workflow says the workspace is checked",
+      "moon.work" in nightly and "workspace" in nightly)
+check("the nightly check step runs at the workspace root",
+      "working-directory" not in nightly,
+      "a working-directory would move the step off the workspace root")
 
 print("")
 print("checks failed: %d" % len(fails))

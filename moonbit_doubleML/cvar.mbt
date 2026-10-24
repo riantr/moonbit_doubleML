@@ -366,8 +366,8 @@ pub fn DoubleMLCVAR::predictions_m(self : DoubleMLCVAR) -> Array[Double] {
 ///   STRUCTURALLY cannot carry the quantity `cf` moves upstream. That is the
 ///   real sense in which there is no parity here, and it is not fixable by
 ///   plumbing.
-/// - The default is `0.05`, where upstream's is `0.03` at all 17 of its
-///   estimators. So even the stored value diverges.
+/// - The default is `0.05`, where upstream's is `0.03` at 17 of its 21
+///   estimator classes. So even the stored value diverges.
 ///
 /// Evidence: `_verify/PARITY_COMMENTS_1570.md`, `_verify/_cvar_cf_1570.txt`.
 /// (The premise of this whole block -- constant `psi_a` -- is confirmed:
