@@ -409,22 +409,36 @@ print("  OK -- the published number is the number this run measured")
 # placeholder was never substituted.  A number nothing checks is a number
 # that rots silently, so it is witnessed here too.
 #
-# The banner lists the rounds ASCENDING (oldest first) -- the opposite of the
-# CHANGELOG, which is DESCENDING -- and the ledger body follows it.  So the
-# newest count is the LAST match INSIDE THE BANNER, and the banner is cut out
-# of the document before the search: taking the first match in the whole file
-# would find an earlier round's count, and taking the last would find the
-# ledger body's.
+# The count that belongs to THIS driver is the one in the passage that NAMES
+# it -- NOT the last count in the banner.  The banner lists the rounds
+# ASCENDING (oldest first) -- the opposite of the CHANGELOG, which is
+# DESCENDING -- so a LATER round's entry carries its own count, and the last
+# "ends at **N** failures" in the banner stopped being this driver's the
+# moment round 40 published one of its own.  That is why this dry-run went
+# red in round 40 without anything being wrong with it: the count it is
+# checking had moved to another driver's sentence.
+#
+# The rule is the one the round-40 ledger check reads the banner by -- a
+# count belongs to the check named NEAREST BEFORE it -- and the same rule
+# the CHANGELOG check above already uses.  A count that no check can bind to
+# its owner is a count that rots silently.
 _eng = read(os.path.join(REPO, "ENGINEERING.md"))
 _eng_banner = _eng.split("## The README as it stood at", 1)[0]
-_eng_found = re.findall(r"ends at \*\*(\d+)\*\* failures", _eng_banner)
+_me = _eng_banner.find("_verify/_dryrun_round39_1650.py")
+if _me < 0:
+    print("  the ENGINEERING banner does not name this driver -- ABORT")
+    print("  (this run measured %d -- put that number in the banner)" % n)
+    sys.exit(1)
+_next = re.search(r"^> \* \*\*Round ", _eng_banner[_me:], re.M)
+_own = _eng_banner[_me:_me + _next.start()] if _next else _eng_banner[_me:]
+_eng_found = re.findall(r"ends at \*\*(\d+)\*\* failures", _own)
 print()
 print("=== the same count in the ENGINEERING banner ===")
 if not _eng_found:
     print("  the ENGINEERING banner publishes no failure count -- ABORT")
     print("  (this run measured %d -- put that number in the banner)" % n)
     sys.exit(1)
-_eng_published = int(_eng_found[-1])
+_eng_published = int(_eng_found[0])
 print("  the banner publishes %d; this run measured %d" % (_eng_published, n))
 if _eng_published != n:
     print("!! the banner's count and the measured one disagree -- ABORT")

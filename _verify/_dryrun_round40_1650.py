@@ -384,16 +384,34 @@ print("  OK -- the published number is the number this run measured")
 # The SAME number, in the ENGINEERING banner.  The banner is the other place
 # the count is published, and a number nothing checks is a number that rots
 # silently.
+#
+# The count that belongs to THIS driver is the one in the passage that NAMES
+# it -- NOT the last count in the banner.  The banner lists the rounds
+# ASCENDING (oldest first), so a LATER round's entry carries its own count,
+# and the last "ends at **N** failures" in the banner stops being this
+# driver's the moment the next round publishes one of its own.  That is how
+# the round-39 dry-run went red in round 40 with nothing wrong with it: the
+# count it was checking had moved to another driver's sentence.
+#
+# The rule is the one the round-40 ledger check reads the banner by -- a
+# count belongs to the check named NEAREST BEFORE it.
 _eng = read(os.path.join(REPO, "ENGINEERING.md"))
 _eng_banner = _eng.split("## The README as it stood at", 1)[0]
-_eng_found = re.findall(r"ends at \*\*(\d+)\*\* failures", _eng_banner)
+_me = _eng_banner.find("_verify/_dryrun_round40_1650.py")
+if _me < 0:
+    print("  the ENGINEERING banner does not name this driver -- ABORT")
+    print("  (this run measured %d -- put that number in the banner)" % n)
+    sys.exit(1)
+_next = re.search(r"^> \* \*\*Round ", _eng_banner[_me:], re.M)
+_own = _eng_banner[_me:_me + _next.start()] if _next else _eng_banner[_me:]
+_eng_found = re.findall(r"ends at \*\*(\d+)\*\* failures", _own)
 print()
 print("=== the same count in the ENGINEERING banner ===")
 if not _eng_found:
     print("  the ENGINEERING banner publishes no failure count -- ABORT")
     print("  (this run measured %d -- put that number in the banner)" % n)
     sys.exit(1)
-_eng_published = int(_eng_found[-1])
+_eng_published = int(_eng_found[0])
 print("  the banner publishes %d; this run measured %d" % (_eng_published, n))
 if _eng_published != n:
     print("!! the banner's count and the measured one disagree -- ABORT")
