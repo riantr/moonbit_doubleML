@@ -26,6 +26,7 @@ import io
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -48,8 +49,29 @@ def run(cmd, cwd=REPO, timeout=1800, env=None):
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
+def force_rmtree(path):
+    """Remove `path`, including the read-only files a git clone leaves behind.
+
+    Windows refuses to delete a read-only file, and a clone's `.git` holds
+    some.  So the mode is cleared first and the removal is retried; without
+    this the driver dies with a PermissionError on its SECOND run, before it
+    has done any work at all.
+    """
+    def _onerror(func, p, _exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+        except OSError:
+            pass
+        try:
+            func(p)
+        except OSError:
+            pass
+
+    shutil.rmtree(path, onerror=_onerror)
+
+
 if os.path.isdir(WORK):
-    shutil.rmtree(WORK)
+    force_rmtree(WORK)
 os.makedirs(WORK, exist_ok=True)
 
 print("=== cloning locally and checking out %s ===" % COMMIT)

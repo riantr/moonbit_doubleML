@@ -82,7 +82,9 @@ You can browse and install extra skills here:
   consumed via `@moonbit_doubleML.Matrix::from_array` /
   `DoubleMLData::new` / `DoubleMLPLR::new(...).fit()` — the same
   public API any other consumer would call.
-- `main_test.mbt` is currently empty because `moonbitlang/async`'s
+- The package ships **no** test file: `moonbitlang/async`'s
   `@http.get/post` helpers raise `ReaderClosed` when reading the
-  response body on Windows. Endpoint correctness is verified via the
-  PowerShell smoke-test recipe in `examples/api_server/README.md`.
+  response body on Windows, which blocks an `assert_eq`-style
+  integration test inside the test driver. Endpoint correctness is
+  verified via the PowerShell smoke-test recipe in
+  `examples/api_server/README.md` instead.

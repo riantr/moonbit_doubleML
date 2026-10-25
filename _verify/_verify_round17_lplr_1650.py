@@ -256,7 +256,10 @@ CONTENT = [
     ("examples/fuzz/main.mbt", 412, 412, "rng.int(limit=100) + 60"),
     ("examples/fuzz/main.mbt", 412, 459, "chacha8_rng(seed)"),
     ("examples/fuzz/main.mbt", 478, 478, "se < 1.0e10"),
-    ("check.yml", 114, 114, "validate_*_with_python.py"),
+    # Round 43 added a CI step above this one, so the pin moved from 114 to
+    # 125.  The pin is the LINE that runs the validators, and the workflow
+    # grows above it from time to time.
+    ("check.yml", 125, 125, "validate_*_with_python.py"),
 ]
 for path, a, b, tok in CONTENT:
     real = resolve(path)

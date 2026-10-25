@@ -92,6 +92,17 @@ jobs:
           moon version --all
           moon update
 
+      # The published README is a document a reader COPIES from, so its own
+      # code blocks have to compile.  Until round 43 nothing checked that:
+      # two of the blocks did not compile, and the README's verifier could
+      # not see it -- it checks the NAMES of a call's arguments, and a type
+      # mismatch is not a name.  This verifier writes the blocks into a probe
+      # file inside `doc/001_introduction/` (whose `moon.pkg` imports the
+      # library WITHOUT a version, so the workspace resolves it to THIS
+      # tree) and runs `moon check` on it.  The probe is removed again.
+      - name: Compile the published README's code blocks
+        run: python3 _verify/_verify_readme_snippets_1650.py
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip

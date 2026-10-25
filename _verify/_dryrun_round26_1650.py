@@ -157,10 +157,13 @@ MECHANISMS = [
     ("the estimators tutorial calls the port's DIDCS repeated cross-sections again",
      lambda: patch(
          DOC004,
-         "| `DoubleMLDIDCS` | `observational` | DID with staggered adoption "
-         "(Callaway-Sant'Anna) | `did_cs.mbt` |",
-         "| `DoubleMLDIDCS` | `observational` | DID with repeated cross-sections "
-         "(Callaway-Sant'Anna) | `did_cs.mbt` |")),
+         # The score column was added after this mechanism was written, so the
+         # row now reads "— (fixed: `observational`)".  The mechanism still
+         # only swaps the DESCRIPTION; the anchor had to move with the row.
+         "| `DoubleMLDIDCS` | — (fixed: `observational`) | DID with staggered "
+         "adoption (Callaway-Sant'Anna) | `did_cs.mbt` |",
+         "| `DoubleMLDIDCS` | — (fixed: `observational`) | DID with repeated "
+         "cross-sections (Callaway-Sant'Anna) | `did_cs.mbt` |")),
     ("the agent skill says 20 mirror upstream and DIDCrossSection is port-only again",
      lambda: patch(
          SKILLS,

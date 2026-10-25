@@ -42,9 +42,9 @@ WHAT IS COPIED IN
 =================
 The clone is checked out from HEAD, so it carries the committed tree.  The
 files this round has not committed yet -- the corrected documents, the
-rebuilt README, the new verifier and the UNTRACKED vendored upstream tree
--- are copied in from the WORKING TREE, and the claims are broken on top
-of that.
+rebuilt README, the CHANGELOG entry that publishes this driver's count, the
+new verifier and the UNTRACKED vendored upstream tree -- are copied in from
+the WORKING TREE, and the claims are broken on top of that.
 
 Run: python _verify/_dryrun_round28_1650.py
 """
@@ -63,6 +63,7 @@ WORK = os.path.join(REPO, "_verify", "_dryrun1650", "r28_mut")
 VERIFIER = "_verify/_verify_score_argument_1650.py"
 
 COPY_IN = [
+    "CHANGELOG.md",
     "README.mbt.md",
     "moonbit_doubleML/README.mbt.md",
     "doc/004_estimators/readme.mbt.md",
@@ -223,12 +224,16 @@ MECHANISMS = [
     ("the README's constructor paragraph stops naming the score argument",
      lambda: patch(
          README,
-         "its own data type. The `score` argument is the one that moves between\n"
+         # The paragraph used to end with "its own data type."; it now ends
+         # with the four-data-types sentence, so the anchor moved with it.
+         # The mechanism still only deletes the score sentence.
+         "`DoubleMLDIDCrossSectionData` for `DoubleMLDIDCrossSection`. The "
+         "`score` argument is the one that moves between\n"
          "`new()` and `fit()`: `DoubleMLPLR` takes it on `fit()`, and\n"
          "`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCrossSection`,\n"
          "`DoubleMLDIDCSBinary`, `DoubleMLLPLR` and `DoubleMLPLPR` take it on\n"
          "`new()`.",
-         "its own data type.")),
+         "`DoubleMLDIDCrossSectionData` for `DoubleMLDIDCrossSection`.")),
 
     # -- the skills document: the six become seven ---------------------------
     ("the skills document folds LPLR into the six",
@@ -302,6 +307,47 @@ if rc == 0:
     print("!! the broken tree still exits 0 -- ABORT")
     sys.exit(1)
 
+def published_count(text, driver):
+    """The failure count the CHANGELOG publishes FOR THIS DRIVER.
+
+    The lookup is SCOPED twice: to the ENTRY that names the driver, and
+    within that entry to the BULLET that names it.  The CHANGELOG is in
+    descending order, so the newest entry wins -- and a newest entry that
+    publishes two drivers' counts must not bind one driver's number to the
+    other's.  An entry that NAMES a driver without publishing a count for it
+    is not a publication, so the search falls through to the older one.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        body = m.group(2)
+        if driver not in body:
+            continue
+        lines = body.split("\n")
+        start = None
+        for i, l in enumerate(lines):
+            if driver in l:
+                start = i
+                break
+        if start is None:
+            continue
+        head = start
+        while head > 0 and not lines[head].startswith("- "):
+            head -= 1
+        tail = start + 1
+        while tail < len(lines) and not lines[tail].startswith("- "):
+            tail += 1
+        # The sentence that carries the number is hard-WRAPPED, so the
+        # phrase is matched against a whitespace-COLLAPSED bullet.  A
+        # pattern with literal spaces matches only the entries that
+        # happen to keep the phrase on ONE line -- and the driver then
+        # reads an OLDER entry's number and calls it its own.
+        flat = re.sub(r"\s+", " ", "\n".join(lines[head:tail]))
+        found = re.findall(r"requires the failure count to GROW at every step: "
+                           r"\*\*(\d+)\*\* failures at the", flat)
+        if found:
+            return int(found[0])
+    return None
+
 # --- the published failure count, witnessed -----------------------------------
 # The CHANGELOG publishes the number of failures this dry-run ends at.  A
 # published exact number with nothing asserting it goes stale silently, so the
@@ -317,10 +363,7 @@ CHANGELOG = os.path.join(WORK, "CHANGELOG.md")
 # The CHANGELOG is in DESCENDING order -- the newest entry is at the TOP -- so
 # the CURRENT published number is the FIRST occurrence.  (Taking the last one
 # binds the witness to an entry that has already shipped.)
-_found = re.findall(r"requires the failure count to GROW at every step: "
-                    r"\*\*(\d+)\*\* failures at the",
-                    io.open(CHANGELOG, encoding="utf-8", errors="replace").read())
-published = int(_found[0]) if _found else None
+published = published_count(io.open(CHANGELOG, encoding="utf-8", errors="replace").read(), "_dryrun_round28_1650.py")
 print()
 print("=== the published failure count, witnessed ===")
 if published is None:

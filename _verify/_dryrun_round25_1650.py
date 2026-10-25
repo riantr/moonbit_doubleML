@@ -124,10 +124,16 @@ if rc0 != 0 or n0 != 0:
 
 # ------------------------------------------------------------ the mechanisms
 MECHANISMS = [
+    # ROUND 43 RE-ANCHORED THIS MECHANISM.  The README's LPLR snippet used to
+    # read `let model = DoubleMLLPLR::new(data).fit()`; it now reads
+    # `let model = @moonbit_doubleML.DoubleMLLPLR::new(data).fit()` -- the
+    # reader's namespace, and a `DoubleMLBinaryData` -- because the old text
+    # did not compile.  The mechanism is the SAME one: the snippet gains a
+    # parameter the constructor does not have, and a check must catch it.
     ("the README's LPLR snippet passes `alpha` again", lambda: patch(
         README,
-        "   let model = DoubleMLLPLR::new(data).fit()",
-        "   let model = DoubleMLLPLR::new(data, alpha=1.5).fit()")),
+        "   let model = @moonbit_doubleML.DoubleMLLPLR::new(data).fit()",
+        "   let model = @moonbit_doubleML.DoubleMLLPLR::new(data, alpha=1.5).fit()")),
     ("the source docstring passes `alpha` again", lambda: patch(
         LPLR,
         "/// let model = DoubleMLLPLR::new(data).fit()",

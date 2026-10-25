@@ -381,6 +381,47 @@ if rc == 0:
     print("!! the broken tree still exits 0 -- ABORT")
     sys.exit(1)
 
+def published_count(text, driver):
+    """The failure count the CHANGELOG publishes FOR THIS DRIVER.
+
+    The lookup is SCOPED twice: to the ENTRY that names the driver, and
+    within that entry to the BULLET that names it.  The CHANGELOG is in
+    descending order, so the newest entry wins -- and a newest entry that
+    publishes two drivers' counts must not bind one driver's number to the
+    other's.  An entry that NAMES a driver without publishing a count for it
+    is not a publication, so the search falls through to the older one.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        body = m.group(2)
+        if driver not in body:
+            continue
+        lines = body.split("\n")
+        start = None
+        for i, l in enumerate(lines):
+            if driver in l:
+                start = i
+                break
+        if start is None:
+            continue
+        head = start
+        while head > 0 and not lines[head].startswith("- "):
+            head -= 1
+        tail = start + 1
+        while tail < len(lines) and not lines[tail].startswith("- "):
+            tail += 1
+        # The sentence that carries the number is hard-WRAPPED, so the
+        # phrase is matched against a whitespace-COLLAPSED bullet.  A
+        # pattern with literal spaces matches only the entries that
+        # happen to keep the phrase on ONE line -- and the driver then
+        # reads an OLDER entry's number and calls it its own.
+        flat = re.sub(r"\s+", " ", "\n".join(lines[head:tail]))
+        found = re.findall(r"requires the failure count to GROW at every step: "
+                           r"\*\*(\d+)\*\* failures at the", flat)
+        if found:
+            return int(found[0])
+    return None
+
 # --- the published failure count, witnessed -----------------------------------
 _entry = None
 for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
@@ -388,9 +429,7 @@ for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
     if "_dryrun_round39_1650.py" in m.group(2):
         _entry = m.group(2)
         break
-_found = re.findall(r"requires the failure count to GROW at every step:\s*"
-                    r"\*\*(\d+)\*\*\s+failures at the end", _entry or "")
-published = int(_found[0]) if _found else None
+published = published_count(read(os.path.join(REPO, "CHANGELOG.md")), "_dryrun_round39_1650.py")
 print()
 print("=== the published failure count, witnessed ===")
 if published is None:
@@ -424,14 +463,29 @@ print("  OK -- the published number is the number this run measured")
 # its owner is a count that rots silently.
 _eng = read(os.path.join(REPO, "ENGINEERING.md"))
 _eng_banner = _eng.split("## The README as it stood at", 1)[0]
-_me = _eng_banner.find("_verify/_dryrun_round39_1650.py")
-if _me < 0:
-    print("  the ENGINEERING banner does not name this driver -- ABORT")
+# The banner is ASCENDING, so the LIVE claim for this driver is its LAST
+# mention -- and a mention that publishes no count is not a publication,
+# so the search falls back to an earlier one.  The passage is read with
+# the banner's quote prefix stripped and its whitespace collapsed: the
+# sentence that carries the number is hard-WRAPPED, and the break is
+# followed by the quote prefix, not by a space.
+_me = None
+_eng_found = []
+for _hit in reversed([m.start() for m in
+                       re.finditer(re.escape("_verify/_dryrun_round39_1650.py"), _eng_banner)]):
+    _next = re.search(r"^> \* \*\*Round ", _eng_banner[_hit:], re.M)
+    _passage = (_eng_banner[_hit:_hit + _next.start()] if _next
+                else _eng_banner[_hit:])
+    _flat = re.sub(r"\s+", " ", re.sub(r"(?m)^>[ \t]*", "", _passage))
+    _eng_found = re.findall(r"ends at \*\*(\d+)\*\* failures", _flat)
+    if _eng_found:
+        _me = _hit
+        break
+if _me is None:
+    print("  the ENGINEERING banner publishes no failure count for this "
+          "driver -- ABORT")
     print("  (this run measured %d -- put that number in the banner)" % n)
     sys.exit(1)
-_next = re.search(r"^> \* \*\*Round ", _eng_banner[_me:], re.M)
-_own = _eng_banner[_me:_me + _next.start()] if _next else _eng_banner[_me:]
-_eng_found = re.findall(r"ends at \*\*(\d+)\*\* failures", _own)
 print()
 print("=== the same count in the ENGINEERING banner ===")
 if not _eng_found:

@@ -1,73 +1,85 @@
-"""Dry-run the citation verifier against a tree whose citations are broken.
+"""Dry-run the pointer verifier against a tree whose pointers rot.
 
 WHAT THIS PROVES
 =================
-`_verify/_verify_citations_1650.py` reads every `file:line` citation in the
-tracked prose and asks whether the cited line MENTIONS the thing the sentence
-names.  It derives the citation set from the prose itself, so a citation
-cannot be added or removed without the declared count moving with it.
+An in-repo `file:line` pointer is a PROMISE: the thing the sentence names is
+AT that line.  `_verify/_verify_file_line_refs_1650.py` owns that promise
+today, and this driver breaks it one promise at a time and watches the
+failure count GROW.
 
-Round 30 found that **64 of the 102** port-side citations in the tracked
-prose at v0.164.23 did not point at a line that mentions the thing the
-sentence names -- and every one of them still READS FINE, because a sentence
-is never re-read when the code underneath it moves.  The four that had broken
-worst (`did_binary.mbt:445`, `lplr.mbt:1630`, `lplr.mbt:758`,
-`did_cs.mbt:1263`) were cited for things that had since moved 6, 392 and 23
-lines away.
+WHY THE VERIFIER MOVED
+======================
+This driver used to drive `_verify/_verify_citations_1650.py`, which derived
+a `file:line` citation set from the tracked prose and asked every citation
+whether the line it names mentions the thing the sentence names.  That file
+was REWRITTEN in v0.164.33 into the publisher-record checker (the README's
+literature citations), so the driver kept running -- and every mechanism it
+applied became invisible: the checker it drove reads the README's three
+journal citations and nothing else, and a source file grows a line above a
+cited one without the README noticing.
 
-EACH MECHANISM IS PROVEN ON ITS OWN
-====================================
-The mechanisms are applied ONE AT A TIME and the verifier is run after each,
-and the failure count must GROW at every step.  A mechanism that contributes
-nothing is visible as a flat step, and the driver fails.  (Round 24's dry-run
-had exactly that defect: one mechanism contributed ZERO failures, the total
-was still > 0, and the dead mechanism hid inside a passing run.)
+The CLASS moved, not the promise: v0.164.36 gave the in-repo pointers an
+owner of their own (`_verify/_verify_file_line_refs_1650.py`, **60** checks),
+and this driver follows the class.  A driver that kept pointing at the
+filename would keep exiting 0 on a broken tree, which is the failure this
+whole suite exists to catch.
 
-THE MECHANISMS COVER BOTH SIDES OF THE CLAIM
-=============================================
-A citation can rot in two ways, and the verifier has to catch both:
+THE MECHANISMS
+==============
+The checker makes four checks per pointer, and each of them is broken here
+on a pointer of its own -- a class proved on a pointer another mechanism
+already broke is a class with one mechanism:
 
-  * the CODE moves away from the prose -- mechanism 1 edits the source, which
-    is exactly what this round's repairs had to undo;
-  * the PROSE moves away from the code -- mechanisms 2 and 3 edit the prose.
+  1. the target file EXISTS and is TRACKED -- broken twice: a file that is
+     not in the tree, and a file that is in the tree but is not tracked;
+  2. the cited line is WITHIN the file -- broken twice: the file is
+     truncated below the cited line, and a pointer names a line past the
+     end of its file;
+  3. the cited line is not BLANK -- broken on three files;
+  4. the block that cites it names something the target file CARRIES --
+     broken once.
 
-Mechanism 1 is the one that matters most.  It is the rot itself: a source
-file grows a line above a cited one and every citation into that file above
-the insertion point is now pointing at the wrong line, with nothing in the
-prose changing.
+  1. the CODE moves away from the prose -- a source file grows a line above
+     a cited one (did.mbt), so the pointer lands on a line that carries
+     nothing;
+  2. the same, on a second file (irm.mbt);
+  3. the same, on a third file (iivm.mbt);
+  4. the PROSE moves away from the code -- the block stops naming what the
+     target file carries (README.mbt.md);
+  5. the cited line falls off the end of its file -- the file is truncated;
+  6. a pointer names a line past the end of its file;
+  7. a pointer names a file that is not in the tree;
+  8. a pointer names a file that is in the tree but is not TRACKED;
+  9. the SET SIZE moves -- a pointer appears in the prose that names a file
+     that is not there.  It runs LAST on purpose: it changes the SET the
+     other mechanisms are stated against.
 
-THE LAST MECHANISM MOVES THE SET SIZE
-=====================================
-Mechanism 8 removes a citation from the prose entirely, so the derived set
-shrinks and the declared counts, the file count and the published-count check
-all notice.  It runs LAST on purpose: it changes the derived set SIZE, which
-several of the other checks are stated against, so running it earlier would
-break those checks and mask the mechanisms above it.
+THE SET, NOT THE COUNT
+======================
+Every mechanism but the last must leave the POINTER SET alone -- the set of
+promises the checker derives from the prose.  A mechanism that quietly added
+or dropped a pointer could hide a failure behind a different number, which
+is the trap round 29's driver walked into.
 
-A MECHANISM MUST NOT REPAIR AN EARLIER ONE
-==========================================
-An early draft of round 29's driver failed at mechanism 4 with a FLAT step,
-and the reason was worth keeping.  Mechanism 4 moved the PQ publisher's
-range, which changed the derived count in that range from 14 to 13 -- and 13
-was exactly what mechanism 2 had already broken the stated count to.  The two
-mechanisms were talking to each other: the later one UNDID the earlier one's
-failure, so the failure count did not grow even though the tree was still
-broken.
+The CHECK count is a different thing, and it is allowed to move: a pointer
+whose line falls past the end of its file makes two checks instead of four,
+so breaking that promise moves the count DOWN.  The count the CHANGELOG
+publishes for this checker -- **60** -- is the count it makes on the HEALTHY
+tree, and `_verify/_verify_ledger_counts_1650.py` is what holds it to that;
+this driver breaks the tree on purpose, so the count it sees on the broken
+tree is not the published one.
 
-The fix is to give every mechanism a site of its own, and to order them so
-that no later mechanism can move a derived count onto a value an earlier one
-has already broken.  Here every mechanism below has its own citation, its own
-file or its own count, and the set-size mechanism is last.
+And no mechanism may REPAIR an earlier one: a failure that disappears is a
+failure the mechanism undid, and a total that hides it is not a proof.
 
 WHAT IS COPIED IN
 =================
 The clone is checked out from HEAD, so it carries the committed tree.  The
-files this round has not committed yet -- the repaired prose, the new verifier
-and the CHANGELOG that publishes the counts -- are copied in from the WORKING
-TREE, and the claims are broken on top of that.
-
-The CHANGELOG has to be copied in: it is the file that PUBLISHES the counts,
-and at dry-run time the new entry is not in HEAD yet.
+files this round has not committed yet -- the repaired prose, the checker and
+the CHANGELOG that publishes the counts -- are copied in from the WORKING
+TREE and COMMITTED, so the tree under test is the tree that carries the
+checker being exercised (a pointer's target must be TRACKED, and a file that
+is only in the working tree is not tracked).
 
 Run: python _verify/_dryrun_round30_1650.py
 """
@@ -75,6 +87,7 @@ import io
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -83,9 +96,9 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMMIT = "HEAD"
 WORK = os.path.join(REPO, "_verify", "_dryrun1650", "r30_mut")
-VERIFIER = "_verify/_verify_citations_1650.py"
+VERIFIER = "_verify/_verify_file_line_refs_1650.py"
 
-# the new verifier is not in HEAD yet, so it is copied in by hand
+# the checker is not in HEAD yet on a round that writes it, so it is copied in
 ALWAYS_COPY = [VERIFIER]
 
 
@@ -95,10 +108,19 @@ def run(cmd, cwd=REPO, timeout=3600):
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
+def read(path):
+    with io.open(path, encoding="utf-8", errors="replace", newline="") as fh:
+        return fh.read()
+
+
+def write(path, text):
+    with io.open(path, "w", encoding="utf-8", errors="replace", newline="") as fh:
+        fh.write(text)
+
+
 def patch(path, old, new, count=1):
     """Replace `old` with `new`, keeping the file's own line endings."""
-    with io.open(path, encoding="utf-8", errors="replace", newline="") as fh:
-        text = fh.read()
+    text = read(path)
     crlf = "\r\n" in text
     old = old.replace("\n", "\r\n") if crlf and "\r\n" not in old else old
     new = new.replace("\n", "\r\n") if crlf and "\r\n" not in new else new
@@ -106,59 +128,18 @@ def patch(path, old, new, count=1):
     if n != count:
         raise SystemExit("!! %s: %r matched %d times (expected %d)"
                          % (path, old[:70], n, count))
-    text = text.replace(old, new)
-    with io.open(path, "w", encoding="utf-8", errors="replace", newline="") as fh:
-        fh.write(text)
-
-
-def patch_re(path, pattern, new, count=1):
-    """Replace every match of `pattern` with `new`.
-
-    A regex is needed for the mechanism that REMOVES the published count: by
-    then the mechanism that corrupted it has already changed the number, so a
-    literal match on the number would no longer find it.
-    """
-    with io.open(path, encoding="utf-8", errors="replace", newline="") as fh:
-        text = fh.read()
-    crlf = "\r\n" in text
-    new = new.replace("\n", "\r\n") if crlf and "\r\n" not in new else new
-    if crlf and "\r\n" not in pattern:
-        pattern = pattern.replace("\\n", "\r\n")
-    hits = re.findall(pattern, text)
-    if len(hits) != count:
-        raise SystemExit("!! %s: %r matched %d times (expected %d)"
-                         % (path, pattern[:70], len(hits), count))
-    text = re.sub(pattern, lambda m: new, text)
-    with io.open(path, "w", encoding="utf-8", errors="replace", newline="") as fh:
-        fh.write(text)
-
-
-def insert(path, anchor, added):
-    """Insert `added` immediately before the line that contains `anchor`."""
-    with io.open(path, encoding="utf-8", errors="replace", newline="") as fh:
-        text = fh.read()
-    crlf = "\r\n" in text
-    if crlf and "\r\n" not in anchor:
-        anchor = anchor.replace("\n", "\r\n")
-        added = added.replace("\n", "\r\n")
-    if text.count(anchor) != 1:
-        raise SystemExit("!! %s: the anchor %r matched %d times (expected 1)"
-                         % (path, anchor[:70], text.count(anchor)))
-    text = text.replace(anchor, added + anchor)
-    with io.open(path, "w", encoding="utf-8", errors="replace", newline="") as fh:
-        fh.write(text)
+    write(path, text.replace(old, new))
 
 
 def truncate(path, keep):
-    """Keep only the first `keep` lines, as the verifier counts them.
+    """Keep only the first `keep` lines, as the checker counts them.
 
-    The verifier reads a file and splits it on "\\n", so a file that ends with
+    The checker reads a file and splits it on "\\n", so a file that ends with
     a newline has one more element than it has lines.  `keep` therefore counts
     ELEMENTS, not visible lines: keeping 43 leaves the file with 43 elements
     and line 44 out of range.
     """
-    with io.open(path, encoding="utf-8", errors="replace", newline="") as fh:
-        text = fh.read()
+    text = read(path)
     crlf = "\r\n" in text
     lines = text.split("\r\n") if crlf else text.split("\n")
     if len(lines) <= keep:
@@ -166,35 +147,156 @@ def truncate(path, keep):
                          % (path, len(lines), keep))
     tail = "\r\n" if crlf else "\n"
     out = tail.join(lines[:keep - 1]) + tail
-    with io.open(path, "w", encoding="utf-8", errors="replace", newline="") as fh:
-        fh.write(out)
+    write(path, out)
 
 
 def append(path, extra):
-    with io.open(path, encoding="utf-8", errors="replace", newline="") as fh:
-        text = fh.read()
+    text = read(path)
     crlf = "\r\n" in text
     if crlf and "\r\n" not in extra:
         extra = extra.replace("\n", "\r\n")
-    with io.open(path, "w", encoding="utf-8", errors="replace", newline="") as fh:
-        fh.write(text + extra)
+    write(path, text + extra)
+
+
+def commit(work, paths, message):
+    """Stage the named paths and commit them IN THE CLONE.
+
+    A file that is only in the working tree is not TRACKED, and a pointer to
+    an untracked file is a broken promise -- so the tree under test carries
+    its own commits.
+
+    A commit with NOTHING to commit is not a failure: the copy-in can be a
+    no-op when the tree under test already carries those files.
+    """
+    rc, out = run(["git", "-C", work, "add", "--"] + paths, cwd=work)
+    if rc != 0:
+        raise SystemExit("!! git add failed: %s" % out.strip()[:300])
+    rc, out = run(["git", "-C", work, "-c", "user.name=dry-run",
+                   "-c", "user.email=dry-run@example.invalid",
+                   "commit", "-m", message], cwd=work)
+    if rc != 0:
+        if "nothing to commit" in out or "nothing added to commit" in out:
+            return "(already in the tree)"
+        raise SystemExit("!! git commit failed: %s" % out.strip()[:300])
+    return out.strip().splitlines()[0] if out.strip() else ""
 
 
 def verify(work):
-    """Run the verifier in `work`; return (exit code, output, failure count)."""
+    """Run the checker in `work`; return (exit code, output, failure count).
+
+    WHAT IS COUNTED
+    ===============
+    A failing CHECK.  The marker `*** FAIL ***` goes on each failing check
+    line, and the count is by CONTAINMENT: the checker families print the
+    marker at the front of the line, and a rule that matched only one
+    position would under-count the failures of the others.
+    """
     rc, out = run([sys.executable, os.path.join(work, VERIFIER)],
                   cwd=work, timeout=3600)
-    exact = len([l for l in out.splitlines() if l.startswith("  *** FAIL ***")])
+    exact = len([l for l in out.splitlines()
+                 if "*** FAIL ***" in l and l.strip() != "*** FAIL ***"])
     return rc, out, exact
 
 
+def summaries_of(out):
+    """The checker's own counts, in either summary convention.
+
+    Two conventions are in the contract: the `N checks, M failed` form and
+    the `checks run: N, checks failed: M` form.  A rule that read only one
+    of them would under-count the failures of the other family.
+    """
+    found = re.findall(r"(\d+) checks,\s*(\d+) failed", out)
+    found += [(m.group(1), m.group(2)) for m in
+              re.finditer(r"checks run:\s*(\d+),\s*checks failed:\s*(\d+)", out)]
+    return found
+
+
 def check_count(out):
-    m = re.search(r"(\d+) checks, (\d+) failed", out)
-    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
+    """(checks, failed) as the checker reports them, as integers."""
+    sums = summaries_of(out)
+    if not sums:
+        return (None, None)
+    c, f = sums[-1]
+    return (int(c) if c is not None else None, int(f))
+
+
+def pointer_count(out):
+    """The number of in-repo pointers the checker derived.
+
+    This is the tree's SHAPE: the set of promises the checker makes.  The
+    CHECK count is not the same thing -- a pointer whose line falls past the
+    end of its file makes two checks instead of four, so breaking a promise
+    moves the check count down.  The pointer set is what a mechanism must not
+    change behind the other mechanisms' backs.
+    """
+    m = re.search(r"in-repo pointers\s*:\s*(\d+)", out)
+    return int(m.group(1)) if m else None
+
+
+def failure_lines(out):
+    """The failing checks, one line each."""
+    return [l.strip() for l in out.splitlines()
+            if "*** FAIL ***" in l and l.strip() != "*** FAIL ***"]
+
+
+def published_count(text, driver):
+    """The failure count the CHANGELOG publishes FOR THIS DRIVER.
+
+    The lookup is SCOPED twice: to the ENTRY that names the driver, and
+    within that entry to the BULLET that names it.  The CHANGELOG is in
+    descending order, so the newest entry wins -- and a newest entry that
+    publishes two drivers' counts must not bind one driver's number to the
+    other's.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        body = m.group(2)
+        if driver not in body:
+            continue
+        # the bullet the driver is named in, with its continuation lines
+        lines = body.split("\n")
+        start = None
+        for i, l in enumerate(lines):
+            if driver in l:
+                start = i
+                break
+        if start is None:
+            continue
+        head = start
+        while head > 0 and not lines[head].startswith("- "):
+            head -= 1
+        tail = start + 1
+        while tail < len(lines) and not lines[tail].startswith("- "):
+            tail += 1
+        bullet = "\n".join(lines[head:tail])
+        # The sentence that carries the number is hard-WRAPPED, so the
+        # phrase is matched against a whitespace-COLLAPSED bullet.  A
+        # pattern with literal spaces matches only the entries that
+        # happen to keep the phrase on ONE line -- and the driver then
+        # reads an OLDER entry's number and calls it its own.
+        flat = re.sub(r"\s+", " ", bullet)
+        found = re.findall(r"requires the failure count to GROW at every step: "
+                           r"\*\*(\d+)\*\* failures at the", flat)
+        if found:
+            return int(found[0])
+    return None
 
 
 if os.path.isdir(WORK):
-    shutil.rmtree(WORK)
+    try:
+        shutil.rmtree(WORK)
+    except PermissionError:
+        # git writes its object files READ-ONLY, and Windows will not delete
+        # a read-only file.  Make them writable and try again -- without
+        # this the driver cannot be run twice, and a dry-run that only runs
+        # once is a dry-run nobody re-runs.
+        for _root, _dirs, _files in os.walk(WORK):
+            for _f in _files:
+                try:
+                    os.chmod(os.path.join(_root, _f), stat.S_IWRITE)
+                except OSError:
+                    pass
+        shutil.rmtree(WORK)
 os.makedirs(WORK, exist_ok=True)
 
 print("=== cloning locally and checking out %s ===" % COMMIT)
@@ -230,18 +332,14 @@ for rel in CHANGED + ALWAYS_COPY:
 print("  copied in %d files from the working tree:" % len(COPY_IN))
 for rel in COPY_IN:
     print("    %s" % rel)
+commit(WORK, COPY_IN, "dry-run: the tree under test carries the checker")
 
-LIB = os.path.join(WORK, "moonbit_doubleML")
-CHANGELOG = os.path.join(WORK, "CHANGELOG.md")
-
-DGP = os.path.join(LIB, "dgp_did_CS2021.mbt")
-KFOLD = os.path.join(LIB, "kfold.mbt")
-V066WB = os.path.join(LIB, "v066_wbtest.mbt")
-V154B = os.path.join(LIB, "expand_v154b_test.mbt")
-TUNE = os.path.join(LIB, "tune.mbt")
-PSPROC = os.path.join(LIB, "ps_processor.mbt")
-SUITE = os.path.join(WORK, "pyexample_suite.py")
-SENS = os.path.join(LIB, "sensitivity.mbt")
+README = os.path.join(WORK, "README.mbt.md")
+DID = os.path.join(WORK, "moonbit_doubleML", "did.mbt")
+IRM = os.path.join(WORK, "moonbit_doubleML", "irm.mbt")
+IIVM = os.path.join(WORK, "moonbit_doubleML", "iivm.mbt")
+QUANTILE = os.path.join(WORK, "moonbit_doubleML", "quantile.mbt")
+GHOST = os.path.join(WORK, "moonbit_doubleML", "ghost_not_tracked.mbt")
 
 # ---------------------------------------------------------------- the baseline
 print()
@@ -256,124 +354,145 @@ if rc0 != 0 or n0 != 0:
 
 # ------------------------------------------------------------ the mechanisms
 MECHANISMS = [
-    # -- 1. the CODE moves away from the prose: the rot itself ----------------
-    # `kfold.mbt` carries exactly ONE citation (`kfold.mbt:199`), so one line
-    # inserted above it moves that one line and nothing else.
-    #
-    # The target has to be a SINGLE-line citation: a RANGE such as
-    # `dgp_did_CS2021.mbt:50-51` keeps its content inside the window when one
-    # line is inserted above it, and the first draft of this driver used one
-    # and the mechanism contributed nothing.  The driver caught that -- which
-    # is what a dry-run is for.
+    # -- 1. the CODE moves away from the prose: the rot itself ---------------
+    # A source file grows a line ABOVE a cited one, so the pointer -- a fixed
+    # line number -- lands on the line that was inserted instead of on the
+    # code it named.  The inserted line is BLANK, because that is the form of
+    # the shift this checker can see: it checks that the cited line carries
+    # something, and a blank line carries nothing.
     ("a source file grows a line above a cited one",
-     lambda: insert(
-         KFOLD,
-         "///|\n/// A single fold is represented by a pair of train and test index\n"
-         "/// arrays. Test indices are disjoint and together cover `[0, n_obs)`.\n",
-         "// The port's own Fold; upstream's is a dataclass with the same two\n"
-         "// arrays.\n")),
-
-    # -- 2. the PROSE stops naming the code: nothing left to anchor on -------
-    # The citation is inside backticks, so the plain-text fallback after it is
-    # empty -- with the one code token gone there is no anchor at all, and the
-    # citation becomes UNCHECKABLE.
-    ("the prose drops the code token beside the citation",
      lambda: patch(
-         V154B,
-         "// `cond_d0_t0` (`did_cs.mbt:1336-1348`) builds the four g-function condition",
-         "// The mask (`did_cs.mbt:1336-1348`) builds the four g-function condition")),
+         DID,
+         "///     weight_resid   = (D - m) / (p_hat * (1 - m))",
+         "\n///     weight_resid   = (D - m) / (p_hat * (1 - m))")),
 
-    # -- 3. the citation is edited one line off ------------------------------
-    ("a citation is edited to the wrong line",
+    # -- 2. the same, on a SECOND file ---------------------------------------
+    ("the same, on a second source file",
      lambda: patch(
-         TUNE,
-         "(`rfl.mbt:649`)",
-         "(`rfl.mbt:650`)")),
+         IRM,
+         "      cv=Some(folds_to_cv_partition(folds)),",
+         "\n      cv=Some(folds_to_cv_partition(folds)),")),
 
-    # -- 4. the cited line is out of range ------------------------------------
-    # `v066_wbtest.mbt` is used here rather than `ps_processor.mbt` because it
-    # carries NO upstream-side citation: truncating a file that does would
-    # move the upstream-side count as a SIDE EFFECT, and then mechanism 5 --
-    # which moves that count on purpose -- would REPAIR it.  That is exactly
-    # the "a mechanism must not repair an earlier one" trap, and the first
-    # draft of this driver walked straight into it: mechanism 4 took the
-    # upstream count from 266 to 265 and mechanism 5 put it back to 266, so
-    # the failure count went flat on a tree that was still broken.
+    # -- 3. the same, on a THIRD file ----------------------------------------
+    ("the same, on a third source file",
+     lambda: patch(
+         IIVM,
+         "      cv=Some(folds_to_cv_partition(folds)),",
+         "\n      cv=Some(folds_to_cv_partition(folds)),")),
+
+    # -- 4. the PROSE moves away from the code -------------------------------
+    # The block that cites `ssm.mbt:73-74` names the estimators it compares,
+    # and `DoubleMLSSM` is the only one of them the target file carries.
+    # Renaming it leaves the block naming nothing the target file has, and
+    # the pointer now points at a file that does not say what the sentence
+    # says.
+    ("the prose stops naming what the target file carries",
+     lambda: patch(
+         README,
+         "`DoubleMLSSM` has the largest margin of the four migrations of\n"
+         "v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and\n"
+         "`DoubleMLSSM` -- because its score carries **two** reciprocals, one per\n",
+         "`DoubleMLSSMX` has the largest margin of the four migrations of\n"
+         "v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and\n"
+         "`DoubleMLSSMX` -- because its score carries **two** reciprocals, one per\n")),
+
+    # -- 5. the cited line falls off the end of its file ---------------------
+    # The file is truncated below the cited line, so the pointer names a line
+    # the file does not have.
     ("the cited line falls off the end of its file",
-     lambda: truncate(V066WB, 43)),
+     lambda: truncate(QUANTILE, 216)),
 
-    # -- 5. an upstream-side citation appears: the declared count moves -------
-    ("the prose gains an upstream-side citation",
+    # -- 6. a pointer names a line past the end of its file ------------------
+    ("a pointer names a line past the end of its file",
+     lambda: patch(
+         README,
+         "`cvar.mbt:1005`",
+         "`cvar.mbt:999999`")),
+
+    # -- 7. a pointer names a file that is not in the tree -------------------
+    ("a pointer names a file that is not in the tree",
+     lambda: patch(
+         README,
+         "`did_cross_section.mbt:615`",
+         "`did_cross_section_gone.mbt:615`")),
+
+    # -- 8. a pointer names a file that is not TRACKED -----------------------
+    # The file is IN the tree -- it is right there -- and it is not in the
+    # index, so a clone does not have it.  A pointer to it is a promise only
+    # this working tree keeps.
+    #
+    # The stub carries the identifier the citing block names, and the
+    # pointer names a line the stub HAS, so the ONLY promise this mechanism
+    # breaks is the trackedness one: a mechanism that breaks two at once
+    # cannot say which one the failure was.
+    ("a pointer names a file that is not tracked",
+     lambda: (write(GHOST,
+                    "pub fn ghost_not_tracked() -> Unit {\n"
+                    "  // adjust_ps\n"
+                    "}\n"),
+              patch(
+                  README,
+                  "`ssm.mbt:671`",
+                  "`ghost_not_tracked.mbt:1`"))),
+
+    # -- 9. the SET SIZE moves: LAST on purpose -----------------------------
+    # A pointer appears in the prose that names a file that is not there, so
+    # the derived set GROWS: the checker makes four more checks, and the new
+    # pointer is one of them.  It runs last because it changes the size the
+    # mechanisms above are stated against.
+    ("a pointer appears in the prose",
      lambda: append(
-         SUITE,
-         "\n# Upstream's own grid search lives in doubleml/utils/_estimation.py:12\n")),
-
-    # -- 6. the published check count is wrong -------------------------------
-    ("the CHANGELOG publishes a wrong check count",
-     lambda: patch(
-         CHANGELOG,
-         "(`_verify/_verify_citations_1650.py` (**108** checks))",
-         "(`_verify/_verify_citations_1650.py` (**107** checks))")),
-
-    # -- 7. the published check count is gone --------------------------------
-    # The number has already been corrupted by mechanism 6, so this one matches
-    # the line by PATTERN: the point is that the CHANGELOG no longer publishes
-    # a count for this verifier at all.
-    ("the CHANGELOG stops publishing the check count",
-     lambda: patch_re(
-         CHANGELOG,
-         r"- \(`_verify/_verify_citations_1650\.py` \(\*\*\d+\*\* checks\)\) "
-         r"derives the port-side\n"
-         r"  citation set from the tracked prose and asks every one of them "
-         r"whether the\n"
-         r"  line it names mentions the thing the sentence names\.\n",
-         "")),
-
-    # -- 8. the SET SIZE moves: LAST on purpose ------------------------------
-    # One prose file stops carrying any citation, so the derived port-side
-    # count, the file count and the published-count check all move.  It runs
-    # last because it changes the set SIZE, which several checks above are
-    # stated against.
-    ("a prose file stops carrying citations",
-     lambda: patch(
-         SENS,
-         "`compute_sensitivity_bias` (sensitivity.mbt:565) and reproduced below:",
-         "`compute_sensitivity_bias` and reproduced below:")),
+         README,
+         "\nA pointer that names nothing: `not_in_this_tree.mbt:1`.\n")),
 ]
 
 prev = n0
 prev_checks = c0
+prev_pointers = pointer_count(out0)
+prev_fails = failure_lines(out0)
 print()
 print("=== the mechanisms, one at a time ===")
 for i, (desc, apply_it) in enumerate(MECHANISMS, 1):
     apply_it()
     rc, out, n = verify(WORK)
     c, f = check_count(out)
+    p = pointer_count(out)
+    fails = failure_lines(out)
     grew = n > prev
     moved = "" if c == prev_checks else "  (the check count moved %d -> %d)" % (
         prev_checks, c)
-    print("  %d. %-66s failures %d -> %d  %s%s"
-          % (i, desc[:66], prev, n, "GROW" if grew else "*** FLAT ***", moved))
+    print("  %d. %-56s failures %d -> %d  %s%s"
+          % (i, desc[:56], prev, n, "GROW" if grew else "*** FLAT ***", moved))
+    # a mechanism must not REPAIR an earlier one: a failure that is gone is
+    # a failure this mechanism undid, and the total would hide it.
+    for l in prev_fails:
+        if l not in fails:
+            print("  !! mechanism %d REPAIRED a failure -- ABORT" % i)
+            print("     %s" % l[:110])
+            sys.exit(1)
+    # every mechanism but the last must leave the POINTER SET alone: the set
+    # is what the other mechanisms are stated against, and a mechanism that
+    # quietly changed it could hide a failure behind a different count.
+    if i < len(MECHANISMS) and p != prev_pointers:
+        print("!! mechanism %d moved the pointer set (%d -> %d) -- ABORT"
+              % (i, prev_pointers, p))
+        sys.exit(1)
     if not grew:
         print(out)
         print("!! mechanism %d contributed nothing -- ABORT" % i)
         sys.exit(1)
-    # every mechanism but the last must leave the CHECK COUNT alone: the
-    # count is what the CHANGELOG publishes, and a count that drifts with the
-    # tree is the defect round 28 shipped.
-    if i < len(MECHANISMS) and c != prev_checks:
-        print("!! mechanism %d moved the check count -- ABORT" % i)
-        sys.exit(1)
     prev = n
     prev_checks = c
+    prev_pointers = p
+    prev_fails = fails
 
-# the counter must agree with the verifier's own summary
+# the counter must agree with the checker's own summary
 rc, out, n = verify(WORK)
 c, f = check_count(out)
 print()
-print("=== the counter and the verifier's own summary ===")
+print("=== the counter and the checker's own summary ===")
 print("  the driver counted %d failures" % n)
-print("  the verifier says  %s checks, %s failed" % (c, f))
+print("  the checker says  %s checks, %s failed" % (c, f))
 if not c or f != n:
     print("!! the counter and the summary disagree -- ABORT")
     sys.exit(1)
@@ -387,18 +506,12 @@ if rc == 0:
 # dry-run ASSERTS its own published number: it measures the final failure
 # count and compares that with the number the CHANGELOG states.
 #
-# The count is TREE-DEPENDENT on purpose -- the verifier reports one failure
-# per broken claim, and the tree under test here is deliberately broken.  That
-# is why the number this dry-run ends at is NOT the number the verifier makes
-# on the tree as it stands.
-#
-# The CHANGELOG is in DESCENDING order -- the newest entry is at the TOP -- so
-# the CURRENT published number is the FIRST occurrence.  (Taking the last one
-# binds the witness to an entry that has already shipped.)
-_found = re.findall(r"requires the failure count to GROW at every step:\s*"
-                    r"\*\*(\d+)\*\*\s+failures at the",
-                    io.open(CHANGELOG, encoding="utf-8", errors="replace").read())
-published = int(_found[0]) if _found else None
+# The count is TREE-DEPENDENT on purpose -- the checker reports one failure
+# per broken promise, and the tree under test here is deliberately broken.
+# That is why the number this dry-run ends at is NOT the number the checker
+# makes on the tree as it stands.
+published = published_count(read(os.path.join(REPO, "CHANGELOG.md")),
+                            "_dryrun_round30_1650.py")
 print()
 print("=== the published failure count, witnessed ===")
 if published is None:

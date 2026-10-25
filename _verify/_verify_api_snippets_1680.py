@@ -63,7 +63,12 @@ fails = []
 NCHECK = 0
 
 # The declared sizes.  A change to any of them is a change to the SET.
-EXPECTED_CONSTRUCTOR_CALLS = 10
+#
+# Round 43: the published README's "pass a classifier explicitly" snippet now
+# shows `DoubleMLCVAR::new(data, ml_m=...)`, and the LPLR snippet now builds
+# its data with `DoubleMLBinaryData::new(x, y, d)` -- so the README states
+# TWO constructor calls it did not state before.  The size moved 10 -> 12.
+EXPECTED_CONSTRUCTOR_CALLS = 12
 EXPECTED_ACCESSOR_ROWS = 6
 EXPECTED_OTHER = 16
 EXPECTED_ESTIMATORS = 22
@@ -216,6 +221,28 @@ def readme_calls(pattern):
     return out
 
 
+# A named argument's value is compared with the source's DEFAULT only when
+# the value is a LITERAL -- a number, a string, a bool, `None`/`Some`.
+#
+# The README's convention is that a constructor call it states shows the
+# source's defaults, so a literal that differs from the default is the
+# README misstating it.  That is the rule round 35 was written for: a
+# constructor that "states a default the source does not have".
+#
+# An EXPRESSION is not a stated default -- it is a choice the snippet is
+# making.  Round 43's "pass a classifier explicitly" snippet passes
+# `ml_m=LearnerDispatch::logistic_regression(...)`, deliberately NOT the
+# source's default (`LearnerDispatch::linear_regression()`), because
+# choosing a different learner is the whole point of the snippet.  Flagging
+# that would be a false positive, and a rule with false positives teaches its
+# reader to ignore it.
+LITERAL = re.compile(r'^-?\d+(?:\.\d+)?$|^"[^"]*"$|^(?:true|false|None|Some)$')
+
+
+def is_literal(v):
+    return bool(LITERAL.match(v.strip()))
+
+
 ctor_calls = [(o, a) for o, a in readme_calls(r"([A-Za-z_]\w*)::new\(")
               if o != PLACEHOLDER]
 
@@ -262,7 +289,7 @@ for owner, arglist in ctor_calls:
         sp = [p for p in sparams if p[0] == nm][0]
         if not sp[1]:
             bad.append("named arg %r is not optional in the source" % nm)
-        elif val is not None and sp[2] and val != sp[2]:
+        elif val is not None and sp[2] and val != sp[2] and is_literal(val):
             bad.append("named arg %r=%r, the source default is %r" % (nm, val, sp[2]))
     check("%s::new(%s) matches the source" % (owner, arglist),
           not bad, "; ".join(bad))

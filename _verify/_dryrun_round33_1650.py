@@ -10,6 +10,10 @@ table's measurements must be written in code spans, and every small-n figure
 must be the correctly-rounded rendering of a value in the record the README
 cites.
 
+It also holds the CHANGELOG's publication of its OWN check count to the count
+this run makes: the number the CHANGELOG publishes for this check is a promise
+about the tree, and this check is the one that keeps it.
+
 Round 33 found that the second rule was narrower than its own wording: the
 cell numbers were collected from the CODE SPANS, so a table that wrote its
 measurements in bold and plain -- the propensity table -- was never looked at.
@@ -42,6 +46,16 @@ mechanism 5 DELETES the block that carries it, each by its own pattern, and
 neither pattern mentions the other's output.  The two land on different
 verdicts, which is the point: a count that is WRONG and a count that is
 ABSENT are different failures.
+
+THE WITNESS IS THE LIVE PUBLICATION
+===================================
+The count is published in the CHANGELOG's NEWEST entry, and that is the
+publication the verifier reads: it takes the FIRST one it finds, and the
+CHANGELOG is in descending order.  An older entry's count is HISTORY -- no
+check reads it -- so a mechanism that rewrote one of those would break a
+promise nobody keeps, and the dry-run would prove nothing.  The witness is
+therefore matched in the shape the verifier reads, and the drop takes EVERY
+publication of it, so that the count becomes ABSENT rather than merely old.
 
 Mechanism 6 is the one round 33 added: it breaks the CONVENTION without
 touching the cell set, so I4's verdict is visible on its own rather than
@@ -79,11 +93,22 @@ VERIFIER = "_verify/_verify_measurements_1650.py"
 
 ALWAYS_COPY = [VERIFIER]
 
-# the CHANGELOG's witness: the one place that publishes this verifier's count
-WITNESS = re.compile(r"\(`_verify/_verify_measurements_1650\.py` \(\*\*(\d+)\*\* checks\)\)")
+# the CHANGELOG's witness: the one place that publishes this verifier's count.
+#
+# The SHAPE is the shape the verifier reads -- the name, then the count -- and
+# the FIRST match is the LIVE publication: the CHANGELOG is in descending
+# order, so its newest entry comes first, and the verifier reads that one.
+# An older entry's count is HISTORY: no check reads it, so a mechanism that
+# rewrote one would break nothing and the dry-run would prove nothing.
+WITNESS = re.compile(r"_verify/_verify_measurements_1650\.py` \(\*\*(\d+)\*\* checks\)")
+# EVERY publication of that count, in either shape: the newest entry writes it
+# in the bare shape and the older ones wrap it in a parenthesis.  All of them
+# go, so that the count becomes ABSENT -- which is a different failure from a
+# count that is WRONG.
 WITNESS_BLOCK = re.compile(
-    r"- \(`_verify/_verify_measurements_1650\.py` \(\*\*\d+\*\* checks\)\)[^\n]*\r?\n"
-    r"(?:  [^\n]*\r?\n)*")
+    r"(?m)^- \(`_verify/_verify_measurements_1650\.py` \(\*\*\d+\*\* checks\)\)[^\n]*\r?\n"
+    r"(?:  [^\n]*\r?\n)*"
+    r"|^[ \t]*`_verify/_verify_measurements_1650\.py` \(\*\*\d+\*\* checks\)[^\n]*\r?\n")
 
 # the published FAILURE count -- scoped to the entry that names THIS driver, so
 # a later round's entry cannot be read in its place.
@@ -334,6 +359,47 @@ if rc == 0:
     print("!! the broken tree still exits 0 -- ABORT")
     sys.exit(1)
 
+def published_count(text, driver):
+    """The failure count the CHANGELOG publishes FOR THIS DRIVER.
+
+    The lookup is SCOPED twice: to the ENTRY that names the driver, and
+    within that entry to the BULLET that names it.  The CHANGELOG is in
+    descending order, so the newest entry wins -- and a newest entry that
+    publishes two drivers' counts must not bind one driver's number to the
+    other's.  An entry that NAMES a driver without publishing a count for it
+    is not a publication, so the search falls through to the older one.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        body = m.group(2)
+        if driver not in body:
+            continue
+        lines = body.split("\n")
+        start = None
+        for i, l in enumerate(lines):
+            if driver in l:
+                start = i
+                break
+        if start is None:
+            continue
+        head = start
+        while head > 0 and not lines[head].startswith("- "):
+            head -= 1
+        tail = start + 1
+        while tail < len(lines) and not lines[tail].startswith("- "):
+            tail += 1
+        # The sentence that carries the number is hard-WRAPPED, so the
+        # phrase is matched against a whitespace-COLLAPSED bullet.  A
+        # pattern with literal spaces matches only the entries that
+        # happen to keep the phrase on ONE line -- and the driver then
+        # reads an OLDER entry's number and calls it its own.
+        flat = re.sub(r"\s+", " ", "\n".join(lines[head:tail]))
+        found = re.findall(r"requires the failure count to GROW at every step: "
+                           r"\*\*(\d+)\*\* failures at the", flat)
+        if found:
+            return int(found[0])
+    return None
+
 # --- the published failure count, witnessed -----------------------------------
 # The CHANGELOG publishes the number of failures this dry-run ends at.  A
 # published exact number with nothing asserting it goes stale silently, so the
@@ -350,8 +416,7 @@ if _entry is None:
     print("=== the published failure count, witnessed ===")
     print("  no CHANGELOG entry names this driver -- ABORT")
     sys.exit(1)
-_found = FAILCOUNT.findall(_entry)
-published = int(_found[0]) if _found else None
+published = published_count(read(CHANGELOG), "_dryrun_round33_1650.py")
 print()
 print("=== the published failure count, witnessed ===")
 if published is None:

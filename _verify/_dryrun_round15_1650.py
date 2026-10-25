@@ -22,6 +22,7 @@ Usage:  python _verify/_dryrun_round15_1650.py [tag]   (default v0.164.9)
 import io
 import os
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -34,9 +35,35 @@ VERIFIER = os.path.join(ROOT, "_verify", "_verify_round15_defaults_1650.py")
 AUDIT = os.path.join(ROOT, "_verify", "_audit_r15_defaults_1650.py")
 OLD = sys.argv[1] if len(sys.argv) > 1 else "v0.164.9"
 
-if os.path.isdir(BASE):
-    shutil.rmtree(BASE)
-os.makedirs(BASE, exist_ok=True)
+
+def force_rmtree(path):
+    """Remove `path`, including the read-only files a git clone leaves behind.
+
+    Windows refuses to delete a read-only file, and a clone's `.git` holds
+    some.  So the mode is cleared first and the removal is retried; without
+    this the driver dies with a PermissionError on its SECOND run, which is
+    how it failed for every round since it was written.
+    """
+    def _onerror(func, p, _exc):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+        except OSError:
+            pass
+        try:
+            func(p)
+        except OSError:
+            pass
+
+    shutil.rmtree(path, onerror=_onerror)
+
+
+# Only THIS driver's own shadow directory is removed.  The base directory is
+# shared: it holds the tracked raw logs the other drivers write, and every
+# other driver's work directory -- wiping it deleted tracked files from the
+# tree and fought the other drivers for their directories.
+if os.path.isdir(SHADOW):
+    force_rmtree(SHADOW)
+os.makedirs(SHADOW, exist_ok=True)
 
 # --local + --shared keeps the clone cheap; the objects live in the source
 # repo, which is present for the whole run.

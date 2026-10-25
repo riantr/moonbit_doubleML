@@ -53,6 +53,10 @@ D. the other count claims, derived from the tree
   ok    CI runs four backends                                          ['native', 'wasm-gc', 'wasm', 'js']
   ok    the README's four backends are the CI's four                   ['native', 'wasm-gc', 'wasm', 'js']
   ok    the README says four backends                                  
+  ok    the package's supported_targets is findable                    
+  ok    the package declares four backends                             ['native', 'wasm', 'wasm-gc', 'js']
+  ok    the package's declared backends are the CI's four              ['js', 'native', 'wasm', 'wasm-gc'] / ['js', 'native', 'wasm', 'wasm-gc']
+  ok    the README's 'four declared backends' are the package's four   ['native', 'wasm', 'wasm-gc', 'js']
   ok    the bit-exact mutation battery is tracked                      
   ok    the bit-exact battery declares four mutation cases             got 4
   ok    the README says all four mutations were killed                 
@@ -70,6 +74,7 @@ F. the inventory: no unregistered count claim
   ok    the registered claim 'This package ships eleven' is present in the README 
   ok    the registered claim 'The three classification learners' is present in the README 
   ok    the registered claim '**Four backends**' is present in the README 
+  ok    the registered claim 'four declared backends' is present in the README 
   *** FAIL ***  the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README NOT FOUND
   ok    the registered claim '**Eight structs still default `ml_m` to `linea' is present in the README 
   ok    the registered claim '**Six rows turned out hazardous**' is present in the README 
@@ -85,18 +90,56 @@ F. the inventory: no unregistered count claim
   ok    the registered claim 'three vocabularies are in play' is present in the README 
   ok    the registered claim 'The last three take no cross-fitting option' is present in the README 
   ok    the registered claim 'all three ship upstream' is present in the README 
+  ok    the registered claim 'seven structs' is present in the README  
+  ok    the registered claim '22 estimators' is present in the README  
+  ok    the registered claim '19 source files' is present in the README 
+  ok    the registered claim '19 production files' is present in the README 
+  ok    the registered claim '220 `.mbt` files' is present in the README 
+  ok    the registered claim '129 blackbox' is present in the README   
+  ok    the registered claim '26 whitebox' is present in the README    
+  ok    the registered claim '24 Python reference scripts' is present in the README 
+  ok    the registered claim '7 of the 22 estimators' is present in the README 
+  ok    the registered claim 'four data types' is present in the README 
+  ok    the registered claim 'seven files' is present in the README    
+  ok    the registered claim '11 surfaces' is present in the README    
+  ok    the registered claim '19 name-matched estimator classes' is present in the README 
+  ok    the registered claim '21 driver binaries' is present in the README 
+  ok    the registered claim '21 examples' is present in the README    
+  ok    the registered claim '21 runnable example binaries' is present in the README 
+  ok    the registered claim '22 `DoubleML*` estimators' is present in the README 
+  ok    the registered claim '22 estimators (`DoubleML*` structs' is present in the README 
+  ok    the registered claim '220 .mbt files' is present in the README 
+  ok    the registered claim '24 scripts' is present in the README     
+  ok    the registered claim '26 whitebox test' is present in the README 
+  ok    the registered claim '129 blackbox test' is present in the README 
+  ok    the registered claim '12 estimators' is present in the README  
+  ok    the registered claim '4 designs' is present in the README      
   ok    the owning verifier _verify_ctor_options_1650.py is tracked    _verify_ctor_options_1650.py
   ok    the owning verifier _verify_ctor_options_1650.py is tracked    _verify_ctor_options_1650.py
   ok    the owning verifier _verify_round12_pyexample_1647.py is tracked _verify_round12_pyexample_1647.py
   ok    the owning verifier _verify_shipped_docs_1643.py is tracked    _verify_shipped_docs_1643.py
   ok    the owning verifier _verify_test_verification_1650.py is tracked _verify_test_verification_1650.py
+  ok    the owning verifier _verify_api_promises_1650.py is tracked    _verify_api_promises_1650.py
+  ok    the owning verifier _verify_counts_1641.py is tracked          _verify_counts_1641.py
+  ok    the owning verifier _verify_example_kinds_1680.py is tracked   _verify_example_kinds_1680.py
+  ok    the owning verifier _verify_score_argument_1650.py is tracked  _verify_score_argument_1650.py
+  ok    the owning verifier _verify_provenance_grouping_1650.py is tracked _verify_provenance_grouping_1650.py
+  ok    the owning verifier _verify_api_promises_1650.py is tracked    _verify_api_promises_1650.py
+
+G. the counts this verifier owns, derived from the tree
+  ok    the 22 estimators are 22 estimator structs in the source       got 22
+  ok    the 19 source files are the files that hold an estimator struct got 19: ['apo.mbt', 'blp_policy.mbt', 'cvar.mbt', 'did.mbt', 'did_binary.mbt', 'did_cross_section.mbt', 'did_cs.mbt', 'did_cs_binary.mbt', 'did_multi.mbt', 'iivm.mbt', 'irm.mbt', 'lplr.mbt', 'lpq.mbt', 'pliv.mbt', 'plpr.mbt', 'plr.mbt', 'quantile.mbt', 'rdd.mbt', 'ssm.mbt']
+  ok    the 220 .mbt files are the package's .mbt files                got 220
+  ok    the 129 blackbox test files are the *_test.mbt files           got 129
+  ok    the 26 whitebox test files are the *_wbtest.mbt files          got 26
+  ok    the 24 Python reference scripts are the validate_*_with_python.py files got 24
   ok    the CHANGELOG's DIDBinary probe section is findable            
   ok    the CHANGELOG enumerates four probe designs                    got 4
-   scan hits (13): ['Eight structs', 'Four backends', 'Nine gates', 'Seven estimators', 'Six rows', 'Three rows', 'four mutations', 'four probe designs', 'ships eleven', 'three classification learners', 'three estimators', 'three mutants', 'three vocabularies']
+   scan hits (59): ['11 surfaces', '12 estimators', '129 blackbox test', '19 name-matched estimator classes', '19 production files', '19 source files', '21 driver binaries', '21 examples', '21 runnable example binaries', '22 `DoubleML*` estimators', '22 estimators', '22 estimators (`DoubleML*` structs', '220 .mbt files', '220 `.mbt` files', '24 Python reference scripts', '24 scripts', '26 whitebox test', '4 designs', 'Eight structs', 'Four backends', 'Nine gates', 'Seven estimators', 'Six rows', 'Three rows', 'four data types', 'four declared backends', 'four mutations', 'four probe designs', 'seven files', 'seven structs', 'ships eleven', 'three classification learners', 'three estimators', 'three mutants', 'three vocabularies']
   *** FAIL ***  no unregistered count claim in the README                  ['Seven estimators']
 
 ==========================================================================
-79 checks, 19 failed
+120 checks, 19 failed
 *** FAIL ***
   - the migrated set is EXACTLY the source's `ml_m`-classifier set
   - the SSM sentence names all four migrations

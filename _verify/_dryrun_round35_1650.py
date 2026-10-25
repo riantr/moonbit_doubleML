@@ -62,6 +62,11 @@ WORK = os.path.join(REPO, "_verify", "_dryrun1650", "r35_mut")
 VERIFIERS = [
     "_verify/_verify_api_snippets_1680.py",
     "_verify/_verify_citations_1650.py",
+    # The in-repo `file:line` pointer class MOVED here in round 42: the
+    # citations checker used to own it, and mechanism 4 breaks a pointer, so
+    # without this verifier in the list the mechanism could not be seen and
+    # the driver failed with "mechanism 4 contributed nothing".
+    "_verify/_verify_file_line_refs_1650.py",
 ]
 
 
@@ -122,7 +127,8 @@ def verify(work):
         rc = rc or r
         chunks.append(out)
         total += len([l for l in out.splitlines()
-                      if l.rstrip().endswith("*** FAIL ***")])
+                      if "*** FAIL ***" in l
+                      and l.strip() != "*** FAIL ***"])
     return rc, "\n".join(chunks), total
 
 
@@ -211,11 +217,15 @@ MECHANISMS = [
               commit(WORK, ["README.mbt.md"],
                      "dry-run: a default the source does not have"))),
 
-    # -- 4. a citation points one line off ------------------------------------
-    ("a citation points one line off the token it claims",
-     lambda: (patch(README, "`irm.mbt:430`", "`irm.mbt:429`"),
+    # -- 4. a citation points at a line that carries none of it ---------------
+    # The pointer drifts off the token the sentence names.  A ONE-LINE offset
+    # is invisible to the check -- the window around the cited line still
+    # holds the token -- so the offset has to leave the window for the
+    # promise to break.
+    ("a citation points at a line that carries none of what it claims",
+     lambda: (patch(README, "`irm.mbt:430`", "`irm.mbt:350`"),
               commit(WORK, ["README.mbt.md"],
-                     "dry-run: a citation one line off"))),
+                     "dry-run: a citation drifted off its token"))),
 
     # -- 5. a citation names a configuration and points at the wrong branch ---
     ("a citation names a configuration and points at the wrong branch",
@@ -233,12 +243,15 @@ MECHANISMS = [
                      "dry-run: a constructor call is added"))),
 
     # -- 7. the citation SET moves: LAST on purpose ----------------------------
-    ("a citation is added",
+    # The citation that is added must be one the check REJECTS: a second
+    # copy of a citation that is already there is a valid citation, and a
+    # valid citation makes no failure -- the set grew and nothing broke.
+    ("a citation names a line that is not in the file",
      lambda: (patch(README,
                     "direction (`ssm.mbt:73-74`):",
-                    "direction (`ssm.mbt:73-74`, `ssm.mbt:73-74`):"),
+                    "direction (`ssm.mbt:73-74`, `ssm.mbt:1200`):"),
               commit(WORK, ["README.mbt.md"],
-                     "dry-run: a citation is added"))),
+                     "dry-run: a citation names a line that is not there"))),
 ]
 
 prev = n0
@@ -256,12 +269,21 @@ for i, (desc, apply_it) in enumerate(MECHANISMS, 1):
         sys.exit(1)
     prev = n
 
-# the counter must agree with the verifiers' own summaries
+# The counter must agree with the verifiers' own summaries.
+#
+# Three summary shapes are in the contract: the "N checks, M failed" form, the
+# "checks run: N" / "checks failed: M" form, and ... a driver that reads only
+# one of them under-counts the others -- the round-38 lesson, applied to the
+# summary instead of the marker.  The pointer checker reports in the second
+# form, so a driver that watched it and read only the first would see a
+# counter that does not match the summaries and would abort on a tree that
+# was broken exactly as it meant to be.
 rc, out, n = verify(WORK)
 print()
 print("=== the counter and the verifiers' own summaries ===")
 print("  the driver counted %d failures" % n)
-summaries = re.findall(r"(\d+) checks, (\d+) failed", out)
+summaries = re.findall(r"(\d+) checks,\s*(\d+) failed", out)
+summaries += [(None, m.group(1)) for m in re.finditer(r"checks failed:\s*(\d+)", out)]
 print("  the verifiers say   %s"
       % (", ".join("%s checks, %s failed" % s for s in summaries) if summaries else "NONE"))
 if not summaries or sum(int(s[1]) for s in summaries) != n:
@@ -271,6 +293,47 @@ if rc == 0:
     print("!! the broken tree still exits 0 -- ABORT")
     sys.exit(1)
 
+def published_count(text, driver):
+    """The failure count the CHANGELOG publishes FOR THIS DRIVER.
+
+    The lookup is SCOPED twice: to the ENTRY that names the driver, and
+    within that entry to the BULLET that names it.  The CHANGELOG is in
+    descending order, so the newest entry wins -- and a newest entry that
+    publishes two drivers' counts must not bind one driver's number to the
+    other's.  An entry that NAMES a driver without publishing a count for it
+    is not a publication, so the search falls through to the older one.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        body = m.group(2)
+        if driver not in body:
+            continue
+        lines = body.split("\n")
+        start = None
+        for i, l in enumerate(lines):
+            if driver in l:
+                start = i
+                break
+        if start is None:
+            continue
+        head = start
+        while head > 0 and not lines[head].startswith("- "):
+            head -= 1
+        tail = start + 1
+        while tail < len(lines) and not lines[tail].startswith("- "):
+            tail += 1
+        # The sentence that carries the number is hard-WRAPPED, so the
+        # phrase is matched against a whitespace-COLLAPSED bullet.  A
+        # pattern with literal spaces matches only the entries that
+        # happen to keep the phrase on ONE line -- and the driver then
+        # reads an OLDER entry's number and calls it its own.
+        flat = re.sub(r"\s+", " ", "\n".join(lines[head:tail]))
+        found = re.findall(r"requires the failure count to GROW at every step: "
+                           r"\*\*(\d+)\*\* failures at the", flat)
+        if found:
+            return int(found[0])
+    return None
+
 # --- the published failure count, witnessed -----------------------------------
 _entry = None
 for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
@@ -278,9 +341,7 @@ for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
     if "_dryrun_round35_1650.py" in m.group(2):
         _entry = m.group(2)
         break
-_found = re.findall(r"requires the failure count to GROW at every step:\s*"
-                    r"\*\*(\d+)\*\*\s+failures at the", _entry or "")
-published = int(_found[0]) if _found else None
+published = published_count(read(CHANGELOG), "_dryrun_round35_1650.py")
 print()
 print("=== the published failure count, witnessed ===")
 if published is None:

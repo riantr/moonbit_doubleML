@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.36",
+  "riantr/moonbit_doubleML@0.164.37",
 }
 ```
 
@@ -356,10 +356,16 @@ a future change cannot be scored on the flattering fixture alone.
 `DoubleMLCVAR`, `DoubleMLDID`, `DoubleMLDIDBinary`,
 `DoubleMLDIDCrossSection`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`,
 `DoubleMLDIDMulti`, `DoubleMLIIVM`. Until each is
-migrated, pass a classifier explicitly:
+migrated, pass a classifier explicitly -- `ml_m` is a named argument on the
+constructor, so the learner goes where the estimator is built:
 
 ```moonbit
-ml_m = LearnerDispatch::logistic_regression(LogisticRegression::new())
+let fitted_cvar = @moonbit_doubleML.DoubleMLCVAR::new(
+  data,
+  ml_m=@moonbit_doubleML.LearnerDispatch::logistic_regression(
+    @moonbit_doubleML.LogisticRegression::new(),
+  ),
+).fit()
 ```
 
 `LearnerDispatch::random_forest_classifier(RFClassifier::new(...))` and
@@ -568,10 +574,13 @@ it is what makes the port *no worse* rather than better. Record:
    `LearnerDispatch::is_classifier()` reports which constructors qualify.
 2. **Read the warnings.** `DoubleMLLPLR::fit()` can return a degenerate
    standard error, and it says so rather than returning a confident wrong
-   number:
+   number. LPLR's outcome is BINARY, so it takes a `DoubleMLBinaryData`
+   rather than the `DoubleMLData` the other estimators take --
+   `DoubleMLBinaryData::new` aborts on any outcome that is not 0 or 1:
 
    ```moonbit
-   let model = DoubleMLLPLR::new(data).fit()
+   let data = @moonbit_doubleML.DoubleMLBinaryData::new(x, y, d)
+   let model = @moonbit_doubleML.DoubleMLLPLR::new(data).fit()
    for w in model.warnings() { println(w) }
    ```
 
@@ -608,7 +617,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.36** |
+| `moon.mod` version | **0.164.37** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -735,7 +744,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.36, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.37, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

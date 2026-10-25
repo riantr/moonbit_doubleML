@@ -324,6 +324,47 @@ if int(m.group(1)) != int(re.search(r"(\d+) checks", out).group(1)):
     print("!! the check count moved -- ABORT")
     sys.exit(1)
 
+def published_count(text, driver):
+    """The failure count the CHANGELOG publishes FOR THIS DRIVER.
+
+    The lookup is SCOPED twice: to the ENTRY that names the driver, and
+    within that entry to the BULLET that names it.  The CHANGELOG is in
+    descending order, so the newest entry wins -- and a newest entry that
+    publishes two drivers' counts must not bind one driver's number to the
+    other's.  An entry that NAMES a driver without publishing a count for it
+    is not a publication, so the search falls through to the older one.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        body = m.group(2)
+        if driver not in body:
+            continue
+        lines = body.split("\n")
+        start = None
+        for i, l in enumerate(lines):
+            if driver in l:
+                start = i
+                break
+        if start is None:
+            continue
+        head = start
+        while head > 0 and not lines[head].startswith("- "):
+            head -= 1
+        tail = start + 1
+        while tail < len(lines) and not lines[tail].startswith("- "):
+            tail += 1
+        # The sentence that carries the number is hard-WRAPPED, so the
+        # phrase is matched against a whitespace-COLLAPSED bullet.  A
+        # pattern with literal spaces matches only the entries that
+        # happen to keep the phrase on ONE line -- and the driver then
+        # reads an OLDER entry's number and calls it its own.
+        flat = re.sub(r"\s+", " ", "\n".join(lines[head:tail]))
+        found = re.findall(r"requires the failure count to GROW at every step: "
+                           r"\*\*(\d+)\*\* failures at the", flat)
+        if found:
+            return int(found[0])
+    return None
+
 # --- the published failure count, witnessed -----------------------------------
 # The CHANGELOG publishes the number of failures this dry-run ends at.  A
 # published exact number with nothing asserting it goes stale silently, so the
@@ -338,10 +379,7 @@ CHANGELOG = os.path.join(WORK, "CHANGELOG.md")
 # The CHANGELOG is in DESCENDING order -- the newest entry is at the TOP -- so
 # the CURRENT published number is the FIRST occurrence.  (Taking the last one
 # binds the witness to an entry that has already shipped.)
-_found = re.findall(r"requires the failure count to GROW at every step:\s*"
-                    r"\*\*(\d+)\*\*\s+failures at the",
-                    io.open(CHANGELOG, encoding="utf-8", errors="replace").read())
-published = int(_found[0]) if _found else None
+published = published_count(io.open(CHANGELOG, encoding="utf-8", errors="replace").read(), "_dryrun_round29_1650.py")
 print()
 print("=== the published failure count, witnessed ===")
 if published is None:

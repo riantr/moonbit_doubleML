@@ -9,6 +9,112 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.37] -- the tree's own teeth
+
+`moon.mod` moves 0.164.36 -> 0.164.37. No estimator behaviour changed and the
+test counts stay **TBD / TBD / TBD / TBD** (native / wasm-gc / wasm / js).
+
+### Fixed -- a licence class that was half closed
+
+- Round 42 rewrote TWO of the seventeen LICENSE files and announced the class
+  closed -- "Both LICENSE files now carry MIT" -- and FIFTEEN of them still
+  carried the stock Apache-2.0 text beside a `moon.mod` that declared
+  `license = "MIT"`.  Six package directories shipped no LICENSE at all.
+  All **23** LICENSE files are byte-identical to the root MIT text now, and
+  every package directory that has a manifest is covered by one.
+  `_verify/_verify_license_files_1650.py` (**6** checks) owns the class, and
+  its count is fixed against the tree.
+
+### Fixed -- two code blocks the reader could not compile
+
+- The published README is a document a reader COPIES from, and two of its
+  fenced `moonbit` blocks did not compile.  The first assigned to `ml_m`,
+  which is not a variable -- it is an optional NAMED PARAMETER of eight
+  estimators' constructors -- so the line does not compile at all, and it was
+  written in the LIBRARY's namespace rather than the reader's.  The second
+  passed the Quick Start's `DoubleMLData` to `DoubleMLLPLR::new`, which takes
+  a `DoubleMLBinaryData` -- LPLR's outcome is BINARY.
+- The README's own verifier could not see either: it checks the NAMES of a
+  call's arguments, and a type mismatch is not a name.  Both blocks are
+  rewritten into the reader's namespace, and
+  `_verify/_verify_readme_snippets_1650.py` (**7** checks) COMPILES them --
+  each block in its OWN probe, against the LOCAL library, with a preamble that
+  supplies the context the fragments assume.  One probe with every block in it
+  proves only that AT LEAST ONE block compiles: the compiler stops at the
+  first error, so a broken block hides the ones after it.  CI runs it.
+
+### Fixed -- a mutation suite that had stopped biting
+
+- The tree carries 30 tracked dry-run drivers -- the mutation-test suite that
+  proves each verifier FAILS on a tree the verifier should reject.  A sweep of
+  all of them found SIXTEEN no longer biting, and the causes were three
+  classes, all of them mechanical: a mechanism's ANCHOR had moved, a CLASS had
+  moved to a different verifier, and a PUBLISHED COUNT had gone stale.
+  `_verify/_verify_dryrun_teeth_1650.py` (**13** checks) owns the class now.
+  It SIMULATES every driver's mechanisms in source order -- they are
+  CUMULATIVE, so a mechanism may patch the text an earlier mechanism produced
+  -- and it holds every anchor live in the tree, every patched file tracked,
+  every verifier a driver names still in the tree, every driver's counter able
+  to SEE its verifiers' failure markers, and the CHANGELOG's published count
+  and the banner's to agree.  It also holds the OWNER and the CHECKER to the
+  same number: a driver that reads the banner must find a count there, and
+  the driver's own lookup must agree with this verifier's.
+- Three drivers read the FIRST published count in the whole CHANGELOG instead
+  of their own, so each compared its measurement against a number that
+  belonged to somebody else's dry-run.  Every driver now reads the count from
+  the BULLET that names it, and one entry can carry several drivers' counts.
+- The sentence that carries a published count is hard-WRAPPED, so a reader that
+  matches it with literal spaces reads an OLDER entry's number instead: four
+  drivers were comparing themselves against somebody else's count, one read
+  nothing at all, and the teeth check reported that six drivers published no
+  count -- two readers, each certain, both wrong, and nothing comparing them.
+  Every driver now reads its number out of a whitespace-collapsed bullet, every
+  driver that reads the banner finds a count there, and the teeth check runs
+  the driver's own lookup and requires the two to agree.
+- The count a dry-run ends at moves with the tree, and the CHANGELOG publishes
+  the measured numbers again.  Each of these drivers requires the failure
+  count to GROW at every step, and the numbers below are what this tree
+  measures.
+- `_verify/_dryrun_round28_1650.py` ends at **37** failures: it requires the
+  failure count to GROW at every step: **37** failures at the end.
+- `_verify/_dryrun_round30_1650.py` ends at **9** failures: it requires the
+  failure count to GROW at every step: **9** failures at the end.
+- `_verify/_dryrun_round35_1650.py` ends at **7** failures: it requires the
+  failure count to GROW at every step: **7** failures at the end.
+- `_verify/_dryrun_round38_1650.py` ends at **16** failures: it requires the
+  failure count to GROW at every step: **16** failures at the end.
+- `_verify/_dryrun_round40_1650.py` ends at **7** failures: it requires the
+  failure count to GROW at every step: **7** failures at the end.
+- `_verify/_dryrun_round43_1650.py` ends at **8** failures: it requires the
+  failure count to GROW at every step: **8** failures at the end.
+
+### Fixed -- a promise the code did not keep
+
+- `_verify/_verify_file_line_refs_1650.py` said check 4 compares the
+  identifiers a paragraph names against the identifiers NEAR THE CITED LINE --
+  "a window of 25 lines around the citation" -- and the code compared against
+  the WHOLE FILE, computing the window and not using it.  A pointer that had
+  drifted off the token it claims was invisible to it.  The code uses the
+  window now, and the check still makes 60 checks with 0 failed.
+- The round-42 rule that a named argument's value must equal the source's
+  DEFAULT fired on a snippet that deliberately passes a NON-default learner.
+  The rule now applies to LITERALS only: an expression is a choice, not a
+  stated default.  `_verify/_verify_api_snippets_1680.py` published **135**
+  and makes **139** checks.
+- The ledger that reads the ENGINEERING banner grew by SIX checks, because
+  the banner now publishes a count for three more checks than it did, and the
+  ledger makes one check in each of its two live sections for every check the
+  banner names: `_verify/_verify_ledger_counts_1650.py` (**44** checks) now.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed (1 readme-sync + 8 build/test + 2 fmt +
+  24 validators + 9 pyexamples + 3 QA + 1 meta-gate)
+- tracked verifier suite: 62 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **62** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.36] -- the promises the tree could not keep
 
 `moon.mod` moves 0.164.35 -> 0.164.36. No estimator behaviour changed and the

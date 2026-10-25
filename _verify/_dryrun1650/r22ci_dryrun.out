@@ -67,7 +67,5 @@ F. the two copies
   - the record's CI count matches
   - the README says 11 of the 16 print a 95 % CI
   - the README does not say 12 of the 16
-D:\src\MiniMax\Projects\DoubleMachineLearning\moonbit_doubleML\_verify\_dryrun1650\r22ci_mut\_verify\_verify_cli_demo_ci_1650.py:21: SyntaxWarning: invalid escape sequence '\s'
-  CI_RE = re.compile(r"95\s*%|confint|confidence|CI\b|\[.*\]", re.I)
 
 EXACT failure count: 3

@@ -125,7 +125,7 @@ surface and anti-patterns).
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.164.36"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.37"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside
@@ -159,13 +159,14 @@ surface and anti-patterns).
   a field). Either way, use `train_idx` / `test_idx`.
 
 - do NOT use `ref`, `dyn`, `with`, `assert`, `var`, `method`,
-  `test`, or `train` as identifiers — all are reserved in current
+  or `test` as identifiers — all are reserved in current
   MoonBit. Measured on `moon 0.1.20261023`: `with`, `var` and `test`
   are hard errors, while `ref`, `dyn`, `assert` and
   `method` emit `Warning (reserved_keyword): The word ... is
   reserved for possible future use` — which still fails the build,
-  because CI runs `--deny-warn`. (`train` is the one that moved: it
-  was a hard error on `moon 0.1.20261016` and is not reserved now.)
+  because CI runs `--deny-warn`. (`train` is deliberately NOT in
+  this list: it was a hard error on `moon 0.1.20261016` and is not
+  reserved now — the bullet above covers it.)
   In particular, `method` shows up
   often in HTTP handlers; use `method_` (or another non-reserved
   name) instead.

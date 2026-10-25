@@ -355,7 +355,7 @@
 >
 >   `_verify/_dryrun_round32_1650.py` breaks each of the six mechanisms one
 >   at a time and requires the failure count to GROW at every step, and it
->   ends at **9** failures.  The last mechanism moves the SET SIZE -- a new
+>   ends at **10** failures.  The last mechanism moves the SET SIZE -- a new
 >   table row appears -- so it runs last, because it would otherwise break
 >   the checks the other mechanisms are aimed at.
 >
@@ -509,7 +509,7 @@
 >
 >   `_verify/_dryrun_round35_1650.py` breaks each of the seven mechanisms one
 >   at a time and requires the failure count to GROW at every step, and it
->   ends at **8** failures.
+>   ends at **7** failures.
 >
 > * **Round 36.** The README's NEGATIVE claims -- the whole "Not covered, so
 >   not claimed" section -- were only HALF checked, and one of them OVERSTATED
@@ -713,7 +713,7 @@
 >
 >   `_verify/_dryrun_round38_1650.py` breaks each of the **10** mechanisms one
 >   at a time and requires the failure count to GROW at every step, and it
->   ends at **14** failures.  It caught three defects in its own construction:
+>   ends at **16** failures.  It caught three defects in its own construction:
 >   the mechanisms are CUMULATIVE, so a mechanism that patches a passage an
 >   earlier mechanism already rewrote must patch the text as it now stands; a
 >   probe file that did not match the pattern the registry derives its count
@@ -1043,7 +1043,101 @@
 >   every step.  The run ends at **16** failures.
 
 >
-
+> * **Round 43.** The licence the tree did not close, and the code that did
+>   not compile.
+>
+>   *A licence that granted one thing and claimed another -- again.*  Round 42
+>   rewrote TWO of the seventeen LICENSE files, and the v0.164.36 entry
+>   announced the class closed: "Both LICENSE files now carry MIT".  The tree
+>   has SEVENTEEN tracked LICENSE files, and FIFTEEN of them still carried the
+>   stock Apache-2.0 text -- each one beside a `moon.mod` that declared
+>   `license = "MIT"`.  Six package directories shipped no LICENSE at all.
+>   The check that owned the class read two files, so it could not fail on the
+>   other fifteen: it was written to match the fix that had been made, not to
+>   match the class of defect.  Every licence file in the tree is
+>   byte-identical to the root MIT text now, and every package directory that
+>   has a manifest is covered by one.  `_verify/_verify_license_files_1650.py`
+>   (**6** checks) owns the class, and its count is fixed against the tree.
+>
+>   *Two code blocks the reader could not compile.*  The published README is a
+>   document a reader COPIES from, and two of its fenced `moonbit` blocks did
+>   not compile.  The first assigned to `ml_m`, which is not a variable -- it
+>   is an optional NAMED PARAMETER of eight estimators' constructors -- so the
+>   line does not compile at all, and it was written in the LIBRARY's
+>   namespace rather than the reader's.  The second passed the Quick Start's
+>   `DoubleMLData` to `DoubleMLLPLR::new`, which takes a `DoubleMLBinaryData`
+>   -- LPLR's outcome is BINARY:
+>
+> >     Expr Type Mismatch
+> >     has type : @riantr/moonbit_doubleML.DoubleMLData
+> >     wanted   : @riantr/moonbit_doubleML.DoubleMLBinaryData
+>
+>   The README's own verifier could not see either: it checks the NAMES of a
+>   call's arguments, and a type mismatch is not a name.  Both blocks are
+>   rewritten into the reader's namespace, and
+>   `_verify/_verify_readme_snippets_1650.py` (**7** checks) COMPILES them --
+>   EACH in its own probe, against the LOCAL library, with a preamble that
+>   supplies the context the fragments assume.  One probe with every block in
+>   it proves only that AT LEAST ONE block compiles: the compiler stops at
+>   the first error, so a broken block hides the ones after it.  CI runs it.
+>
+>   *A rule with a false positive.*  The API-snippets check compares a named
+>   argument's value with the source's DEFAULT, because the README's
+>   convention is that a constructor call it states shows the defaults.  Round
+>   43's "pass a classifier explicitly" snippet deliberately passes a
+>   NON-default learner, which the rule flagged.  The rule now applies to
+>   LITERALS only: an expression is a choice, not a stated default.
+>   `_verify/_verify_api_snippets_1680.py` published **135** and makes
+>   **139**.
+>
+>   *Two documents that disagreed.*  `AGENTS.md` said the api_server's
+>   `main_test.mbt` "is currently empty"; the api_server's own README said
+>   there is **no** `main_test.mbt`, and the file does not exist.  And the
+>   agent skill's anti-pattern list said `train` was "reserved in current
+>   MoonBit" -- in the same paragraph that said it was not.
+>
+>   *The ledger that reads this banner grew by six checks*, because this
+>   banner now publishes a count for three more checks than it did -- and the
+>   ledger makes one check in each of its two live sections for every check
+>   the banner names, so a new name costs two.
+>   `_verify/_verify_ledger_counts_1650.py` (**44** checks) now.
+>
+>   *A sweep of the tree's own dry-runs.*  SIXTEEN of the THIRTY had stopped
+>   biting, and the causes were three classes, all of them mechanical: a
+>   mechanism's ANCHOR had moved, a CLASS had moved to a different verifier,
+>   and a PUBLISHED COUNT had gone stale.  Three drivers read the FIRST
+>   published count in the whole CHANGELOG instead of their own, so each
+>   compared its measurement against a number that belonged to somebody
+>   else's dry-run; every driver now reads the count from the BULLET that
+>   names it, and one entry can carry several drivers' counts.
+>
+>   `_verify/_verify_dryrun_teeth_1650.py` (**13** checks) owns the class now.
+>   It SIMULATES every driver's mechanisms in source order -- they are
+>   CUMULATIVE, so a mechanism may patch the text an earlier mechanism
+>   produced -- and it holds every anchor live in the tree, every patched
+>   file tracked, every verifier a driver names still in the tree, every
+>   driver's counter able to SEE its verifiers' failure markers, and the
+>   CHANGELOG's published count and this banner's to agree.
+>
+>   *And it holds the OWNER and the CHECKER to the same number.*  The
+>   sentence that carries a published count is hard-WRAPPED, so a reader that
+>   matches it with literal spaces reads an OLDER entry's number instead: four
+>   drivers were comparing themselves against somebody else's count, one read
+>   nothing at all, and the checker here reported that six drivers published
+>   no count -- two readers, each certain, both wrong, and nothing comparing
+>   them.  Every driver now reads its own number out of a
+>   whitespace-collapsed bullet, every driver that reads the banner finds a
+>   count there, and this checker runs the driver's own lookup and requires
+>   the two to agree.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round43_1650.py` breaks ONE promise -- a licence text, a
+>   missing licence, the README's `ml_m` block, the README's LPLR block, a new
+>   block that does not compile, and the probe's resolution of the library --
+>   and the failure count must GROW at every step.  The run ends at **8**
+>   failures.
+>
+>
 ## The README as it stood at v0.164.11
 
 A pure-MoonBit port of the

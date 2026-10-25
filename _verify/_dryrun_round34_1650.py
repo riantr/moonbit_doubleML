@@ -92,11 +92,46 @@ def patch(path, old, new, count=1):
     write(path, text.replace(old, new))
 
 
+def patch_re(path, pattern, new, count=1):
+    """Replace the FIRST `count` matches of `pattern` with `new`.
+
+    The FIRST match, not every match.  The CHANGELOG publishes a checker's
+    count in EVERY entry that mentions it, and the checker binds to the
+    FIRST one -- the newest, because the CHANGELOG is in descending order.
+    A rule that rewrote every occurrence would corrupt the history and
+    leave the newest publication -- the one the checker reads -- untouched.
+
+    A REGEX, not a literal: the published count moves with every release, so
+    a literal would be a literal that goes stale.
+    """
+    text = read(path)
+    crlf = "\r\n" in text
+    new = new.replace("\n", "\r\n") if crlf and "\r\n" not in new else new
+    if crlf and "\r\n" not in pattern:
+        pattern = pattern.replace("\\n", "\r\n")
+    hits = list(re.finditer(pattern, text))
+    if len(hits) < count:
+        raise SystemExit("!! %s: %r matched %d times (expected at least %d)"
+                         % (path, pattern[:70], len(hits), count))
+    out = []
+    last = 0
+    for m in hits[:count]:
+        out.append(text[last:m.start()])
+        out.append(new)
+        last = m.end()
+    out.append(text[last:])
+    write(path, "".join(out))
+
+
 def commit(work, paths, message):
     """Stage the named paths and commit them IN THE CLONE.
 
     A verifier that reads a ref cannot see an uncommitted edit, so every
     mechanism has to leave a COMMIT behind.
+
+    A commit with NOTHING to commit is not a failure: the copy-in is a no-op
+    when the tree under test already carries those files, and the tree at
+    HEAD is then exactly the tree under test.
     """
     rc, out = run(["git", "-C", work, "add", "--"] + paths, cwd=work)
     if rc != 0:
@@ -105,6 +140,8 @@ def commit(work, paths, message):
                    "-c", "user.email=dry-run@example.invalid",
                    "commit", "-m", message], cwd=work)
     if rc != 0:
+        if "nothing to commit" in out or "nothing added to commit" in out:
+            return "(already in the tree)"
         raise SystemExit("!! git commit failed: %s" % out.strip()[:300])
     return out.strip().splitlines()[0] if out.strip() else ""
 
@@ -233,10 +270,18 @@ MECHANISMS = [
                      "dry-run: the install block pins nothing"))),
 
     # -- 6. the published check count is wrong --------------------------------
+    # The CHANGELOG publishes this checker's count in EVERY entry that
+    # mentions it, and the checker binds to the FIRST one -- the newest,
+    # because the CHANGELOG is in descending order.  So the mechanism
+    # corrupts the FIRST publication, by PATTERN: the number itself moves
+    # with every release, and a literal would be a literal that goes stale.
+    # (An earlier draft patched the number in a HISTORICAL entry, which the
+    # checker never reads -- the corruption was invisible and the mechanism
+    # contributed nothing.)
     ("the CHANGELOG publishes a wrong check count",
-     lambda: (patch(CHANGELOG,
-                    "_verify/_verify_release_tree_1650.py` (**34** checks)",
-                    "_verify/_verify_release_tree_1650.py` (**31** checks)"),
+     lambda: (patch_re(CHANGELOG,
+                       r"_verify_release_tree_1650\.py` \(\*\*\d+\*\* checks\)",
+                       "_verify_release_tree_1650.py` (**31** checks)"),
               commit(WORK, ["CHANGELOG.md"],
                      "dry-run: a wrong published count"))),
 
@@ -294,6 +339,47 @@ if rc == 0:
     print("!! the broken tree still exits 0 -- ABORT")
     sys.exit(1)
 
+def published_count(text, driver):
+    """The failure count the CHANGELOG publishes FOR THIS DRIVER.
+
+    The lookup is SCOPED twice: to the ENTRY that names the driver, and
+    within that entry to the BULLET that names it.  The CHANGELOG is in
+    descending order, so the newest entry wins -- and a newest entry that
+    publishes two drivers' counts must not bind one driver's number to the
+    other's.  An entry that NAMES a driver without publishing a count for it
+    is not a publication, so the search falls through to the older one.
+    """
+    for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                         text, re.M | re.S):
+        body = m.group(2)
+        if driver not in body:
+            continue
+        lines = body.split("\n")
+        start = None
+        for i, l in enumerate(lines):
+            if driver in l:
+                start = i
+                break
+        if start is None:
+            continue
+        head = start
+        while head > 0 and not lines[head].startswith("- "):
+            head -= 1
+        tail = start + 1
+        while tail < len(lines) and not lines[tail].startswith("- "):
+            tail += 1
+        # The sentence that carries the number is hard-WRAPPED, so the
+        # phrase is matched against a whitespace-COLLAPSED bullet.  A
+        # pattern with literal spaces matches only the entries that
+        # happen to keep the phrase on ONE line -- and the driver then
+        # reads an OLDER entry's number and calls it its own.
+        flat = re.sub(r"\s+", " ", "\n".join(lines[head:tail]))
+        found = re.findall(r"requires the failure count to GROW at every step: "
+                           r"\*\*(\d+)\*\* failures at the", flat)
+        if found:
+            return int(found[0])
+    return None
+
 # --- the published failure count, witnessed -----------------------------------
 # The CHANGELOG publishes the number of failures this dry-run ends at.  A
 # published exact number with nothing asserting it goes stale silently, so the
@@ -307,9 +393,7 @@ for m in re.finditer(r"^## \[(\d+\.\d+\.\d+)\][^\n]*\n(.*?)(?=^## \[|\Z)",
     if "_dryrun_round34_1650.py" in m.group(2):
         _entry = m.group(2)
         break
-_found = re.findall(r"requires the failure count to GROW at every step:\s*"
-                    r"\*\*(\d+)\*\*\s+failures at the", _entry or "")
-published = int(_found[0]) if _found else None
+published = published_count(read(CHANGELOG), "_dryrun_round34_1650.py")
 print()
 print("=== the published failure count, witnessed ===")
 if published is None:

@@ -84,10 +84,10 @@
   ok    README.mbt.md has a table row for DoubleMLDIDCrossSection      
   ok    README.mbt.md's DIDCrossSection row names the cross-section design | `DoubleMLDIDCrossSection` | observational | Sant'Anna-Zhao 2020 cross-section DID *(upst
   ok    doc/004_estimators/readme.mbt.md has a table row for DoubleMLDIDCS 
-  *** FAIL ***  doc/004_estimators/readme.mbt.md's DIDCS row describes the staggered-adoption design | `DoubleMLDIDCS` | `observational` | DID with repeated cross-sections (Callaway-Sant'Anna
-  *** FAIL ***  doc/004_estimators/readme.mbt.md's DIDCS row does not call it repeated cross-sections | `DoubleMLDIDCS` | `observational` | DID with repeated cross-sections (Callaway-Sant'Anna
+  *** FAIL ***  doc/004_estimators/readme.mbt.md's DIDCS row describes the staggered-adoption design | `DoubleMLDIDCS` | — (fixed: `observational`) | DID with repeated cross-sections (Callawa
+  *** FAIL ***  doc/004_estimators/readme.mbt.md's DIDCS row does not call it repeated cross-sections | `DoubleMLDIDCS` | — (fixed: `observational`) | DID with repeated cross-sections (Callawa
   ok    doc/004_estimators/readme.mbt.md has a table row for DoubleMLDIDCrossSection 
-  ok    doc/004_estimators/readme.mbt.md's DIDCrossSection row names the cross-section design | `DoubleMLDIDCrossSection` | `observational` | Sant'Anna-Zhao 2020 cross-section DID | `d
+  ok    doc/004_estimators/readme.mbt.md's DIDCrossSection row names the cross-section design | `DoubleMLDIDCrossSection` | `new(score=...)` | Sant'Anna-Zhao 2020 cross-section DID | `
 
 ==============================================================================
 63 checks, 19 failed

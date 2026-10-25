@@ -327,7 +327,7 @@ for rel, ln, name, a, b, target, para in POINTERS:
     checks += 1
     if target is None:
         failed += 1
-        print("*** FAIL *** %s:%d  %s names no file in this tree and none in "
+        print("*** FAIL ***  %s:%d  %s names no file in this tree and none in "
               "the vendored upstream" % (rel, ln, name))
         # the other three checks are about a file that is not there; check 1
         # owns that failure, and the COUNT stays fixed at four per pointer.
@@ -336,7 +336,7 @@ for rel, ln, name, a, b, target, para in POINTERS:
     if not os.path.isfile(os.path.join(ROOT, target.replace("/", os.sep))) \
             or not tracked(target):
         failed += 1
-        print("*** FAIL *** %s:%d  %s -> %s is not a tracked file"
+        print("*** FAIL ***  %s:%d  %s -> %s is not a tracked file"
               % (rel, ln, name, target))
     # 2. the cited line is within the file
     checks += 1
@@ -344,23 +344,27 @@ for rel, ln, name, a, b, target, para in POINTERS:
                      encoding="utf-8", errors="replace").read().splitlines()
     if a > len(tlines) or a < 1:
         failed += 1
-        print("*** FAIL *** %s:%d  %s:%d is past the end of %s (%d lines)"
+        print("*** FAIL ***  %s:%d  %s:%d is past the end of %s (%d lines)"
               % (rel, ln, name, a, target, len(tlines)))
         continue
     # 3. the cited line is not blank
     checks += 1
     if not is_code_line(tlines[a - 1]):
         failed += 1
-        print("*** FAIL *** %s:%d  %s:%d is a blank line" % (rel, ln, name, a))
+        print("*** FAIL ***  %s:%d  %s:%d is a blank line" % (rel, ln, name, a))
     # 4. the block names an identifier the TARGET FILE carries
     checks += 1
     want = ids(para)
     lo = max(0, a - 1 - NEIGH)
     hi = min(len(tlines), a + NEIGH)
-    whole = norm("\n".join(tlines))
+    # The WINDOW around the cited line, not the whole file.  The whole file
+    # made the check unable to see a pointer that had drifted off the token
+    # it claims -- and this docstring promised the window all along, so the
+    # code was the weaker of the two.
+    whole = norm("\n".join(tlines[lo:hi]))
     if want and not any(norm(w) in whole for w in want):
         failed += 1
-        print("*** FAIL *** %s:%d  %s:%d -- the block names %s, and the target "
+        print("*** FAIL ***  %s:%d  %s:%d -- the block names %s, and the target "
               "file %s carries none of it"
               % (rel, ln, name, a, ", ".join(sorted(want))[:70], target))
 
