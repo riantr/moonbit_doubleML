@@ -85,6 +85,26 @@ check("did_cs row says 4 cohorts x 4 periods",
 check("did_cs source: cohort_count = 4, n_periods = 4",
       "cohort_count = 4" in s and "n_periods = 4" in s)
 
+# ROUND 45: the row also states the TREATMENT-GROUP count, and the example
+# prints it.  "4 cohorts x 4 periods" is the DGP, but `n_groups = 3` is what
+# the driver prints, and a reader who diffs the README against the output saw
+# 4 against 3 with nothing to explain it.  Cohort 0 is the NEVER-TREATED
+# cohort (`d[row] = if cohort > 0 && k >= cohort`), so it is not a treatment
+# group, and the count is DERIVED from the source rather than written down:
+# cohort_count - 1.
+_m = re.search(r"cohort_count = (\d+)", s)
+_cohorts = int(_m.group(1)) if _m else -1
+_groups = _cohorts - 1 if _cohorts > 0 else -1
+check("did_cs source: cohort 0 is never treated",
+      "cohort > 0" in s, "the never-treated cohort is not marked in the source")
+check("did_cs row states the treatment-group count",
+      r is not None and ("%d treatment groups" % _groups) in r,
+      r or "")
+check("the treatment-group count is the source's cohort count minus the "
+      "never-treated one",
+      _groups > 0 and ("%d treatment groups" % _groups) in (r or ""),
+      "cohort_count=%d -> %d treatment groups" % (_cohorts, _groups))
+
 # main: n, p
 r = row("main")
 s = src("main")

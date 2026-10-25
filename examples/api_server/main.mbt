@@ -203,6 +203,7 @@ fn parse_fit_request(
       let n_folds = json_opt_int(body, "n_folds", 2)
       let n_rep = json_opt_int(body, "n_rep", 1)
       let seed = json_opt_int(body, "seed", 3141)
+      require_crossfit_params(n, n_folds, n_rep)
       (x_data, n, p, y, d, n_folds, n_rep, seed)
     }
     _ => raise ApiError::Message("expected top-level JSON object")
@@ -341,7 +342,7 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // same run. Both are real gates doing their job -- a version bump touches
   // every place the version lives, and `_verify/_bump_1636.py` is that list.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.164.38",
+    library: "riantr/moonbit_doubleML@0.164.39",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })
@@ -366,6 +367,60 @@ fn handler_fit_plr(body : Json) -> Json raise ApiError {
 }
 
 ///|
+/// The library's cross-fitting preconditions, as ENFORCED rather than as
+/// documented.
+///
+/// Every estimator constructor `require`s `n_folds >= 2`,
+/// `n_folds <= n_obs` and `n_rep >= 1` (`plr.mbt:106-108`,
+/// `irm.mbt:121-123`), and `kfold` itself `require`s `n_obs > 0`,
+/// `n_folds > 0` and `n_folds <= n_obs` (`kfold.mbt:440-442`).  A `require`
+/// in MoonBit is a PANIC, not a catchable error, so a request that violates
+/// one of them takes the whole PROCESS down rather than the request: the
+/// process exits and every later caller gets a refused connection.
+///
+/// MEASURED, not assumed: `POST /fit/irm` with one row and `n_folds = 2`
+/// printed `precondition failed at kfold.mbt:442:5-442:30` followed by
+/// `PanicError`; the client saw the connection reset, and `/healthz` then
+/// answered "connection refused" instead of `{"status":"ok"}`.  The v0.164.38
+/// validator made this WORSE in one narrow sense: it calls the library's own
+/// `kfold` to reproduce the fold split, so the panic moved INTO the check
+/// that was supposed to prevent it.
+///
+/// So the service checks the SAME conditions first and answers 400.  This
+/// lives in `parse_fit_request`, which BOTH fit handlers call before they
+/// touch the library, so no endpoint can reach a `require` with a value the
+/// library will reject -- and a new endpoint cannot forget the check.
+fn require_crossfit_params(
+  n : Int32,
+  n_folds : Int32,
+  n_rep : Int32,
+) -> Unit raise ApiError {
+  if n < 1 {
+    raise ApiError::Message(
+      "field 'x': needs at least one row, got " + n.to_string(),
+    )
+  }
+  if n_folds < 2 {
+    raise ApiError::Message(
+      "field 'n_folds': must be at least 2, got " + n_folds.to_string(),
+    )
+  }
+  if n_folds > n {
+    raise ApiError::Message(
+      "field 'n_folds': must not exceed n_obs (" +
+      n.to_string() +
+      "), got " +
+      n_folds.to_string(),
+    )
+  }
+  if n_rep < 1 {
+    raise ApiError::Message(
+      "field 'n_rep': must be at least 1, got " + n_rep.to_string(),
+    )
+  }
+}
+
+///|
 /// The IRM score fits a separate nuisance model per treatment group, so
 /// every cross-fitting fold's TRAINING set must hold at least one control
 /// row (d == 0) and one treated row (d == 1).  The library refuses to fit
@@ -378,6 +433,10 @@ fn handler_fit_plr(body : Json) -> Json raise ApiError {
 /// public `kfold`, and answers 400 with a message the client can act on.
 /// The folds are the ones the fit will use -- `kfold(n, n_folds, seed + r)`
 /// for repetition r -- so the check cannot drift away from the library's.
+///
+/// `kfold` ABORTS on an impossible partition (`n_folds > n_obs`), so the
+/// cross-fitting parameters are checked even earlier, in
+/// `require_crossfit_params`, before this function reaches `kfold`.
 fn require_irm_split(
   d : Array[Double],
   n : Int32,

@@ -1343,6 +1343,88 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   *The ledger is unchanged.*  This round publishes no new count, so
 >   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
 >
+> * **Round 45.**  The service that died on ANOTHER bad request.
+>
+>   The v0.164.38 release added a pre-validation to `POST /fit/irm`, and its
+>   CHANGELOG entry said the service "answers **400** instead of dying".  It
+>   did -- for the two cases it enumerated.  For a third it still DIED, and
+>   the panic was in the NEW validator: `require_irm_split` calls the
+>   library's own `kfold`, and `kfold` aborts on `require(n_folds <= n_obs)`
+>   (`kfold.mbt:442`) -- a PANIC, not a catchable error, so the process
+>   exits and every later caller is refused.
+>
+>   MEASURED, not inferred: `POST /fit/irm` with one row and `n_folds = 2`
+>   printed `precondition failed at kfold.mbt:442:5-442:30` and
+>   `PanicError`; the client saw the connection reset, and `/healthz` then
+>   answered "connection refused" instead of `{"status":"ok"}`.  `/fit/plr`
+>   died the same way -- it calls the library too -- and so did `n_folds = 1`
+>   and `n_rep = 0`, because the library `require`s `n_folds >= 2`,
+>   `n_folds <= n_obs` and `n_rep >= 1` (`plr.mbt:106-108`,
+>   `irm.mbt:121-123`).
+>
+>   The service now checks the SAME conditions first, in
+>   `require_crossfit_params`, and `parse_fit_request` calls it -- so BOTH
+>   fit handlers are covered, and no endpoint can reach a `require` with a
+>   value the library will reject.  All five cases answer **400** and the
+>   service stays up.  The api_server's QA check asserts them: the two from
+>   v0.164.38, plus `n_folds > n_obs` on BOTH endpoints, `n_folds < 2` and
+>   `n_rep < 1`, and a live `/healthz` after each rejection.
+>
+>   *Three code blocks that do not compile as printed.*  Every fenced
+>   `moonbit` block in this README is a FRAGMENT -- `let data =
+>   @moonbit_doubleML.DoubleMLData::new(x, y, d)` -- and MoonBit rejects a
+>   module-scope `let` bound to a call ("Cannot infer the type of variable
+>   data", Error 4074).  Measured: at module scope the fragment is
+>   REJECTED; inside a function body the same fragment compiles.  So the
+>   snippets were right and their PLACEMENT was not said out loud, and a
+>   reader who pasted the Quick Start at the top of a file got a type error
+>   that looked like a library bug.  Each block now carries a one-line
+>   marker saying it belongs inside a function.
+>
+>   *Two published counts moved.*  `_verify/_verify_readme_snippets_1650.py`
+>   published **7** and makes **10**: it now compiles each block TWICE --
+>   once inside a function body, once at module scope -- and REQUIRES the
+>   marker on any block that does not compile at module scope, so the promise
+>   has an owner and the owner is the compiler.  Its count was also
+>   ENVIRONMENT-DEPENDENT: 7 with the toolchain on PATH and 5 without it,
+>   because one skip stood for three per-block compiles; there is now one
+>   skip per compile per block, so the count is a property of the file.
+>   `_verify/_verify_measurements_1650.py` published **70** and makes **79**:
+>   it now owns the two n = 500 gaps BY TIER and the 16-cell swap's counts,
+>   which its own I3 cannot see -- the gaps sit in the DON'T list, which is
+>   ONE paragraph, so a marker that finds the LPLR item also finds the RDD
+>   item (witnessed by a different gate), and the swap's counts are integers,
+>   which are counts and stay out of the figure set.
+>
+>   *A finding that was wrong TWICE.*  Two fresh-eyes audits reported that
+>   `doc/006` mis-split the Python cross-check coverage -- that
+>   `DoubleMLQTE` is gated by both families, and that the guide's **16** /
+>   **3** / **3** split is wrong.  BOTH were wrong, and the same mutation
+>   settled it again: `DoubleMLQTE::fit` was broken, and the validate
+>   family stayed GREEN while the pyexample family went RED.  The validate
+>   script prints "quantile / LPQ / QTE parity: PASS", but its QTE row is a
+>   DERIVED IDENTITY (`qte == pq - med_c`), not the estimator -- so its
+>   LABEL overstates what it gates, and the guide's arithmetic is correct.
+>   A script's printed label is not evidence of what it gates.
+>
+>   *Three numbers a reader could not check.*  "At `n = 500` the port and
+>   upstream agree to ~0.007" named only the smaller of the two gated gaps
+>   -- `0.007307` on the `nuisance_space` tier and `0.010609` on the
+>   `instrument` tier -- and both are now named.  "all 8 of 8 swap cells"
+>   is the port-`beta` half of a SIXTEEN-cell swap, and now says so.  And
+>   the example table's "4 cohorts x 4 periods" is the DGP, while the
+>   example prints `n_groups = 3`, because cohort 0 is never treated; the
+>   row now says both.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round45_1650.py` breaks ONE promise -- a code block's
+>   marker, the n = 500 gaps, the swap's total, the example table's
+>   treatment-group count -- and the failure count must GROW at every step.
+>   The run ends at **8** failures.
+>
+>   *The ledger is unchanged.*  This round publishes no new count, so
+>   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
+>
 >
 """
 
@@ -2880,6 +2962,111 @@ NEW_43_LPLR = """   ```moonbit
 PATCHES.append((OLD_43_ML_M, NEW_43_ML_M))
 PATCHES.append((OLD_43_LPLR_PROSE, NEW_43_LPLR_PROSE))
 PATCHES.append((OLD_43_LPLR, NEW_43_LPLR))
+
+
+# ==============================================================================
+# 13.  THE ROUND-45 PATCHES -- three code blocks, one number, two references
+# ==============================================================================
+#
+# (a) THREE CODE BLOCKS THAT DO NOT COMPILE AS PRINTED.
+#
+# Every fenced `moonbit` block in this README is a FRAGMENT: it is written as
+# `let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)`, and MoonBit
+# rejects a module-scope `let` bound to a call result:
+#
+#     Error: [4074]
+#        let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)
+#            ---   Cannot infer the type of variable data
+#
+# Measured, in a probe against this tree:
+#
+#     module scope, the fragment as published   -> Error 4074 (rejected)
+#     inside a function body, the same fragment  -> exit 0  (accepted)
+#
+# So the snippets are right and their PLACEMENT was not said out loud: a
+# reader who pastes the Quick Start at the top of a file gets a type error
+# that looks like a library bug.  Each block now carries a one-line marker
+# saying where it belongs.  The marker is a comment, so it changes nothing
+# about the code.
+#
+# `_verify/_verify_readme_snippets_1650.py` compiles each block TWICE -- once
+# inside a function body, once at module scope -- and REQUIRES the marker on
+# any block that does not compile at module scope.  So the promise has an
+# owner, and the owner is the compiler.
+#
+# The marker is one line, and it says what the reader needs to know:
+# "inside a function body -- MoonBit rejects a module-scope `let` bound to a
+# call".
+OLD_45_QUICKSTART_MARK = """```moonbit nocheck
+let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]"""
+
+NEW_45_QUICKSTART_MARK = """```moonbit nocheck
+// inside a function body -- MoonBit rejects a module-scope `let` bound to a call
+let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]"""
+
+OLD_45_CVAR_MARK = """```moonbit
+let fitted_cvar = @moonbit_doubleML.DoubleMLCVAR::new("""
+
+NEW_45_CVAR_MARK = """```moonbit
+// inside a function body -- MoonBit rejects a module-scope `let` bound to a call
+let fitted_cvar = @moonbit_doubleML.DoubleMLCVAR::new("""
+
+OLD_45_LPLR_MARK = """   ```moonbit
+   let data = @moonbit_doubleML.DoubleMLBinaryData::new(x, y, d)"""
+
+NEW_45_LPLR_MARK = """   ```moonbit
+   // inside a function body -- MoonBit rejects a module-scope `let` bound to a call
+   let data = @moonbit_doubleML.DoubleMLBinaryData::new(x, y, d)"""
+
+#
+# (b) A NUMBER THAT NAMED ONLY THE SMALLER OF TWO GAPS.
+#
+# "At `n = 500` the port and upstream agree to ~0.007" is true of the
+# `nuisance_space` tier and wrong about the `instrument` tier, whose gated gap
+# is 0.010609 -- ~45% larger.  The gate's own record prints both
+# (`_verify/LPLR_GATE_BLINDNESS_1680.md`: "the gap is 0.007307 / 0.010609"),
+# and a reader who quotes the smaller one quotes the flattering half.
+OLD_45_LPLR_007 = """1. **Don't read a small-n LPLR standard error as an estimate.** At `n = 500`
+   the port and upstream agree to ~0.007. Below that the gate is a *report*,
+   not a guarantee."""
+
+NEW_45_LPLR_007 = """1. **Don't read a small-n LPLR standard error as an estimate.** At `n = 500`
+   the port and upstream agree to `0.007307` on the `nuisance_space` tier and
+   to `0.010609` on the `instrument` tier. Below that the gate is a *report*,
+   not a guarantee."""
+
+#
+# (c) A COUNT THAT READS AS A DIFFERENT COUNT OUT OF CONTEXT.
+#
+# "all 8 of 8 swap cells" is the PORT-BETA half of a SIXTEEN-cell swap: the
+# gate's record says "all 8 cells with `b` from upstream converge, all 8 with
+# `b` from the port diverge" (`_verify/LPLR_GATE_BLINDNESS_1680.md` section
+# 27c).  Written bare, "8 of 8 swap cells" reads as "the swap had 8 cells".
+OLD_45_SWAP = """`t`/`m`/`a` values are harmless; `beta` alone reproduces the divergence, all 8
+of 8 swap cells. And inside `beta`, it is not `r_hat = t - beta * a` that hurts"""
+
+NEW_45_SWAP = """`t`/`m`/`a` values are harmless; `beta` alone reproduces the divergence -- in
+all 8 of the 8 cells of the 16-cell swap that take `beta` from the port. And
+inside `beta`, it is not `r_hat = t - beta * a` that hurts"""
+
+#
+# (d) A DGP COUNT A READER CANNOT MATCH AGAINST THE OUTPUT.
+#
+# The table said "Staggered CS-DID, 4 cohorts x 4 periods".  That is the DGP,
+# and it is true -- but the example prints `n_groups = 3`, because cohort 0 is
+# the never-treated cohort (`d[row] = if cohort > 0 && k >= cohort`), and the
+# estimator does not count it as a treatment group.  A reader who diffs the
+# README against the output sees 4 against 3 with nothing to explain it.
+OLD_45_DIDCS = """| `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts x 4 periods | 1.0 |"""
+
+NEW_45_DIDCS = """| `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts x 4 periods -- 3 treatment groups (cohort 0 is never treated) | 1.0 |"""
+
+PATCHES.append((OLD_45_QUICKSTART_MARK, NEW_45_QUICKSTART_MARK))
+PATCHES.append((OLD_45_CVAR_MARK, NEW_45_CVAR_MARK))
+PATCHES.append((OLD_45_LPLR_MARK, NEW_45_LPLR_MARK))
+PATCHES.append((OLD_45_LPLR_007, NEW_45_LPLR_007))
+PATCHES.append((OLD_45_SWAP, NEW_45_SWAP))
+PATCHES.append((OLD_45_DIDCS, NEW_45_DIDCS))
 
 
 # ==============================================================================

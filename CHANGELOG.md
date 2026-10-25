@@ -9,6 +9,140 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.39] -- the service that died on ANOTHER bad request
+
+`moon.mod` moves 0.164.38 -> 0.164.39. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the v0.164.38 fix did not cover the whole class
+
+- The v0.164.38 release added a pre-validation to `POST /fit/irm`, and its
+  entry said the service "answers **400** instead of dying".  It did -- for
+  the two cases it enumerated.  For a third it still DIED, and the panic was
+  in the NEW validator: `require_irm_split` calls the library's own `kfold`,
+  and `kfold` aborts on `require(n_folds <= n_obs)` (`kfold.mbt:442`).  A
+  MoonBit panic is not catchable, so the PROCESS EXITED and every later
+  caller was refused.
+- MEASURED: `POST /fit/irm` with one row and `n_folds = 2` printed
+  `precondition failed at kfold.mbt:442:5-442:30` and `PanicError`; the
+  client saw the connection reset (WinError 10054), and `/healthz` then
+  answered "connection refused" (WinError 10061).
+- `/fit/plr` died the same way -- it calls the library too -- and so did
+  `n_folds = 1` and `n_rep = 0`, because the library `require`s `n_folds >= 2`,
+  `n_folds <= n_obs` and `n_rep >= 1` (`plr.mbt:106-108`, `irm.mbt:121-123`).
+- `examples/api_server/main.mbt` now checks the SAME conditions first, in
+  `require_crossfit_params`, and `parse_fit_request` calls it -- so BOTH fit
+  handlers are covered, and no endpoint can reach a `require` with a value the
+  library will reject.  All five cases answer **400** and the service stays
+  up.
+- The api_server's QA check asserts them: the two from v0.164.38, plus
+  `n_folds > n_obs` on BOTH endpoints, `n_folds < 2` and `n_rep < 1`, and a
+  live `/healthz` after each rejection.
+
+### Fixed -- three code blocks that do not compile as printed
+
+- Every fenced `moonbit` block in the README is a FRAGMENT -- `let data =
+  @moonbit_doubleML.DoubleMLData::new(x, y, d)` -- and MoonBit rejects a
+  module-scope `let` bound to a call ("Cannot infer the type of variable
+  data", Error 4074).  Measured: at module scope the fragment is REJECTED;
+  inside a function body the same fragment compiles.  A reader who pasted the
+  Quick Start at the top of a file got a type error that looked like a
+  library bug.
+- Each block now carries a one-line marker saying it belongs inside a
+  function, and the quick-start tutorial says the same.
+
+### Fixed -- three numbers a reader could not check
+
+- "At `n = 500` the port and upstream agree to ~0.007" named only the smaller
+  of the two gated gaps -- `0.007307` on the `nuisance_space` tier and
+  `0.010609` on the `instrument` tier -- and both are now named.
+- "all 8 of 8 swap cells" is the port-`beta` half of a SIXTEEN-cell swap, and
+  now says so.
+- The example table's "4 cohorts x 4 periods" is the DGP, while the example
+  prints `n_groups = 3`, because cohort 0 is never treated; the row now says
+  both.
+
+### Fixed -- a stale comment in an example
+
+- `examples/did_binary/main.mbt` said "200 units" where the code says
+  `n_units = 400`.
+
+### Changed -- two published counts moved, and one of them was environment-dependent
+
+- `_verify/_verify_readme_snippets_1650.py` (**10** checks) -- it published 7
+  and makes 10.  It now compiles each block TWICE -- once inside a function
+  body, once at module scope -- and REQUIRES the marker on any block that
+  does not compile at module scope, so the promise has an owner and the owner
+  is the compiler.
+- Its count was also ENVIRONMENT-DEPENDENT: 7 with the toolchain on PATH and 5
+  without it, because one skip stood for three per-block compiles.  There is
+  now one skip per compile per block, so the count is a property of the file
+  rather than of the machine.
+- `_verify/_verify_measurements_1650.py` (**79** checks) -- it published 70 and
+  makes 79.  It now owns the two n = 500 gaps BY TIER and the 16-cell swap's
+  counts, which its own I3 cannot see: the gaps sit in the DON'T list, which
+  is ONE paragraph, so a marker that finds the LPLR item also finds the RDD
+  item (witnessed by a different gate), and the swap's counts are integers,
+  which are counts and stay out of the figure set.
+- `_verify/_verify_examples_table_1680.py` now derives the example table's
+  treatment-group count from the driver source -- cohort 0 is never treated,
+  so `cohort_count - 1` groups -- instead of leaving the number unwitnessed.
+
+### Proven -- a finding that was wrong twice, again
+
+- Two fresh-eyes audits reported that `doc/006` mis-split the Python
+  cross-check coverage -- that `DoubleMLQTE` is gated by both families, and
+  that the guide's **16** / **3** / **3** split is wrong.  BOTH were wrong,
+  and the same mutation settled it again: `DoubleMLQTE::fit` was broken, and
+  the validate family stayed GREEN (exit 0) while the pyexample family went
+  RED (exit 1).  The validate script prints "quantile / LPQ / QTE parity:
+  PASS", but its QTE row is a DERIVED IDENTITY (`qte == pq - med_c`), not the
+  estimator -- so its LABEL overstates what it gates.  A script's printed
+  label is not evidence of what it gates.
+- Also checked and left alone: `ENGINEERING.md`'s body still quotes "300x"
+  and "~0.001", and that is BY DESIGN -- the body is a declared frozen
+  snapshot of the README at v0.164.11, and the corrections live in its
+  banner beside the corrected figures.
+
+### Proven -- the new checks bite
+
+- A check that cannot fail is not a check.  Six mechanisms break one promise
+  each -- a code block's marker, the n = 500 gaps, the swap's total, the
+  example table's treatment-group count -- and the failure count grows at
+  every step.
+- `_verify/_dryrun_round45_1650.py` ends at **8** failures: it requires the
+  failure count to GROW at every step: **8** failures at the end.
+
+### Fixed -- two dry-run drivers whose mechanism could not fail
+
+- The dry-run sweep is part of the release gate, and it FAILED: two of the
+  tracked drivers ended at `mechanism 5 contributed nothing -- ABORT`.
+- The cause was this entry.  Those drivers delete the CHANGELOG's
+  publication of a check count, to prove that "the count is GONE" is a
+  DIFFERENT failure from "the count is WRONG" -- and they deleted it by
+  MATCHING A LIST OF SPELLINGS.  This entry spelled its publication in a
+  THIRD spelling: a bullet, the file name, the count.  No list knew it, so
+  the count SURVIVED the drop, the mechanism contributed nothing, and the
+  driver aborted.
+- The drop is now DERIVED from the witness pattern itself: it removes every
+  publication, whatever its spelling, and it ASSERTS that none survived.
+  `_verify/_dryrun_round31_1650.py`, `_verify/_dryrun_round32_1650.py` and
+  `_verify/_dryrun_round33_1650.py` are repaired that way -- the third had
+  the same landmine in a different shape.
+- The repair is PROVEN rather than asserted: a second publication is now
+  written in a spelling the drop has never seen, and the drop has to take
+  both.  With the old drop put back, the same driver aborts at the same
+  mechanism.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 62 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **62** fail
+- the tracked dry-run sweep: **0** of **32** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.38] -- the service that died on a bad request
 
 `moon.mod` moves 0.164.37 -> 0.164.38. No estimator behaviour changed and the

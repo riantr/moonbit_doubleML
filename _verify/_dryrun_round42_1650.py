@@ -260,9 +260,16 @@ MECHANISMS = [
                      "dry-run: the routing instruction lost its exception"))),
 
     ("the introduction's example size goes stale",
+     # The size is DERIVED, not written down.  It used to be the literal "35",
+     # and the tutorial's block grew by four lines, so that literal became a
+     # DEAD anchor -- and a dead anchor is a mechanism that cannot fail.  The
+     # number is read from the tree and moved by one, so the anchor is live
+     # whatever the tutorial's height is, and the stated size is still wrong
+     # afterwards (which is the point of the mechanism).
      lambda: (sub_once(DOC1,
-                        r"a 35-line end-to-end example",
-                        "a 30-line end-to-end example"),
+                        r"a \d+-line end-to-end example",
+                        "a %d-line end-to-end example"
+                        % (int(re.search(r"a (\d+)-line", read(DOC1)).group(1)) + 1)),
               commit(WORK, [os.path.join("doc", "001_introduction", "readme.mbt.md")],
                      "dry-run: the example size went stale"))),
 

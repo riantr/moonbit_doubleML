@@ -125,7 +125,7 @@ surface and anti-patterns).
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.164.38"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.39"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside

@@ -1364,6 +1364,32 @@ def c_api():
                                      "n_folds": 2, "seed": 3141})
         st, body = _http(info, "/fit/irm", "POST", irm_unbalanced)
         results["/fit/irm rejects a fold without both groups"] = (st, st == 400)
+        # The cross-fitting PARAMETERS are the same class of defect, and they
+        # were the hole the v0.164.38 fix left: the library `require`s
+        # `n_folds >= 2`, `n_folds <= n_obs` and `n_rep >= 1` (plr.mbt:106-108,
+        # irm.mbt:121-123), and `kfold` aborts on an impossible partition
+        # (kfold.mbt:442).  A `require` is a PANIC, not a catchable error, so
+        # the process EXITS and every later caller is refused -- measured:
+        # `POST /fit/irm` with one row and n_folds=2 printed
+        # `precondition failed at kfold.mbt:442` + `PanicError`, the client
+        # saw the connection reset, and `/healthz` then refused connections.
+        # Both endpoints are exercised, because both call the library.
+        one_row = json.dumps({"x": [[1.0, 0.2]], "y": [1.0], "d": [1.0],
+                              "n_folds": 2, "seed": 3141})
+        st, body = _http(info, "/fit/irm", "POST", one_row)
+        results["/fit/irm rejects n_folds > n_obs"] = (st, st == 400)
+        st, body = _http(info, "/fit/plr", "POST", one_row)
+        results["/fit/plr rejects n_folds > n_obs"] = (st, st == 400)
+        folds_one = json.dumps({"x": irm_rows, "y": [1.0, 2.0, 3.0, 4.0],
+                                "d": [0.0, 1.0, 0.0, 1.0],
+                                "n_folds": 1, "seed": 3141})
+        st, body = _http(info, "/fit/irm", "POST", folds_one)
+        results["/fit/irm rejects n_folds < 2"] = (st, st == 400)
+        rep_zero = json.dumps({"x": irm_rows, "y": [1.0, 2.0, 3.0, 4.0],
+                               "d": [0.0, 1.0, 0.0, 1.0],
+                               "n_folds": 2, "n_rep": 0, "seed": 3141})
+        st, body = _http(info, "/fit/irm", "POST", rep_zero)
+        results["/fit/irm rejects n_rep < 1"] = (st, st == 400)
         st, body = _http(info, "/healthz")
         results["/healthz after a rejected fit"] = (st, st == 200)
         bad = [k for k, (s_, ok) in results.items() if not ok]

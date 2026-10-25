@@ -483,6 +483,13 @@ rec_values = NUMVAL.findall(record)
 # The small-n passage: the paragraphs the README's LPLR analysis is made of.
 # It is selected by its MARKERS, not by a line range, so the passage grows
 # with the analysis and the selection follows it.
+#
+# ROUND 45: the two n = 500 gaps are NOT added here.  They live in the DON'T
+# list, and the DON'T list is ONE paragraph -- its three items are not
+# separated by a blank line -- so a marker that finds the LPLR item also finds
+# the RDD item, and the RDD figures (6.2e-15, 1e-11, 0.053, ...) are
+# witnessed by `pyexample_rdd.py`, not by this record.  They get their own
+# invariant in section 5 instead.
 smalln = "\n\n".join(p for p in paragraphs
                      if "17 of 40" in p or "basin edge" in p)
 
@@ -522,7 +529,77 @@ for tok in figs:
 # ==============================================================================
 print()
 print("=" * 78)
-print("5. the published check count, witnessed")
+print("5. I5 -- the swap sentence's counts, and the n = 500 gaps")
+print("=" * 78)
+#
+# ROUND 45.  Two claims the README states about the LPLR parity gate, neither
+# of which I3 can see, and both of which the record witnesses.
+#
+# (a) The swap sentence said "all 8 of 8 swap cells".  That is the port-`beta`
+#     HALF of a SIXTEEN-cell swap -- the record says "all 8 cells with `b`
+#     from upstream converge, all 8 with `b` from the port diverge" -- but
+#     written bare it reads as "the swap had 8 cells".  The sentence now names
+#     the total and says which half diverges.
+#
+# (b) The DON'T list said "the port and upstream agree to ~0.007", which named
+#     only the SMALLER of the two gated gaps -- 0.007307 on the
+#     `nuisance_space` tier and 0.010609 on the `instrument` tier -- and a
+#     reader who quotes the smaller one quotes the flattering half.  Both are
+#     named now.
+#
+# The counts in (a) are INTEGERS, so I3 does not see them: a bare integer in
+# prose is a count, and a count stays out of the figure set.  The gaps in (b)
+# ARE figures, but they sit in the DON'T list, which is ONE paragraph -- its
+# three items are not separated by a blank line -- so a marker that finds the
+# LPLR item also finds the RDD item, and the RDD figures are witnessed by
+# `pyexample_rdd.py`, not by this record.
+#
+# So both get their own invariant, and every number of them has to be
+# witnessed by the record.
+swap_para = "\n\n".join(p for p in paragraphs if "swap" in p)
+_sw = re.search(r"all (\d+) of the (\d+) cells of the (\d+)-cell swap", swap_para)
+check("the README's swap sentence names the total and the port half",
+      _sw is not None,
+      "the README does not say 'all N of the N cells of the N-cell swap'")
+if _sw:
+    half = int(_sw.group(1))
+    stated_half = int(_sw.group(2))
+    total = int(_sw.group(3))
+    check("the port half and the stated half are the same number",
+          half == stated_half,
+          "the sentence says %d of %d" % (half, stated_half))
+    check("the total is twice the half",
+          total == 2 * half,
+          "%d cells in total, %d in the half" % (total, half))
+    check("the record holds the total as a %d-cell swap" % total,
+          ("%d-cell swap" % total) in record,
+          "the record names %r" % ("%d-cell swap" % total))
+    check("the record holds the half as a %d/%d divergence" % (half, half),
+          ("DIVERGES (%d/%d)" % (half, half)) in record,
+          "the record holds %r" % ("DIVERGES (%d/%d)" % (half, half)))
+
+_gap = re.search(r"agree to `(-?[\d.]+)` on the `nuisance_space` tier and\s*"
+                 r"to `(-?[\d.]+)` on the `instrument` tier",
+                 "\n\n".join(p for p in paragraphs
+                             if "n_folds" not in p and "don't read a small-n" in p.lower()))
+check("the README names BOTH gated n = 500 gaps, by tier",
+      _gap is not None,
+      "the README does not name the two tiers")
+if _gap:
+    for tier, tok in (("nuisance_space", _gap.group(1)),
+                      ("instrument", _gap.group(2))):
+        hits = [v for v in rec_values if renders_as(v, tok)]
+        check("the %s tier's gap %s is in the cited record" % (tier, tok),
+              bool(hits),
+              hits[0] if hits else "the record holds no value that renders as it")
+    check("the two tiers are different gaps",
+          _gap.group(1) != _gap.group(2),
+          "both tiers quote %s" % _gap.group(1))
+
+# ==============================================================================
+print()
+print("=" * 78)
+print("6. the published check count, witnessed")
 print("=" * 78)
 # The CHANGELOG publishes this verifier's check count.  The count is fixed on
 # every tree that passes: the set sizes are declared and asserted above, so a

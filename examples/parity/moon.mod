@@ -3,7 +3,7 @@ name = "local/moonbit_doubleML-examples-parity"
 version = "0.1.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.38",
+  "riantr/moonbit_doubleML@0.164.39",
 }
 
 readme = "../../README.mbt.md"

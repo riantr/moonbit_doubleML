@@ -1,5 +1,5 @@
 // Demo: synthetic panel DID DGP running DoubleMLDIDBinary.
-// 200 units × 2 periods (pre, post); half are treated (g=1), half
+// 400 units × 2 periods (pre, post); half are treated (g=1), half
 // never-treated (g=0). True ATT = 1.0.
 
 ///|

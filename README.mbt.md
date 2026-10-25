@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.38",
+  "riantr/moonbit_doubleML@0.164.39",
 }
 ```
 
@@ -127,6 +127,7 @@ tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs.
 
 ```moonbit nocheck
+// inside a function body -- MoonBit rejects a module-scope `let` bound to a call
 let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)  // x : Matrix, y / d : Array[Double]
 let fitted = @moonbit_doubleML.DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141).fit()
 let coef = fitted.coef()      // Double
@@ -360,6 +361,7 @@ migrated, pass a classifier explicitly -- `ml_m` is a named argument on the
 constructor, so the learner goes where the estimator is built:
 
 ```moonbit
+// inside a function body -- MoonBit rejects a module-scope `let` bound to a call
 let fitted_cvar = @moonbit_doubleML.DoubleMLCVAR::new(
   data,
   ml_m=@moonbit_doubleML.LearnerDispatch::logistic_regression(
@@ -473,7 +475,7 @@ is visible rather than described.
 | `examples/main` | `DoubleMLPLR` + 11 others (IRM / PLIV / IIVM / DID / SSM / BLP / RDD / PQ / QTE / LPQ / PolicyTree) | Simple partially linear, `n=500`, `p=5` | 1.0 |
 | `examples/datasets` | `DoubleMLPLR` + `DoubleMLIRM` | Synthetic 401(k)-style, `n=4000`, 9 controls | 1.5 |
 | `examples/did_binary` | `DoubleMLDIDBinary` | 2-period panel DID, 400 units | 1.0 |
-| `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts x 4 periods | 1.0 |
+| `examples/did_cs` | `DoubleMLDIDCS` | Staggered CS-DID, 4 cohorts x 4 periods -- 3 treatment groups (cohort 0 is never treated) | 1.0 |
 | `examples/did_cs_binary` | `DoubleMLDIDCSBinary` | Staggered CS-DID with binary outcome | 1.0 |
 | `examples/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
 | `examples/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
@@ -536,8 +538,9 @@ not a defect this port introduced.
 **What the cause actually is, and why it is not a port defect.** The port's own
 `t_pred`, `m_pred`, `a_pred` and `beta` were dumped on the exact n = 66 rows
 where the unclamped port dies, and handed to *upstream's own* solver. The
-`t`/`m`/`a` values are harmless; `beta` alone reproduces the divergence, all 8
-of 8 swap cells. And inside `beta`, it is not `r_hat = t - beta * a` that hurts
+`t`/`m`/`a` values are harmless; `beta` alone reproduces the divergence -- in
+all 8 of the 8 cells of the 16-cell swap that take `beta` from the port. And
+inside `beta`, it is not `r_hat = t - beta * a` that hurts
 but the **Newton start value** `mean(beta)`, which upstream also uses verbatim
 (`plm/lplr.py:326`, `np.average(beta)`).
 
@@ -579,6 +582,7 @@ it is what makes the port *no worse* rather than better. Record:
    `DoubleMLBinaryData::new` aborts on any outcome that is not 0 or 1:
 
    ```moonbit
+   // inside a function body -- MoonBit rejects a module-scope `let` bound to a call
    let data = @moonbit_doubleML.DoubleMLBinaryData::new(x, y, d)
    let model = @moonbit_doubleML.DoubleMLLPLR::new(data).fit()
    for w in model.warnings() { println(w) }
@@ -591,7 +595,8 @@ it is what makes the port *no worse* rather than better. Record:
 ### ❌ DON'T
 
 1. **Don't read a small-n LPLR standard error as an estimate.** At `n = 500`
-   the port and upstream agree to ~0.007. Below that the gate is a *report*,
+   the port and upstream agree to `0.007307` on the `nuisance_space` tier and
+   to `0.010609` on the `instrument` tier. Below that the gate is a *report*,
    not a guarantee.
 2. **Don't assume every `adjust_ps` call forwards `cv`.** The `adjust_ps`
    call sites that do not forward `cv` are **eight**, in seven files:
@@ -617,7 +622,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.38** |
+| `moon.mod` version | **0.164.39** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -744,7 +749,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.38, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.39, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

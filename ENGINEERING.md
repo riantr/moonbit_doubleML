@@ -1203,6 +1203,88 @@
 >   *The ledger is unchanged.*  This round publishes no new count, so
 >   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
 >
+> * **Round 45.**  The service that died on ANOTHER bad request.
+>
+>   The v0.164.38 release added a pre-validation to `POST /fit/irm`, and its
+>   CHANGELOG entry said the service "answers **400** instead of dying".  It
+>   did -- for the two cases it enumerated.  For a third it still DIED, and
+>   the panic was in the NEW validator: `require_irm_split` calls the
+>   library's own `kfold`, and `kfold` aborts on `require(n_folds <= n_obs)`
+>   (`kfold.mbt:442`) -- a PANIC, not a catchable error, so the process
+>   exits and every later caller is refused.
+>
+>   MEASURED, not inferred: `POST /fit/irm` with one row and `n_folds = 2`
+>   printed `precondition failed at kfold.mbt:442:5-442:30` and
+>   `PanicError`; the client saw the connection reset, and `/healthz` then
+>   answered "connection refused" instead of `{"status":"ok"}`.  `/fit/plr`
+>   died the same way -- it calls the library too -- and so did `n_folds = 1`
+>   and `n_rep = 0`, because the library `require`s `n_folds >= 2`,
+>   `n_folds <= n_obs` and `n_rep >= 1` (`plr.mbt:106-108`,
+>   `irm.mbt:121-123`).
+>
+>   The service now checks the SAME conditions first, in
+>   `require_crossfit_params`, and `parse_fit_request` calls it -- so BOTH
+>   fit handlers are covered, and no endpoint can reach a `require` with a
+>   value the library will reject.  All five cases answer **400** and the
+>   service stays up.  The api_server's QA check asserts them: the two from
+>   v0.164.38, plus `n_folds > n_obs` on BOTH endpoints, `n_folds < 2` and
+>   `n_rep < 1`, and a live `/healthz` after each rejection.
+>
+>   *Three code blocks that do not compile as printed.*  Every fenced
+>   `moonbit` block in this README is a FRAGMENT -- `let data =
+>   @moonbit_doubleML.DoubleMLData::new(x, y, d)` -- and MoonBit rejects a
+>   module-scope `let` bound to a call ("Cannot infer the type of variable
+>   data", Error 4074).  Measured: at module scope the fragment is
+>   REJECTED; inside a function body the same fragment compiles.  So the
+>   snippets were right and their PLACEMENT was not said out loud, and a
+>   reader who pasted the Quick Start at the top of a file got a type error
+>   that looked like a library bug.  Each block now carries a one-line
+>   marker saying it belongs inside a function.
+>
+>   *Two published counts moved.*  `_verify/_verify_readme_snippets_1650.py`
+>   published **7** and makes **10**: it now compiles each block TWICE --
+>   once inside a function body, once at module scope -- and REQUIRES the
+>   marker on any block that does not compile at module scope, so the promise
+>   has an owner and the owner is the compiler.  Its count was also
+>   ENVIRONMENT-DEPENDENT: 7 with the toolchain on PATH and 5 without it,
+>   because one skip stood for three per-block compiles; there is now one
+>   skip per compile per block, so the count is a property of the file.
+>   `_verify/_verify_measurements_1650.py` published **70** and makes **79**:
+>   it now owns the two n = 500 gaps BY TIER and the 16-cell swap's counts,
+>   which its own I3 cannot see -- the gaps sit in the DON'T list, which is
+>   ONE paragraph, so a marker that finds the LPLR item also finds the RDD
+>   item (witnessed by a different gate), and the swap's counts are integers,
+>   which are counts and stay out of the figure set.
+>
+>   *A finding that was wrong TWICE.*  Two fresh-eyes audits reported that
+>   `doc/006` mis-split the Python cross-check coverage -- that
+>   `DoubleMLQTE` is gated by both families, and that the guide's **16** /
+>   **3** / **3** split is wrong.  BOTH were wrong, and the same mutation
+>   settled it again: `DoubleMLQTE::fit` was broken, and the validate
+>   family stayed GREEN while the pyexample family went RED.  The validate
+>   script prints "quantile / LPQ / QTE parity: PASS", but its QTE row is a
+>   DERIVED IDENTITY (`qte == pq - med_c`), not the estimator -- so its
+>   LABEL overstates what it gates, and the guide's arithmetic is correct.
+>   A script's printed label is not evidence of what it gates.
+>
+>   *Three numbers a reader could not check.*  "At `n = 500` the port and
+>   upstream agree to ~0.007" named only the smaller of the two gated gaps
+>   -- `0.007307` on the `nuisance_space` tier and `0.010609` on the
+>   `instrument` tier -- and both are now named.  "all 8 of 8 swap cells"
+>   is the port-`beta` half of a SIXTEEN-cell swap, and now says so.  And
+>   the example table's "4 cohorts x 4 periods" is the DGP, while the
+>   example prints `n_groups = 3`, because cohort 0 is never treated; the
+>   row now says both.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round45_1650.py` breaks ONE promise -- a code block's
+>   marker, the n = 500 gaps, the swap's total, the example table's
+>   treatment-group count -- and the failure count must GROW at every step.
+>   The run ends at **8** failures.
+>
+>   *The ledger is unchanged.*  This round publishes no new count, so
+>   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
+>
 >
 ## The README as it stood at v0.164.11
 

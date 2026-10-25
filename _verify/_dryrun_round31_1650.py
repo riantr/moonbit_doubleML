@@ -82,10 +82,15 @@ ALWAYS_COPY = [VERIFIER]
 
 # the CHANGELOG's witness: the one place that publishes this verifier's count
 WITNESS = re.compile(r"\(`_verify/_verify_example_pins_1650\.py` \(\*\*(\d+)\*\* checks\)\)")
-WITNESS_BLOCK = re.compile(
-    r"- \(`_verify/_verify_example_pins_1650\.py` \(\*\*\d+\*\* checks\)\) asks every\r?\n"
-    r"  example manifest whether its import pin names the library version\r?\n"
-    r"  the package is actually at\.\r?\n")
+# The publication's SHAPE is not enumerated here.  A list of shapes is a list
+# of literals: the CHANGELOG grows new spellings, and a shape the list does
+# not know SURVIVES the drop, the count stays published, and the "the count
+# is GONE" mechanism contributes NOTHING -- a mechanism that cannot fail.  The
+# drop is DERIVED from WITNESS instead (see drop_witness_block).
+#
+# PUBLICATION is the guard that keeps the drop from swallowing a line that
+# publishes a DIFFERENT verifier's count.
+PUBLICATION = re.compile(r"\(\*\*\d+\*\* checks\)")
 
 
 def run(cmd, cwd=REPO, timeout=3600):
@@ -128,13 +133,87 @@ def set_witness_count(path, n):
 
 
 def drop_witness_block(path):
-    """Delete the CHANGELOG block that publishes this verifier's check count."""
+    """Delete the CHANGELOG block that publishes this verifier's check count.
+
+    The deletion is DERIVED from the witness pattern, so it removes every
+    publication however the CHANGELOG spells it.  A shape the drop did not
+    recognise would SURVIVE it, the count would stay published, and this
+    mechanism would contribute nothing.
+
+    Each publication goes as a whole logical bullet: the line that carries
+    the count, plus the lines that continue it -- indented, not the start of
+    a new bullet, not carrying a count of their own, and stopped by a blank
+    line.
+    """
     text = read(path)
-    hits = WITNESS_BLOCK.findall(text)
-    if len(hits) != 1:
-        raise SystemExit("!! the witness block appears %d times (expected 1)"
-                         % len(hits))
-    write(path, WITNESS_BLOCK.sub("", text))
+    lines = text.splitlines(keepends=True)
+    kept = []
+    dropped = 0
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not WITNESS.search(line):
+            kept.append(line)
+            i += 1
+            continue
+        dropped += 1
+        i += 1
+        while i < len(lines):
+            nxt = lines[i]
+            body = nxt.rstrip("\r\n")
+            if not body.strip():
+                break
+            if not body[:1].isspace():
+                break
+            if body.lstrip().startswith("- "):
+                break
+            if PUBLICATION.search(nxt):
+                break
+            i += 1
+    if not dropped:
+        raise SystemExit("!! the witness block is absent")
+    kept_text = "".join(kept)
+    if WITNESS.search(kept_text):
+        raise SystemExit("!! a publication SURVIVED the drop -- the count is "
+                         "still published, and the mechanism would contribute "
+                         "nothing")
+    write(path, kept_text)
+
+
+def add_unknown_spelling(path):
+    """Publish the count AGAIN, in a spelling the drop has never seen.
+
+    The drop has to remove EVERY publication, whatever its spelling: a
+    publication in a shape it does not know SURVIVES the drop, the count
+    stays published, and "the count is GONE" becomes indistinguishable from
+    "the count is WRONG" -- the mechanism contributes nothing and the driver
+    aborts.  Two sibling drivers fell into exactly that hole this round, so
+    the same proof is made here.
+
+    So a SECOND publication is written, in a shape that starts with a
+    PREFIX -- every enumerated shape started the line with the witness
+    itself, so a line that starts with something else is a spelling no list
+    of shapes could have held.  The count is COPIED from the live
+    publication, so the two agree and the drop has to take both.
+    """
+    text = read(path)
+    m = WITNESS.search(text)
+    if not m:
+        raise SystemExit("!! the witness is absent")
+    h = re.search(r"(?m)^## \[", text)
+    if not h:
+        raise SystemExit("!! the CHANGELOG has no entry heading")
+    insert_at = text.find("\n", h.start()) + 1
+    if insert_at <= 0:
+        raise SystemExit("!! the CHANGELOG's first heading has no line after it")
+    addition = "\n- also published by %s\n" % m.group(0)
+    write(path, text[:insert_at] + addition + text[insert_at:])
+
+
+def drop_every_publication(path):
+    """Publish the count in an unknown spelling, then drop every publication."""
+    add_unknown_spelling(path)
+    drop_witness_block(path)
 
 
 def verify(work):
@@ -239,8 +318,13 @@ MECHANISMS = [
      lambda: set_witness_count(CHANGELOG, PUBLISHED - 1)),
 
     # -- 4. the published check count is gone --------------------------------
-    ("the CHANGELOG stops publishing the check count",
-     lambda: drop_witness_block(CHANGELOG)),
+    # A publication in a shape the drop does not know SURVIVES the drop, and
+    # then "the count is GONE" is indistinguishable from "the count is
+    # WRONG": the mechanism contributes nothing and the driver aborts.  So a
+    # SECOND publication is written in a spelling the drop has never seen,
+    # and the drop has to take BOTH.
+    ("the CHANGELOG stops publishing the check count, in a spelling the drop has never seen",
+     lambda: drop_every_publication(CHANGELOG)),
 
     # -- 5. the SET SIZE moves: LAST on purpose ------------------------------
     # A new example manifest appears, so the declared count of 21 no longer

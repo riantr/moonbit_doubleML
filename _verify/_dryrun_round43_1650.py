@@ -281,12 +281,19 @@ MECHANISMS = [
      # The Library Use block, not the CVAR one: mechanism 3 has already
      # rewritten the CVAR block by the time this mechanism runs, so an anchor
      # there would be dead for the same reason this one used to be.
+     #
+     # The anchor TOLERATES the marker line the round-45 patch added between
+     # the fence and the code ("// inside a function body ..."): the comment
+     # group is captured and put back, so the mechanism still inserts the
+     # broken line and still leaves the block's marker in place.  An anchor
+     # that did not tolerate it would be dead -- and a dead anchor is a
+     # mechanism that cannot fail.
      lambda: (sub_once(README,
-                        r"```moonbit nocheck\n"
+                        r"```moonbit nocheck\n((?://[^\n]*\n)*)"
                         r"let data = @moonbit_doubleML\.DoubleMLData::new\(x, y, d\)",
-                        "```moonbit nocheck\n"
-                        "let broken = @moonbit_doubleML.DoubleMLNoSuchThing::new(x)\n"
-                        "let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)"),
+                        r"```moonbit nocheck\n\1"
+                        r"let broken = @moonbit_doubleML.DoubleMLNoSuchThing::new(x)\n"
+                        r"let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)"),
               commit(WORK, [os.path.join("moonbit_doubleML", "README.mbt.md")],
                      "dry-run: the README gained a block that does not compile"))),
 

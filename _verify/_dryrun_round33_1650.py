@@ -101,14 +101,17 @@ ALWAYS_COPY = [VERIFIER]
 # An older entry's count is HISTORY: no check reads it, so a mechanism that
 # rewrote one would break nothing and the dry-run would prove nothing.
 WITNESS = re.compile(r"_verify/_verify_measurements_1650\.py` \(\*\*(\d+)\*\* checks\)")
-# EVERY publication of that count, in either shape: the newest entry writes it
-# in the bare shape and the older ones wrap it in a parenthesis.  All of them
-# go, so that the count becomes ABSENT -- which is a different failure from a
-# count that is WRONG.
-WITNESS_BLOCK = re.compile(
-    r"(?m)^- \(`_verify/_verify_measurements_1650\.py` \(\*\*\d+\*\* checks\)\)[^\n]*\r?\n"
-    r"(?:  [^\n]*\r?\n)*"
-    r"|^[ \t]*`_verify/_verify_measurements_1650\.py` \(\*\*\d+\*\* checks\)[^\n]*\r?\n")
+# The publication's SHAPE is not enumerated here.  A list of shapes is a list
+# of literals, and the CHANGELOG grew a third spelling -- "- `name` (**N**
+# checks) -- ..." -- that no list knew about: the count SURVIVED the drop, so
+# "the count is GONE" was indistinguishable from "the count is WRONG", the
+# mechanism contributed NOTHING, and the driver aborted.  A mechanism that
+# cannot fail is not a mechanism.  The drop is DERIVED from WITNESS instead
+# (see drop_witness_block), so it does not care how the count is spelled.
+#
+# PUBLICATION is the guard that keeps the drop from swallowing a line that
+# publishes a DIFFERENT verifier's count.
+PUBLICATION = re.compile(r"\(\*\*\d+\*\* checks\)")
 
 # the published FAILURE count -- scoped to the entry that names THIS driver, so
 # a later round's entry cannot be read in its place.
@@ -179,14 +182,88 @@ def drop_witness_block(path):
     count becomes ABSENT, which is a different failure from a count that is
     WRONG.  Dropping only the newest would leave an older entry's count
     behind, and the verdict would not move.
+
+    The deletion is DERIVED from the witness pattern, so it removes every
+    publication however the CHANGELOG spells it.  A shape the drop did not
+    recognise would SURVIVE it, the count would stay published, and this
+    mechanism would contribute nothing -- which is exactly what happened when
+    the newest entry spelled the publication "- `name` (**N** checks) -- ...".
+
+    Each publication goes as a whole logical bullet: the line that carries
+    the count, plus the lines that continue it -- indented, not the start of
+    a new bullet, not carrying a count of their own, and stopped by a blank
+    line.
     """
     text = read(path)
-    hits = list(WITNESS_BLOCK.finditer(text))
-    if not hits:
+    lines = text.splitlines(keepends=True)
+    kept = []
+    dropped = 0
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not WITNESS.search(line):
+            kept.append(line)
+            i += 1
+            continue
+        dropped += 1
+        i += 1
+        while i < len(lines):
+            nxt = lines[i]
+            body = nxt.rstrip("\r\n")
+            if not body.strip():
+                break
+            if not body[:1].isspace():
+                break
+            if body.lstrip().startswith("- "):
+                break
+            if PUBLICATION.search(nxt):
+                break
+            i += 1
+    if not dropped:
         raise SystemExit("!! the witness block is absent")
-    for m in reversed(hits):
-        text = text[:m.start()] + text[m.end():]
-    write(path, text)
+    kept_text = "".join(kept)
+    if WITNESS.search(kept_text):
+        raise SystemExit("!! a publication SURVIVED the drop -- the count is "
+                         "still published, and the mechanism would contribute "
+                         "nothing")
+    write(path, kept_text)
+
+
+def add_unknown_spelling(path):
+    """Publish the count AGAIN, in a spelling the drop has never seen.
+
+    The drop has to remove EVERY publication, whatever its spelling: a
+    publication in a shape it does not know SURVIVES the drop, the count
+    stays published, and "the count is GONE" becomes indistinguishable from
+    "the count is WRONG" -- the mechanism contributes nothing and the driver
+    aborts.  That is the defect this round found: the newest entry spelled
+    its publication "- `name` (**N** checks) -- ...", and the drop's list of
+    shapes had never seen it.
+
+    So a SECOND publication is written, in a shape that starts with a
+    PREFIX -- every enumerated shape started the line with the witness
+    itself, so a line that starts with something else is a spelling no list
+    of shapes could have held.  The count is COPIED from the live
+    publication, so the two agree and the drop has to take both.
+    """
+    text = read(path)
+    m = WITNESS.search(text)
+    if not m:
+        raise SystemExit("!! the witness is absent")
+    h = re.search(r"(?m)^## \[", text)
+    if not h:
+        raise SystemExit("!! the CHANGELOG has no entry heading")
+    insert_at = text.find("\n", h.start()) + 1
+    if insert_at <= 0:
+        raise SystemExit("!! the CHANGELOG's first heading has no line after it")
+    addition = "\n- also published by %s\n" % m.group(0)
+    write(path, text[:insert_at] + addition + text[insert_at:])
+
+
+def drop_every_publication(path):
+    """Publish the count in an unknown spelling, then drop every publication."""
+    add_unknown_spelling(path)
+    drop_witness_block(path)
 
 
 def verify(work):
@@ -294,8 +371,13 @@ MECHANISMS = [
      lambda: set_witness_count(CHANGELOG, PUBLISHED - 1)),
 
     # -- 5. the published check count is gone --------------------------------
-    ("the CHANGELOG stops publishing the check count",
-     lambda: drop_witness_block(CHANGELOG)),
+    # A publication in a shape the drop does not know SURVIVES the drop, and
+    # then "the count is GONE" is indistinguishable from "the count is
+    # WRONG": the mechanism contributes nothing and the driver aborts.  So a
+    # SECOND publication is written in a spelling the drop has never seen,
+    # and the drop has to take BOTH.
+    ("the CHANGELOG stops publishing the check count, in a spelling the drop has never seen",
+     lambda: drop_every_publication(CHANGELOG)),
 
     # -- 6. a measurement sits outside a code span ---------------------------
     # I4 alone catches this one: the cell set does not move, because the

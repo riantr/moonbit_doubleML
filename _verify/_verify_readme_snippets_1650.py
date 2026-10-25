@@ -51,22 +51,52 @@ WHAT IT DOES
    (`x`, `y`, `d`, `data`), and each block is compiled in its OWN scope so
    that a block which declares its own `n` / `x` / `y` / `d` / `data`
    shadows the preamble instead of colliding with it.
-4. Fails if the compiler reports an error, and names the block.
+4. Compiles each code block a SECOND time at MODULE scope -- the shape a
+   reader gets by pasting it at the top of a file -- and requires that a
+   block which does not compile there SAYS that it belongs inside a
+   function.  See "THE MODULE-SCOPE PASS" below.
+5. Fails if the compiler reports an error, and names the block.
 
-The probe is written into `doc/001_introduction/`, whose `moon.pkg` imports
-`riantr/moonbit_doubleML` WITHOUT a version -- so the workspace resolves it
-to the local member, and the blocks are checked against THIS tree and not
-against whatever the registry is serving.  The probe is removed again
-whatever happens.
+THE MODULE-SCOPE PASS
+=====================
+MoonBit rejects a module-scope `let` bound to a call result -- "Cannot infer
+the type of variable data" (Error 4074) -- so the README's fragments, which
+are all written as `let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)`,
+compile inside a function body and NOT at the top of a file.  Measured, in a
+probe:
 
-THE COUNT IS FIXED AT 5
-=======================
+    module scope, the fragment as published   -> Error 4074 (rejected)
+    inside a function body, the same fragment  -> exit 0  (accepted)
+
+A reader who pastes the Quick Start at the top of a file gets a confusing
+type error.  So each block that does not compile at module scope must CARRY
+THE MARKER -- a comment line saying it belongs inside a function:
+
+    // inside a function body -- MoonBit rejects a module-scope `let`
+
+and this verifier checks that it does.  A block that compiles at module
+scope needs no marker.
+
+THE COUNT IS FIXED AT 10
+========================
 Every check here is an AGGREGATE, so adding a code block to the README does
-not move the published number.  When the MoonBit toolchain is not on PATH
-the compile SKIPS -- still counted, still visible -- because a missing
-compiler is not a broken snippet.  (The round-41 precedent: a skip must
-stand for exactly the check it replaces, so the count is a property of this
-file and not of the environment.)
+not move the published number... EXCEPT that this file makes TWO checks per
+code block, so adding a code block DOES move it -- the number is
+`2 + 1 + 2 * (code blocks) + 1`, and with the README's three code blocks
+that is **10**.
+
+(An earlier version of this docstring said 5, and said the count could not
+move.  Both were wrong: the per-block compiles were never aggregated, and
+the count was ENVIRONMENT-DEPENDENT -- 7 with the toolchain on PATH and 5
+without it, because ONE skip stood for THREE per-block compiles.  The
+round-41 precedent, which this docstring cited while violating it, is that
+a skip must stand for exactly the check it replaces.  So there is now one
+skip per compile per block, and the count is a property of this file and
+not of the environment.)
+
+When the MoonBit toolchain is not on PATH the compiles SKIP -- still
+counted, still visible -- because a missing compiler is not a broken
+snippet.
 
 Run: python _verify/_verify_readme_snippets_1650.py
 """
@@ -95,6 +125,23 @@ PREAMBLE = """  let n = 20
   let d = Array::make(n, 0.0)
   let data = @moonbit_doubleML.DoubleMLData::new(x, y, d)
 """
+
+# The SAME context, at MODULE scope.  Every binding carries a type
+# annotation, because a module-scope `let` bound to a call is rejected
+# outright ("Cannot infer the type of variable data").  `data` is
+# deliberately absent: a block that declares its own `data` would collide
+# with it at module scope.
+MODULE_PREAMBLE = """let n = 20
+let x_data : Array[Double] = Array::make(n * 2, 0.5)
+let x : @moonbit_doubleML.Matrix = @moonbit_doubleML.Matrix::from_array(x_data, n, 2)
+let y : Array[Double] = Array::make(n, 1.0)
+let d : Array[Double] = Array::make(n, 0.0)
+"""
+
+# A block that does not compile at module scope must SAY that it belongs
+# inside a function.  The marker is a comment, so it costs the reader
+# nothing and changes nothing about the code.
+MARKER = re.compile(r"^\s*//\s*inside\s+(a\s+|your\s+)?(function|fn)\b", re.I)
 
 NCHECK = 0
 FAILS = []
@@ -159,6 +206,29 @@ def is_import_snippet(body):
     return False
 
 
+def has_marker(body):
+    """Does the block say it belongs inside a function?"""
+    for line in body:
+        if MARKER.match(line):
+            return True
+    return False
+
+
+def compile_probe(moon, pkg_dir, source):
+    """Write `source` into the probe file, compile it, and clean up."""
+    probe_path = os.path.join(pkg_dir, PROBE_NAME)
+    try:
+        io.open(probe_path, "w", encoding="utf-8", newline="\n").write(source)
+        p = subprocess.run([moon, "check", "--target", "wasm-gc"], cwd=pkg_dir,
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=1800)
+        out = (p.stdout or "") + (p.stderr or "")
+        return p.returncode, out
+    finally:
+        if os.path.isfile(probe_path):
+            os.remove(probe_path)
+
+
 print()
 print("A. the published README's blocks")
 
@@ -181,10 +251,9 @@ check("every MoonBit block in the published README is either a code block "
 print("    the README's MoonBit blocks: %d (%d code, %d import snippet)"
       % (len(blocks), len(code_blocks), len(import_blocks)))
 for ln, info, b in code_blocks:
-    print("      line %5d  %-20s %d lines" % (ln, info, len(b)))
-for ln, info, b in import_blocks:
-    print("      line %5d  %-20s %d lines  (skipped: a manifest snippet)"
-          % (ln, info, len(b)))
+    print("      line %5d  %-20s %d lines  %s"
+          % (ln, info, len(b),
+             "(says: inside a function)" if has_marker(b) else ""))
 
 print()
 print("B. the compile")
@@ -201,8 +270,14 @@ check("the probe package imports the library without a version, so the "
 
 moon = shutil.which("moon")
 if moon is None:
-    skip("every code block in the published README compiles",
-         "the `moon` toolchain is not on PATH")
+    # ONE skip per compile per block, so the count is the same whether or
+    # not the toolchain is here.
+    for ln, info, b in code_blocks:
+        skip("the code block at README line %d compiles inside a function body"
+             % ln, "the `moon` toolchain is not on PATH")
+        skip("the code block at README line %d compiles at module scope, or "
+             "says it belongs inside a function" % ln,
+             "the `moon` toolchain is not on PATH")
 else:
     # EACH BLOCK IS COMPILED ON ITS OWN.
     #
@@ -213,32 +288,39 @@ else:
     # promise literal, and it makes a broken block visible as ITS OWN
     # failure rather than as one failure for the whole README.
     for ln, info, b in code_blocks:
-        probe_path = os.path.join(pkg_dir, PROBE_NAME)
-        probe_rel = os.path.join(PROBE_PKG, PROBE_NAME).replace("\\", "/")
-        try:
-            parts = ["//|", 'test "the published README\'s code blocks compile" {',
-                     PREAMBLE]
-            parts.append("  {")
-            parts.extend("    " + x for x in b)
-            parts.append("  }")
-            parts.append("}")
-            io.open(probe_path, "w", encoding="utf-8", newline="\n").write(
-                "\n".join(parts) + "\n")
-            p = subprocess.run([moon, "check", "--target", "wasm-gc"], cwd=pkg_dir,
-                               capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", timeout=1800)
-            out = (p.stdout or "") + (p.stderr or "")
-            check("the code block at README line %d compiles" % ln,
-                  p.returncode == 0,
-                  "the compiler rejected the block (exit %d):\n%s"
-                  % (p.returncode, "\n".join(out.splitlines()[-24:])))
-        finally:
-            if os.path.isfile(probe_path):
-                os.remove(probe_path)
+        # (a) the fragment, inside a function body -- the shape the README
+        #     means, and the shape the reader ends up with.
+        parts = ["//|", 'test "the published README\'s code blocks compile" {',
+                 PREAMBLE]
+        parts.append("  {")
+        parts.extend("    " + x for x in b)
+        parts.append("  }")
+        parts.append("}")
+        rc, out = compile_probe(moon, pkg_dir, "\n".join(parts) + "\n")
+        check("the code block at README line %d compiles inside a function body"
+              % ln, rc == 0,
+              "the compiler rejected the block (exit %d):\n%s"
+              % (rc, "\n".join(out.splitlines()[-24:])))
+
+        # (b) the same fragment at MODULE scope -- what a reader gets by
+        #     pasting it at the top of a file.  If that is rejected, the
+        #     block has to SAY where it belongs.
+        rc_mod, out_mod = compile_probe(
+            moon, pkg_dir, MODULE_PREAMBLE + "\n".join(b) + "\n")
+        if rc_mod == 0:
+            check("the code block at README line %d compiles at module scope, "
+                  "or says it belongs inside a function" % ln, True, "")
+        else:
+            check("the code block at README line %d compiles at module scope, "
+                  "or says it belongs inside a function" % ln,
+                  has_marker(b),
+                  "the block does not compile at module scope (exit %d) and "
+                  "carries no marker saying it belongs inside a function:\n%s"
+                  % (rc_mod, "\n".join(out_mod.splitlines()[-16:])))
 
 leftover = os.path.isfile(os.path.join(pkg_dir, PROBE_NAME))
 check("the probe file is removed and the tree is left as it was",
-      not leftover, "%s is still there" % probe_rel)
+      not leftover, "%s is still there" % PROBE_NAME)
 
 print()
 print("checks run: %d, checks failed: %d, skipped: %d"

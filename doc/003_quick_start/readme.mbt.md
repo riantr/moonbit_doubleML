@@ -4,6 +4,10 @@ A minimal end-to-end example: partially linear regression (PLR) on a
 deterministic (n=100, p=5) synthetic panel.
 
 ```moonbit nocheck
+// inside a function body -- MoonBit rejects a module-scope `let` bound to a
+// call ("Cannot infer the type of variable data"), so this fragment is the
+// body of a function, not the top of a file.  `using_test.mbt` below is the
+// executable form of exactly this code.
 // 1. Build a (n=100, p=5) design matrix and a treatment + outcome.
 let n = 100
 let x_data : Array[Double] = Array::make(n * 5, 0.0)
