@@ -320,9 +320,8 @@ if m4:
           all("`%s`" % b in readme for b in backends), str(backends))
 check("the README says four backends", "**Four backends**" in readme)
 
-# The round-35 sentence says a bare `moon test` runs "only three of the four
-# declared backends".  The FOUR is the package's own `supported_targets`, and
-# it is derived here rather than asserted.
+# The FOUR in "four declared backends" is the package's own
+# `supported_targets`, and it is derived here rather than asserted.
 pkgmod = read(os.path.join(PKG, "moon.mod"))
 m5 = re.search(r'supported_targets\s*=\s*"([^"]+)"', pkgmod)
 check("the package's supported_targets is findable", m5 is not None)
@@ -335,6 +334,45 @@ if m5:
     check("the README's 'four declared backends' are the package's four",
           "four declared backends" in readme_flat
           and all("`%s`" % t in readme for t in declared), str(declared))
+
+    # --- what a bare `moon test` actually does -----------------------------
+    # MEASURED on moon 0.1.20261023, a bare `moon test` prints
+    #
+    #     Total tests: 0, passed: 0, failed: 0. [wasm]
+    #     Total tests: 1123, passed: 1123, failed: 0. [wasm-gc]
+    #     Total tests: 0, passed: 0, failed: 0. [native]
+    #
+    # and NOTHING for js -- so the suite runs on ONE backend (the preferred
+    # one), while `moon test --target js` runs 1117 of them.  The sentence
+    # used to claim it ran "only three of the four declared backends", which
+    # is wrong in the direction that matters: two of the three it named do
+    # not run the suite, and the fourth is never reported at all.
+    #
+    # So the sentence has to ACCOUNT for every declared backend, and the one
+    # it credits with the suite has to be the package's preferred target.
+    _bare = next((p for p in readme.split("\n\n") if "A bare `moon test`" in p), "")
+    _bare_flat = re.sub(r"\s+", " ", _bare)
+    check("the bare-moon-test sentence is findable", bool(_bare))
+    if _bare:
+        check("the sentence accounts for every declared backend",
+              all("`%s`" % t in _bare_flat for t in declared),
+              str([t for t in declared if "`%s`" % t not in _bare_flat]))
+        m_pref = re.search(r'preferred_target\s*=\s*"([^"]+)"', pkgmod)
+        pref = m_pref.group(1) if m_pref else None
+        m_suite = re.search(r"runs the suite on `([^`]+)`", _bare_flat)
+        check("the sentence names the backend that carries the suite",
+              m_suite is not None)
+        if m_suite and pref:
+            check("the backend that carries the suite is the preferred target",
+                  m_suite.group(1) == pref,
+                  "the sentence says %s, the package's preferred_target is %s"
+                  % (m_suite.group(1), pref))
+        m_wg = re.search(r"Tests \(wasm-gc\) \| \*\*(\d+) / (\d+)\*\*", readme)
+        check("the Status table's wasm-gc count is findable", m_wg is not None)
+        if m_wg:
+            check("the sentence quotes the Status table's wasm-gc count",
+                  re.search(r"\b%s\b" % m_wg.group(1), _bare_flat) is not None,
+                  "the Status table says %s" % m_wg.group(1))
 
 # --- the bit-exact mutation cases -------------------------------------------
 check("the bit-exact mutation battery is tracked", os.path.exists(BITEXACT_MUT))

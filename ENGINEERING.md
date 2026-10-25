@@ -1137,6 +1137,72 @@
 >   and the failure count must GROW at every step.  The run ends at **8**
 >   failures.
 >
+> * **Round 44.** The service that died on a bad request, and the documents
+>   that promised something else.
+>
+>   *A malformed IRM request killed the whole service.*  `POST /fit/irm` with a
+>   treatment vector that is not binary -- or is binary but leaves one arm
+>   empty in a fold -- made the library ABORT (`require(train_d0.length() > 0)`,
+>   `irm.mbt:378`).  A MoonBit panic is not catchable: `require` and `abort`
+>   are panics rather than errors, so the `try/catch` around the handler could
+>   not hold it and the PROCESS EXITED.  `/healthz` then refused connections,
+>   so one bad request took the service down for every other caller.
+>   `examples/api_server/main.mbt` now PRE-VALIDATES the split with the
+>   library's own public `kfold` and `Fold::train_indices`, and answers **400**
+>   instead of dying.  The api_server's QA check now asserts four cases: a
+>   valid fit, a non-binary treatment, a fold without both groups, and a live
+>   `/healthz` after each rejection.
+>
+>   *A dependency two versions behind.*  The api_server example pinned
+>   `moonbitlang/async@0.20.3` while this README's own dependency rule says to
+>   pin the latest published version (`0.22.5`) -- and the example is the only
+>   thing in the tree that imports it at all.  It is on `0.22.5` now, and the
+>   dependency table's note says what is actually true: the line is dead IN THE
+>   LIBRARY, and the example imports the same package at the same pin.
+>
+>   *Five documents that promised something the tree does not do.*  The DID
+>   bias was rendered as "~0.001" where the measured figure is `0.00050` -- a
+>   2x overstatement of a number the same paragraph prints correctly two lines
+>   later.  The layout block named `example/consumer_demo`, which is the
+>   example's PACKAGE name, where a repository PATH was meant
+>   (`examples/consumer_demo`).  A bare `moon test` does not run "three of the
+>   four declared backends": it runs the suite on ONE of them (`wasm-gc`),
+>   reports `Total tests: 0` for `wasm` and `native`, and never reports `js` at
+>   all -- while `moon test --target js` runs 1117 of them.  The installation
+>   guide told an installed CONSUMER to run the test suite and quoted the
+>   repository's 1117, and a consumer that installs the package runs no tests
+>   at all.  And the introduction's blanket rule -- "`ml_m` defaults to the
+>   logistic classifier wherever the propensity enters the score as
+>   `1 / m_hat`" -- is false for `DoubleMLIIVM`, which carries `1/m` and
+>   `1/(1-m)` and still defaults `ml_m` to OLS.
+>
+>   *A finding that was wrong twice.*  Two independent audits reported that
+>   `doc/006` mis-split the Python cross-check coverage, and BOTH were wrong.
+>   A MUTATION settles a coverage claim: `DoubleMLQTE::fit` was broken, and the
+>   validate family stayed GREEN -- so it does not gate the QTE estimator, and
+>   the guide's **16** / **3** / **3** split is correct.  What the validate
+>   script's own LABEL overstates is its coverage, not the guide's arithmetic.
+>   `_verify/_verify_tutorial_claims_1650.py` already derives that map from
+>   what each script CONSTRUCTS.
+>
+>   *One published count moved.*  The rule about `ml_m`'s default now has an
+>   owner for the TUTORIAL as well as for the skill, and that owner derived
+>   the tutorial's sentence from the SOURCE: the blanket rule the
+>   introduction stated is false for `DoubleMLIIVM`, whose `ml_m` models the
+>   INSTRUMENT's propensity and still defaults to OLS.
+>   `_verify/_verify_score_argument_1650.py` published **135** and makes
+>   **140**.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round44_1650.py` breaks ONE promise -- the layout's
+>   path, the dependency table's note, the service sentence, the bare-`moon
+>   test` sentence, doc/001's `ml_m` rule and doc/002's consumer count --
+>   and the failure count must GROW at every step.  The run ends at **8**
+>   failures.
+>
+>   *The ledger is unchanged.*  This round publishes no new count, so
+>   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
+>
 >
 ## The README as it stood at v0.164.11
 

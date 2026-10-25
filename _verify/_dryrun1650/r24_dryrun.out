@@ -57,6 +57,12 @@ D. the other count claims, derived from the tree
   ok    the package declares four backends                             ['native', 'wasm', 'wasm-gc', 'js']
   ok    the package's declared backends are the CI's four              ['js', 'native', 'wasm', 'wasm-gc'] / ['js', 'native', 'wasm', 'wasm-gc']
   ok    the README's 'four declared backends' are the package's four   ['native', 'wasm', 'wasm-gc', 'js']
+  ok    the bare-moon-test sentence is findable                        
+  ok    the sentence accounts for every declared backend               []
+  ok    the sentence names the backend that carries the suite          
+  ok    the backend that carries the suite is the preferred target     the sentence says wasm-gc, the package's preferred_target is wasm-gc
+  ok    the Status table's wasm-gc count is findable                   
+  ok    the sentence quotes the Status table's wasm-gc count           the Status table says 1123
   ok    the bit-exact mutation battery is tracked                      
   ok    the bit-exact battery declares four mutation cases             got 4
   ok    the README says all four mutations were killed                 
@@ -139,7 +145,7 @@ G. the counts this verifier owns, derived from the tree
   *** FAIL ***  no unregistered count claim in the README                  ['Seven estimators']
 
 ==========================================================================
-120 checks, 19 failed
+126 checks, 19 failed
 *** FAIL ***
   - the migrated set is EXACTLY the source's `ml_m`-classifier set
   - the SSM sentence names all four migrations

@@ -8,7 +8,7 @@ In your project's `moon.mod`:
 
 ```toml
 import {
-  "riantr/moonbit_doubleML@0.164.37",
+  "riantr/moonbit_doubleML@0.164.38",
 }
 ```
 
@@ -46,7 +46,12 @@ machine.
 
 ## Verification
 
-After install, run the test suite:
+The test suite ships in the **repository**, not in the published package:
+the package carries the library and no test files, so `moon test` in a
+project that installed it reports `Total tests: 0, passed: 0, failed: 0.`
+
+To run the suite, clone the repository (see above) and run it from the
+repository root:
 
 ```console
 $ moon test --target native

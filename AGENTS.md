@@ -75,7 +75,7 @@ You can browse and install extra skills here:
 ## HTTP service (examples/api_server)
 
 - `examples/api_server/` is a hand-rolled HTTP service on top of
-  `moonbitlang/async@0.20.3`. It deliberately avoids any third-party
+  `moonbitlang/async@0.22.5`. It deliberately avoids any third-party
   web framework (see commit `2ae0127` for the rationale).
 - All routing, JSON parsing, and response shaping lives in
   `examples/api_server/main.mbt`. The moonbit_doubleML library is

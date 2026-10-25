@@ -66,10 +66,18 @@ COPY_IN = [
     "CHANGELOG.md",
     "README.mbt.md",
     "moonbit_doubleML/README.mbt.md",
+    "doc/001_introduction/readme.mbt.md",
     "doc/004_estimators/readme.mbt.md",
     "skills/moonbit_doubleML.md",
     VERIFIER,
 ]
+
+# `doc/001_introduction/readme.mbt.md` joined the list in round 44, when the
+# verifier gained a check that reads the tutorial's `ml_m` rule.  The clone is
+# checked out at HEAD, so without the copy-in it carried the OLD tutorial --
+# the one with the blanket rule -- and the new check went red on the BASELINE,
+# which the driver reads as "the dry-run would prove nothing".  A driver's copy
+# list has to cover everything the verifier it drives READS.
 
 # the vendored upstream tree is NOT tracked, so it has to be copied in
 # explicitly -- without it the verifier reports no vendored 0.11.4 and the

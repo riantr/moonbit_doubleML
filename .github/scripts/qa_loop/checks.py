@@ -1333,6 +1333,39 @@ def c_api():
                               "n_folds": 2, "seed": 3141})
         st, body = _http(info, "/fit/plr", "POST", payload)
         results["/fit/plr"] = (st, "coef" in body or "coefficient" in body)
+        # DoubleMLIRM trains a separate nuisance model per treatment group,
+        # so every cross-fitting fold's TRAINING set needs both a control row
+        # (d == 0) and a treated row (d == 1).  The library ABORTS when it
+        # does not -- irm.mbt's `require(...)`, deliberately, rather than
+        # writing zero nuisance predictions -- and a panic inside a request
+        # handler takes the whole SERVICE down, not just the request: the
+        # process exits and every later call is refused.  The api_server now
+        # checks the same condition first (with the library's own `kfold`)
+        # and answers 400, so this check asserts:
+        #   * a valid binary treatment still fits;
+        #   * a non-binary treatment is REJECTED, not fatal;
+        #   * a fold whose training set lacks a group is REJECTED too -- the
+        #     case a "both groups are present somewhere" check would miss;
+        #   * the service is still alive after the rejections.
+        irm_rows = [[1.0, 0.2], [1.0, 0.4], [0.5, 0.1], [0.7, 0.9]]
+        irm_ok = json.dumps({"x": irm_rows, "y": [1.0, 2.0, 3.0, 4.0],
+                             "d": [0.0, 1.0, 0.0, 1.0],
+                             "n_folds": 2, "seed": 3141})
+        st, body = _http(info, "/fit/irm", "POST", irm_ok)
+        results["/fit/irm"] = (st, st == 200
+                               and ("coef" in body or "coefficient" in body))
+        irm_nonbinary = json.dumps({"x": irm_rows, "y": [1.0, 2.0, 3.0, 4.0],
+                                    "d": [1.0, 2.0, 3.0, 4.0],
+                                    "n_folds": 2, "seed": 3141})
+        st, body = _http(info, "/fit/irm", "POST", irm_nonbinary)
+        results["/fit/irm rejects a non-binary treatment"] = (st, st == 400)
+        irm_unbalanced = json.dumps({"x": irm_rows, "y": [1.0, 2.0, 3.0, 4.0],
+                                     "d": [0.0, 0.0, 0.0, 1.0],
+                                     "n_folds": 2, "seed": 3141})
+        st, body = _http(info, "/fit/irm", "POST", irm_unbalanced)
+        results["/fit/irm rejects a fold without both groups"] = (st, st == 400)
+        st, body = _http(info, "/healthz")
+        results["/healthz after a rejected fit"] = (st, st == 200)
         bad = [k for k, (s_, ok) in results.items() if not ok]
         verdict = PASS if not bad else FAIL
         detail = ", ".join(f"{k}->{s_}{'' if ok else ' BAD'}"

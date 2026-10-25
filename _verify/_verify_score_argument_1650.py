@@ -640,6 +640,30 @@ check("the skills document says the 1/m_hat set is SIX",
 check("the skills document does not call the 1/m_hat set seven",
       not re.search(r"for the seven estimators whose propensity", SK))
 
+# doc/001 states the SAME rule, and it used to state it as a BLANKET one:
+# "`ml_m` defaults to the logistic classifier wherever the propensity enters
+# the score as `1 / m_hat`".  That is FALSE for `DoubleMLIIVM`, whose
+# propensity enters the score as `1 / m_hat` and `1 / (1 - m_hat)` -- of the
+# INSTRUMENT -- and whose `ml_m` still defaults to OLS (iivm.mbt:184).  The
+# README had said so twice all along; the tutorial had not caught up.
+#
+# The rule the document states has to be the rule the SOURCE has, so the
+# sets are compared as sets: the six come from the source-derived LOGISTIC
+# set, and the two exceptions are named.
+D1 = flat(os.path.join(ROOT, "doc", "001_introduction", "readme.mbt.md"))
+check("the source says IIVM is not a classifier-defaulted estimator",
+      "DoubleMLIIVM" not in LOGISTIC,
+      "the source says %s" % sorted(LOGISTIC))
+check("doc/001 names the six 1/m_hat estimators",
+      all("`%s`" % n in D1 for n in six),
+      str([n for n in six if "`%s`" % n not in D1]))
+check("doc/001 accounts for the seventh (LPLR) as an exception",
+      "DoubleMLLPLR" in D1 and "d - m_hat" in D1)
+check("doc/001 accounts for IIVM and its 1/(1 - m_hat) weight",
+      "DoubleMLIIVM" in D1 and "1 / (1 - m_hat)" in D1)
+check("doc/001 no longer states the blanket ml_m rule",
+      "wherever the propensity enters the score as `1 / m_hat`" not in D1)
+
 # the 15 / 9 split of the validate_* family, by CODE.  The family is the 24
 # `validate_*_with_python.py` scripts -- the three repo-level harnesses
 # (`validate_plotting_scope.py` and friends) are NOT in it.

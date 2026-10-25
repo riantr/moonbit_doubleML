@@ -341,7 +341,7 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // same run. Both are real gates doing their job -- a version bump touches
   // every place the version lives, and `_verify/_bump_1636.py` is that list.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.164.37",
+    library: "riantr/moonbit_doubleML@0.164.38",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })
@@ -366,8 +366,66 @@ fn handler_fit_plr(body : Json) -> Json raise ApiError {
 }
 
 ///|
+/// The IRM score fits a separate nuisance model per treatment group, so
+/// every cross-fitting fold's TRAINING set must hold at least one control
+/// row (d == 0) and one treated row (d == 1).  The library refuses to fit
+/// otherwise -- `irm.mbt` aborts through `require(...)` rather than write
+/// zero nuisance predictions -- and a panic inside a request handler takes
+/// the whole service down with it, not just the request: the process exits
+/// and every later request gets a refused connection.
+///
+/// So the service checks the SAME condition first, with the library's OWN
+/// public `kfold`, and answers 400 with a message the client can act on.
+/// The folds are the ones the fit will use -- `kfold(n, n_folds, seed + r)`
+/// for repetition r -- so the check cannot drift away from the library's.
+fn require_irm_split(
+  d : Array[Double],
+  n : Int32,
+  n_folds : Int32,
+  n_rep : Int32,
+  seed : Int32,
+) -> Unit raise ApiError {
+  for i = 0; i < d.length(); i = i + 1 {
+    let v = d[i]
+    if v != 0.0 && v != 1.0 {
+      raise ApiError::Message(
+        "field 'd': DoubleMLIRM's treatment must be binary (0 or 1), got " +
+        v.to_string(),
+      )
+    }
+  }
+  for r = 0; r < n_rep; r = r + 1 {
+    let folds = @moonbit_doubleML.kfold(n, n_folds, seed + r)
+    for f in folds {
+      let mut n_control = 0
+      let mut n_treated = 0
+      for i in f.train_indices() {
+        if d[i] == 0.0 {
+          n_control = n_control + 1
+        } else {
+          n_treated = n_treated + 1
+        }
+      }
+      if n_control == 0 || n_treated == 0 {
+        raise ApiError::Message(
+          "field 'd': every cross-fitting fold's training set needs both a " +
+          "control (0) and a treated (1) row; repetition " +
+          r.to_string() +
+          " has " +
+          n_control.to_string() +
+          " control and " +
+          n_treated.to_string() +
+          " treated rows",
+        )
+      }
+    }
+  }
+}
+
+///|
 fn handler_fit_irm(body : Json) -> Json raise ApiError {
   let (x_data, n, p, y, d, n_folds, n_rep, seed) = parse_fit_request(body)
+  require_irm_split(d, n, n_folds, n_rep, seed)
   let x_mat = @moonbit_doubleML.Matrix::from_array(x_data, n, p)
   let data = @moonbit_doubleML.DoubleMLData::new(x_mat, y, d)
   let fitted = @moonbit_doubleML.DoubleMLIRM::new(data, n_folds~, n_rep~, seed~).fit()

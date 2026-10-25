@@ -276,6 +276,20 @@ if readme_moon:
     must("doc/002 names the same toolchain as the README", readme_moon.group(1), d2)
 must("doc/002 lists scipy", "scipy", d2)
 
+# The suite ships in the REPOSITORY, not in the published package: a project
+# that installed the package gets the library and no tests of its own, and
+# `moon test` there reports zero.  The guide used to tell an installed
+# CONSUMER to "run the test suite" and quoted the repository's own count --
+# so a consumer who followed the instruction read "Total tests: 1117" for a
+# run that reports none.
+_vsec = d2.split("## Verification", 1)[1] if "## Verification" in d2 else ""
+check("doc/002 has a Verification section", bool(_vsec),
+      "the '## Verification' heading is gone")
+must("doc/002 says the suite is in the repository", "repository", _vsec)
+must("doc/002 says an installed consumer runs no tests", "Total tests: 0", _vsec)
+must_not("doc/002 no longer tells the reader to run the suite after install",
+         "After install, run the test suite", d2)
+
 print()
 print("=" * 78)
 print("E. doc/003 -- estimator count, DGP count, accessor names")

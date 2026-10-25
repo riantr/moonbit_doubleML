@@ -1277,6 +1277,72 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   and the failure count must GROW at every step.  The run ends at **8**
 >   failures.
 >
+> * **Round 44.** The service that died on a bad request, and the documents
+>   that promised something else.
+>
+>   *A malformed IRM request killed the whole service.*  `POST /fit/irm` with a
+>   treatment vector that is not binary -- or is binary but leaves one arm
+>   empty in a fold -- made the library ABORT (`require(train_d0.length() > 0)`,
+>   `irm.mbt:378`).  A MoonBit panic is not catchable: `require` and `abort`
+>   are panics rather than errors, so the `try/catch` around the handler could
+>   not hold it and the PROCESS EXITED.  `/healthz` then refused connections,
+>   so one bad request took the service down for every other caller.
+>   `examples/api_server/main.mbt` now PRE-VALIDATES the split with the
+>   library's own public `kfold` and `Fold::train_indices`, and answers **400**
+>   instead of dying.  The api_server's QA check now asserts four cases: a
+>   valid fit, a non-binary treatment, a fold without both groups, and a live
+>   `/healthz` after each rejection.
+>
+>   *A dependency two versions behind.*  The api_server example pinned
+>   `moonbitlang/async@0.20.3` while this README's own dependency rule says to
+>   pin the latest published version (`0.22.5`) -- and the example is the only
+>   thing in the tree that imports it at all.  It is on `0.22.5` now, and the
+>   dependency table's note says what is actually true: the line is dead IN THE
+>   LIBRARY, and the example imports the same package at the same pin.
+>
+>   *Five documents that promised something the tree does not do.*  The DID
+>   bias was rendered as "~0.001" where the measured figure is `0.00050` -- a
+>   2x overstatement of a number the same paragraph prints correctly two lines
+>   later.  The layout block named `example/consumer_demo`, which is the
+>   example's PACKAGE name, where a repository PATH was meant
+>   (`examples/consumer_demo`).  A bare `moon test` does not run "three of the
+>   four declared backends": it runs the suite on ONE of them (`wasm-gc`),
+>   reports `Total tests: 0` for `wasm` and `native`, and never reports `js` at
+>   all -- while `moon test --target js` runs 1117 of them.  The installation
+>   guide told an installed CONSUMER to run the test suite and quoted the
+>   repository's 1117, and a consumer that installs the package runs no tests
+>   at all.  And the introduction's blanket rule -- "`ml_m` defaults to the
+>   logistic classifier wherever the propensity enters the score as
+>   `1 / m_hat`" -- is false for `DoubleMLIIVM`, which carries `1/m` and
+>   `1/(1-m)` and still defaults `ml_m` to OLS.
+>
+>   *A finding that was wrong twice.*  Two independent audits reported that
+>   `doc/006` mis-split the Python cross-check coverage, and BOTH were wrong.
+>   A MUTATION settles a coverage claim: `DoubleMLQTE::fit` was broken, and the
+>   validate family stayed GREEN -- so it does not gate the QTE estimator, and
+>   the guide's **16** / **3** / **3** split is correct.  What the validate
+>   script's own LABEL overstates is its coverage, not the guide's arithmetic.
+>   `_verify/_verify_tutorial_claims_1650.py` already derives that map from
+>   what each script CONSTRUCTS.
+>
+>   *One published count moved.*  The rule about `ml_m`'s default now has an
+>   owner for the TUTORIAL as well as for the skill, and that owner derived
+>   the tutorial's sentence from the SOURCE: the blanket rule the
+>   introduction stated is false for `DoubleMLIIVM`, whose `ml_m` models the
+>   INSTRUMENT's propensity and still defaults to OLS.
+>   `_verify/_verify_score_argument_1650.py` published **135** and makes
+>   **140**.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round44_1650.py` breaks ONE promise -- the layout's
+>   path, the dependency table's note, the service sentence, the bare-`moon
+>   test` sentence, doc/001's `ml_m` rule and doc/002's consumer count --
+>   and the failure count must GROW at every step.  The run ends at **8**
+>   failures.
+>
+>   *The ledger is unchanged.*  This round publishes no new count, so
+>   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
+>
 >
 """
 
@@ -2259,8 +2325,9 @@ PATCHES.append((OLD_DIDBIN, NEW_DIDBIN))
 # Three smaller drifts travel with it:
 #
 #   * "A bare `moon test` runs every declared backend" is false.  Measured on
-#     moon 0.1.20261023, a bare run prints [wasm], [wasm-gc] and [native] and
-#     reports "no test entry found" for `js` -- 1117 js tests it never runs.
+#     moon 0.1.20261023, a bare run prints [wasm], [wasm-gc] and [native] --
+#     but only [wasm-gc] carries the suite, and [js] is never reported at
+#     all, though `moon test --target js` runs 1117 tests.
 #   * The RNG keys are 32-byte ChaCha8 keys compared BYTE-FOR-BYTE
 #     (validate_bitexact_with_python.py:377), not IEEE-754 doubles.
 #   * `DoubleMLPolicyTree::new`'s first parameter is `features`
@@ -2280,7 +2347,7 @@ score never divides by `m`: for a **treated** row the `m` dependence cancels,
 and `m` reaches the control rows only. The score is **doubly robust** -- a
 correct `g` carries identification, leaving `m` second-order. IRM and APO need
 `m` for the estimand itself, which is why they showed a ~200-point error and
-DID shows ~0.001. The sharpest DID case: at n=200 the CLASSIFIER default is
+DID shows ~0.0005. The sharpest DID case: at n=200 the CLASSIFIER default is
 worse on both bias (0.0776 vs 0.00050) and SE."""
 
 OLD_DID_ROW = ("| `DoubleMLDID`, `DoubleMLDIDCS`, `DoubleMLDIDCSBinary`, "
@@ -2296,10 +2363,10 @@ declared backend, and on `moon 0.1.20261016` it prints `Total tests: 0` for
 the backends other than the preferred one, so the per-target counts here
 come from explicit `--target` runs."""
 
-NEW_BARE_TEST = """per-target numbers are in the Status table. A bare `moon test` runs only
-three of the four declared backends -- on `moon 0.1.20261023` it prints
-`Total tests: 0` for `wasm` and `native` and reports `no test entry found`
-for `js`, which it never runs -- so the per-target counts here come from
+NEW_BARE_TEST = """per-target numbers are in the Status table. A bare `moon test` runs the suite
+on only one of the four declared backends -- on `moon 0.1.20261023` it reports
+`Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1123
+tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs."""
 
 OLD_RNG_ITEMS = """- ✅ **24 / 24 Python reference scripts PASS** -- 25 of the 25 bit-exact items
@@ -2813,6 +2880,87 @@ NEW_43_LPLR = """   ```moonbit
 PATCHES.append((OLD_43_ML_M, NEW_43_ML_M))
 PATCHES.append((OLD_43_LPLR_PROSE, NEW_43_LPLR_PROSE))
 PATCHES.append((OLD_43_LPLR, NEW_43_LPLR))
+
+
+# ==============================================================================
+# 13.  THE ROUND-44 PATCHES -- four promises the documents did not keep
+# ==============================================================================
+#
+# Three fresh-eyes audits ran against this README.  Five of the six findings
+# were real and are corrected here; the sixth (doc/006's coverage split) was
+# DISPROVEN by a mutation test and changes nothing.
+#
+# (a) A MEASUREMENT RENDERED TWO TIMES TOO LARGE.
+#     The DID paragraph says "IRM and APO need `m` for the estimand itself,
+#     which is why they showed a ~200-point error and DID shows ~0.001."  The
+#     same paragraph prints the figure it means one line later -- "at n=200 the
+#     CLASSIFIER default is worse on both bias (0.0776 vs 0.00050) and SE" --
+#     and the CHANGELOG's own measurement table carries the same row
+#     (`| n=200, p=12, slope 4 | **0.0776** | **0.00050** |`).  So the prose
+#     overstated the DID bias by 2x while printing it correctly two lines
+#     later.  "~0.0005" is the measured figure.
+#
+# (b) A PACKAGE NAME PRINTED WHERE A REPOSITORY PATH WAS MEANT.
+#     The layout block says
+#
+#         consumer_demo/         <- library-user pattern (`example/consumer_demo`)
+#
+#     `example/consumer_demo` is the example's PACKAGE NAME (it is what
+#     `examples/consumer_demo/moon.mod` declares).  The repository PATH is
+#     `examples/consumer_demo`, and that directory is tracked.  A path in
+#     prose is a promise: it has to exist, and it has to be tracked.
+#
+# (c) A SENTENCE THAT SAID "THREE OF THE FOUR" BACKENDS RUN.
+#     Measured on moon 0.1.20261023, a bare `moon test` prints
+#
+#         Total tests: 0, passed: 0, failed: 0. [wasm]
+#         Total tests: 1123, passed: 1123, failed: 0. [wasm-gc]
+#         Total tests: 0, passed: 0, failed: 0. [native]
+#
+#     and NOTHING for js.  So the suite runs on ONE of the four declared
+#     backends, not three: wasm and native report 0 tests and js is never
+#     reported at all -- while `moon test --target js` runs 1117 of them.
+#     The phrase "four declared backends" is kept: `_verify_count_referents`
+#     pins it, and it is the right number (the package's own
+#     `supported_targets`).
+#
+# (d) THE EXAMPLE'S ASYNC PIN WAS TWO VERSIONS BEHIND.
+#     The api_server example pinned `moonbitlang/async@0.20.3` while this
+#     README's own dependency rule says to pin the latest published version
+#     (`0.22.5`), and the example is the only thing in the tree that imports
+#     it at all.  The pin moves to 0.22.5, the sentence that quotes it moves
+#     with it, and the dependency table's note is rewritten -- because the
+#     OLD note ("`examples/api_server/` uses the same package, but at its own
+#     pin ... so this line matches no import") was a statement about a
+#     DIFFERENCE that no longer exists.
+
+# (a) and (c) are corrected in the NEW_ values of the patches that already
+#     carried those paragraphs -- `NEW_DID_SCORE` and `NEW_BARE_TEST`.  A
+#     second patch pair for either would match ZERO times by the time the loop
+#     reached it, and the loop aborts on a match count other than one.
+
+OLD_44_CONSUMER = ("  consumer_demo/         <- library-user pattern "
+                   "(`example/consumer_demo`)")
+NEW_44_CONSUMER = ("  consumer_demo/         <- library-user pattern "
+                   "(`examples/consumer_demo`)")
+
+OLD_44_ASYNC_PILLAR = ("The service is built directly on `moonbitlang/async@0.20.3` --\n"
+                       "no third-party HTTP framework is pulled in.")
+NEW_44_ASYNC_PILLAR = ("The service is built directly on `moonbitlang/async@0.22.5` --\n"
+                       "no third-party HTTP framework is pulled in.")
+
+OLD_44_ASYNC_ROW = ("| `moonbitlang/async@0.22.5` | no | referenced by nothing: "
+                    "`examples/api_server/` uses the same package, but at its own "
+                    "pin -- `moonbitlang/async@0.20.3` -- so this line matches no "
+                    "import |")
+NEW_44_ASYNC_ROW = ("| `moonbitlang/async@0.22.5` | no | referenced by nothing in "
+                    "the library: `examples/api_server/` imports the same package "
+                    "at the same pin (`moonbitlang/async@0.22.5`), but no `.mbt` "
+                    "under `moonbit_doubleML/` imports it |")
+
+PATCHES.append((OLD_44_CONSUMER, NEW_44_CONSUMER))
+PATCHES.append((OLD_44_ASYNC_PILLAR, NEW_44_ASYNC_PILLAR))
+PATCHES.append((OLD_44_ASYNC_ROW, NEW_44_ASYNC_ROW))
 
 
 for _old, _new in PATCHES:

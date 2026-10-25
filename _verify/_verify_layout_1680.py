@@ -25,6 +25,7 @@ says that, and these checks keep it saying it.
 import io
 import os
 import re
+import subprocess
 import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -114,6 +115,68 @@ check("the layout says '23-member workspace aggregator'",
       "23-member workspace aggregator" in readme)
 check("the wasm-gc count says 'lib + 6 doc tutorials'",
       "lib + 6 doc tutorials" in readme)
+
+# ------------------------------------------- a repository PATH in the prose
+# A path in prose is a PROMISE: it has to exist, and it has to be tracked.
+# The layout block named `example/consumer_demo` -- which is the example's
+# PACKAGE NAME (what `examples/consumer_demo/moon.mod` declares), not a
+# repository path.  The directory is `examples/consumer_demo`, and it is
+# tracked; the name that was printed is neither.
+#
+# The distinction is DERIVED, not asserted: a backticked `owner/name` token
+# is a PACKAGE when its owner is one the manifests actually declare
+# (`moonbitlang`, `moonbit-community`, `riantr`), and a REPOSITORY PATH
+# otherwise.  So a path that does not exist cannot hide behind the package
+# rule, and a package cannot be demanded to exist as a directory.
+try:
+    _tracked = set(subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                                   capture_output=True, timeout=120)
+                   .stdout.decode("utf-8", "replace").split("\0"))
+except Exception:                                    # noqa: BLE001
+    _tracked = set()
+
+_owners = set()
+_manifest_pins = set()
+for _rel in sorted(r for r in _tracked if r.endswith("moon.mod")):
+    _txt = io.open(os.path.join(ROOT, _rel), encoding="utf-8",
+                   errors="replace").read()
+    _txt = "\n".join(l.split("//", 1)[0] for l in _txt.split("\n"))
+    for _imp in re.findall(r"\"([^\"]+@[^\"]+)\"", _txt):
+        _manifest_pins.add(_imp)
+        _owners.add(_imp.split("/", 1)[0])
+
+
+def _is_tracked(path):
+    p = path.rstrip("/")
+    if p in _tracked:
+        return True
+    pref = p + "/"
+    return any(f.startswith(pref) for f in _tracked)
+
+
+_parts = readme.split("## Project layout", 1)
+_layout = ""
+if len(_parts) > 1:
+    # The FIRST fenced block after the heading is the tree.  `split("```")`
+    # without a limit is what takes it: the block is delimited by the first
+    # pair of fences, and a limited split would run on into the rest of the
+    # document.
+    _seg = _parts[1].split("```")
+    if len(_seg) > 1:
+        _layout = _seg[1]
+check("the layout block is findable", "moon.work" in _layout,
+      "the first fenced block after '## Project layout' is not the tree")
+_tokens = re.findall(r"`([^`\n]+)`", _layout)
+_paths = [t for t in _tokens
+          if not (t.count("/") >= 1 and t.split("/", 1)[0] in _owners)]
+print("  layout block tokens: %s" % _tokens)
+print("  layout block repository paths: %s" % _paths)
+for _p in _paths:
+    check("the layout's path `%s` exists" % _p,
+          os.path.exists(os.path.join(ROOT, _p.rstrip("/"))),
+          "no such path in the tree")
+    check("the layout's path `%s` is tracked" % _p, _is_tracked(_p),
+          "the path is not in `git ls-files`")
 
 # ------------------------------------------------- the nightly workflow's claim
 # The workflow file is TRACKED, so a clone has it, and the claims it makes

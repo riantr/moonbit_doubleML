@@ -27,7 +27,7 @@ C. the absence claims are still true
   *** FAIL ***  the fuzz harness's `fn main` takes no parameters -- signature: '(seed : Int)'
   PASS  the fuzz harness names one fixed seed
   PASS  the README's fixed seed is the harness's fixed seed
-  *** FAIL ***  no CI workflow runs the fuzz check -- run by ['check.yml:439']
+  *** FAIL ***  no CI workflow runs the fuzz check -- run by ['check.yml:450']
   PASS  examples/fuzz has no crash-regression corpus
   PASS  the `coverage` check says it is a PROXY, not line coverage
   PASS  the `coverage` check measures reachability by NAME

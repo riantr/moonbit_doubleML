@@ -41,10 +41,16 @@ The pure-MoonBit implementation:
   `Constant`, `Noop`, `RandomForest`, `GradientBoosting`, `Ridge`,
   `Lasso`, `ElasticNet`) and 3 classifiers (`LogisticRegression`,
   `RandomForestClassifier`, `GradientBoostingClassifier`).
-  `ml_m` defaults to the logistic classifier wherever the
-  propensity enters the score as `1 / m_hat`.
+  `ml_m` defaults to the logistic classifier for the six estimators
+  whose propensity enters the score as `1 / m_hat` -- `DoubleMLIRM`,
+  `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLSSM`, `DoubleMLPQ` and
+  `DoubleMLQTE`. `DoubleMLLPLR` also defaults it to the classifier,
+  but there the propensity enters as `d - m_hat`. `DoubleMLIIVM` is
+  the exception: its propensity enters as `1 / m_hat` and
+  `1 / (1 - m_hat)`, but it models the propensity of the INSTRUMENT
+  rather than of the treatment, and it defaults to OLS.
 
-## Status at v0.164.37
+## Status at v0.164.38
 
 - **22 estimators** — PLR, IRM, PLIV, IIVM, DID (6 variants),
   SSM, APO(S), PQ/QTE, LPQ, LPLR, PLPR, CVaR, RDD, BLP, PolicyTree.
@@ -53,7 +59,7 @@ The pure-MoonBit implementation:
   `make_*_data` factories.
 - **1117 / 1117 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
-- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.37`.
+- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.38`.
 
 ## Next
 

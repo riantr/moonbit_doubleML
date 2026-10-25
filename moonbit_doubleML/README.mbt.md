@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.37",
+  "riantr/moonbit_doubleML@0.164.38",
 }
 ```
 
@@ -120,10 +120,10 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 
 `--target native` is spelled out because the package's `preferred_target` is
 `wasm-gc`, where the suite is **1123** -- 1117 plus 6 doc tutorials; the
-per-target numbers are in the Status table. A bare `moon test` runs only
-three of the four declared backends -- on `moon 0.1.20261023` it prints
-`Total tests: 0` for `wasm` and `native` and reports `no test entry found`
-for `js`, which it never runs -- so the per-target counts here come from
+per-target numbers are in the Status table. A bare `moon test` runs the suite
+on only one of the four declared backends -- on `moon 0.1.20261023` it reports
+`Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1123
+tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs.
 
 ```moonbit nocheck
@@ -382,7 +382,7 @@ score never divides by `m`: for a **treated** row the `m` dependence cancels,
 and `m` reaches the control rows only. The score is **doubly robust** -- a
 correct `g` carries identification, leaving `m` second-order. IRM and APO need
 `m` for the estimand itself, which is why they showed a ~200-point error and
-DID shows ~0.001. The sharpest DID case: at n=200 the CLASSIFIER default is
+DID shows ~0.0005. The sharpest DID case: at n=200 the CLASSIFIER default is
 worse on both bias (0.0776 vs 0.00050) and SE.
 
 | Estimator | OLS default | Evidence |
@@ -522,7 +522,7 @@ The same `api_server.wasm` also runs under `moonrun <path-to-the-wasm>`.
 The listen port is hard-coded to `4000` in `main.mbt`, so the service
 ignores any argument it is given (see `examples/api_server/README.md`
 for the full PowerShell smoke recipe).
-The service is built directly on `moonbitlang/async@0.20.3` --
+The service is built directly on `moonbitlang/async@0.22.5` --
 no third-party HTTP framework is pulled in.
 
 ## Common pitfalls and best practices
@@ -617,7 +617,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.37** |
+| `moon.mod` version | **0.164.38** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -744,7 +744,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.37, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.38, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -765,7 +765,7 @@ examples/                <- 21 driver binaries (all listed in moon.work)
   did_cross_section/     <- Sant'Anna-Zhao 2020
   plpr/, lplr/, apos/,   <- single-estimator focused demos
   cvar/, fuzz/
-  consumer_demo/         <- library-user pattern (`example/consumer_demo`)
+  consumer_demo/         <- library-user pattern (`examples/consumer_demo`)
   api_server/            <- HTTP service built on `moonbitlang/async`
 
 moon.work                <- 23-member workspace aggregator (the library, doc/, 21 examples)
@@ -788,7 +788,7 @@ declares two packages, and **neither is imported by any `.mbt` in the library**
 
 | declared | imported by the library? | note |
 |---|---|---|
-| `moonbitlang/async@0.22.5` | no | referenced by nothing: `examples/api_server/` uses the same package, but at its own pin -- `moonbitlang/async@0.20.3` -- so this line matches no import |
+| `moonbitlang/async@0.22.5` | no | referenced by nothing in the library: `examples/api_server/` imports the same package at the same pin (`moonbitlang/async@0.22.5`), but no `.mbt` under `moonbit_doubleML/` imports it |
 | `moonbit-community/sqlite3@0.2.3` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
 
 So the library has no runtime third-party dependency today, while `moon.mod`
