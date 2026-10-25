@@ -1,7 +1,7 @@
 
 A. the README's numbers
   PASS  the README has number-bearing prose lines
-  154 number-bearing prose lines, 154 distinct numbers
+  154 number-bearing prose lines, 155 distinct numbers
   54 tracked verifiers read the README
   PASS  the propensity_clip default is in the source
   PASS  the README's `1e6` is 1 / the propensity_clip default
@@ -17,13 +17,12 @@ A. the README's numbers
 
 B. every number is guarded, derived, or witnessed
   *** FAIL ***  every number in the README is accounted for -- no witness: ['0.999123456']
-  guarded: 109, derived: 4, witnessed: 42, total: 154
+  guarded: 112, derived: 4, witnessed: 40, total: 155
 
 C. the witnesses
   0.0005       <- CHANGELOG.md
   0.00050      <- CHANGELOG.md
   0.0047       <- CHANGELOG.md
-  0.007        <- CHANGELOG.md
   0.043        <- CHANGELOG.md
   0.0747       <- CHANGELOG.md
   0.0776       <- CHANGELOG.md
@@ -44,7 +43,7 @@ C. the witnesses
   1.667        <- CHANGELOG.md
   1.685        <- CHANGELOG.md
   1.9e-15      <- .githooks/README.md
-  106          <- CHANGELOG.md
+  106          <- .github/scripts/qa_loop/checks.py
   122          <- CHANGELOG.md
   161          <- CHANGELOG.md
   185.45       <- CHANGELOG.md
@@ -58,7 +57,6 @@ C. the witnesses
   452          <- CHANGELOG.md
   5.246        <- CHANGELOG.md
   5.9e-3       <- CHANGELOG.md
-  6.2e-15      <- .githooks/README.md
   8.44e+122    <- CHANGELOG.md
   86.28        <- CHANGELOG.md
   97           <- CHANGELOG.md

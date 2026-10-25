@@ -65,6 +65,25 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMMIT = "HEAD"
 WORK = os.path.join(REPO, "_verify", "_dryrun1650", "r44")
 DRIVER = "_verify/_dryrun_round44_1650.py"
+
+# The documents the exercised checks READ must come from the WORKING TREE
+# too.  The clone is checked out from HEAD, so without these the tree under
+# test is a MIX of two releases: the checks are this round's and the
+# documents they read are the last round's -- and the baseline then fails for
+# a reason that has nothing to do with the promise being broken.
+#
+# Round 24's driver copies the same list for the same reason, and round 35
+# says it outright: "the CHANGELOG that publishes the failure count has to be
+# IN the tree under test, or the published-count check is vacuous".
+DOCUMENTS = [
+    "README.mbt.md",
+    "moonbit_doubleML/README.mbt.md",
+    "ENGINEERING.md",
+    "CHANGELOG.md",
+    "doc/001_introduction/readme.mbt.md",
+    "doc/002_installation/readme.mbt.md",
+]
+
 VERIFIERS = [
     "_verify/_verify_layout_1680.py",
     "_verify/_verify_count_referents_1650.py",
@@ -231,7 +250,7 @@ print("  %s -> %s" % (COMMIT, out.strip()))
 rc, out = run(["git", "diff", "--cached", "--name-only"], cwd=REPO)
 STAGED = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
 COPY_IN = []
-for rel in list(VERIFIERS) + [DRIVER] + STAGED:
+for rel in list(VERIFIERS) + [DRIVER] + DOCUMENTS + STAGED:
     rel = rel.replace("\\", "/")
     if rel in COPY_IN:
         continue

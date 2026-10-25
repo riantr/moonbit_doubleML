@@ -1,0 +1,15 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. the seven script names are bare stems again
+   2. the Status table's estimator count is wrong
+   3. the Status table's .mbt census is wrong
+   4. the CLI-style demo count is wrong
+
+C. the published failure count
+  the driver counted 4 failures
+  128 checks, 1 failed
+  None checks, 2 failed
+  None checks, 1 failed

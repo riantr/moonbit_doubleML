@@ -113,7 +113,7 @@ F. the inventory: no unregistered count claim
   ok    the registered claim '21 examples' is present in the README    
   ok    the registered claim '21 runnable example binaries' is present in the README 
   ok    the registered claim '22 `DoubleML*` estimators' is present in the README 
-  ok    the registered claim '22 estimators (`DoubleML*` structs' is present in the README 
+  ok    the registered claim '22 `DoubleML*` estimator structs' is present in the README 
   ok    the registered claim '220 .mbt files' is present in the README 
   ok    the registered claim '24 scripts' is present in the README     
   ok    the registered claim '26 whitebox test' is present in the README 
@@ -139,13 +139,15 @@ G. the counts this verifier owns, derived from the tree
   ok    the 129 blackbox test files are the *_test.mbt files           got 129
   ok    the 26 whitebox test files are the *_wbtest.mbt files          got 26
   ok    the 24 Python reference scripts are the validate_*_with_python.py files got 24
+  ok    the README names the scripts it refers to                      got 26: ['_verify/_bitexact_mutation_1640.py', 'apo.mbt', 'blp_policy.mbt', 'did_cs.py']
+  ok    every file name the README spells is a tracked file in the tree not a file: []
   ok    the CHANGELOG's DIDBinary probe section is findable            
   ok    the CHANGELOG enumerates four probe designs                    got 4
-   scan hits (59): ['11 surfaces', '12 estimators', '129 blackbox test', '19 name-matched estimator classes', '19 production files', '19 source files', '21 driver binaries', '21 examples', '21 runnable example binaries', '22 `DoubleML*` estimators', '22 estimators', '22 estimators (`DoubleML*` structs', '220 .mbt files', '220 `.mbt` files', '24 Python reference scripts', '24 scripts', '26 whitebox test', '4 designs', 'Eight structs', 'Four backends', 'Nine gates', 'Seven estimators', 'Six rows', 'Three rows', 'four data types', 'four declared backends', 'four mutations', 'four probe designs', 'seven files', 'seven structs', 'ships eleven', 'three classification learners', 'three estimators', 'three mutants', 'three vocabularies']
+   scan hits (59): ['11 surfaces', '12 estimators', '129 blackbox test', '19 name-matched estimator classes', '19 production files', '19 source files', '21 driver binaries', '21 examples', '21 runnable example binaries', '22 `DoubleML*` estimator structs', '22 `DoubleML*` estimators', '22 estimators', '220 .mbt files', '220 `.mbt` files', '24 Python reference scripts', '24 scripts', '26 whitebox test', '4 designs', 'Eight structs', 'Four backends', 'Nine gates', 'Seven estimators', 'Six rows', 'Three rows', 'four data types', 'four declared backends', 'four mutations', 'four probe designs', 'seven files', 'seven structs', 'ships eleven', 'three classification learners', 'three estimators', 'three mutants', 'three vocabularies']
   *** FAIL ***  no unregistered count claim in the README                  ['Seven estimators']
 
 ==========================================================================
-126 checks, 19 failed
+128 checks, 19 failed
 *** FAIL ***
   - the migrated set is EXACTLY the source's `ml_m`-classifier set
   - the SSM sentence names all four migrations

@@ -55,6 +55,35 @@ print("Examples table rows: %d, of which labelled 'fixture': %s"
       % (len(table_rows), fixtures))
 
 check("the layout says '21 driver binaries'", "21 driver binaries" in readme)
+
+# --------------------------------------------------------------------------- #
+# HOW MANY ARE CLI-STYLE NUMERIC DEMOS
+# --------------------------------------------------------------------------- #
+# The Examples section says "21 `examples/<bin>/` directories in `moon.work`.
+# 16 are CLI-style numeric demos that print an estimate".  The 21 was derived
+# from moon.work; the 16 was a FLOATING NUMBER -- the round-46 audit mutated
+# it to 15 and every check in the tree stayed GREEN.
+#
+# So the 16 is derived too: the example packages in moon.work MINUS the ones
+# that are not CLI-style numeric demos.  The list of non-CLI packages is
+# small and explicit, and its COMPLETENESS is enforced by the equality below
+# -- if the tree gains an example, the equality fails and this file says so.
+#
+# The other half of the claim -- that the list the CLI verifier RUNS is this
+# set -- is owned by `_verify/_verify_cli_demo_ci_1650.py`, which runs them.
+NOT_CLI = ["api_server", "bitexact", "consumer_demo", "fuzz", "parity"]
+work = io.open(os.path.join(ROOT, "moon.work"), encoding="utf-8").read()
+example_pkgs = re.findall(r'"(examples/[a-z_]+)"', work)
+cli_from_tree = sorted(p.split("/", 1)[1] for p in example_pkgs
+                       if p.split("/", 1)[1] not in NOT_CLI)
+doc = re.sub(r"\s+", " ", readme)
+check("moon.work lists 21 example packages",
+      len(example_pkgs) == 21, "got %d" % len(example_pkgs))
+check("the CLI-style demos are the example packages minus the non-CLI ones",
+      len(cli_from_tree) == 16, "got %d: %s" % (len(cli_from_tree), cli_from_tree))
+check("the README's CLI-style count is the count derived from the tree",
+      ("%d are CLI-style numeric demos" % len(cli_from_tree)) in doc,
+      "derived %d" % len(cli_from_tree))
 check("two of the 21 are labelled fixture in the Examples table",
       len(fixtures) == 2, "got %d: %s" % (len(fixtures), fixtures))
 check("all 21 packages have a `fn main`, so all 21 are binaries",

@@ -682,22 +682,66 @@ def changelog_count(name):
     return None
 
 
+DRIVER_MENTION = re.compile(r"_verify/_dryrun[A-Za-z0-9_]*\.py")
+FAILURE_COUNT = re.compile(r"ends at \*\*(\d+)\*\* failures")
+
+
+def _flatten(text):
+    """The banner, whitespace-normalised, with its line numbers.
+
+    The banner is a hard-wrapped quoted document: every line starts with
+    "> " and a sentence can run over several lines -- "The run ends at" on one
+    line and "**8** failures" on the next.  A pattern with literal spaces
+    matches only the sentences that happen to keep the phrase on ONE line,
+    so the text is flattened first and the positions are taken from the
+    flattened string.
+    """
+    out = []
+    lmap = []
+    for i, ln in enumerate(text.split("\n"), 1):
+        s = ln.strip()
+        if s.startswith(">"):
+            s = s[1:].strip()
+        if out:
+            out.append(" ")
+            lmap.append(i)
+        for ch in s:
+            out.append(ch)
+            lmap.append(i)
+    return "".join(out), lmap
+
+
+BANNER_FLAT, BANNER_LMAP = _flatten(BANNER)
+
+
 def banner_count(name):
     """The count the banner publishes FOR `name`.
 
     The banner is ASCENDING, so the LIVE claim is the LAST mention -- and a
     mention that publishes no count is not a publication, so the search falls
     back to an earlier one.
+
+    A count belongs to the driver named NEAREST BEFORE it.  That is the
+    ledger's own rule, and this function used a coarser one -- "the passage
+    from the mention to the next round heading" -- which bound a count to
+    EVERY driver named in that passage.  The round-46 entry walked into it:
+    it names the round-38 driver in one paragraph and publishes its OWN
+    driver's count in another, so round 38 was credited with round 46's
+    number and the two documents disagreed.
+
+    So the count is bound by POSITION: each "ends at **N** failures" belongs
+    to the last driver named before it, and a driver's live claim is the last
+    count bound to it.
     """
-    for hit in reversed([m.start() for m in
-                         re.finditer(re.escape(name), BANNER)]):
-        nxt = re.search(r"^> \* \*\*Round ", BANNER[hit:], re.M)
-        passage = BANNER[hit:hit + nxt.start()] if nxt else BANNER[hit:]
-        flat = FLAT.sub(" ", QUOTE.sub("", passage))
-        found = re.findall(r"ends at \*\*(\d+)\*\* failures", flat)
-        if found:
-            return int(found[0])
-    return None
+    mentions = [(m.start(), m.group(0))
+                for m in DRIVER_MENTION.finditer(BANNER_FLAT)]
+    live = {}
+    for m in FAILURE_COUNT.finditer(BANNER_FLAT):
+        before = [t for t in mentions if t[0] < m.start()]
+        if not before:
+            continue
+        live[before[-1][1]] = int(m.group(1))
+    return live.get(name)
 
 
 def driver_own_count(rel, base):

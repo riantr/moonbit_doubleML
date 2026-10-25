@@ -154,6 +154,29 @@ check("the drivers with no CI are apos, cluster, pava, splitting and ssm",
       no_ci == ["apos", "cluster", "pava", "splitting", "ssm"], "got %r" % no_ci)
 
 print()
+print("A2. EVERY DEMO THIS FILE RUNS IS A CLI-STYLE EXAMPLE PACKAGE")
+# The number of CLI-style demos is DERIVED once, in
+# `_verify/_verify_example_kinds_1680.py`: the example packages in moon.work
+# minus the ones that are not CLI-style numeric demos.  Two derivations in one
+# tree would drift, and two derivations disagreeing is a failure this project
+# has already paid for once.
+#
+# So this file does not derive the number -- it states WHICH packages it runs,
+# and the check is that the list is exactly the CLI-style set.  The two files
+# read the same two inputs (moon.work and the five non-CLI packages), so a
+# change to the tree moves both of them together.
+NOT_CLI = ["api_server", "bitexact", "consumer_demo", "fuzz", "parity"]
+work = io.open(os.path.join(ROOT, "moon.work"), encoding="utf-8").read()
+example_pkgs = re.findall(r'"(examples/[a-z_]+)"', work)
+cli_from_tree = sorted(p.split("/", 1)[1] for p in example_pkgs
+                       if p.split("/", 1)[1] not in NOT_CLI)
+check("moon.work lists 21 example packages",
+      len(example_pkgs) == 21, "got %d" % len(example_pkgs))
+check("the demos this file runs are exactly the CLI-style example packages",
+      cli_from_tree == sorted(CLI),
+      "the tree gives %s, this file runs %s" % (cli_from_tree, sorted(CLI)))
+
+print()
 print("B. the old rule, measured -- the gap must be exactly pava")
 check("the old bracket rule would have counted 12", n_loose == 12,
       "measured %d" % n_loose)

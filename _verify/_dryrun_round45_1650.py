@@ -74,6 +74,21 @@ VERIFIERS = [
     "_verify/_verify_examples_table_1680.py",
 ]
 
+# The documents the exercised checks READ must come from the WORKING TREE
+# too.  The clone is checked out from HEAD, so without these the tree under
+# test is a MIX of two releases: the checks are this round's and the
+# documents they read are the last round's -- and the baseline then fails for
+# a reason that has nothing to do with the promise being broken.
+#
+# The CHANGELOG is here for the reason round 35 names: "the CHANGELOG that
+# publishes the failure count has to be IN the tree under test, or the
+# published-count check is vacuous".
+DOCUMENTS = [
+    "README.mbt.md",
+    "moonbit_doubleML/README.mbt.md",
+    "CHANGELOG.md",
+]
+
 MARKER = "// inside a function body -- MoonBit rejects a module-scope `let` bound to a call"
 
 
@@ -220,7 +235,7 @@ print("  %s -> %s" % (COMMIT, out.strip()))
 rc, out = run(["git", "diff", "--cached", "--name-only"], cwd=REPO)
 STAGED = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
 COPY_IN = []
-for rel in list(VERIFIERS) + [DRIVER] + STAGED:
+for rel in list(VERIFIERS) + [DRIVER] + DOCUMENTS + STAGED:
     rel = rel.replace("\\", "/")
     if rel in COPY_IN:
         continue

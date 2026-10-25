@@ -146,6 +146,37 @@ if feat:
     check("the Features paragraph says '19 source files'",
           feat.group(2) == "19", "says %s" % feat.group(2))
 
+# --------------------------------------------------------- the Status table
+# The Status table RESTATES the census, in its own words and its own row.  A
+# row nobody checks is a row that can rot: the round-46 audit mutated the
+# table's "22" and its "220" and every check in the tree stayed GREEN -- the
+# body sentence was watched, the table row was not.
+#
+# So the table's numbers are compared against the census DERIVED above.  The
+# numbers in the row are READ, not written down: the row's own bold figures
+# are extracted and compared with the source's counts, so a re-worded row
+# does not need this file to change.
+status = re.search(r"^\|\s*Item\s*\|\s*Value\s*\|\s*$\n^\|[-|\s]+\|$\n((?:\|.*$\n?)*)",
+                    readme, re.M)
+check("the Status table is findable", status is not None)
+if status:
+    rows = status.group(1)
+    m = re.search(r"^\|.*`DoubleML\*` estimator structs.*$", rows, re.M)
+    check("the Status table has an estimator row", m is not None)
+    if m:
+        got = re.findall(r"\*\*(\d+)\*\*", m.group(0))
+        check("the Status table's estimator count is the derived count",
+              got[:1] == [str(len(ests))],
+              "the row says %s, the source has %d" % (got[:1], len(ests)))
+    m = re.search(r"^\|.*\.mbt` file count.*$", rows, re.M)
+    check("the Status table has a .mbt file-count row", m is not None)
+    if m:
+        got = [int(x) for x in re.findall(r"\*\*(\d+)\*\*", m.group(0))]
+        want = [len(files), len(production), len(blackbox), len(whitebox)]
+        check("the Status table's .mbt census is the derived census",
+              got == want,
+              "the row says %s, the tree has %s" % (got, want))
+
 # ------------------------------------------------------------ Models table
 # rows look like: | `DoubleMLPLR` | partialling-out | partially linear regression *(upstream)* |
 # the score column is prose, not a fixed vocabulary (ATE, LATE, MAR, IV, CVaR,

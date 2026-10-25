@@ -301,10 +301,14 @@ MECHANISMS = [
          "- ✅ **33 estimators** in 19 source files")),
 
     # -- 9. the README states the wrong estimator count ----------------------
+    # Round 46: the census sentence was re-worded to the precise spelling, so
+    # this mechanism must mutate the PHRASE THE READER NOW SEES.  A driver
+    # that patches a phrase the document no longer carries writes nothing and
+    # silently stops proving anything.
     ("the README states the wrong estimator count",
      lambda: patch_readmes(
-         "22 estimators (`DoubleML*` structs) in 19 production files",
-         "23 estimators (`DoubleML*` structs) in 19 production files")),
+         "22 `DoubleML*` estimator structs in 19 production files",
+         "23 `DoubleML*` estimator structs in 19 production files")),
 
     # -- 10. the tree grows a 25th Python reference script -------------------
     ("the tree grows a 25th Python reference script",

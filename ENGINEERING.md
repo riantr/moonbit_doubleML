@@ -1285,6 +1285,102 @@
 >   *The ledger is unchanged.*  This round publishes no new count, so
 >   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
 >
+> * **Round 46.**  The names that were not files.
+>
+>   A fresh-eyes audit read every promise the README makes and checked it
+>   against the tree.  One was broken; three were imprecise.
+>
+>   *Seven script names that are not files.*  The upstream-owned paragraph
+>   named the two scripts that GATE the port against upstream with their full
+>   filename, and then named the seven that import the wheel for CONTEXT with
+>   the bare stem -- `validate_apos`, `validate_cluster_iv`,
+>   `validate_cluster_plr`, `validate_iivm`, `validate_irm`, `validate_pliv`,
+>   `validate_plpr` -- while the files on disk are
+>   `validate_apos_with_python.py` and so on.  All seven bare names were
+>   verified ABSENT from the tree; all seven suffixed forms are PRESENT and
+>   tracked.  A reader who copied the name got "No such file or directory",
+>   and the same sentence, two lines earlier, wrote the full name.
+>
+>   *The backend command.*  The opening summary and the Features list said
+>   the four backends were green "under `moon test --deny-warn`".  A bare
+>   `moon test` runs the suite on ONE backend -- the document says so itself,
+>   95 lines later in the Quick Start, where it explains that on this
+>   toolchain a bare `moon test` reports `Total tests: 0` for `wasm` and
+>   `native` and never reports `js`.  The three places that make the
+>   four-backend claim now spell the per-backend command out.
+>
+>   *The census phrase.*  "22 estimators (`DoubleML*` structs)" is true of the
+>   estimators and loose as a phrase: a reader who greps `struct DoubleML`
+>   finds **34** structs in **20** files -- the 22 estimators plus 12 `*Data`
+>   types -- and concludes the document is wrong.  Measured: 22 estimator
+>   structs, in 19 production files, 16 holding one and 3 holding two.  The
+>   sentence now uses the precise spelling the Status table already used.
+>
+>   *The registry that owns the claim.*
+>   `_verify/_verify_count_referents_1650.py` keys on the PHRASE, so a
+>   re-worded count is a new phrase -- and a phrase the registry does not
+>   know is a claim nobody re-derives.  Its key was REPLACED, not kept: a
+>   registered key that is absent from the README is itself a failing claim.
+>
+>   *The dry-run that has to keep biting.*
+>   `_verify/_dryrun_round38_1650.py` mutates the census phrase to prove the
+>   count is owned.  A driver that patches a phrase the document no longer
+>   carries writes nothing and silently stops proving anything, so it now
+>   mutates the phrase the reader NOW sees.
+>
+>   *A tree under test that was two releases at once.*  The round-44 driver
+>   checks out HEAD and copies in the files it exercises, so the tree it
+>   breaks carried this round's CHECKS and the last round's DOCUMENTS -- and
+>   the baseline went red for a reason that had nothing to do with the
+>   promise being broken.  Round 24's driver copies the documents its checks
+>   read, and round 35 says why: "the CHANGELOG that publishes the failure
+>   count has to be IN the tree under test, or the published-count check is
+>   vacuous".  The round-44 and round-45 drivers now do the same.
+>
+>   *A second audit, and what it found.*  A fresh-eyes audit measured every
+>   number in the published README against the tree and mutation-tested the
+>   checks that guard them: **92** quantitative claims, **0** false, **3**
+>   misleading -- and the three misleading ones are the four-backend command
+>   and the census phrase, fixed above.  No number in the document is wrong.
+>
+>   *Three numbers that were true, and unwatched.*  The same audit found
+>   numbers that are true today but that nothing in the tree would catch if
+>   they rotted, because the check beside them derives a DIFFERENT figure and
+>   the two were never tied together.  The Status table's own "**22**" and its
+>   own "**220** / **65** / **129** / **26**" were two of them: the census
+>   verifier derived 22 and 220 from the source and compared them with the
+>   body sentence, and nobody compared them with the table's row.  The
+>   "16 are CLI-style numeric demos" was the third -- a floating number, and
+>   changing it to 15 left every check green.  All three are derived now, and
+>   each was proven to bite by mutating the README and watching the check go
+>   red.
+>
+>   *Still unwatched, and named here so they are not forgotten.*  The audit
+>   found seven more: the sandwich-variance split, the 9 / 2 / 7 split of the
+>   Python cross-checks, the bit-exact item and RNG-key counts, the
+>   `examples/main` run census, the transcendental bit-pattern counts -- which
+>   no probe derives, because the fixture deliberately emits no transcendental
+>   -- and the pyroduct figures, which belong to a consumer repository that is
+>   not in this tree.  They are true as measured; they are the next round's
+>   work.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round46_1650.py` breaks ONE promise -- the seven script
+>   names, the Status table's estimator count, its .mbt census, the CLI-style
+>   demo count -- and the failure count must GROW at every step.  The run ends
+>   at **4** failures.
+>
+>   *Checked and left alone.*  The README attributes the upstream score
+>   vocabulary to `doubleml-for-py` **0.11.4** while the provenance labels are
+>   measured against the installed **0.11.3**.  The 0.11.4 wheel was fetched
+>   from PyPI and carries exactly the same 15 spellings and the same 21
+>   estimator classes, so the attribution is right; the installed wheel is the
+>   provenance anchor, and the string is pinned by a dry-run that fails if it
+>   moves.
+>
+>   *The ledger is unchanged.*  This round publishes no new count, so
+>   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
+>
 >
 ## The README as it stood at v0.164.11
 

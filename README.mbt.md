@@ -25,7 +25,8 @@ named in **API reference** -- with robust variance estimation,
 propensity-score processing, multiple-testing correction, and a
 reproducible validation pipeline (24 / 24 Python reference scripts PASS)
 -- on `native`,
-`wasm`, `wasm-gc`, and `js` backends under `moon test --deny-warn`.
+`wasm`, `wasm-gc`, and `js` backends under
+`moon test --target <backend> --deny-warn`.
 
 ## Features
 
@@ -43,7 +44,7 @@ reproducible validation pipeline (24 / 24 Python reference scripts PASS)
 - ✅ **Propensity-score processing** -- `PSProcessorConfig`: clipping,
   isotonic calibration, CV calibration, all reachable from an estimator.
 - ✅ **Four backends** -- `native`, `wasm`, `wasm-gc`, `js` -- all green under
-  `moon test --deny-warn`.
+  `moon test --target <backend> --deny-warn`.
 - ✅ **24 / 24 Python reference scripts PASS** -- 25 of the 25 bit-exact items
   are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical.
 - ✅ **No runtime third-party dependency** -- the library imports nothing
@@ -91,7 +92,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.39",
+  "riantr/moonbit_doubleML@0.164.40",
 }
 ```
 
@@ -141,7 +142,7 @@ fit()`, `@moonbit_doubleML.DoubleMLDID::new(data, ml_g?, ml_m?, ...).fit()`.
 
 ## The 22 estimators
 
-22 estimators (`DoubleML*` structs) in 19 production files -- 16 with
+22 `DoubleML*` estimator structs in 19 production files -- 16 with
 one struct each, and three holding two (`apo.mbt`: `DoubleMLAPO` +
 `DoubleMLAPOS`; `blp_policy.mbt`: `DoubleMLBLP` +
 `DoubleMLPolicyTree`; `quantile.mbt`: `DoubleMLPQ` + `DoubleMLQTE`) --
@@ -622,12 +623,12 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.39** |
+| `moon.mod` version | **0.164.40** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
-| Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --deny-warn` |
+| Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --target <backend> --deny-warn` |
 | Tests (native / wasm / js) | **1117 / 1117 / 1117** |
 | Tests (wasm-gc) | **1123 / 1123** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none of that API (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`) -- but `DoubleMLRDD` (v0.96.0) and `DoubleMLBLP` (v0.97.0) do expose a heteroskedasticity-robust `hac_se` under their own name; `DoubleMLPolicyTree` exposes no robust SE at all. Introduced v0.79.0 (on `DoubleMLIRM` and `DoubleMLPLR`), extended to **19 / 22** by v0.100.0 |
@@ -649,8 +650,10 @@ against upstream rather than only against a hand-rolled reference --
 `validate_did_cs_binary_with_python.py` (the port's ATT against upstream's)
 and `validate_lplr_with_python.py` (the port's coefficient against upstream's
 *and* the hand-rolled one, together). The other **7** import the wheel for
-context (`validate_apos`, `validate_cluster_iv`, `validate_cluster_plr`,
-`validate_iivm`, `validate_irm`, `validate_pliv`, `validate_plpr`); upstream's
+context (`validate_apos_with_python.py`, `validate_cluster_iv_with_python.py`,
+`validate_cluster_plr_with_python.py`, `validate_iivm_with_python.py`,
+`validate_irm_with_python.py`, `validate_pliv_with_python.py`,
+`validate_plpr_with_python.py`); upstream's
 numbers are printed there, and in some of them upstream's own quantities are
 separately gated rows.
 
@@ -749,7 +752,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.39, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.40, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

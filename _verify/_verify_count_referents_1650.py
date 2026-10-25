@@ -51,6 +51,7 @@ import importlib.util
 import io
 import os
 import re
+import subprocess
 import sys
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -521,7 +522,13 @@ REGISTERED = {
     "21 examples": 21,
     "21 runnable example binaries": 21,
     "22 `DoubleML*` estimators": 22,
-    "22 estimators (`DoubleML*` structs": 22,
+    # Round 46: the census sentence was re-worded from the loose "22 estimators
+    # (`DoubleML*` structs)" -- a reader who greps `struct DoubleML` finds 34
+    # structs in 20 files (22 estimators + 12 `*Data`) -- to the precise
+    # spelling the Status table already used.  The registry keys on the PHRASE,
+    # so the old key is REPLACED, not kept: a registered key that is absent
+    # from the README is itself a failing claim.
+    "22 `DoubleML*` estimator structs": 22,
     "220 .mbt files": 220,
     "24 scripts": 24,
     "26 whitebox test": 26,
@@ -599,6 +606,60 @@ check("the 26 whitebox test files are the *_wbtest.mbt files",
       len(pkg_white) == 26, "got %d" % len(pkg_white))
 check("the 24 Python reference scripts are the validate_*_with_python.py files",
       len(validators) == 24, "got %d" % len(validators))
+
+# --------------------------------------------------------------------------- #
+# A SCRIPT NAME IN PROSE IS A PROMISE
+# --------------------------------------------------------------------------- #
+# Round 46's promise audit found the upstream-owned paragraph naming seven
+# scripts with the BARE STEM -- `validate_apos` -- while the files on disk are
+# `validate_apos_with_python.py`.  A reader who copied the name got "No such
+# file or directory", and the same sentence, two lines earlier, wrote the full
+# name.
+#
+# Nothing owned the claim, which is why it rotted: the COUNT of the scripts was
+# checked against the disk, but not the NAMES the document spells.  A count can
+# be right while the list beside it names nothing.
+#
+# So every backticked token that reads as a file name is resolved to a tracked
+# file in the tree -- by its own path, or by its basename.  A glob is a glob.
+# A `validate_*` token with NO extension is a stem, and a stem that no file
+# carries is exactly the defect this round fixed: the rule must fail on it.
+TRACKED = set(subprocess.run(["git", "-C", ROOT, "ls-files"],
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace"
+                              ).stdout.split("\n"))
+BASENAMES = set(t.rsplit("/", 1)[-1] for t in TRACKED if t)
+FILE_TOKEN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:py|mbt)$")
+STEM_TOKEN = re.compile(r"^validate_[A-Za-z0-9_]+$")
+
+
+def _inline_spans(text):
+    """The backticked INLINE code spans, with the fenced blocks removed.
+
+    A fenced block's three backticks are not code spans, and a span that runs
+    across a fence is not a span at all -- so the fences are dropped first.
+    """
+    out = []
+    fenced = False
+    for ln in text.split("\n"):
+        if ln.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        out.append(ln)
+    return re.findall(r"`([^`\n]+)`", "\n".join(out))
+
+
+_tokens = sorted(set(_inline_spans(readme)))
+named = [t for t in _tokens
+         if "*" not in t and (FILE_TOKEN.match(t) or STEM_TOKEN.match(t))]
+check("the README names the scripts it refers to",
+      len(named) >= 10, "got %d: %s" % (len(named), named[:4]))
+_unresolved = [t for t in named
+               if not (t in TRACKED if "/" in t else t in BASENAMES)]
+check("every file name the README spells is a tracked file in the tree",
+      not _unresolved, "not a file: %s" % _unresolved[:4])
 
 # the four probe designs are enumerated in the CHANGELOG's v0.136.0 entry
 probe = re.search(r"### `DoubleMLDIDBinary`: what was tried(.*?)\n### ", changelog, re.S)
