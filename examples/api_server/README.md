@@ -65,7 +65,7 @@ estimator list:
 
 ```json
 {
-  "library": "riantr/moonbit_doubleML@0.164.35",
+  "library": "riantr/moonbit_doubleML@0.164.36",
   "service": "example/api_server@0.1.0",
   "estimators": ["plr", "irm"]
 }
@@ -151,8 +151,10 @@ Stop-Process -Id $proc.Id -Force
 - Only GET and POST are accepted. PUT/PATCH/DELETE/HEAD/CONNECT/
   OPTIONS/TRACE → `405`.
 - No path parameters, no query strings, no routing beyond
-  exact-match. New routes are added to the `routes` constant in
-  `main.mbt`.
+  exact-match. New JSON routes are added to the `routes` constant in
+  `main.mbt`. `/ping` is the one exception: it is answered before the
+  body is read and before the router runs, so a `text/plain` route
+  needs the same early return rather than an entry in `routes`.
 - `Content-Type` is always `application/json; charset=utf-8` for
   JSON responses and `text/plain; charset=utf-8` for `/ping`.
   No negotiation.
@@ -165,7 +167,7 @@ examples/api_server/
   moon.pkg          <- imports riantr/moonbit_doubleML, moonbitlang/async*
   main.mbt          <- router + JSON parser + handler + entry point
   README.md         <- this file
-  LICENSE           <- Apache-2.0, same terms as the library
+  LICENSE           <- MIT, same terms as the library
   .archived/        <- local only: previously-archived crescent-based main.mbt
                       (git-ignored; not part of the package)
 ```

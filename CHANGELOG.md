@@ -9,6 +9,108 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.36] -- the promises the tree could not keep
+
+`moon.mod` moves 0.164.35 -> 0.164.36. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- a licence that granted one thing and claimed another
+
+- The README said MIT, `moon.mod` declared MIT, and mooncakes.io published MIT --
+  but the root `LICENSE` was the stock Apache-2.0 text: 202 lines, with its
+  `Copyright [yyyy] [name of copyright owner]` placeholder unfilled, and
+  untouched since the initial commit.  This CHANGELOG's v0.60.0 entry records
+  the intent -- the licence was rewritten to MIT and the MANIFEST was fixed to
+  match -- but the licence TEXT was never rewritten, and 22 manifests still
+  carried the pre-v0.60.0 default.  A reader who downloaded the repository was
+  handed Apache-2.0 while every document told them MIT.
+- Both LICENSE files now carry MIT -- the same wording, and the same copyright
+  line, as the author's other project -- and every manifest declares it.
+  `_verify/_verify_license_1650.py` (**11** checks) owns the class, and its
+  count is fixed against the network as well as the tree: the registry check
+  skips rather than failing when the registry cannot be reached.
+
+### Fixed -- a version number about somebody else's repository
+
+- The "Used By" section said pyroduct's `dmlref` cross-check ran against
+  `riantr/moonbit_doubleML` "v0.163.3 (its current pin)".  Pyroduct bumps its
+  pins on its own schedule: when this README was last published its `moon.mod`
+  imported `0.164.34`, and the literal `0.163.3` survived only inside a
+  comment in pyroduct's own manifest.  A number this repository does not
+  control must not be published as one it does, so the literal is gone and the
+  figures -- `n = 400`, `theta = 1.5`, the two deltas -- stay.
+  `_verify/_verify_package_claims_1650.py` (**51** checks) owns it.
+
+### Fixed -- a routing instruction that did not route
+
+- The api_server's README said new routes go in the `routes` constant, but
+  `/ping` is not in it: `/ping` is answered before the body is read and before
+  the router runs, and it is one of the five endpoints the same README
+  tabulates.  A reader who added a `text/plain` route to `routes` the way the
+  README said would have got a 404.
+- The introduction called the quick-start block "a 30-line end-to-end
+  example"; the fenced block is 35 lines, of which 28 are code.  It says 35
+  now -- the block's own height, which a reader can count.
+- The api_server's own source comment shipped a wasm invocation with three
+  errors: the build directory was `examples/api_server` where the package is
+  named `example/api_server`, the build command did not ask for the release
+  profile, and it passed a `--port` flag the service does not read.
+  `_verify/_verify_doc_claims_1650.py` (**43** checks) owns all three.
+
+### Fixed -- a verification claim that failed on a clone
+
+- The README published "all four mutations killed".  The mutation battery
+  matches LITERAL newlines in `examples/bitexact/main.mbt`, so in a CRLF
+  working tree two of its four mutations matched nothing: the battery skipped
+  them and exited 1.  The release machine carried a local
+  `core.autocrlf=false`, which is not part of the tracked tree, so only the
+  machine that cut the release ever saw the claim hold.
+- The repository now pins its own line endings in a root `.gitattributes` --
+  the source types to LF, and the captured artefacts under `_verify/` and
+  `_probe/` to `-text`, because they are byte records of past runs and
+  normalising them would rewrite the evidence they are.  The battery now
+  matches whichever line endings the file has.  Measured: four of four killed
+  in an LF tree, and four of four killed in a CRLF clone.
+
+### Added -- a class of pointers that no check owned
+
+- The `file:line` checker was rewritten in v0.164.33 into the publisher-record
+  checker and nothing took its place, so the in-repo pointers in the README,
+  the skill, the tutorials, the api_server README and the CI comments were
+  owned by nothing at all.  `_verify/_verify_file_line_refs_1650.py` (**60**
+  checks) owns them now: every pointer's file must exist and be tracked, its
+  line must be inside the file, and the block it sits in must name something
+  the target file carries.
+- Its count moved with the HOST until the fresh-clone run caught it: 116
+  checks in the working tree and 60 in a fresh clone, and the clone was
+  right.  The root `README.md` is a SYMLINK to `README.mbt.md` -- a checkout
+  that can materialise a symlink reads the same document twice, and a
+  Windows clone, where git writes the link target as a one-line stub, reads
+  it once.  A check that counted a document by PATH would make its own count
+  depend on the host.  The document set is deduped by CONTENT now, and the
+  check makes the same number of checks in both environments.
+- The contract grew by two members, so the ledger that reads the ENGINEERING
+  banner grew with it: `_verify/_verify_ledger_counts_1650.py` (**38** checks).
+
+### Added -- a dry-run of this round's own checks
+
+- `_verify/_dryrun_round42_1650.py` breaks one promise at a time -- the licence
+  text, a manifest's licence, a pointer to a file that is not there, a pointer
+  past the end of its file, the routing instruction's exception, the
+  introduction's example size, the "Used By" section's pin, and the
+  repository's own line endings.  It requires the failure count to GROW at every step: **16**
+  failures at the end.  A check that cannot fail is not a check, and round 41
+  shipped without a dry-run of its own.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed (1 readme-sync + 8 build/test + 2 fmt +
+  24 validators + 9 pyexamples + 3 QA + 1 meta-gate)
+- tracked verifier suite: 59 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **59** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.35] -- the count that moved with the network
 
 `moon.mod` moves 0.164.34 -> 0.164.35. No estimator behaviour changed and the

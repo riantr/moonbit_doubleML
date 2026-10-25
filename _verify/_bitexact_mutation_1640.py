@@ -69,16 +69,27 @@ def main():
     with open(MAIN, "rb") as f:
         original = f.read()
 
+    # The anchors above are LITERAL newlines.  In a CRLF working tree they
+    # match nothing, so the battery SKIPS the mutation and then reports it
+    # as SURVIVED -- a false failure caused by the CLONE's line endings
+    # rather than by the code under test.  So the search runs on
+    # LF-normalised text, and the mutation is written back with the file's
+    # OWN line endings.  (The tree now pins `.mbt` to LF in
+    # `.gitattributes`, so a fresh clone is LF anyway; this makes the
+    # battery independent of that too.)
+    eol = "\r\n" if b"\r\n" in original else "\n"
+    original_text = original.decode("utf-8").replace("\r\n", "\n")
+
     failed = []
     try:
         for desc, old, new in MUTATIONS:
-            text = original.decode("utf-8")
+            text = original_text
             if text.count(old) != 1:
                 failed.append("%s: anchor found %d times"
                               % (desc, text.count(old)))
                 print("  SKIP  %-45s (anchor not unique)" % desc)
                 continue
-            mutated = text.replace(old, new, 1).encode("utf-8")
+            mutated = text.replace(old, new, 1).replace("\n", eol).encode("utf-8")
             with open(MAIN, "wb") as f:
                 f.write(mutated)
             r = run_validator()

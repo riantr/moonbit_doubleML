@@ -91,7 +91,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.35",
+  "riantr/moonbit_doubleML@0.164.36",
 }
 ```
 
@@ -608,7 +608,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.35** |
+| `moon.mod` version | **0.164.36** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -735,7 +735,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.35, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.36, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -831,9 +831,9 @@ and `_verify/UPSTREAM_PROVENANCE.md`.
   (Gadamer/Habermas, Shanghai Academy of Social Sciences 2008)
   plus its appendix as runnable multi-agent state machines. Its
   `dmlref` package cross-checks its own from-scratch DoubleML
-  PLR against `riantr/moonbit_doubleML` v0.163.3 (its current pin):
-  same nuisance (OLS), `n = 400`, true `theta = 1.5`, `theta` delta
-  `0.017` (1.667 vs 1.685) and `se` delta `0.001` (0.153 vs 0.152).
+  PLR against `riantr/moonbit_doubleML`: same nuisance (OLS),
+  `n = 400`, true `theta = 1.5`, `theta` delta `0.017` (1.667 vs
+  1.685) and `se` delta `0.001` (0.153 vs 0.152).
   Source lives on
   [`gitee.com/ren-yongxiang/pyroduct`](https://gitee.com/ren-yongxiang/pyroduct).
 - `examples/api_server/` -- this repo's HTTP service.

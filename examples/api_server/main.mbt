@@ -34,8 +34,13 @@
 // Run on native:
 //   $ moon run --target native examples/api_server
 // Run on wasm (moonrun):
-//   $ moon build --target wasm examples/api_server
-//   $ moonrun _build/wasm/release/build/examples/api_server/api_server.wasm --port 4000
+//   $ moon build --target wasm --release examples/api_server
+//   $ moonrun _build/wasm/release/build/example/api_server/api_server.wasm
+// The build directory is `example/api_server`, not `examples/api_server`:
+// the package is named `example/api_server`, so the workspace build root
+// keeps the package directory name as-is.  The listen port is hard-coded
+// to `4000` (`DEFAULT_PORT`) and the service takes no arguments.  See
+// `examples/api_server/README.md` for the full recipe.
 
 // ============================================================
 // Error type
@@ -336,7 +341,7 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // same run. Both are real gates doing their job -- a version bump touches
   // every place the version lives, and `_verify/_bump_1636.py` is that list.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.164.35",
+    library: "riantr/moonbit_doubleML@0.164.36",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })

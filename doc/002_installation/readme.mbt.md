@@ -8,7 +8,7 @@ In your project's `moon.mod`:
 
 ```toml
 import {
-  "riantr/moonbit_doubleML@0.164.35",
+  "riantr/moonbit_doubleML@0.164.36",
 }
 ```
 

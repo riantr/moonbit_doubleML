@@ -402,6 +402,78 @@ check("a tutorial may mention `__all__` only if the README does",
       ("__all__" not in doc5raw and "__all__" not in doc4) or ("__all__" in readme),
       "the README does not discuss it")
 
+# ==============================================================================
+print()
+print("=" * 78)
+print("H. the round-42 promises")
+print("=" * 78)
+
+# (a) the ROUTING instruction of the HTTP service.
+#
+# The api_server README said "New routes are added to the `routes` constant
+# in `main.mbt`".  `/ping` is not in that constant: it is answered BEFORE
+# the body is read and BEFORE the router runs, so a `text/plain` route
+# added to `routes` the way the README says would 404 -- and `/ping` is
+# one of the five endpoints the same README tabulates.
+api_readme_raw = read(API_README)
+check("the api_server README says new JSON routes go in the `routes` constant",
+      "New JSON routes are added to the `routes` constant" in api_readme_raw,
+      "the sentence is not there")
+check("the api_server README names `/ping` as the exception",
+      "`/ping` is the one exception" in api_readme_raw,
+      "the exception is not named")
+check("the api_server README says /ping is answered before the router runs",
+      "before the router runs" in api_readme_raw,
+      "the ordering is not stated")
+# and the SOURCE has to agree with the instruction
+i_ping = main.find('req.path == "/ping"')
+i_lookup = main.find("match lookup(")
+check("the source answers `/ping` before the router runs",
+      i_ping >= 0 and i_lookup >= 0 and i_ping < i_lookup,
+      "ping=%d lookup=%d" % (i_ping, i_lookup))
+i_routes = main.find("let routes")
+check("the `routes` constant does not carry `/ping`",
+      i_routes >= 0 and '"/ping"' not in main[i_routes:i_routes + 800],
+      "/ping is in the routes constant")
+
+# (b) the introduction's "35-line end-to-end example".
+#
+# The number must be the FENCED BLOCK's own height, so that a reader who
+# counts the block in `doc/003_quick_start` gets the number the
+# introduction states.  It used to say 30, which was neither the block's
+# height (35) nor its code-only line count (28).
+doc3_raw = read(os.path.join(ROOT, "doc", "003_quick_start", "readme.mbt.md"))
+fences = [i for i, l in enumerate(doc3_raw.split("\n"))
+          if l.strip().startswith("```")]
+block_lines = fences[1] - fences[0] - 1 if len(fences) >= 2 else -1
+doc1_raw = read(os.path.join(ROOT, "doc", "001_introduction", "readme.mbt.md"))
+m = re.search(r"a (\d+)-line end-to-end example", doc1_raw)
+check("the introduction states the example's size", m is not None,
+      "the introduction states no size")
+if m:
+    check("the stated size is the fenced block's own height",
+          int(m.group(1)) == block_lines,
+          "stated=%s block=%d" % (m.group(1), block_lines))
+
+# (c) the api_server's OWN run recipe, in the source comment.
+#
+# The comment shipped a wasm invocation with three errors in it: the build
+# directory was `examples/api_server` where the package is named
+# `example/api_server`, the build command did not ask for the release
+# profile, and it passed a `--port` flag the service does not read.
+check("the source comment's wasm path is the build root's own path",
+      "_build/wasm/release/build/example/api_server/api_server.wasm" in main,
+      "the path is not the build root's own path")
+check("the source comment does not name the wrong build directory",
+      "build/examples/api_server" not in main,
+      "the comment still says `examples/api_server`")
+check("the source comment's build command asks for the release profile",
+      "moon build --target wasm --release examples/api_server" in main,
+      "the build line is wrong")
+check("the source comment does not pass a `--port` flag",
+      "--port" not in main,
+      "the comment still offers --port")
+
 print()
 print("=" * 78)
 print("%d checks, %d failed" % (NCHECK, len(FAILS)))

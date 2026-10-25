@@ -44,7 +44,7 @@ The pure-MoonBit implementation:
   `ml_m` defaults to the logistic classifier wherever the
   propensity enters the score as `1 / m_hat`.
 
-## Status at v0.164.35
+## Status at v0.164.36
 
 - **22 estimators** — PLR, IRM, PLIV, IIVM, DID (6 variants),
   SSM, APO(S), PQ/QTE, LPQ, LPLR, PLPR, CVaR, RDD, BLP, PolicyTree.
@@ -53,10 +53,10 @@ The pure-MoonBit implementation:
   `make_*_data` factories.
 - **1117 / 1117 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
-- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.35`.
+- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.36`.
 
 ## Next
 
 - See `002_installation` for setup instructions.
-- See `003_quick_start` for a 30-line end-to-end example.
+- See `003_quick_start` for a 35-line end-to-end example.
 - See `004_estimators` for the full estimator catalogue.

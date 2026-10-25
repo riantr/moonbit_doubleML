@@ -135,6 +135,37 @@ check("the nightly check step runs at the workspace root",
       "working-directory" not in nightly,
       "a working-directory would move the step off the workspace root")
 
+# ------------------------------------------------- the line endings of a clone
+# A clone must not depend on the CLONER's `core.autocrlf` to reproduce the
+# tree.  `_verify/_bitexact_mutation_1640.py` matches LITERAL newlines in
+# `examples/bitexact/main.mbt`; in a CRLF working tree two of its four
+# mutations matched nothing, the battery SKIPPED them, and it exited 1 --
+# while the README published "all four mutations killed".  The release
+# machine carried a local `core.autocrlf=false`, which is not part of the
+# tracked tree, so only the machine that cut the release ever saw the
+# claim hold.
+#
+# So the repository pins its own line endings.  The SOURCE types are pinned
+# to LF; the captured artefacts under `_verify/` and `_probe/` are BYTE
+# RECORDS of past runs and are marked `-text`, so they are never converted
+# in either direction -- normalising them would rewrite the evidence they
+# are.
+GITATTR = os.path.join(ROOT, ".gitattributes")
+gattr = io.open(GITATTR, encoding="utf-8").read() if os.path.isfile(GITATTR) else ""
+check("the repository carries a .gitattributes", bool(gattr),
+      "a clone's line endings are then its own business")
+for ext in ("*.mbt", "*.mod", "*.md", "*.py", "*.yml"):
+    check("the .gitattributes pins %s to LF" % ext,
+          re.search(r"^%s\s+text\s+eol=lf$" % re.escape(ext), gattr, re.M)
+          is not None,
+          "no `text eol=lf` rule for %s" % ext)
+check("the .gitattributes keeps CHANGELOG.md byte-for-byte",
+      re.search(r"^CHANGELOG\.md\s+-text$", gattr, re.M) is not None,
+      "the CHANGELOG is not marked -text")
+check("the .gitattributes keeps the _verify byte records byte-for-byte",
+      re.search(r"^_verify/\*\.json\s+-text$", gattr, re.M) is not None,
+      "the byte records are not marked -text")
+
 print("")
 print("checks failed: %d" % len(fails))
 for f in fails:

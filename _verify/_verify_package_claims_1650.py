@@ -299,6 +299,35 @@ else:
           and not src_imports,
           "manifest=%s sources=%s" % (pkg_imports, src_imports))
 
+# ------------------------------------------------------- the third-party pins
+# The "Used By" section said pyroduct's `dmlref` package "cross-checks its
+# own from-scratch DoubleML PLR against `riantr/moonbit_doubleML` v0.163.3
+# (its current pin)".  "its current pin" was a promise about ANOTHER
+# repository: pyroduct bumps its import pins on its own schedule, and by
+# the time this README shipped, pyroduct's `moon.mod` imported
+# `riantr/moonbit_doubleML@0.164.34`.  The literal `0.163.3` survived only
+# inside a COMMENT in pyroduct's own manifest.
+#
+# A version literal of somebody else's package is a promise THIS
+# repository cannot keep, so the section must not carry one.  What it may
+# carry is the substance: the cross-check, its nuisance, its size, its true
+# parameter and its two deltas.
+i_used = readme.find("## Used By")
+used_by = readme[i_used:readme.find("\n## ", i_used + 1)] if i_used >= 0 else ""
+check("the README has a Used By section", i_used >= 0,
+      "the section is not there")
+# NO version literal at all -- not even this package's.  The promise was
+# about pyroduct's PIN of this package, so a literal naming this package is
+# exactly the thing that rots: pyroduct bumps its pins on its own
+# schedule, and this repository does not know when.
+version_literals = re.findall(r"v?\d+\.\d+\.\d+", used_by)
+check("the Used By section carries no version literal",
+      not version_literals,
+      "it names %s" % ", ".join(version_literals))
+check("the Used By section still states the cross-check's figures",
+      "n = 400" in used_by and "0.017" in used_by and "0.001" in used_by,
+      "the figures are not there")
+
 print()
 print("=" * 74)
 print("%d checks, %d failed" % (NCHECK, len(FAILS)))

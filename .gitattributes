@@ -1,0 +1,45 @@
+# ==============================================================================
+# Line endings are the REPOSITORY's business, not the clone's.
+# ==============================================================================
+#
+# A clone must not depend on the CLONER's `core.autocrlf` to reproduce the
+# tree.  `_verify/_bitexact_mutation_1640.py` matches LITERAL newlines in
+# `examples/bitexact/main.mbt`; in a CRLF working tree two of its four
+# mutations matched nothing, the battery SKIPPED them, and it exited 1 --
+# while the README published "all four mutations killed".  The release
+# machine happened to carry a local `core.autocrlf=false`, which is not
+# part of the tracked tree, so only the machine that cut the release ever
+# saw the claim hold.  A published claim has to hold for the clone a
+# reader makes.
+#
+# Only the SOURCE types are pinned.  The captured artefacts under
+# `_verify/` and `_probe/` are BYTE RECORDS of past runs -- golden JSONs,
+# raw logs, captured stdout -- and they are committed exactly as they were
+# written, CR and all.  Normalising them would rewrite the very evidence
+# they are, so they are marked `-text` and are never converted in either
+# direction.  `CHANGELOG.md` is in the same category: it is spliced at
+# byte level and its CR count is asserted, so it keeps its bytes exactly.
+#
+# In .gitattributes the LAST matching pattern wins for each attribute, so
+# the `-text` rules below deliberately come after the general ones.
+# ==============================================================================
+
+*.mbt    text eol=lf
+*.mod    text eol=lf
+*.md     text eol=lf
+*.py     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.toml   text eol=lf
+*.ps1    text eol=lf
+*.sh     text eol=lf
+LICENSE  text eol=lf
+
+# --- the byte records: committed exactly as written, never converted --------
+CHANGELOG.md                    -text
+_prove_pilot2_error.txt         -text
+validate_cluster_iv_with_python.py -text
+_verify/*.txt                   -text
+_verify/*.json                  -text
+_verify/*.py                    -text
+_probe/*                        -text

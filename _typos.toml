@@ -125,3 +125,21 @@ mis = "mis"
 # and `REIVEW` pass on their own.
 datas = "datas"
 Ba = "Ba"
+
+# `yhat` is the fitted-value field the isotonic probe prints
+# (`fit_isotonic([.5,.5],[0,1]).yhat` in
+# `_verify/_probe_isotonic_ties_1590.txt`); the local name in
+# `ps_processor.mbt` is `y_hat`.  It is the econometric name for the
+# fitted value -- the dictionary reads it as a typo for "that", which it
+# is not.
+yhat = "yhat"
+
+# `REIVEW` sits in `_verify/_r17_lplr_audit_1650.json`, inside the
+# `cited_text` field that quotes a commit message VERBATIM.  Same
+# reasoning as the `_verify/_commit_msg_*.txt` exclusion in `[files]`
+# above: that record is evidence about what was actually committed, and
+# "correcting" the quote would make it stop matching the commit it
+# documents.  The pinned v1.19.0 dictionary passed it on its own, so it
+# was never listed; the current dictionary reads it as a misspelling of
+# "REVIEW", so it is listed now.
+REIVEW = "REIVEW"

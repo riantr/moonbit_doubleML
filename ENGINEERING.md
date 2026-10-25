@@ -961,6 +961,86 @@
 >   `doc/moon.mod` -- the DOC PROJECT's manifest -- declared
 >   `readme = "README.md"`, a file that does not exist; the doc project
 >   has the landing page its manifest promises now.
+>
+> * **Round 42.** The promises the tree could not keep.
+>
+>   *A licence that granted one thing and claimed another.*  The README
+>   said MIT, the manifest declared MIT, and mooncakes.io published MIT --
+>   but the root `LICENSE` was the stock APACHE-2.0 text: 202 lines, with
+>   its `Copyright [yyyy] [name of copyright owner]` placeholder unfilled,
+>   and untouched since the initial commit.  `CHANGELOG.md`'s v0.60.0
+>   entry records the intent -- the licence was rewritten to MIT and the
+>   MANIFEST was fixed to match, but the licence TEXT was never rewritten.
+>   So a reader who downloaded the repository was handed Apache-2.0 while
+>   every document told them MIT, and 22 manifests still carried the
+>   pre-v0.60.0 default.  Both LICENSE files carry MIT now, and every
+>   manifest declares it.  `_verify/_verify_license_1650.py` (**11**
+>   checks) owns the class, and its count is fixed against the network as
+>   well as the tree.
+>
+>   *A version number about somebody else's repository.*  The "Used By"
+>   section said pyroduct's cross-check ran against `riantr/moonbit_doubleML`
+>   "v0.163.3 (its current pin)".  Pyroduct bumps its pins on its own
+>   schedule: by the time this README shipped, its `moon.mod` imported
+>   `0.164.34`, and the literal `0.163.3` survived only inside a comment
+>   in pyroduct's own manifest.  A number this repository does not control
+>   must not be published as one it does, so the literal is gone and the
+>   figures -- `n = 400`, `theta = 1.5`, the two deltas -- stay.
+>   `_verify/_verify_package_claims_1650.py` (**51** checks) owns it.
+>
+>   *A routing instruction that did not route.*  The api_server's README
+>   said new routes go in the `routes` constant, but `/ping` is not in it:
+>   `/ping` is answered before the body is read and before the router
+>   runs, and it is one of the five endpoints the same README tabulates.
+>   `_verify/_verify_doc_claims_1650.py` (**43** checks) owns that, and
+>   with it the introduction's example size -- the fenced block's own
+>   height, which is 35 lines and not the 30 the text used to say -- and
+>   the source comment's own wasm recipe, which named the wrong build
+>   directory, dropped the release profile and passed a `--port` flag the
+>   service does not read.
+>
+>   *A verification claim that failed on a clone.*  The README published
+>   "all four mutations killed".  The mutation battery matches LITERAL
+>   newlines in `examples/bitexact/main.mbt`, so in a CRLF working tree two
+>   of its four mutations matched nothing: the battery skipped them and
+>   exited 1.  The release machine carried a local `core.autocrlf=false`,
+>   which is not part of the tracked tree, so only the machine that cut the
+>   release ever saw the claim hold.  The repository now pins its own line
+>   endings in a root `.gitattributes`, and the battery matches whichever
+>   endings the file has.  Measured: four of four killed in an LF tree and
+>   four of four killed in a CRLF clone.  `_verify/_verify_layout_1680.py`
+>   owns the file.
+>
+>   *A class of pointers that no check owned.*  The `file:line` checker was
+>   rewritten in v0.164.33 into the publisher-record checker and nothing
+>   took its place, so the in-repo pointers in the README, the skill, the
+>   tutorials, the api_server README and the CI comments were owned by
+>   nothing at all.  `_verify/_verify_file_line_refs_1650.py` (**60**
+>   checks) owns them now: every pointer's file must exist and be
+>   tracked, its line must be inside the file, and the block it sits in
+>   must name something the target file carries.
+>
+>   *And the count that moved with the HOST.*  The first run of that check
+>   made 116 checks in the working tree and 60 in a fresh clone, and the
+>   fresh clone was right.  The root `README.md` is a SYMLINK to
+>   `README.mbt.md`: a checkout that can materialise a symlink reads the
+>   same document twice, and a Windows clone -- where git writes the link
+>   target as a one-line stub -- reads it once.  A check that counted a
+>   document by PATH would make its own count depend on the host.  The
+>   document set is deduped by CONTENT now, and the check makes the same
+>   number of checks in both environments.
+>
+>   *The ledger that reads this banner grew by two checks*, because the
+>   contract has two more members: `_verify/_verify_ledger_counts_1650.py`
+>   (**38** checks) now.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round42_1650.py` breaks ONE promise -- the licence text,
+>   a manifest's licence, a pointer to a file that is not there, a pointer
+>   past the end of its file, the routing instruction's exception, the
+>   introduction's example size, the "Used By" section's pin, the
+>   repository's own line endings -- and the failure count must GROW at
+>   every step.  The run ends at **16** failures.
 
 >
 
