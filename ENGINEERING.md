@@ -1787,6 +1787,52 @@
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**58** checks) is the new number.
 >
+> * **Round 54.**  Numbers in prose are promises too -- and nothing held them.
+>
+>   Round 53 held that a path named in prose is a promise.  This round holds
+>   that a NUMBER in prose is the same kind of promise.  The documents that
+>   describe the tree as it stands -- `README.mbt.md` and
+>   `skills/moonbit_doubleML.md` -- state dozens of counts: 22 estimators in 19
+>   source files, 220 `.mbt` files, 24 Python validators, 21 example binaries,
+>   15 of 22 estimators with a scalar sandwich SE, 11 `LearnerDispatch`
+>   variants, 26 whitebox files holding 169 test cases, 7 of 22 estimators
+>   taking a `score` argument.
+>
+>   Every one of them was MEASURED true -- and none of them was held by
+>   anything.  The next `.mbt` file would have falsified "220" silently, and
+>   the README would have gone on claiming it.  A number nobody checks is a
+>   number that is already on its way to being wrong.
+>
+>   *The new check.*  `_verify/_verify_number_promises_1650.py` (**51** checks)
+>   measures each quantity from the tree and checks EVERY place the two
+>   documents state it -- a number that appears in six sentences is six
+>   promises, not one.  The claim is PARSED out of the document, never
+>   hand-copied: a check that compares the tree against a number typed into
+>   the verifier is not a check of the document at all.
+>
+>   *Counts are not enough.*  One mechanism swaps an estimator name in the
+>   sandwich-variance row and leaves the count alone.  A check that compares
+>   only counts cannot see it, so the contract checks the NAMES too.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **296** and makes **298**: this round's banner names two more paths, and a
+>   path named in prose is a check.
+>
+>   *A hole the dry-run found.*  The first draft of the check matched
+>   "**22** estimators" and not "**22 estimators**" -- the bold around the
+>   whole phrase rather than around the number -- so the README's most
+>   prominent estimator claims were invisible to it.  The dry-run caught it:
+>   the mechanism that changed the number did not move the failure count, and
+>   a mechanism that moves nothing is not being measured.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round54_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 1 -> 2 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10.
+>   The run ends at **10** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**60** checks) is the new number.
+>
 >
 ## The README as it stood at v0.164.11
 

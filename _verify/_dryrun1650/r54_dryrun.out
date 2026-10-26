@@ -1,0 +1,17 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. the README's `.mbt` file count is wrong
+   2. the README's estimator count is wrong
+   3. the estimator table loses a row
+   4. the skill file's whitebox FILE count is wrong
+   5. the skill file's whitebox TEST-CASE count is wrong
+   6. the sandwich row names the wrong estimators
+   7. the README's `score`-argument count is wrong
+   8. the README's source-file count is wrong
+
+C. the published failure count
+  the driver counted 10 failures
+  51 checks, 10 failed

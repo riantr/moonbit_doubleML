@@ -9,6 +9,67 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.48] -- numbers in prose, and the promises they make
+
+`moon.mod` moves 0.164.47 -> 0.164.48. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the numbers that describe the tree, and the checks that hold them
+
+Round 53 held that a path named in prose is a promise.  This round holds that a
+NUMBER in prose is the same kind of promise.  The documents that describe the
+tree as it stands -- `README.mbt.md` and `skills/moonbit_doubleML.md` -- state
+dozens of counts: 22 estimators in 19 source files, 220 `.mbt` files, 24
+Python validators, 21 example binaries, 15 of 22 estimators with a scalar
+sandwich SE, 11 `LearnerDispatch` variants, 26 whitebox files holding 169 test
+cases, 7 of 22 estimators taking a `score` argument.
+
+Every one of them was MEASURED true -- and none of them was held by anything.
+The next `.mbt` file would have falsified "220" silently, and the README would
+have gone on claiming it.  A number nobody checks is a number that is already
+on its way to being wrong.
+
+- `_verify/_verify_number_promises_1650.py` (**51** checks) measures each
+  quantity from the tree and checks EVERY place the two documents state it: a
+  number that appears in six sentences is six promises, not one.  The claim is
+  PARSED out of the document, never hand-copied -- a check that compares the
+  tree against a number typed into the verifier is not a check of the document
+  at all.
+- Counts are not enough.  One mechanism swaps an estimator name in the
+  sandwich-variance row and leaves the count alone; a check that compares only
+  counts cannot see it, so the contract checks the NAMES too.
+- The estimator table is checked row by row, not by its heading: a count that
+  is right while a name is wrong is still a broken promise.
+- A dry-run found a hole in this round's own first draft.  The check matched
+  "**22** estimators" and not "**22 estimators**" -- the bold around the whole
+  phrase rather than around the number -- so the README's most prominent
+  estimator claims were invisible to it.  The mechanism that changed the
+  number did not move the failure count, and a mechanism that moves nothing is
+  not being measured.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**60** checks).
+- `_verify/_verify_path_promises_1650.py` published **296** and makes
+  **298** checks: this round's banner names two more paths, and a path
+  named in prose is a check.
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round54_1650.py` -- eight mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every step:
+  **10** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 70 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **70** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.47] -- paths named in prose, and the promises they made
 
 `moon.mod` moves 0.164.46 -> 0.164.47. No estimator behaviour changed and the
