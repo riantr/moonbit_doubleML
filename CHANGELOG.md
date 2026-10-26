@@ -9,6 +9,114 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.41] -- four of the seven, and three that never were unwatched
+
+`moon.mod` moves 0.164.40 -> 0.164.41. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Proven -- the round-46 list was wrong three times out of seven
+
+- The round-46 entry named seven numbers as "still unwatched".  This round
+  checked that list against the tree, and three of the seven were ALREADY
+  derived when it was written: the sandwich-variance split (the coverage
+  check reads the estimator set out of the source and ties the Status table's
+  own "**15 / 22**", "**4**", "**3**" and "**19 / 22**" to it), the 9 / 2 / 7
+  split of the Python cross-checks (the 9 from the imports, the 2 from a
+  derivation, the 7 as the remainder), and the `examples/main` run census
+  (18 banners, 12 distinct estimators).
+- The round-46 entry is left as it was published.  It is the record of what
+  that round measured, and rewriting it would falsify it; the correction
+  belongs in this entry.
+
+### Added -- the bit-exact scope is measured, not presence-checked
+
+- "25 of the 25 bit-exact items" and "the 6 / 6 RNG keys" were
+  PRESENT-CHECKED: the strings were in the document, which says nothing about
+  whether they are true.  `_verify/_verify_bitexact_scope_1650.py` (**40**
+  checks) derives the item count from the validator's own `reference()` --
+  the number of `out[...]` assignments IS the number of items it compares --
+  and the key count from the fixture's seed list, and then RUNS the validator
+  and compares the run with both.
+- A document that says 26, a validator that drops an item and a fixture that
+  emits 5 seeds are three different failures, and the check catches all
+  three.
+
+### Added -- the transcendental bit patterns have a probe
+
+- `sqrt 6/6`, `cos 6/6`, `sin 6/6` and `ln 5/6` lived in two docstrings and
+  nowhere else, because `examples/bitexact` deliberately emits NO
+  transcendental -- it must not: `ln` differs from CPython by one ULP, and a
+  fixture that emitted one could not be a gate that passes.
+- So the probe is separate: a throwaway program that prints the four
+  functions of six arguments, so their IEEE-754 bit patterns can be compared
+  with CPython's.  The check measures them and ties the README's table rows,
+  the validator's docstring and the fixture's docstring to the same
+  measurement.
+- The invariants are the STANDARD's, not the toolchain's: `sqrt` must agree
+  everywhere, because IEEE-754 requires it, and `ln` must disagree
+  somewhere, because libm is not correctly rounded.  The README's quoted bit
+  patterns are compared with what the probe actually prints.
+
+### Fixed -- the two numbers the upstream paragraph published
+
+- The paragraph says "**9** of its 24 scripts import the upstream `doubleml`
+  wheel, and **2** of those gate the port against upstream ... The other **7**
+  import the wheel for context".  The 9 and the 24 were derived; the 2 and
+  the 7 were not tied to anything -- the paragraph could have said "**3** of
+  those gate" and every check would still have been green.
+- The gating SET is now derived: the upstream NAMES come from the AST (a name
+  bound from a call into the wheel), and a wheel importer gates iff some line
+  outside a print call mentions one of them together with a port token.  The
+  old rule was a line PATTERN, and it missed the shape `validate_lplr` uses,
+  where the comparison is on the line AFTER the difference.  The derivation
+  finds exactly `validate_did_cs_binary_with_python.py` and
+  `validate_lplr_with_python.py`, and the README's own **2** and **7** are
+  tied to it.
+
+### Fixed -- the examples/main row's NAMES
+
+- The row said "`DoubleMLPLR` + 11 others (IRM / PLIV / IIVM / ...)" and its
+  COUNT was checked; its NAMES were not.  The row could have dropped RDD and
+  named PLQ instead, and every check would have stayed green.  The names are
+  now read out of the row and compared with the set the driver actually
+  runs.
+
+### Changed -- whose measurement the pyroduct figures are
+
+- The "Used By" section quotes a downstream consumer's own numbers: `n = 400`,
+  true `theta = 1.5`, `theta` delta `0.017` (1.667 vs 1.685) and `se` delta
+  `0.001` (0.153 vs 0.152).  They are true, and they are not derivable from
+  here: the code that produces them is in another repository, the published
+  pyroduct package ships no sources, and its published README does not carry
+  the figures either.
+- So the section now says whose measurement they are, and that this
+  repository does not re-measure them, and the check that owns it --
+  `_verify/_verify_package_claims_1650.py` (**53** checks) -- says so too.
+  No version literal is added: a literal about another repository's pin rots
+  on that repository's schedule, which is why round 42 dropped one.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**46** checks).
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round47_1650.py` -- seven mechanisms, one per new check:
+  the bit-exact item count, the RNG key count, the `ln` row's count, the
+  upstream paragraph's two numbers, the examples/main row's names and the
+  pyroduct attribution.  It requires the failure count to GROW at every
+  step: **11** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 63 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **63** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.40] -- the names that were not files
 
 `moon.mod` moves 0.164.39 -> 0.164.40. No estimator behaviour changed and the

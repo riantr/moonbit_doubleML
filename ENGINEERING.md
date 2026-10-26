@@ -1381,6 +1381,87 @@
 >   *The ledger is unchanged.*  This round publishes no new count, so
 >   `_verify/_verify_ledger_counts_1650.py` (**44** checks) stays.
 >
+> * **Round 47.**  Four of the seven, and three that never were unwatched.
+>
+>   The round-46 entry above named seven numbers as "still unwatched".  This
+>   round checked that list against the tree, and the list was wrong three
+>   times out of seven.
+>
+>   *Three of them were already watched.*  The sandwich-variance split is
+>   derived by `_verify/_verify_sandwich_coverage_1680.py`, which reads the
+>   estimator set out of the source and ties the Status table's own
+>   "**15 / 22**", "**4**", "**3**" and "**19 / 22**" to it.  The 9 / 2 / 7
+>   split is derived by `_verify/_verify_tutorial_claims_1650.py`, and the
+>   `examples/main` census by `_verify/_verify_layout_1680.py`: 18 banners,
+>   12 distinct estimators.  The round-46 entry listed all three as
+>   unwatched.
+>
+>   *The four that were unwatched, and what now watches them.*
+>
+>   *The bit-exact scope.*  "25 of the 25 bit-exact items" and "the 6 / 6 RNG
+>   keys" were PRESENT-CHECKED: the strings were in the document, which says
+>   nothing about whether they are true.  The new check
+>   `_verify/_verify_bitexact_scope_1650.py` (**40** checks) derives the item
+>   count from the validator's own `reference()` -- the number of `out[...]`
+>   assignments IS the number of items it compares -- and the key count from
+>   the fixture's seed list, and then RUNS the validator and compares the run
+>   with both.  A document that says 26, a validator that drops an item and a
+>   fixture that emits 5 seeds are three different failures, and the check
+>   catches all three.
+>
+>   *The transcendental bit patterns.*  `sqrt 6/6`, `cos 6/6`, `sin 6/6` and
+>   `ln 5/6` lived in two docstrings and nowhere else, because
+>   `examples/bitexact` deliberately emits NO transcendental -- it must not:
+>   `ln` differs from CPython by one ULP, and a fixture that emitted one
+>   could not be a gate that passes.  So the probe is separate: a throwaway
+>   program that prints the four functions of six arguments, so their
+>   IEEE-754 bit patterns can be compared with CPython's.  The check measures
+>   them and ties the README's table rows, the validator's docstring and the
+>   fixture's docstring to the same measurement.  The invariants are the
+>   STANDARD's, not the toolchain's: `sqrt` must agree everywhere, because
+>   IEEE-754 requires it, and `ln` must disagree somewhere, because libm is
+>   not correctly rounded.
+>
+>   *The two numbers the upstream paragraph published.*  The paragraph says
+>   "**9** of its 24 scripts import the upstream `doubleml` wheel, and **2**
+>   of those gate the port against upstream ... The other **7** import the
+>   wheel for context".  The 9 and the 24 were derived; the 2 and the 7 were
+>   not tied to anything -- the paragraph could have said "**3** of those
+>   gate" and every check would still have been green.  The gating SET is now
+>   derived: the upstream NAMES come from the AST (a name bound from a call
+>   into the wheel), and a wheel importer gates iff some line outside a print
+>   call mentions one of them together with a port token.  The old rule was a
+>   line PATTERN, and it missed the shape `validate_lplr` uses, where the
+>   comparison is on the line AFTER the difference.  The derivation finds
+>   exactly `validate_did_cs_binary_with_python.py` and
+>   `validate_lplr_with_python.py`, and the README's own **2** and **7** are
+>   tied to it.
+>
+>   *The examples/main row's NAMES.*  The row said "`DoubleMLPLR` + 11 others
+>   (IRM / PLIV / IIVM / ...)" and its COUNT was checked; its NAMES were not.
+>   The row could have dropped RDD and named PLQ instead, and every check
+>   would have stayed green.  The names are now read out of the row and
+>   compared with the set the driver actually runs.
+>
+>   *The pyroduct figures, and what cannot be derived.*  The "Used By"
+>   section quotes a downstream consumer's own numbers.  They are true, and
+>   they are not derivable from here: the code that produces them is in
+>   another repository, the published pyroduct package ships no sources, and
+>   its published README does not carry the figures.  So the section now says
+>   whose measurement they are and that this repository does not re-measure
+>   them, and the check that owns it --
+>   `_verify/_verify_package_claims_1650.py` (**53** checks) -- says so too.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round47_1650.py` breaks ONE promise -- the bit-exact item
+>   count, the RNG key count, the `ln` row's count, the upstream paragraph's
+>   two numbers, the examples/main row's NAMES, the pyroduct attribution --
+>   and the failure count must GROW at every step.  The run ends at
+>   **11** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**46** checks) is the new number.
+>
 >
 ## The README as it stood at v0.164.11
 

@@ -534,21 +534,104 @@ for fn, pats in GATES.items():
         check("%s still compares the port against upstream (%s)" % (fn, clip(p, 44)),
               re.search(p, src) is not None)
 
-# a wheel importer that is NOT one of the two must not gate the port against
-# upstream: the port token and the upstream token must never share a line
-# with a comparison operator.
-PORT_TOK = re.compile(r"\b(?:mb|moonbit|port)\w*\b", re.I)
-UP_TOK = re.compile(r"\b(?:up\w*|upstream|th_up)\b", re.I)
-CMP = re.compile(r"[<>]=?|!=")
+# ---- the gating SET is derived, not typed ---------------------------------
+# The GATES dict above NAMES the two scripts that gate the port against
+# upstream, and checks that each still does.  What it could not do was NOTICE
+# a third script starting to gate, because the old rule was a line PATTERN:
+# "a port token and an upstream token and a comparison operator on ONE
+# line".  It misses the shape `validate_lplr` uses --
+#
+#     d_up = abs(mb_theta - th_up)
+#     band_ok = d_up < band and d_hr < band
+#
+# -- where the comparison is on the NEXT line.  A rule that enumerates one
+# shape stops biting when a file uses another, so the set is DERIVED instead:
+# the upstream NAMES come from the AST (a name bound from a call into the
+# wheel), and a wheel importer gates iff some line OUTSIDE a print call
+# mentions one of them together with a port token.
+#
+# The upstream side is derived rather than pattern-matched on purpose: the
+# obvious pattern -- "a name containing `up`" -- matches `group`.
+PORT_TOK = re.compile(r"\b(?:mb\w*|moonbit\w*|port\w*)\b", re.I)
+
+
+def upstream_names(src):
+    """The names a script binds from a call into the upstream wheel."""
+    tree = ast.parse(src)
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name.split(".")[0] == "doubleml":
+                    imported.add(a.asname or a.name)
+        elif isinstance(node, ast.ImportFrom):
+            if (node.module or "").split(".")[0] == "doubleml":
+                for a in node.names:
+                    imported.add(a.asname or a.name)
+
+    def is_upstream_call(c):
+        if not isinstance(c, ast.Call):
+            return False
+        f = c.func
+        if isinstance(f, ast.Name):
+            return f.id in imported or f.id.startswith("upstream")
+        if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+            return f.value.id in imported or f.value.id.startswith("upstream")
+        return False
+
+    names = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(is_upstream_call(c) for c in ast.walk(node.value)):
+            continue
+        for t in node.targets:
+            for sub in ast.walk(t):
+                if isinstance(sub, ast.Name):
+                    names.add(sub.id)
+    return names
+
+
+def print_lines(src):
+    """The line numbers that sit inside a print(...) argument."""
+    out = set()
+    for node in ast.walk(ast.parse(src)):
+        if not isinstance(node, ast.Call):
+            continue
+        f = node.func
+        fname = getattr(f, "id", None) or getattr(f, "attr", None)
+        if fname != "print":
+            continue
+        for arg in node.args:
+            for sub in ast.walk(arg):
+                if hasattr(sub, "lineno"):
+                    out.add(sub.lineno)
+    return out
+
+
+DERIVED = {}
 for f in WHEEL:
-    if f in GATES:
-        continue
-    _n, _s, lines = py_code(os.path.join(ROOT, f))
-    bad = []
-    for ln in lines:
-        if PORT_TOK.search(ln) and UP_TOK.search(ln) and CMP.search(ln):
-            bad.append(ln.strip()[:70])
-    check("%s does not gate the port against upstream" % f, not bad, str(bad[:2]))
+    src = read(os.path.join(ROOT, f))
+    uns = upstream_names(src)
+    pl = print_lines(src)
+    hits = []
+    for i, ln in enumerate(src.split("\n"), 1):
+        if i in pl:
+            continue
+        if PORT_TOK.search(ln) and any(re.search(r"\b%s\b" % re.escape(u), ln)
+                                        for u in uns):
+            hits.append(ln.strip()[:70])
+    if hits:
+        DERIVED[f] = hits
+
+check("the derived gating set is the two scripts that are named as gating",
+      sorted(DERIVED) == sorted(GATES),
+      "derived=%s named=%s" % (sorted(DERIVED), sorted(GATES)))
+for f in WHEEL:
+    check("%s %s the port against upstream"
+          % (f, "gates" if f in DERIVED else "does not gate"),
+          (f in DERIVED) == (f in GATES),
+          "derived=%s, named=%s" % (f in DERIVED, f in GATES))
 
 # the README's paragraph
 READ = os.path.join(ROOT, "README.mbt.md")
@@ -560,6 +643,27 @@ check("the README states the 9 / 24 wheel split",
 check("the README names the two scripts that gate the port against upstream",
       "`validate_did_cs_binary_with_python.py`" in flatr
       and "`validate_lplr_with_python.py`" in flatr)
+
+# the README's OWN "2" and "7" -- the numbers the paragraph publishes.  They
+# were not tied to anything: the paragraph could have said "**3** of those
+# gate" and every check would still have been green.
+m2 = re.search(r"\*\*(\d+)\*\*\s+of\s+those\s+gate\s+the\s+port\s+against\s+upstream",
+               flatr)
+check("the README states how many of them gate the port against upstream",
+      m2 is not None, "the phrase is not there")
+if m2:
+    check("the README's gating count is the derived count",
+          int(m2.group(1)) == len(DERIVED),
+          "the README says %s, the derivation finds %d"
+          % (m2.group(1), len(DERIVED)))
+m7 = re.search(r"[Tt]he\s+other\s+\*\*(\d+)\*\*\s+import\s+the\s+wheel", flatr)
+check("the README states how many import the wheel for context",
+      m7 is not None, "the phrase is not there")
+if m7:
+    check("the README's context count is the wheel importers minus the gating ones",
+          int(m7.group(1)) == len(WHEEL) - len(DERIVED),
+          "the README says %s, the derivation finds %d"
+          % (m7.group(1), len(WHEEL) - len(DERIVED)))
 check("the README's upstream-gate count word still parses",
       re.search(r"\*\*(\w+) gates whose reference is UPSTREAM", read(READ)) is not None)
 check("the README's gate table still has one row per gate on disk",

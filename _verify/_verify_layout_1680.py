@@ -103,6 +103,37 @@ check("RDD runs twice (sharp and fuzzy)", len(rdd) == 2, "got %d" % len(rdd))
 check("12 estimators + 5 n_rep arms + 1 extra RDD run = 18 banners",
       len(distinct) + len(n_rep) + (len(rdd) - 1) == len(banners))
 
+# ---- the README's examples/main ROW names the same estimators ------------
+# The row says "`DoubleMLPLR` + 11 others (IRM / PLIV / IIVM / ...)".  The
+# COUNT of that row was checked; the NAMES were not -- so the document could
+# have dropped RDD and named PLQ instead, and every check would have stayed
+# green.  The names are now read out of the row and compared with the set
+# the driver actually runs.
+row = re.search(r"^\| `examples/main` \|(.*)$", readme, re.M)
+check("the README has an examples/main row", row is not None)
+if row:
+    body = row.group(1)
+    m = re.search(r"`DoubleML(\w+)`\s*\+\s*(\d+)\s+others\s*\(([^)]*)\)", body)
+    check("the row names PLR and then N others", m is not None,
+          body[:120] if not m else "")
+    if m:
+        head, count, others = m.group(1), int(m.group(2)), m.group(3)
+        listed = [head] + [x.strip() for x in others.split("/") if x.strip()]
+        check("the row's 'N others' is the number of names it gives",
+              count == len(listed) - 1,
+              "the row says %d others and names %d" % (count, len(listed) - 1))
+        check("the row's 'N others' is the driver minus PLR",
+              count == len(distinct) - 1,
+              "the row says %d, the driver runs %d estimators"
+              % (count, len(distinct)))
+        check("the row names exactly the estimators the driver runs",
+              set(listed) == set(distinct),
+              "row=%s driver=%s" % (sorted(set(listed)), sorted(set(distinct))))
+        for name in listed:
+            check("the row's %s is one the driver runs" % name,
+                  name in distinct,
+                  "the driver runs %s" % ", ".join(distinct))
+
 # --------------------------------------------------------------- the prose
 check("the layout says '21 driver binaries'", "21 driver binaries" in readme)
 check("the layout says 12 estimators in 18 runs",

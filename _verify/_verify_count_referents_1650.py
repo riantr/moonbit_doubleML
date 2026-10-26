@@ -538,6 +538,13 @@ REGISTERED = {
     # registers the word spelling, and the CHANGELOG's own section derives
     # the count below.
     "4 designs": 4,
+    # Round 47: the bit-exact SCOPE.  These three numbers were
+    # PRESENT-CHECKED for versions -- the strings were in the document, which
+    # says nothing about whether they are true -- and are now derived from
+    # the validator's own `reference()` and the fixture's own seed list.
+    "25 of the 25 bit-exact items": 25,
+    "6 / 6 RNG keys": 6,
+    "25 / 25 items": 25,
 }
 OWNERS = {
     "two different sets of six": "_verify_ctor_options_1650.py",
@@ -552,6 +559,11 @@ OWNERS = {
     "7 of the 22 estimators": "_verify_score_argument_1650.py",
     "19 name-matched estimator": "_verify_provenance_grouping_1650.py",
     "four data types": "_verify_api_promises_1650.py",
+    # Round 47: the bit-exact scope -- the item count, the key count and the
+    # slash spelling of the item count, all derived by the same check.
+    "25 of the 25 bit-exact items": "_verify_bitexact_scope_1650.py",
+    "6 / 6 RNG keys": "_verify_bitexact_scope_1650.py",
+    "25 / 25 items": "_verify_bitexact_scope_1650.py",
 }
 
 for phrase in REGISTERED:

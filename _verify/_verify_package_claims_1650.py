@@ -328,6 +328,19 @@ check("the Used By section still states the cross-check's figures",
       "n = 400" in used_by and "0.017" in used_by and "0.001" in used_by,
       "the figures are not there")
 
+# WHO measured them.  The figures are true -- pyroduct's own `dmlref` report
+# says exactly this -- but they are produced by code in ANOTHER repository:
+# the published pyroduct package ships no sources, and its published README
+# does not carry the figures, so nothing in this tree can re-derive them.
+# A reader must not take them for this repository's measurements, and the
+# only way to keep that from drifting is to require the attribution.
+check("the Used By section says whose measurement the figures are",
+      "pyroduct's own measurement" in used_by,
+      "the attribution is not there")
+check("the Used By section says the figures are not re-measured here",
+      "does not re-measure" in used_by,
+      "the scope statement is not there")
+
 print()
 print("=" * 74)
 print("%d checks, %d failed" % (NCHECK, len(FAILS)))

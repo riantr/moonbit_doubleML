@@ -1,0 +1,19 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. the bit-exact item count is wrong
+   2. the RNG key count is wrong
+   3. the ln row's count is wrong
+   4. the upstream paragraph's gating count is wrong
+   5. the upstream paragraph's context count is wrong
+   6. the examples/main row drops RDD
+   7. the pyroduct attribution is gone
+
+C. the published failure count
+  the driver counted 11 failures
+  40 checks, 6 failed
+  127 checks, 2 failed
+  53 checks, 1 failed
+  ? checks, 2 failed

@@ -22,6 +22,10 @@ A. the measurement -- run the 16 drivers and look at what they print
   PASS  the drivers with no true value are pava and splitting
   PASS  the drivers with no CI are apos, cluster, pava, splitting and ssm
 
+A2. EVERY DEMO THIS FILE RUNS IS A CLI-STYLE EXAMPLE PACKAGE
+  PASS  moon.work lists 21 example packages
+  PASS  the demos this file runs are exactly the CLI-style example packages
+
 B. the old rule, measured -- the gap must be exactly pava
   PASS  the old bracket rule would have counted 12
   PASS  the old bracket rule added exactly one driver
@@ -62,7 +66,7 @@ F. the two copies
   PASS  the README is LF-only with no BOM
 
 ========================================================================
-34 checks, 3 failed
+36 checks, 3 failed
 *** FAIL ***
   - the record's CI count matches
   - the README says 11 of the 16 print a 95 % CI

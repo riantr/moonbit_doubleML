@@ -120,6 +120,9 @@ F. the inventory: no unregistered count claim
   ok    the registered claim '129 blackbox test' is present in the README 
   ok    the registered claim '12 estimators' is present in the README  
   ok    the registered claim '4 designs' is present in the README      
+  ok    the registered claim '25 of the 25 bit-exact items' is present in the README 
+  ok    the registered claim '6 / 6 RNG keys' is present in the README 
+  ok    the registered claim '25 / 25 items' is present in the README  
   ok    the owning verifier _verify_ctor_options_1650.py is tracked    _verify_ctor_options_1650.py
   ok    the owning verifier _verify_ctor_options_1650.py is tracked    _verify_ctor_options_1650.py
   ok    the owning verifier _verify_round12_pyexample_1647.py is tracked _verify_round12_pyexample_1647.py
@@ -131,6 +134,9 @@ F. the inventory: no unregistered count claim
   ok    the owning verifier _verify_score_argument_1650.py is tracked  _verify_score_argument_1650.py
   ok    the owning verifier _verify_provenance_grouping_1650.py is tracked _verify_provenance_grouping_1650.py
   ok    the owning verifier _verify_api_promises_1650.py is tracked    _verify_api_promises_1650.py
+  *** FAIL ***  the owning verifier _verify_bitexact_scope_1650.py is tracked _verify_bitexact_scope_1650.py
+  *** FAIL ***  the owning verifier _verify_bitexact_scope_1650.py is tracked _verify_bitexact_scope_1650.py
+  *** FAIL ***  the owning verifier _verify_bitexact_scope_1650.py is tracked _verify_bitexact_scope_1650.py
 
 G. the counts this verifier owns, derived from the tree
   ok    the 22 estimators are 22 estimator structs in the source       got 22
@@ -147,7 +153,7 @@ G. the counts this verifier owns, derived from the tree
   *** FAIL ***  no unregistered count claim in the README                  ['Seven estimators']
 
 ==========================================================================
-128 checks, 19 failed
+134 checks, 22 failed
 *** FAIL ***
   - the migrated set is EXACTLY the source's `ml_m`-classifier set
   - the SSM sentence names all four migrations
@@ -167,6 +173,9 @@ G. the counts this verifier owns, derived from the tree
   - the gherkin evidence's total is the mapped-name count
   - the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README
   - the registered claim 'the four hazardous verdicts of v0.132.0-v0.138' is present in the README
+  - the owning verifier _verify_bitexact_scope_1650.py is tracked
+  - the owning verifier _verify_bitexact_scope_1650.py is tracked
+  - the owning verifier _verify_bitexact_scope_1650.py is tracked
   - no unregistered count claim in the README
 
-EXACT failure count: 19
+EXACT failure count: 22
