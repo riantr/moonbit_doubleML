@@ -50,16 +50,17 @@ The pure-MoonBit implementation:
   `1 / (1 - m_hat)`, but it models the propensity of the INSTRUMENT
   rather than of the treatment, and it defaults to OLS.
 
-## Status at v0.164.42
+## Status at v0.164.43
 
 - **22 estimators** — PLR, IRM, PLIV, IIVM, DID (6 variants),
   SSM, APO(S), PQ/QTE, LPQ, LPLR, PLPR, CVaR, RDD, BLP, PolicyTree.
 - **18 DGP factories** across 17 `dgp_*.mbt` modules (35 files
-  counting the `dgp_*_test.mbt` siblings), ported from upstream's
-  `make_*_data` factories.
+  counting the `dgp_*_test.mbt` siblings and the cross-estimator
+  `dgp_recovery_test.mbt`), ported from upstream's 18 `make_*` dataset
+  factories.
 - **1117 / 1117 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
-- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.42`.
+- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.43`.
 
 ## Next
 

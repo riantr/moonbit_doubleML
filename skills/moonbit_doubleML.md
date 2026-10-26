@@ -32,7 +32,11 @@ surface and anti-patterns).
 # Dependency rule (repo-wide)
 
 - Only official (`moonbitlang/*`) packages are allowed.
-- Non-official packages may only be `riantr/*` (this repo itself).
+- Non-official packages may only be `riantr/*` (this repo itself). One
+  declared line does not meet the rule today:
+  `moonbit-community/sqlite3@0.2.3`, in `moonbit_doubleML/moon.mod` --
+  **no `.mbt` in the library imports it** (0 references), so it is a dead
+  entry, not a runtime dependency.
 - For official packages, pin to the latest published version on the
   registry (e.g. `moonbitlang/async@0.22.5`) and upgrade when
   bumping is intentional.
@@ -108,8 +112,10 @@ surface and anti-patterns).
   file called them MoonBit extras, which was wrong.
 
 - 17 DGP modules live at root as `dgp_*.mbt` with sibling
-  `dgp_*_test.mbt` (35 files in all). The shared Box-Muller helper is in
-  `seed.mbt`.
+  `dgp_*_test.mbt` (35 files in all: the 17 modules, their 17 test
+  siblings, and the cross-estimator `dgp_recovery_test.mbt`, which is a
+  test file with no module of its own). The shared Box-Muller helper is
+  in `seed.mbt`.
 
 - 21 driver binaries live under `examples/<bin>/main.mbt`. Of these:
   - 16 (`apo`, `apos`, `cluster`, `cvar`, `datasets`, `did_binary`,
@@ -125,7 +131,7 @@ surface and anti-patterns).
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.164.42"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.43"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside

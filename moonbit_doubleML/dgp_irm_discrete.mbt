@@ -1,7 +1,7 @@
 // dgp_irm_discrete.mbt
 //
 // Pure-MoonBit port of upstream
-// `doubleml.irm.datasets.dgp_irm_data_discrete_treatments.make_dgp_irm_data_discrete_treatments`.
+// `doubleml.irm.datasets.dgp_irm_data_discrete_treatments.make_irm_data_discrete_treatments`.
 //
 // IRM DGP with discrete treatment in {0, 1, 2, 3} (a 4-level
 // multivalued treatment) and a propensity score per level:

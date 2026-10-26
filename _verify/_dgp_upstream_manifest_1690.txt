@@ -1,0 +1,45 @@
+# upstream doubleml 0.11.4 -- the dataset factories this port ports
+#
+# WHAT THIS IS
+# =============
+# The upstream package that publishes `doubleml` is a PyPI WHEEL, not a
+# source tree, and this repository does not vendor it.  Its 0.11.4 sdist is a
+# LOCAL CACHE (`_verify/doubleml-0.11.4.tar.gz`), and it is not tracked -- so
+# a contract run in a fresh clone cannot see it.  This file IS tracked, and it
+# is the snapshot that `_verify/_verify_doc_scope_1650.py` reads when it
+# checks what doc/005 says about upstream's layout.
+#
+# It was EXTRACTED from that sdist, and the sdist's sha256 is recorded below
+# so the snapshot can be tied to the artefact it came from.  Regenerate it
+# with `_r49_gen_manifest_1650.py` and re-read the sha256 before trusting
+# a change to it.
+#
+# FORMAT
+# =======
+#   <package> <module>.py <factory>
+# one line per upstream factory, sorted.  The package is upstream's own
+# directory under `doubleml/`.
+
+upstream doubleml 0.11.4
+sdist sha256 352641af0c876f54a7def36fa078cdcba171fb4221c28a7fdff6e710c72d485f
+sdist file _verify/doubleml-0.11.4.tar.gz
+factories 18
+
+doubleml/did dgp_did_CS2021.py                          make_did_CS2021
+doubleml/did dgp_did_SZ2020.py                          make_did_SZ2020
+doubleml/did dgp_did_cs_CS2021.py                       make_did_cs_CS2021
+doubleml/irm dgp_confounded_irm_data.py                 make_confounded_irm_data
+doubleml/irm dgp_heterogeneous_data.py                  make_heterogeneous_data
+doubleml/irm dgp_iivm_data.py                           make_iivm_data
+doubleml/irm dgp_irm_data.py                            make_irm_data
+doubleml/irm dgp_irm_data_discrete_treatments.py        make_irm_data_discrete_treatments
+doubleml/irm dgp_ssm_data.py                            make_ssm_data
+doubleml/plm _make_pliv_data.py                         _make_pliv_data
+doubleml/plm dgp_confounded_plr_data.py                 make_confounded_plr_data
+doubleml/plm dgp_lplr_LZZ2020.py                        make_lplr_LZZ2020
+doubleml/plm dgp_pliv_CHS2015.py                        make_pliv_CHS2015
+doubleml/plm dgp_pliv_multiway_cluster_CKMS2021.py      make_pliv_multiway_cluster_CKMS2021
+doubleml/plm dgp_plpr_CP2025.py                         make_plpr_CP2025
+doubleml/plm dgp_plr_CCDDHNR2018.py                     make_plr_CCDDHNR2018
+doubleml/plm dgp_plr_turrell2018.py                     make_plr_turrell2018
+doubleml/rdd simple_dgp.py                              make_simple_rdd_data

@@ -1,7 +1,7 @@
 // dgp_simple_rdd.mbt
 //
 // Pure-MoonBit port of upstream
-// `doubleml.rdd.datasets.simple_dgp.simple_rdd_dgp`.
+// `doubleml.rdd.datasets.simple_dgp.make_simple_rdd_data`.
 //
 // Simple sharp-RDD DGP (Hahn, Todd, Van der Klaauw 2001 / Imbens
 // & Lemieux 2008): the running variable X is drawn from U[-1, 1]

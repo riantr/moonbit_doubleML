@@ -363,10 +363,28 @@ print("=" * 78)
 print("G. doc/005 -- factory SET, signatures, recovery-test SET")
 print("=" * 78)
 d5 = docs["005_dgps"]
+# doc/005 now names UPSTREAM's factories as well: six of them are renamed
+# here, and the rename paragraph names each upstream name.  The set check is
+# RE-TARGETED -- it must name every PORT factory and no other, and every
+# extra name must be a real UPSTREAM factory, read from the tracked manifest
+# (the sdist is a local cache and is not tracked, so it cannot be the anchor
+# here: a check that reads a file a fresh clone does not have is a check that
+# does not run).
+_up_fac = set()
+_man = os.path.join(ROOT, "_verify", "_dgp_upstream_manifest_1690.txt")
+if os.path.isfile(_man):
+    for _l in io.open(_man, encoding="utf-8").read().split("\n"):
+        _p = _l.split()
+        if len(_p) == 3 and _p[2].lstrip("_").startswith("make"):
+            _up_fac.add(_p[2])
 named_f = set(re.findall(r"`(make_\w+)`", d5))
+_port_named = named_f & set(FACTORIES)
+_extra = named_f - set(FACTORIES)
 check("doc/005 names exactly the derived factory set",
-      named_f == FACTORIES,
-      "extra=%s missing=%s" % (sorted(named_f - FACTORIES), sorted(FACTORIES - named_f)))
+      _port_named == set(FACTORIES) and _extra <= _up_fac,
+      "extra=%s missing=%s unknown=%s" % (sorted(_extra - _up_fac),
+                                          sorted(set(FACTORIES) - _port_named),
+                                          sorted(_extra - _up_fac)))
 must_re(r"doc/005 states the real factory count \(derived %d\)" % len(FACTORIES),
         r"^%d synthetic-data generators" % len(FACTORIES), d5, flags=re.M)
 must_re(r"doc/005 states the real module count \(derived %d\)" % len(DGP_FILES),

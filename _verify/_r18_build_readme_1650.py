@@ -1664,6 +1664,79 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**48** checks) is the new number.
 >
+> * **Round 49.**  The nine sentences the README's neighbours were still
+>   getting wrong -- and three more found while fixing them.
+>
+>   Round 48 shipped the README.  A fresh-eyes audit then read the SIX
+>   TUTORIALS, the skill and the example README -- the documents the README
+>   points its readers at -- and asked the same question of every sentence:
+>   does it claim more than the tree supports?  Nine did, and the two worst
+>   were real API-surface defects that no CI gate can catch, because one
+>   lived inside a `moonbit nocheck` fence and the other was prose about the
+>   dependency rule.
+>
+>   *"Every estimator follows" the constructor snippet.*  Six of the 22 do
+>   not accept those arguments: `DoubleMLPQ`, `DoubleMLQTE` and
+>   `DoubleMLLPQ` have no `n_rep`, and `DoubleMLBLP`, `DoubleMLPolicyTree`
+>   and `DoubleMLRDD` take no `n_folds`, no `n_rep` and no `seed`.  The
+>   sentence said "Every", and the sentence about `score` said it was "the
+>   one that does not follow" -- so the document had one exception where it
+>   had seven.
+>
+>   *The dependency rule was broken by the package it is about.*  The skill
+>   allowed only `moonbitlang/*` and `riantr/*`, and the library's OWN
+>   `moon.mod` declares `moonbit-community/sqlite3@0.2.3`, which is
+>   neither.  No `.mbt` in the library imports it -- 0 references -- so it is
+>   a dead entry, and the rule now says so instead of pretending otherwise.
+>
+>   *Upstream's factories were in the wrong place.*  Only 3 of the 18 live
+>   under `doubleml/did/datasets/`; the other 15 are spread over three more
+>   packages, only 8 of the 18 upstream names end in `_data`, and SIX are
+>   renamed here -- including `make_pliv_data`, which upstream keeps
+>   PRIVATE as `_make_pliv_data` and this port publishes.
+>
+>   *Three provenance headers named upstream factories that do not exist.*
+>   `make_dgp_irm_data_discrete_treatments`, `make_pliv_data` and
+>   `simple_rdd_dgp` -- none of them is an upstream name.  The port's own
+>   record of upstream was wrong in three places, and doc/005 was right only
+>   because it had been written from the upstream package rather than from
+>   the headers.
+>
+>   *The rest.*  doc/006's transcript was not a prefix of what the loop
+>   prints (it dropped the glob's SECOND file with no elision marker, and
+>   put the verdict on the banner's line); the same document handed the
+>   reader the loop CI's own comment identifies as the defect it was
+>   rewritten to remove; doc/002 listed `scipy` as a direct dependency and
+>   `rdrobust` with no constraint, while CI installs it pinned `>=2,<3` ON
+>   PURPOSE; doc/004 put `DoubleMLQTE` with the scalar-quantile estimators
+>   when it takes `quantiles`, an `Array[Double]`; "35 files in all" counted
+>   a file its own description excluded; and doc/003 called a cross-section
+>   a panel.
+>
+>   *The new check.*  `_verify/_verify_doc_scope_1650.py` (**133** checks)
+>   ties each of the nine to a MEASUREMENT rather than to a string: the
+>   constructor census is brace-matched out of the library's sources, the
+>   dependency exception is parsed out of every tracked `moon.mod` (with the
+>   COMMENTS stripped first -- a commented-out `import { ... }` in the
+>   header of `moon.mod` is the easiest way to parse the wrong block), the
+>   upstream census comes from a TRACKED manifest, and the transcript is
+>   rebuilt from the glob order and each script's own trailing statement.
+>
+>   *The upstream manifest.*  Upstream publishes a WHEEL, and its 0.11.4
+>   sdist is a local cache that is not tracked -- so a contract run in a
+>   fresh clone cannot see it.  `_verify/_dgp_upstream_manifest_1690.txt`
+>   is the tracked snapshot, carrying the sdist's sha256, and the port's
+>   provenance headers must agree with it.  That agreement is the check that
+>   found the three bad headers.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round49_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 5 -> 10 -> 17 -> 21 -> 24 -> 26 ->
+>   28 -> 30 -> 33.  The run ends at **38** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**50** checks) is the new number.
+>
 >
 """
 

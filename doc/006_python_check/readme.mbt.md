@@ -37,12 +37,23 @@ The `validate_*` family needs no arguments:
 
 ```console
 $ for s in validate_*_with_python.py; do echo "=== $s ==="; python $s | tail -1; done
-=== validate_apos_with_python.py === PASS: apos reference
-=== validate_blp_policy_with_python.py === BLP / policy tree parity: PASS
-=== validate_bootstrap_with_python.py === bootstrap weight draw parity: PASS
-=== validate_did_binary_with_python.py === binary DID parity: PASS
+=== validate_apos_with_python.py ===
+PASS: apos reference
+=== validate_bitexact_with_python.py ===
+bit-exact parity: PASS
+=== validate_blp_policy_with_python.py ===
+BLP / policy tree parity: PASS
 ... (24 total)
 ```
+
+The loop prints the file name and the verdict on **separate** lines, and
+the glob is alphabetical -- so `validate_bitexact_with_python.py` is the
+second file, between `apos` and `blp_policy`.
+
+That command is the short form, for reading the verdicts. **CI runs a
+stricter version**: it captures stdout *and* the exit code separately, so
+a script that prints a PASS-looking line and then fails is still a
+failure. See `.github/workflows/check.yml`.
 
 The `pyexample_*` family is invoked with `--check`:
 

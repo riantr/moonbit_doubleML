@@ -9,6 +9,109 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.43] -- the nine sentences the README's neighbours were still getting wrong
+
+`moon.mod` moves 0.164.42 -> 0.164.43. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- nine stale claims in the documents the README points at
+
+Round 48 shipped the README. A fresh-eyes audit then read the SIX TUTORIALS,
+the skill and the example README -- the documents a reader is pointed at --
+and asked of every sentence: does it claim more than the tree supports? Nine
+did. The two worst were real API-surface defects that no CI gate can catch,
+because one lived inside a `moonbit nocheck` fence and the other was prose
+about the dependency rule.
+
+- `doc/004` said "Every estimator follows" the
+  `new(data, n_folds=2, n_rep=1, seed=3141)` snippet. Six of the 22 do not
+  accept those arguments: `DoubleMLPQ`, `DoubleMLQTE` and `DoubleMLLPQ` have
+  no `n_rep`, and `DoubleMLBLP`, `DoubleMLPolicyTree` and `DoubleMLRDD` take
+  no `n_folds`, no `n_rep` and no `seed`. The sentence about `score` said it
+  was "the one that does not follow" -- so the document had one exception
+  where it had seven.
+- The skill's dependency rule allowed only `moonbitlang/*` and `riantr/*`, and
+  the library's OWN `moon.mod` declares `moonbit-community/sqlite3@0.2.3`,
+  which is neither. No `.mbt` in the library imports it (0 references), so it
+  is a dead entry; the rule now says so instead of pretending otherwise. The
+  README and `doc/001` already disclosed this line.
+- `doc/005` put upstream's factories in `doubleml.did.datasets` and called them
+  `make_*_data`. Only 3 of the 18 live under `doubleml/did/datasets/`; the
+  other 15 are spread over `doubleml/irm/datasets/` (6),
+  `doubleml/plm/datasets/` (8) and `doubleml/rdd/datasets/` (1); only 8 of the
+  18 upstream names end in `_data`; and SIX are renamed here -- including
+  `make_pliv_data`, which upstream keeps PRIVATE as `_make_pliv_data` and this
+  port publishes.
+- `doc/006`'s transcript of the `validate_*` loop was not a prefix of what the
+  loop prints: it dropped the glob's SECOND file (`validate_bitexact...`) with
+  no elision marker, and put the verdict on the banner's own line.
+- The same document handed the reader the loop CI's own comment identifies as
+  the defect it was rewritten to remove -- a pipeline whose exit status is
+  `tail`'s, not python's. It now says CI runs a stricter version.
+- `doc/002` listed `scipy` as a direct dependency and `rdrobust` with no
+  constraint. CI installs `rdrobust>=2,<3` ON PURPOSE: its bias-corrected
+  estimator is a dense linear-algebra port, so a version bump can move
+  `tau.bc` in the last few digits and turn the machine-precision RDD gate red
+  for no real reason.
+- `doc/004` grouped `DoubleMLQTE` with the scalar-quantile estimators. It
+  takes `quantiles` -- an `Array[Double]`, default `[0.5]` -- and
+  `quantile=0.5` does not compile for it.
+- "17 modules, each with a sibling test -- 35 files in all" enumerates 34
+  files; the 35th, `dgp_recovery_test.mbt`, is a test file with no module of
+  its own. The count was right and the description that produced it was not.
+- `doc/003` called its cross-section a "synthetic panel". The repo reserves
+  "panel" for `DoubleMLPanelData` and the panel DGP.
+
+### Fixed -- three provenance headers that named upstream factories that do not exist
+
+- `dgp_irm_discrete.mbt` named `make_dgp_irm_data_discrete_treatments`; the
+  upstream factory is `make_irm_data_discrete_treatments`.
+- `dgp_pliv.mbt` named `make_pliv_data` as upstream's factory; upstream's is
+  the PRIVATE `_make_pliv_data`.
+- `dgp_simple_rdd.mbt` named `simple_rdd_dgp`; upstream's is
+  `make_simple_rdd_data`, in `doubleml/rdd/datasets/simple_dgp.py`.
+
+The port's own record of upstream was wrong in three places. `doc/005` was
+right only because it had been written from the upstream package rather than
+from the headers.
+
+### Added -- the claims are measured, not just watched
+
+- `_verify/_verify_doc_scope_1650.py` (**133** checks) ties each of the nine to
+  a MEASUREMENT rather than to a string: the constructor census is
+  brace-matched out of the library's sources, the dependency exception is
+  parsed out of every tracked `moon.mod` (with the COMMENTS stripped first --
+  a commented-out `import { ... }` in the header of `moon.mod` is the easiest
+  way to parse the wrong block), the upstream census comes from a tracked
+  manifest, and the transcript is rebuilt from the glob order and each
+  script's own trailing statement.
+- `_verify/_dgp_upstream_manifest_1690.txt` -- the tracked snapshot of what
+  upstream 0.11.4 ships, extracted from its 0.11.4 sdist and carrying the
+  sdist's sha256. Upstream publishes a WHEEL, and its sdist is a local cache
+  that is not tracked, so a contract run in a FRESH CLONE cannot see it. The
+  port's provenance headers must agree with this manifest, and that agreement
+  is the check that found the three bad headers.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**50** checks).
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round49_1650.py` -- ten mechanisms, one per promise, plus
+  one for the provenance headers. It requires the failure count to GROW at
+  every step: **38** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 65 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **65** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.42] -- the shape filter, and three sentences that claimed more than the tree supports
 
 `moon.mod` moves 0.164.41 -> 0.164.42. No estimator behaviour changed and the

@@ -1,7 +1,7 @@
 # Quick Start
 
 A minimal end-to-end example: partially linear regression (PLR) on a
-deterministic (n=100, p=5) synthetic panel.
+deterministic (n=100, p=5) synthetic cross-section.
 
 ```moonbit nocheck
 // inside a function body -- MoonBit rejects a module-scope `let` bound to a

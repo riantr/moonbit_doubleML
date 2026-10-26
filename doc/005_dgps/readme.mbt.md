@@ -1,10 +1,22 @@
 # DGP Catalogue
 
-18 synthetic-data generators, ported from the corresponding
-`doubleml.did.datasets.dgp_*` / `make_*_data` factories in
-upstream doubleml-for-py. They live in **17** `dgp_*.mbt` modules
-at the package root, each with a sibling `dgp_*_test.mbt` --
-**35 files** in all.
+18 synthetic-data generators, ported from upstream doubleml-for-py
+0.11.4's 18 `make_*` dataset factories. Upstream keeps those in **four**
+packages, not one -- `doubleml/did/datasets/` (3),
+`doubleml/irm/datasets/` (6), `doubleml/plm/datasets/` (8) and
+`doubleml/rdd/datasets/` (1) -- and only 8 of the 18 upstream names end
+in `_data`.
+**Six are renamed here**: `make_irm_heterogeneous_data` (upstream
+`make_heterogeneous_data`), `make_irm_confounded_data` (upstream
+`make_confounded_irm_data`), `make_irm_discrete_treatments` (upstream
+`make_irm_data_discrete_treatments`), `make_pliv_multiway_cluster`
+(upstream `make_pliv_multiway_cluster_CKMS2021`), `make_simple_rdd_dgp`
+(upstream `make_simple_rdd_data`) and `make_pliv_data` (upstream's
+**private** `_make_pliv_data`, which this port publishes).
+
+They live in **17** `dgp_*.mbt` modules at the package root, each with a
+sibling `dgp_*_test.mbt`, plus the cross-estimator `dgp_recovery_test.mbt`
+-- a test file with no module of its own -- for **35 files** in all.
 
 Every factory takes **positional** arguments. All 18 return a struct
 with a `theta_get()` accessor for the true causal parameter, and 17

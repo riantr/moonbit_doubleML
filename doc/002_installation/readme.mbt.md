@@ -8,7 +8,7 @@ In your project's `moon.mod`:
 
 ```toml
 import {
-  "riantr/moonbit_doubleML@0.164.42",
+  "riantr/moonbit_doubleML@0.164.43",
 }
 ```
 
@@ -40,9 +40,13 @@ machine.
   `moon 0.1.20261023`.
 - Any backend in `native / wasm / wasm-gc / js` — all 4 supported.
 - For the Python cross-check scripts: Python 3.10+ (CI runs them
-  on 3.12), and the `doubleml`, `numpy`, `pandas`, `scipy`,
-  `statsmodels` and `scikit-learn` packages. The upstream-
-  comparison steps additionally need `rdrobust`.
+  on 3.12), and the `doubleml`, `numpy`, `pandas`, `statsmodels`
+  and `scikit-learn` packages -- `scipy` is required too, and
+  arrives transitively. The upstream-comparison steps additionally
+  need `rdrobust`, **pinned `>=2,<3`**: its bias-corrected estimator
+  is a dense linear-algebra port, so a version bump can move `tau.bc`
+  in the last few digits and turn the machine-precision RDD gate red
+  for no real reason.
 
 ## Verification
 

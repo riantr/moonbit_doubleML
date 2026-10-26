@@ -99,7 +99,7 @@ Two edges worth knowing before you copy a spelling across:
 
 ## Constructor signature
 
-Every estimator follows:
+Most estimators follow:
 
 ```moonbit nocheck
 ///|
@@ -111,13 +111,19 @@ let fitted = @moonbit_doubleML.DoubleMLXxx::new(
 ).fit()
 ```
 
+Six of the 22 do not take that shape. `DoubleMLPQ`, `DoubleMLQTE` and
+`DoubleMLLPQ` have `n_folds` and `seed` but **no `n_rep`**;
+`DoubleMLBLP`, `DoubleMLPolicyTree` and `DoubleMLRDD` take **no**
+`n_folds`, `n_rep` or `seed` at all -- and `DoubleMLRDD` additionally
+takes `cutoff` / `bandwidth` / `kernel` / `fuzzy`.
+
 `fit()` mutates the estimator in place and returns it; accessors
 (`coef()`, `se()`, `confint()`, etc.) read back the
 fitted state.
 
-The `score` argument is the one that does **not** follow the snippet
-above: it goes on `new()` for six estimators and on `fit()` for
-`DoubleMLPLR`. See [The `score` argument](#the-score-argument).
+The `score` argument is not in the snippet either: it goes on `new()`
+for six estimators and on `fit()` for `DoubleMLPLR`. See [The `score`
+argument](#the-score-argument).
 
 The accessor set is **not** uniform. 16 of the 22 estimators expose
 all four of `coef()` / `se()` / `confint()` / `bootstrap()`, and six
@@ -136,7 +142,9 @@ do not:
 
 - `DoubleMLPLR` / `DoubleMLIRM`: `DoubleMLData` (x, y, d).
 - `DoubleMLDIDMulti`: `DoubleMLDIDCSData` (x, y, d, t, id, g).
-- `DoubleMLPQ` / `DoubleMLQTE` / `DoubleMLLPQ`: extra `quantile` arg.
+- `DoubleMLPQ` / `DoubleMLLPQ`: extra `quantile` arg (a scalar, default
+  `0.5`). `DoubleMLQTE` instead takes `quantiles` -- an `Array[Double]`,
+  default `[0.5]`.
 - `DoubleMLPolicyTree`: extra `depth` arg (default 1).
 - `DoubleMLRDD`: `DoubleMLRDDData` with explicit running variable.
 
