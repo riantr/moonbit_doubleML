@@ -60,7 +60,7 @@
 - **Evidence**:
   | Script | Last line |
   |--------|-----------|
-  | `validate_with_python.py` (PLR) | `Sanity check: true theta = 1.0 is inside every confidence interval.` |
+  | `validate_with_python.py.archived_2026_09_25` (PLR) | `Sanity check: true theta = 1.0 is inside every confidence interval.` |
   | `validate_irm_with_python.py` | `PASS  \|mb - handrolled_nrep5\| (theta) = 5.24e-02 < max(MODEL_TOL=0.1, 2.0*handrolled_n5_se) = 1.91e-01` |
   | `validate_pliv_with_python.py` | `PASS  \|mb - handrolled_nrep5\| (theta) = 1.41e-01 < max(MODEL_TOL=0.5, 2.0*handrolled_n5_se) = 5.00e-01` |
   | `validate_iivm_with_python.py` | `PASS  \|mb - handrolled_nrep5\| (theta) = 8.58e-03 < max(MODEL_TOL=0.5, 2.0*handrolled_n5_se) = 5.00e-01` |

@@ -45,7 +45,7 @@ trimmed REVIEW comments are net negative).
 - **150 / 150** on every backend (native, wasm, wasm-gc, js). Zero
   test count delta from v0.12.0 — this is a pure polish release.
 - **11 / 11** Python validators PASS:
-  - `validate_with_python.py` (PLR smoke test, true θ = 1.0 in CI)
+  - `validate_with_python.py.archived_2026_09_25` (PLR smoke test, true θ = 1.0 in CI)
   - `validate_irm_with_python.py` (IRM hand-rolled nrep5 reference)
   - `validate_pliv_with_python.py` (PLIV)
   - `validate_iivm_with_python.py` (IIVM)

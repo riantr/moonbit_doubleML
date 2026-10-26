@@ -86,6 +86,10 @@ _verify/logistic_demo_probe.mbt.original
 # Python diagnostics scratch (validator support, kept locally only).
 __pycache__/
 _verify/diag_cre*.py
+# ... except the one the T270 verdict cites as its evidence, so that the
+# promise the verdict makes resolves in a clone and not only in this working
+# copy.  `_verify/diag_cre.py` stays scratch.
+!_verify/diag_cre2.py
 _verify/_fix_*.py
 _verify/_fix_*.py.archived
 # Mut/cluster/dedup scratch files used during iterative fix cycles;

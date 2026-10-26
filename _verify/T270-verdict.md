@@ -15,7 +15,7 @@ SE investigation from the WIP state. Root cause chain:
    DoubleMachineLearning/doubleml-for-py has no such wiring (not
    a git checkout; version drift), which initially misled the
    investigation.
-2. Empirical probe (`_verify/diag_cre2.py`, local-only):
+2. Empirical probe (`_verify/diag_cre2.py`, now tracked):
    `_is_cluster_data = True`; zero units span both sides of a
    fold; reported se 0.020088 vs naive row-level 0.354707.
 3. Upstream cluster machinery replicated exactly:

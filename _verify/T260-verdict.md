@@ -13,7 +13,7 @@ specified order on 2026-08-24.
 | 3 | Duplicate code | `_verify/dupcheck.py` sliding-window hash | 14-line dup found -> fixed -> 0 |
 | 4 | Dependency check | moon.mod / moon.pkg / pip imports | PASS (+ fixed stale version 0.8.0 -> 0.25.0) |
 | 5 | Unit tests | `moon test --target all --deny-warn` | 248/248 x4 backends |
-| 6 | Gherkin | `features/dml_acceptance.feature` | 10 scenarios mapped to tests (documented) |
+| 6 | Gherkin | features/dml_acceptance.feature (now `features/moonbit_doubleML_acceptance.feature`) | 10 scenarios mapped to tests (documented) |
 | 7 | Mutation testing | 5 hand-rolled mutants | 5/5 killed after test strengthening |
 | 8 | Fuzzing | `cmd/fuzz` 6 surfaces x 300 trials | 0 violations, 0 warnings |
 | 9 | Component tests | 7 cmd components with output assertions | ALL PASS |
@@ -101,7 +101,7 @@ Surfaces:
 ## Side effects included in this release
 - `storey_m0_hat` extraction (dedup fix).
 - Strengthened smooths test + non-affine rng_double2 helper.
-- New files: `features/dml_acceptance.feature`, `cmd/fuzz/{main.mbt,moon.pkg}`,
+- New files: features/dml_acceptance.feature (now `features/moonbit_doubleML_acceptance.feature`), `cmd/fuzz/{main.mbt,moon.pkg}`,
   `_verify/dupcheck.py`.
 - `moon.mod` version bumped to 0.25.0.
 - `.gitignore`: added `_verify/mut-bak-*`.

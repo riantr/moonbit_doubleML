@@ -205,11 +205,15 @@ if rc != 0:
 rc, out = run(["git", "rev-parse", "HEAD"], cwd=WORK)
 print("  %s -> %s" % (COMMIT, out.strip()))
 
-# --- copy the INDEX in: it is what the release will commit ------------------
-rc, out = run(["git", "diff", "--cached", "--name-only"], cwd=REPO)
-STAGED = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
+# --- copy the WORKING TREE's state in: it is what the release will
+# commit, and the tree under test has to be CONSISTENT.  A clone whose
+# manifest names one version and whose tutorials name another is not a
+# tree, it is a contradiction, and a red baseline for a contradiction
+# proves nothing about the contract.
+rc, out = run(["git", "diff", "--name-only", "HEAD"], cwd=REPO)
+CHANGED = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
 COPY_IN = []
-for rel in list(VERIFIERS) + STAGED:
+for rel in list(VERIFIERS) + CHANGED:
     rel = rel.replace("\\", "/")
     if rel in COPY_IN:
         continue

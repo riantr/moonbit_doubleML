@@ -3,7 +3,11 @@
 - **Verifier**: orchestrator session (Mavis), in-session — `task` tool transiently failed for the verifier dispatch, so the orchestrator ran the read-only verification itself.
 - **Scope**: read-only verification of 6 Critical/High bug fixes in `mavis/dml`.
 - **Toolchain**: `moon 0.1.20260713 (75c7e1f 2026-07-13)` / `moonc v0.10.4+2cc641edf (2026-07-15)`
-- **Read-only contract**: 0 project source files (`*.mbt` / `*_test.mbt` / `moon.pkg` / `moon.mod` / `pkg.generated.mbti` / `validate_*.py` / `cmd/main/main.mbt`) modified by this verifier. All evidence captured under `_verify/TODO-11a-verify-*.log`. Verifier owned no project files; the producer's `_verify/TODO-11a-handoff.md` was read but not modified.
+- **Read-only contract**: 0 project source files (`*.mbt` / `*_test.mbt` / `moon.pkg` / `moon.mod` / `pkg.generated.mbti` / `validate_*.py` / `cmd/main/main.mbt`) modified by this verifier. All evidence captured under
+  `TODO-11a-verify-*.log`. Verifier owned no project files; the producer's
+  `TODO-11a-handoff.md` was read but not modified.  Both are scratch captures:
+  the repository's own `.gitignore` keeps `_verify/TODO-*` out of the tree, so a
+  clone has neither.
 
 ## Check 1 — `moon test --deny-warn` (default target + wasm-gc)
 
@@ -259,7 +263,7 @@ For each bug, read the post-fix code and confirm the fix matches the upstream Py
   | `validate_pliv_with_python.py` | `PASS  \|mb - handrolled_nrep5\| (theta) = 1.41e-01 < max(MODEL_TOL=0.5, 2.0*handrolled_n5_se) = 5.00e-01` |
   | `validate_iivm_with_python.py` | `PASS  \|mb - handrolled_nrep5\| (theta) = 8.58e-03 < max(MODEL_TOL=0.5, 2.0*handrolled_n5_se) = 5.00e-01` |
   | `validate_did_with_python.py` | `PASS  \|mb - handrolled_nrep5\| (theta) = 1.29e-02 < max(MODEL_TOL=0.1, 2.0*handrolled_n5_se) = 1.00e-01` |
-  | `validate_with_python.py` (PLR) | `Sanity check: true theta = 1.0 is inside every confidence interval.` |
+  | `validate_with_python.py.archived_2026_09_25` (PLR) | `Sanity check: true theta = 1.0 is inside every confidence interval.` |
 - All 5 still exit 0 + PASS. No regression.
 - **Result: PASS**
 

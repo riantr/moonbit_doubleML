@@ -60,7 +60,7 @@
 
   | Script                              | Exit | Pass evidence |
   |-------------------------------------|-----:|---------------|
-  | `validate_with_python.py` (PLR)     |    0 | "Sanity check: true theta = 1.0 is inside every confidence interval." (legacy script; reads the last `estimated theta` line from cmd/main, which is the SSM section, so the |moonbit - handrolled| = 1.10e-01 number is SSM-side, not PLR-side. SSM's 0.938 is inside 95% CI = (0.854, 1.022) ✓) |
+  | `validate_with_python.py.archived_2026_09_25` (PLR)     |    0 | "Sanity check: true theta = 1.0 is inside every confidence interval." (legacy script; reads the last `estimated theta` line from cmd/main, which is the SSM section, so the |moonbit - handrolled| = 1.10e-01 number is SSM-side, not PLR-side. SSM's 0.938 is inside 95% CI = (0.854, 1.022) ✓) |
   | `validate_irm_with_python.py`       |    0 | `PASS  \|mb - handrolled_nrep5\| (theta) = 5.240197e-02 < max(MODEL_TOL=0.1, 2.0*handrolled_n5_se) = 1.912555e-01` |
   | `validate_pliv_with_python.py`      |    0 | `PASS  \|mb - handrolled_nrep5\| (theta) = 1.409282e-01 < max(MODEL_TOL=0.5, 2.0*handrolled_n5_se) = 5.000000e-01` |
   | `validate_iivm_with_python.py`      |    0 | `PASS  \|mb - handrolled_nrep5\| (theta) = 8.576206e-03 < max(MODEL_TOL=0.5, 2.0*handrolled_n5_se) = 5.000000e-01` |

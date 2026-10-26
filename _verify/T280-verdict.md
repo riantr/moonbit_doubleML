@@ -69,9 +69,10 @@ the expit / logit round-trip. A scenario fails iff its
 mapped test fails.
 
 ## Step 7 detail: mutation testing
-Backups via `Copy-Item` to `_verify/mut-bak-lplr.mbt`
-before each mutation; restore via `Move-Item -Force`
-after each run; final clean-state re-run 268/268 green.
+Backups via `Copy-Item` to a transient `mut-bak-lplr.mbt` under
+`_verify/` before each mutation; restore via `Move-Item -Force`
+after each run, so nothing of the backup survives in the repository;
+final clean-state re-run 268/268 green.
 
 | Mutant | Change | Killed by |
 |--------|--------|-----------|

@@ -1,0 +1,17 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. a live document cites a repo-rooted path that is not in the repository
+   2. a cited path is on disk but is no longer TRACKED
+   3. a bare own-family script name names a script that does not exist
+   4. the root README.md stops being a symlink
+   5. the root README.md points at the wrong file
+   6. a HISTORICAL RECORD banner is removed, so a document is live again
+   7. a path inside a command span becomes a standalone path span
+   8. a foreign reference loses its attribution, so it becomes a promise
+
+C. the published failure count
+  the driver counted 8 failures
+  305 checks, 8 failed

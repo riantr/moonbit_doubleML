@@ -57,6 +57,7 @@ changes). The release notes should:
    Critical/High bugs** as of v0.29.0 (the 8 that were tracked
    have all been fixed silently in past releases).
 
-Future deferrals (if any) should be tracked in
-`_verify/deferred.md` going forward, with a verification date
-per item.
+Future deferrals (if any) should be tracked in a dedicated deferral log
+under `_verify/` going forward, with a verification date
+per item.  No such log exists yet -- there is nothing deferred to put
+in one.

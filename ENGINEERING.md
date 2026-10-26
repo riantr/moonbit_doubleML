@@ -1177,7 +1177,7 @@
 >   `1/(1-m)` and still defaults `ml_m` to OLS.
 >
 >   *A finding that was wrong twice.*  Two independent audits reported that
->   `doc/006` mis-split the Python cross-check coverage, and BOTH were wrong.
+>   `doc/006_python_check` mis-split the Python cross-check coverage, and BOTH were wrong.
 >   A MUTATION settles a coverage claim: `DoubleMLQTE::fit` was broken, and the
 >   validate family stayed GREEN -- so it does not gate the QTE estimator, and
 >   the guide's **16** / **3** / **3** split is correct.  What the validate
@@ -1257,7 +1257,7 @@
 >   which are counts and stay out of the figure set.
 >
 >   *A finding that was wrong TWICE.*  Two fresh-eyes audits reported that
->   `doc/006` mis-split the Python cross-check coverage -- that
+>   `doc/006_python_check` mis-split the Python cross-check coverage -- that
 >   `DoubleMLQTE` is gated by both families, and that the guide's **16** /
 >   **3** / **3** split is wrong.  BOTH were wrong, and the same mutation
 >   settled it again: `DoubleMLQTE::fit` was broken, and the validate
@@ -1562,7 +1562,7 @@
 >   because it had been written from the upstream package rather than from
 >   the headers.
 >
->   *The rest.*  doc/006's transcript was not a prefix of what the loop
+>   *The rest.*  doc/006_python_check's transcript was not a prefix of what the loop
 >   prints (it dropped the glob's SECOND file with no elision marker, and
 >   put the verdict on the banner's line); the same document handed the
 >   reader the loop CI's own comment identifies as the defect it was
@@ -1744,6 +1744,48 @@
 >
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**56** checks) is the new number.
+>
+> * **Round 53.**  Paths named in prose, and the promise they make.
+>
+>   Round 52 held that a *reproduction command* is a promise.  This round holds
+>   that a path named in PROSE is the same kind of promise: a document that
+>   says its evidence was captured under a named file tells the reader that
+>   the file exists and is worth opening.  A census of every tracked Markdown
+>   document found **34** such promises in LIVE documents that no reader could
+>   keep -- seven named scripts that were NEVER committed, four named files
+>   that were tracked until 0.12.0's scratch-hygiene release untracked them,
+>   nine named a script that had been RENAMED (to
+>   `validate_with_python.py.archived_2026_09_25`, the name it has today), and
+>   two named a CI workflow that had been RENAMED to
+>   `.github/workflows/check.yml`.
+>
+>   *The new check.*  `_verify/_verify_path_promises_1650.py` (**296** checks) holds every path named in prose in every live document against the
+>   tree, and reads the root `README.md` symlink from the INDEX rather than
+>   from the working tree -- this host materialises it as a hardlink and a
+>   fresh clone writes a 13-byte stub, so a check that read the file would
+>   publish a count that differs between clones.  A document may keep its
+>   original text; it says so in its own words, and the check says so in its
+>   detail line rather than passing silently.
+>
+>   *A check that grew.*  `_verify/_verify_repro_paths_1650.py` published
+>   **28** and makes **30**: the repair record this round tracks carries two
+>   more reproduction commands, and a command is a check.
+>
+>   *A rule the two verifiers share.*  A path that is POSSESSIVELY
+>   attributed to another repository is a reference to that repository's
+>   file, not a promise about a file here.  The skill-claims verifier
+>   already drew that line -- the skill names one of another package's own
+>   files, and that file is supposed to be ABSENT from this tree -- and
+>   this check draws it too, because two verifiers that disagree about the
+>   same file are worse than one that is wrong.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round53_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8.
+>   The run ends at **8** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**58** checks) is the new number.
 >
 >
 ## The README as it stood at v0.164.11

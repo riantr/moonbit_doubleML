@@ -45,7 +45,7 @@ All 9 `validate_*_with_python.py` scripts pass (exit=0):
 - `validate_quantile_with_python.py` — APOS / PQ(0.5) bit-equal reference
 - `validate_rdd_with_python.py` — RDD sharp + fuzzy local-linear
 - `validate_ssm_with_python.py` — SSM ATE (Bug #1 fix)
-- `validate_with_python.py` — PLR/IRM/IIVM vs upstream `doubleml` library
+- `validate_with_python.py.archived_2026_09_25` — PLR/IRM/IIVM vs upstream `doubleml` library
 
 ### Demo output (`moon run cmd/did_cs`)
 

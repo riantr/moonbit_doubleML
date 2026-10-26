@@ -228,14 +228,18 @@ rc, out = run(["git", "rev-parse", "HEAD"], cwd=WORK)
 print("  %s -> %s" % (COMMIT, out.strip()))
 
 # --- copy the WORKING TREE's state in -----------------------------------------
+# The tree under test has to be CONSISTENT.  A clone whose manifest names
+# one version and whose tutorials name another is not a tree, it is a
+# contradiction, and a red baseline for a contradiction proves nothing about
+# the contract.
 # The clone carries the COMMITTED tree.  The checks this round changed, and
 # the documents they read, come from the working tree: the tree under test
 # has to be the tree that will be released, or the driver proves something
 # about a tree nobody ships.
-rc, out = run(["git", "diff", "--cached", "--name-only"])
-STAGED = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
+rc, out = run(["git", "diff", "--name-only", "HEAD"], cwd=REPO)
+CHANGED = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
 COPY_IN = []
-for rel in list(VERIFIERS) + [DRIVER] + DOCUMENTS + STAGED:
+for rel in list(VERIFIERS) + [DRIVER] + DOCUMENTS + CHANGED:
     rel = rel.replace("\\", "/")
     if rel in COPY_IN:
         continue

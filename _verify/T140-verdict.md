@@ -92,7 +92,7 @@ fn validate_treatment(treatment : Array[Double]) -> Unit
 | 6 | `_verify/T140-verdict.md` | (this file) | T140 verdict. |
 | 7 | `_verify/T140-commit-msg.txt` | +75 | T140 commit message. |
 | 8 | `_verify/test_pava_reference.py` | +75 | Verifier scratch: cross-check PAVA against sklearn. |
-| 9 | `_verify/probe-pava-test.mbt.archived` | +47 | Verifier scratch: PAVA probe (now archived). |
+| 9 | `probe-pava-test.mbt.archived` | +47 | Verifier scratch: PAVA probe (now archived; scratch, not retained in this repository). |
 
 **Net**: +919 / -10 lines (most of the +919 is CHANGELOG +
 verdict + test + probe + reference Python script; the

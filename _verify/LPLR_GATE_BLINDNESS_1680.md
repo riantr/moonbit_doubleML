@@ -21,7 +21,7 @@ _1680 series. Measured on `b922349` plus the uncommitted LPLR gate work._
 > | the method scripts this record names | 10 named, **none of them tracked** | **now tracked**, path-portable, and each one announces which upstream it ran against |
 > | 27b/27c: the causal test and the 16-cell swap | the port's values make upstream's own solver diverge; `beta` alone does it | **reproduced exactly** by `_verify/_lplr_nuisance_causal_1680.py` -- both `PORTMETA` blocks, every one of the 16 cells |
 > | 27f: the basin and the derivative collapse | 8/41 fine-scan starts converge over `[0.0, 3.5]`; score -0.0842799 / -0.111909; deriv -2.77093e-02 / -8.06571e-05; factor **344**; first step **-1381** | **reproduced exactly** by `_verify/_lplr_basin_scan_1680.py`, which is **new in this round** -- 27f previously had **no method script at all**, so the README's "344" and "-1381" had no witness |
-> | the witness for 27a/27b | `_verify/_lplr_r17_1680/_fuzz_dump_1680.log` | **the WRONG FILE, and reproducibly so.** `_verify/_lplr_r17_1680/_fuzz_dump_1680.log` is byte-identical to `_verify/_lplr_r17_1680/_fuzz_run_1680.log` (sha256 prefix `6903e784`) and holds the harness's PASS/FAIL transcript, not rows -- and re-running the script that creates it reproduces that byte-for-byte, because the dump probe was reverted from the shipped build. The rows are in `_verify/_lplr_r17_1680/_port_dump_1680.log` (2 `PORTMETA` blocks, n=66 p=6 seed=96696) |
+> | the witness for 27a/27b | `_fuzz_dump_1680.log` | **the WRONG FILE, and reproducibly so.** The file the first draft named is not in this repository -- it is a scratch capture the project's own `.gitignore` keeps out of the tree -- and the file that IS tracked, `_verify/_lplr_r17_1680/_fuzz_run_1680.log`, is byte-identical to it (sha256 prefix `6903e784`) and holds the harness's PASS/FAIL transcript, not rows -- and re-running the script that creates it reproduces that byte-for-byte, because the dump probe was reverted from the shipped build. The rows are in `_verify/_lplr_r17_1680/_port_dump_1680.log` (2 `PORTMETA` blocks, n=66 p=6 seed=96696) |
 >
 > **What is NOT verified here.** The D2/D3 A/B numbers in sections 8-10, the
 > clamp A/B table in section 23, the `m_hat` conditioning in sections 24-25 and
@@ -2533,9 +2533,12 @@ Two things about the dump are worth recording because both nearly hid a result:
   two fits are bit-identical to each other -- so this is a 14-way ambiguity that
   happens to have a clean answer, not an unambiguous guard.
   **Corrected 2026-10-20 (round 17): this bullet named
-  `_verify/_lplr_r17_1680/_fuzz_dump_1680.log` as that witness, and that is
-  the WRONG FILE.** On disk it is byte-identical to
-  `_verify/_lplr_r17_1680/_fuzz_run_1680.log` (sha256 prefix `6903e784`) and
+  `_fuzz_dump_1680.log` as that witness, and that is
+  the WRONG FILE.** The file of that name is not in this repository -- it is
+  a scratch capture the project's own `.gitignore` keeps out of the tree --
+  and the file that IS tracked,
+  `_verify/_lplr_r17_1680/_fuzz_run_1680.log` (sha256 prefix `6903e784`),
+  is byte-identical to it and
   holds the harness's PASS/FAIL transcript, not rows. This is **reproducible,
   not merely an observation**: re-running
   `_verify/_lplr_fuzzrows_upstream_1680.py` -- the script that CREATES that

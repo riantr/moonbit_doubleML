@@ -17,7 +17,7 @@ Total tests: 82, passed: 82, failed: 0.
 exit=0
 ```
 
-Raw log: `_verify/TODO-6-default-target.log`.
+Raw log: `TODO-6-default-target.log` (scratch; not retained in this repository).
 
 ---
 
@@ -124,7 +124,7 @@ iivm.mbt
   exit=2
   ```
   - The abort stack reaches `@mavis/dml.dot @ matrix.mbt:169` and `@mavis/dml.DoubleMLIIVM::new.inner @ iivm.mbt:102`, so both `panic_*` tests genuinely drive into production code, hit a real `require(...)`, and abort. They are not empty / no-op tests.
-  - Evidence file: `_verify/TODO-6-smoke-default.log`.
+  - Evidence file: `TODO-6-smoke-default.log` (scratch; not retained).
 - **Evidence (smoke_dot under native, `--target native -i 8`)**:
   ```
   precondition failed at matrix.mbt:169:3-169:36@mavis/dml
@@ -140,7 +140,7 @@ iivm.mbt
     - D:\...\_verify_TODO6_smoke_test.mbt:103 "smoke_dot_length_mismatch"
   ```
   - Native `precondition failed at matrix.mbt:169:3-169:36@mavis/dml` confirms it is the actual `require(a.length() == b.length())` site, not a downstream index error.
-  - Evidence file: `_verify/TODO-6-smoke-dot-native.log`.
+  - Evidence file: `TODO-6-smoke-dot-native.log` (scratch; not retained).
 - **Evidence (smoke_iivm under native, `--target native -i 20`)**:
   ```
   precondition failed at iivm.mbt:102:3-102:33@mavis/dml
@@ -151,7 +151,7 @@ iivm.mbt
     - D:\...\_verify_TODO6_smoke_test.mbt:240 "smoke_iivm_new_propensity_clip_too_large"
   ```
   - Note: `panic failed at iivm.mbt:102:3-102:33@mavis/dml` — confirms site #16's mapped line, which contradicts the producer's cited `iivm.mbt:101`. This is the same off-by-one surfaced in Check C2.
-  - Evidence file: `_verify/TODO-6-smoke-iivm-native.log`.
+  - Evidence file: `TODO-6-smoke-iivm-native.log` (scratch; not retained).
 - **Result: PASS** — both renamed tests really abort, with backtraces rooting at the production `require` call sites the producer named (modulo the iivm.mbt:101/:102 off-by-one).
 
 ### Check C4 — `moon test --deny-warn` default target: 0 warnings, exit 0
@@ -164,7 +164,7 @@ iivm.mbt
   exit=0
   ```
   - No "warning" / "warn" / "deprecated" lines emitted (otherwise `--deny-warn` would have promoted them to errors and exited non-zero).
-  - Evidence file: `_verify/TODO-6-default-target.log`.
+  - Evidence file: `TODO-6-default-target.log` (scratch; not retained).
 - **Result: PASS**
 
 ### Check C5 — backend re-runs the producer claimed (wasm, js, and the project-default wasm-gc)
@@ -196,7 +196,7 @@ iivm.mbt
   exit=0
   ```
   - All four backends report 82/82 pass, exit 0, with no warning. The PowerShell `RemoteException` text shown for `<runtime.c / main.internal_test.c / dml.blackbox_test.c>` is the native backend's verbose stderr, not a failure (`$LASTEXITCODE=0`).
-  - Evidence files: `_verify/TODO-6-wasm.log`, `_verify/TODO-6-wasm-gc.log`, `_verify/TODO-6-js.log`, `_verify/TODO-6-all.log`.
+  - Evidence files: `TODO-6-wasm.log`, `TODO-6-wasm-gc.log`, `TODO-6-js.log`, `TODO-6-all.log` (scratch; not retained in this repository).
 - **Result: PASS**
 
 ### Check C6 — only `check_test.mbt` modified; no stray `.mbt` in project root
@@ -229,7 +229,7 @@ iivm.mbt
   rdd_test.mbt 1094, ssm.mbt 10282, ssm_test.mbt 3972
   ```
   - Same set as the initial directory listing — no transient `.mbt` (e.g. `_verify_*` or `_probe_*`) at the project root. The single pre-existing `_verify_TODO5_fix_irm_5seed.mbt.archived` is an archived file, not a discoverable test, and is on the producer/TODO-5 side, not the TODO-6 side.
-- **Evidence — post-run cross-check** (`_verify/TODO-6-post-cleanup-final.log`):
+- **Evidence — post-run cross-check** (`TODO-6-post-cleanup-final.log`, scratch; not retained in this repository):
   ```
   PS D:\...\dml-moonbit> moon test --deny-warn
   Total tests: 82, passed: 82, failed: 0.
@@ -263,7 +263,7 @@ iivm.mbt
 
 - `$env:TEMP\TODO6-smoke-snapshots\panic_dot_length_mismatch.original.mbt` (185 B; snapshot copy of `check_test.mbt:99-105` with the original `panic_` prefix preserved, audit only — never compiled against the project).
 - `$env:TEMP\TODO6-smoke-snapshots\panic_iivm_new_propensity_clip_too_large.original.mbt` (394 B; snapshot copy of `check_test.mbt:233-247` with the original `panic_` prefix preserved, audit only — never compiled against the project).
-- `_verify/TODO-6-default-target.log`, `_verify/TODO-6-wasm.log`, `_verify/TODO-6-wasm-gc.log`, `_verify/TODO-6-js.log`, `_verify/TODO-6-all.log`, `_verify/TODO-6-smoke-default.log`, `_verify/TODO-6-smoke-dot-native.log`, `_verify/TODO-6-smoke-iivm-native.log`, `_verify/TODO-6-post-cleanup-final.log` — raw evidence captured during the run.
+- `TODO-6-default-target.log`, `TODO-6-wasm.log`, `TODO-6-wasm-gc.log`, `TODO-6-js.log`, `TODO-6-all.log`, `TODO-6-smoke-default.log`, `TODO-6-smoke-dot-native.log`, `TODO-6-smoke-iivm-native.log`, `TODO-6-post-cleanup-final.log` — raw evidence captured during the run, and **not retained in this repository**.
 - `_verify_TODO6_smoke_test.mbt` — created at the project root, executed, then `mavis-trash _verify_TODO6_smoke_test.mbt` → "moved to trash". `Get-ChildItem . -Filter '_verify_TODO6*'` after the trash returns no rows.
 
 ## Findings summary

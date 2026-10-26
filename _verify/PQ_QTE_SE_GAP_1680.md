@@ -75,7 +75,9 @@ across four independent quantities whose seed spread is ~1e-4:
 | `qte[2]_se` | 0.022076176 | 0.023380184 | 0.9442 |
 
 A consistent direction against a small spread is bias, not noise. Two
-candidate causes were measured (`_verify/_pq_se_flag_1680.py`):
+candidate causes were measured by a probe that was **never committed to this
+repository** (`git log --all -- _verify/_pq_se_flag_1680.py` is empty), so the
+table below is a one-off measurement and not a reproducible one:
 
 | upstream config | `se` mean | `coef[0]` | \|se − port\| |
 |---|---|---|---|

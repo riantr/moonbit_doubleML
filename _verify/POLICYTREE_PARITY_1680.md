@@ -153,7 +153,12 @@ a property of neither.
 
 ## 8. Battery
 
-`_verify/_pt_battery_1680.py`, **8/8 as expected**, baseline PASS:
+The battery that produced this table (`_pt_battery_1680.py`) was **never
+committed to this repository** -- `git log --all --
+_verify/_pt_battery_1680.py` is empty -- so the arms below are a one-off
+measurement and not a re-runnable gate.  What re-runs is the gate itself, in
+`pyexample_policytree.py`, which rebuilds the design and re-derives its own
+numbers on every run.  The arms were **8/8 as expected**, baseline PASS:
 
 | arm | breaks | gate |
 |---|---|---|

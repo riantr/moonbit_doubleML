@@ -74,7 +74,7 @@ pub fn DoubleMLDIDMulti::confint(joint?, level?) -> Array[(Double, Double)]
 | 8 | `CHANGELOG.md` | +118 | Full v0.15.0 entry. |
 | 9 | `_verify/T150-verdict.md` | (this file) | T150 verdict. |
 | 10 | `_verify/T150-commit-msg.txt` | +90 | T150 commit message. |
-| 11 | `_verify/probe-bootstrap-test.mbt.archived` | +95 | Verifier scratch: bootstrap probe (now archived). |
+| 11 | `probe-bootstrap-test.mbt.archived` | +95 | Verifier scratch: bootstrap probe (now archived; scratch, not retained in this repository). |
 
 **Net**: +1023 / -10 lines (most of the +1023 is CHANGELOG +
 verdict + test + probe + reference Python script; the

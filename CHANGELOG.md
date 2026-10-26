@@ -9,6 +9,83 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.47] -- paths named in prose, and the promises they made
+
+`moon.mod` moves 0.164.46 -> 0.164.47. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- thirty-four paths named in prose that no reader could keep
+
+Round 52 held that a *reproduction command* is a promise.  This round holds
+that a path named in PROSE is the same kind of promise: a document that says
+its evidence was captured under a named file tells the reader that the file
+exists and is worth opening.  A census of every tracked Markdown document
+found **34** such promises in LIVE documents that no reader could keep.
+
+- Seven named scripts that were NEVER committed.  The cluster parity record
+  cited three cluster scripts that no commit in this repository's history ever
+  added; the policy-tree record cited a battery script; the quantile record
+  cited a probe; and the white-box report cited a "probe" that was never a
+  script at all -- it was a temporary patch to the source, and the report now
+  says so.  Each of them now names the file that exists, or says in the
+  house's own words that there is nothing to run.
+- Four named files that were tracked until 0.12.0's scratch-hygiene release
+  untracked them.  The producer-handoff notes and the raw outputs the TODO
+  records point at are scratch captures: they exist in a working copy and in no
+  clone.  The records now say that, and keep the names.
+- Nine named a script that had been RENAMED.  `validate_with_python.py` became
+  `validate_with_python.py.archived_2026_09_25` in 0.52.0, because it
+  referenced the deleted `cmd/main` path and emitted no trailing `PASS`.  Nine
+  verdict documents still pointed at the old name; they now point at the file
+  that exists.
+- Two named a CI workflow that had been RENAMED.  `.github/workflows/ci.yml`
+  became `check.yml` in `c5b16d4`.  The 0.4.0 release record is a record, and
+  now says so in the house's own words -- a HISTORICAL RECORD banner and a
+  "what has changed since" table -- rather than pointing at a file that is
+  gone.
+- Six named a path that was renamed or never existed under that name: the
+  Gherkin file that became `features/moonbit_doubleML_acceptance.feature` at
+  the project rename, the tutorial directory `doc/006_python_check`, and a
+  deferral log that was never created.
+
+### Added -- the promise is checked
+
+- `_verify/_verify_path_promises_1650.py` (**296** checks) holds every path
+  named in prose in every live document against the tree, and reads the root
+  `README.md` symlink from the INDEX rather than from the working tree -- this
+  host materialises it as a hardlink and a fresh clone writes a 13-byte stub,
+  so a check that read the file would publish a count that differs between
+  clones.  A document may keep its original text; it says so in its own words,
+  and the check says so in its detail line rather than passing silently.
+- The quantile gate's "This CORRECTS" note, the severity verdict it corrects,
+  the repair record under it and the four method scripts they name are now
+  TRACKED, together with the CI-equivalent runner and the cluster diagnostic
+  the records cite as their evidence: those were promises only a working copy
+  could keep.
+- `_verify/_verify_repro_paths_1650.py` published **28** and makes **30**
+  checks: the repair record this round tracks carries two more reproduction
+  commands, and a command is a check.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**58** checks).
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round53_1650.py` -- eight mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every step:
+  **8** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 69 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **69** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.46] -- ten reproduction commands that named scripts nobody could run
 
 `moon.mod` moves 0.164.45 -> 0.164.46. No estimator behaviour changed and the

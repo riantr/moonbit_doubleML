@@ -16,7 +16,8 @@ Total tests: 59, passed: 59, failed: 0.
 exit=0
 ```
 
-Raw full output saved to `_verify/TODO-1-raw-test-output.txt`.
+Raw full output saved to `TODO-1-raw-test-output.txt` -- a scratch capture
+that is **not retained in this repository**.
 
 ## C1.1 — 0 conditional `ignore` leftovers
 
@@ -42,7 +43,8 @@ Raw full output saved to `_verify/TODO-1-raw-test-output.txt`.
   Total tests: 5, passed: 1, failed: 4.
   exit=2
   ```
-  The four failed tests are exactly `smoke_matvec_length_mismatch`, `smoke_cholesky_non_psd`, `smoke_plr_coef_before_fit`, `smoke_irm_new_n_folds_zero`. The happy `smoke_happy_path` (mirrors the original `check_accepts_valid_preconditions`) passed. Each failure carries a full backtrace through `@mavis/dml.check` (check.mbt:11) ← `@mavis/dml.require` (check.mbt:21) ← the specific public function. Saved to `_verify/TODO-1-smoke-native-{1..4}.txt` plus `_verify/TODO-1-adversarial-output.txt`.
+  The four failed tests are exactly `smoke_matvec_length_mismatch`, `smoke_cholesky_non_psd`, `smoke_plr_coef_before_fit`, `smoke_irm_new_n_folds_zero`. The happy `smoke_happy_path` (mirrors the original `check_accepts_valid_preconditions`) passed. Each failure carries a full backtrace through `@mavis/dml.check` (check.mbt:11) ← `@mavis/dml.require` (check.mbt:21) ← the specific public function. Saved to `TODO-1-smoke-native-{1..4}.txt` plus `TODO-1-adversarial-output.txt`
+  (scratch captures, not retained in this repository).
 - Result: PASS — the four `panic_*` probes really do panic; the `panic_` prefix is what allows the production test run to report them as green.
 
 ## C1.4 — `abort` message + stack point to the real caller
@@ -66,7 +68,8 @@ Raw full output saved to `_verify/TODO-1-raw-test-output.txt`.
   ```
   precondition failed at _verify_adversarial_test.mbt:7:3-7:17@mavis/dml
   ```
-  Driver file/line — not `check.mbt`. Saved to `_verify/TODO-1-adversarial-output.txt`.
+  Driver file/line — not `check.mbt`. Saved to `TODO-1-adversarial-output.txt`
+  (scratch; not retained in this repository).
 - Result: PASS
 
 ## C1.5 — file presence
@@ -97,7 +100,8 @@ Raw full output saved to `_verify/TODO-1-raw-test-output.txt`.
 ## Adversarial probe (must show ≥1 real panic)
 
 - Built a stand-alone driver (`_verify_adversarial_test.mbt`) that calls `require(false)` directly, with no wrapper function in between. If `#callsite(autofill(loc))` is real, the abort message must name the driver file:line. If the loc were being lost or hard-coded, the message would say `check.mbt`.
-- Evidence: native output `precondition failed at _verify_adversarial_test.mbt:7:3-7:17@mavis/dml` (see C1.4 above and `_verify/TODO-1-adversarial-output.txt`).
+- Evidence: native output `precondition failed at _verify_adversarial_test.mbt:7:3-7:17@mavis/dml` (see C1.4 above and `TODO-1-adversarial-output.txt`, scratch and not
+  retained in this repository).
 - Result: PASS — direct `require(false)` from a third-party caller still produces a real `abort` whose location is the caller's source line.
 
 ## Summary

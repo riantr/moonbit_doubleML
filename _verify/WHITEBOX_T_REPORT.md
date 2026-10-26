@@ -85,10 +85,11 @@ path is treated as success.
 
 ### Probe
 
-`_verify/_probe_panic.py` bypasses the `require(approach in {...})`
-in `DoubleMLPLPR::new` (so the constructor no longer aborts on
-invalid input). I then ran the existing `panic_plpr_bad_approach`
-test:
+The bypass was applied as a **temporary patch to the source**: the
+`require(approach in {...})` in `DoubleMLPLPR::new` was edited out so the
+constructor no longer aborts on invalid input.  It was never a committed
+script, and the patch was reverted after the run.  I then ran the existing
+`panic_plpr_bad_approach` test:
 
 - **Without bypass** (correct: abort fires, process dies): reported
   PASS.
@@ -170,9 +171,10 @@ abortion bypass.
 
 - `_verify/_whitebox_mut.py` — mutation orchestrator
 - `_verify/whitebox_mut_results.json` — sweep results
-- `_verify/_probe_panic.py` — panic_* skip probe (artifact only)
-- `_verify/_soften_validator.py.archived` — leftover from previous
-  mutation rounds (do not delete; pre-existing)
+- the panic_* skip probe — a temporary source patch, reverted after the run,
+  so nothing of it is left in the repository
+- `_soften_validator.py.archived` — leftover from previous mutation rounds
+  (scratch; not retained in this repository)
 
 ## Suggested follow-ups (out of scope for this report)
 
