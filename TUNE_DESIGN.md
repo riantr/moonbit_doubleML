@@ -24,7 +24,7 @@ estimator.
 | `tune_settings : Array[Dict]` (scoring config) | folded into `scoring_method~ : String` (`"MSE"` / `"RMSE"` / `"neg-MSE"`) |
 | `n_folds_tune? : Int` | `n_folds_tune~ : Int32` |
 | "no `tune()` at all" (§1: *"the port at v0.53.0 has no `tune()` method"*) | `tune()` ships on **19 of the 22** estimators. The three exceptions — `DoubleMLBLP`, `DoubleMLLPQ`, `DoubleMLPolicyTree` — are **structural, not unfinished**: BLP fits demand characteristics rather than a nuisance, and LPQ / PolicyTree take no learner to tune. See the `0.108.0` entry in `CHANGELOG.md`. |
-| "do we ship `tune()` with just `LinearRegression` and `ConstantLearner`?" (§6) | the learner set is `LearnerDispatch`, which has since grown to **11** variants (8 regressors + 3 classifiers; logistic regression is the default `ml_m` for 6 estimators) |
+| "do we ship `tune()` with just `LinearRegression` and `ConstantLearner`?" (§6) | the learner set is `LearnerDispatch`, which has since grown to **11** variants (8 regressors + 3 classifiers; logistic regression is the default `ml_m` for 7 estimators) |
 
 The `tune()` grid is a **candidate-learner grid**, not a
 hyper-parameter grid: each `TuneParam` is one concrete
@@ -69,7 +69,7 @@ banner at the top.
    `(b)` add `X(x)` arm to `LearnerDispatch`,
    `(c)` add the matching arm to `cross_fit_predict_dispatch`.
    **As it stands**, `LearnerDispatch` has 11 variants: 8 regressors
-   and 3 classifiers (logistic is the default `ml_m` for 6
+   and 3 classifiers (logistic is the default `ml_m` for 7
    estimators), so the "3 small edits" path has been exercised since
    this was written.
 

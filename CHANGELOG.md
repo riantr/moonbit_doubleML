@@ -9,6 +9,71 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.45] -- a published count that two documents disagreed about
+
+`moon.mod` moves 0.164.44 -> 0.164.45. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- a stale count in a document no check owned
+
+The `ml_m` slot -- the propensity nuisance learner -- is the one constructor
+argument whose default CHANGED the estimators' answers. Seven of the
+estimators that carry it now default to a classifier and eight to a regressor.
+The README said seven and named all seven. `TUNE_DESIGN.md` said **6** --
+twice -- while this file had already corrected a "6 / 6" claim to "**7 logistic
+/ 8 linear**" in an earlier round.
+
+Nothing watched that document's number, so the two disagreed silently. The
+count was never derived from the package: it was carried by hand from one
+document to the next, and the only copy of it that no check owned was the one
+in the document nobody audited.
+
+- `TUNE_DESIGN.md`'s "What the implementation did differently" table says the
+  learner set is "`LearnerDispatch`, which has since grown to **11** variants
+  (8 regressors + 3 classifiers; logistic regression is the default `ml_m` for
+  **6** estimators)". The 11 and the 8 / 3 are right; the 6 is not. The
+  classifier-defaulted estimators are `DoubleMLAPO`, `DoubleMLAPOS`,
+  `DoubleMLIRM`, `DoubleMLLPLR`, `DoubleMLPQ`, `DoubleMLQTE` and
+  `DoubleMLSSM` -- seven.
+- Its section 2.1 says the same thing a second time, with the same 6.
+
+The README's own sentence was NOT wrong, and was left alone: "All six default
+to a classifier today" scopes to the six HAZARD ROWS the paragraph had just
+enumerated -- the seventh, `DoubleMLLPLR`, has its own note, because its
+degenerate standard error is not an `ml_m` defect. It was read, checked
+against the source, and found right.
+
+### Added -- the count is derived, not carried
+
+- `_verify/_verify_mlm_defaults_1650.py` (**20** checks) reads the split out of
+  the package -- `LearnerDispatch::is_classifier` is the package's own decision
+  procedure, and the `ml_m` defaults come from the `DoubleMLXxx::new`
+  signatures -- and holds every LIVE document that states it against that
+  derivation. The CHANGELOG and the ENGINEERING body are historical and are
+  left alone: they record what was true when they were written. No number is
+  hard-coded in the check: the set may legitimately grow, and a migration that
+  changes the source without changing the documents is exactly what it is for.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**54** checks).
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round51_1650.py` -- seven mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every
+  step: **14** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 67 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **67** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.44] -- seven citations of upstream that named things upstream does not have
 
 `moon.mod` moves 0.164.43 -> 0.164.44. No estimator behaviour changed and the

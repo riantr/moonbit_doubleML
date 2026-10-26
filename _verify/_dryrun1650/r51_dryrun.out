@@ -1,0 +1,16 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. an estimator's `ml_m` default is flipped to a regressor
+   2. TUNE_DESIGN's `ml_m` count is a number the package does not have
+   3. TUNE_DESIGN's tune() count goes stale
+   4. TUNE_DESIGN's regressor/classifier split goes stale
+   5. an `ml_m` default names a learner the package does not have
+   6. the README stops publishing the set at all
+   7. TUNE_DESIGN's named tune() exceptions are wrong
+
+C. the published failure count
+  the driver counted 14 failures
+  20 checks, 14 failed

@@ -1665,6 +1665,41 @@
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**52** checks) is the new number.
 >
+> * **Round 51.**  A published count that two documents disagreed about.
+>
+>   The `ml_m` slot -- the propensity nuisance learner -- is the one constructor
+>   argument whose default CHANGED the estimators' answers.  Seven of the
+>   estimators that carry it now default to a classifier and eight to a
+>   regressor.  The README said seven and named all seven.  `TUNE_DESIGN.md`
+>   said SIX -- twice -- and this CHANGELOG had already corrected a "6 / 6"
+>   claim to "**7 logistic / 8 linear**" in an earlier round.  Nothing watched
+>   that document's number, so the two disagreed silently: a root-level design
+>   record that no verifier audits, carrying a count the README contradicted.
+>
+>   *The count was never derived from the package.*  It was carried by hand
+>   from one document to the next, and the only copy of it that no check owned
+>   was the one in the document nobody audited.  So the new check reads the
+>   split out of the SOURCE -- `LearnerDispatch::is_classifier` is the
+>   package's own decision procedure, and the `ml_m` defaults are read from the
+>   `DoubleMLXxx::new` signatures -- and holds every LIVE document that states
+>   it against that derivation.  The CHANGELOG and the ENGINEERING body are
+>   historical and are left alone: they record what was true when they were
+>   written.
+>
+>   *The new check.*  `_verify/_verify_mlm_defaults_1650.py` (**20** checks)
+>   measures the split and audits the documents that publish it.  No number is
+>   hard-coded in it: the set may legitimately grow, and a migration that
+>   changes the source without changing the documents is exactly what it is
+>   for.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round51_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 4 -> 5 -> 6 -> 7 -> 10 -> 13 -> 14.
+>   The run ends at **14** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**54** checks) is the new number.
+>
 >
 ## The README as it stood at v0.164.11
 
