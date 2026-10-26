@@ -2,7 +2,7 @@
 A. the README's numbers
   PASS  the README has number-bearing prose lines
   152 number-bearing prose lines, 153 distinct numbers
-  56 tracked verifiers read the README
+  57 tracked verifiers read the README
   PASS  the propensity_clip default is in the source
   PASS  the README's `1e6` is 1 / the propensity_clip default
   PASS  the fuzz harness names its master seed

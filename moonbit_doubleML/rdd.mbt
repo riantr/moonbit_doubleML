@@ -492,8 +492,11 @@ fn rdd_side(
     // (`fit_weighted`) — the kernel weights require the closed-
     // form `(X^T W X)^{-1}` to compute the HC0 sandwich SE.
     // Other learners fall back to unweighted `fit` (the kernel
-    // weights are dropped on the floor; this is the upstream
-    // `doubleml.DoubleMLRDD` convention — see v0.60.0 docs).
+    // weights are dropped on the floor). That is this port's own
+    // restriction, not an upstream convention: upstream's
+    // `doubleml.rdd.RDFlex` requires a learner that supports
+    // `sample_weights` and always applies the kernel weights
+    // (see the v0.60.0 CHANGELOG entry).
     let is_ols = match ml_g {
       LinearRegression(_) => true
       _ => false

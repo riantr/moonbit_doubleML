@@ -308,9 +308,11 @@ pub fn DoubleMLLPQ::fit(self : DoubleMLLPQ) -> DoubleMLLPQ {
     // Bug #4 fix: complier prob is the full-sample
     // `E[D | Z=1] - E[D | Z=0]`, NOT the per-fold mean difference
     // averaged over folds (which dilutes the estimate). The upstream
-    // `doubleml.irm.lpq.LPQScore` uses the full-sample
-    // `comp_prob = E[D | Z=1] - E[D | Z=0]` once, irrespective of the
-    // cross-fit partition.
+    // `doubleml.irm.lpq.DoubleMLLPQ` uses a full-sample
+    // `comp_prob` once, irrespective of the cross-fit
+    // partition: upstream estimates that difference doubly
+    // robustly from the cross-fitted nuisance predictions, where
+    // this port takes the raw conditional means of `d`.
     let idz1 = filter_indices(range_indices(n), z1)
     let idz0 = filter_indices(range_indices(n), z0)
     let mut comp = 0.0

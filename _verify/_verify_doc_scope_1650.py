@@ -347,7 +347,22 @@ check("only 8 of the 18 upstream names end in _data", len(_ndata) == 8,
 # carries.  Where a file holds several factories, the mapping is the LAST
 # upstream mention BEFORE that factory's own definition -- which is how a
 # reader reads a doc comment attached to a function.
-_HDR = re.compile(r"doubleml\.([A-Za-z_]+)\.datasets\.([A-Za-z0-9_]+)\.(_?make_\w+)")
+#
+# A header may name the upstream factory TWO ways, and both are real:
+#
+#   * through the MODULE that defines it --
+#     `doubleml.plm.datasets.dgp_pliv_CHS2015.make_pliv_CHS2015`;
+#   * through the PACKAGE that re-exports it --
+#     `doubleml.plm.datasets._make_pliv_data`.
+#
+# The second form is not a fallback.  Upstream's
+# `doubleml/plm/datasets/__init__.py` does
+# `from ._make_pliv_data import _make_pliv_data`, so the name is bound in the
+# PACKAGE and SHADOWS the module of the same name -- and the module-level
+# spelling of that path does not resolve at all.  So the module-level form is
+# tried FIRST, because the package-level form is a prefix of it.
+_HDR_MOD = re.compile(r"doubleml\.([A-Za-z_]+)\.datasets\.([A-Za-z0-9_]+)\.(_?make_\w+)")
+_HDR_PKG = re.compile(r"doubleml\.([A-Za-z_]+)\.datasets\.(_?make_\w+)\b")
 _port = set()
 _portmap = {}
 for _fn in sorted(os.listdir(SRC)):
@@ -359,9 +374,15 @@ for _fn in sorted(os.listdir(SRC)):
     for _pm in re.finditer(r"pub fn (make_\w+)\s*\(", _t):
         _fac = _pm.group(1)
         _port.add(_fac)
-        _hits = _HDR.findall(_t[:_pm.start()])
+        _before = _t[:_pm.start()]
+        _hits = []
+        for _m in _HDR_MOD.finditer(_before):
+            _hits.append((_m.start(), _m.group(1), _m.group(2), _m.group(3)))
+        for _m in _HDR_PKG.finditer(_before):
+            _hits.append((_m.start(), _m.group(1), None, _m.group(2)))
+        _hits.sort()
         if _hits:
-            _pkg, _mod, _upf = _hits[-1]
+            _pkg, _mod, _upf = _hits[-1][1], _hits[-1][2], _hits[-1][3]
             _portmap[_fac] = (_upf, "doubleml/" + _pkg, _mod)
 check("the port ships 18 factories", len(_port) == 18, "got %d" % len(_port))
 check("every port factory names its upstream factory in a provenance header",
@@ -372,7 +393,13 @@ check("the port's headers name exactly the manifest's factories",
       "headers: %s" % sorted(v[0] for v in _portmap.values()))
 _bad = []
 for _fac, (_upf, _pkg, _mod) in sorted(_portmap.items()):
-    if _upf in _up and _up[_upf] != (_pkg, _mod):
+    if _upf not in _up:
+        continue
+    _mpkg, _mmod = _up[_upf]
+    # A header that names the PACKAGE cannot name the module: upstream's own
+    # re-export shadows the module of the same name.  The factory name is
+    # unique in the manifest, so the package is what there is to check.
+    if _pkg != _mpkg or (_mod is not None and _mod != _mmod):
         _bad.append((_fac, _upf, "header says %s/%s" % (_pkg, _mod),
                      "manifest says %s/%s" % _up[_upf]))
 check("each provenance header names the manifest's package and module",

@@ -9,6 +9,92 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.44] -- seven citations of upstream that named things upstream does not have
+
+`moon.mod` moves 0.164.43 -> 0.164.44. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- seven upstream citations that do not resolve
+
+The README's own provenance table was already right. The drift was in the
+place the port records upstream FOR ITSELF: the comments, the provenance
+headers, the ledger. Every `doubleml.*` path in those is a claim that the
+path resolves, so all **56** of them were resolved against upstream 0.11.4
+-- by the real import mechanics, not by matching file names. Seven did not
+resolve, and three of the seven were not typos: they were claims about
+upstream that were wrong in substance.
+
+- `lpq.mbt` named `LPQScore`; upstream's LPQ class is `DoubleMLLPQ`. The
+  comment also said upstream's `comp_prob` is `E[D | Z=1] - E[D | Z=0]`:
+  upstream estimates that difference doubly robustly from the cross-fitted
+  nuisance predictions. The part the port's own fix rests on -- that upstream
+  computes it ONCE, on the full sample -- was true, and is now said
+  accurately.
+- `rdd.mbt` named `DoubleMLRDD`; upstream's RDD class is `RDFlex`.
+  `DoubleMLRDD` is THIS repository's name for its own estimator, which is
+  what made the wrong citation read as right. The comment went further and
+  said that dropping the kernel weights for a non-OLS learner "is the
+  upstream convention": upstream's `RDFlex` REQUIRES a learner that supports
+  `sample_weights` and always applies the kernel weights, so that is this
+  port's own restriction.
+- `sensitivity.mbt` named `_compute_sensitivity_elements`; there is no such
+  function anywhere in upstream. The base-class hook is
+  `doubleml.double_ml.DoubleML._sensitivity_element_est`, and upstream's
+  per-estimator `nu2` is `np.mean(nu2_score_element)` -- and upstream's own
+  BLP carries no sensitivity analysis at all, so the port's
+  projection-weight form is its own.
+- `sensitivity.mbt` appended `.gain_statistics` to
+  `doubleml.utils.gain_statistics`. A package's namespace is what its
+  `__init__.py` binds, and `from .mod import name` binds the FUNCTION there,
+  shadowing the submodule of the same name: so `doubleml.utils.gain_statistics`
+  IS the function, and the citation asked a function for an attribute it does
+  not have.
+- `dgp_pliv.mbt` appended `._make_pliv_data` to
+  `doubleml.plm.datasets._make_pliv_data`, shadowed the same way.
+- `cvar.mbt` named `DoubleML` at the package's top level. Upstream does not
+  export it there; the class lives in `doubleml/double_ml.py`.
+- `aggregator.mbt` named `_aggregate_coefs_and_ses` in `doubleml/utils/`; the
+  function is in `doubleml/utils/_estimation.py`.
+
+The CHANGELOG held five more broken citations: three copies of the claims
+above, in the v0.62.0, v0.23.0 and v0.19.0 entries, and two in the v0.49.0
+entry, where `DoubleMLDIDCSBinary` was named at the package's top level
+rather than in `doubleml/did/`. They are corrected in place, the way the
+ledger's own history records: the round-33 entry corrected an earlier
+published count for the same reason.
+
+### Added -- the citations are resolved, not just watched
+
+- `_verify/_verify_upstream_refs_1650.py` (**36** checks) ties every
+  citation to a TRACKED manifest of what resolves, and -- when the upstream
+  sdist is present -- to the artefact itself: the file is there, and the name
+  is on the recorded line. The sdist is a local cache and is not tracked, so
+  that part is a SKIP in a fresh clone, not a failure.
+- `_verify/_symbol_upstream_manifest_1690.txt` -- the tracked snapshot of all
+  **56** cited paths, each with the upstream file and line where the name
+  is bound or defined, carrying the sdist's sha256. Two independent
+  derivations agree on all of them: the sdist model and a real import.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**52** checks).
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round50_1650.py` -- seven mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every
+  step: **9** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 66 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **66** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.43] -- the nine sentences the README's neighbours were still getting wrong
 
 `moon.mod` moves 0.164.42 -> 0.164.43. No estimator behaviour changed and the
@@ -19952,8 +20038,10 @@ failing the CI gate since v0.57.0.
 - `RDD`'s `ml_g` plumbing is intentionally conservative: only
   `LinearRegression` keeps the kernel-weighted HC0 SE path;
   other dispatch arms drop the kernel weights and use the
-  homoskedastic formula. This matches the upstream
-  `doubleml.DoubleMLRDD` convention and is documented in
+  homoskedastic formula. That is this port's own restriction,
+  not an upstream convention -- upstream's `doubleml.rdd.RDFlex`
+  requires a learner that supports `sample_weights` and always
+  applies the kernel weights -- and it is documented in
   `rdd.mbt::rdd_side`'s docstring.
 
 - `sensitivity.mbt` and `blp_policy.mbt` still have
@@ -21209,7 +21297,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 - **`did_cs_binary.mbt::DoubleMLDIDCSBinary`** — new
   Callaway-Sant'Anna (2021) DID estimator for panel data
   with binary outcomes, port of the upstream
-  `doubleml.DoubleMLDIDCSBinary` (Python 0.11.3). Implements
+  `doubleml.did.DoubleMLDIDCSBinary` (Python 0.11.3). Implements
   the Sant'Anna-Zhao (2020) "binary outcome" DML score
   with 4 conditional g-functions (`g_d0_t0`, `g_d0_t1`,
   `g_d1_t0`, `g_d1_t1`) and 1 propensity
@@ -21258,7 +21346,7 @@ Composed of 12 fixes: 5 frontend Major + 1 frontend Minor +
 - **`validate_did_cs_binary_with_python.py`** — new
   validator. Hand-rolled reference reproduces the
   MoonBit estimator and compares against upstream
-  `doubleml.DoubleMLDIDCSBinary` for the same DGP.
+  `doubleml.did.DoubleMLDIDCSBinary` for the same DGP.
   `MODEL_TOL = 0.3` (matches the v0.49.0/v0.50.0
   convention; PRNG drift between chacha8 and
   numpy default_rng drives ~0.2 SE offsets).
@@ -23572,12 +23660,16 @@ algorithms are exact).
   the projection-weight formula
   `nu2[k] = (1 / n_obs) * ||M[k,:] @ basis^T||^2`
   where `M = (basis^T basis + ridge I)^{-1}` is the
-  BLP's regression matrix. This is consistent with
-  the upstream
-  `doubleml.utils._estimation._compute_sensitivity_elements`
-  convention, where `nu2 = E[score_d^2]` and the
-  score is the per-observation influence on the
-  k-th coefficient.
+  BLP's regression matrix. Upstream's own BLP
+  (`doubleml.DoubleMLBLP`) carries no sensitivity
+  analysis, so the projection-weight form above is
+  this port's own. It shares upstream's shape for `nu2`
+  -- assembled from a per-observation score element,
+  `nu2 = np.mean(nu2_score_element)` in
+  `doubleml.irm.irm.DoubleMLIRM`, per
+  `doubleml.double_ml.DoubleML._sensitivity_element_est`
+  -- with the per-observation influence `M[k,:] @ x_i`
+  as that element and `nu2` its mean square.
 
 ### Why a separate function?
 The homoskedastic formula conflates `nu2` with
@@ -24147,7 +24239,7 @@ For `p = [0.001, 0.01, 0.02, 0.03, 0.05]` (n = 5):
   compute the per-coefficient gain-statistic benchmark
   values `cf_y`, `cf_d`, `rho`, and `delta_theta` from
   two fitted DML models. Matches the upstream
-  `doubleml.utils.gain_statistics.gain_statistics`:
+  `doubleml.utils.gain_statistics`:
   - `R2_y = 1 - var_y_residuals / var_y`
   - `R2_riesz = nu2_short / nu2_long`
   - `cf_y = clip((R2_y_long - R2_y_short) / (1 - R2_y_long), 0, 1)`

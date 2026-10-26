@@ -1062,8 +1062,9 @@ pub fn DoubleMLCVAR::fit(
       ses[r] = se_r
       // The public accessors return the *last* rep's
       // `g_hat` / `m_hat`, matching the rest of the package's
-      // convention (and the upstream `doubleml.DoubleML` summary
-      // table, which only carries the last rep's nuisances).
+      // convention (and the upstream
+      // `doubleml.double_ml.DoubleML` summary table, which only
+      // carries the last rep's nuisances).
       last_g = g_hat
       last_m = m_final
       last_ipw_vec = ipw_vec

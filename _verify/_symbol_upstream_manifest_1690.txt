@@ -1,0 +1,103 @@
+# upstream doubleml 0.11.4 -- the symbols this repository cites
+#
+# WHAT THIS IS
+# =============
+# Every `doubleml.*` path named in this repository is a claim about the
+# upstream package: it says that path resolves.  Round 50 found SEVEN of them
+# that did not, and this file is the TRACKED record of what DOES resolve -- the
+# anchor a check can consult in a fresh clone.
+#
+# The upstream package publishes a WHEEL, and its 0.11.4 sdist is a LOCAL CACHE
+# (`_verify/doubleml-0.11.4.tar.gz`) that is not tracked.  So a contract run in
+# a fresh clone cannot see it.  This file IS tracked, and it was EXTRACTED from
+# that sdist; the sdist's sha256 is recorded below, so the snapshot can be
+# tied to the artefact it came from.  Regenerate it with
+# `_r50_gen_manifest_1650.py` and re-read the sha256 before trusting a change.
+#
+# WHAT IS CITED
+# =============
+# The library's own source comments (`moonbit_doubleML/**/*.mbt`), the six
+# tutorials under `doc/`, the skill, the README, the ENGINEERING ledger and
+# the CHANGELOG.  Two forms are NOT citations and are not listed: a GLOB
+# (`doubleml.DoubleML*`, a family) and a PLACEHOLDER (`doubleml.DoubleMLXxx`,
+# this repository's prose for "any upstream estimator").
+#
+# HOW A PATH RESOLVES (the model this file was built with)
+# ========================================================
+#   * a PACKAGE's namespace is what its `__init__.py` binds.  A
+#     `from .mod import name` binds `name` in the package namespace and
+#     SHADOWS the submodule `mod` of the same name -- so
+#     `doubleml.utils.gain_statistics` is the FUNCTION, and
+#     `doubleml.utils.gain_statistics.gain_statistics` does not resolve.
+#   * a MODULE's namespace is its own top-level definitions.
+#   * a CLASS's namespace includes the methods and properties it INHERITS.
+#   * `doubleml/__init__.py` does not export `DoubleML`; the class lives in
+#     `doubleml/double_ml.py`.
+#   * a directory of .py files with no `__init__.py` is still a package (PEP
+#     420); upstream ships `doubleml/did/utils/` that way.
+#
+# FORMAT
+# =======
+#   <cited path> <kind> <upstream file>:<line>
+# one line per cited path, sorted.  `kind` is one of module / class / method /
+# function / attribute / symbol.  The file:line is where the cited name is
+# BOUND or DEFINED -- for a re-exported name it is the `__init__.py` line.
+
+upstream doubleml 0.11.4
+sdist sha256 352641af0c876f54a7def36fa078cdcba171fb4221c28a7fdff6e710c72d485f
+doubleml.DoubleMLAPOS class __init__.py:6
+doubleml.DoubleMLBLP class __init__.py:18
+doubleml.DoubleMLCVAR class __init__.py:7
+doubleml.DoubleMLDIDCS._score_elements method did/did_cs.py:352
+doubleml.DoubleMLData module __init__.py:1
+doubleml.DoubleMLPLR.sensitivity_elements method double_ml.py:411
+doubleml.DoubleMLPLR.tune method double_ml.py:751
+doubleml.did.DoubleMLDIDCSBinary class did/__init__.py:9
+doubleml.did.DoubleMLDIDMulti class did/__init__.py:10
+doubleml.did.datasets module did/datasets/__init__.py:1
+doubleml.did.datasets.dgp_did_CS2021.make_did_CS2021 function did/datasets/dgp_did_CS2021.py:31
+doubleml.did.datasets.dgp_did_SZ2020.make_did_SZ2020 function did/datasets/dgp_did_SZ2020.py:64
+doubleml.did.datasets.dgp_did_cs_CS2021.make_did_cs_CS2021 function did/datasets/dgp_did_cs_CS2021.py:10
+doubleml.did.datasets.make_did_CS2021 function did/datasets/__init__.py:5
+doubleml.did.utils._aggregation module did/utils/_aggregation.py:1
+doubleml.did.utils._did_utils module did/utils/_did_utils.py:1
+doubleml.double_ml.DoubleML class double_ml.py:23
+doubleml.double_ml.DoubleML._sensitivity_element_est method double_ml.py:1606
+doubleml.irm.cvar.DoubleMLCVAR class irm/cvar.py:33
+doubleml.irm.datasets.dgp_confounded_irm_data.make_confounded_irm_data function irm/datasets/dgp_confounded_irm_data.py:7
+doubleml.irm.datasets.dgp_heterogeneous_data.make_heterogeneous_data function irm/datasets/dgp_heterogeneous_data.py:5
+doubleml.irm.datasets.dgp_iivm_data.make_iivm_data function irm/datasets/dgp_iivm_data.py:13
+doubleml.irm.datasets.dgp_irm_data.make_irm_data function irm/datasets/dgp_irm_data.py:13
+doubleml.irm.datasets.dgp_irm_data_discrete_treatments.make_irm_data_discrete_treatments function irm/datasets/dgp_irm_data_discrete_treatments.py:5
+doubleml.irm.datasets.dgp_ssm_data.make_ssm_data function irm/datasets/dgp_ssm_data.py:13
+doubleml.irm.irm.DoubleMLIRM class irm/irm.py:28
+doubleml.irm.lpq module irm/lpq.py:1
+doubleml.irm.lpq.DoubleMLLPQ class irm/lpq.py:29
+doubleml.irm.lpq.DoubleMLLPQ._compute_ipw_score method irm/lpq.py:258
+doubleml.irm.pq.DoubleMLPQ._compute_ipw_score method irm/pq.py:252
+doubleml.irm.pq.DoubleMLPQ._compute_score method irm/pq.py:256
+doubleml.irm.ssm module irm/ssm.py:1
+doubleml.plm.DoubleMLLPLR class plm/__init__.py:5
+doubleml.plm.DoubleMLPLPR class plm/__init__.py:7
+doubleml.plm.datasets._make_pliv_data function plm/datasets/__init__.py:5
+doubleml.plm.datasets.dgp_confounded_plr_data.make_confounded_plr_data function plm/datasets/dgp_confounded_plr_data.py:6
+doubleml.plm.datasets.dgp_lplr_LZZ2020.make_lplr_LZZ2020 function plm/datasets/dgp_lplr_LZZ2020.py:13
+doubleml.plm.datasets.dgp_pliv_CHS2015.make_pliv_CHS2015 function plm/datasets/dgp_pliv_CHS2015.py:9
+doubleml.plm.datasets.dgp_pliv_multiway_cluster_CKMS2021.make_pliv_multiway_cluster_CKMS2021 function plm/datasets/dgp_pliv_multiway_cluster_CKMS2021.py:9
+doubleml.plm.datasets.dgp_plpr_CP2025.make_plpr_CP2025 function plm/datasets/dgp_plpr_CP2025.py:5
+doubleml.plm.datasets.dgp_plr_CCDDHNR2018.make_plr_CCDDHNR2018 function plm/datasets/dgp_plr_CCDDHNR2018.py:13
+doubleml.plm.datasets.dgp_plr_turrell2018.make_plr_turrell2018 function plm/datasets/dgp_plr_turrell2018.py:21
+doubleml.rdd.RDFlex class rdd/__init__.py:5
+doubleml.rdd.datasets.simple_dgp.make_simple_rdd_data function rdd/datasets/simple_dgp.py:5
+doubleml.utils._estimation._aggregate_coefs_and_ses function utils/_estimation.py:343
+doubleml.utils._estimation._default_kde function utils/_estimation.py:327
+doubleml.utils._estimation._get_cond_smpls function utils/_estimation.py:23
+doubleml.utils._estimation._var_est function utils/_estimation.py:357
+doubleml.utils._propensity_score module utils/_propensity_score.py:1
+doubleml.utils._propensity_score._normalize_ipw function utils/_propensity_score.py:23
+doubleml.utils._propensity_score._trimm function utils/_propensity_score.py:14
+doubleml.utils._sensitivity._compute_sensitivity_bias function utils/_sensitivity.py:4
+doubleml.utils.blp module utils/blp.py:1
+doubleml.utils.gain_statistics function utils/__init__.py:8
+doubleml.utils.global_learner module utils/global_learner.py:1
+doubleml.utils.resampling.DoubleMLResampling class utils/resampling.py:5

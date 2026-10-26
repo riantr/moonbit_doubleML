@@ -1,0 +1,16 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. the manifest drops a path the repository does cite
+   2. a comment names an upstream path that does not exist
+   3. the manifest lists a path the repository does not cite
+   4. the manifest's sha256 no longer matches the sdist
+   5. a manifest row points at a file upstream does not have
+   6. a manifest row points at a line that does not hold the name
+   7. a manifest row's kind is one this check does not know
+
+C. the published failure count
+  the driver counted 9 failures
+  36 checks, 9 failed

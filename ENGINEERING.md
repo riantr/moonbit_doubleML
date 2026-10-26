@@ -1597,6 +1597,74 @@
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**50** checks) is the new number.
 >
+> * **Round 50.**  Seven citations of upstream that named things upstream does
+>   not have.
+>
+>   The README's own provenance table was already right.  The drift was in the
+>   place the port records upstream FOR ITSELF -- the comments, the
+>   provenance headers, the ledger.  Every `doubleml.*` path in those is a
+>   claim that the path resolves, so all of them were resolved against
+>   upstream 0.11.4 by the real import mechanics, not by matching file
+>   names.  Seven did not resolve.
+>
+>   *Three were names upstream does not have.*  `LPQScore` (upstream's LPQ
+>   class is `DoubleMLLPQ`), `DoubleMLRDD` (upstream's RDD class is `RDFlex`
+>   -- `DoubleMLRDD` is THIS repository's name for its own estimator, which
+>   is what made the wrong citation read as right), and
+>   `_compute_sensitivity_elements` (there is no such function; the
+>   base-class hook is
+>   `doubleml.double_ml.DoubleML._sensitivity_element_est`).
+>
+>   *Two were shadowed by a re-export.*  A package's namespace is what its
+>   `__init__.py` binds, and `from .mod import name` binds `name` there and
+>   SHADOWS the submodule of the same name.  So
+>   `doubleml.utils.gain_statistics` IS the function, and the citation that
+>   appended `.gain_statistics` to it asked a function for an attribute it
+>   does not have; the same held for `doubleml.plm.datasets._make_pliv_data`.
+>
+>   *Two were simply the wrong path.*  `DoubleML` is not exported at the
+>   package's top level -- the class lives in `doubleml/double_ml.py` -- and
+>   `_aggregate_coefs_and_ses` is in `doubleml/utils/_estimation.py`, not
+>   `doubleml/utils/`.
+>
+>   *Two of the seven were claims about upstream that were wrong in
+>   substance, not just in spelling.*  The RDD comment said that dropping
+>   the kernel weights for a non-OLS learner "is the upstream convention":
+>   upstream's `RDFlex` REQUIRES a learner that supports `sample_weights` and
+>   always applies the kernel weights, so that is this port's own
+>   restriction.  And the LPQ comment said upstream's `comp_prob` is
+>   `E[D | Z=1] - E[D | Z=0]`: upstream estimates that difference doubly
+>   robustly from the cross-fitted nuisance predictions.  The part the
+>   port's own fix rests on -- that upstream computes it ONCE, on the full
+>   sample -- was true, and is now said accurately.
+>
+>   *The CHANGELOG held five more broken citations*: three copies of the
+>   claims above, in the v0.62.0, v0.23.0 and v0.19.0 entries, and two in the
+>   v0.49.0 entry, where `DoubleMLDIDCSBinary` was named at the package's top
+>   level rather than in `doubleml/did/`.  They are corrected in place, the way
+>   the ledger's own history records: the round-33 entry corrected an earlier
+>   published count for the same reason.
+>
+>   *The new check.*  `_verify/_verify_upstream_refs_1650.py` (**36** checks)
+>   ties every citation to the TRACKED manifest of what resolves, and -- when
+>   the upstream sdist is present -- to the artefact itself: the file is
+>   there, and the name is on the recorded line.  The sdist is a local cache
+>   and is not tracked, so in a FRESH CLONE that part is a SKIP, not a
+>   failure.
+>
+>   *The upstream manifest.*  `_verify/_symbol_upstream_manifest_1690.txt`
+>   records every cited path with the upstream file and line where the name
+>   is bound or defined, and carries the sdist's sha256.  Two independent
+>   derivations agree on all of them: the sdist model and a real import.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round50_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 2 -> 4 -> 5 -> 6 -> 7 -> 8.  The run
+>   ends at **9** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**52** checks) is the new number.
+>
 >
 ## The README as it stood at v0.164.11
 

@@ -123,7 +123,7 @@ pub fn PlivData::z_get(self : PlivData) -> Array[Double] {
 
 ///|
 /// Convenience factory matching the upstream
-/// `doubleml.plm.datasets._make_pliv_data._make_pliv_data`
+/// `doubleml.plm.datasets._make_pliv_data`
 /// signature: `(n_obs, dim_x, theta, seed)` with no other
 /// arguments. Equivalent to `make_pliv_CHS2015(n_obs, dim_x,
 /// theta, seed)` but named for parity with the upstream

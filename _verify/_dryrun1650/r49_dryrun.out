@@ -1,0 +1,19 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. doc/004 says every estimator takes the snippet's arguments
+   2. the skill states the dependency rule with no carve-out
+   3. doc/005 puts upstream's factories back in one package
+   4. doc/006's transcript is not what the loop prints
+   5. doc/004 groups DoubleMLQTE with the scalar-quantile estimators
+   6. doc/005 counts 35 files without naming the orphan
+   7. doc/003 calls the cross-section a panel again
+   8. doc/006 hands over the loop CI's own comment rejects
+   9. doc/002 drops the rdrobust pin and lists scipy as direct
+  10. a provenance header names an upstream factory that does not exist
+
+C. the published failure count
+  the driver counted 38 failures
+  133 checks, 38 failed

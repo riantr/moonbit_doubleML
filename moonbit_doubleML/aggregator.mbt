@@ -1,6 +1,7 @@
 ///|
 /// Per-repetition coefficient / standard-error aggregation for the
-/// DML family of estimators. Mirrors `doubleml.utils._aggregate_coefs_and_ses`
+/// DML family of estimators. Mirrors
+/// `doubleml.utils._estimation._aggregate_coefs_and_ses`
 /// in the upstream `doubleml` package:
 ///
 ///     theta_hat = median(theta_1, ..., theta_R)

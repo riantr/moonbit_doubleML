@@ -70,7 +70,7 @@ test "Panel_data_struct_constructible" {
 ///|
 test "PLIV_factory_alias_make_pliv_data" {
   // `make_pliv_data` is the canonical factory helper name
-  // matching upstream `doubleml.plm.datasets._make_pliv_data.py`.
+  // matching upstream `doubleml.plm.datasets._make_pliv_data`.
   let data = make_pliv_data(500, 20, 1.0, 3141)
   let m = data.x_get()
   inspect(m.rows() == 500, content="true")

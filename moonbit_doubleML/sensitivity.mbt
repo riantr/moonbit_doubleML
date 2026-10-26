@@ -664,7 +664,7 @@ pub extend GainStatsResult with @moonbitlang/core/debug.Debug::{to_repr}
 ///     between `dml_long` and `dml_short`).
 ///
 /// The algorithm (matches upstream
-/// `doubleml.utils.gain_statistics.gain_statistics`):
+/// `doubleml.utils.gain_statistics`):
 ///   1. `R2_y_long = 1 - var_y_residuals_long / var_y`,
 ///      `R2_y_short = 1 - var_y_residuals_short / var_y`,
 ///      `R2_riesz = nu2_short / nu2_long`.
@@ -1191,12 +1191,16 @@ pub fn GainStatsSource::from_blp_cv_repeated(
 /// the projection-weight formula
 /// `nu2[k] = (1 / n_obs) * ||M[k,:] @ basis^T||^2`
 /// where `M = (basis^T basis + ridge I)^{-1}` is the
-/// BLP's regression matrix. This is consistent with
-/// the upstream
-/// `doubleml.utils._estimation._compute_sensitivity_elements`
-/// convention, where `nu2 = E[score_d^2]` and the
-/// score is the per-observation influence on the
-/// k-th coefficient (`M[k,:] @ x_i`).
+/// BLP's regression matrix. Upstream's own BLP
+/// (`doubleml.DoubleMLBLP`) carries no sensitivity
+/// analysis, so the projection-weight form above is
+/// this port's own. It shares upstream's shape for `nu2`
+/// -- assembled from a per-observation score element,
+/// `nu2 = np.mean(nu2_score_element)` in
+/// `doubleml.irm.irm.DoubleMLIRM`, per
+/// `doubleml.double_ml.DoubleML._sensitivity_element_est`
+/// -- with the per-observation influence `M[k,:] @ x_i`
+/// as that element and `nu2` its mean square.
 ///
 /// The homoskedastic formula conflates `nu2` with
 /// `se^2` (using the relation
