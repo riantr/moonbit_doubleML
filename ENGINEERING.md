@@ -1462,6 +1462,68 @@
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**46** checks) is the new number.
 >
+> * **Round 48.**  The shape filter, and three sentences that claimed more
+>   than the tree supports.
+>
+>   The user named `bobzhang/toml@0.4.3` -- 841 lines / 24 504 chars -- as
+>   the shape to work from: a package README that states the CURRENT truth
+>   and the boundaries, and carries no release-by-release archaeology, no
+>   duplicated restatements and no internal call-site census.  Twelve
+>   passages of that kind came out of this README.  Nothing MEASURED went
+>   with them: every figure a verifier pins is still published, and the
+>   checks that pinned one were RE-TARGETED rather than deleted -- a check
+>   that followed a sentence must follow the FACT, not the wording.
+>
+>   *Three prose claims that were watched, and still wrong.*  A fresh-eyes
+>   prose audit read the sentences and asked one question of each: does it
+>   claim more than the tree supports?  Three did, and all three were
+>   WATCHED claims -- the numbers in them were right, the SCOPE around them
+>   was not.  A verifier that pins a string says the string SURVIVES; it
+>   does not say the string is true.
+>
+>   *The Attribution promised a comparison that does not exist.*  "all three
+>   ship upstream, and are compared against it" -- but
+>   `validate_plpr_with_python.py` compares UPSTREAM's theta against the
+>   HAND-ROLLED one and never against the port's, on a different dataset
+>   (numpy's `default_rng` against the port's `chacha8_rng`), and
+>   `pyexample_suite.py` contains no `plpr` at all.  PLPR has no upstream
+>   gate; `DoubleMLLPLR` and `DoubleMLDIDCSBinary` have one.
+>
+>   *The small-n caution said both sides fail.*  "Both this port and
+>   upstream fail there, in opposite directions" is false on the gate's own
+>   output: the direction REVERSES with n (at n = 60 the port is well-behaved
+>   and upstream is not; at n = 100 it is exactly reversed; at n = 160
+>   neither fails).  The upstream half of the claim survives -- upstream
+>   really is ill-posed there.
+>
+>   *The upstream gates do not all run upstream's own code.*  Eight of the
+>   nine `pyexample_*` scripts import the `doubleml` wheel; `pyexample_rdd.py`
+>   imports `rdrobust`, a different package.  The paragraph now names both.
+>
+>   *The new check.*  `_verify/_verify_prose_scope_1650.py` (**42** checks)
+>   derives the upstream-gated estimator SET from the scripts themselves, the
+>   small-n DIRECTION from the gate's own three measured rows, and the
+>   reference package of each gate from the scripts' imports -- and ties the
+>   README's three sentences to all three.  A sentence can be fixed by
+>   another sentence; a sentence tied to a MEASUREMENT cannot.
+>
+>   *A dry-run that could only be run ONCE.*  Three of the tracked drivers
+>   -- `_dryrun_round35`, `_dryrun_round46` and `_dryrun_round47` -- aborted
+>   with "nothing to commit" when the sweep ran AFTER the release commit:
+>   their copy-in was already in the clone, because the clone is cut at HEAD
+>   and the commit carries it.  Eleven of the drivers already tolerated that;
+>   these three did not, and this round's fourth inherited the gap by copying
+>   one of them.  A check that can only be run once cannot be re-checked.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round48_1650.py` breaks ONE promise -- the Attribution's
+>   comparison claim, the small-n caution, the upstream-gate reference, the
+>   migration paragraph's set, the estimator table -- and the failure count
+>   must GROW at every step.  The run ends at **20** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**48** checks) is the new number.
+>
 >
 ## The README as it stood at v0.164.11
 

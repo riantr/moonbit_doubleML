@@ -82,7 +82,12 @@ check("DoubleMLLPLR IS in the classifier list",
       any("LPLR" in c for c in clf))
 
 # the migration sentence must name LPLR
-mig = re.search(r"\*\*`DoubleMLIRM` was migrated in v0\.132\.0\*\*,(.*?):", readme, re.S)
+#
+# ROUND 48: the migration sentence no longer lists the RELEASE each estimator
+# was migrated in (release history lives in the CHANGELOG now), so the anchor
+# is the sentence that names the CURRENT classifier-defaulted set.
+mig = re.search(r"\*\*Seven\*\* estimators now default to a classifier --\s*(.*?)\s*"
+                r"their `ml_m` default is now", readme, re.S)
 check("the migration sentence names DoubleMLLPLR",
       mig is not None and "DoubleMLLPLR" in mig.group(1),
       (mig.group(1)[-120:] if mig else "(not found)"))

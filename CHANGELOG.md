@@ -9,6 +9,96 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.42] -- the shape filter, and three sentences that claimed more than the tree supports
+
+`moon.mod` moves 0.164.41 -> 0.164.42. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Changed -- the shape filter
+
+- The reference package the user named, `bobzhang/toml@0.4.3` (841 lines /
+  24 504 chars), states the CURRENT truth and the boundaries, and carries no
+  release-by-release archaeology, no duplicated restatements and no internal
+  call-site census.  Twelve passages of that kind came out of this README.
+- What came out: the preamble's restatement of the 19 / 2 / 1 upstream map;
+  the Features list's re-listing of the 22 estimator NAMES (the table two
+  paragraphs down lists them all); the audience paragraph's second half (it
+  repeated the Features bullets); the "How the names map" blockquote (it
+  repeated the table's last column and Attribution); the estimator table's
+  preamble (the same map a third time); the migration VERSION list; the
+  per-release verdict history; the "a future release can swap the bodies"
+  speculation; and the Examples section's directory-by-directory description.
+- What did NOT come out: a single measured figure.  Every number a verifier
+  pins is still published, and the checks that pinned one were RE-TARGETED
+  rather than deleted -- a check that followed a sentence must follow the
+  fact, not the wording.  The migration paragraph now publishes the CURRENT
+  set of seven classifier-defaulted estimators instead of the release each
+  one was migrated in, and that release history lives in this CHANGELOG.
+
+### Fixed -- three prose claims that were watched, and still wrong
+
+- The Attribution said `DoubleMLPLPR`, `DoubleMLLPLR` and `DoubleMLDIDCSBinary`
+  "all ship upstream, and are compared against it".  The first is NOT compared
+  against upstream: `validate_plpr_with_python.py` compares UPSTREAM's theta
+  against the HAND-ROLLED one and never against the port's, and the two sides
+  are fitted on DIFFERENT rows (numpy's `default_rng` against the port's
+  `chacha8_rng`); `pyexample_suite.py` contains no `plpr` at all.  The
+  sentence now says which two ARE compared against upstream, and that PLPR
+  has no upstream gate.
+- The small-n caution said "Both this port and upstream fail there, in opposite
+  directions".  The gate's own output says the direction REVERSES with n: at
+  n = 60 the port is well-behaved (se 0.76) and upstream is not (se 20.2); at
+  n = 100 it is exactly the other way round (port se 7.5e5, upstream se 0.83);
+  at n = 160 neither fails.  The upstream half of the claim survives -- upstream
+  really is ill-posed there -- and it is the half that is kept.
+- The upstream-gate paragraph said the nine `pyexample_*` scripts "run
+  upstream's own code".  Eight of them import the `doubleml` wheel;
+  `pyexample_rdd.py` imports `rdrobust`, a different package.  The paragraph
+  now names both, and how many of each.
+- All three were WATCHED claims.  A verifier that pins a string says the
+  string survives; it does not say the string is true.
+
+### Fixed -- three dry-runs that could only be run once
+
+- `_verify/_dryrun_round35_1650.py`, `_verify/_dryrun_round46_1650.py` and
+  `_verify/_dryrun_round47_1650.py` aborted with "nothing to commit" when the
+  sweep ran AFTER the release commit: their copy-in was already in the clone,
+  because the clone is cut at HEAD and the commit carries it.  Eleven of the
+  drivers already tolerated that; these three did not, and this round's fourth
+  inherited the gap by copying one of them.  A check that can only be run once
+  cannot be re-checked.
+
+### Added -- the scope claims are measured, not just watched
+
+- `_verify/_verify_prose_scope_1650.py` (**42** checks) derives the
+  upstream-gated estimator SET from the `pyexample_*` scripts themselves, the
+  small-n DIRECTION from the gate's own three measured rows, and the
+  reference package of each gate from the scripts' imports -- and ties the
+  README's three sentences to all three.  A sentence can be fixed by another
+  sentence; a sentence tied to a MEASUREMENT cannot.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**48** checks).
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round48_1650.py` -- five mechanisms, one per promise: the
+  Attribution's comparison claim, the small-n caution, the upstream-gate
+  reference, the migration paragraph's set and the estimator table.  It
+  requires the failure count to GROW at every step: **20** failures at the
+  end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 64 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **64** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.41] -- four of the seven, and three that never were unwatched
 
 `moon.mod` moves 0.164.40 -> 0.164.41. No estimator behaviour changed and the

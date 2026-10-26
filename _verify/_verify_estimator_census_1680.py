@@ -130,21 +130,24 @@ check("34 DoubleML* structs, 12 of them *Data",
       "got %d structs / %d data" % (len(all_structs), len(data_structs)))
 
 # the README's Features list
+#
+# ROUND 48: the Features list no longer RE-LISTS the 22 estimator names --
+# the estimator table two paragraphs down lists them all, and listing them
+# twice is exactly the kind of duplication the shape filter removed.  The
+# NAMES are still checked, but they are read out of the TABLE now (see the
+# "Models table" section below, which compares them with the source's own
+# census).  What the Features paragraph still has to carry is the COUNT.
 feat = re.search(r"\*\*Pure-MoonBit, all-4-backends port of `doubleml-for-py`\*\* -- 22 "
-                 r"`DoubleML\*`\s*\nestimators \((.*?)\)\s*\nin (\d+) source files",
+                 r"`DoubleML\*`\s*\nestimators in (\d+) source files",
                  readme, re.S)
 check("the Features paragraph is findable", feat is not None)
 if feat:
-    names = re.findall(r"`(DoubleML\w+)`", feat.group(1))
     print("")
-    print("  Features list: %d names" % len(names))
-    check("the Features list has 22 names", len(names) == 22, "got %d" % len(names))
-    check("the Features list has no duplicates", len(set(names)) == len(names))
-    check("the Features list matches the source exactly",
-          sorted(names) == ests,
-          "README: %s / source: %s" % (sorted(names), ests))
+    print("  Features paragraph: 22 estimators, %s source files" % feat.group(1))
     check("the Features paragraph says '19 source files'",
-          feat.group(2) == "19", "says %s" % feat.group(2))
+          feat.group(1) == "19", "says %s" % feat.group(1))
+    check("the Features paragraph says '22 `DoubleML*` estimators'",
+          "22 `DoubleML*`" in readme)
 
 # --------------------------------------------------------- the Status table
 # The Status table RESTATES the census, in its own words and its own row.  A

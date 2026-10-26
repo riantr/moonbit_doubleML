@@ -258,10 +258,14 @@ MECHANISMS = [
          "except `ml_m` on the eight\nstructs migrated to a classifier, named below.")),
 
     # -- 5. the migration paragraph drops an estimator -------------------------
+    # ROUND 48: the paragraph no longer publishes the RELEASE each estimator
+    # was migrated in, so the mechanism drops an estimator from the CURRENT
+    # classifier-defaulted set instead.  It still bites the same way:
+    # `_verify_api_promises_1650.py` compares that set with the SOURCE's.
     ("the migration paragraph drops an estimator",
      lambda: patch_readmes(
-         "**`DoubleMLPQ` / `DoubleMLQTE` in\nv0.139.0** and **`DoubleMLLPLR` in v0.163.3**:",
-         "**`DoubleMLPQ` in\nv0.139.0** and **`DoubleMLLPLR` in v0.163.3**:")),
+         "`DoubleMLPQ`, `DoubleMLQTE` and `DoubleMLLPLR` --\n",
+         "`DoubleMLPQ` and `DoubleMLLPLR` --\n")),
 
     # -- 6. the OLS paragraph drops an estimator --------------------------------
     ("the OLS paragraph drops an estimator",

@@ -1,8 +1,8 @@
 
 A. the README's numbers
   PASS  the README has number-bearing prose lines
-  154 number-bearing prose lines, 155 distinct numbers
-  54 tracked verifiers read the README
+  152 number-bearing prose lines, 153 distinct numbers
+  56 tracked verifiers read the README
   PASS  the propensity_clip default is in the source
   PASS  the README's `1e6` is 1 / the propensity_clip default
   PASS  the fuzz harness names its master seed
@@ -17,7 +17,7 @@ A. the README's numbers
 
 B. every number is guarded, derived, or witnessed
   *** FAIL ***  every number in the README is accounted for -- no witness: ['0.999123456']
-  guarded: 112, derived: 4, witnessed: 40, total: 155
+  guarded: 112, derived: 4, witnessed: 38, total: 153
 
 C. the witnesses
   0.0005       <- CHANGELOG.md
@@ -29,8 +29,6 @@ C. the witnesses
   0.0982       <- CHANGELOG.md
   0.152        <- CHANGELOG.md
   0.153        <- CHANGELOG.md
-  0.162        <- CHANGELOG.md
-  0.249        <- CHANGELOG.md
   0.270        <- CHANGELOG.md
   0.761        <- CHANGELOG.md
   0.842        <- CHANGELOG.md

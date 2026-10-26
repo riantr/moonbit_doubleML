@@ -12,21 +12,14 @@ which upstream keeps in a single class that this port splits in two. Those
 provenance labels are re-measured against the **installed** `doubleml`
 0.11.3 package, not asserted -- see the estimator table below and
 `_verify/UPSTREAM_PROVENANCE.md`.
-`DoubleMLPLPR`, `DoubleMLLPLR` and `DoubleMLDIDCSBinary` all ship
-upstream, and the table marks them *(upstream)*.
 
 Targets library authors and tool developers who need causal inference,
 panel data estimation, instrumental variable estimation, regression
 discontinuity, policy evaluation, or interpretable machine learning
 inside the MoonBit ecosystem. Delivers one
-`DoubleMLXxx::new(...).fit()` API across all 22 estimators -- the shape
-is the same, but six take a different constructor, and those six are
-named in **API reference** -- with robust variance estimation,
-propensity-score processing, multiple-testing correction, and a
-reproducible validation pipeline (24 / 24 Python reference scripts PASS)
--- on `native`,
-`wasm`, `wasm-gc`, and `js` backends under
-`moon test --target <backend> --deny-warn`.
+`DoubleMLXxx::new(...).fit()` API across all 22 estimators, with robust
+variance estimation and a reproducible validation pipeline
+(24 / 24 Python reference scripts PASS).
 
 ## Features
 
@@ -55,13 +48,7 @@ reproducible validation pipeline (24 / 24 Python reference scripts PASS)
   `examples/parity/`.
 
 **Pure-MoonBit, all-4-backends port of `doubleml-for-py`** -- 22 `DoubleML*`
-estimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,
-`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`,
-`DoubleMLDIDCSBinary`, `DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`,
-`DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,
-`DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,
-`DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)
-in 19 source files. **19** are marked *(upstream)* and mirror a
+estimators in 19 source files. **19** are marked *(upstream)* and mirror a
 name-identical `doubleml-for-py` class; **2** are marked
 *(upstream, renamed)* -- `DoubleMLRDD` (upstream `RDFlex`) and
 `DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`); and **1**,
@@ -92,7 +79,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.41",
+  "riantr/moonbit_doubleML@0.164.42",
 }
 ```
 
@@ -148,12 +135,8 @@ one struct each, and three holding two (`apo.mbt`: `DoubleMLAPO` +
 `DoubleMLPolicyTree`; `quantile.mbt`: `DoubleMLPQ` + `DoubleMLQTE`) --
 out of 220 `.mbt` files in the package (65 production, 129 blackbox
 test, 26 whitebox test). All are reachable through the same
-`DoubleMLXxx::new(...).fit()` interface. 19 are marked *(upstream)*
-against a name-identical `doubleml-for-py` class; two are marked
-*(upstream, renamed)* -- `DoubleMLRDD` (upstream `RDFlex`) and
-`DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`); and one,
-`DoubleMLDIDCS`, is marked *(upstream design, no 1:1 class)* -- the
-port's variant of upstream's `DoubleMLDIDMulti`:
+`DoubleMLXxx::new(...).fit()` interface. The last column marks each
+row's upstream counterpart:
 
 | Model | Score | Description |
 |-------|-------|-------------|
@@ -195,12 +178,9 @@ and `partialling out`; it takes **no score argument at all** for
 `doc/004_estimators` tutorial lists the port's own strings, one row
 per estimator.
 
-> **How the names map.** `DoubleMLDIDCS` has **no 1:1 upstream class**
-> -- it is this port's variant of upstream's `DoubleMLDIDMulti` -- and the
-> two *renamed* pairs are `DoubleMLRDD` (upstream `RDFlex`) and
-> `DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`). The derivation, and
-> the parameter that distinguishes them, are in
-> `_verify/UPSTREAM_PROVENANCE.md` and in `ENGINEERING.md`.
+> **How the names map.** The estimator table's last column is the map;
+> the derivation is in `_verify/UPSTREAM_PROVENANCE.md` and in
+> `ENGINEERING.md`.
 
 ## API reference
 
@@ -316,10 +296,9 @@ sensitivity-analysis reading of how much confounding the estimate survives, so
 reaches `0.842`.
 
 The port used to default `ml_m` to `LearnerDispatch::linear_regression()`
-everywhere. **`DoubleMLIRM` was migrated in v0.132.0**,
-**`DoubleMLAPO` in v0.134.0**, **`DoubleMLAPOS` in v0.135.0**,
-**`DoubleMLSSM` in v0.138.0**, **`DoubleMLPQ` / `DoubleMLQTE` in
-v0.139.0** and **`DoubleMLLPLR` in v0.163.3**:
+everywhere. **Seven** estimators now default to a classifier --
+`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLSSM`,
+`DoubleMLPQ`, `DoubleMLQTE` and `DoubleMLLPLR` --
 their `ml_m` default is now
 `LearnerDispatch::logistic_regression(LogisticRegression::new())`, while
 `ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x]`), so the
@@ -403,12 +382,7 @@ worse on both bias (0.0776 vs 0.00050) and SE.
 | `DoubleMLLPLR` | **not demonstrated -- root-caused in v0.140.0-v0.142.0** | not an `ml_m` hazard; two failure modes; see below |
 | `DoubleMLPQ` | **hazardous -- fixed in v0.139.0** | ignored its `quantile` entirely |
 
-Every row above is a **measured verdict**, and each was settled in the release
-that decided it: `DoubleMLIRM` (v0.132.0), `DoubleMLAPO` (v0.134.0),
-`DoubleMLAPOS` (v0.135.0) and `DoubleMLDIDBinary` (v0.136.0) first, the rest
-in v0.137.0. `DoubleMLQTE` is the one row whose verdict is later than its
-measurement: v0.137.0 recorded it as *not demonstrated* (`0.162` vs `0.249`),
-and the freeze was only found in v0.139.0. **Six rows turned out hazardous**:
+Every row above is a **measured verdict**. **Six rows turned out hazardous**:
 `DoubleMLIRM` (`-225.86` vs `1.44`), `DoubleMLAPO` (bias `5.246` vs `0.531`),
 `DoubleMLAPOS` (per-level bias to `436.11`), `DoubleMLSSM` (`242.116` vs
 `1.177` -- its score divides by `m*pi` AND `(1-m)*pi`, two reciprocals in both
@@ -442,10 +416,7 @@ free functions. `DoubleMLIRM::fit` / `fit_cluster` /
 `sensitivity_analysis` and the matching `DoubleMLPLR` paths now
 route the per-observation residual extraction through
 `vector_subtract` instead of an inlined per-iteration load /
-subtract. The helpers are pure element-wise loop wrappers
-today -- the public API has been fixed since v0.82, so a future
-release can swap the bodies to a SIMD-vectorised backend (or external
-call to a BLAS-style library) without breaking callers.
+subtract. The helpers are pure element-wise loop wrappers today.
 
 ## Examples
 
@@ -453,13 +424,12 @@ call to a BLAS-style library) without breaking callers.
 demos that print an estimate; measured per driver, **14** of the 16 print a
 true value and **11** of the 16 print a 95 % CI -- `examples/pava` and
 `examples/splitting` print neither, and `examples/apos`, `examples/cluster`
-and `examples/ssm` print a true value but no CI. `examples/api_server/`
-is an HTTP service; `examples/consumer_demo/` is the library-user pattern
-that mirrors what an external `moon add riantr/moonbit_doubleML` consumer
-would write; `examples/fuzz/` is the property-based fuzz harness; and
+and `examples/ssm` print a true value but no CI. `examples/api_server/` is
+an HTTP service; `examples/consumer_demo/` is the library-user pattern that
+mirrors what an external `moon add riantr/moonbit_doubleML` consumer would
+write; `examples/fuzz/` is the property-based fuzz harness; and
 `examples/bitexact/` and `examples/parity/` are the MoonBit fixtures the
-bit-exact and LPLR parity validators drive, kept as runnable binaries so
-their numbers are inspectable without a Python reference.
+bit-exact and LPLR parity validators drive.
 
 Every example's `moon.mod` pins the library at the release this document
 describes, so an example copied out of the tree and resolved there with
@@ -589,9 +559,11 @@ it is what makes the port *no worse* rather than better. Record:
    for w in model.warnings() { println(w) }
    ```
 
-3. **Treat `n < 200` as ill-posed for partially logistic regression.** Both
-   this port and upstream fail there, in opposite directions, and the port
-   damps its Newton step to keep the answer finite.
+3. **Treat `n < 200` as ill-posed for partially logistic regression.** Upstream
+   genuinely is ill-posed there -- non-finite standard errors and root
+   warnings -- while this port damps its Newton step to keep the answer
+   finite. Which side breaks depends on n, so neither one is a safe
+   reference for the other at that size.
 
 ### ❌ DON'T
 
@@ -623,7 +595,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.41** |
+| `moon.mod` version | **0.164.42** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -640,9 +612,12 @@ it is what makes the port *no worse* rather than better. Record:
 **Nine gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
 family. Every script above compares the port against a second implementation
 written in this repository, which on its own can only catch a disagreement
-someone already thought to look for. The `pyexample_*` scripts instead run
-upstream's own code on the port's rows and compare that: not "does the port
-agree with our second implementation" but "does the port agree with upstream".
+someone already thought to look for. The `pyexample_*` scripts instead run a
+reference implementation on the port's rows and compare that: not "does the
+port agree with our second implementation" but "does the port agree with
+upstream". The reference is upstream's own `doubleml` classes in eight of
+them, and `rdrobust` for the RDD arm -- `doubleml-for-py` and `rdrobust` are
+different packages.
 
 The `validate_*` family is not exclusively ours, though: **9** of its 24
 scripts import the upstream `doubleml` wheel, and **2** of those gate the port
@@ -752,7 +727,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.41, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.42, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -812,7 +787,10 @@ classes are re-implemented in pure MoonBit with the same score
 formulae and variance estimators, as is its RDD implementation
 (`RDFlex` upstream, `DoubleMLRDD` here). `DoubleMLPLPR`,
 `DoubleMLLPLR` and `DoubleMLDIDCSBinary` are **not** MoonBit-only -- all
-three ship upstream, and are compared against it. The last candidate
+three ship upstream. `DoubleMLLPLR` and `DoubleMLDIDCSBinary` are compared
+against upstream's own classes; `DoubleMLPLPR`'s upstream fit is compared
+against a hand-rolled reference on a different dataset from the port's, so
+PLPR has no upstream gate. The last candidate
 for a port-only estimator, `DoubleMLDIDCrossSection`, is upstream's
 `DoubleMLDIDCS` under a different name. One estimator does have **no
 1:1 upstream class**: `DoubleMLDIDCS`, this port's variant of

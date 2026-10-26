@@ -8,7 +8,7 @@ A. the source's propensity defaults (ground truth for A/B/D)
 
 B. the set the README's 'four' counts
   ok    the README's migration sentence is findable                    
-   migration releases: {'DoubleMLIRM': 'v0.132.0', 'DoubleMLAPO': 'v0.134.0', 'DoubleMLAPOS': 'v0.135.0', 'DoubleMLSSM': 'v0.138.0', 'DoubleMLPQ': 'v0.139.0', 'DoubleMLQTE': 'v0.139.0', 'DoubleMLLPLR': 'v0.163.3'}
+   README's classifier-defaulted set: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
   ok    the migrations by v0.138.0 are four                            got 4: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
   ok    the migrations by v0.138.0 are IRM, APO, APOS and SSM          ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
   ok    every migrated estimator defaults to a classifier in the SOURCE today source classifier set: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
@@ -28,7 +28,7 @@ C. the CHANGELOG's v0.138.0 entry agrees with its own list
   ok    the v0.138.0 entry's ordinal sentence is findable              
   *** FAIL ***  the v0.138.0 entry says FOURTH, not fifth                  says 'fifth'
   ok    the v0.138.0 entry names exactly four estimators               ['DoubleMLIRM', 'DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLSSM']
-  ok    the v0.138.0 entry's four are the four the README counts       ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM'] vs ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
+  *** FAIL ***  the v0.138.0 entry's four are the four the README names    ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM'] vs []
   ok    the v0.138.0 section is findable                               
   *** FAIL ***  the withdrawn wording is gone from the v0.138.0 entry      still present
   *** FAIL ***  the v0.138.0 entry says 'fourth'                           
@@ -134,9 +134,9 @@ F. the inventory: no unregistered count claim
   ok    the owning verifier _verify_score_argument_1650.py is tracked  _verify_score_argument_1650.py
   ok    the owning verifier _verify_provenance_grouping_1650.py is tracked _verify_provenance_grouping_1650.py
   ok    the owning verifier _verify_api_promises_1650.py is tracked    _verify_api_promises_1650.py
-  *** FAIL ***  the owning verifier _verify_bitexact_scope_1650.py is tracked _verify_bitexact_scope_1650.py
-  *** FAIL ***  the owning verifier _verify_bitexact_scope_1650.py is tracked _verify_bitexact_scope_1650.py
-  *** FAIL ***  the owning verifier _verify_bitexact_scope_1650.py is tracked _verify_bitexact_scope_1650.py
+  ok    the owning verifier _verify_bitexact_scope_1650.py is tracked  _verify_bitexact_scope_1650.py
+  ok    the owning verifier _verify_bitexact_scope_1650.py is tracked  _verify_bitexact_scope_1650.py
+  ok    the owning verifier _verify_bitexact_scope_1650.py is tracked  _verify_bitexact_scope_1650.py
 
 G. the counts this verifier owns, derived from the tree
   ok    the 22 estimators are 22 estimator structs in the source       got 22
@@ -153,7 +153,7 @@ G. the counts this verifier owns, derived from the tree
   *** FAIL ***  no unregistered count claim in the README                  ['Seven estimators']
 
 ==========================================================================
-134 checks, 22 failed
+134 checks, 20 failed
 *** FAIL ***
   - the migrated set is EXACTLY the source's `ml_m`-classifier set
   - the SSM sentence names all four migrations
@@ -161,6 +161,7 @@ G. the counts this verifier owns, derived from the tree
   - the withdrawn wording 'the largest margin of the four' is gone
   - the withdrawn wording 'all four earlier outcomes' is gone
   - the v0.138.0 entry says FOURTH, not fifth
+  - the v0.138.0 entry's four are the four the README names
   - the withdrawn wording is gone from the v0.138.0 entry
   - the v0.138.0 entry says 'fourth'
   - the eight are exactly the source's `ml_m`-OLS estimators
@@ -173,9 +174,6 @@ G. the counts this verifier owns, derived from the tree
   - the gherkin evidence's total is the mapped-name count
   - the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README
   - the registered claim 'the four hazardous verdicts of v0.132.0-v0.138' is present in the README
-  - the owning verifier _verify_bitexact_scope_1650.py is tracked
-  - the owning verifier _verify_bitexact_scope_1650.py is tracked
-  - the owning verifier _verify_bitexact_scope_1650.py is tracked
   - no unregistered count claim in the README
 
-EXACT failure count: 22
+EXACT failure count: 20

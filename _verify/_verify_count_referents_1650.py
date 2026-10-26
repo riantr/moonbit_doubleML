@@ -142,30 +142,35 @@ check("the two `learner_m` owners are PLR and LPLR",
 print()
 print("B. the set the README's 'four' counts")
 
-# "**`DoubleMLIRM` was migrated in v0.132.0**, **`DoubleMLAPO` in v0.134.0**, ..."
+# ROUND 48: THE README NO LONGER PUBLISHES THE RELEASE EACH ESTIMATOR WAS
+# MIGRATED IN.  That is release history, and the CHANGELOG is where release
+# history lives -- the shape filter of round 48 removed the version list from
+# the README because a reader needs the CURRENT default, not the sequence.
+#
+# So the check follows the fact to where it now lives:
+#   * the CURRENT set -- the estimators whose `ml_m` defaults to a classifier
+#     -- is still in the README's migration paragraph, and is still compared
+#     with the SOURCE's own set;
+#   * the FOUR that were migrated by v0.138.0 now come from the CHANGELOG's
+#     own ordinal sentence, and the README's SSM sentence (which still names
+#     them) is checked against it.
 mig = re.search(r"The port used to default `ml_m`.*?their `ml_m` default is now", readme_flat)
 check("the README's migration sentence is findable", mig is not None)
-migration = {}
-if mig:
-    seg = mig.group(0)
-    for nm in re.findall(r"`(DoubleML\w+)`", seg):
-        after = seg[seg.index("`%s`" % nm) + len(nm) + 2:]
-        rel = re.search(r"v(\d+)\.(\d+)\.(\d+)", after)
-        if rel:
-            migration[nm] = tuple(int(x) for x in rel.groups())
-print("   migration releases: %s" % {k: "v%d.%d.%d" % v for k, v in migration.items()})
+migrated = sorted(set(re.findall(r"`(DoubleML\w+)`", mig.group(0)))) if mig else []
+print("   README's classifier-defaulted set: %s" % migrated)
 
-EARLY_CUTOFF = (0, 138, 0)
-early = sorted(n for n, r in migration.items() if r <= EARLY_CUTOFF)
+v138_ord = re.search(r"This is the (\w+) and last estimator to be migrated:(.*?)\.\s",
+                     changelog_flat)
+early = sorted(set(re.findall(r"`(DoubleML\w+)`", v138_ord.group(2)))) if v138_ord else []
 check("the migrations by v0.138.0 are four", len(early) == 4, "got %d: %s" % (len(early), early))
 check("the migrations by v0.138.0 are IRM, APO, APOS and SSM",
       early == ["DoubleMLAPO", "DoubleMLAPOS", "DoubleMLIRM", "DoubleMLSSM"], str(early))
 check("every migrated estimator defaults to a classifier in the SOURCE today",
-      all(n in clf_mlm for n in migration),
+      all(n in clf_mlm for n in migrated),
       "source classifier set: %s" % clf_mlm)
 check("the migrated set is EXACTLY the source's `ml_m`-classifier set",
-      set(migration) == set(clf_mlm),
-      "README says %s / source says %s" % (sorted(migration), clf_mlm))
+      migrated == sorted(clf_mlm),
+      "README says %s / source says %s" % (migrated, sorted(clf_mlm)))
 
 # the two sentences that count the four
 ssm_sent = re.search(r"`DoubleMLSSM` has the largest margin of the .*?because its score carries",
@@ -216,8 +221,14 @@ if v138:
     named = re.findall(r"`(DoubleML\w+)`", v138.group(2))
     check("the v0.138.0 entry says FOURTH, not fifth", ordinal == "fourth", "says %r" % ordinal)
     check("the v0.138.0 entry names exactly four estimators", len(named) == 4, str(named))
-    check("the v0.138.0 entry's four are the four the README counts",
-          sorted(named) == early, "%s vs %s" % (sorted(named), early))
+    # The README's own SSM sentence still names the four; the CHANGELOG's
+    # entry and the README's sentence must agree.
+    ssm_four = re.search(r"`DoubleMLSSM` has the largest margin of the four migrations of "
+                          r"v0\.132\.0-v0\.138\.0 -- (.*?) -- because its score carries",
+                          readme_flat)
+    readme_four = sorted(set(re.findall(r"`(DoubleML\w+)`", ssm_four.group(1)))) if ssm_four else []
+    check("the v0.138.0 entry's four are the four the README names",
+          sorted(named) == readme_four, "%s vs %s" % (sorted(named), readme_four))
 # The withdrawn wording must be gone FROM THE v0.138.0 ENTRY -- not from the
 # file: the v0.164.17 entry QUOTES it, because that is how a correction is
 # recorded.  A check over the whole file would forbid the correction from

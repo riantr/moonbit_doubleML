@@ -1602,6 +1602,68 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**46** checks) is the new number.
 >
+> * **Round 48.**  The shape filter, and three sentences that claimed more
+>   than the tree supports.
+>
+>   The user named `bobzhang/toml@0.4.3` -- 841 lines / 24 504 chars -- as
+>   the shape to work from: a package README that states the CURRENT truth
+>   and the boundaries, and carries no release-by-release archaeology, no
+>   duplicated restatements and no internal call-site census.  Twelve
+>   passages of that kind came out of this README.  Nothing MEASURED went
+>   with them: every figure a verifier pins is still published, and the
+>   checks that pinned one were RE-TARGETED rather than deleted -- a check
+>   that followed a sentence must follow the FACT, not the wording.
+>
+>   *Three prose claims that were watched, and still wrong.*  A fresh-eyes
+>   prose audit read the sentences and asked one question of each: does it
+>   claim more than the tree supports?  Three did, and all three were
+>   WATCHED claims -- the numbers in them were right, the SCOPE around them
+>   was not.  A verifier that pins a string says the string SURVIVES; it
+>   does not say the string is true.
+>
+>   *The Attribution promised a comparison that does not exist.*  "all three
+>   ship upstream, and are compared against it" -- but
+>   `validate_plpr_with_python.py` compares UPSTREAM's theta against the
+>   HAND-ROLLED one and never against the port's, on a different dataset
+>   (numpy's `default_rng` against the port's `chacha8_rng`), and
+>   `pyexample_suite.py` contains no `plpr` at all.  PLPR has no upstream
+>   gate; `DoubleMLLPLR` and `DoubleMLDIDCSBinary` have one.
+>
+>   *The small-n caution said both sides fail.*  "Both this port and
+>   upstream fail there, in opposite directions" is false on the gate's own
+>   output: the direction REVERSES with n (at n = 60 the port is well-behaved
+>   and upstream is not; at n = 100 it is exactly reversed; at n = 160
+>   neither fails).  The upstream half of the claim survives -- upstream
+>   really is ill-posed there.
+>
+>   *The upstream gates do not all run upstream's own code.*  Eight of the
+>   nine `pyexample_*` scripts import the `doubleml` wheel; `pyexample_rdd.py`
+>   imports `rdrobust`, a different package.  The paragraph now names both.
+>
+>   *The new check.*  `_verify/_verify_prose_scope_1650.py` (**42** checks)
+>   derives the upstream-gated estimator SET from the scripts themselves, the
+>   small-n DIRECTION from the gate's own three measured rows, and the
+>   reference package of each gate from the scripts' imports -- and ties the
+>   README's three sentences to all three.  A sentence can be fixed by
+>   another sentence; a sentence tied to a MEASUREMENT cannot.
+>
+>   *A dry-run that could only be run ONCE.*  Three of the tracked drivers
+>   -- `_dryrun_round35`, `_dryrun_round46` and `_dryrun_round47` -- aborted
+>   with "nothing to commit" when the sweep ran AFTER the release commit:
+>   their copy-in was already in the clone, because the clone is cut at HEAD
+>   and the commit carries it.  Eleven of the drivers already tolerated that;
+>   these three did not, and this round's fourth inherited the gap by copying
+>   one of them.  A check that can only be run once cannot be re-checked.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round48_1650.py` breaks ONE promise -- the Attribution's
+>   comparison claim, the small-n caution, the upstream-gate reference, the
+>   migration paragraph's set, the estimator table -- and the failure count
+>   must GROW at every step.  The run ends at **20** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**48** checks) is the new number.
+>
 >
 """
 
@@ -3444,6 +3506,99 @@ NEW_47_USED_BY = (
     "  them is not in this tree.**")
 
 PATCHES.append((OLD_47_USED_BY, NEW_47_USED_BY))
+
+
+# ==============================================================================
+# 16.  THE ROUND-48 PATCHES -- the shape filter, and three prose defects
+# ==============================================================================
+#
+# The reference package the user named (`bobzhang/toml@0.4.3`, 841 lines /
+# 24 504 chars) states the CURRENT truth and the boundaries.  It carries no
+# release-by-release archaeology, no duplicated restatements and no internal
+# call-site census.  These patches remove the same KIND of content from this
+# README -- and nothing else: every measured claim a verifier pins stays.
+#
+# (a) THE SHAPE FILTER -- seven duplications and four prose blocks:
+#     the preamble's restatement of the 19 / 2 / 1 upstream map; the
+#     audience paragraph's second half (it repeats the Features bullets);
+#     the Features list's re-listing of the 22 estimator NAMES (the table
+#     two paragraphs down lists them all); the "How the names map"
+#     blockquote (it repeats the table's last column and Attribution); the
+#     estimator table's preamble (the same 19 / 2 / 1 map a third time);
+#     the migration VERSION list; the per-release verdict history; the
+#     "a future release can swap the bodies" speculation; the Examples
+#     section's directory-by-directory description; and the dependency
+#     table's note, which repeated its own cell.
+#
+# (b) DEFECT 1 -- THE ATTRIBUTION PROMISED A COMPARISON THAT DOES NOT EXIST.
+#     "all three ship upstream, and are compared against it" is false for
+#     `DoubleMLPLPR`: `validate_plpr_with_python.py` compares UPSTREAM's
+#     theta against the HAND-ROLLED one and never against the port's, and
+#     the two sides are fitted on DIFFERENT rows (numpy's `default_rng`
+#     against the port's `chacha8_rng`); `pyexample_suite.py` contains no
+#     `plpr` at all.  The other two ARE compared against upstream.
+#
+# (c) DEFECT 2 -- THE SMALL-n CAUTION SAID BOTH SIDES FAIL.
+#     "Both this port and upstream fail there, in opposite directions" is
+#     false on the gate's own output: the direction REVERSES with n (at
+#     n = 60 the port is well-behaved and upstream is not; at n = 100 it is
+#     exactly reversed; at n = 160 neither fails).  The upstream half of the
+#     claim survives -- upstream really is ill-posed there.
+#
+# (d) DEFECT 3 -- "RUN UPSTREAM'S OWN CODE" IS FALSE FOR ONE OF THE NINE.
+#     `pyexample_rdd.py` references `rdrobust`, a different package from
+#     `doubleml-for-py`.
+#
+# The OLD texts are the text as the rounds up to 47 left it, so each pair
+# matches exactly once.
+
+OLD_48_D1_PREAMBLE_TRIO = '`DoubleMLPLPR`, `DoubleMLLPLR` and `DoubleMLDIDCSBinary` all ship\nupstream, and the table marks them *(upstream)*.\n'
+NEW_48_D1_PREAMBLE_TRIO = ''
+PATCHES.append((OLD_48_D1_PREAMBLE_TRIO, NEW_48_D1_PREAMBLE_TRIO))
+
+OLD_48_D2_AUDIENCE_TAIL = 'inside the MoonBit ecosystem. Delivers one\n`DoubleMLXxx::new(...).fit()` API across all 22 estimators -- the shape\nis the same, but six take a different constructor, and those six are\nnamed in **API reference** -- with robust variance estimation,\npropensity-score processing, multiple-testing correction, and a\nreproducible validation pipeline (24 / 24 Python reference scripts PASS)\n-- on `native`,\n`wasm`, `wasm-gc`, and `js` backends under\n`moon test --target <backend> --deny-warn`.\n'
+NEW_48_D2_AUDIENCE_TAIL = 'inside the MoonBit ecosystem. Delivers one\n`DoubleMLXxx::new(...).fit()` API across all 22 estimators, with robust\nvariance estimation and a reproducible validation pipeline\n(24 / 24 Python reference scripts PASS).\n'
+PATCHES.append((OLD_48_D2_AUDIENCE_TAIL, NEW_48_D2_AUDIENCE_TAIL))
+
+OLD_48_D3_FEATURES_NAMES = '**Pure-MoonBit, all-4-backends port of `doubleml-for-py`** -- 22 `DoubleML*`\nestimators (`DoubleMLPLR`, `DoubleMLIRM`, `DoubleMLPLIV`, `DoubleMLIIVM`,\n`DoubleMLDID`, `DoubleMLDIDBinary`, `DoubleMLDIDCS`,\n`DoubleMLDIDCSBinary`, `DoubleMLDIDMulti`, `DoubleMLDIDCrossSection`,\n`DoubleMLSSM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLPQ`,\n`DoubleMLQTE`, `DoubleMLLPQ`, `DoubleMLLPLR`, `DoubleMLCVAR`,\n`DoubleMLRDD`, `DoubleMLBLP`, `DoubleMLPLPR`, `DoubleMLPolicyTree`)\nin 19 source files. **19** are marked *(upstream)* and mirror a\nname-identical `doubleml-for-py` class; **2** are marked\n*(upstream, renamed)* -- `DoubleMLRDD` (upstream `RDFlex`) and\n`DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`); and **1**,\n`DoubleMLDIDCS`, is marked *(upstream design, no 1:1 class)*.\n'
+NEW_48_D3_FEATURES_NAMES = '**Pure-MoonBit, all-4-backends port of `doubleml-for-py`** -- 22 `DoubleML*`\nestimators in 19 source files. **19** are marked *(upstream)* and mirror a\nname-identical `doubleml-for-py` class; **2** are marked\n*(upstream, renamed)* -- `DoubleMLRDD` (upstream `RDFlex`) and\n`DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`); and **1**,\n`DoubleMLDIDCS`, is marked *(upstream design, no 1:1 class)*.\n'
+PATCHES.append((OLD_48_D3_FEATURES_NAMES, NEW_48_D3_FEATURES_NAMES))
+
+OLD_48_D4_NAMES_MAP = "> **How the names map.** `DoubleMLDIDCS` has **no 1:1 upstream class**\n> -- it is this port's variant of upstream's `DoubleMLDIDMulti` -- and the\n> two *renamed* pairs are `DoubleMLRDD` (upstream `RDFlex`) and\n> `DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`). The derivation, and\n> the parameter that distinguishes them, are in\n> `_verify/UPSTREAM_PROVENANCE.md` and in `ENGINEERING.md`.\n"
+NEW_48_D4_NAMES_MAP = "> **How the names map.** The estimator table's last column is the map;\n> the derivation is in `_verify/UPSTREAM_PROVENANCE.md` and in\n> `ENGINEERING.md`.\n"
+PATCHES.append((OLD_48_D4_NAMES_MAP, NEW_48_D4_NAMES_MAP))
+
+OLD_48_D5_TABLE_PREAMBLE = "`DoubleMLXxx::new(...).fit()` interface. 19 are marked *(upstream)*\nagainst a name-identical `doubleml-for-py` class; two are marked\n*(upstream, renamed)* -- `DoubleMLRDD` (upstream `RDFlex`) and\n`DoubleMLDIDCrossSection` (upstream `DoubleMLDIDCS`); and one,\n`DoubleMLDIDCS`, is marked *(upstream design, no 1:1 class)* -- the\nport's variant of upstream's `DoubleMLDIDMulti`:\n"
+NEW_48_D5_TABLE_PREAMBLE = "`DoubleMLXxx::new(...).fit()` interface. The last column marks each\nrow's upstream counterpart:\n"
+PATCHES.append((OLD_48_D5_TABLE_PREAMBLE, NEW_48_D5_TABLE_PREAMBLE))
+
+OLD_48_D6_MIGRATION_VERSIONS = 'everywhere. **`DoubleMLIRM` was migrated in v0.132.0**,\n**`DoubleMLAPO` in v0.134.0**, **`DoubleMLAPOS` in v0.135.0**,\n**`DoubleMLSSM` in v0.138.0**, **`DoubleMLPQ` / `DoubleMLQTE` in\nv0.139.0** and **`DoubleMLLPLR` in v0.163.3**:\ntheir `ml_m` default is now\n'
+NEW_48_D6_MIGRATION_VERSIONS = 'everywhere. **Seven** estimators now default to a classifier --\n`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS`, `DoubleMLSSM`,\n`DoubleMLPQ`, `DoubleMLQTE` and `DoubleMLLPLR` --\ntheir `ml_m` default is now\n'
+PATCHES.append((OLD_48_D6_MIGRATION_VERSIONS, NEW_48_D6_MIGRATION_VERSIONS))
+
+OLD_48_D7_VERDICT_HISTORY = 'Every row above is a **measured verdict**, and each was settled in the release\nthat decided it: `DoubleMLIRM` (v0.132.0), `DoubleMLAPO` (v0.134.0),\n`DoubleMLAPOS` (v0.135.0) and `DoubleMLDIDBinary` (v0.136.0) first, the rest\nin v0.137.0. `DoubleMLQTE` is the one row whose verdict is later than its\nmeasurement: v0.137.0 recorded it as *not demonstrated* (`0.162` vs `0.249`),\nand the freeze was only found in v0.139.0. **Six rows turned out hazardous**:\n'
+NEW_48_D7_VERDICT_HISTORY = 'Every row above is a **measured verdict**. **Six rows turned out hazardous**:\n'
+PATCHES.append((OLD_48_D7_VERDICT_HISTORY, NEW_48_D7_VERDICT_HISTORY))
+
+OLD_48_D8_FUTURE_SWAP = 'subtract. The helpers are pure element-wise loop wrappers\ntoday -- the public API has been fixed since v0.82, so a future\nrelease can swap the bodies to a SIMD-vectorised backend (or external\ncall to a BLAS-style library) without breaking callers.\n'
+NEW_48_D8_FUTURE_SWAP = 'subtract. The helpers are pure element-wise loop wrappers today.\n'
+PATCHES.append((OLD_48_D8_FUTURE_SWAP, NEW_48_D8_FUTURE_SWAP))
+
+OLD_48_D10_EXAMPLES_PROSE = '21 `examples/<bin>/` directories in `moon.work`. 16 are CLI-style numeric\ndemos that print an estimate; measured per driver, **14** of the 16 print a\ntrue value and **11** of the 16 print a 95 % CI -- `examples/pava` and\n`examples/splitting` print neither, and `examples/apos`, `examples/cluster`\nand `examples/ssm` print a true value but no CI. `examples/api_server/`\nis an HTTP service; `examples/consumer_demo/` is the library-user pattern\nthat mirrors what an external `moon add riantr/moonbit_doubleML` consumer\nwould write; `examples/fuzz/` is the property-based fuzz harness; and\n`examples/bitexact/` and `examples/parity/` are the MoonBit fixtures the\nbit-exact and LPLR parity validators drive, kept as runnable binaries so\ntheir numbers are inspectable without a Python reference.\n'
+NEW_48_D10_EXAMPLES_PROSE = '21 `examples/<bin>/` directories in `moon.work`. 16 are CLI-style numeric\ndemos that print an estimate; measured per driver, **14** of the 16 print a\ntrue value and **11** of the 16 print a 95 % CI -- `examples/pava` and\n`examples/splitting` print neither, and `examples/apos`, `examples/cluster`\nand `examples/ssm` print a true value but no CI. `examples/api_server/` is\nan HTTP service; `examples/consumer_demo/` is the library-user pattern that\nmirrors what an external `moon add riantr/moonbit_doubleML` consumer would\nwrite; `examples/fuzz/` is the property-based fuzz harness; and\n`examples/bitexact/` and `examples/parity/` are the MoonBit fixtures the\nbit-exact and LPLR parity validators drive.\n'
+PATCHES.append((OLD_48_D10_EXAMPLES_PROSE, NEW_48_D10_EXAMPLES_PROSE))
+
+OLD_48_F2_DO3_SMALLN = '3. **Treat `n < 200` as ill-posed for partially logistic regression.** Both\n   this port and upstream fail there, in opposite directions, and the port\n   damps its Newton step to keep the answer finite.\n'
+NEW_48_F2_DO3_SMALLN = '3. **Treat `n < 200` as ill-posed for partially logistic regression.** Upstream\n   genuinely is ill-posed there -- non-finite standard errors and root\n   warnings -- while this port damps its Newton step to keep the answer\n   finite. Which side breaks depends on n, so neither one is a safe\n   reference for the other at that size.\n'
+PATCHES.append((OLD_48_F2_DO3_SMALLN, NEW_48_F2_DO3_SMALLN))
+
+OLD_48_F3_UPSTREAM_REFERENCE = 'someone already thought to look for. The `pyexample_*` scripts instead run\nupstream\'s own code on the port\'s rows and compare that: not "does the port\nagree with our second implementation" but "does the port agree with upstream".\n'
+NEW_48_F3_UPSTREAM_REFERENCE = 'someone already thought to look for. The `pyexample_*` scripts instead run a\nreference implementation on the port\'s rows and compare that: not "does the\nport agree with our second implementation" but "does the port agree with\nupstream". The reference is upstream\'s own `doubleml` classes in eight of\nthem, and `rdrobust` for the RDD arm -- `doubleml-for-py` and `rdrobust` are\ndifferent packages.\n'
+PATCHES.append((OLD_48_F3_UPSTREAM_REFERENCE, NEW_48_F3_UPSTREAM_REFERENCE))
+
+OLD_48_F1_ATTRIBUTION_COMPARISON = '`DoubleMLLPLR` and `DoubleMLDIDCSBinary` are **not** MoonBit-only -- all\nthree ship upstream, and are compared against it. The last candidate\n'
+NEW_48_F1_ATTRIBUTION_COMPARISON = "`DoubleMLLPLR` and `DoubleMLDIDCSBinary` are **not** MoonBit-only -- all\nthree ship upstream. `DoubleMLLPLR` and `DoubleMLDIDCSBinary` are compared\nagainst upstream's own classes; `DoubleMLPLPR`'s upstream fit is compared\nagainst a hand-rolled reference on a different dataset from the port's, so\nPLPR has no upstream gate. The last candidate\n"
+PATCHES.append((OLD_48_F1_ATTRIBUTION_COMPARISON, NEW_48_F1_ATTRIBUTION_COMPARISON))
 
 
 for _old, _new in PATCHES:

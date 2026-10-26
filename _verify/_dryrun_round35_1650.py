@@ -108,7 +108,15 @@ def commit(work, paths, message):
                    "-c", "user.email=dry-run@example.invalid",
                    "commit", "-m", message], cwd=work)
     if rc != 0:
+        # A copy-in that is ALREADY in the tree has nothing to commit, and
+        # that is not an error: the clone is cut at HEAD, so once the release
+        # commit exists the new files come with it.  The dry-run is then
+        # re-runnable, which matters -- a check that can only be run once
+        # cannot be re-checked.
+        if "nothing to commit" in out or "nothing added to commit" in out:
+            return "(already in the tree)"
         raise SystemExit("!! git commit failed: %s" % out.strip()[:300])
+    return out.strip().splitlines()[0] if out.strip() else ""
     return out.strip().splitlines()[0] if out.strip() else ""
 
 
