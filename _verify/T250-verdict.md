@@ -1,5 +1,9 @@
 # T250 verdict: did_multi "universal" / "all" keyword — pre-treatment placebos
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Scope
 Fix `DoubleMLDIDMulti::expand_gt_keyword` so the `"all"` and `"universal"`
 keywords actually emit pre-treatment placebos. Pre-fix, the two keywords

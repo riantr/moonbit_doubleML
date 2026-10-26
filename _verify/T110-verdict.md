@@ -8,6 +8,10 @@ upstream `did_multi.py` + `did_aggregation.py`, with bootstrap /
 plotting / cross-section / `print_periods` deliberately out of
 scope (documented below).
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Features added
 
 | #   | File(s)                     | LOC   | Description                                                       |

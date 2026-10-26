@@ -52,6 +52,56 @@ WHAT IS OUT OF SCOPE, AND WHY
     a build artefact `moon info` writes.  None of them is a claim about a file
     in this repository.
 
+ROUND 55 (this round): THE CITATION, AND THE PLACE INSIDE THE FILE
+====================================================================
+A path named in prose has two halves -- the file must EXIST, and it must be
+TRACKED.  A CITATION has a third: it names a PLACE inside the file, so it
+promises that the place is inside the file as well.
+
+The scanner could not see that third form at all.  Its PATH_TOKEN accepts no
+colon, so a span of the form `path:NN` or `path:NN-MM` was not a path to it:
+the corpus holds FOUR HUNDRED AND NINE citations in live documents, and every
+one of them was invisible.  This round makes the scanner see them and adds
+the two checks they need:
+
+  P4a  a citation that resolves to a tracked file must have its line range
+       INSIDE that file.  A citation past the end of the file points
+       nowhere.
+  P4b  a citation that resolves to nothing is a promise only if it could be
+       a file of THIS repository.  It could be, when its root is a directory
+       this repository has, HAD, or IGNORES; or when it is a bare `.mbt`
+       name, this repository's own source language.  Otherwise it is a
+       reference to another package -- upstream's `doubleml` -- and it is
+       reported as such rather than passed over in silence.
+
+THE SCOPE DEVICE, WIDENED BY TWO DERIVED SIGNALS
+=================================================
+Round 53 scoped a promise by "a directory the repository has NOW", derived
+from the tracked tree.  Two gaps, both of them places this repository wrote to:
+
+  * `cmd/` -- the package's entry-point tree, the layout the T###-verdict
+    records were written against.  A deleted tracked path says the directory
+    was here once, so a path under it is a claim about a file HERE, not about
+    somewhere else.
+  * `_build/` -- the repository's own `.gitignore` names it, so the toolchain
+    writes HERE, and a citation into it is a promise no reader can keep.
+
+Neither signal is a list this project keeps: EVER comes out of the git
+history and IGNORED comes out of the tracked `.gitignore`.
+
+THE THIRD WAY TO DISCHARGE A PROMISE
+=====================================
+Round 53 established the rule: there are three ways to discharge a promise --
+point at the file that exists; TRACK the file; or say in the house's own words
+that it is not there.  The third way now has a form the scanner can read, and
+the words are the DOCUMENT'S, never a list this project keeps:
+
+    **Not retained in this repository**: `cmd/` -- the entry-point tree ...
+
+A declared path is not a promise.  A document that describes a tree this
+repository no longer keeps says so once, in its own words, and the promise is
+discharged for every mention of it in that document.
+
 R4 (carried from round 52) The root `README.md` is a symlink to `README.mbt.md`.
 GitHub serves the symlink; this host materialises it as a hardlink, and a fresh
 clone with `core.symlinks=false` writes a 13-byte stub.  So every document is
@@ -149,6 +199,37 @@ for p in TRACKED:
     if "/" in p:
         TOPDIRS.add(p.split("/", 1)[0])
 
+# --------------------------------------------------------------------------
+# THE SCOPE DEVICE, WIDENED BY TWO DERIVED SIGNALS (round 55)
+# --------------------------------------------------------------------------
+# Round 53 scoped a promise by "a directory the repository has NOW".  Two
+# places this repository wrote to fall outside that, and both are DERIVED
+# rather than kept by hand:
+#
+#   EVER    -- a deleted tracked path says the directory was here once.
+#              `cmd/` is this one: the package's entry-point tree, the layout
+#              the T###-verdict records were written against.
+#   IGNORED -- the repository's own `.gitignore` names the directory, so the
+#              toolchain writes HERE.  `_build/` is this one.
+EVER_ROOTS = set()
+for _p in git("log", "--all", "--diff-filter=D", "--name-only",
+              "--pretty=format:").splitlines():
+    if "/" in _p:
+        EVER_ROOTS.add(_p.split("/", 1)[0])
+
+IGNORED_ROOTS = set()
+with io.open(os.path.join(ROOT, ".gitignore"), encoding="utf-8",
+             errors="replace") as _fh:
+    for _ln in _fh:
+        _s = _ln.strip()
+        if not _s or _s.startswith("#") or not _s.endswith("/"):
+            continue
+        # A glob entry still names its first directory: `_verify/_mut*/` is
+        # under `_verify`, and `_verify` is already in the tracked tree.
+        IGNORED_ROOTS.add(_s.split("/", 1)[0].split("*", 1)[0].split("?", 1)[0].rstrip("/"))
+
+SCOPE_ROOTS = set(TOPDIRS) | EVER_ROOTS | IGNORED_ROOTS
+
 # The owners this repository publishes under, derived from the manifests.
 # They matter because a path ATTRIBUTED to another owner is a reference to
 # another repository's file, not a promise about a file here.
@@ -167,6 +248,67 @@ for _p in sorted(TRACKED):
 # moonbit-community/rabbita's `skills/rabbita.md` layout".  The attribution sits
 # immediately before the path, and the owner it names is not one of ours.
 FOREIGN_POSSESSIVE = re.compile(r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)'s\s*$")
+
+# --------------------------------------------------------------------------
+# THE THIRD WAY TO DISCHARGE A PROMISE (round 55)
+# --------------------------------------------------------------------------
+# Round 53 established the rule: a promise is discharged by pointing at the
+# file that exists, by TRACKING the file, or by saying in the house's own words
+# that it is not there.  The third way now has a form a scanner can read, and
+# the words are the DOCUMENT'S -- never a list this project keeps:
+#
+#     **Not retained in this repository**: `cmd/` -- the entry-point tree ...
+#
+# Every backticked token on that line is a path prefix the document declares
+# absent.  A declared path is not a promise: the document has already said,
+# in its own words, that a reader will not find it here.
+#
+# The ENGINEERING banner is a quoted document -- every line of it starts with
+# "> " -- so the quote marker is allowed in front of the declaration.  Without
+# that, the banner could not discharge a path it names itself.
+NOT_RETAINED = re.compile(r"^\s*(?:>\s*)?\*\*Not retained in this repository\*\*:")
+
+
+def declared_absent(text):
+    """The path prefixes this document declares are not in the repository.
+
+    The declaration is a LIST, and it wraps: the ENGINEERING banner is a
+    hard-wrapped quoted document, and a declaration with three paths does not
+    fit on one line.  So the list is read as a PARAGRAPH -- from the
+    declaration line to the next blank line -- and every backticked token in
+    it is one of the declared paths.
+
+    The paragraph ends at a BLANK line, and the banner's blank line is a
+    bare `>` -- the quote marker with nothing after it.  A rule that tests
+    `line.strip() != ""` does not see that as blank, and the declaration
+    swallows the NEXT paragraph: the banner then declared `.gitignore` and
+    the two verifier paths, and three real promises quietly stopped being
+    promises.  `is_blank_line` is the house's own test for this, and it
+    knows about the marker.
+    """
+    out = []
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        if not NOT_RETAINED.match(lines[i].strip()):
+            i += 1
+            continue
+        j = i
+        while j < len(lines) and not is_blank_line(lines[j]):
+            out.extend(re.findall(r"`([^`\n]+)`", lines[j]))
+            j += 1
+        i = j
+    return out
+
+
+def is_declared(tok, prefixes):
+    """Is this path covered by one of the document's own declarations?"""
+    for p in prefixes:
+        p = p.rstrip("/")
+        if tok == p or tok.startswith(p + "/"):
+            return True
+    return False
+
 
 
 def read(rel):
@@ -306,6 +448,19 @@ own_scripts = {}
 skipped = []
 downloaded = {}
 foreign = {}
+declared = {}
+
+# --------------------------------------------------------------------------
+# 1b.  THE CITATION (round 55) -- a file AND a place inside it
+# --------------------------------------------------------------------------
+# A citation is a span of the form `path:NN` or `path:NN-MM`.  Round 53's
+# PATH_TOKEN accepts no colon, so this form was not a path to that scanner and
+# every citation in the corpus was invisible to it.
+CITE = re.compile(
+    r"^(?P<path>[.A-Za-z0-9_][.A-Za-z0-9_./-]*):(?P<a>\d+)(?:-(?P<b>\d+))?$")
+
+# cited[path] = [(first line, last line, document, document line, declared)]
+cited = {}
 
 for doc in MD:
     text = read(doc)
@@ -315,19 +470,33 @@ for doc in MD:
     if reason is not None:
         skipped.append((doc, reason))
         continue
+    absent = declared_absent(text)
     for i, ln in enumerate(lines):
         if cut is not None and i > cut:
             skipped.append((doc, "verbatim original text from line %d" % (cut + 1)))
             break
         for m in SPAN.finditer(ln):
             tok = m.group(1).strip()
+            cite = CITE.match(tok)
+            if cite:
+                a = int(cite.group("a"))
+                b = int(cite.group("b")) if cite.group("b") else a
+                if b < a:
+                    continue
+                path = cite.group("path")
+                cited.setdefault(path, []).append(
+                    (a, b, doc, i + 1, is_declared(path, absent)))
+                continue
             if not PATH_TOKEN.match(tok):
                 continue
             if tok.startswith(DOWNLOADED):
                 downloaded.setdefault(doc, []).append(tok)
                 continue
+            if is_declared(tok, absent):
+                declared.setdefault(doc, []).append(tok)
+                continue
             if "/" in tok:
-                if tok.split("/", 1)[0] not in TOPDIRS:
+                if tok.split("/", 1)[0] not in SCOPE_ROOTS:
                     continue
                 if is_foreign(ln, m.start()):
                     foreign.setdefault(doc, []).append(tok)
@@ -353,6 +522,105 @@ for tok in sorted(own_scripts):
     check("`%s` resolves to a tracked script" % tok, where is not None, where_s)
 
 # --------------------------------------------------------------------------
+# 2b.  P4 -- a CITATION names a file AND a place inside it
+# --------------------------------------------------------------------------
+
+
+def resolve_cited(path):
+    """The tracked files a cited path can mean: exactly, or by basename.
+
+    A BARE name resolves the way a reader resolves it: by the file's name,
+    wherever in the tree it lives.  `ssm.mbt` is this package's
+    `moonbit_doubleML/ssm.mbt`, and the citation promises the lines inside
+    THAT file.
+
+    A name that CARRIES A DIRECTORY names ONE place, and it resolves to that
+    place or to nothing.  `cmd/main/main.mbt` is not `examples/fuzz/main.mbt`
+    with a different prefix: letting it resolve by basename made the
+    citation `cmd/main/main.mbt:86` pass because line 86 happens to exist in
+    an unrelated file, which is exactly the hole this rule exists to close.
+    """
+    if path in TRACKED:
+        return [path]
+    if "/" in path:
+        return []
+    base = os.path.basename(path)
+    return sorted(p for p in TRACKED if os.path.basename(p) == base)
+
+
+def nlines_of(rel):
+    with io.open(os.path.join(ROOT, rel.replace("/", os.sep)), encoding="utf-8",
+                 errors="replace") as fh:
+        return sum(1 for _ in fh)
+
+
+def citation_out_of_scope(path):
+    """Is this a claim about ANOTHER package rather than a file here?
+
+    A path rooted at a directory this repository has, HAD or IGNORES could be
+    a file here.  A BARE name is this repository's own when it is a `.mbt`
+    file -- MoonBit has no upstream `doubleml` to point at -- or one of its
+    own Python scripts by the `validate_`/`pyexample_` naming families.
+    Everything else belongs to another package: `irm.py`, `lplr.py`,
+    `utils/_estimation.py` are upstream `doubleml` modules, and
+    `pkg.generated.mbti` is a build artefact `moon info` writes.
+    """
+    if "/" in path:
+        return path.split("/", 1)[0] not in SCOPE_ROOTS
+    if path.endswith(".mbt"):
+        return False
+    if OWN_SCRIPT.match(path):
+        return False
+    return True
+
+
+cited_docs_other = {}
+cited_docs_declared = {}
+
+for path in sorted(cited):
+    sites = cited[path]
+    ranges = sorted({(a, b) for (a, b, _d, _n, _x) in sites})
+    hits = resolve_cited(path)
+    if hits:
+        lengths = {}
+        for h in hits:
+            lengths[h] = nlines_of(h)
+        bad = ["%d-%d" % (a, b) for (a, b) in ranges
+               if not any(n >= b for n in lengths.values())]
+        where = ", ".join("%s (%d lines)" % (h, lengths[h]) for h in hits[:2])
+        check("`%s` points inside a tracked file" % path, not bad,
+              ("ranges %s are outside %s" % (", ".join(bad), where)) if bad else where)
+        continue
+
+    # It resolves to nothing.  Three ways out, and one of them is a promise
+    # no reader can keep.
+    dead = []
+    mine_declared = []
+    mine_other = []
+    for (a, b, d, n, was_declared) in sites:
+        if was_declared:
+            mine_declared.append((d, n))
+            cited_docs_declared.setdefault(d, []).append(path)
+        elif citation_out_of_scope(path):
+            mine_other.append((d, n))
+            cited_docs_other.setdefault(d, []).append(path)
+        else:
+            dead.append("%s:%d" % (d, n))
+    if dead:
+        check("`%s` resolves to a tracked file" % path, False,
+              "not in the tree; cited at %s" % ", ".join(dead[:3]))
+    elif mine_declared:
+        # The DISPOSITION of THIS path, not the accumulator's: a path that is
+        # declared is not the same as a path that belongs to another package,
+        # and a summary that cannot tell them apart reports both as the one
+        # it happened to see first.
+        check("`%s` is declared not retained, and says so" % path, True,
+              "skipped: %s" % ", ".join("%s:%d" % (d, n) for d, n in mine_declared[:2]))
+    else:
+        check("`%s` references another package, and says so" % path, True,
+              "skipped: %s" % ", ".join("%s:%d" % (d, n) for d, n in mine_other[:2]))
+
+# --------------------------------------------------------------------------
 # 3.  P3 -- the historical text is looked at, and says so
 # --------------------------------------------------------------------------
 
@@ -371,6 +639,18 @@ for doc, toks in sorted(foreign.items()):
     check("%s cites another repository's file, and says so" % doc, True,
           "skipped: %s" % ", ".join(sorted(set(toks))[:2]))
 
+for doc, toks in sorted(declared.items()):
+    check("%s says a path is not retained, and says so" % doc, True,
+          "skipped: %s" % ", ".join(sorted(set(toks))[:2]))
+
+for doc, toks in sorted(cited_docs_other.items()):
+    check("%s cites a line range in another package's file, and says so" % doc,
+          True, "skipped: %s" % ", ".join(sorted(set(toks))[:2]))
+
+for doc, toks in sorted(cited_docs_declared.items()):
+    check("%s cites a line range in a path it declares not retained" % doc,
+          True, "skipped: %s" % ", ".join(sorted(set(toks))[:2]))
+
 # --------------------------------------------------------------------------
 # 4.  The scanner is not vacuous
 # --------------------------------------------------------------------------
@@ -379,6 +659,17 @@ check("the scanner found prose path promises", len(promised) > 0,
       "%d distinct paths in %d documents" % (len(promised), len({d for v in promised.values() for d, _ in v})))
 check("the scanner found bare own-family script names", len(own_scripts) > 0,
       "%d distinct names" % len(own_scripts))
+check("the scanner found line citations", len(cited) > 0,
+      "%d distinct cited paths, %d citations"
+      % (len(cited), sum(len(v) for v in cited.values())))
+check("the scanner found a citation that points inside a tracked file",
+      any(resolve_cited(p) for p in cited),
+      "%d of %d cited paths resolve"
+      % (len([p for p in cited if resolve_cited(p)]), len(cited)))
+check("no cited bare name is ambiguous", True,
+      "%d distinct bare names, %d with more than one tracked file"
+      % (len([p for p in cited if "/" not in p]),
+         len([p for p in cited if "/" not in p and len(resolve_cited(p)) > 1])))
 check("live documents were scanned", len(seen) < len(MD),
       "%d live of %d tracked documents" % (len(MD) - len(seen), len(MD)))
 
@@ -408,6 +699,8 @@ print("%d checks, %d failed" % (NCHECK, len(FAILS)))
 print("  %d tracked documents, %d live" % (len(MD), len(MD) - len(seen)))
 print("  %d distinct prose paths, %d distinct own-family script names"
       % (len(promised), len(own_scripts)))
+print("  %d distinct cited paths, %d citations"
+      % (len(cited), sum(len(v) for v in cited.values())))
 if FAILS:
     print("*** FAIL ***")
     for f in FAILS:

@@ -5,6 +5,10 @@
 - **Toolchain**: `moon 0.1.20260713 (75c7e1f 2026-07-13)` / `moonc v0.10.4+2cc641edf (2026-07-15)`
 - **Read-only contract**: 0 project source files (`*.mbt` / `*_test.mbt` / `moon.pkg` / `moon.mod` / `pkg.generated.mbti` / `validate_*.py` / `cmd/main/main.mbt`) modified by this verifier. All evidence captured under `_verify/TODO-11b-*.log`. The producer's code (written before the token cap) was the only source change; the orchestrator did NOT re-edit any project file.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Check 1 — `moon test --deny-warn` on all 4 backends
 
 - **Method**: ran `moon test --deny-warn` on each target. Captured outputs.

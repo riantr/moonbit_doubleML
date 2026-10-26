@@ -7,6 +7,10 @@
 
 ---
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Check 1 — `cmd/main/main.mbt` adds 5 `n_rep=5` sections at the right call sites
 
 - **Method**: read `cmd/main/main.mbt` lines 60–250 directly, locate the 5 `=== MoonBit DML {NAME} (n_rep=5) ===` blocks and the two-line `estimated theta (n_rep=5) = ...` / `se (n_rep=5) = ...` payloads.

@@ -4,6 +4,11 @@
 **Method**: Mutation testing — mutate production code, observe whether
 existing test suite catches the regression.
 
+**Not retained in this repository**:
+`__generated_driver_for_blackbox_test.mbt` -- `moon test` writes
+this driver into the build directory; it is a generated artefact,
+not a tracked file.
+
 ## Mutation sweep on cluster-DML stack (v0.34.0)
 
 Targets: `plpr.mbt::est_coef_cluster`, `plpr.mbt::var_est_cluster`.

@@ -9,6 +9,10 @@ that fits 4 g-functions (one per (d, t) cell) and
 1 propensity, in contrast to the panel DID's 2
 g-functions (g(0) and g(1)).
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Motivation
 
 The upstream `doubleml.DoubleMLDIDCS` (the

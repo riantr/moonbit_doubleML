@@ -5,6 +5,10 @@
 **Scope**: 5 feature additions (RDD HC0, Sensitivity helpers, Resampling,
 KDE bandwidth/density, LPQ KDE derivative) plus a synthetic 401(k) demo.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Features added
 
 | #   | File(s)                         | LOC   | Description                                                                          |

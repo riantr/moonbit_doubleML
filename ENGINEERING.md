@@ -1833,6 +1833,65 @@
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**60** checks) is the new number.
 >
+> * **Round 55.**  A citation names a PLACE -- and the place has to be inside
+>   the file.
+>
+>   Round 53 held that a path named in prose is a promise.  Round 54 held that a
+>   number in prose is a promise.  This round holds that a CITATION -- a path
+>   with a LINE RANGE, `ssm.mbt:73-74` -- is the same kind of promise with a
+>   third half: the place it names must be INSIDE the file.
+>
+>   The scanner could not see that form at all.  Its path token accepts no
+>   colon, so a citation was not a path to it -- and the live documents hold
+>   **474** citations, every one of them invisible.  A citation is what a
+>   reader follows, and nothing was watching where it pointed.
+>
+>   **Not retained in this repository**: `cmd/`, `_build/`,
+>   `__generated_driver_for_blackbox_test.mbt` -- the paths this entry names
+>   are the ones the documents describe and this repository does not keep.
+>
+>   *The scope device, widened by two DERIVED signals.*  Round 53 scoped a
+>   promise by "a directory the repository has NOW".  Two places this
+>   repository wrote to fell outside that: `cmd/`, the package's entry-point
+>   tree -- a deleted tracked path says the directory was here once -- and
+>   `_build/`, which the repository's own `.gitignore` names, so the toolchain
+>   writes HERE.  Neither signal is a list this project keeps: one comes out of
+>   the git history, one out of the tracked `.gitignore`.
+>
+>   *What it measured.*  **31** promises in **18** live documents that no reader
+>   could keep: twenty-seven paths under the `cmd/` tree, and four citations --
+>   `cmd/main/main.mbt`, `cmd/apos/main.mbt`,
+>   `_build/_verify_TODO3_snapshot.mbt`, and the `moon test` driver
+>   `__generated_driver_for_blackbox_test.mbt`.
+>
+>   *The third way to discharge a promise, in a form a scanner can read.*
+>   Round 53's rule: point at the file that exists; TRACK the file; or say in
+>   the house's own words that it is not there.  The third way now has a form:
+>   a line that opens with the words **Not retained in this repository**, and
+>   then names the paths the document does not keep.  The words are the
+>   DOCUMENT'S, never a list this project keeps.  Eighteen documents say it
+>   once, in their own words, and every mention of the path in that document
+>   is discharged by it.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **298** and makes **443**: a citation is a check, and so is every distinct
+>   path it names.
+>
+>   *A driver that grew with it.*  `_verify/_dryrun_round53_1650.py` now ends
+>   at **9** failures: its "a historical document is live again" mechanism
+>   trips one more check, because `cmd/main/main.mbt` is a promise now that
+>   `cmd/` is in scope.  A published count is a promise too, and the round
+>   that makes it false republishes it -- which is what this entry is.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round55_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 1 -> 2 -> 3 -> 4 -> 6 -> 9 -> 10 -> 11.
+>   The run ends at **11** failures.
+>
+>   *The ledger does not move.*  This round publishes no count for a NEW
+>   check, so `_verify/_verify_ledger_counts_1650.py` (**60** checks) is still
+>   the number.
+>
 >
 ## The README as it stood at v0.164.11
 

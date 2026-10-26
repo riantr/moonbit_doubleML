@@ -9,6 +9,69 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.49] -- a citation names a place, and the place has to be inside the file
+
+`moon.mod` moves 0.164.48 -> 0.164.49. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the citations, and the places they point at
+
+Round 53 held that a path named in prose is a promise.  Round 54 held that a
+number in prose is a promise.  This round holds that a CITATION -- a path with
+a LINE RANGE, `ssm.mbt:73-74` -- is the same kind of promise with a third
+half: the place it names must be INSIDE the file.
+
+The scanner could not see that form at all.  Its path token accepts no colon,
+so a citation was not a path to it -- and the live documents hold **474**
+citations, every one of them invisible.  A citation is what a reader follows,
+and nothing was watching where it pointed.
+
+- The scope device is widened by two DERIVED signals.  Round 53 scoped a
+  promise by "a directory the repository has NOW".  Two places this
+  repository wrote to fell outside that: the package's entry-point tree,
+  which a deleted tracked path says was here once, and the build directory,
+  which the repository's own `.gitignore` names, so the toolchain writes
+  HERE.  Neither signal is a list this project keeps: one comes out of the
+  git history, one out of the tracked `.gitignore`.
+- What it measured: **31** promises in **18** live documents that no
+  reader could keep -- twenty-seven paths under the entry-point tree, and four
+  citations.
+- The third way to discharge a promise, in a form a scanner can read.
+  Round 53's rule: point at the file that exists; TRACK the file; or say in
+  the house's own words that it is not there.  The third way now has a form:
+  a line that opens with the words **Not retained in this repository**, and
+  then names the paths the document does not keep.  The words are the
+  DOCUMENT'S, never a list this project keeps.  **18** documents say it
+  once, in their own words, and every mention of the path in that document is
+  discharged by it.
+
+### Changed -- a check that grew
+
+- `_verify/_verify_path_promises_1650.py` published **298** and makes
+  **443** checks: a citation is a check, and so is every distinct path it
+  names.
+- `_verify/_dryrun_round53_1650.py` grew with the contract: its "a historical
+  document is live again" mechanism trips one more check, because
+  `cmd/main/main.mbt` is a promise now that `cmd/` is in scope. It requires
+  the failure count to GROW at every step: **9** failures at the end.
+- The ledger does not move: this round publishes no count for a NEW check, so
+  `_verify/_verify_ledger_counts_1650.py` (**60** checks) is still the
+  number.
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round55_1650.py` -- eight mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every step:
+  **11** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 70 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **70** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.48] -- numbers in prose, and the promises they make
 
 `moon.mod` moves 0.164.47 -> 0.164.48. No estimator behaviour changed and the

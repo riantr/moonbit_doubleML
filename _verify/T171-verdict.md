@@ -7,6 +7,10 @@ re-flow via the official MoonBit formatter. Closes a
 long-standing `kde.mbt` trailing-newline defect. No API
 change, no behavioural change, no test logic change.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Motivation
 
 - `kde.mbt` was missing a trailing newline (last touched

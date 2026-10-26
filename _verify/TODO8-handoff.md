@@ -1,5 +1,9 @@
 # TODO #8 handoff
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Summary
 
 Unified the seed-to-bytes encoding across the dml package and the

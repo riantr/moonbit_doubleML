@@ -15,6 +15,10 @@ joint CIs. Also adds `norm_cdf` and `norm_ppf`
 helpers for the standard-normal CDF and inverse
 CDF.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Motivation
 
 The cross-section DID is a scalar estimator (one

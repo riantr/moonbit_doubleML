@@ -4,6 +4,10 @@ Release gate for `from_blp_cv_repeated` plus the accumulated
 v0.24.1-uncommitted surface. All steps executed in the user's
 specified order on 2026-08-24.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Results summary
 
 | # | Step | Tool / method | Result |

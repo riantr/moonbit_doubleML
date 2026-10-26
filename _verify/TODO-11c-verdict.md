@@ -5,6 +5,10 @@
 - **Toolchain**: `moon 0.1.20260713 (75c7e1f 2026-07-13)` / `moonc v0.10.4+2cc641edf (2026-07-15)`
 - **Read-only contract**: 0 existing project files modified by this verifier. The producer code was written by the orchestrator (no separate producer task — the orchestrator did the implementation directly to avoid the token-cap failure seen in TODO #11b). All evidence captured under `_verify/TODO-11c-*.log`.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Check 1 — `moon test --deny-warn` on all 4 backends
 
 - **Method**: ran `moon test --deny-warn` on each target. Captured outputs.

@@ -4,6 +4,10 @@
 **Date**: 2026-08-11
 **Scope**: Panel-data binary DID estimator + DoubleMLDID 2×2 score matrix.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Features added
 
 | #   | File(s)                              | LOC   | Description                                                       |

@@ -1,0 +1,17 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. a citation points past the end of the file it names
+   2. a citation names a file that is not in the tree
+   3. a verdict record's citation names a missing file
+   4. an upstream citation is repointed at this package
+   5. a document's declaration is deleted
+   6. a declaration is narrowed
+   7. a tracked source file is deleted
+   8. a cited source file loses the lines the citation names
+
+C. the published failure count
+  the driver counted 11 failures
+  448 checks, 11 failed

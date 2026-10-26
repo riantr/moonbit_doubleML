@@ -9,6 +9,10 @@ release artefacts" (`T###-verdict.md`, `T###-commit-msg.txt`)
 and "verifier scratch" (build logs, probe outputs, Python
 validator outputs) and git-ignore the latter.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Features added
 
 | #   | File(s)                       | LOC   | Description                                                       |

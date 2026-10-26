@@ -9,6 +9,10 @@
   the repository's own `.gitignore` keeps `_verify/TODO-*` out of the tree, so a
   clone has neither.
 
+**Not retained in this repository**: `cmd/` -- the entry points this
+record names were local to the workspace of that era and are not in the
+tree; the tracked package is `moonbit_doubleML/`.
+
 ## Check 1 — `moon test --deny-warn` (default target + wasm-gc)
 
 - **Method**: ran `moon test --deny-warn` on all 4 backends. Captured outputs to `_verify\TODO-11a-verify-test-{default,wasm-gc,wasm,js}.log`.

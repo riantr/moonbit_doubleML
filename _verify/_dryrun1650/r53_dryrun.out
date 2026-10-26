@@ -13,5 +13,5 @@ B. the mechanisms, one at a time
    8. a foreign reference loses its attribution, so it becomes a promise
 
 C. the published failure count
-  the driver counted 8 failures
-  307 checks, 8 failed
+  the driver counted 9 failures
+  453 checks, 9 failed

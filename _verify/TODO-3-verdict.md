@@ -9,6 +9,11 @@
   - 3 verifier-owned smoke test files were placed at the project root **temporarily** for `moon test` execution (this toolchain's `moon.mod` TOML parser does not support `import { "..." path = "..." }` cross-project imports; see TODO-2 verdict for the same workaround). The canonical source of each lives at `$env:TEMP\smoke_agg\_verify_TODO3_*.mbt` and the project-root copies were moved back to `$env:TEMP\smoke_agg` at the end of the run. `git status`-equivalent scan of the project root after cleanup shows no new tracked files and no diff in any existing `*.mbt` (only the pre-existing `_probe/` empty dir remains, which is the producer's leftover).
   - All other verifier artefacts live under `$env:TEMP\verify_TODO3\` (baseline captures, per-check stdout).
 
+**Not retained in this repository**: `cmd/`, `_build/` -- the
+producer's entry point and the snapshot file this record names
+were local to the workspace of that era and are not in the tree;
+the tracked package is `moonbit_doubleML/`.
+
 ## Baseline run
 
 ```
