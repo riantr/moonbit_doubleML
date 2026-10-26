@@ -8,6 +8,13 @@
 > specifically to supply noise did not supply any. The retraction and the
 > re-measurement are below. The original text is kept verbatim underneath so the
 > reasoning can be audited rather than taken on trust.
+>
+> **One thing in the verbatim text cannot be run.** Its "Reproduce" block names
+> three scripts — `_rdd_api_1680.py`, `_rdd_fit_1680.py` and
+> `_rdd_determinism_1680.py` — that were never committed to this repository
+> (`git log --all -- _verify/_rdd_api_1680.py` is empty). The "Reproduce" block
+> in the live sections above names four that do exist. That note is part of the
+> record rather than a promise.
 
 ## Retraction 1: `sec_rdd_var`'s "noise" was collinear with the running variable
 
@@ -131,12 +138,28 @@ Reproduce:
 
 `DoubleMLRDD::tau_bc_collapsed` returns `1.9834057184231799` on this design
 while `tau_bc` returns `2.0089050907775863` — they differ by `2.55e-02` at
-`b == h`, which is the case the v0.116.0 docstring says they "agree to ~1e-15
+`b == h`, which is the case the v0.116.0 docstring claimed they "agree to ~1e-15
 when `b == h`". They do not, on a design with noise. The test
-`v116_tau_bc_equals_the_collapsed_form_when_b_equals_h` cannot see the
+`v116_tau_bc_equals_the_collapsed_form_only_when_b_equals_h` cannot see the
 difference because its fixture is exact, so both forms reduce to the same
-noise-free limit. Not yet corrected: the sentence needs replacing and the test
-needs a fixture with residuals before either can be trusted. Logged, not fixed.
+noise-free limit.
+
+**Corrected.** Both docstrings now say the substitution fails, and why: `bias`
+is not a difference of two fits — it returns `rdd_limit(s, h, p) - xi_bc_s`
+with `xi_bc_s` from the `Q` sandwich — so `rdrobust`'s analytic local bias
+correction agrees with an order-`q` fit to leading order in `h`, not exactly.
+They publish both measured gaps, **6.7e-8** on the v0.116.0 fixture and
+**1.3e-2** on `rdd_var`, five orders apart, and `pyexample_rdd.py` settles which
+form is right against upstream: `tau_bc` matches `tau.bc` at **3.1e-15**, so
+`tau_bc` is correct and `tau_bc_collapsed` is a distinct quantity that sometimes
+nearly equals it.
+
+The test is left alone on purpose. It pins the BOUNDARY — equal at `b == h`,
+different elsewhere — which is the fact worth pinning; the reason it cannot
+establish the identity is written down next to it. The correction shipped with
+the commit that added this section (`3b26b2d`), so the note that used to stand
+here — "not yet corrected ... logged, not fixed" — was out of date the moment it
+was written, and the test name it quoted was the pre-rename one.
 
 ---
 

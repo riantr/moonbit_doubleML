@@ -1,8 +1,14 @@
 # PQ / QTE are gateable — but not on the DGP I first wrote
 
-**Status: design settled, bands measured, gate not yet built.** The two
-estimators are different quantities, and the DGP has to carry a real treatment
-effect before either one means anything. Both facts were found by measurement.
+**Status: design settled, bands measured, gate built since 2026-10-16
+(`pyexample_pq.py`).** The two estimators are different quantities, and the DGP
+has to carry a real treatment effect before either one means anything. Both
+facts were found by measurement.
+
+The gate this design produced is `pyexample_pq.py` (2026-10-16, `5f1ef97`),
+which covers PQ and QTE and adds LPQ in its section 4. The "Reproduce" block
+below therefore names the gate rather than the two helper scripts this
+document's first draft used to name.
 
 ## Two estimators, two truths
 
@@ -96,8 +102,16 @@ open.
 
 Reproduce:
 
-    python _verify\_pq_tol_1680.py            # DGP, balance, within-process bands
-    python _verify\_pq_tol_1680.py --across 6 # cross-process, and the correction
-    python _verify\_qte_shape_1680.py         # the two estimands side by side
+**There is nothing to run here.** The two scripts this section used to name --
+`_pq_tol_1680.py` and `_qte_shape_1680.py` -- were never committed to this
+repository, and they are not in its history either (`git log --all --
+_verify/_pq_tol_1680.py` is empty). The numbers above are therefore a one-off
+measurement, not a reproducible one, and this section says so rather than
+pointing at files that do not exist.
+
+What supersedes it: the gate, which rebuilds the same DGP independently of the
+emitter and re-derives its own numbers on every run --
+
+    python pyexample_pq.py --check
 
 Measured on `doubleml` 0.11.3, Windows, `n=1000`, `p=2`, `n_folds=2`, `n_rep=1`.

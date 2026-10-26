@@ -9,6 +9,76 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.46] -- ten reproduction commands that named scripts nobody could run
+
+`moon.mod` moves 0.164.45 -> 0.164.46. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- ten reproduction commands that named scripts nobody could run
+
+A path in prose is a promise: it must exist, and it must be TRACKED. Ten
+`python <script>.py` commands in tracked Markdown named scripts that are not in
+the repository -- and not one of the nine was EVER committed, because no commit
+in this repository's history adds a file by any of those names, so a reader
+could never have run one of them. Every one of them sat in a document that no
+verifier opened.
+
+- `_verify/CLUSTER_UPSTREAM_PARITY_1680.md` cited `_cluster_formula_1680.py`,
+  `_cluster_cols_1680.py` and `_cluster_api_1680.py` in its "Reproduce" block.
+  The document's own later section says those three "pointed at nothing", that
+  "a reproduction command that cannot be run is worse than none, because it
+  reads as evidence", and that they were "Replaced with the two scripts that do
+  exist" -- and then lists three. The block it claimed to replace was never
+  touched, so this file published "the block now cites the three scripts that
+  do" while the block cited none of them. The block now names the three that
+  exist, and the count says three.
+- `_verify/PQ_QTE_GATE_DESIGN_1680.md` still said "gate not yet built" after
+  `pyexample_pq.py` had landed on 2026-10-16, and its "Reproduce" block named
+  `_pq_tol_1680.py` and `_qte_shape_1680.py`. The status line now names the
+  gate; the section now says there is nothing to run, and what supersedes it.
+- `_verify/RDD_PARITY_1680.md` said of a docstring "Not yet corrected ...
+  Logged, not fixed" -- in the SAME commit (`3b26b2d`) that corrected it,
+  whose own message says "Also corrects a docstring stating an identity its
+  own test cannot see". The note also quoted a test name that does not exist:
+  the test is `v116_tau_bc_equals_the_collapsed_form_only_when_b_equals_h`, and
+  the note said `..._when_b_equals_h`. Both are corrected, and the retracted
+  text the document keeps verbatim is now marked as a record rather than a
+  promise.
+- `_verify/DID_BINARY_PANIC_1680.md` cited `_didbin_reach_1680.py`. It is a
+  retracted record, so it keeps its substance -- and now says which command
+  cannot be run.
+
+### Added -- the promise is checked
+
+- `_verify/_verify_repro_paths_1650.py` (**28** checks) holds every live
+  document's reproduction commands, status lines and counts against the tree,
+  and reads the root `README.md` symlink from the INDEX rather than from the
+  working tree -- this host materialises it as a hardlink and a fresh clone
+  writes a 13-byte stub, so a check that read the file would publish a count
+  that differs between clones. A document may keep its original text; it says
+  so in its own words, and the check says so in its detail line rather than
+  passing silently.
+
+### Changed -- the ledger moves
+
+- This round publishes a count for a new check, so the ledger that reads the
+  ENGINEERING banner grows with it:
+  `_verify/_verify_ledger_counts_1650.py` (**56** checks).
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round52_1650.py` -- seven mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every step:
+  **9** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 68 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **68** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.45] -- a published count that two documents disagreed about
 
 `moon.mod` moves 0.164.44 -> 0.164.45. No estimator behaviour changed and the

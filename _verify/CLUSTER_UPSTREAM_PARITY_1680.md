@@ -107,10 +107,9 @@ than inherited. Both are decisions, not fixes.
 
 Reproduce:
 
-    python _verify\_cluster_formula_1680.py   # the 607x, and the 2e-17
-    python _verify\_cluster_cols_1680.py      # every route, enumerated
-    python _verify\_cluster_api_1680.py       # signatures + deprecation notice
-    python _verify\_cluster_premise_1680.py   # re-check against installed upstream
+    python _verify\_cluster_premise_1680.py     # upstream 0.11.3, every route
+    python _verify\_cluster_var_est_1680.py     # port vs upstream's own function
+    python _verify\_cluster_battery_1680.py     # does the pin discriminate
 
 ## 2026-10-13: decision taken, and the finding that shrank it
 
@@ -187,14 +186,15 @@ failures, pin not named), `s*s` -> `s` (14 failures, pin named), `w*sd` -> `sd`
 
 ### Also fixed: three "Reproduce" commands that pointed at nothing
 
-The block above cited `_cluster_formula_1680.py`, `_cluster_cols_1680.py` and
-`_cluster_api_1680.py`. None of them is in the repository — `Test-Path` returns
-`False` for all three. A reproduction command that cannot be run is worse than
-none, because it reads as evidence. Replaced with the two scripts that do exist:
-
-    python _verify\_cluster_premise_1680.py     # upstream 0.11.3, every route
-    python _verify\_cluster_var_est_1680.py     # port vs upstream's own function
-    python _verify\_cluster_battery_1680.py     # does the pin discriminate
+This section's first draft cited `_cluster_formula_1680.py`,
+`_cluster_cols_1680.py` and `_cluster_api_1680.py`. None of them is in the
+repository — `Test-Path` returns `False` for all three — and none of them ever
+was (`git log --all -- _verify/_cluster_formula_1680.py` is empty). A
+reproduction command that cannot be run is worse than none, because it reads as
+evidence. The "Reproduce" block above now names the three scripts that do
+exist: `_cluster_premise_1680.py` (upstream 0.11.3, every route),
+`_cluster_var_est_1680.py` (port vs upstream's own function) and
+`_cluster_battery_1680.py` (does the pin discriminate).
 
 ## 2026-10-13 re-measurement: why the default was not switched
 

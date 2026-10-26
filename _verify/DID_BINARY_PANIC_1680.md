@@ -86,6 +86,11 @@ constructor and was not undertaken speculatively.
 Reproduce:
 
     python pyexample_did_binary.py --check          # the gate
-    python _verify\_didbin_reach_1680.py            # the arms above, re-measured
+
+The second command this section used to name — `_didbin_reach_1680.py` — was
+never committed to this repository (`git log --all -- _verify/_didbin_reach_1680.py`
+is empty), so the arms it re-measured cannot be re-derived from this tree. The
+gate above re-derives all six cells on every run, and it is the retraction this
+document names.
 
 Measured on Windows, MoonBit 0.1.20261012 (748b63c 2026-10-12), doubleml 0.11.3.

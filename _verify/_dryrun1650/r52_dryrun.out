@@ -1,0 +1,16 @@
+
+A. the baseline
+  the tree as it stands: exit=0 failures=0
+
+B. the mechanisms, one at a time
+   1. a live document cites a script that is not in the repository
+   2. a live status line names a script that is not in the repository
+   3. a count that names a set is not the size of that set
+   4. the root README.md stops being a symlink
+   5. the root README.md points at the wrong file
+   6. the 'Original text' marker goes, so retracted text becomes live
+   7. a cited script is on disk but is no longer TRACKED
+
+C. the published failure count
+  the driver counted 9 failures
+  30 checks, 9 failed

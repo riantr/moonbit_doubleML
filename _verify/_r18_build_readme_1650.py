@@ -1840,6 +1840,51 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**54** checks) is the new number.
 >
+> * **Round 52.**  Ten reproduction commands that named scripts nobody could
+>   run.
+>
+>   A path in prose is a promise: it must exist, and it must be TRACKED.  Ten
+>   `python <script>.py` commands in tracked Markdown named scripts that are
+>   not in the repository -- and not one of the nine was EVER committed, because
+>   no commit in this repository's history adds a file by any of those names,
+>   so a reader could never have run one of them.  Every one of them sat in a
+>   document that no verifier opened.
+>
+>   Three of those documents did not merely go stale; they contradicted the
+>   CHANGELOG.  `CLUSTER_UPSTREAM_PARITY_1680.md` carries a section that says
+>   the dead commands "pointed at nothing", that "a reproduction command that
+>   cannot be run is worse than none, because it reads as evidence", and that
+>   they were "Replaced with the two scripts that do exist" -- and then lists
+>   three, and leaves the original block untouched.  So the CHANGELOG
+>   published "the block now cites the three scripts that do" while the block
+>   cited none of them.
+>
+>   `PQ_QTE_GATE_DESIGN_1680.md` still said "gate not yet built" after
+>   `pyexample_pq.py` had landed, and `RDD_PARITY_1680.md` said of a docstring
+>   "Not yet corrected ... Logged, not fixed" -- in the SAME commit that
+>   corrected it, whose own message says "Also corrects a docstring stating
+>   an identity its own test cannot see".  That note also quoted a test name
+>   that does not exist: the test is
+>   `v116_tau_bc_equals_the_collapsed_form_only_when_b_equals_h`, and the
+>   note said `..._when_b_equals_h`.
+>
+>   *The new check.*  `_verify/_verify_repro_paths_1650.py` (**28** checks)
+>   holds every live document's reproduction commands, status lines and counts
+>   against the tree, and reads the root `README.md` symlink from the INDEX
+>   rather than from the working tree -- this host materialises it as a
+>   hardlink and a fresh clone writes a 13-byte stub, so a check that read
+>   the file would publish a count that differs between clones.  A document
+>   may keep its original text; it says so in its own words, and the check
+>   says so in its detail line rather than passing silently.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round52_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 8 -> 9.
+>   The run ends at **9** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**56** checks) is the new number.
+>
 >
 """
 
