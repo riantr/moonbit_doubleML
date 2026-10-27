@@ -9,6 +9,88 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.51] -- AGENTS.md, the document an agent opens first, and the one nobody was holding
+
+`moon.mod` moves 0.164.50 -> 0.164.51. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- AGENTS.md, and the probe that found nobody was holding it
+
+Rounds 48-56 audited the README, the six tutorials, the skill and the example
+README.  `AGENTS.md` is the only live document at the repository ROOT that
+none of them touched -- and it is the FIRST thing an agent opens.
+
+The instrument was a MUTATION PROBE: it changed one claim in AGENTS.md, ran
+every verifier that reads the document, and asked which ones failed.  **8**
+of the **11** claims it probed were held by NOBODY.  The library's
+location, the tutorial range, the dependency rule, the async version, the
+commit citation, the public API calls and the "no test file" claim could all
+have been wrong, and no red line would have appeared.
+
+The probe had to be fixed twice before it measured anything true.  Its reader
+set was "the verifiers whose SOURCE names the document", which is an
+under-approximation: the path-promises verifier reads every tracked markdown
+file, so it holds AGENTS.md's path promises without the string "AGENTS.md"
+ever appearing in its source.  The reader set is now MEASURED at runtime,
+with an audit hook that logs every file a verifier opens -- SEVEN verifiers
+open AGENTS.md.  And each mutation is now COMMITTED, because the
+path-promises verifier reads documents from the INDEX, on purpose, so its
+check count is the same in every clone: a mutation left in the working tree
+was invisible to it.  Measured properly, EIGHT of the eleven claims were
+held by nobody before this round and NONE after it.
+
+- Three claims were FALSE of the tree:
+  - the DEPENDENCY RULE allowed only `moonbitlang/*` and `riantr/*`, while
+    the library's own `moonbit_doubleML/moon.mod` declares
+    `moonbit-community/sqlite3@0.2.3`, which is neither.  Round 49 gave
+    `skills/moonbit_doubleML.md` exactly this correction; AGENTS.md was never
+    given the same edit, so two documents described two different rules.
+  - the INTERFACE FILE was named `.mbti`; the toolchain writes
+    `pkg.generated.mbti`, the tracked `.gitignore` ignores it, and NO tracked
+    file ends in `.mbti` at all -- so "Check the diffs of `.mbti` file" asked
+    for a diff `git diff` can never produce.
+  - the PACKAGE LAYOUT said "each directory contains a `moon.pkg` file", while
+    `doc/` is a MODULE of six packages with no `moon.pkg` of its own, and
+    `_verify/` holds MoonBit source that belongs to no package.
+- The new check `_verify/_verify_agents_claims_1650.py` (**66**
+  checks) derives every claim from the tree -- the workspace census from
+  `moon.work`, the dependency carve-out from every tracked `moon.mod`'s
+  import block with the comments stripped, the package census from the
+  tracked tree, the interface file's name from the tracked `.gitignore`, and
+  the commit citation from the git object database.
+
+### Fixed -- a banner entry that only lived in the built file
+
+`ENGINEERING.md` is written from `LEDGER_HEAD` in
+`_verify/_r18_build_readme_1650.py`, and the bump script RUNS that builder.
+The round-56 entry had been appended to `ENGINEERING.md` alone, never to the
+builder -- so the next bump would have regenerated the banner WITHOUT it, and
+the ledger would have lost a round.  Both entries are back in the builder,
+which is the single source of the banner again.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **446** and makes
+  **450** checks: a path named in prose is a check, and this round names
+  four more of them.
+- The ledger moves: this round publishes a count for a new check, so
+  `_verify/_verify_ledger_counts_1650.py` (**66** checks) is the new
+  number.
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round57_1650.py` -- 22 mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every step:
+  **35** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 72 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **72** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.50] -- the tutorial pages' numbers, and the probe that found nobody was holding them
 
 `moon.mod` moves 0.164.49 -> 0.164.50. No estimator behaviour changed and the

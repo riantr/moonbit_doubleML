@@ -2032,6 +2032,135 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   check, so `_verify/_verify_ledger_counts_1650.py` (**60** checks) is still
 >   the number.
 >
+> * **Round 56.**  The tutorial pages' numbers -- and the probe that found
+>   nobody was holding them.
+>
+>   Round 53 held that a path named in prose is a promise.  Round 54 held that
+>   a number in prose is a promise.  This round holds that the TUTORIAL pages
+>   under `doc/` -- and the api_server README -- make numbers too, and that
+>   their numbers had NO holder at all.
+>
+>   The instrument was a MUTATION PROBE.  It changed one number in one page,
+>   ran every tracked verifier that reads that page, and asked which ones
+>   failed.  **26** claims had no holder: nothing in this repository would
+>   have failed if `doc/001_introduction` had said "17 regressors", or
+>   `doc/004_estimators` "default `[0.7]`", or the api_server README "the
+>   body cap is 32 MiB".
+>
+>   *The new check.*  `_verify/_verify_doc_numbers_1650.py` (**52** checks)
+>   measures each quantity from the tree -- the estimator census, the
+>   `LearnerDispatch` enum, the DGP factories and the accessors of the types
+>   they RETURN, the Python script families, the constructor defaults, the
+>   propensity-learner defaults, the CI workflow, the api_server's own source
+>   -- and checks every place the pages state it.  The claim is PARSED out of
+>   the document, never hand-copied, and a number that appears in two
+>   sentences is two promises, not one.
+>
+>   *What it found.*  Nothing FALSE: every one of the **26** claims was true
+>   of the tree when it was measured.  That is not a defence of them.  A
+>   promise nobody watches rots in silence, and the next `.mbt` file would
+>   have falsified "17 `dgp_*.mbt` modules" without a single red line.
+>
+>   *Two claims that were the SAME number in two sentences.*  The
+>   `doc/006_python_check` page says "**9** of the 24 import the upstream
+>   `doubleml` wheel" and, eight lines earlier, "upstream's wheel in **9**".
+>   One was held and one was not: a quantity is a promise per SENTENCE, not
+>   per quantity.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **443** and makes **446**: a path named in prose is a check, and this
+>   round's banner names three more of them.
+>
+>   *A check that was measuring the wrong tree.*  The round-9 verifier's
+>   version-literal scan WALKED THE FILESYSTEM.  A scratch clone of the tree
+>   sitting at the repository root carries every version literal in it, so the
+>   check reported a dozen version sites that no reader could open and no
+>   bump script could reach.  The scan is now scoped to the TRACKED tree --
+>   the repository, not the checkout -- which is what the check always meant.
+>   `_verify/_verify_round9_docs_1644.py` (**65** checks) is the number it
+>   makes now, in the house's own summary shape.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round56_1650.py` breaks ONE promise -- one number in one
+>   page -- and the failure count must GROW at every step: 0 -> 1 -> 2 -> 3 ->
+>   4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12 -> 13 -> 14 -> 16 -> 17 ->
+>   18 -> 19 -> 20 -> 21 -> 22 -> 23 -> 24 -> 25 -> 27 -> 28 -> 29.  The run
+>   ends at **29** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**64** checks) is the new number.
+>
+> * **Round 57.**  AGENTS.md -- the document an agent opens first, and the
+>   one nobody was holding.
+>
+>   Rounds 48-56 audited the README, the six tutorials, the skill and the
+>   example README.  `AGENTS.md` is the only live document at the repository
+>   ROOT that none of them touched -- and it is the FIRST thing an agent
+>   opens.  A MUTATION PROBE on it -- change one claim, run every verifier
+>   that reads the document, ask which ones fail -- says that THREE of the
+>   eleven claims it probed were held by anybody and EIGHT were held by
+>   NOBODY.  The library's location, the tutorial range, the dependency
+>   rule, the async version, the commit citation, the public API calls and
+>   the "no test file" claim could all have been wrong, and no red line
+>   would have appeared.
+>
+>   *The probe had to be fixed twice before it measured anything true.*  The
+>   first pass took the readers to be "the verifiers whose SOURCE names the
+>   document" -- an UNDER-approximation: the path-promises verifier reads
+>   every tracked markdown file, so it holds AGENTS.md's path promises
+>   without the string "AGENTS.md" ever appearing in its source.  The reader
+>   set is now MEASURED at runtime, with an audit hook that logs every file
+>   a verifier opens: SEVEN verifiers open AGENTS.md.  The second pass wrote
+>   the mutation into the clone's working tree, and the path-promises
+>   verifier reads documents from the INDEX -- on purpose, so its check
+>   count is the same in every clone -- so it could not see a mutation that
+>   was never COMMITTED.  Each mutation is committed now, and the probe
+>   says EIGHT were held by nobody before this round and NONE after it.
+>
+>   *Three claims were FALSE of the tree.*
+>
+>     * the DEPENDENCY RULE.  "Only official (`moonbitlang/*`) packages are
+>       allowed.  Non-official packages may only be `riantr/*`" -- while the
+>       library's own `moonbit_doubleML/moon.mod` declares
+>       `moonbit-community/sqlite3@0.2.3`, which is neither.  Round 49 gave
+>       `skills/moonbit_doubleML.md` exactly this correction, naming the one
+>       declared line that does not meet the rule; AGENTS.md was never given
+>       the same edit, so two documents described two different rules.
+>     * the INTERFACE FILE.  "each package has a generated interface file
+>       `.mbti`" -- the toolchain writes `pkg.generated.mbti`, the tracked
+>       `.gitignore` ignores it, and NO tracked file ends in `.mbti` at all.
+>       "Check the diffs of `.mbti` file" asked for a diff that `git diff`
+>       can never produce.
+>     * the PACKAGE LAYOUT.  "each directory contains a `moon.pkg` file" --
+>       `doc/` is a MODULE of six packages and has no `moon.pkg` of its own,
+>       and `_verify/` holds MoonBit source that belongs to no package.
+>
+>   *The new check.*  `_verify/_verify_agents_claims_1650.py` (**66** checks)
+>   derives every claim from the tree -- the workspace census from
+>   `moon.work`, the dependency carve-out from every tracked `moon.mod`'s
+>   import block with the comments stripped, the package census from the
+>   tracked tree, the interface file's name from the tracked `.gitignore`,
+>   and the commit citation from the git object database -- and checks every
+>   place AGENTS.md states it.
+>
+>   *A claim about the TREE is broken by changing the TREE.*  The last
+>   mechanism of the dry-run commits a `deprecated.mbt` into the scratch
+>   clone, because the verifier's scope is the TRACKED tree: a file that
+>   exists only in a working copy is not a claim about the repository.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **446** and makes **450**: a path named in prose is a check, and this
+>   round names four more of them.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round57_1650.py` breaks ONE promise, and the failure
+>   count must GROW at every step: 0 -> 2 -> 4 -> 6 -> 7 -> 9 -> 10 -> 12 ->
+>   16 -> 17 -> 19 -> 20 -> 21 -> 22 -> 23 -> 25 -> 26 -> 28 -> 29 -> 31 ->
+>   32 -> 33 -> 35.  The run ends at **35** failures.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**66** checks) is the new number.
+>
 >
 """
 

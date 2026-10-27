@@ -1,0 +1,25 @@
+round 57 dry-run: AGENTS.md's claims, broken 22 ways
+baseline 0 failing checks; final 35
+VERDICT PASS
+   1. the moon.work member count
+   2. the example count
+   3. the example enumeration
+   4. the doc package count
+   5. the last doc package named
+   6. the out-of-workspace directory count
+   7. an out-of-workspace directory's name
+   8. the library's directory
+   9. the library's own moon.mod and moon.pkg
+  10. the dependency carve-out, removed
+  11. the dependency rule's riantr/* half
+  12. the dependency rule's version example
+  13. the HTTP service's async version
+  14. the commit citation
+  15. a public API call
+  16. the 'no test file' claim
+  17. the smoke-test recipe's path
+  18. the interface file's name
+  19. the old .mbti instruction, put back
+  20. the 'no MoonBit source at the root' claim
+  21. the deprecated-blocks file, claimed to exist
+  22. a deprecated-blocks file in the tracked tree

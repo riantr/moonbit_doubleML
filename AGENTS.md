@@ -7,10 +7,11 @@ You can browse and install extra skills here:
 
 ## Project Structure
 
-- MoonBit packages are organized per directory; each directory contains a
-  `moon.pkg` file listing its dependencies. Each package has its files and
-  blackbox test files (ending in `_test.mbt`) and whitebox test files (ending in
-  `_wbtest.mbt`).
+- A directory holding a `moon.mod` file is a **module**; a directory holding a
+  `moon.pkg` file is a **package**. A module may hold several packages, and
+  each package lists its own dependencies in its `moon.pkg`. Test files sit
+  next to the source they cover: blackbox tests end in `_test.mbt`, whitebox
+  tests end in `_wbtest.mbt`.
 
 - The library lives at `moonbit_doubleML/` (its own `moon.mod` and
   `moon.pkg`). The project root is a pure workspace aggregator
@@ -18,14 +19,20 @@ You can browse and install extra skills here:
 
 - `moon.work` members (23 total):
   - `moonbit_doubleML/` — the library
-  - `doc/` — wasm-gc-targeted numbered tutorials (`001_introduction`
-    through `006_python_check`)
+  - `doc/` — a module of 6 wasm-gc-targeted packages: the numbered
+    tutorials (`001_introduction` through `006_python_check`), each with its
+    own `moon.pkg`
   - `examples/<bin>/` × 21 — `api_server` (the HTTP-service example;
     no third-party framework, built directly on `moonbitlang/async`),
     `apo`, `apos`, `bitexact`, `cluster`, `consumer_demo`, `cvar`,
     `datasets`, `did_binary`, `did_cross_section`, `did_cs`,
     `did_cs_binary`, `did_multi`, `fuzz`, `lplr`, `main`, `parity`,
     `pava`, `plpr`, `splitting`, `ssm`.
+
+- Three directories hold MoonBit source outside the workspace: `_verify/`
+  (helper scripts with no `moon.pkg`) and the proof pilots `_prove_pilot/`
+  and `_prove_pilot2/` (each its own `moon.pkg`, neither a `moon.work`
+  member).
 
 ## Coding convention
 
@@ -34,7 +41,7 @@ You can browse and install extra skills here:
   block by block independently.
 
 - Try to keep deprecated blocks in file called `deprecated.mbt` in each
-  directory.
+  directory. No `deprecated.mbt` file exists in the tree today.
 
 ## Tooling
 
@@ -43,15 +50,17 @@ You can browse and install extra skills here:
 - `moon ide` provides project navigation helpers like `peek-def`, `outline`, and
   `find-references`. See $moonbit-agent-guide for details.
 
-- `moon info` is used to update the generated interface of the package, each
-  package has a generated interface file `.mbti`, it is a brief formal
-  description of the package. If nothing in `.mbti` changes, this means your
-  change does not bring the visible changes to the external package users, it is
-  typically a safe refactoring.
+- `moon info` regenerates each package's interface file `pkg.generated.mbti` --
+  a brief formal description of the package. The file is **git-ignored**, so
+  it never shows up in `git diff`: to see whether a change reaches the
+  external package users, run `moon info` before and after the change and
+  diff the two copies yourself. If nothing in it changes, the change does not
+  bring visible changes to the external package users, and it is typically a
+  safe refactoring.
 
 - In the last step, run `moon info && moon fmt` to update the interface and
-  format the code. Check the diffs of `.mbti` file to see if the changes are
-  expected.
+  format the code. The interface file is not tracked, so `git diff` will not
+  show it -- read it directly.
 
 - Run `moon test` to check tests pass. MoonBit supports snapshot testing; when
   changes affect outputs, run `moon test --update` to refresh snapshots.
@@ -67,10 +76,14 @@ You can browse and install extra skills here:
 ## Dependency rule
 
 - Only official (`moonbitlang/*`) packages are allowed.
-- Non-official packages may only be `riantr/*` (i.e., this repo itself).
-- For official packages, prefer the latest published version on the
-  registry; pin the major-version (e.g. `moonbitlang/async@0.22.5`) and
-  upgrade when bumping is intentional.
+- Non-official packages may only be `riantr/*` (this repo itself). One
+  declared line does not meet the rule today:
+  `moonbit-community/sqlite3@0.2.3`, in `moonbit_doubleML/moon.mod` --
+  **no `.mbt` in the library imports it** (0 references), so it is a dead
+  entry, not a runtime dependency.
+- For official packages, pin to the latest published version on the
+  registry (e.g. `moonbitlang/async@0.22.5`) and upgrade when bumping is
+  intentional.
 
 ## HTTP service (examples/api_server)
 
