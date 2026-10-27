@@ -191,8 +191,13 @@ def main():
        "local" in readme.lower() and "cannot be committed" in readme.lower())
     ok("the README says what the hook actually runs",
        "moon check" in readme and "one" in readme)
-    ok("the README does not claim moon check checks the test files",
-       "does **not** check `_test.mbt` files" in readme)
+    # Round 58: this check used to REQUIRE the sentence "does **not** check
+    # `_test.mbt` files" -- it held the FALSEHOOD, not the truth.  `moon
+    # check`'s own plan type-checks the `_test.mbt` files and the
+    # `readme.mbt.md` doctests; only `moon test` RUNS them.
+    ok("the README says moon check type-checks the test files but does not run them",
+       "type-checks the `_test.mbt` files" in readme
+       and "only `moon test` runs them" in readme)
 
     # -- 6. the artefact pointers these documents name --------------------- #
     print("\n[6] artefact pointers")

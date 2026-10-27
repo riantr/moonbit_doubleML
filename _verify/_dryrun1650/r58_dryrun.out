@@ -1,0 +1,28 @@
+round 58 dry-run: the secondary documents' claims, broken 25 ways
+baseline 0 failing checks; final 28
+VERDICT PASS
+   1. the hook's tracked mode
+   2. the workspace member count
+   3. a `moon check` task count, put back
+   4. publish.yml's check command
+   5. the 'the same command' claim, put back
+   6. the `_test.mbt` claim, inverted
+   7. the Python cross-check count
+   8. where the QA LOOP lives
+   9. where the CI-gating section lives
+  10. the doc module's name
+  11. a tutorial row in the table
+  12. the tutorial target
+  13. the 'its own tests' claim
+  14. `doc`'s workspace membership
+  15. the package the tutorial command names
+  16. where the verifiers live
+  17. a menu entry's path
+  18. a menu entry's title
+  19. the audited toolchain, called 'current'
+  20. the patch-release gap
+  21. a per-case frontend error count
+  22. a case name in the results table
+  23. who classifies the log
+  24. the pilot's package
+  25. the blockers file

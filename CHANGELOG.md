@@ -9,6 +9,91 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.52] -- the secondary documents: the hook, the tutorials' menu, and the proof re-audit
+
+`moon.mod` moves 0.164.51 -> 0.164.52. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the four live documents rounds 48-57 never audited
+
+Rounds 48-57 audited the README, `AGENTS.md`, the six tutorials, the skill and
+the example README.  Four LIVE documents were left: `.githooks/README.md`,
+`doc/README.mbt.md`, `doc/menu.json` and `_verify/upstream_prove_1649/README.md`.
+
+The instrument was a MUTATION PROBE: it changed one claim, ran every tracked
+verifier that reads that document, and asked which ones failed.  Of the
+**24** claims the baseline probe could put to the test, **18** were
+held by NOBODY.  The hook's command, the workspace member count, the tutorial
+table, the tutorial target, the menu, the toolchain the proof re-audit was
+measured on and the per-case error counts could all have been wrong, and no red
+line would have appeared.
+
+The reader set is MEASURED at RUNTIME, with an audit hook that logs every file
+a verifier opens: FIVE verifiers open `.githooks/README.md`, SIX open
+`doc/README.mbt.md`, ONE opens `doc/menu.json` and FOUR open the proof re-audit
+README.  After this round, TWENTY-FIVE claims probed and NONE held by nobody.
+
+- EIGHT claims were FALSE of the tree:
+  - the TASK COUNT.  "measured: `moon: ran 54 tasks`" -- the number is not
+    holdable at all: it changes with the build state and with the toolchain, and
+    `moon check` prints "no work to do" instead of a count on a warm tree.  It
+    was REPLACED by the member count, which `moon.work` derives.
+  - "It is the same command `publish.yml` runs before it publishes."  It is not:
+    `publish.yml` runs `moon check --target "$target" --deny-warn`.
+  - "`moon check` does **not** check `_test.mbt` files -- only `moon test`
+    compiles them."  FALSE: `moon check`'s OWN PLAN type-checks the `_test.mbt`
+    files and the `readme.mbt.md` doctests.  `moon check` type-checks them;
+    only `moon test` RUNS them.
+  - "the QA LOOP -- those live in `.github/workflows/`".  The QA LOOP's own
+    scripts live in `.github/scripts/qa_loop/`.
+  - "See the README's 'What CI actually gates' table."  There is no such table
+    in the README -- it is a section of `ENGINEERING.md`.
+  - "the current toolchain" (six times) and "the current proof frontend": a
+    2026-10-20 audit cannot describe the toolchain in use today.  The document
+    now says **the audited toolchain**, and names the versions it was measured
+    on.
+  - "the controls are classified `PLATFORM_ERROR` rather than `PROVED` in
+    `out/b0_control.log`".  The log holds the RAW EVIDENCE; the label is
+    `run_reaudit.py`'s.
+  - "The toolchain has moved five patch releases since."  Reworded so the gap is
+    between the versions the document itself names -- `v0.10.11` and the audited
+    `v0.10.16` -- which keeps it true forever.
+- A check that HELD THE FALSEHOOD: `_verify/_verify_round11_handoffs_1646.py`
+  REQUIRED the sentence "does **not** check `_test.mbt` files" to be in the
+  hook README -- it asserted the error, not the truth, and forbade correcting
+  it.  It now requires the corrected sentence, and its own count is unchanged
+  at **45**.
+- The new check `_verify/_verify_secondary_docs_1650.py` (**151** checks)
+  derives every claim from the tree -- the member count from `moon.work`, the
+  hook's mode from `git ls-files -s`, the cross-check count from the tracked
+  `validate_*_with_python.py` glob, the doc-package census from the tracked
+  tree, the `_test.mbt` question from `moon check --dry-run`'s own plan, the
+  per-case error counts from the tracked `out/*.log` files, and the
+  patch-release gap from the two versions the document names.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **450** and makes **459**
+  checks: a path named in prose is a check, and this round names nine more of
+  them.
+- The ledger moves: this round publishes a count for a new check, so
+  `_verify/_verify_ledger_counts_1650.py` (**68** checks) is the new
+  number.
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round58_1650.py` -- 25 mechanisms, one per way the contract
+  can be broken. It requires the failure count to GROW at every step:
+  **28** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 73 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **73** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.51] -- AGENTS.md, the document an agent opens first, and the one nobody was holding
 
 `moon.mod` moves 0.164.50 -> 0.164.51. No estimator behaviour changed and the

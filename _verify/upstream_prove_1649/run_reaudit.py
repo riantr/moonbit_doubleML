@@ -15,9 +15,11 @@ Classification, in order:
   PROVED          moonc ran and accepted it
   UNKNOWN         anything else -- never silently treated as a pass
 
-Exit status: 0 only if the control case PROVED.  If the control case did not
-prove, the run is void and the runner exits non-zero, because no result in
-that run can be attributed to the construct under test.
+Exit status: 2 if the control case is UNKNOWN -- neither accepted nor rejected
+-- because then the run is void and no result in it can be attributed to the
+construct under test.  A control that is PLATFORM_ERROR still exits 0: the
+harness discriminated, but the proof outcome is not observable on this
+platform.
 
 Usage:  python run_reaudit.py [--outdir DIR]
 """

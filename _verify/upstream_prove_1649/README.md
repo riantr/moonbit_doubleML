@@ -1,11 +1,13 @@
-# Upstream proof restrictions: a re-audit on the current toolchain
+# Upstream proof restrictions: a re-audit on the toolchain of 2026-10-20
 
 > **Status: re-audited 2026-10-20 on `moon 0.1.20261016 (1af328f 2026-10-16)` /
 > `moonc v0.10.16+b1a0e846e (2026-10-16)`.** The 4 + 2 restrictions in
 > `_verify/UPSTREAM_BLOCKERS.md` were last *observed* in September 2026 on
-> `moonc v0.10.11` / `v0.10.12`. The toolchain has moved five patch releases
-> since. This directory records what the current toolchain does with the
-> same constructs.
+> `moonc v0.10.11` / `v0.10.12`. The toolchain this re-audit ran on is five
+> patch releases after `v0.10.11`. Everything below refers to **the audited
+> toolchain** -- `moon 0.1.20261016` / `moonc v0.10.16` -- and to no other: a
+> newer toolchain may do something else. This directory records what the
+> audited toolchain does with the same constructs.
 >
 > **What is measured here, and what is not.** Each case is run through the
 > proof **frontend**, which lowers the contract and rejects it before Why3 is
@@ -26,7 +28,7 @@ package layout changed (the package moved from the repository root into
 > `Error: Cannot find package to build based on input path ... is not inside
 > any known module.`
 
-measured 2026-10-20 on the current toolchain.
+measured 2026-10-20 on the audited toolchain.
 
 ## The cases
 
@@ -103,7 +105,7 @@ produced them.
   attributes to Bucket 1 ("unsupported primitive operator", 1 logic + 2 body
   per isolated case). The record's *symptom* text -- that the Why3 preamble
   lacks `use array.Array` and Why3 then reports `unbound type symbol 'array'`
-  -- is **not** what the current toolchain reports; it reports "unsupported
+  -- is **not** what the audited toolchain reports; it reports "unsupported
   primitive operator".
 - **Blocker 2** (`Double`). **Reproduced exactly**: 6 errors, with the same
   four-way split the record gives (2x comparison in logic, 2x literal in
@@ -116,17 +118,17 @@ produced them.
 - **Finding A3 is obsolete.** The record says a `raise` in a contracted body
   makes `moonc prove` die with the help-text error
   `moonc prove [options] <input files>`, so "a user will not see a clean
-  diagnostic". The current toolchain reports a clean, specific
+  diagnostic". The audited toolchain reports a clean, specific
   `unsupported expression in contracted function body`.
 - **Finding A4 is obsolete**, and the diagnostic is now *more* informative than
   anything the record contains: `only single-binder I32 range foreach loops
   are supported in contracted function bodies`.
 - **The `for x in 0..<n` claim is now false.** The record says the same
-  help-text error fires for the single-binder Int range form. The current
+  help-text error fires for the single-binder Int range form. The audited
   toolchain **accepts** it: `b4r_range_foreach` has zero frontend errors.
 - **Issue 4's "Workaround (verified)" no longer holds as written.** Its
   snippet is the C-style range over `Array[Int]`, and it is claimed to
-  "compile and prove (no errors)". The current toolchain reports 3 frontend
+  "compile and prove (no errors)". The audited toolchain reports 3 frontend
   errors on that exact shape (`b4c_style_control`) -- all of them Blocker 1,
   on `arr.length()` and `arr[i]`. The C-style rewrite fixes the *foreach*; it
   does not fix the `Array[T]` lowering. The shape that the frontend accepts is
@@ -135,7 +137,7 @@ produced them.
 
 **Confirmed.**
 
-- The `FixedArray` + C-style workaround shape is **accepted** by the current
+- The `FixedArray` + C-style workaround shape is **accepted** by the audited
   proof frontend, which is the premise the `_prove_pilot` package rests on.
 
 ## Platform limitation
@@ -148,9 +150,10 @@ prefix.
 anomaly: Unix.Unix_error(Unix.EINVAL, "mkdir", "\\?")
 ```
 
-This is why the controls are classified `PLATFORM_ERROR` rather than `PROVED`
-in `out/b0_control.log`: the frontend accepted the contract, and the run then
-died in a later stage. The same limitation is recorded independently in
+This is why `run_reaudit.py` classifies the control `PLATFORM_ERROR` rather
+than `PROVED`: the frontend accepted the contract, and the run then died in
+a later stage. The label is the runner's, not the log's -- `out/b0_control.log`
+holds the raw evidence. The same limitation is recorded independently in
 `_prove_pilot/moon.pkg`.
 
 Because the rejection happens in the frontend, **before** the Why3 stage, a

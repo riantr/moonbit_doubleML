@@ -9,11 +9,13 @@ moon check
 ```
 
 `moon check` is the type-check pass, run at the workspace root over the
-members of `moon.work` (measured: `moon: ran 54 tasks`, exit 0 on a clean
-tree). It is the same command `publish.yml` runs before it publishes.
+23 members of `moon.work` (exit 0 on a clean tree). `publish.yml` runs the
+same pass with a target and `--deny-warn` added:
+`moon check --target "$target" --deny-warn`.
 
 It is **not** the test suite, the format check, `typos`, or the QA LOOP --
-those live in `.github/workflows/` and run on CI, not here.
+those live in `.github/workflows/` (the QA LOOP's own scripts in
+`.github/scripts/qa_loop/`) and run on CI, not here.
 
 ### Usage Instructions
 
@@ -40,13 +42,13 @@ non-zero `moon check` aborts the commit.
 
 Running the hook is not a substitute for the gate:
 
-- `moon check` does **not** check `_test.mbt` files -- only `moon test`
-  compiles them.
+- `moon check` type-checks the `_test.mbt` files and the `readme.mbt.md`
+  doctests, but does not **run** them -- only `moon test` runs them.
 - It does not run `moon fmt --check`, `typos`, the 24 Python cross-checks,
   or the QA LOOP.
 - A push to `master` does not run `moon check --deny-warn` either: that
-  command runs only in `publish.yml`, before a release. See the README's
-  "What CI actually gates" table.
+  command runs only in `publish.yml`, before a release. See `ENGINEERING.md`'s
+  "What CI actually gates" section.
 
 For the full suite, see `.github/workflows/check.yml` and
 `.github/scripts/ci_local.py`.
