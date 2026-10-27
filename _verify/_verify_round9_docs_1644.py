@@ -43,7 +43,9 @@ def check(name, ok, detail=""):
     NCHECK += 1
     if not ok:
         FAILS.append((name, detail))
-        print("  FAIL  %-58s %s" % (name, detail))
+        # The house's failure marker, so that a dry-run driver can COUNT
+        # this check's failures the way it counts every other check's.
+        print("  *** FAIL *** %-50s %s" % (name, detail))
     else:
         print("  ok    %-58s %s" % (name, detail))
 
@@ -440,7 +442,7 @@ print("I. every version literal is covered by the bump script")
 # round 18, which meant the check that guards the version sites depended on
 # a script nobody else could see.
 _tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True,
-                          text=True, encoding="utf-8", errors="replace").stdout.split()
+                          text=True, encoding="utf-8", errors="replace").stdout.splitlines()
 check("the bump script is TRACKED",
       "_verify/_bump_1636.py" in _tracked,
       "the check below reads a file a reader cannot open")
@@ -451,28 +453,37 @@ for m in re.finditer(r'os\.path\.join\(\s*ROOT\s*,\s*((?:"[^"]+"\s*,\s*)*"[^"]+"
     parts = re.findall(r'"([^"]+)"', m.group(1))
     bump_paths.add("/".join(parts))
 uncovered = []
-for dirpath, dirnames, filenames in os.walk(ROOT):
-    dirnames[:] = [d for d in dirnames
-                   if d not in ("_build", "_verify", ".git", ".mooncakes", "__pycache__", "_probe")]
-    for fn in filenames:
-        if not fn.endswith((".mbt", ".md", ".mod", ".feature", ".yml", ".yaml")):
-            continue
-        p = os.path.join(dirpath, fn)
-        rel = os.path.relpath(p, ROOT).replace("\\", "/")
-        # A SYMLINK is not an independent version site: `README.md` is a
-        # symlink to `README.mbt.md`, so its content IS the target's content,
-        # and the target is a bump site.  Counting it again would report a
-        # site that cannot be bumped separately.
-        if os.path.islink(p):
-            continue
-        try:
-            s = read(p)
-        except Exception:
-            continue
-        if ("riantr/moonbit_doubleML@%s" % ver) in s and rel not in bump_paths:
-            uncovered.append(rel)
+# The scope device is the TRACKED tree, not the working directory.  A walk of
+# the filesystem measures whatever happens to be sitting in the checkout: a
+# scratch clone of the tree at the repository root carries every version
+# literal in it, and the check then reports a dozen sites that no reader can
+# open and no bump script can reach.  Group J below already asks `git
+# ls-files`; this section now asks the same question.
+_SKIP_DIRS = ("_build", "_verify", ".git", ".mooncakes", "__pycache__", "_probe")
+_SCANNABLE = (".mbt", ".md", ".mod", ".feature", ".yml", ".yaml")
+for rel in sorted(r.strip().replace("\\", "/") for r in _tracked if r.strip()):
+    if rel.split("/")[0] in _SKIP_DIRS:
+        continue
+    if not rel.endswith(_SCANNABLE):
+        continue
+    p = os.path.join(ROOT, rel.replace("/", os.sep))
+    # A SYMLINK is not an independent version site: `README.md` is a
+    # symlink to `README.mbt.md`, so its content IS the target's content,
+    # and the target is a bump site.  Counting it again would report a
+    # site that cannot be bumped separately.
+    if os.path.islink(p):
+        continue
+    try:
+        s = read(p)
+    except Exception:
+        continue
+    if ("riantr/moonbit_doubleML@%s" % ver) in s and rel not in bump_paths:
+        uncovered.append(rel)
 check("every riantr/moonbit_doubleML@%s literal is a bump site" % ver,
       not uncovered, str(uncovered))
+check("the version-literal scope is the TRACKED tree, not the working directory",
+      not any(r.startswith("_r") and r.endswith("_tree/") for r in uncovered),
+      "a scratch tree was measured")
 
 # --------------------------------------------------------------------------- #
 # J. every `_verify/...` path a LIVE document names is a file a reader can open
@@ -510,7 +521,9 @@ check("no live document names a `_verify/` file that is not tracked",
 # --------------------------------------------------------------------------- #
 print()
 print("=" * 74)
-print("checks: %d   failures: %d" % (NCHECK, len(FAILS)))
+# The house's common summary shape, so that the LEDGER can measure this
+# check's count the way it measures every other check's.
+print("%d checks, %d failed" % (NCHECK, len(FAILS)))
 if FAILS:
     for n, d in FAILS:
         print("  FAILED: %s  %s" % (n, d))

@@ -9,6 +9,74 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.50] -- the tutorial pages' numbers, and the probe that found nobody was holding them
+
+`moon.mod` moves 0.164.49 -> 0.164.50. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the numbers the tutorial pages state, and the probe that found them unwatched
+
+Round 53 held that a path named in prose is a promise.  Round 54 held that a
+number in prose is a promise.  This round holds that the TUTORIAL pages under
+`doc/` -- and `examples/api_server/README.md` -- make numbers too, and that
+their numbers had NO holder at all.
+
+The instrument was a MUTATION PROBE: it changed one number in one page, ran
+every tracked verifier that reads that page, and asked which ones failed.
+**26** claims had no holder.  Nothing in the repository would have failed
+if `doc/001_introduction` had said "17 regressors", or `doc/004_estimators`
+"default `[0.7]`", or the api_server README "the body cap is 32 MiB".
+
+- The new check `_verify/_verify_doc_numbers_1650.py` (**52** checks)
+  measures each quantity from the tree -- the estimator census, the
+  `LearnerDispatch` enum, the DGP factories and the accessors of the types
+  they RETURN, the Python script families, the constructor defaults, the
+  propensity-learner defaults, the CI workflow, the api_server's own source
+  -- and checks every place the pages state it.  The claim is PARSED out of
+  the document, never hand-copied, and a number that appears in two sentences
+  is two promises, not one.
+- What it found: nothing FALSE.  Every one of the **26** claims was true
+  of the tree when it was measured -- which is not a defence of them.  A
+  promise nobody watches rots in silence, and the next `.mbt` file would
+  have falsified "17 `dgp_*.mbt` modules" without a single red line.
+- `doc/006` says "**9** of the 24 import the upstream `doubleml` wheel" and,
+  eight lines earlier, "upstream's wheel in **9**".  One was held and one was
+  not: a quantity is a promise per SENTENCE, not per quantity.
+
+### Fixed -- a check that was measuring the wrong tree
+
+The round-9 verifier's version-literal scan WALKED THE FILESYSTEM.  A scratch
+clone of the tree sitting at the repository root carries every version literal
+in it, so the check reported a dozen version sites that no reader could open
+and no bump script could reach.  The scan is now scoped to the TRACKED tree --
+the repository, not the checkout -- which is what the check always meant.
+
+- `_verify/_verify_round9_docs_1644.py` (**65** checks) is the number it
+  makes now, in the house's own summary shape.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **443** and makes
+  **446** checks: a path named in prose is a check, and this round's banner
+  names three more of them.
+- The ledger moves: this round publishes a count for a new check, so
+  `_verify/_verify_ledger_counts_1650.py` (**64** checks) is the new
+  number.
+
+### Proven -- the new checks bite
+
+- `_verify/_dryrun_round56_1650.py` -- 27 mechanisms, one per way the
+  contract can be broken. It requires the failure count to GROW at every step:
+  **29** failures at the end.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 71 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **71** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.49] -- a citation names a place, and the place has to be inside the file
 
 `moon.mod` moves 0.164.48 -> 0.164.49. No estimator behaviour changed and the

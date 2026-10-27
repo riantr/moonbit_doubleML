@@ -1,0 +1,30 @@
+round 56 dry-run: the tutorial pages' numbers, broken 27 ways
+baseline 0 failing checks; final 29
+VERDICT PASS
+   1. the introduction's estimator total
+   2. the introduction's dead-dependency count
+   3. the introduction's dead-dependency reference count
+   4. the introduction's Python-validator count
+   5. the introduction's LearnerDispatch variant count
+   6. the introduction's regressor count
+   7. the introduction's classifier count
+   8. the introduction's propensity-learner set
+   9. the introduction's DGP module count
+  10. the introduction's --deny-warn verdict
+  11. the installation page's backend count
+  12. the quick-start page's backend count
+  13. the estimators page's headline count
+  14. the estimators page's score slot split
+  15. the estimators page's quantile default
+  16. the estimators page's quantiles default
+  17. the estimators page's depth default
+  18. the estimators page's DIDCSBinary score vocabulary
+  19. the DGP page's theta_get() count
+  20. the DGP page's x_get() / y_get() / d_get() count
+  21. the DGP page's recovery-test count
+  22. the DGP page's IRM tolerance
+  23. the cross-check page's hand-rolled count
+  24. the cross-check page's wheel count
+  25. the cross-check page's coverage split
+  26. the api_server's body cap
+  27. a tracked version literal with no bump site
