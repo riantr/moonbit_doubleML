@@ -3,7 +3,7 @@ name = "local/moonbit_doubleML-examples-did_cross_section"
 version = "0.52.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.52",
+  "riantr/moonbit_doubleML@0.164.53",
 }
 
 readme = "../../README.mbt.md"

@@ -2096,7 +2096,67 @@
 >
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**68** checks) is the new number.
+
+> * **Round 59.**  The README's SHAPE -- measured against the two references.
 >
+>   Rounds 48-58 audited the TEXT of every live document.  This round audited
+>   the SHAPE: what a reader is GIVEN, and in what order.  The two reference
+>   packages the user named -- `Ridge-Lab/capnp@0.1.0` and `gaato/discord@0.10.0`
+>   -- were measured feature by feature against this README, and FOUR gaps came
+>   out of the comparison.
+>
+>   *The README carried NO IMAGE at all.*  Both references open with a CI
+>   badge; this one had none, and nothing would have said so, because the
+>   README is GENERATED -- a generator change can lose a section without any
+>   red line.  It now opens with a badge on `.github/workflows/check.yml`: the
+>   workflow named "CI", which runs on every push to `main` and `master` and on
+>   every pull request.
+>
+>   *The status was 590 lines down.*  discord opens its prose with a
+>   one-paragraph STATUS; this README's status sat under "Development status",
+>   past the Features list, the estimator table, the API reference, the
+>   propensity section and the pitfalls.  There is now one under the opening
+>   paragraph, and every element of it is DERIVED from `moonbit_doubleML/moon.mod`:
+>   MIT is the manifest's `license`, the four backends are its
+>   `supported_targets`, and the estimator count is measured.  NO version
+>   literal goes in it: a version in a new place is a new bump site, and a
+>   bump site the bump script does not know about is a stale number waiting to
+>   happen.
+>
+>   *A shape element that was REFUSED.*  capnp states a MINIMUM toolchain --
+>   the lowest MoonBit it supports.  Nothing in this tree establishes a floor:
+>   `moonbit_doubleML/moon.mod` declares no toolchain constraint, and the
+>   workflows install the LATEST `moon` rather than pinning one.  So no floor
+>   is published.  What the README says instead -- the toolchain it was
+>   VERIFIED on -- is what is held.
+>
+>   *The shape was not HELD.*  Nothing failed if the next bump dropped the
+>   badge, because the README is GENERATED -- a generator change can lose a
+>   section without a red line.  `_verify/_verify_readme_shape_1650.py`
+>   (**29** checks) holds the shape now: the badge must name a
+>   TRACKED workflow, point at
+>   this project's own repository, carry that workflow's own name, and belong
+>   to a workflow that runs on a push to the release branch; the opening must
+>   keep the reference's ORDER -- title, badge, paragraph, status -- and the
+>   status paragraph must name the manifest's licence, the manifest's backends
+>   and the measured estimator count, must point at a section that exists,
+>   must say what is not claimed, and must carry no version literal.  The
+>   shape the references SHARE is held too: a console block with a command and
+>   its output, the install command, `moon update`, a MoonBit import block, a
+>   "not covered" section, a licence section, an attribution section, a table
+>   row naming every declared backend, the toolchain statement and the
+>   test-count row.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round59_1650.py` breaks ONE promise, and the failure count
+>   must GROW at every step.  The run ends at **28** failures.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **459** and makes **461**: a path named in prose is a check, and this
+>   round names 2 more of them.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is the new number.
 >
 >
 >

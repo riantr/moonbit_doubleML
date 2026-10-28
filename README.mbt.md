@@ -1,5 +1,7 @@
 # moonbit_doubleML - Double / Debiased Machine Learning in MoonBit
 
+[![CI](https://github.com/riantr/moonbit_doubleML/actions/workflows/check.yml/badge.svg)](https://github.com/riantr/moonbit_doubleML/actions/workflows/check.yml)
+
 A pure-MoonBit port of the
 [`doubleml-for-py`](https://github.com/DoubleML/doubleml-for-py) Python
 package -- the Python ecosystem's most mature Double / Debiased Machine
@@ -20,6 +22,10 @@ inside the MoonBit ecosystem. Delivers one
 `DoubleMLXxx::new(...).fit()` API across all 22 estimators, with robust
 variance estimation and a reproducible validation pipeline
 (24 / 24 Python reference scripts PASS).
+
+> **Status**: MIT, pure MoonBit, on `native`, `wasm`, `wasm-gc` and `js`,
+> with 22 estimators. **Development status** below states what is
+> verified against upstream and what is **not** claimed.
 
 ## Features
 
@@ -79,7 +85,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.52",
+  "riantr/moonbit_doubleML@0.164.53",
 }
 ```
 
@@ -595,7 +601,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.52** |
+| `moon.mod` version | **0.164.53** |
 | Toolchain | `moon 0.1.20261023` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -727,7 +733,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.52, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.53, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

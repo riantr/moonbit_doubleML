@@ -1,0 +1,28 @@
+round 59 dry-run: the README's shape, broken 25 ways
+baseline 0 failing checks; final 28
+VERDICT PASS
+   1. the badge's repository
+   2. the badge's alt text
+   3. the badge's workflow
+   4. the badge, after the status paragraph
+   5. the badge, below the first section
+   6. the badge, gone
+   7. a version literal in the status paragraph
+   8. the status paragraph's licence
+   9. the status paragraph's backends
+  10. the status paragraph's estimator count
+  11. the status paragraph's section pointer
+  12. the status paragraph's 'not claimed'
+  13. the status paragraph, below the first section
+  14. the status paragraph, gone
+  15. the console block
+  16. the install command
+  17. `moon update`
+  18. the MoonBit import block
+  19. the 'not covered' section
+  20. the licence section
+  21. the attribution section
+  22. the backend column
+  23. the toolchain statement
+  24. the test-count row
+  25. the provenance file

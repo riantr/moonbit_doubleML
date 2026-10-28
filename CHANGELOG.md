@@ -9,6 +9,82 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.53] -- the README's shape, measured against the two references
+
+`moon.mod` moves 0.164.52 -> 0.164.53. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the shape the two reference packages have
+
+Rounds 48-58 audited the TEXT of every live document.  This round audited the
+SHAPE: what a reader is given, and in what order.  The two reference packages
+the user named -- `Ridge-Lab/capnp@0.1.0` and `gaato/discord@0.10.0` -- were
+measured feature by feature against this README, and FOUR gaps came out.
+
+- The README carried **NO IMAGE at all**.  Both references open with a CI
+  badge; this one had none, and nothing would have said so -- the README is
+  GENERATED, so a generator change can lose a section without any red line.
+  It now opens with a badge on `.github/workflows/check.yml`, the workflow
+  named "CI", which runs on every push to `main` and `master` and on every
+  pull request.
+- The status was **590 lines down**.  discord opens its prose with a
+  one-paragraph STATUS; this README's status sat under "Development status",
+  past the Features list, the estimator table, the API reference, the
+  propensity section and the pitfalls.  There is now one under the opening
+  paragraph, and every element of it is DERIVED from `moonbit_doubleML/moon.mod`:
+  MIT is the manifest's `license`, the four backends are its
+  `supported_targets`, and the estimator count is measured.  NO version
+  literal goes in it -- a version in a new place is a new bump site, and a
+  bump site the bump script does not know about is a stale number waiting to
+  happen.
+- A shape element that was **REFUSED**: capnp states a MINIMUM toolchain --
+  the lowest MoonBit it supports.  Nothing in this tree establishes a floor
+  (`moonbit_doubleML/moon.mod` declares no toolchain constraint, and the
+  workflows install the LATEST `moon` rather than pinning one), so no floor is
+  published.  What the README says instead -- the toolchain it was VERIFIED
+  on -- is what is held.
+- The shape was not HELD: nothing failed if the next bump dropped the badge,
+  because the README is generated.
+
+The badge, the status paragraph and the holding of the shape are closed by the
+changes above and by the check that follows.  The minimum toolchain is closed
+by the refusal itself: no floor is published, and the toolchain the README was
+VERIFIED on is what the new check holds.
+
+### Added -- the check that holds the shape
+
+- `_verify/_verify_readme_shape_1650.py` (**29** checks) holds the shape.
+  The badge must name a TRACKED workflow, point at this project's own
+  repository, carry that workflow's own name, and belong to a workflow that
+  runs on a push to the release branch; the opening must keep the reference's
+  ORDER -- title, badge, paragraph, status; and the status paragraph must name
+  the manifest's licence, the manifest's backends and the measured estimator
+  count, must point at a section that exists, must say what is not claimed,
+  and must carry no version literal.  The shape the references SHARE is held
+  too: a console block with a command and its output, the install command,
+  `moon update`, a MoonBit import block, a "not covered" section, a licence
+  section, an attribution section, a table row naming every declared backend,
+  the toolchain statement and the test-count row.
+- `_verify/_dryrun_round59_1650.py` breaks the contract 25 ways; the failure
+  count grows 0 -> 1 -> ... -> 28 and the capture is published.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **459** and makes **461**
+  checks: a path named in prose is a check, and this round names 2 more of
+  them.
+- The ledger moves: this round publishes a count for a new check, so
+  `_verify/_verify_ledger_counts_1650.py` (**70** checks) is the new
+  number.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 74 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **74** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.52] -- the secondary documents: the hook, the tutorials' menu, and the proof re-audit
 
 `moon.mod` moves 0.164.51 -> 0.164.52. No estimator behaviour changed and the

@@ -2236,7 +2236,67 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**68** checks) is the new number.
+
+> * **Round 59.**  The README's SHAPE -- measured against the two references.
 >
+>   Rounds 48-58 audited the TEXT of every live document.  This round audited
+>   the SHAPE: what a reader is GIVEN, and in what order.  The two reference
+>   packages the user named -- `Ridge-Lab/capnp@0.1.0` and `gaato/discord@0.10.0`
+>   -- were measured feature by feature against this README, and FOUR gaps came
+>   out of the comparison.
+>
+>   *The README carried NO IMAGE at all.*  Both references open with a CI
+>   badge; this one had none, and nothing would have said so, because the
+>   README is GENERATED -- a generator change can lose a section without any
+>   red line.  It now opens with a badge on `.github/workflows/check.yml`: the
+>   workflow named "CI", which runs on every push to `main` and `master` and on
+>   every pull request.
+>
+>   *The status was 590 lines down.*  discord opens its prose with a
+>   one-paragraph STATUS; this README's status sat under "Development status",
+>   past the Features list, the estimator table, the API reference, the
+>   propensity section and the pitfalls.  There is now one under the opening
+>   paragraph, and every element of it is DERIVED from `moonbit_doubleML/moon.mod`:
+>   MIT is the manifest's `license`, the four backends are its
+>   `supported_targets`, and the estimator count is measured.  NO version
+>   literal goes in it: a version in a new place is a new bump site, and a
+>   bump site the bump script does not know about is a stale number waiting to
+>   happen.
+>
+>   *A shape element that was REFUSED.*  capnp states a MINIMUM toolchain --
+>   the lowest MoonBit it supports.  Nothing in this tree establishes a floor:
+>   `moonbit_doubleML/moon.mod` declares no toolchain constraint, and the
+>   workflows install the LATEST `moon` rather than pinning one.  So no floor
+>   is published.  What the README says instead -- the toolchain it was
+>   VERIFIED on -- is what is held.
+>
+>   *The shape was not HELD.*  Nothing failed if the next bump dropped the
+>   badge, because the README is GENERATED -- a generator change can lose a
+>   section without a red line.  `_verify/_verify_readme_shape_1650.py`
+>   (**29** checks) holds the shape now: the badge must name a
+>   TRACKED workflow, point at
+>   this project's own repository, carry that workflow's own name, and belong
+>   to a workflow that runs on a push to the release branch; the opening must
+>   keep the reference's ORDER -- title, badge, paragraph, status -- and the
+>   status paragraph must name the manifest's licence, the manifest's backends
+>   and the measured estimator count, must point at a section that exists,
+>   must say what is not claimed, and must carry no version literal.  The
+>   shape the references SHARE is held too: a console block with a command and
+>   its output, the install command, `moon update`, a MoonBit import block, a
+>   "not covered" section, a licence section, an attribution section, a table
+>   row naming every declared backend, the toolchain statement and the
+>   test-count row.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round59_1650.py` breaks ONE promise, and the failure count
+>   must GROW at every step.  The run ends at **28** failures.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **459** and makes **461**: a path named in prose is a check, and this
+>   round names 2 more of them.
+>
+>   *The ledger moves.*  This round publishes a count for a new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is the new number.
 >
 >
 >
@@ -4174,6 +4234,61 @@ PATCHES.append((OLD_48_F3_UPSTREAM_REFERENCE, NEW_48_F3_UPSTREAM_REFERENCE))
 OLD_48_F1_ATTRIBUTION_COMPARISON = '`DoubleMLLPLR` and `DoubleMLDIDCSBinary` are **not** MoonBit-only -- all\nthree ship upstream, and are compared against it. The last candidate\n'
 NEW_48_F1_ATTRIBUTION_COMPARISON = "`DoubleMLLPLR` and `DoubleMLDIDCSBinary` are **not** MoonBit-only -- all\nthree ship upstream. `DoubleMLLPLR` and `DoubleMLDIDCSBinary` are compared\nagainst upstream's own classes; `DoubleMLPLPR`'s upstream fit is compared\nagainst a hand-rolled reference on a different dataset from the port's, so\nPLPR has no upstream gate. The last candidate\n"
 PATCHES.append((OLD_48_F1_ATTRIBUTION_COMPARISON, NEW_48_F1_ATTRIBUTION_COMPARISON))
+
+
+# ==============================================================================
+# 17.  THE ROUND-59 PATCHES -- the shape, measured against the two references
+# ==============================================================================
+#
+# The reference packages the user named (`Ridge-Lab/capnp@0.1.0` and
+# `gaato/discord@0.10.0`) both OPEN with a CI badge, and discord opens its
+# prose with a one-paragraph STATUS.  This README had NEITHER: measured against
+# the two of them, it carried NO image at all, and its status sat 590 lines
+# down, under "Development status".
+#
+# Two changes, and every element of both is a claim the tree can hold:
+#
+# (a) THE CI BADGE.  It names `.github/workflows/check.yml` -- the workflow
+#     named "CI", which runs on every push to `main` and `master` and on every
+#     pull request.  A badge URL is a URL, not a path, so the path-promises
+#     verifier does not see it: `_verify/_verify_readme_shape_1650.py` holds it
+#     instead.
+#
+# (b) THE STATUS LINE.  Every element is DERIVED from the manifest: MIT is
+#     `moon.mod`'s `license`, the four backends are its `supported_targets`,
+#     and the estimator count is measured.  NO version literal goes in here on
+#     purpose -- a version in a new place is a new bump site, and a bump site
+#     the bump script does not know about is a stale number waiting to happen.
+#
+# The reference's THIRD shape element -- a MINIMUM toolchain ("需要 MoonBit
+# 0.10.14 或更新版本") -- is deliberately NOT copied.  Nothing in this tree
+# establishes a floor: `moon.mod` declares no toolchain constraint, and the
+# workflows install the latest `moon` rather than pinning one.  The README
+# already says what IS true, in the Status table: the release is verified on a
+# named version, and a bare `moon` may be newer.  A floor nobody measured is
+# exactly the kind of claim this repository refuses to publish.
+
+OLD_59_A_TITLE = ("# moonbit_doubleML - Double / Debiased Machine Learning in MoonBit\n"
+                   "\n"
+                   "A pure-MoonBit port of the\n")
+NEW_59_A_TITLE = ("# moonbit_doubleML - Double / Debiased Machine Learning in MoonBit\n"
+                  "\n"
+                  "[![CI](https://github.com/riantr/moonbit_doubleML/actions/workflows/"
+                  "check.yml/badge.svg)]"
+                  "(https://github.com/riantr/moonbit_doubleML/actions/workflows/check.yml)\n"
+                  "\n"
+                  "A pure-MoonBit port of the\n")
+PATCHES.append((OLD_59_A_TITLE, NEW_59_A_TITLE))
+
+OLD_59_B_FEATURES = "(24 / 24 Python reference scripts PASS).\n\n## Features\n"
+NEW_59_B_FEATURES = ("(24 / 24 Python reference scripts PASS).\n"
+                     "\n"
+                     "> **Status**: MIT, pure MoonBit, on `native`, `wasm`, `wasm-gc` and `js`,\n"
+                     "> with 22 estimators. **Development status** below states what is\n"
+                     "> verified against upstream and what is **not** claimed.\n"
+                     "\n"
+                     "## Features\n")
+PATCHES.append((OLD_59_B_FEATURES, NEW_59_B_FEATURES))
 
 
 for _old, _new in PATCHES:
