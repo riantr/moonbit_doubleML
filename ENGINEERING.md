@@ -2217,6 +2217,59 @@
 >   *The ledger holds.*  This round publishes no count for a NEW check -- it
 >   extends one that already had one -- so
 >   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is unchanged.
+
+> * **Round 71.**  The README states the FLOOR a reader must meet.
+>
+>   Round 59 REFUSED to publish a minimum toolchain, and the refusal was
+>   right at the time: nothing in this tree established one.  The tree pinned
+>   `moonbitlang/async@0.22.5`, whose published source does not touch the
+>   core at all, so ANY `moon` could build this package.  Round 70 moved the
+>   pin to `0.22.6` -- and THAT is what established the floor, because
+>   0.22.6 is the first published version whose source imports a subpackage
+>   the core has to provide.
+>
+>   *The floor is measured, not asserted.*  Every published version from
+>   0.10.0 to 0.22.5 has ZERO files importing `moonbitlang/core/async`;
+>   0.22.6 has six.  The core that ships with `moon 0.1.20261028` carries the
+>   subpackage; the core of `moon 0.1.20261023` does not.  And a CONSUMER
+>   proves it end to end: the published package builds on the new core, and
+>   on the old one it fails to solve with "Cannot find import
+>   `moonbitlang/core/async` in `moonbitlang/async@0.22.6`" -- the same
+>   consumer, the same package, two cores, so the failure IS the floor.
+>
+>   *Dead is not the same as harmless.*  The "Not covered" section called
+>   both declared dependencies dead, and a reader could reasonably take that
+>   to mean they cost nothing.  One of them does: the dead pin is what sets
+>   the floor.  The other one does not -- `sqlite3`'s published source
+>   imports five core subpackages, and the older core carries every one of
+>   them.
+>
+>   *The check that holds it.*  `_verify/_verify_toolchain_floor_1680.py`
+>   runs **21** checks: the pin is read out of `moon.mod`, the published
+>   source of that pin is read out of the toolchain's own downloaded copy,
+>   the installed core is asked whether it carries the subpackage, and the
+>   Installation section and the Status table are asked whether they name
+>   the same toolchain.  A floor NEWER than the toolchain the release was
+>   verified on would be a release that cannot build on the floor it
+>   publishes -- and that is a check too.
+>
+>   *The dependency RULE is not the only place a version appears.*  The
+>   Installation section names the pin the floor is built on, so
+>   `_verify/_verify_dep_pins_1680.py` now holds that site as well: a
+>   version a document names must be a version the tree declares.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round71_1650.py` breaks ONE promise -- the pin, the
+>   toolchain agreement, the floor's direction, the cost of the dead pin,
+>   the installation guide, and the core the measurement reads.  The run
+>   ends at **9** failures, and the capture is published.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **461** and makes **465**: a path named in prose is a check, and
+>   this round names 2 more of them.
+>
+>   *The ledger moved.*  This round publishes a count for a NEW check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**72** checks) is the new number.
 >
 >
 >

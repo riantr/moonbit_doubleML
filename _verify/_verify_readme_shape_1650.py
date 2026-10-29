@@ -31,6 +31,26 @@ G1, G2 and G4 are closed by this file and by the two patches in
 README states the toolchain it was measured on, and this verifier holds that
 statement's presence.
 
+A LATER ROUND (71) CHANGED G3's PREMISE
+========================================
+The G3 paragraph above is the round-59 finding, and it is LEFT AS IT WAS
+WRITTEN -- a record of what was true then.  It is no longer true.  The tree
+DOES establish a floor now, and the README states it.
+
+What changed is the dependency.  Round 70 moved the pin to
+`moonbitlang/async@0.22.6`, and that is the first published version whose
+source imports `moonbitlang/core/async`: every version from 0.10.0 to 0.22.5
+imports it in ZERO files.  The core shipped with `moon 0.1.20261028` is the
+first to carry the subpackage, so the pin move created a floor where there
+had been none.  A CONSUMER on the older core cannot resolve the dependency at
+all -- "Cannot find import 'moonbitlang/core/async' in
+moonbitlang/async@0.22.6" -- and the same consumer builds on the newer one.
+
+So the README now states the requirement in its Installation section, and
+`_verify/_verify_toolchain_floor_1680.py` holds it.  The refusal is not
+reversed here: this file still holds the toolchain the release was VERIFIED
+on, which is a different statement from the minimum a reader needs.
+
 THE MEASUREMENT (the two references against this README BEFORE THIS ROUND)
 ==========================================================================
   feature                                capnp@0.1.0    discord@0.10.0  this README

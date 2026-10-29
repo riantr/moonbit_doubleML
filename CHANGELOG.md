@@ -9,6 +9,86 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.55] -- the README states the toolchain floor a reader must meet
+
+`moon.mod` moves 0.164.54 -> 0.164.55. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the Installation section said nothing about what a reader needs
+
+The README's Installation section was three commands and no requirement.  A
+reader on an older `moon` met the solver error with no guidance, and the
+installation guide said the reason out loud: "CI installs the `latest` channel
+build and the repository pins no minimum."
+
+That sentence was TRUE when it was written and is FALSE now -- and round 70 is
+what made it false.  The tree pins `moonbitlang/async@0.22.6`, and 0.22.6 is
+the first published version whose source imports `moonbitlang/core/async`:
+every version from 0.10.0 to 0.22.5 has ZERO files importing it.  The core
+that ships with `moon 0.1.20261028` carries the subpackage; the core of
+`moon 0.1.20261023` does not.  So the pin move created a floor, and the floor
+was nowhere in the document.
+
+The floor is MEASURED, not asserted, and a CONSUMER proves it end to end: the
+published package builds on the new core and, on the old one, fails to solve
+with "Cannot find import 'moonbitlang/core/async' in
+`moonbitlang/async@0.22.6`" -- the same consumer, the same package, two
+cores, so the failure IS the floor.
+
+The README now says so where a reader meets it, immediately before the
+`moon add` they are about to run, and the installation guide says it too:
+
+    **Requires `moon 0.1.20261028` or newer.** The package declares
+    `moonbitlang/async@0.22.6`, and that published version imports
+    `moonbitlang/core/async` -- a subpackage of the MoonBit core that older
+    cores do not carry.
+
+The toolchain literal is now ONE constant in the builder (`TOOLCHAIN`) instead
+of three, so a toolchain move is one edit and not three.
+
+### Fixed -- "dead" does not mean "harmless"
+
+The "Not covered" section called both declared `moon.mod` dependencies dead,
+and a reader could reasonably take that to mean they cost nothing.  One of
+them does: the dead pin is what sets the floor.  The other one does not --
+`sqlite3`'s published source imports five core subpackages, and the older
+core carries every one of them.  The paragraph now says what the dead pin
+COSTS, and it points at the Installation section.
+
+### Added -- the check that holds the floor
+
+- `_verify/_verify_toolchain_floor_1680.py` runs **21** checks: the pin is
+  read out of `moon.mod`, the published source of that pin is read out of the
+  toolchain's own downloaded copy, the installed core is asked whether it
+  carries the subpackage, and the Installation section and the Status table
+  are asked whether they name the same toolchain.  A floor NEWER than the
+  toolchain the release was verified on would be a release that cannot build
+  on the floor it publishes, and that is a check too.
+- `_verify/_verify_dep_pins_1680.py` now holds the Installation site as well:
+  a version a document names must be a version the tree declares, and the
+  requirement names the pin the floor is built on.
+- `_verify/_dryrun_round71_1650.py` breaks the floor's claims one at a time --
+  the pin, the toolchain agreement, the floor's direction, the cost of the
+  dead pin, the installation guide, and the core the measurement reads.  The
+  failure count grows at every step and the run ends at **9** failures, and
+  the capture is published.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **461** and makes **465**
+  checks: a path named in prose is a check, and this round names 2 more of
+  them.
+- The ledger moved: this round publishes a count for a NEW check, so
+  `_verify/_verify_ledger_counts_1650.py` (**72** checks) is the new number.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 75 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **75** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.54] -- the dependency pin moved, and the toolchain moved with it
 
 `moon.mod` moves 0.164.53 -> 0.164.54. No estimator behaviour changed and the

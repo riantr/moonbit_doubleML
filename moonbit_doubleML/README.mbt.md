@@ -76,6 +76,15 @@ implementation.
 
 ## Installation
 
+**Requires `moon 0.1.20261028` or newer.** The package declares
+`moonbitlang/async@0.22.6`, and that published version imports
+`moonbitlang/core/async` -- a subpackage of the MoonBit core that older
+cores do not carry. On an older `moon` the dependency cannot be resolved at
+all: the build fails with "Cannot find import `moonbitlang/core/async` in
+`moonbitlang/async@0.22.6`". The core that ships with
+`moon 0.1.20261028` provides it, and this release's tests, cross-checks and
+bit-exactness gate were run on that toolchain.
+
 ```bash
 moon add riantr/moonbit_doubleML
 ```
@@ -85,7 +94,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.54",
+  "riantr/moonbit_doubleML@0.164.55",
 }
 ```
 
@@ -601,7 +610,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.54** |
+| `moon.mod` version | **0.164.55** |
 | Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -695,7 +704,12 @@ and `moonbitlang/async@0.22.6` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
 ['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
 ['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.6']`) rather than
-passing quietly. Removing them is an open call, not an oversight.
+passing quietly. Removing them is an open call, not an oversight. Dead is not
+the same as harmless, though: the published source of
+`moonbitlang/async@0.22.6` imports `moonbitlang/core/async`, a core
+subpackage that older cores do not carry, so the dead pin is what sets the
+**toolchain floor** -- see **Installation**. The `sqlite3` pin is not what
+forces it: its published source imports no `moonbitlang/core/async`.
 
 ### Honest policy trees (v0.98.0)
 
@@ -733,7 +747,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.54, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.55, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

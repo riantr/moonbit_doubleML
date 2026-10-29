@@ -437,8 +437,23 @@ def m22():
 
 
 def m23():
-    """The toolchain statement."""
-    sub(RM, r"`moon\s+\d+\.\d+\.\d+`", "`the pinned moon`", expect=4)
+    """The toolchain statement.
+
+    EVERY site, and the number of sites is COUNTED rather than assumed.
+
+    The README names a toolchain in more than one place, and the number of
+    places MOVES with the document: round 71 added the Installation
+    section's requirement, so the count went from four to six.  A fixed
+    count would have replaced only the first four and left the rest -- and
+    the mechanism would have gone FLAT, reporting a promise it never broke.
+    A mechanism that cannot break the promise is not being measured.
+    """
+    t = read(RM)
+    pat = re.compile(r"`moon\s+\d+\.\d+\.\d+`")
+    n = len(pat.findall(t))
+    if n < 1:
+        raise SystemExit("!! the README names no toolchain")
+    sub(RM, pat, "`the pinned moon`", expect=n)
 
 
 def m24():

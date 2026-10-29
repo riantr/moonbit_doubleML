@@ -195,6 +195,16 @@ def dep_warn_block():
 
 ASYNC = dep_pin("moonbitlang/async")
 
+# The toolchain this release was VERIFIED on -- and, since round 71, the floor
+# a consumer needs.
+#
+# ONE place, on purpose.  A toolchain move is a move in FOUR places otherwise:
+# the bare-`moon test` sentence, the Status table's Toolchain row, the parity
+# line, and the Installation section's requirement.  Four literals are four
+# chances to move one and forget three, and the one that is forgotten is the
+# one a reader would have tripped over.
+TOOLCHAIN = "0.1.20261028"
+
 # ==============================================================================
 # 1.  THE LEDGER -- the project document
 # ==============================================================================
@@ -2423,6 +2433,59 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   *The ledger holds.*  This round publishes no count for a NEW check -- it
 >   extends one that already had one -- so
 >   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is unchanged.
+
+> * **Round 71.**  The README states the FLOOR a reader must meet.
+>
+>   Round 59 REFUSED to publish a minimum toolchain, and the refusal was
+>   right at the time: nothing in this tree established one.  The tree pinned
+>   `moonbitlang/async@0.22.5`, whose published source does not touch the
+>   core at all, so ANY `moon` could build this package.  Round 70 moved the
+>   pin to `0.22.6` -- and THAT is what established the floor, because
+>   0.22.6 is the first published version whose source imports a subpackage
+>   the core has to provide.
+>
+>   *The floor is measured, not asserted.*  Every published version from
+>   0.10.0 to 0.22.5 has ZERO files importing `moonbitlang/core/async`;
+>   0.22.6 has six.  The core that ships with `moon 0.1.20261028` carries the
+>   subpackage; the core of `moon 0.1.20261023` does not.  And a CONSUMER
+>   proves it end to end: the published package builds on the new core, and
+>   on the old one it fails to solve with "Cannot find import
+>   `moonbitlang/core/async` in `moonbitlang/async@0.22.6`" -- the same
+>   consumer, the same package, two cores, so the failure IS the floor.
+>
+>   *Dead is not the same as harmless.*  The "Not covered" section called
+>   both declared dependencies dead, and a reader could reasonably take that
+>   to mean they cost nothing.  One of them does: the dead pin is what sets
+>   the floor.  The other one does not -- `sqlite3`'s published source
+>   imports five core subpackages, and the older core carries every one of
+>   them.
+>
+>   *The check that holds it.*  `_verify/_verify_toolchain_floor_1680.py`
+>   runs **21** checks: the pin is read out of `moon.mod`, the published
+>   source of that pin is read out of the toolchain's own downloaded copy,
+>   the installed core is asked whether it carries the subpackage, and the
+>   Installation section and the Status table are asked whether they name
+>   the same toolchain.  A floor NEWER than the toolchain the release was
+>   verified on would be a release that cannot build on the floor it
+>   publishes -- and that is a check too.
+>
+>   *The dependency RULE is not the only place a version appears.*  The
+>   Installation section names the pin the floor is built on, so
+>   `_verify/_verify_dep_pins_1680.py` now holds that site as well: a
+>   version a document names must be a version the tree declares.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round71_1650.py` breaks ONE promise -- the pin, the
+>   toolchain agreement, the floor's direction, the cost of the dead pin,
+>   the installation guide, and the core the measurement reads.  The run
+>   ends at **9** failures, and the capture is published.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **461** and makes **465**: a path named in prose is a check, and
+>   this round names 2 more of them.
+>
+>   *The ledger moved.*  This round publishes a count for a NEW check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**72** checks) is the new number.
 >
 >
 >
@@ -2489,7 +2552,36 @@ FEATURES = """## Features
 
 """
 
-INSTALL = """## Installation
+# ROUND 71: THE INSTALLATION SECTION STATES THE FLOOR.
+#
+# `capnp@0.1.0` says which MoonBit it needs ("需要 MoonBit 0.10.14 或更新
+# 版本").  Round 59 REFUSED to publish a floor, because nothing in this tree
+# established one -- and at that time nothing did: the pin was
+# `moonbitlang/async@0.22.5`, whose published source does not touch the core
+# at all, so any `moon` could build it.
+#
+# Round 70 moved the pin to 0.22.6, and THAT is what established the floor.
+# The published source of 0.22.6 imports `moonbitlang/core/async` (six
+# files); every earlier published version -- 0.10.0 through 0.22.5 -- does
+# not.  A core that carries the subpackage arrived with `moon 0.1.20261028`
+# (core 0.10.18); the core of `moon 0.1.20261023` does not have it, and a
+# CONSUMER on that toolchain cannot resolve the dependency at all.
+#
+# So the floor is a FACT about the published package, not a preference, and
+# it is stated where a reader meets it: immediately before the `moon add`
+# they are about to run.  The pin is DERIVED (see `ASYNC`), so this sentence
+# cannot name a version the tree does not declare; the toolchain is DERIVED
+# (see `TOOLCHAIN`), so a toolchain move is one edit and not four.
+INSTALL = ("""## Installation
+
+**Requires `moon __TOOLCHAIN__` or newer.** The package declares
+`moonbitlang/async@__ASYNC_PIN__`, and that published version imports
+`moonbitlang/core/async` -- a subpackage of the MoonBit core that older
+cores do not carry. On an older `moon` the dependency cannot be resolved at
+all: the build fails with "Cannot find import `moonbitlang/core/async` in
+`moonbitlang/async@__ASYNC_PIN__`". The core that ships with
+`moon __TOOLCHAIN__` provides it, and this release's tests, cross-checks and
+bit-exactness gate were run on that toolchain.
 
 ```bash
 moon add riantr/moonbit_doubleML
@@ -2504,7 +2596,7 @@ import {
 }
 ```
 
-"""
+""").replace("__TOOLCHAIN__", TOOLCHAIN).replace("__ASYNC_PIN__", ASYNC)
 
 # The upstream-correspondence note.  The full derivation is in ENGINEERING.md.
 #
@@ -3448,10 +3540,10 @@ the backends other than the preferred one, so the per-target counts here
 come from explicit `--target` runs."""
 
 NEW_BARE_TEST = """per-target numbers are in the Status table. A bare `moon test` runs the suite
-on only one of the four declared backends -- on `moon 0.1.20261028` it reports
+on only one of the four declared backends -- on `moon __TOOLCHAIN__` it reports
 `Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1123
 tests), and never reports `js` -- so the per-target counts here come from
-explicit `--target` runs."""
+explicit `--target` runs.""".replace("__TOOLCHAIN__", TOOLCHAIN)
 
 OLD_RNG_ITEMS = """- ✅ **24 / 24 Python reference scripts PASS** -- 25 of the 25 bit-exact items
   and 6 / 6 RNG keys are IEEE-754 identical to CPython."""
@@ -3546,7 +3638,12 @@ repeats that one run, and no CI workflow runs it either. And the two
 declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
 and `moonbitlang/async@__ASYNC_PIN__` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`__DEP_WARN__`) rather than
-passing quietly. Removing them is an open call, not an oversight.""".replace(
+passing quietly. Removing them is an open call, not an oversight. Dead is not
+the same as harmless, though: the published source of
+`moonbitlang/async@__ASYNC_PIN__` imports `moonbitlang/core/async`, a core
+subpackage that older cores do not carry, so the dead pin is what sets the
+**toolchain floor** -- see **Installation**. The `sqlite3` pin is not what
+forces it: its published source imports no `moonbitlang/core/async`.""".replace(
     "__ASYNC_PIN__", ASYNC).replace("__DEP_WARN__", dep_warn_block())
 
 PATCHES.append((OLD_NOT_COVERED, NEW_NOT_COVERED))
@@ -3791,17 +3888,18 @@ OLD_39_TOOLCHAIN_ROW = (
     "table was measured on; a bare `moon` from `cli.moonbitlang.com` may be "
     "newer |")
 NEW_39_TOOLCHAIN_ROW = (
-    "| Toolchain | `moon 0.1.20261028` -- the version this release's tests, "
+    "| Toolchain | `moon __TOOLCHAIN__` -- the version this release's tests, "
     "cross-checks and bit-exactness gate were run on, and the version every "
     "number in this table was re-verified on; a bare `moon` from "
-    "`cli.moonbitlang.com` may be newer |")
+    "`cli.moonbitlang.com` may be newer |").replace("__TOOLCHAIN__", TOOLCHAIN)
 
 # (h) THE SAME MOVE, IN THE PARITY SECTION.  The operator bit-exactness
 #     table is re-measured by `_verify/_verify_op_table_1640.py` on whatever
 #     toolchain is installed NOW, and it gives the same numbers -- so the
 #     pair it names is the pair the measurement was last taken on.
 OLD_39_PARITY = "re-measured on `moon 0.1.20261016` vs CPython 3.13.14"
-NEW_39_PARITY = "re-measured on `moon 0.1.20261028` vs CPython 3.13.14"
+NEW_39_PARITY = ("re-measured on `moon __TOOLCHAIN__` vs CPython 3.13.14"
+                 ).replace("__TOOLCHAIN__", TOOLCHAIN)
 
 PATCHES.append((OLD_39_TOOLCHAIN_ROW, NEW_39_TOOLCHAIN_ROW))
 PATCHES.append((OLD_39_PARITY, NEW_39_PARITY))

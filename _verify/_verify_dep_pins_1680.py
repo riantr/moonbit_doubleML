@@ -208,6 +208,25 @@ if m_rule:
           "the rule says %s, the library declares %s"
           % (m_rule.group(1), lib_async[0]))
 
+# (round 71) The INSTALLATION section states a minimum toolchain, and the
+# reason it gives names the pin the floor is built on -- so it is a FOURTH
+# place where a version appears as a fact about the tree, and the same class
+# applies: a version a document names must be a version the tree declares.
+m_floor = re.search(r"\*\*Requires `moon [^`]+` or newer\.\*\*.*?"
+                     r"`(moonbitlang/async@[^`]+)`", readme, re.S)
+check("the Installation requirement names a pin", m_floor is not None,
+      "no '**Requires `moon ...` or newer.**' sentence naming a pin")
+if m_floor:
+    named_floor = m_floor.group(1)
+    check("the requirement names no version the tree does not declare",
+          named_floor in declared,
+          "the requirement names %s, the tree declares %s"
+          % (named_floor, sorted(declared)))
+    check("the requirement's pin is the library's own pin",
+          named_floor == lib_async[0],
+          "the requirement says %s, the library declares %s"
+          % (named_floor, lib_async[0]))
+
 # the library's .mbt files import neither
 refs = 0
 for f in os.listdir(LIB):

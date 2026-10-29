@@ -1,0 +1,9 @@
+round 71 dry-run: the toolchain floor, broken 6 ways
+baseline 0 failing checks; final 9
+VERDICT PASS
+   1. the Installation requirement names a pin the tree does not declare
+   2. the Installation requirement names a toolchain the Status table does not
+   3. the floor is NEWER than the toolchain the release was verified on
+   4. the 'Not covered' section stops saying what the dead pin costs
+   5. the installation guide goes back to saying the repository pins no minimum
+   6. the installed core does not carry the subpackage (a moon home that has none)
