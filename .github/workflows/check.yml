@@ -378,7 +378,7 @@ jobs:
   #
   # --allow-inert: it is a policy for the INERT verdict, not an assertion that
   # `moon fmt --check` is inert. The harness re-measures that with its own
-  # control arm rather than taking it on faith, and on moon 0.1.20261023 the
+  # control arm rather than taking it on faith, and on moon 0.1.20261028 the
   # arm shows the check DOES turn red on a mis-formatted file (a clean copy
   # of examples/main exits 0; the same copy with one bad function exits
   # non-zero and names main.mbt). An earlier INERT verdict came from a

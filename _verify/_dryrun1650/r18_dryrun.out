@@ -193,6 +193,6 @@ checks: 121   failed: 57
   - the project document links back to the README -- 
   - the project document is TRACKED -- the README links to it, so a path in prose is a promise -- 
 VERDICT: FAIL
-<unknown>:1072: SyntaxWarning: invalid escape sequence '\w'
+<unknown>:1138: SyntaxWarning: invalid escape sequence '\w'
 
 EXACT failure count: 57

@@ -70,7 +70,7 @@ if m:
           "measured: %s" % ev)
     check("it names BOTH unreferenced packages, not a summary",
           "declared but unreferenced by library code: "
-          "['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.5']"
+          "['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.6']"
           in re.sub(r"\s+", " ", ev),
           "measured: %s" % ev)
     check("the quote is not the '[both]' paraphrase",

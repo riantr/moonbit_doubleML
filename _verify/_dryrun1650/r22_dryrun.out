@@ -44,8 +44,8 @@ E. the quoted WARN is the WARN the check produces
   PASS  the dependencies check WARNs rather than passing quietly
   PASS  the dependency moonbit-community/sqlite3@0.2.3 is still declared
   PASS  the dependency moonbit-community/sqlite3@0.2.3 is still unreferenced by the library
-  PASS  the dependency moonbitlang/async@0.22.5 is still declared
-  PASS  the dependency moonbitlang/async@0.22.5 is still unreferenced by the library
+  PASS  the dependency moonbitlang/async@0.22.6 is still declared
+  PASS  the dependency moonbitlang/async@0.22.6 is still unreferenced by the library
 
 F. the two copies
   PASS  the shipped README is byte-identical to the edited one

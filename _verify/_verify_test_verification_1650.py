@@ -326,7 +326,7 @@ if "dependencies" in REG:
               "README: %r\nlive  : %r" % (m.group(1).strip(), live))
     check("the dependencies check WARNs rather than passing quietly",
           r.verdict == "WARN", "verdict: %s" % r.verdict)
-    for d in ("moonbit-community/sqlite3@0.2.3", "moonbitlang/async@0.22.5"):
+    for d in ("moonbit-community/sqlite3@0.2.3", "moonbitlang/async@0.22.6"):
         check("the dependency %s is still declared" % d,
               d in read(os.path.join(PKG, "moon.mod")))
         check("the dependency %s is still unreferenced by the library" % d,

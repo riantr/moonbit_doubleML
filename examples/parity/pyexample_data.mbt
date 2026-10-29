@@ -2,7 +2,7 @@
 //
 // WHY THIS FILE EXISTS EVEN THOUGH IT IS NEVER USED FOR A COMPARISON
 // ================================================================
-// MoonBit 0.1.20261023 has no file I/O (measured: `@std/env`, `@std/fs`,
+// MoonBit 0.1.20261028 has no file I/O (measured: `@std/env`, `@std/fs`,
 // `@std/io`, `@std/process` all fail to resolve -- `Cannot find import
 // '@std/env'`; the builtin `read_file` does not exist, error 4021), so
 // Python-generated data cannot be handed to the port as a file. It has to

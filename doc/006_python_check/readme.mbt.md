@@ -125,7 +125,7 @@ No estimator ships without a Python cross-check.
 - **Transcendental rounding drift** — `ln`, `cos`, `sin`, `exp` and
   `pow` are not correctly rounded in any implementation, so MoonBit
   and CPython can differ by an ULP on the same input. Measured on
-  `moon 0.1.20261023` vs CPython 3.13.14: `sqrt` 6/6 bit-exact
+  `moon 0.1.20261028` vs CPython 3.13.14: `sqrt` 6/6 bit-exact
   (guaranteed by IEEE-754), `cos` and `sin` 6/6 bit-exact (observed,
   not guaranteed), `ln` 5/6 with `ln(3.0)` off by exactly 1 ULP.
   Because `box_muller_pair` uses `ln`, every DGP is one

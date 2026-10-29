@@ -185,6 +185,29 @@ if m_svc:
           "the sentence says %s, the example declares %s"
           % (m_svc.group(1), api_async[0]))
 
+# The dependency RULE's own example names a pin as well -- the one place in
+# the README where a version appears as an EXAMPLE of the rule rather than as
+# a fact about the tree.  Nothing held it: when the registry published a new
+# version and the manifest moved, this line could have kept naming the old
+# one and no check would have said so.  It is in the class this check owns --
+# "a version a document names must be a version the tree declares" -- so it is
+# asserted here.  (Round 70: the pin moved, and this is the line that would
+# have silently kept the old version.)
+m_rule = re.search(r"Pin to the latest published version \(e\.g\. `([^`]+)`\)",
+                    readme)
+check("the dependency rule's example names a pin", m_rule is not None)
+if m_rule:
+    named_rule = set(re.findall(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@\d[\w.+-]*",
+                                m_rule.group(1)))
+    check("the rule's example names no version the tree does not declare",
+          bool(named_rule) and named_rule <= declared,
+          "the rule names %s, the tree declares %s"
+          % (sorted(named_rule), sorted(declared)))
+    check("the rule's example is the library's own pin",
+          m_rule.group(1) == lib_async[0],
+          "the rule says %s, the library declares %s"
+          % (m_rule.group(1), lib_async[0]))
+
 # the library's .mbt files import neither
 refs = 0
 for f in os.listdir(LIB):

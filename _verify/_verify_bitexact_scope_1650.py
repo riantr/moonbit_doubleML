@@ -54,12 +54,21 @@ The probe's SOURCE is fixed here, and the README's quoted bit patterns
 probe actually prints, so the document cannot drift away from the
 measurement without the check noticing.
 
+The probe is built as a PACKAGE -- a `moon.mod`, a `moon.pkg` and a
+`main.mbt` -- and not as a single file.  Single-file execution does not
+solve on the current core: the package `moon/test/single` that a single-file
+run builds imports both `moonbitlang/core/async/gzip` and
+`moonbitlang/core/compress/gzip` under the same alias `gzip`, and the solver
+reports the conflict.  A package gets `@math` from the same core, so the
+numbers this verifier compares are the same numbers.
+
 Run: python _verify/_verify_bitexact_scope_1650.py
 """
 import ast
 import io
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -193,12 +202,21 @@ PROBE = """fn main {
 """
 
 probe_dir = os.path.join(tempfile.gettempdir(), "moonbit_doubleml_r47_probe")
-os.makedirs(probe_dir, exist_ok=True)
-probe_path = os.path.join(probe_dir, "probe_transcendental.mbtx")
-with io.open(probe_path, "w", encoding="utf-8", newline="\n") as fh:
+shutil.rmtree(probe_dir, ignore_errors=True)
+os.makedirs(probe_dir)
+with io.open(os.path.join(probe_dir, "main.mbt"), "w", encoding="utf-8", newline="\n") as fh:
     fh.write(PROBE)
+# The probe is a PACKAGE, not a single file.  Single-file execution does not
+# solve on the current core: it reports a conflicting import alias between
+# `moonbitlang/core/async/gzip` and `moonbitlang/core/compress/gzip`, because
+# the package `moon/test/single` that a single-file run builds imports both.
+# A package gets `@math` from the same core, so the measurement is the same.
+with io.open(os.path.join(probe_dir, "moon.mod"), "w", encoding="utf-8", newline="\n") as fh:
+    fh.write('name = "local/transcendental-probe"\n\nversion = "0.0.1"\n')
+with io.open(os.path.join(probe_dir, "moon.pkg"), "w", encoding="utf-8", newline="\n") as fh:
+    fh.write('pkgtype(kind: "executable")\n')
 
-pp = subprocess.run(["moon", "run", "--target", "native", probe_path], cwd=ROOT,
+pp = subprocess.run(["moon", "run", "--target", "native", probe_dir], cwd=probe_dir,
                     capture_output=True, text=True, encoding="utf-8",
                     errors="replace", timeout=900)
 check("the transcendental probe runs", pp.returncode == 0,

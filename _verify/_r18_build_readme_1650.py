@@ -129,6 +129,72 @@ def ver():
 
 V = ver()
 
+
+# ------------------------------------------------------------------- the pins
+def dep_pin(pkg):
+    """The version a package is pinned at in the library's own manifest.
+
+    DERIVED, never typed in.  A pin the README hard-codes is a number that
+    rots the moment the registry publishes the next version -- and the tree's
+    own dep-pin check then fails on a document that was CORRECT when it was
+    written.  Reading the pin from the manifest makes that class of staleness
+    impossible: the README cannot name a pin the tree does not declare.
+    """
+    raw = io.open("moonbit_doubleML/moon.mod", encoding="utf-8").read()
+    live = "\n".join(re.sub(r"//.*$", "", ln) for ln in raw.split("\n"))
+    m = re.search(r'"%s@([^"]+)"' % re.escape(pkg), live)
+    if not m:
+        raise SystemExit("the manifest does not pin %s" % pkg)
+    return m.group(1)
+
+
+def dep_warn():
+    """The `dependencies` check's WARN, as the QA harness words it.
+
+    The harness is the authority.  This reproduces its rule -- the same three
+    steps as `c_deps` in `.github/scripts/qa_loop/checks.py` -- so the README
+    quotes the warning a reader will actually meet.
+    `_verify/_verify_test_verification_1650.py` compares the quoted text
+    against the LIVE harness output, so the two implementations cannot drift
+    apart unnoticed.
+    """
+    raw = io.open("moonbit_doubleML/moon.mod", encoding="utf-8").read()
+    live = "\n".join(re.sub(r"//.*$", "", ln) for ln in raw.split("\n"))
+    imp = re.search(r"import\s*\{(.*?)\}", live, re.S)
+    deps = re.findall(r'"([^"]+)"', imp.group(1)) if imp else []
+    srcs = ""
+    for b, d, fs in os.walk("moonbit_doubleML"):
+        d[:] = [x for x in d if x not in ("_build", "_verify", "target", ".git")]
+        for f in sorted(fs):
+            if f.endswith(".mbt"):
+                try:
+                    srcs += io.open(os.path.join(b, f), encoding="utf-8",
+                                    errors="replace").read()
+                except OSError:
+                    pass
+    unused = [d for d in deps
+              if d.split("@")[0].rsplit("/", 1)[-1] not in srcs]
+    unofficial = [d for d in deps
+                  if not d.startswith(("moonbitlang/", "riantr/"))]
+    notes = []
+    if unofficial:
+        notes.append("non-conforming: %s" % unofficial)
+    if unused:
+        notes.append("declared but unreferenced by library code: %s" % unused)
+    return "%d declared; %s" % (len(deps), "; ".join(notes))
+
+
+def dep_warn_block():
+    """The WARN, wrapped the way the README prints it."""
+    w = dep_warn()
+    w = w.replace("non-conforming: [", "non-conforming:\n[", 1)
+    w = w.replace("unreferenced by library code: [",
+                  "unreferenced by library code:\n[", 1)
+    return w
+
+
+ASYNC = dep_pin("moonbitlang/async")
+
 # ==============================================================================
 # 1.  THE LEDGER -- the project document
 # ==============================================================================
@@ -2297,6 +2363,68 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is the new number.
+
+> * **Round 70.**  The dependency pin moved, and the TOOLCHAIN moved with it.
+>
+>   The tree's own dep-pin check turned RED: the registry published
+>   `moonbitlang/async@0.22.6` and the pin was one version behind.  Nothing
+>   was wrong with the DOCUMENTS -- the TREE was behind, and the check said so
+>   before anything was published.
+>
+>   *The move was not a number edit.*  0.22.6 imports
+>   `moonbitlang/core/async`, a subpackage that only the core shipped with
+>   `moon 0.1.20261028` carries.  On `moon 0.1.20261023` the build plan could
+>   not even be SOLVED -- "Cannot find import 'moonbitlang/core/async' in
+>   moonbitlang/async@0.22.6" -- and the library stopped building altogether.
+>   So the toolchain moved with the dependency, which is what the workflows
+>   do anyway: they install the LATEST `moon`.
+>
+>   *Every claim that NAMED the toolchain was re-derived, not re-labelled.*
+>   The four per-target counts are still **1117 / 1123 / 1117 / 1117**; a bare
+>   `moon test` still reports `Total tests: 0` for `wasm` and `native` and
+>   "no test entry found" for `js`; `@std/env`, `@std/fs`, `@std/io` and
+>   `@std/process` still do not resolve; `read_file` is still error **4021**;
+>   and `train` is still not reserved.  All five hold, so only the LABELS
+>   moved -- in the README, in `AGENTS.md`, in the tutorials, in the skill, in
+>   the bitexact harness, and in the two workflows that justify
+>   `--allow-inert`.
+>
+>   *The pin is now DERIVED.*  The README named it in four places, and every
+>   one of them was a literal in the builder -- so the class of staleness was
+>   "the registry publishes a version and the document keeps naming the old
+>   one".  The builder now reads the pin from `moonbit_doubleML/moon.mod` and
+>   the quoted `dependencies` WARN from the harness's own rule, so the README
+>   CANNOT name a pin the tree does not declare.
+>
+>   *The check that would have caught it.*  The dependency RULE's own example
+>   named a pin, and NOTHING held it to the tree: the manifest could move and
+>   the rule could keep quoting the old version, and no check would have said
+>   so.  `_verify/_verify_dep_pins_1680.py` now asserts that a version a
+>   document names must be a version the tree declares -- the class it was
+>   already meant to own -- and the rule's example is in it.
+>
+>   *The recorded evidence was stale too.*  `_verify/_qa_fast_1639.json` was
+>   added in v0.164.31 and had never been refreshed; its `dependencies`
+>   evidence still named `0.22.5`, and the check that compares the README's
+>   quote against it caught exactly that.  It is refreshed now, from a REAL
+>   run of the harness on the new toolchain: the same tally (**19** PASS,
+>   **10** SKIP, **2** WARN), and the artifact records the toolchain that
+>   measured it.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round70_1650.py` breaks ONE promise -- the rule's
+>   example, the table's row, the service sentence -- and the failure count
+>   must GROW at every step.  The run ends at **4** failures.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **461** and makes **463**: a path named in prose is a check, and this
+>   round names 2 more of them.
+>
+>   *The ledger holds.*  This round publishes no count for a NEW check -- it
+>   extends one that already had one -- so
+>   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is unchanged.
+>
+>
 >
 >
 >
@@ -3320,7 +3448,7 @@ the backends other than the preferred one, so the per-target counts here
 come from explicit `--target` runs."""
 
 NEW_BARE_TEST = """per-target numbers are in the Status table. A bare `moon test` runs the suite
-on only one of the four declared backends -- on `moon 0.1.20261023` it reports
+on only one of the four declared backends -- on `moon 0.1.20261028` it reports
 `Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1123
 tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs."""
@@ -3416,11 +3544,10 @@ takes no parameters -- so the fuzz check replays one fixed master seed
 property-based run -- 11 surfaces, 300 trials per surface -- so the check
 repeats that one run, and no CI workflow runs it either. And the two
 declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
-and `moonbitlang/async@0.22.5` -- are dead: nothing imports them, and
-`dependencies` already WARNs about exactly that (`2 declared; non-conforming:
-['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
-['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.5']`) rather than
-passing quietly. Removing them is an open call, not an oversight."""
+and `moonbitlang/async@__ASYNC_PIN__` -- are dead: nothing imports them, and
+`dependencies` already WARNs about exactly that (`__DEP_WARN__`) rather than
+passing quietly. Removing them is an open call, not an oversight.""".replace(
+    "__ASYNC_PIN__", ASYNC).replace("__DEP_WARN__", dep_warn_block())
 
 PATCHES.append((OLD_NOT_COVERED, NEW_NOT_COVERED))
 
@@ -3664,7 +3791,7 @@ OLD_39_TOOLCHAIN_ROW = (
     "table was measured on; a bare `moon` from `cli.moonbitlang.com` may be "
     "newer |")
 NEW_39_TOOLCHAIN_ROW = (
-    "| Toolchain | `moon 0.1.20261023` -- the version this release's tests, "
+    "| Toolchain | `moon 0.1.20261028` -- the version this release's tests, "
     "cross-checks and bit-exactness gate were run on, and the version every "
     "number in this table was re-verified on; a bare `moon` from "
     "`cli.moonbitlang.com` may be newer |")
@@ -3674,7 +3801,7 @@ NEW_39_TOOLCHAIN_ROW = (
 #     toolchain is installed NOW, and it gives the same numbers -- so the
 #     pair it names is the pair the measurement was last taken on.
 OLD_39_PARITY = "re-measured on `moon 0.1.20261016` vs CPython 3.13.14"
-NEW_39_PARITY = "re-measured on `moon 0.1.20261023` vs CPython 3.13.14"
+NEW_39_PARITY = "re-measured on `moon 0.1.20261028` vs CPython 3.13.14"
 
 PATCHES.append((OLD_39_TOOLCHAIN_ROW, NEW_39_TOOLCHAIN_ROW))
 PATCHES.append((OLD_39_PARITY, NEW_39_PARITY))
@@ -4007,17 +4134,17 @@ NEW_44_CONSUMER = ("  consumer_demo/         <- library-user pattern "
 
 OLD_44_ASYNC_PILLAR = ("The service is built directly on `moonbitlang/async@0.20.3` --\n"
                        "no third-party HTTP framework is pulled in.")
-NEW_44_ASYNC_PILLAR = ("The service is built directly on `moonbitlang/async@0.22.5` --\n"
-                       "no third-party HTTP framework is pulled in.")
+NEW_44_ASYNC_PILLAR = ("The service is built directly on `moonbitlang/async@%s` --\n"
+                       "no third-party HTTP framework is pulled in." % ASYNC)
 
 OLD_44_ASYNC_ROW = ("| `moonbitlang/async@0.22.5` | no | referenced by nothing: "
                     "`examples/api_server/` uses the same package, but at its own "
                     "pin -- `moonbitlang/async@0.20.3` -- so this line matches no "
                     "import |")
-NEW_44_ASYNC_ROW = ("| `moonbitlang/async@0.22.5` | no | referenced by nothing in "
+NEW_44_ASYNC_ROW = ("| `moonbitlang/async@%s` | no | referenced by nothing in "
                     "the library: `examples/api_server/` imports the same package "
-                    "at the same pin (`moonbitlang/async@0.22.5`), but no `.mbt` "
-                    "under `moonbit_doubleML/` imports it |")
+                    "at the same pin (`moonbitlang/async@%s`), but no `.mbt` "
+                    "under `moonbit_doubleML/` imports it |" % (ASYNC, ASYNC))
 
 PATCHES.append((OLD_44_CONSUMER, NEW_44_CONSUMER))
 PATCHES.append((OLD_44_ASYNC_PILLAR, NEW_44_ASYNC_PILLAR))
@@ -4289,6 +4416,42 @@ NEW_59_B_FEATURES = ("(24 / 24 Python reference scripts PASS).\n"
                      "\n"
                      "## Features\n")
 PATCHES.append((OLD_59_B_FEATURES, NEW_59_B_FEATURES))
+
+
+# ==============================================================================
+# 18.  THE ROUND-70 PATCHES -- the pin, and the rule that names it
+# ==============================================================================
+#
+# The registry published `moonbitlang/async@0.22.6`, and the tree's own
+# dep-pin check turned RED: the pin had to be the published latest, and it
+# was one version behind.
+#
+# Moving it is not a number edit.  0.22.6 imports `moonbitlang/core/async`,
+# a subpackage that only the core shipped with moon 0.1.20261028 carries --
+# on moon 0.1.20261023 the build plan cannot even be SOLVED ("Cannot find
+# import 'moonbitlang/core/async' in moonbitlang/async@0.22.6").  So the
+# toolchain moved with the dependency, and every claim that NAMED the
+# toolchain was re-derived on it rather than re-labelled (the four per-target
+# counts are still 1117 / 1123 / 1117 / 1117; a bare `moon test` still
+# reports 0 for `wasm` and `native` and "no test entry found" for `js`;
+# `@std/env`, `@std/fs`, `@std/io` and `@std/process` still do not resolve;
+# `read_file` is still error 4021; `train` is still not reserved).
+#
+# The dependency rule's OWN example names the pin, and that line comes
+# straight from the pristine v0.164.11 README -- no earlier patch touched it,
+# so it was the last place still saying 0.22.5.  It is a PATCH, because the
+# README is GENERATED: an edit to the built file is lost by the next bump.
+#
+# The pin itself is DERIVED from `moonbit_doubleML/moon.mod` (see `ASYNC`
+# above), so the README cannot name a pin the tree does not declare -- which
+# is the whole class of staleness this patch closes.
+
+OLD_70_ASYNC_RULE = ("- Pin to the latest published version (e.g. "
+                      "`moonbitlang/async@0.22.5`).")
+NEW_70_ASYNC_RULE = ("- Pin to the latest published version (e.g. "
+                      "`moonbitlang/async@%s`)." % ASYNC)
+
+PATCHES.append((OLD_70_ASYNC_RULE, NEW_70_ASYNC_RULE))
 
 
 for _old, _new in PATCHES:

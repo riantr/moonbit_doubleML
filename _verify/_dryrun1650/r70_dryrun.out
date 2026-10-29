@@ -1,0 +1,6 @@
+round 70 dry-run: the dependency pin, broken 3 ways
+baseline 0 failing checks; final 4
+VERDICT PASS
+   1. the dependency RULE's example names a pin the tree does not declare
+   2. the dependency table's ROW names a pin the tree does not declare
+   3. the service sentence names a pin the example does not declare

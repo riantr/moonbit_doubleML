@@ -10,13 +10,36 @@ The README's determinism table says:
 That measurement was taken on `moon 0.1.20261012` vs CPython 3.14. This
 re-measures it on whatever toolchain is installed NOW, and checks the
 README's concrete numbers against it.
+
+THE PROBE RUNS AS A PACKAGE
+===========================
+The probe used to be run as a single file: `moon run _verify/_probe_ops_1640.mbt`.
+That no longer solves.  On the current core, a single-file run fails with
+
+    Conflicting import alias: Both moonbitlang/core/async/gzip and
+    moonbitlang/core/compress/gzip are imported into moon/test/single with
+    the same alias 'gzip'.
+
+-- the core ships both `core/async/gzip` and `core/compress/gzip`, and the
+package `moon/test/single` that single-file execution builds imports both.
+So the probe is generated into a PACKAGE instead: the same source, with a
+`moon.mod` and a `moon.pkg`, run as `moon run <pkg>`.
+
+That is the same measurement, not a weaker one.  What this verifier measures
+is the CORE's `@math`, and a package gets `@math` from the same core the
+single-file package would have.  Nothing the probe uses comes from this
+repository's own manifest, so running it outside the tree changes nothing
+about the numbers -- and running it INSIDE the tree is exactly what made the
+single-file form fail in the first place.
 """
 import math
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -43,7 +66,18 @@ print("moon   : %s" % (moon_v.stdout or "").strip().splitlines()[0])
 print("python : %s" % sys.version.split()[0])
 print()
 
-out = subprocess.run(["moon", "run", PROBE, "--target", "native"], cwd=ROOT,
+# --- the probe, as a package -------------------------------------------------
+PKG = os.path.join(tempfile.gettempdir(), "moonbit_doubleml_op_table_probe")
+shutil.rmtree(PKG, ignore_errors=True)
+os.makedirs(PKG)
+shutil.copy2(os.path.join(ROOT, PROBE.replace("/", os.sep)),
+             os.path.join(PKG, "main.mbt"))
+with open(os.path.join(PKG, "moon.mod"), "w", encoding="utf-8", newline="\n") as fh:
+    fh.write('name = "local/op-table-probe"\n\nversion = "0.0.1"\n')
+with open(os.path.join(PKG, "moon.pkg"), "w", encoding="utf-8", newline="\n") as fh:
+    fh.write('pkgtype(kind: "executable")\n')
+
+out = subprocess.run(["moon", "run", "--target", "native", PKG], cwd=PKG,
                      capture_output=True, text=True, encoding="utf-8",
                      errors="replace", timeout=900)
 if out.returncode != 0:

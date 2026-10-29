@@ -38,7 +38,7 @@ surface and anti-patterns).
   **no `.mbt` in the library imports it** (0 references), so it is a dead
   entry, not a runtime dependency.
 - For official packages, pin to the latest published version on the
-  registry (e.g. `moonbitlang/async@0.22.5`) and upgrade when
+  registry (e.g. `moonbitlang/async@0.22.6`) and upgrade when
   bumping is intentional.
 - Notable consequence: HTTP-service code (e.g.
   `examples/api_server/`) builds directly on `moonbitlang/async`'s
@@ -131,7 +131,7 @@ surface and anti-patterns).
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.164.53"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.54"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside
@@ -147,7 +147,7 @@ surface and anti-patterns).
 # Anti-patterns
 
 - do NOT introduce a `Map[K, V]` **for estimator / DGP kernel
-  code**. The built-in Map is deprecated: on `moon 0.1.20261023`,
+  code**. The built-in Map is deprecated: on `moon 0.1.20261028`,
   `Map::of(...)` emits `Warning (deprecated): Use Map([(k, v),
   ...]) or Map::from_array instead`. Use `Array[(K, V)]` and a
   linear scan, or a per-key fixed-size array when the key range is
@@ -161,12 +161,12 @@ surface and anti-patterns).
 - do NOT name a field `train` or `test`. `test` is reserved in
   current MoonBit — a hard parse error, as a local and as a field
   — while `train` was reserved on `moon 0.1.20261016` and is not
-  on `moon 0.1.20261023` (measured: it compiles as a local and as
+  on `moon 0.1.20261028` (measured: it compiles as a local and as
   a field). Either way, use `train_idx` / `test_idx`.
 
 - do NOT use `ref`, `dyn`, `with`, `assert`, `var`, `method`,
   or `test` as identifiers — all are reserved in current
-  MoonBit. Measured on `moon 0.1.20261023`: `with`, `var` and `test`
+  MoonBit. Measured on `moon 0.1.20261028`: `with`, `var` and `test`
   are hard errors, while `ref`, `dyn`, `assert` and
   `method` emit `Warning (reserved_keyword): The word ... is
   reserved for possible future use` — which still fails the build,

@@ -8,7 +8,7 @@ In your project's `moon.mod`:
 
 ```toml
 import {
-  "riantr/moonbit_doubleML@0.164.53",
+  "riantr/moonbit_doubleML@0.164.54",
 }
 ```
 
@@ -37,7 +37,7 @@ machine.
 
 - `moon` — CI installs the `latest` channel build and the
   repository pins no minimum. The numbers below were measured on
-  `moon 0.1.20261023`.
+  `moon 0.1.20261028`.
 - Any backend in `native / wasm / wasm-gc / js` — all 4 supported.
 - For the Python cross-check scripts: Python 3.10+ (CI runs them
   on 3.12), and the `doubleml`, `numpy`, `pandas`, `statsmodels`

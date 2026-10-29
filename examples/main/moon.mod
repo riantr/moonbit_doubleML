@@ -3,7 +3,7 @@ name = "local/moonbit_doubleML-examples-main"
 version = "0.52.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.53",
+  "riantr/moonbit_doubleML@0.164.54",
 }
 
 readme = "../../README.mbt.md"

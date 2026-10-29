@@ -18,7 +18,7 @@
 /// rounding in the whole pipeline is the rounding being tested.
 ///
 /// `ln`, `cos` and `sin` are NOT correctly rounded in any implementation.
-/// Measured on `moon 0.1.20261023` vs CPython 3.13.14 (re-measured; unchanged
+/// Measured on `moon 0.1.20261028` vs CPython 3.13.14 (re-measured; unchanged
 /// from the `moon 0.1.20261012` vs CPython 3.14 pair it was first taken on):
 ///
 ///     sqrt  6/6 bit-exact        (guaranteed by IEEE-754)

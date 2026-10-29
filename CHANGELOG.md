@@ -9,6 +9,133 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.54] -- the dependency pin moved, and the toolchain moved with it
+
+`moon.mod` moves 0.164.53 -> 0.164.54. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the dependency the registry moved on
+
+The tree's own dep-pin check turned RED: the registry published
+`moonbitlang/async@0.22.6` and the pin was one version behind.  Nothing was
+wrong with the documents -- the TREE was behind, and the check said so before
+anything was published.
+
+- The move was NOT a number edit.  0.22.6 imports `moonbitlang/core/async`, a
+  subpackage only the core shipped with `moon 0.1.20261028` carries; on
+  `moon 0.1.20261023` the build plan could not be SOLVED ("Cannot find import
+  'moonbitlang/core/async' in moonbitlang/async@0.22.6") and the library
+  stopped building.  So the toolchain moved with the dependency -- which is
+  what the workflows do anyway, since they install the LATEST `moon`.
+- Every claim that NAMED the toolchain was RE-DERIVED on the new one, not
+  re-labelled: the four per-target counts are still **1117 / 1123 / 1117 /
+  1117**; a bare `moon test` still reports `Total tests: 0` for `wasm` and
+  `native` and "no test entry found" for `js`; `@std/env`, `@std/fs`,
+  `@std/io` and `@std/process` still do not resolve; `read_file` is still
+  error **4021**; and `train` is still not reserved.  All five hold, so only
+  the LABELS moved -- in the README, in `AGENTS.md`, in the tutorials, in the
+  skill, in the bitexact harness, and in the two workflows that justify
+  `--allow-inert`.
+- The pin is now DERIVED.  The README named it in four places and every one of
+  them was a literal in the builder, so the class of staleness was "the
+  registry publishes a version and the document keeps naming the old one".
+  The builder now reads the pin from `moonbit_doubleML/moon.mod` and the
+  quoted `dependencies` WARN from the harness's own rule, so the README CANNOT
+  name a pin the tree does not declare.
+- The recorded evidence was stale too.  `_verify/_qa_fast_1639.json` was added
+  in v0.164.31 and had never been refreshed; its `dependencies` evidence still
+  named `0.22.5`, and the check that compares the README's quote against it
+  caught exactly that.  It is refreshed from a REAL run of the harness on the
+  new toolchain: the same tally (**19** PASS, **10** SKIP, **2** WARN), and
+  the artifact records the toolchain that measured it.
+
+### Added -- the check that would have caught it
+
+- `_verify/_verify_dep_pins_1680.py` now asserts that the dependency RULE's
+  own example names a version the tree declares.  Nothing held it before: the
+  manifest could move and the rule could keep quoting the old version, and no
+  check would have said so.
+- `_verify/_dryrun_round70_1650.py` breaks the three pin claims one at a time
+  -- the rule's example, the table's row, the service sentence -- and the
+  failure count grows 0 -> 2 -> 3 -> 4, and the capture is published.
+
+### Fixed -- what the toolchain upgrade broke on the way
+
+The upgrade was not free.  The core that ships with `moon 0.1.20261028`
+carries BOTH `moonbitlang/core/async/gzip` and `moonbitlang/core/compress/gzip`,
+and the package single-file execution builds -- `moon/test/single` -- imports
+both under the same alias `gzip`.  So `moon run <file>.mbt` no longer SOLVES,
+for any file and any program:
+
+    Conflicting import alias: Both moonbitlang/core/async/gzip and
+    moonbitlang/core/compress/gzip are imported into moon/test/single with the
+    same alias 'gzip'.
+
+It was measured, not assumed: a bare `fn main { println("ok") }` fails the
+same way, in an empty directory, with none of this repository's dependencies
+in the picture.  The library itself is unaffected -- it builds and tests on all
+four backends -- because it is a PACKAGE, not a single file.  Two verifiers
+were not, and both are fixed:
+
+- `_verify/_verify_op_table_1640.py` and `_verify/_verify_bitexact_scope_1650.py`
+  ran their probes as single files.  Each now builds its probe as a PACKAGE --
+  a `moon.mod`, a `moon.pkg` and a `main.mbt` -- and runs `moon run <pkg>`.
+  The measurement is unchanged, and it was re-measured rather than assumed:
+  `sqrt 6/6`, `cos 6/6`, `sin 6/6`, `ln 5/6`, and ln(3.0) one ULP from
+  CPython -- the numbers the README publishes.
+- `_verify/_dryrun_round36_1650.py` had a RED baseline for a second reason:
+  the clone it tests is cut at HEAD, so it kept the COMMITTED manifest while
+  the README (copied in) named the new pin.  A manifest that names one version
+  and a document that names another is not a tree, it is a contradiction -- and
+  a red baseline for a contradiction proves nothing about the contract.  It now
+  copies the working tree's changed files in as well.
+
+The breakage is NOT asserted anywhere.  A check that REQUIRES the core to be
+broken would turn red the day the core is fixed, and would protect nothing.
+
+### Fixed -- two release gates that could not fail
+
+Two of the local release scripts printed a verdict and then exited 0, so the
+release chain saw a green step over a red result.  Both are now their own
+exit code, because a gate that cannot fail protects nothing:
+
+- the fresh-clone contract printed the verifiers that FAIL in a clone and
+  exited 0.  It now exits 1, and the chain's green clone step is green for a
+  reason.
+- the typos gate printed `NOT clean` and exited 0.  It now exits 1.  That
+  mattered: the spell check had exactly ONE finding in the whole committed
+  tree, and the gate swallowed it.  The finding was in the recorded QA
+  artifact -- the harness's own `static_code_check` evidence names the local
+  scratch files that had findings, and one of those names ends in a word the
+  dictionary reads as a misspelling of "list".  The artifact is a RECORD of
+  the harness's output, not prose, so correcting it would make it stop being
+  the record; `_typos.toml` now excludes it, on the same reasoning that
+  excludes the commit-message records.  The harness's own wording is still
+  spell-checked, in `checks.py` itself.
+
+The publish workflow runs a bare `typos` as its last gate before the publish
+step, so that finding would have FAILED THE PUBLISH.  The artifact is
+re-measured against the corrected scope, with the tally unchanged: **19**
+PASS, **10** SKIP, **2** WARN, and every one of the 31 checks at the same
+verdict.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **461** and makes **463**
+  checks: a path named in prose is a check, and this round names 2 more of
+  them.
+- The ledger holds: this round publishes no count for a NEW check -- it
+  extends one that already had one -- so
+  `_verify/_verify_ledger_counts_1650.py` (**70** checks) is unchanged.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 74 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **74** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.53] -- the README's shape, measured against the two references
 
 `moon.mod` moves 0.164.52 -> 0.164.53. No estimator behaviour changed and the

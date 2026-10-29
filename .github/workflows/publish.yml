@@ -179,7 +179,7 @@ jobs:
       #
       # --allow-inert is a policy for the INERT verdict, not a claim that
       # `moon fmt --check` is inert. The harness re-measures that with its own
-      # control arm, and on moon 0.1.20261023 that arm shows the check DOES
+      # control arm, and on moon 0.1.20261028 that arm shows the check DOES
       # turn red on a mis-formatted file. --allow-inert is kept so a future
       # toolchain regression, which would report INERT, cannot turn every
       # release red for a reason unrelated to the code; a gate that cannot

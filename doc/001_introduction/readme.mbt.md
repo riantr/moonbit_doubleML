@@ -27,7 +27,7 @@ The pure-MoonBit implementation:
 
 - **No Python FFI, no native add-ons** — the library imports no
   third-party package at all. `moon.mod` does declare two entries,
-  `moonbitlang/async@0.22.5` and `moonbit-community/sqlite3@0.2.3`,
+  `moonbitlang/async@0.22.6` and `moonbit-community/sqlite3@0.2.3`,
   but no `.mbt` in the library imports either one (measured: 0
   references each), so they are dead entries rather than runtime
   dependencies.
@@ -50,7 +50,7 @@ The pure-MoonBit implementation:
   `1 / (1 - m_hat)`, but it models the propensity of the INSTRUMENT
   rather than of the treatment, and it defaults to OLS.
 
-## Status at v0.164.53
+## Status at v0.164.54
 
 - **22 estimators** — PLR, IRM, PLIV, IIVM, DID (6 variants),
   SSM, APO(S), PQ/QTE, LPQ, LPLR, PLPR, CVaR, RDD, BLP, PolicyTree.
@@ -60,7 +60,7 @@ The pure-MoonBit implementation:
   factories.
 - **1117 / 1117 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
-- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.53`.
+- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.54`.
 
 ## Next
 

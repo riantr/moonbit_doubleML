@@ -40,6 +40,11 @@ the tree under test is the one that carries the checks being exercised -- the
 README under test, the CHANGELOG that publishes the failure count, the QA
 registry's `checks.py`, and the harness itself.
 
+AND the files the working tree has changed SINCE, because the tree under test
+has to be CONSISTENT.  A clone whose manifest names one version of a dependency
+while its README names another is not a tree, it is a contradiction -- and a
+red baseline for a contradiction proves nothing about the contract.
+
 Run: python _verify/_dryrun_round36_1650.py
 """
 import io
@@ -164,10 +169,29 @@ rc, out = run(["git", "rev-parse", "HEAD"], cwd=WORK)
 print("  %s -> %s" % (COMMIT, out.strip()))
 
 # --- copy the working tree's state in -----------------------------------------
-COPY_IN = list(VERIFIERS) + [t for t in TOUCHED if t not in VERIFIERS]
-for rel in COPY_IN:
-    shutil.copy2(os.path.join(REPO, rel.replace("/", os.sep)),
-                 os.path.join(WORK, rel.replace("/", os.sep)))
+# The tree under test has to be CONSISTENT.  The clone is cut at HEAD, so it
+# carries the COMMITTED manifest -- and a manifest that names one version of a
+# dependency while the README (copied in below) names another is not a tree,
+# it is a contradiction, and a red baseline for a contradiction proves nothing
+# about the contract.  That is exactly what happened once the pin moved: the
+# clone kept the old `moon.mod`, the `dependencies` check computed its message
+# from the old pin, and the README quoted the new one.
+#
+# So the files the WORKING TREE has changed are copied in as well -- not just
+# the ones this round happened to touch.  The tree under test is then the tree
+# that will be released.
+rc, out = run(["git", "diff", "--name-only", "HEAD"], cwd=REPO)
+CHANGED = [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
+COPY_IN = []
+for rel in list(VERIFIERS) + list(TOUCHED) + CHANGED:
+    rel = rel.replace("\\", "/")
+    if rel in COPY_IN:
+        continue
+    src = os.path.join(REPO, rel.replace("/", os.sep))
+    if not os.path.isfile(src):
+        continue
+    COPY_IN.append(rel)
+    shutil.copy2(src, os.path.join(WORK, rel.replace("/", os.sep)))
 print("  copied in %d files from the working tree:" % len(COPY_IN))
 for rel in COPY_IN:
     print("    %s" % rel)

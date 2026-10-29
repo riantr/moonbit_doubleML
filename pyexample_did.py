@@ -51,7 +51,7 @@ keep.
 
 WHY IT HAS TO LOOK LIKE THIS
 ============================
-MoonBit 0.1.20261023 has no file I/O. Measured, not assumed: `@std/env`,
+MoonBit 0.1.20261028 has no file I/O. Measured, not assumed: `@std/env`,
 `@std/fs`, `@std/io` and `@std/process` all fail to resolve (`Cannot find
 import '@std/env'`) and the builtin `read_file` does not exist (error 4021).
 A dataset cannot be handed to the port as a file; it has to arrive as

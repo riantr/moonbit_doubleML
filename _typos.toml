@@ -54,6 +54,18 @@ extend-exclude = [
   # verbatim while explaining why it was NOT corrected -- the word is the
   # subject of the paragraph.
   "_verify/_commit_msg_*.txt",
+  # The recorded QA run. Every `evidence` string in it was printed by
+  # `.github/scripts/qa_loop/checks.py`, which is spell-checked in its own
+  # right, so nothing is lost by excluding the copy. What the copy adds is
+  # the NAME OF THE LOCAL SCRATCH FILES that had findings on the machine that
+  # ran it -- and those names are arbitrary, machine-specific, and different
+  # on every release. One of them ends in a word the dictionary reads as a
+  # misspelling of "list", so the ARTIFACT was the only finding in the whole
+  # tree: not the harness, not the prose, a filename quoted inside a record.
+  # Correcting the artifact would make it stop matching the run it records,
+  # which is the same reasoning that excludes the commit-message records
+  # above.
+  "_verify/_qa_fast_1639.json",
 ]
 
 [default.extend-words]

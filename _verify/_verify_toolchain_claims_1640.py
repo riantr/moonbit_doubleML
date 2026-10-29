@@ -18,7 +18,7 @@ hold in substance -- so the fix is the label, not the claim:
 
 ROUND 39: THE TOOLCHAIN MOVED AGAIN
 ------------------------------------
-The local toolchain is now `moon 0.1.20261023`, and every claim above was
+The local toolchain is now `moon 0.1.20261028`, and every claim above was
 RE-DERIVED on it -- not assumed:
 
   * a bare `moon test` still prints `Total tests: 0` for `wasm` and `native`
@@ -32,7 +32,7 @@ RE-DERIVED on it -- not assumed:
 
 One claim did NOT survive the move, and the label was not the whole of it:
 `train` was a hard error on `moon 0.1.20261016` and is NOT reserved on
-`moon 0.1.20261023` -- it compiles as a local and as a field.  The agent
+`moon 0.1.20261028` -- it compiles as a local and as a field.  The agent
 skill's anti-pattern list said "all are reserved in current MoonBit", which
 stopped being true, so the skill now states which ones are reserved and
 which one moved.
@@ -51,7 +51,7 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CURRENT = "0.1.20261023"
+CURRENT = "0.1.20261028"
 STALE = "0.1.20261012"
 
 # a STALE mention is legitimate only when the text marks it as the original

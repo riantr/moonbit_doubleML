@@ -15,7 +15,7 @@ IEEE-754 requires `+ - * /` and `sqrt` to be correctly rounded. Two independent
 implementations given the same operands in the same order MUST therefore agree
 bit-for-bit. `ln`, `cos`, `sin`, `exp` and `pow` are NOT correctly rounded in
 any implementation, and the difference is real and was measured on this pair of
-toolchains (`moon 0.1.20261023` vs CPython 3.13.14, 6 arguments each -- unchanged
+toolchains (`moon 0.1.20261028` vs CPython 3.13.14, 6 arguments each -- unchanged
 from the `moon 0.1.20261012` vs CPython 3.14 pair the measurement was first
 taken on):
 

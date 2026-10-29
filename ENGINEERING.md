@@ -2157,6 +2157,68 @@
 >
 >   *The ledger moves.*  This round publishes a count for a new check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is the new number.
+
+> * **Round 70.**  The dependency pin moved, and the TOOLCHAIN moved with it.
+>
+>   The tree's own dep-pin check turned RED: the registry published
+>   `moonbitlang/async@0.22.6` and the pin was one version behind.  Nothing
+>   was wrong with the DOCUMENTS -- the TREE was behind, and the check said so
+>   before anything was published.
+>
+>   *The move was not a number edit.*  0.22.6 imports
+>   `moonbitlang/core/async`, a subpackage that only the core shipped with
+>   `moon 0.1.20261028` carries.  On `moon 0.1.20261023` the build plan could
+>   not even be SOLVED -- "Cannot find import 'moonbitlang/core/async' in
+>   moonbitlang/async@0.22.6" -- and the library stopped building altogether.
+>   So the toolchain moved with the dependency, which is what the workflows
+>   do anyway: they install the LATEST `moon`.
+>
+>   *Every claim that NAMED the toolchain was re-derived, not re-labelled.*
+>   The four per-target counts are still **1117 / 1123 / 1117 / 1117**; a bare
+>   `moon test` still reports `Total tests: 0` for `wasm` and `native` and
+>   "no test entry found" for `js`; `@std/env`, `@std/fs`, `@std/io` and
+>   `@std/process` still do not resolve; `read_file` is still error **4021**;
+>   and `train` is still not reserved.  All five hold, so only the LABELS
+>   moved -- in the README, in `AGENTS.md`, in the tutorials, in the skill, in
+>   the bitexact harness, and in the two workflows that justify
+>   `--allow-inert`.
+>
+>   *The pin is now DERIVED.*  The README named it in four places, and every
+>   one of them was a literal in the builder -- so the class of staleness was
+>   "the registry publishes a version and the document keeps naming the old
+>   one".  The builder now reads the pin from `moonbit_doubleML/moon.mod` and
+>   the quoted `dependencies` WARN from the harness's own rule, so the README
+>   CANNOT name a pin the tree does not declare.
+>
+>   *The check that would have caught it.*  The dependency RULE's own example
+>   named a pin, and NOTHING held it to the tree: the manifest could move and
+>   the rule could keep quoting the old version, and no check would have said
+>   so.  `_verify/_verify_dep_pins_1680.py` now asserts that a version a
+>   document names must be a version the tree declares -- the class it was
+>   already meant to own -- and the rule's example is in it.
+>
+>   *The recorded evidence was stale too.*  `_verify/_qa_fast_1639.json` was
+>   added in v0.164.31 and had never been refreshed; its `dependencies`
+>   evidence still named `0.22.5`, and the check that compares the README's
+>   quote against it caught exactly that.  It is refreshed now, from a REAL
+>   run of the harness on the new toolchain: the same tally (**19** PASS,
+>   **10** SKIP, **2** WARN), and the artifact records the toolchain that
+>   measured it.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round70_1650.py` breaks ONE promise -- the rule's
+>   example, the table's row, the service sentence -- and the failure count
+>   must GROW at every step.  The run ends at **4** failures.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **461** and makes **463**: a path named in prose is a check, and this
+>   round names 2 more of them.
+>
+>   *The ledger holds.*  This round publishes no count for a NEW check -- it
+>   extends one that already had one -- so
+>   `_verify/_verify_ledger_counts_1650.py` (**70** checks) is unchanged.
+>
+>
 >
 >
 >
