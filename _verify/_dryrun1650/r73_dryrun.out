@@ -1,0 +1,8 @@
+round 73 dry-run: the passages that were looser than the tree, broken 5 ways
+baseline 0 failing checks; final 13
+VERDICT PASS
+   1. the validate_* paragraph describes one gating script as upstream-only
+   2. the layout row counts the banners and leaves the fits unsaid
+   3. the Development section claims the ledger covers every round again
+   4. the ledger stops saying which round numbers are not used
+   5. the README carries a number no verifier that reads it names

@@ -1,7 +1,7 @@
 
 A. the skeleton
   PASS  the README has exactly one H1
-  *** FAIL ***  no heading skips a level -- jumps: [(805, 824)]
+  *** FAIL ***  no heading skips a level -- jumps: [(806, 825)]
   PASS  the heading levels descend monotonically to the H1
   *** FAIL ***  every code fence is closed -- 21 markers, unclosed: True
   PASS  there is at least one fenced block
@@ -24,7 +24,7 @@ D. the links
   PASS  every link target has a scheme and a host
 
 E. the pointers
-  *** FAIL ***  every 'below' pointer has something below it -- dangling: [(884, 'see below')]
+  *** FAIL ***  every 'below' pointer has something below it -- dangling: [(886, 'see below')]
   PASS  every 'above' pointer has something above it
   PASS  every bolded 'above'/'below' reference names a real heading
 

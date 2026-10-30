@@ -95,7 +95,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.56",
+  "riantr/moonbit_doubleML@0.164.57",
 }
 ```
 
@@ -614,7 +614,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.56** |
+| `moon.mod` version | **0.164.57** |
 | Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -640,10 +640,10 @@ different packages.
 
 The `validate_*` family is not exclusively ours, though: **9** of its 24
 scripts import the upstream `doubleml` wheel, and **2** of those gate the port
-against upstream rather than only against a hand-rolled reference --
-`validate_did_cs_binary_with_python.py` (the port's ATT against upstream's)
-and `validate_lplr_with_python.py` (the port's coefficient against upstream's
-*and* the hand-rolled one, together). The other **7** import the wheel for
+against upstream and against a hand-rolled reference --
+`validate_did_cs_binary_with_python.py` (the port's ATT against both) and
+`validate_lplr_with_python.py` (the port's coefficient against both). The
+other **7** import the wheel for
 context (`validate_apos_with_python.py`, `validate_cluster_iv_with_python.py`,
 `validate_cluster_plr_with_python.py`, `validate_iivm_with_python.py`,
 `validate_irm_with_python.py`, `validate_pliv_with_python.py`,
@@ -751,7 +751,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.56, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.57, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -762,8 +762,9 @@ doc/                     <- wasm-gc-targeted numbered tutorials
   006_python_check/
 
 examples/                <- 21 driver binaries (all listed in moon.work)
-  main/                  <- 12 estimators in 18 runs: 5 also run with
-                            n_rep=5, and RDD runs twice (sharp, fuzzy)
+  main/                  <- 12 estimators in 18 printed runs, 20 model fits:
+                            5 also run with n_rep=5, and RDD runs twice
+                            (sharp, fuzzy)
   datasets/              <- 401(k)-style ATE / ATT recovery
   did_binary/            <- 2-period panel DID
   did_cs/                <- staggered CS-DID
@@ -865,11 +866,12 @@ and `_verify/UPSTREAM_PROVENANCE.md`.
 ## Development
 
 `ENGINEERING.md` is the companion, and it is worth saying what it is: its
-header is the correction ledger for every round to date, and its body is this
-README as it stood at `v0.164.11`, word for word. The CURRENT gate commands
-are not in that snapshot -- they are in `.github/workflows/check.yml` (what CI
-runs) and `.github/scripts/qa_loop/` (the QA harness the CI job invokes).
-Both files are in the repository; the registry publishes this one.
+header is the correction ledger -- one entry per corrected round -- and its
+body is this README as it stood at `v0.164.11`, word for word, with the old
+title line replaced by the heading above it. The CURRENT gate commands are not
+in that snapshot -- they are in `.github/workflows/check.yml` (what CI runs)
+and `.github/scripts/qa_loop/` (the QA harness the CI job invokes). Both
+files are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn

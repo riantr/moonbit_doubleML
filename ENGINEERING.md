@@ -12,9 +12,10 @@
 > 2290 lines; it is now a document a person can read end to end.
 >
 > **Nothing was deleted.** What follows is the README as it stood at
-> `v0.164.11`, in full and word for word -- including the blocks that are now
-> in the README, because a ledger that drops the parts a reader might want to
-> check against is not a ledger. The new README is a condensation of it.
+> `v0.164.11`, in full and word for word -- its title line aside, which the
+> heading above replaces -- including the blocks that are now in the README,
+> because a ledger that drops the parts a reader might want to check against
+> is not a ledger. The new README is a condensation of it.
 >
 > The records that hold the *measurements* are in `_verify/` and are
 > referenced from both documents.
@@ -23,6 +24,10 @@
 > was published at `v0.164.11`, and a snapshot is not rewritten -- so the
 > corrections live here, beside the corrected figures, and in
 > `README.mbt.md`, which is the document the registry actually serves.
+>
+> *The round numbers below are not contiguous.*  The corrections start
+> at round 21 and run to round 73, and 10 of the numbers in between
+> (rounds 60-69) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
 >   **366x** separation for `DoubleMLIRM` and a **300x** one for
@@ -2399,6 +2404,63 @@
 >
 >   *The ledger moved.*  This round publishes a count for TWO new checks, so
 >   `_verify/_verify_ledger_counts_1650.py` (**76** checks) is the new
+>   number.
+
+> * **Round 73.**  Four passages that were not WRONG, but were looser than the
+>   tree supports.  The README describes its own companions, and each of the
+>   four descriptions had drifted by one degree.
+>
+>   *The upstream paragraph's contrast.*  It said the two `validate_*` scripts
+>   that gate the port against upstream gate it "rather than only against a
+>   hand-rolled reference", and then gave ONE of them the parenthetical "(the
+>   port's ATT against upstream's)" while the other said "upstream's *and* the
+>   hand-rolled one, together".  The scripts do not differ that way: BOTH
+>   compare the port against upstream AND against the hand-rolled reference.
+>   The contrast invited a reader to conclude that the first gates upstream
+>   only -- which it does not.  The rule that tells a GATE from a PRINT is
+>   now in a check: three of the seven context scripts PRINT
+>   `|moonbit - upstream|` and gate against the hand-rolled reference only.
+>
+>   *The layout row's run count.*  "12 estimators in 18 runs" counted the 18
+>   BANNERS the driver prints, and the driver makes 20 model fits: the two
+>   extra per-treatment PQ fits print their standard errors and no banner.
+>   Both numbers are DERIVED from the driver now.
+>
+>   *The Development section's description of this document.*  It said the
+>   header is "the correction ledger for every round to date" -- the header
+>   names the rounds it corrects, and they are not every round -- and that the
+>   body is the old README "word for word", which it is except that the old
+>   title line is replaced by the heading the body sits under.  The README
+>   now says what the header IS; the header says which rounds it covers.
+>
+>   *The header's own claim.*  It said "in full and word for word" while
+>   dropping the old README's title line, and it said nothing about the round
+>   numbers not being contiguous: they skip ten in the middle.  Both are
+>   stated now, and the coverage is DERIVED from the entries themselves.
+>
+>   *The checks that hold them.*  `_verify/_verify_readme_precision_1680.py`
+>   runs **21** checks: the gating scripts are found by a rule that
+>   separates a gate from a print, the run and the fit counts come out of the
+>   driver, and the ledger's coverage comes out of its own entries.
+>   `_verify/_verify_no_orphan_numbers_1680.py` runs **4** checks: every
+>   number in the README's prose is NAMED by something under `_verify/` that
+>   reads the document, and the numbers held only by something that is not a
+>   verifier are reported rather than passed over.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round73_1650.py` breaks ONE promise -- put the old
+>   parenthetical back, put the old run count back, put "every round to date"
+>   back, take out the header's note about the numbering, and put a number in
+>   the README that nothing names.  The run ends at **13** failures, and the
+>   capture is published.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **470** and makes **473**: a path named in prose is a check, and this
+>   round names 3 more of them -- the two new verifiers and the driver
+>   that proves they bite.
+>
+>   *The ledger moved.*  This round publishes a count for TWO new checks, so
+>   `_verify/_verify_ledger_counts_1650.py` (**80** checks) is the new
 >   number.
 >
 >

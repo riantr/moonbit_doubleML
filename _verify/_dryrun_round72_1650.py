@@ -211,11 +211,12 @@ MECHANISMS = [
     ("the Development section goes back to pointing at the frozen snapshot",
      lambda: both_readmes(
          r"`ENGINEERING\.md` is the companion, and it is worth saying what it is: its\n"
-         r"header is the correction ledger for every round to date, and its body is this\n"
-         r"README as it stood at `v[\d.]+`, word for word\. The CURRENT gate commands\n"
-         r"are not in that snapshot -- they are in `\.github/workflows/check\.yml` \(what CI\n"
-         r"runs\) and `\.github/scripts/qa_loop/` \(the QA harness the CI job invokes\)\.\n"
-         r"Both files are in the repository; the registry publishes this one\.",
+         r"header is the correction ledger -- one entry per corrected round -- and its\n"
+         r"body is this README as it stood at `v[\d.]+`, word for word, with the old\n"
+         r"title line replaced by the heading above it\. The CURRENT gate commands are not\n"
+         r"in that snapshot -- they are in `\.github/workflows/check\.yml` \(what CI runs\)\n"
+         r"and `\.github/scripts/qa_loop/` \(the QA harness the CI job invokes\)\. Both\n"
+         r"files are in the repository; the registry publishes this one\.",
          "The test suite, the Python cross-checks, the QA harness and the\n"
          "reproducibility commands are all documented in `ENGINEERING.md`, together with\n"
          "the history of the defects that moved the estimator defaults and the\n"

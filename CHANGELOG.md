@@ -9,6 +9,101 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.57] -- four passages that were looser than the tree supports
+
+`moon.mod` moves 0.164.56 -> 0.164.57. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Two INDEPENDENT fresh-eyes audits read the published README line by line.  Both
+returned PASS on every measured value: nothing in the document was FALSE.  What
+they found were four passages that were LOOSER than the tree supports -- each
+one true enough to pass a reader who was not looking for the difference, and
+each one an invitation to the wrong conclusion.
+
+### Fixed -- the upstream paragraph described one gating script as upstream-only
+
+The `validate_*` paragraph said the two scripts that gate the port against
+upstream gate it "rather than only against a hand-rolled reference", and then
+gave ONE of them the parenthetical "(the port's ATT against upstream's)" while
+the other said "upstream's *and* the hand-rolled one, together".
+
+The scripts do not differ that way.  `validate_did_cs_binary_with_python.py`
+gates the port's ATT against the hand-rolled reference AND against upstream;
+`validate_lplr_with_python.py` gates the port's coefficient against both.  The
+contrast invited a reader to conclude that the first gates upstream only --
+which it does not.
+
+What tells the two apart is that a GATE feeds a verdict and a PRINT does not,
+and three of the seven context scripts PRINT `|moonbit - upstream|` while
+gating against the hand-rolled reference only.  That rule is in a check now.
+
+### Fixed -- the layout row counted the banners and left the fits unsaid
+
+"12 estimators in 18 runs" counted the 18 BANNERS `examples/main` prints.  The
+driver makes 20 model fits: the two extra per-treatment PQ fits print their
+standard errors and no banner.  Both numbers are DERIVED from the driver now.
+
+### Fixed -- the Development section claimed the ledger covers every round
+
+It said `ENGINEERING.md`'s header is "the correction ledger for every round to
+date" -- the header names the rounds it corrects, and they are not every round:
+the numbering starts at 21 and skips ten in the middle.  It also said the body
+is the old README "word for word", which it is except that the old title line
+is replaced by the heading the body sits under.
+
+The README now says what the header IS; the header says which rounds it
+covers, and that statement is DERIVED from the entries themselves.
+
+### Fixed -- the ledger's own header overstated itself
+
+It said "in full and word for word" while dropping the old README's title
+line, and it said nothing about the round numbers not being contiguous.  Both
+are stated now.
+
+### Fixed -- a dry-run driver's anchor depended on where the README's prose was wrapped
+
+Round 73 re-wrapped the upstream paragraph, and one of the existing dry-run
+drivers anchored on that prose with LITERAL SPACES -- so the pattern stopped
+matching, the driver could not apply its own mutation, and it aborted before
+it could prove anything.  The sweep caught it.  Every anchor in that driver
+now matches WHITESPACE, which spans a line break, so a re-wrap cannot
+silently disable a check again.  The driver's published failure count is
+unchanged and the driver runs green.
+
+### Added -- the checks that hold them
+
+- `_verify/_verify_readme_precision_1680.py` runs **21** checks: the gating
+  scripts are found by a rule that separates a gate from a print, the run and
+  the fit counts come out of the driver, and the ledger's coverage comes out of
+  its own entries.
+- `_verify/_verify_no_orphan_numbers_1680.py` runs **4** checks: every
+  number in the README's prose is NAMED by something under `_verify/` that
+  reads the document.  None is unheld, and the numbers held only by something
+  that is not a verifier are reported rather than passed over.
+- `_verify/_dryrun_round73_1650.py` breaks those claims one at a time -- put
+  the old parenthetical back, put the old run count back, put "every round to
+  date" back, take out the header's note about the numbering, and put a number
+  in the README that nothing names.  The failure count grows at every step and
+  the run ends at **13** failures, and the capture is published.
+- Both new checks were proved to BITE -- the old text fails them -- before
+  either was published.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **470** and makes **473**
+  checks: a path named in prose is a check, and this round names 3 more of
+  them -- the two new verifiers and the driver that proves they bite.
+- The ledger moved: this round publishes a count for TWO new checks, so
+  `_verify/_verify_ledger_counts_1650.py` (**80** checks) is the new number.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 79 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **79** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.56] -- three passages that had gone out of date
 
 `moon.mod` moves 0.164.55 -> 0.164.56. No estimator behaviour changed and the

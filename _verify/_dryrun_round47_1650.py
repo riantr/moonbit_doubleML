@@ -24,6 +24,14 @@ Each mechanism is applied ON TOP of the ones before it, so a mechanism that
 contributes nothing is caught by the growth check rather than being masked
 by a later one.
 
+THE ANCHORS DO NOT DEPEND ON THE WRAPPING
+=========================================
+Every anchor matches whitespace with \s+, so it survives the README being
+re-wrapped.  The README is GENERATED: round 73 re-wrapped the upstream
+paragraph, the fifth anchor's literal space stopped matching, and the driver
+aborted before it could prove anything.  A check that anchors on prose must
+anchor on the PROSE, not on where the generator broke the line.
+
 THE TREE UNDER TEST
 ===================
 A local clone of the COMMITTED tree, with this round's verifiers and the
@@ -266,17 +274,35 @@ if rc0 != 0 or n0 != 0:
 
 # ------------------------------------------------------------ the mechanisms
 # CUMULATIVE: each mechanism is applied on top of the ones before it.
+#
+# EVERY ANCHOR IS LAYOUT-INDEPENDENT (2026-10-31)
+# ================================================
+# The README is GENERATED and its paragraphs are re-wrapped whenever the prose
+# around them changes, so an anchor that spells prose with LITERAL SPACES is a
+# promise about where the wrap fell, not about what the document says.  Round
+# 73 re-wrapped the upstream paragraph and the fifth mechanism's anchor
+# ("The other **7** import the wheel for context") stopped matching: "The" and
+# "other" ended up on different lines, so the pattern matched ZERO times and
+# the driver aborted with "the baseline is not green" -- the dry-run could not
+# prove anything because it could not apply its own mutation.
+#
+# So every anchor here matches WHITESPACE with \s+, which spans a line break.
+# The counts are unchanged: each pattern still matches exactly as many times
+# as the mechanism expects (verified against both README copies).
+#
+# A DOCUMENT IS NOT READ BY ITS LAYOUT -- the same rule the teeth verifier
+# applies when it flattens the CHANGELOG and the banner before matching them.
 MECHANISMS = [
     ("the bit-exact item count is wrong",
-     lambda: both(r"25 of the 25 bit-exact items",
+     lambda: both(r"25\s+of\s+the\s+25\s+bit-exact\s+items",
                   "26 of the 26 bit-exact items", 2)),
 
     ("the RNG key count is wrong",
-     lambda: both(r"6 / 6 RNG keys",
+     lambda: both(r"6\s*/\s*6\s+RNG\s+keys",
                   "7 / 7 RNG keys", 3)),
 
     ("the ln row's count is wrong",
-     lambda: both(r"\| `ln` \| \*\*5 / 6\*\*",
+     lambda: both(r"\| `ln` \| \*\*5\s*/\s*6\*\*",
                   "| `ln` | **6 / 6**", 1)),
 
     ("the upstream paragraph's gating count is wrong",
@@ -284,15 +310,15 @@ MECHANISMS = [
                   "**3** of those gate the port against upstream", 1)),
 
     ("the upstream paragraph's context count is wrong",
-     lambda: both(r"The other \*\*7\*\*\s+import\s+the\s+wheel\s+for\s+context",
+     lambda: both(r"The\s+other\s+\*\*7\*\*\s+import\s+the\s+wheel\s+for\s+context",
                   "The other **6** import the wheel for context", 1)),
 
     ("the examples/main row drops RDD",
-     lambda: both(r"BLP / RDD / PQ / QTE",
+     lambda: both(r"BLP\s*/\s*RDD\s*/\s*PQ\s*/\s*QTE",
                   "BLP / PQ / QTE", 1)),
 
     ("the pyroduct attribution is gone",
-     lambda: both(r"\*\*Those figures are\n  pyroduct's own measurement",
+     lambda: both(r"\*\*Those figures are\s+pyroduct's own measurement",
                   "**Those figures are\n  a measurement", 1)),
 ]
 

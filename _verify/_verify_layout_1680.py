@@ -136,8 +136,19 @@ if row:
 
 # --------------------------------------------------------------- the prose
 check("the layout says '21 driver binaries'", "21 driver binaries" in readme)
-check("the layout says 12 estimators in 18 runs",
-      "12 estimators in 18 runs" in readme)
+# The run count is TWO numbers, and they are not the same: the driver PRINTS
+# one banner per run, and it FITS two more models than it banners -- the
+# extra per-treatment PQ fits print their standard errors and no banner.  The
+# row said "12 estimators in 18 runs", which counted the banners and left the
+# fits unsaid.  Both numbers are DERIVED from the driver here, so the sentence
+# cannot drift away from the thing it describes.
+_main_code = re.sub(r"(?m)^[ \t]*//.*$", "", main)
+_fits = len(re.findall(r"\.fit\(", _main_code))
+check("the layout states the printed-run count and the model-fit count",
+      ("12 estimators in %d printed runs, %d model fits"
+       % (len(banners), _fits)) in readme,
+      "the layout does not say '12 estimators in %d printed runs, %d model fits'"
+      % (len(banners), _fits))
 check("the layout explains the 6 extra runs",
       "5 also run with" in readme and "RDD runs twice" in readme)
 check("the old 'one perfect-DGP run each' is gone",
