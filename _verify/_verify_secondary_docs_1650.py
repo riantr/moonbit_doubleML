@@ -284,8 +284,12 @@ check("the document says that command runs only in publish.yml",
 
 # -- the CI-gating section it points at
 ENG = read("ENGINEERING.md")
+# The ledger's prose wraps at the column, so the anchor is matched against
+# the whitespace-collapsed copy -- the document says the thing, whatever the
+# wrap does.
+ENG_flat = flat(ENG)
 check("ENGINEERING.md holds the 'What CI actually gates' section",
-      "What CI actually gates" in ENG)
+      "What CI actually gates" in ENG_flat)
 check("the document points at ENGINEERING.md for that section",
       "`ENGINEERING.md`'s" in HOOKS_F
       and not re.search(r"the README's \"What CI actually gates\"", HOOKS_F))

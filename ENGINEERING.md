@@ -26,7 +26,7 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 73, and 10 of the numbers in between
+> at round 21 and run to round 74, and 10 of the numbers in between
 > (rounds 60-69) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
@@ -2462,6 +2462,61 @@
 >   *The ledger moved.*  This round publishes a count for TWO new checks, so
 >   `_verify/_verify_ledger_counts_1650.py` (**80** checks) is the new
 >   number.
+>
+> * **Round 74.**  A false claim about the frozen snapshot, a name the tree
+>   does not have, and the checks that guard the README's own prose.
+>
+>   *The Development section's claim about the snapshot.*  It said "The CURRENT
+>   gate commands are not in that snapshot" -- and the snapshot CARRIES them:
+>   the v0.164.11 README has a nine-row gate table (the readme-sync check, the
+>   build and test matrix, the format and interface-drift gates, `typos`, the
+>   24 validators, the 9 upstream gates and the QA LOOP).  The sentence was
+>   FALSE.  The section now says what is true: that body is FROZEN at
+>   v0.164.11, it carries the gate table as it stood at that release, so it is
+>   a record and not a live view, and the gate commands a push or a release
+>   runs today live in `.github/workflows/check.yml`,
+>   `.github/workflows/publish.yml` and `.github/scripts/qa_loop/`.
+>
+>   *The parity tier's name.*  The README said the 23 tolerance-based
+>   validators "compare under `within-tolerance equivalence`".  The SPLIT is
+>   right -- 23 tolerance-based plus 1 bit-exact -- and it was measured: of
+>   the 24 validators, exactly one compares IEEE-754 bit patterns.  But the
+>   NAME was not: the string is in 0 of the 24, and there is no shared
+>   procedure by that name.  Each validator carries its own tolerance (`TOL`,
+>   `model_tol`, `TOLERANCES` and so on), and ten of them print their verdict
+>   through `parity_helper.report`, which marks each row `MATCH` or `DIFFER`.
+>   The README now says "a per-validator numeric tolerance".
+>
+>   *The checks that guard the README's prose.*  A check that cannot see the
+>   text it guards protects nothing: it reports GREEN while the stale number
+>   is still in the document.  `_verify/_verify_layout_anchors_1680.py` runs
+>   **10** checks: it walks the tracked contract's AST, finds every
+>   comparison that reads a generated document, and classifies it DEAD (the
+>   check cries wolf over a claim that is true), BLIND (it reports GREEN
+>   while the text is there) or FRAGILE (it holds only because of where the
+>   builder broke the line).  It found **20** wrap-dependent anchors in **5**
+>   verifiers, and all 20 are fixed: they read a whitespace-collapsed copy of
+>   the document now.
+>
+>   *A dry-run of this round's own check.*  `_verify/_dryrun_round74_1650.py`
+>   puts ONE raw read back into a verifier this round fixed; the census must
+>   report it FRAGILE and go RED, the file is then restored, and the census
+>   must be GREEN again.  The capture is published.
+>
+>   *Three checks that grew.*  `_verify/_verify_readme_precision_1680.py`
+>   published **21** and makes **23**; `_verify/_verify_path_promises_1650.py`
+>   published **473** and makes **476**: a path named in prose is a check, and
+>   this round names 3 more of them -- the release workflow, the census and
+>   the driver that proves it bites.
+>
+>   *The ledger moved.*  This round publishes a count for ONE new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**82** checks) is the new number.
+>
+>   *The round-73 dry-run's published count moved.*  It published **13**
+>   failures and now ends at **15**: this round added two checks to
+>   `_verify/_verify_readme_precision_1680.py`, and both of them fail under
+>   the mutation that puts the old Development paragraph back.  The count is
+>   tree-dependent by design, and this entry is the live one.
 >
 >
 >

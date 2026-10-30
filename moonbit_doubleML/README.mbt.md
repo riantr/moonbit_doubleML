@@ -95,7 +95,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.57",
+  "riantr/moonbit_doubleML@0.164.58",
 }
 ```
 
@@ -614,7 +614,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.57** |
+| `moon.mod` version | **0.164.58** |
 | Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -751,7 +751,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.57, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.58, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -834,7 +834,7 @@ and `_verify/UPSTREAM_PROVENANCE.md`.
   **no** JSON in/out -- the JSON surface is `examples/api_server/`'s
   own request/response encoding.
 - Behaviour-level parity check via the 24 Python reference scripts: 23
-  compare under `within-tolerance equivalence`, and one
+  compare under a **per-validator numeric tolerance**, and one
   (`validate_bitexact_with_python.py`) compares IEEE-754 bit patterns
   instead. The tolerance tier keeps the port resilient to upstream
   refactors; the bit-exact tier is where it must not drift at all.
@@ -868,10 +868,12 @@ and `_verify/UPSTREAM_PROVENANCE.md`.
 `ENGINEERING.md` is the companion, and it is worth saying what it is: its
 header is the correction ledger -- one entry per corrected round -- and its
 body is this README as it stood at `v0.164.11`, word for word, with the old
-title line replaced by the heading above it. The CURRENT gate commands are not
-in that snapshot -- they are in `.github/workflows/check.yml` (what CI runs)
-and `.github/scripts/qa_loop/` (the QA harness the CI job invokes). Both
-files are in the repository; the registry publishes this one.
+title line replaced by the heading above it. That body is **frozen at
+`v0.164.11`** -- it carries the gate table as it stood at that release, so
+it is a record, not a live view. The **current** gate commands live in
+`.github/workflows/check.yml` and `.github/workflows/publish.yml`, plus
+`.github/scripts/qa_loop/` (the QA harness the CI job invokes). All of them
+are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn

@@ -330,7 +330,7 @@ if m4:
     check("CI runs four backends", len(backends) == 4, str(backends))
     check("the README's four backends are the CI's four",
           all("`%s`" % b in readme for b in backends), str(backends))
-check("the README says four backends", "**Four backends**" in readme)
+check("the README says four backends", "**Four backends**" in readme_flat)
 
 # The FOUR in "four declared backends" is the package's own
 # `supported_targets`, and it is derived here rather than asserted.

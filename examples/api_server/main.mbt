@@ -342,7 +342,7 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // same run. Both are real gates doing their job -- a version bump touches
   // every place the version lives, and `_verify/_bump_1636.py` is that list.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.164.57",
+    library: "riantr/moonbit_doubleML@0.164.58",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })

@@ -217,6 +217,13 @@ check("it does not claim the body is the old README word for word and "
       "nothing else",
       "word for word, with the old title line replaced" in dev,
       "the section claims the body verbatim without the caveat")
+check("it says the snapshot body is frozen at the release it preserves",
+      "frozen at" in dev and "record, not a live view" in dev,
+      "the section does not say the snapshot is a record, not a live view")
+check("it does not claim the current gate commands are absent from the "
+      "snapshot",
+      "gate commands are not in that snapshot" not in dev,
+      "the section still claims the gate commands are not in the snapshot")
 
 # ==========================================================================
 # D.  the ledger's own header

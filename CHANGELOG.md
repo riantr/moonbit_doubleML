@@ -9,6 +9,108 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.58] -- a false claim about the frozen snapshot, and the checks that guard the README's prose
+
+`moon.mod` moves 0.164.57 -> 0.164.58. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Two INDEPENDENT fresh-eyes audits read the published README.  One returned PASS
+on every measured value -- 142 numeric claims re-derived from the tree, 41 prose
+claims checked, every file:line citation opened.  The other returned FAIL with
+three findings.  Two were real and are fixed here; the third is already owned
+by a check.
+
+### Fixed -- the Development section claimed the snapshot holds no gate commands
+
+It said "The CURRENT gate commands are not in that snapshot" -- and the snapshot
+CARRIES them: the v0.164.11 README has a nine-row gate table (the readme-sync
+check, the build and test matrix, the format and interface-drift gates,
+`typos`, the 24 validators, the 9 upstream gates and the QA LOOP).  The
+sentence was FALSE.
+
+The section now says what is true: that body is FROZEN at `v0.164.11`, it
+carries the gate table as it stood at that release, so it is a record and not a
+live view, and the gate commands a push or a release runs today live in
+`.github/workflows/check.yml`, `.github/workflows/publish.yml` and
+`.github/scripts/qa_loop/`.
+
+### Fixed -- the parity tier named a procedure the tree does not have
+
+The README said the 23 tolerance-based validators "compare under
+`within-tolerance equivalence`".  The SPLIT is right -- 23 tolerance-based
+plus 1 bit-exact -- and it was MEASURED: of the 24 `validate_*_with_python.py`
+scripts, exactly one compares IEEE-754 bit patterns.  The NAME was not: the
+string is in 0 of the 24, and there is no shared procedure by that name.
+
+Each validator carries its own tolerance (`TOL`, `model_tol`, `TOLERANCES` and
+so on), and ten of them print their verdict through `parity_helper.report`,
+which marks each row `MATCH` or `DIFFER`.  The README now says "a
+per-validator numeric tolerance".
+
+### Not changed -- "21 driver binaries" already has an owner
+
+The third finding was that five of the 21 example packages are not CLI drivers:
+`api_server` is an HTTP service, `consumer_demo` a library-user pattern, `fuzz`
+a property-based harness, and `bitexact`/`parity` are fixtures.
+
+That tension is ALREADY owned by a check.
+`_verify/_verify_example_kinds_1680.py` exists to reconcile it, and it
+establishes that all 21 packages have a `fn main` -- so all 21 are runnable
+programs -- and that the two rows the Examples table labels "fixture" are
+still runnable programs.  The document is left alone.
+
+### Added -- the census of the tracked contract's prose anchors
+
+A check that cannot see the text it guards protects nothing: it reports GREEN
+while the stale number is still in the document.  On 2026-10-31 three checks
+died in one day for exactly that reason -- they matched a phrase with LITERAL
+SPACES, and the README is GENERATED, so its paragraphs are hard-wrapped in the
+builder and an edit near a phrase moves the line break.
+
+`_verify/_verify_layout_anchors_1680.py` runs **10** checks.  It walks the
+tracked contract's AST, finds every comparison that reads a generated
+document, and classifies it DEAD (the check cries wolf over a claim that is
+true), BLIND (it reports GREEN while the text is there) or FRAGILE (it holds
+only because of where the builder broke the line).  A control arm builds
+verifiers of its own and asserts the census tells those four apart.
+
+It found **20** wrap-dependent anchors in **5** verifiers, and all 20 are
+fixed: they read a whitespace-collapsed copy of the document now.  Five
+verifiers changed -- `_verify_count_referents_1650.py`,
+`_verify_round17_lplr_1650.py`, `_verify_round18_readme_1650.py`,
+`_verify_secondary_docs_1650.py` and `_verify_toolchain_floor_1680.py`.
+
+### Added -- a dry-run of this round's own check
+
+`_verify/_dryrun_round74_1650.py` puts ONE raw read back into a verifier this
+round fixed.  The census must report it FRAGILE and go RED; the file is then
+restored, and the census must be GREEN again.  The capture is published.
+
+### Changed -- the ledger
+
+- `_verify/_verify_readme_precision_1680.py` published **21** and makes **23**
+  checks: the two new ones assert that the Development section says the
+  snapshot is a record and not a live view, and that it no longer claims the
+  gate commands are absent from it.
+- `_verify/_verify_path_promises_1650.py` published **473** and makes **476**
+  checks: a path named in prose is a check, and this round names 3 more of
+  them -- the release workflow, the census and the driver that proves it bites.
+- The ledger moved: this round publishes a count for ONE new check, so
+  `_verify/_verify_ledger_counts_1650.py` (**82** checks) is the new number.
+- The round-73 dry-run's published count moved: it published **13** failures
+  and now ends at **15**, because this round added two checks to
+  `_verify/_verify_readme_precision_1680.py` and both of them fail under the
+  mutation that puts the old Development paragraph back.  The count is
+  tree-dependent by design, and this entry is the live one.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 80 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **80** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.57] -- four passages that were looser than the tree supports
 
 `moon.mod` moves 0.164.56 -> 0.164.57. No estimator behaviour changed and the

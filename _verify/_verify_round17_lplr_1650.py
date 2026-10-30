@@ -375,9 +375,13 @@ for n in ("_verify/_lplr_upstream_fragility_control_1680.py",
 print()
 print("-- 7. the README agrees with the record --")
 readme = read("README.mbt.md").decode("utf-8", "replace")
+# The README is GENERATED and its paragraphs are hard-wrapped in the builder,
+# so a phrase anchored with LITERAL SPACES breaks the day the wrap moves.
+# Every multi-word claim below is matched against the collapsed copy.
+readme_flat = re.sub(r"\s+", " ", readme)
 check("the README cites the record", "_verify/LPLR_GATE_BLINDNESS_1680.md" in readme)
 check("the README's 17 of 40 (42%) agrees with the record's",
-      "17 of 40 (42%)" in readme and "17/40 (42%)" in text)
+      "17 of 40 (42%)" in readme_flat and "17/40 (42%)" in text)
 check("the README's derivative factor agrees with the record's",
       "344" in readme and "344" in text)
 check("the README's overshoot agrees with the record's",
@@ -385,7 +389,7 @@ check("the README's overshoot agrees with the record's",
 check("the README does not quote the stale counts",
       "1115/1115" not in readme and "1122/1122" not in readme)
 check("the README's mean(beta) figures agree with the record's",
-      "2.56" in readme and "sd 3.39" in readme
+      "2.56" in readme_flat and "sd 3.39" in readme_flat
       and "2.5554" in text and "3.3939" in text)
 shipped = read("moonbit_doubleML/README.mbt.md")
 check("the shipped README is byte-identical to the edited one",

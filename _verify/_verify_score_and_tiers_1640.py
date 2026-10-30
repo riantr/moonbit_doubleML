@@ -92,9 +92,9 @@ check("exactly one of them is the bit-exact tier",
       len(bitexact) == 1, "got %d: %s" % (len(bitexact), bitexact))
 check("it is validate_bitexact_with_python.py",
       bitexact == ["validate_bitexact_with_python.py"], "got %s" % bitexact)
-check("the README says 23 compare under within-tolerance equivalence",
-      re.search(r"23\s+compare under `within-tolerance equivalence`", readme)
-      is not None)
+check("the README says 23 compare under a per-validator numeric tolerance",
+      re.search(r"23\s+compare under a \*\*per-validator numeric tolerance\*\*",
+                readme) is not None)
 check("the README names the bit-exact one",
       "`validate_bitexact_with_python.py`" in readme)
 check("the old blanket claim is gone",

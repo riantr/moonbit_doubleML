@@ -1,5 +1,5 @@
 round 73 dry-run: the passages that were looser than the tree, broken 5 ways
-baseline 0 failing checks; final 13
+baseline 0 failing checks; final 15
 VERDICT PASS
    1. the validate_* paragraph describes one gating script as upstream-only
    2. the layout row counts the banners and leaves the fits unsaid

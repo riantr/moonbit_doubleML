@@ -50,7 +50,7 @@ The pure-MoonBit implementation:
   `1 / (1 - m_hat)`, but it models the propensity of the INSTRUMENT
   rather than of the treatment, and it defaults to OLS.
 
-## Status at v0.164.57
+## Status at v0.164.58
 
 - **22 estimators** — PLR, IRM, PLIV, IIVM, DID (6 variants),
   SSM, APO(S), PQ/QTE, LPQ, LPLR, PLPR, CVaR, RDD, BLP, PolicyTree.
@@ -60,7 +60,7 @@ The pure-MoonBit implementation:
   factories.
 - **1117 / 1117 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
-- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.57`.
+- **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.58`.
 
 ## Next
 

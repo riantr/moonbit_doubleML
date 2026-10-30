@@ -78,6 +78,12 @@ def git(*args):
 print()
 print("A. the README's shape -- the reference package page's, in that order")
 readme = read(README)
+# The README is GENERATED and its paragraphs are hard-wrapped in the
+# builder, so a phrase anchored with LITERAL SPACES breaks the day the
+# wrap moves.  The facts below are matched against the collapsed copy,
+# and the LITERALS are collapsed too -- two of them carry the column
+# alignment of a console block.
+readme_flat = re.sub(r"\s+", " ", readme)
 SECTIONS = [
     "## Features",
     "## Installation",
@@ -179,6 +185,8 @@ def pinned_literals():
 
 pinned = pinned_literals()
 proj = read_opt(PROJ)
+# The ledger's prose wraps at the column too.
+proj_flat = re.sub(r"\s+", " ", proj)
 both = readme + "\n" + proj
 # A literal is the README's to carry only if the README carried it BEFORE.
 # The suite pins strings in many files -- a record's heading, a source file's
@@ -239,7 +247,8 @@ USER_FACING = [
     "standard error    = 0.08875683254582736",
 ]
 for lit in USER_FACING:
-    check("the README keeps the user-facing fact %r" % lit[:44], lit in readme)
+    check("the README keeps the user-facing fact %r" % lit[:44],
+          re.sub(r"\s+", " ", lit) in readme_flat)
 # the renamed count is pinned with a line break between the two halves
 check("the README keeps the user-facing fact '**2** are marked *(upstream, renamed)*'",
       "**2** are marked *(upstream, renamed)*" in readme
@@ -350,9 +359,9 @@ print()
 print("E. ENGINEERING.md is a real document")
 check("the project document exists", os.path.exists(PROJ))
 check("the project document carries a dated banner",
-      "2026-10-21 (round 18)" in proj)
+      "2026-10-21 (round 18)" in proj_flat)
 check("the banner says what it is NOT",
-      "not a second README" in proj)
+      "not a second README" in proj_flat)
 check("the ledger says nothing was deleted",
       "**Nothing was deleted.**" in re.sub(r"\s+", " ", proj))
 check("the ledger names the release it preserves",

@@ -202,8 +202,10 @@ M2_NEW = (r"  main/                  <- 12 estimators in 18 runs: 5 also run wit
 
 M3_OLD = (r"header is the correction ledger -- one entry per corrected round -- and its\n"
           r"body is this README as it stood at `(v[\d.]+)`, word for word, with the old\n"
-          r"title line replaced by the heading above it\. The CURRENT gate commands are not\n"
-          r"in that snapshot -- they are in `\.github/workflows/check\.yml` \(what CI runs\)\n")
+          r"title line replaced by the heading above it\. That body is \*\*frozen at\n"
+          r"`v[\d.]+`\*\* -- it carries the gate table as it stood at that release, so\n"
+          r"it is a record, not a live view\. The \*\*current\*\* gate commands live in\n"
+          r"`\.github/workflows/check\.yml` and `\.github/workflows/publish\.yml`, plus\n")
 M3_NEW = (r"header is the correction ledger for every round to date, and its body is this\n"
           r"README as it stood at `\1`, word for word. The CURRENT gate commands are not\n"
           r"in that snapshot -- they are in `.github/workflows/check.yml` (what CI runs)\n")

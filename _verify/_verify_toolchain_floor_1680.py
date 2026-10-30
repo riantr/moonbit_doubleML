@@ -167,6 +167,9 @@ print()
 print("== the Installation requirement ==")
 
 install = section(readme, "Installation", 2)
+# The README is GENERATED and wraps its prose at the column, so a phrase
+# anchored with literal spaces breaks the day the wrap moves.
+install_flat = re.sub(r"\s+", " ", install)
 check("the README has an Installation section", install is not None)
 if install is None:
     print("  nothing else can be checked")
@@ -184,7 +187,7 @@ if FLOOR:
     check("the requirement names the subpackage the pin imports",
           SUBPACKAGE in install, "no %s" % SUBPACKAGE)
     check("the requirement quotes the error an older core produces",
-          "Cannot find import" in install, "the symptom is not stated")
+          "Cannot find import" in install_flat, "the symptom is not stated")
     # F9 -- it lives in the Installation section, not somewhere else
     all_reqs = re.findall(r"\*\*Requires `moon ([0-9]+\.[0-9]+\.[0-9]+)` or newer\.\*\*",
                           readme)

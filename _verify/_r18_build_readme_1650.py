@@ -2778,6 +2778,61 @@ __GAP_NOTE__
 >   `_verify/_verify_ledger_counts_1650.py` (**80** checks) is the new
 >   number.
 >
+> * **Round 74.**  A false claim about the frozen snapshot, a name the tree
+>   does not have, and the checks that guard the README's own prose.
+>
+>   *The Development section's claim about the snapshot.*  It said "The CURRENT
+>   gate commands are not in that snapshot" -- and the snapshot CARRIES them:
+>   the v0.164.11 README has a nine-row gate table (the readme-sync check, the
+>   build and test matrix, the format and interface-drift gates, `typos`, the
+>   24 validators, the 9 upstream gates and the QA LOOP).  The sentence was
+>   FALSE.  The section now says what is true: that body is FROZEN at
+>   v0.164.11, it carries the gate table as it stood at that release, so it is
+>   a record and not a live view, and the gate commands a push or a release
+>   runs today live in `.github/workflows/check.yml`,
+>   `.github/workflows/publish.yml` and `.github/scripts/qa_loop/`.
+>
+>   *The parity tier's name.*  The README said the 23 tolerance-based
+>   validators "compare under `within-tolerance equivalence`".  The SPLIT is
+>   right -- 23 tolerance-based plus 1 bit-exact -- and it was measured: of
+>   the 24 validators, exactly one compares IEEE-754 bit patterns.  But the
+>   NAME was not: the string is in 0 of the 24, and there is no shared
+>   procedure by that name.  Each validator carries its own tolerance (`TOL`,
+>   `model_tol`, `TOLERANCES` and so on), and ten of them print their verdict
+>   through `parity_helper.report`, which marks each row `MATCH` or `DIFFER`.
+>   The README now says "a per-validator numeric tolerance".
+>
+>   *The checks that guard the README's prose.*  A check that cannot see the
+>   text it guards protects nothing: it reports GREEN while the stale number
+>   is still in the document.  `_verify/_verify_layout_anchors_1680.py` runs
+>   **10** checks: it walks the tracked contract's AST, finds every
+>   comparison that reads a generated document, and classifies it DEAD (the
+>   check cries wolf over a claim that is true), BLIND (it reports GREEN
+>   while the text is there) or FRAGILE (it holds only because of where the
+>   builder broke the line).  It found **20** wrap-dependent anchors in **5**
+>   verifiers, and all 20 are fixed: they read a whitespace-collapsed copy of
+>   the document now.
+>
+>   *A dry-run of this round's own check.*  `_verify/_dryrun_round74_1650.py`
+>   puts ONE raw read back into a verifier this round fixed; the census must
+>   report it FRAGILE and go RED, the file is then restored, and the census
+>   must be GREEN again.  The capture is published.
+>
+>   *Three checks that grew.*  `_verify/_verify_readme_precision_1680.py`
+>   published **21** and makes **23**; `_verify/_verify_path_promises_1650.py`
+>   published **473** and makes **476**: a path named in prose is a check, and
+>   this round names 3 more of them -- the release workflow, the census and
+>   the driver that proves it bites.
+>
+>   *The ledger moved.*  This round publishes a count for ONE new check, so
+>   `_verify/_verify_ledger_counts_1650.py` (**82** checks) is the new number.
+>
+>   *The round-73 dry-run's published count moved.*  It published **13**
+>   failures and now ends at **15**: this round added two checks to
+>   `_verify/_verify_readme_precision_1680.py`, and both of them fail under
+>   the mutation that puts the old Development paragraph back.  The count is
+>   tree-dependent by design, and this entry is the live one.
+>
 >
 >
 >
@@ -3033,17 +3088,26 @@ A("### Not covered, so not claimed\n\n" + blk(2024, 2038).rstrip() + "\n")
 A("### Honest policy trees (v0.98.0)\n\n" + blk(1753, 1782).rstrip() + "\n")
 A("## Project layout\n\n" + blk(1786, 1814).rstrip() + "\n")
 A("## Dependency rule\n\n" + blk(1818, 1836).rstrip() + "\n")
-A("## Attribution\n\n" + blk(2244, 2274).rstrip() + "\n")
+A("## Attribution\n\n" + blk(2244, 2274).rstrip()
+  # The inherited bullet named a procedure the tree does not have: the 23
+  # tolerance-based validators carry their OWN tolerances (ten of them route
+  # their output through parity_helper.report, which prints MATCH/DIFFER per
+  # row).  The claim is true; the name was not.
+  .replace("compare under `within-tolerance equivalence`, and one",
+           "compare under a **per-validator numeric tolerance**, and one")
+  + "\n")
 A("## Used By\n\n" + blk(2278, 2290).rstrip() + "\n")
 A("""## Development
 
 `ENGINEERING.md` is the companion, and it is worth saying what it is: its
 header is the correction ledger -- one entry per corrected round -- and its
 body is this README as it stood at `__SRCTAG__`, word for word, with the old
-title line replaced by the heading above it. The CURRENT gate commands are not
-in that snapshot -- they are in `.github/workflows/check.yml` (what CI runs)
-and `.github/scripts/qa_loop/` (the QA harness the CI job invokes). Both
-files are in the repository; the registry publishes this one.
+title line replaced by the heading above it. That body is **frozen at
+`__SRCTAG__`** -- it carries the gate table as it stood at that release, so
+it is a record, not a live view. The **current** gate commands live in
+`.github/workflows/check.yml` and `.github/workflows/publish.yml`, plus
+`.github/scripts/qa_loop/` (the QA harness the CI job invokes). All of them
+are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn
