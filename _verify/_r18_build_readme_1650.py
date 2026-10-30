@@ -205,6 +205,92 @@ ASYNC = dep_pin("moonbitlang/async")
 # one a reader would have tripped over.
 TOOLCHAIN = "0.1.20261028"
 
+# --------------------------------------------------------------- the test counts
+#
+# The test totals are the most prominent numbers the README states, and until
+# round 72 they were LITERALS inherited from the v0.164.11 base document.  A
+# number inherited from a snapshot rots in silence: the next `.mbt` file
+# carrying a `test "..."` changes the tree without changing the document.
+#
+# DERIVED here, by the SAME rule `_verify/_verify_testcounts_1610.py` uses --
+# the same regex, the same de-duplication by name -- so the generator and the
+# check that holds it cannot disagree about what "the test count" means.
+def test_decls(directory):
+    """the `test "..."` declarations under a directory, by name."""
+    acc = set()
+    for base, dirs, files in os.walk(directory):
+        dirs[:] = [x for x in dirs if x not in ("_build", "_verify", "target", ".git")]
+        for f in files:
+            if f.endswith(".mbt"):
+                src = io.open(os.path.join(base, f), encoding="utf-8",
+                              errors="replace").read()
+                acc.update(re.findall(r'\btest\s+"([^"]+)"', src))
+    return acc
+
+
+LIB_TESTS = len(test_decls("moonbit_doubleML"))
+DOC_TESTS = len(test_decls("doc"))
+WASMGC_TESTS = LIB_TESTS + DOC_TESTS
+
+# --------------------------------------------------------- the vectorised surface
+#
+# `vectorized.mbt`'s public free functions, and the library files that route
+# their residual extraction through `vector_subtract`.  The README states both,
+# and until round 72 it stated FOUR helpers where the file exports SIX, and
+# named two call sites where twelve library files call it.  NOTHING held the
+# claim, which is exactly why it could rot: the helpers were added and the
+# document was not.  Both halves are DERIVED now, and
+# `_verify/_verify_vectorised_surface_1680.py` holds them.
+def vectorised_surface():
+    src = io.open("moonbit_doubleML/vectorized.mbt", encoding="utf-8",
+                  errors="replace").read()
+    fns = sorted(set(re.findall(r"pub fn (\w+)\s*\(", src)))
+    callers = []
+    for f in sorted(os.listdir("moonbit_doubleML")):
+        if not f.endswith(".mbt") or f == "vectorized.mbt" or f.endswith("_test.mbt"):
+            continue
+        body = io.open(os.path.join("moonbit_doubleML", f), encoding="utf-8",
+                       errors="replace").read()
+        if "vector_subtract" in body:
+            callers.append(f)
+    return fns, callers
+
+
+VEC_FNS, VEC_CALLERS = vectorised_surface()
+
+
+def list_pieces(names):
+    """the list, split so that the 'and' belongs to the last piece."""
+    items = ["`%s`" % n for n in names]
+    if len(items) == 1:
+        return items
+    return items[:-2] + [items[-2] + " and " + items[-1]]
+
+
+def wrap_list(pieces, width):
+    """the list, broken after the last piece that fits `width`.
+
+    The list is DERIVED, so its length is not known when the sentence that
+    holds it is written -- and a derived list that cannot be wrapped would
+    land in the published document as one long line.  Breaking it here keeps
+    the paragraph at the width the rest of the README uses.
+    """
+    out = []
+    line = ""
+    last = len(pieces) - 1
+    for i, piece in enumerate(pieces):
+        text = piece if i == last else piece + ","
+        cand = (line + " " + text) if line else text
+        if len(cand) > width and line:
+            out.append(line)
+            line = text
+        else:
+            line = cand
+    if line:
+        out.append(line)
+    return "\n".join(out)
+
+
 # ==============================================================================
 # 1.  THE LEDGER -- the project document
 # ==============================================================================
@@ -1413,7 +1499,7 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   `_verify/_dryrun_round44_1650.py` breaks ONE promise -- the layout's
 >   path, the dependency table's note, the service sentence, the bare-`moon
 >   test` sentence, doc/001's `ml_m` rule and doc/002's consumer count --
->   and the failure count must GROW at every step.  The run ends at **8**
+>   and the failure count must GROW at every step.  The run ends at **9**
 >   failures.
 >
 >   *The ledger is unchanged.*  This round publishes no new count, so
@@ -2424,7 +2510,7 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   *A dry-run of this round's own checks.*  Each mechanism in
 >   `_verify/_dryrun_round70_1650.py` breaks ONE promise -- the rule's
 >   example, the table's row, the service sentence -- and the failure count
->   must GROW at every step.  The run ends at **4** failures.
+>   must GROW at every step.  The run ends at **5** failures.
 >
 >   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
 >   **461** and makes **463**: a path named in prose is a check, and this
@@ -2478,7 +2564,7 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >   `_verify/_dryrun_round71_1650.py` breaks ONE promise -- the pin, the
 >   toolchain agreement, the floor's direction, the cost of the dead pin,
 >   the installation guide, and the core the measurement reads.  The run
->   ends at **9** failures, and the capture is published.
+>   ends at **10** failures, and the capture is published.
 >
 >   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
 >   **461** and makes **465**: a path named in prose is a check, and
@@ -2486,6 +2572,136 @@ LEDGER_HEAD = """# ENGINEERING notes -- `moonbit_doubleML`
 >
 >   *The ledger moved.*  This round publishes a count for a NEW check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**72** checks) is the new number.
+
+> * **Round 72.**  Three passages that had gone out of date -- and the two
+>   references have moved since round 59 measured them.
+>
+>   *Two INDEPENDENT audits, and both said PASS.*  A fresh-eyes read of the
+>   published README -- one hunting stale claims, one hunting the
+>   verification claims -- found no false claim and no stale number in the
+>   measured surface: the 22 estimators in 19 files, the 220 `.mbt` files,
+>   the 1117 tests, the 24 validators, the 9 upstream gates, the 15/4/3
+>   sandwich split, the 7 score takers and the 8 argument sets all match the
+>   tree.  What they found was three passages that had gone QUIETLY out of
+>   date -- and every one of them was a promise nothing held.
+>
+>   *The vectorised inventory.*  The README listed the public free functions
+>   `vectorized.mbt` exports: FOUR of them.  The file exports SIX --
+>   `vector_multiply` and `vector_divide` (v0.82.0+) were missing.  It named
+>   the IRM and PLR paths as the callers of `vector_subtract`; TWELVE library
+>   files call it.  The helpers were added and the document was not, and
+>   NOTHING held the claim, which is exactly why it could rot.
+>
+>   *The Development section pointed at a frozen snapshot.*  It said the test
+>   suite, the Python cross-checks, the QA harness and the reproducibility
+>   commands "are all documented in `ENGINEERING.md`".  They are -- but
+>   `ENGINEERING.md`'s BODY is this README as it stood at `v0.164.11`, word
+>   for word, so a reader sent there for the CURRENT commands was sent to a
+>   snapshot.  The live ones are in `.github/workflows/check.yml` and
+>   `.github/scripts/qa_loop/`, and the section says so now.
+>
+>   *And fixing that broke a driver that was anchored to the old
+>   sentence.*  `_verify/_dryrun_round23_1650.py` proves the README's
+>   SHAPE by breaking it in six places, and one of the six -- the
+>   relative markdown link -- was anchored to the LITERAL sentence
+>   "documented in `ENGINEERING.md`, together with".  Rewriting that
+>   sentence killed the anchor: the driver stopped on its THIRD
+>   mechanism, so the last three never ran and it published a failure
+>   count it had not measured.  The holder was already in the tree --
+>   `_verify/_verify_dryrun_teeth_1650.py` asks whether every anchor in
+>   every tracked driver is still live, and it is what caught this --
+>   which is what that verifier exists for.  The anchor is a REGEX now:
+>   it names the PROMISE (the README names the companion document in a
+>   code span, and the registry serves exactly one file, so that name
+>   must not become a relative link) and not the wording the promise
+>   happens to be wearing this release.
+>
+>   *The opening paragraph lost a caveat that had ALREADY been corrected
+>   once.*  Round 22 corrected "a claim that one API shape covered all 22
+>   estimators when six constructors differ" -- and round 48's condensation
+>   dropped the caveat from the opening paragraph AGAIN, while keeping it in
+>   the Features list eleven lines further down.  A correction that has to be
+>   made twice needs a holder, not another round's memory.
+>
+>   *The counts are derived now.*  The test totals were LITERALS inherited
+>   from the v0.164.11 base document the generator starts from.  They are
+>   derived from the tree now -- by the same rule
+>   `_verify/_verify_testcounts_1610.py` uses, so the generator and the check
+>   that holds it cannot disagree -- and every claim SHAPE is derived, the
+>   ones present and the ones a later round adds.  A shape that DISAPPEARS
+>   is an abort: a claim that silently stopped being made is a claim nobody
+>   is watching any more.
+>
+>   *The references have moved, and the badge row with them.*  capnp is at
+>   0.3.0 and discord at 0.13.0; both named versions are still there.  The
+>   deferred plan was to give this README discord@0.10.0's six-badge
+>   opening.  Measured: discord REMOVED four of its six badges between 0.10.0
+>   and 0.13.0, and capnp carries exactly ONE badge -- the CI one -- at both
+>   versions, which is what this README carries.  A badge row is decoration
+>   that one of the references has since deleted, so the plan is DROPPED on
+>   the references' own evidence.
+>
+>   *The dependency pin moved, and the toolchain floor did NOT.*  The registry
+>   published `moonbitlang/async@0.22.7` on 2026-10-30 and the tree's own
+>   dep-pin check turned RED: the pin has to be the published latest, and it
+>   was one version behind.  Nothing was wrong with the DOCUMENTS -- the TREE
+>   was behind, and the check said so before anything was published.  The pin
+>   moved in both manifests with `moon add --upgrade`, and the README followed
+>   without a hand-edited version, because every place it names the pin is
+>   DERIVED from the manifest.  The floor did NOT move: the published source
+>   of 0.22.7 imports the same three core subpackages 0.22.6 does -- `async`,
+>   `debug` and `set` -- and the toolchain's bundled core carries all three,
+>   so the Installation section's minimum `moon` is unchanged and the whole
+>   gate was re-run on the new dependency before anything was published.
+>
+>   *And four other live documents named the old pin, and NOTHING held
+>   them.*  `AGENTS.md`, the introduction, the installation guide and the agent
+>   skill carry the pin in prose, and no check read those sites.  Round 70
+>   moved the pin by hand in those files, and for one release they were a
+>   version AHEAD of the tree -- v0.164.54 named `moonbitlang/async@0.22.6`
+>   while the tree still pinned 0.22.5.  A literal with no holder is a literal
+>   that rots, and the registry publishes a new version every day.  Their
+>   literals move with the tree's now, and
+>   `_verify/_verify_dep_pins_1680.py` holds them: every live document that
+>   names a third-party pin must name a version the tree declares, with the
+>   two historical documents exempt.  The check was proved to BITE -- a
+>   document put back on the old pin turns it red.
+>
+>   *Three published counts moved with it.*  The new check holds the README's
+>   own pin sites as well, and three dry-run drivers break exactly those sites
+>   -- the dependency table's note, the rule's example and the Installation
+>   requirement.  Their published failure counts moved with the check -- 8 ->
+>   9, 4 -> 5 and 9 -> 10 -- and they are re-published with the MEASURED
+>   values, not with the numbers an earlier round measured.  The rule was not
+>   weakened to keep the old numbers: a check scoped to dodge a published
+>   count is a check that stops holding the thing it was written for.
+>
+>   *The checks that hold them.*  `_verify/_verify_vectorised_surface_1680.py`
+>   runs **12** checks: the exported names come out of `vectorized.mbt`, the
+>   caller set out of the library's own sources, and the README's paragraph
+>   is asked whether it names every one of them, names none that the file
+>   does not export, and states the measured count.
+>   `_verify/_verify_readme_caveats_1680.py` runs **18** checks: the opening
+>   paragraph's caveat, the Features list's, the API reference's own
+>   constructor table, and the Development section's pointer at the live gate
+>   sources.  Both were proved to BITE -- the old text fails them -- before
+>   either was published.
+>
+>   *A dry-run of this round's own checks.*  Each mechanism in
+>   `_verify/_dryrun_round72_1650.py` breaks ONE promise -- drop a helper,
+>   name one that does not exist, understate the caller count, call
+>   `matrix_predict` an element-wise wrapper, drop the API-shape caveat, and
+>   put the stale pointer back.  The run ends at **14** failures, and the
+>   capture is published.
+>
+>   *A check that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **465** and makes **470**: a path named in prose is a check, and this
+>   round names 3 more of them -- the two places the current gate
+>   commands live, and the driver that proves the README's shape.
+>
+>   *The ledger moved.*  This round publishes a count for TWO new checks, so
+>   `_verify/_verify_ledger_counts_1650.py` (**76** checks) is the new
+>   number.
 >
 >
 >
@@ -2708,11 +2924,12 @@ A("## Attribution\n\n" + blk(2244, 2274).rstrip() + "\n")
 A("## Used By\n\n" + blk(2278, 2290).rstrip() + "\n")
 A("""## Development
 
-The test suite, the Python cross-checks, the QA harness and the
-reproducibility commands are all documented in `ENGINEERING.md`, together with
-the history of the defects that moved the estimator defaults and the
-derivation of the upstream naming map. Both files are in the repository; the
-registry publishes this one.
+`ENGINEERING.md` is the companion, and it is worth saying what it is: its
+header is the correction ledger for every round to date, and its body is this
+README as it stood at `__SRCTAG__`, word for word. The CURRENT gate commands
+are not in that snapshot -- they are in `.github/workflows/check.yml` (what CI
+runs) and `.github/scripts/qa_loop/` (the QA harness the CI job invokes).
+Both files are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn
@@ -2723,7 +2940,7 @@ Total tests: 1117, passed: 1117, failed: 0.
 
 MIT. The upstream package, `DoubleML/doubleml-for-py`, is BSD 3-Clause; this
 port is MIT-licensed and credits it (see **Attribution** above).
-""")
+""".replace("__SRCTAG__", SRC_TAG))
 
 text = "\n".join(readme)
 while "\n\n\n" in text:
@@ -4552,6 +4769,77 @@ NEW_70_ASYNC_RULE = ("- Pin to the latest published version (e.g. "
 PATCHES.append((OLD_70_ASYNC_RULE, NEW_70_ASYNC_RULE))
 
 
+# ==============================================================================
+# 19.  THE ROUND-72 PATCHES -- the claims that rotted because nobody held them
+# ==============================================================================
+#
+# Two INDEPENDENT fresh-eyes audits read the published README line by line in
+# round 72.  Both returned PASS: no false claim, and every measured count --
+# the 22 estimators in 19 files, the 220 `.mbt` files, the 1117 tests, the 24
+# validators, the 9 upstream gates, the 15/4/3 sandwich split, the 7 score
+# takers, the 8 argument sets -- matched the tree.
+#
+# What they did find were three passages that had gone out of date.  All three
+# are corrected here, in the GENERATOR, for the reason round 21 used:
+# README.mbt.md is BUILT, so an edit made to it is reverted by the next bump.
+#
+# F2. THE VECTORISED INVENTORY WAS TWO HELPERS AND TEN CALL SITES OUT OF DATE.
+# The README listed `matrix_predict`, `vector_subtract`, `vector_add` and
+# `vector_scale`; the file also exports `vector_multiply` and `vector_divide`
+# (both v0.82.0+).  It named the IRM and PLR paths as the callers of
+# `vector_subtract`; TWELVE library files call it.  Nothing held the claim,
+# which is why it could rot: the helpers were added and the document was not.
+# Both halves are DERIVED now (VEC_FNS, VEC_CALLERS), and
+# `_verify/_verify_vectorised_surface_1680.py` holds them.
+#
+# F3. THE OPENING PARAGRAPH LOST ITS CAVEAT.
+# Round 22 corrected "a claim that one API shape covered all 22 estimators when
+# six constructors differ" -- and round 48's condensation dropped the caveat
+# from the opening paragraph again, while keeping it in the Features list
+# eleven lines further down.  The qualifier is restored, in the wording round
+# 48 removed.
+#
+# (F1, the Development section's description of `ENGINEERING.md`, is not a
+# patch: that section is built by an `A(...)` block above, so it is edited
+# where it is written.)
+
+OLD_72_VECTORISED = """**Vectorised cross-fit helpers (v0.81.0+)** -- `vectorized.mbt`
+exposes `matrix_predict` (Kahan-compensated `X @ weights + bias`),
+`vector_subtract`, `vector_add`, and `vector_scale` as public
+free functions. `DoubleMLIRM::fit` / `fit_cluster` /
+`sensitivity_analysis` and the matching `DoubleMLPLR` paths now
+route the per-observation residual extraction through
+`vector_subtract` instead of an inlined per-iteration load /
+subtract. The helpers are pure element-wise loop wrappers today."""
+
+NEW_72_VECTORISED = """**Vectorised cross-fit helpers (v0.81.0+)** -- `vectorized.mbt`
+exposes `matrix_predict` (Kahan-compensated `X @ weights + bias`),
+%s as public
+free functions. `DoubleMLIRM::fit` / `fit_cluster` /
+`sensitivity_analysis` and the matching `DoubleMLPLR` paths route
+the per-observation residual extraction through `vector_subtract`
+instead of an inlined per-iteration load / subtract, and %d of the
+library's own files call it today. The `vector_*` helpers are pure
+element-wise loop wrappers today; `matrix_predict` is a
+Kahan-compensated matrix-vector product.""" % (
+    wrap_list(list_pieces([f for f in VEC_FNS if f != "matrix_predict"]), 66),
+    len(VEC_CALLERS))
+
+OLD_72_OPENING = """inside the MoonBit ecosystem. Delivers one
+`DoubleMLXxx::new(...).fit()` API across all 22 estimators, with robust
+variance estimation and a reproducible validation pipeline
+(24 / 24 Python reference scripts PASS)."""
+
+NEW_72_OPENING = """inside the MoonBit ecosystem. Delivers one
+`DoubleMLXxx::new(...).fit()` API shape across all 22 estimators -- six take a
+different constructor, and those six are named in **API reference** -- with
+robust variance estimation and a reproducible validation pipeline
+(24 / 24 Python reference scripts PASS)."""
+
+PATCHES.append((OLD_72_VECTORISED, NEW_72_VECTORISED))
+PATCHES.append((OLD_72_OPENING, NEW_72_OPENING))
+
+
 for _old, _new in PATCHES:
     _n = text.count(_old)
     if _n != 1:
@@ -4559,6 +4847,61 @@ for _old, _new in PATCHES:
         sys.exit(1)
     text = text.replace(_old, _new)
     print("   patched the API reference: %d -> %d chars" % (len(_old), len(_new)))
+
+# ==============================================================================
+# 4a.  THE TEST COUNTS -- derived, not inherited
+# ==============================================================================
+#
+# The test totals are the most prominent numbers the README states, and until
+# round 72 they were LITERALS inherited from the v0.164.11 base document.  A
+# number inherited from a snapshot rots in silence: the next `.mbt` file
+# carrying a `test "..."` changes the tree without changing the document.
+#
+# Each claim is matched by its SHAPE -- the shape IS the promise -- so every
+# place the document states it is derived: the ones present and the ones a
+# later round adds.  A shape that DISAPPEARS is an abort, because a claim
+# that silently stopped being made is a claim nobody is watching any more.
+#
+# (The round-59 lesson: a mechanism that patches a FIXED number of sites goes
+# flat when the document gains one.  Here the sites are counted at RUN TIME,
+# and EVERY site of a shape is derived -- not a fixed number of them.)
+def derive(text, pattern, replacement, what):
+    new_text, n = re.subn(pattern, replacement, text)
+    if n == 0:
+        print("!! the README no longer states %s -- ABORT" % what)
+        sys.exit(1)
+    print("   derived %-36s in %d place(s)" % (what, n))
+    return new_text
+
+
+text = derive(
+    text,
+    r"Total tests: \d+, passed: \d+, failed: 0\.",
+    lambda m: "Total tests: %d, passed: %d, failed: 0." % (LIB_TESTS, LIB_TESTS),
+    "the test transcript")
+text = derive(
+    text,
+    r"(\| Tests \(native / wasm / js\) \| \*\*)\d+ / \d+ / \d+(\*\* \|)",
+    lambda m: m.group(1) + "%d / %d / %d" % (LIB_TESTS, LIB_TESTS, LIB_TESTS)
+    + m.group(2),
+    "the native / wasm / js row")
+text = derive(
+    text,
+    r"(\| Tests \(wasm-gc\) \| \*\*)\d+ / \d+(\*\* \(lib \+ )\d+( doc tutorials\))",
+    lambda m: m.group(1) + "%d / %d" % (WASMGC_TESTS, WASMGC_TESTS)
+    + m.group(2) + str(DOC_TESTS) + m.group(3),
+    "the wasm-gc row")
+text = derive(
+    text,
+    r"where the suite is \*\*\d+\*\* -- \d+ plus \d+ doc tutorials",
+    lambda m: "where the suite is **%d** -- %d plus %d doc tutorials"
+    % (WASMGC_TESTS, LIB_TESTS, DOC_TESTS),
+    "the preferred-target sentence")
+text = derive(
+    text,
+    r"runs the suite on `wasm-gc` \(\d+",
+    lambda m: "runs the suite on `wasm-gc` (%d" % WASMGC_TESTS,
+    "the bare-run sentence")
 
 # ==============================================================================
 # 4.  WRITE

@@ -9,6 +9,183 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.56] -- three passages that had gone out of date
+
+`moon.mod` moves 0.164.55 -> 0.164.56. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+Two INDEPENDENT fresh-eyes audits read the published README line by line --
+one hunting stale claims, one hunting the verification claims.  Both returned
+PASS: no false claim, and no stale number in the measured surface.  The 22
+estimators in 19 files, the 220 `.mbt` files, the 1117 tests, the 24
+validators, the 9 upstream gates, the 15/4/3 sandwich split, the 7 score
+takers and the 8 argument sets all match the tree.
+
+What the audits found was three passages that had gone QUIETLY out of date,
+and every one of them was a promise nothing held.
+
+### Fixed -- the vectorised inventory named four helpers where the file exports six
+
+The README listed the public free functions `vectorized.mbt` exports:
+`matrix_predict`, `vector_subtract`, `vector_add` and `vector_scale`.  The file
+exports SIX -- `vector_multiply` and `vector_divide` (both v0.82.0+) were
+missing from the list.  The paragraph also named the IRM and PLR paths as the
+callers of `vector_subtract`; TWELVE library files call it.
+
+The helpers were added and the document was not, and NOTHING held the claim --
+which is exactly why it could rot.  The inventory is DERIVED from the tree now
+(the exported names out of `vectorized.mbt`, the caller set out of the
+library's own sources), and the paragraph says which of the helpers are
+element-wise wrappers rather than calling all six that way: `matrix_predict`
+is a Kahan-compensated matrix-vector product.
+
+### Fixed -- the Development section pointed at a frozen snapshot
+
+It said the test suite, the Python cross-checks, the QA harness and the
+reproducibility commands "are all documented in `ENGINEERING.md`".  They are
+-- but `ENGINEERING.md`'s BODY is the README as it stood at `v0.164.11`, word
+for word, so a reader sent there for the CURRENT commands was sent to a
+snapshot.  The section now says what that document is (a correction ledger
+over a frozen body) and names the live ones: `.github/workflows/check.yml` and
+`.github/scripts/qa_loop/`.
+
+### Fixed -- the driver whose anchor that fix killed
+
+`_verify/_dryrun_round23_1650.py` proves the README's SHAPE by breaking it in
+six places, and one of the six -- the relative markdown link -- was anchored
+to the LITERAL sentence "documented in `ENGINEERING.md`, together with".
+Rewriting that sentence killed the anchor: the driver stopped on its THIRD
+mechanism, so the last three never ran, and it published a failure count it
+had not measured.
+
+The holder was already in the tree.  `_verify/_verify_dryrun_teeth_1650.py`
+asks whether every anchor in every tracked driver is still live, and it is
+what caught this -- which is what that verifier exists for.  The anchor is a
+REGEX now: it names the PROMISE (the README names the companion document in a
+code span, and the registry serves exactly one file, so that name must not
+become a relative link) and not the wording the promise happens to be wearing
+this release.
+
+The published capture for that driver is regenerated with it: the README's
+line numbers moved, so the pointers in the capture moved with them.
+
+### Fixed -- the opening paragraph lost a caveat that had ALREADY been corrected once
+
+It read: "Delivers one `DoubleMLXxx::new(...).fit()` API across all 22
+estimators".  Six of those constructors differ, and the README says so --
+eleven lines further down, in the Features list, and again in the API
+reference's constructor table.  The opening paragraph did not.
+
+This is not a new concern.  Round 22 corrected "a claim that one API shape
+covered all 22 estimators when six constructors differ", and round 48's
+condensation dropped the caveat from the opening paragraph AGAIN.  A
+correction that has to be made twice needs a holder, not another round's
+memory.
+
+### Changed -- the test counts are derived, not inherited
+
+The test totals were LITERALS inherited from the `v0.164.11` base document
+the generator starts from.  They are derived from the tree now -- by the same
+rule `_verify/_verify_testcounts_1610.py` uses, so the generator and the check
+that holds it cannot disagree about what "the test count" means -- and every
+claim SHAPE is derived, the ones present and the ones a later round adds.  A
+shape that DISAPPEARS is an abort: a claim that silently stopped being made
+is a claim nobody is watching any more.
+
+### Changed -- the badge row, measured against the CURRENT references
+
+capnp is at 0.3.0 and discord at 0.13.0 now; both versions the user named are
+still published.  The deferred plan was to give this README discord@0.10.0's
+six-badge opening.  Measured: discord REMOVED four of its six badges between
+0.10.0 and 0.13.0, and capnp carries exactly ONE badge -- the CI one -- at
+both versions, which is what this README carries.  A badge row is decoration
+that one of the references has since deleted, so the plan is DROPPED on the
+references' own evidence, and the measurement is recorded in the shape
+verifier.
+
+### Changed -- the dependency pin moved, and the toolchain floor did NOT
+
+The registry published `moonbitlang/async@0.22.7` on 2026-10-30, and the
+tree's own dep-pin check turned RED: "moonbitlang/async is pinned at the
+published latest".  Nothing was wrong with the DOCUMENTS -- the TREE was
+behind, and the check said so before anything was published.
+
+The pin moved in BOTH manifests -- the library's and `examples/api_server/`'s
+-- with `moon add --upgrade`, and the README followed without a single
+hand-edited version, because every place it names the pin is DERIVED from the
+manifest.
+
+The floor did NOT move, and that was measured rather than assumed.  The
+published source of 0.22.7 imports the same three core subpackages 0.22.6
+does -- `async`, `debug` and `set` -- and the toolchain's bundled core
+(0.10.18+6c83a7f62, from `moon 0.1.20261028`) carries all three.  So the
+Installation section's minimum toolchain is unchanged, and the whole gate was
+re-run on the new dependency before anything was published.
+
+### Fixed -- four live documents named the old pin, and NOTHING held them
+
+The pin literal lived in FOUR other live documents -- `AGENTS.md`, the
+introduction, the installation guide and the agent skill -- and no check read
+those sites.  Round 70 moved the pin by hand in those files, and for one
+release they were a version AHEAD of the tree: v0.164.54 named
+`moonbitlang/async@0.22.6` while the tree still pinned 0.22.5.  A literal
+with no holder is a literal that rots, and the registry publishes a new
+version every day.
+
+Their literals move with the tree's now, and
+`_verify/_verify_dep_pins_1680.py` holds them: every live document that names
+a third-party pin must name a version the tree declares.  The two HISTORICAL
+documents are exempt -- the CHANGELOG is the release record and
+`ENGINEERING.md` is the frozen document that must keep the version it was
+written with.  The check was proved to BITE: a document put back on the old
+pin turns it red, and the tree is green again the moment the literal is
+restored.
+
+Three published counts moved with it.  The new check holds the README's own
+pin sites as well, and three dry-run drivers break exactly those sites -- the
+dependency table's note, the rule's example and the Installation
+requirement.  Their published failure counts moved with the check -- 8 -> 9,
+4 -> 5 and 9 -> 10 -- and they are re-published here with the MEASURED
+values, not with the numbers an earlier round measured.  The rule was not
+weakened to keep the old numbers: a check scoped to dodge a published count
+is a check that stops holding the thing it was written for.
+
+### Added -- the checks that hold them
+
+- `_verify/_verify_vectorised_surface_1680.py` runs **12** checks: the
+  exported names come out of `vectorized.mbt`, the caller set out of the
+  library's own sources, and the README's paragraph is asked whether it names
+  every one of them, names none that the file does not export, and states the
+  measured count.
+- `_verify/_verify_readme_caveats_1680.py` runs **18** checks: the opening
+  paragraph's caveat, the Features list's, the API reference's own
+  constructor table, and the Development section's pointer at the live gate
+  sources.
+- `_verify/_dryrun_round72_1650.py` breaks those claims one at a time -- drop
+  a helper, name one that does not exist, understate the caller count, call
+  `matrix_predict` an element-wise wrapper, drop the API-shape caveat, and put
+  the stale pointer back.  The failure count grows at every step and the run
+  ends at **14** failures, and the capture is published.
+- Both new checks were proved to BITE -- the old text fails them -- before
+  either was published.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **465** and makes **470**
+  checks: a path named in prose is a check, and this round names 3 more of
+  them -- the two places the current gate commands live, and the driver that
+  proves the README's shape.
+- The ledger moved: this round publishes a count for TWO new checks, so
+  `_verify/_verify_ledger_counts_1650.py` (**76** checks) is the new number.
+
+### Verified --
+
+- local gate: 48 steps, 0 failed
+- tracked verifier suite: 77 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **77** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.55] -- the README states the toolchain floor a reader must meet
 
 `moon.mod` moves 0.164.54 -> 0.164.55. No estimator behaviour changed and the
@@ -70,7 +247,7 @@ COSTS, and it points at the Installation section.
 - `_verify/_dryrun_round71_1650.py` breaks the floor's claims one at a time --
   the pin, the toolchain agreement, the floor's direction, the cost of the
   dead pin, the installation guide, and the core the measurement reads.  The
-  failure count grows at every step and the run ends at **9** failures, and
+  failure count grows at every step and the run ends at **10** failures, and
   the capture is published.
 
 ### Changed -- the ledger
@@ -137,7 +314,7 @@ anything was published.
   check would have said so.
 - `_verify/_dryrun_round70_1650.py` breaks the three pin claims one at a time
   -- the rule's example, the table's row, the service sentence -- and the
-  failure count grows 0 -> 2 -> 3 -> 4, and the capture is published.
+  failure count grows 0 -> 3 -> 4 -> 5, and the capture is published.
 
 ### Fixed -- what the toolchain upgrade broke on the way
 
@@ -1577,8 +1754,8 @@ test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
   each -- the layout's path, the dependency table's note, the service
   sentence, the bare-`moon test` sentence, doc/001's `ml_m` rule and doc/002's
   consumer count -- and the failure count grows at every step.
-- `_verify/_dryrun_round44_1650.py` ends at **8** failures: it requires the
-  failure count to GROW at every step: **8** failures at the end.
+- `_verify/_dryrun_round44_1650.py` ends at **9** failures: it requires the
+  failure count to GROW at every step: **9** failures at the end.
 
 ### Fixed -- a placeholder in the previous entry
 

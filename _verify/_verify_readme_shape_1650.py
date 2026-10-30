@@ -51,6 +51,30 @@ So the README now states the requirement in its Installation section, and
 reversed here: this file still holds the toolchain the release was VERIFIED
 on, which is a different statement from the minimum a reader needs.
 
+A LATER ROUND (72) MEASURED THE BADGE ROW AGAIN, AND DROPPED THE PLAN
+=====================================================================
+The G1 finding above left a plan open: give this README discord@0.10.0's
+six-badge opening (CI, Voice shim, Release, mooncakes, DeepWiki, License).
+Round 72 re-measured the references -- they have both published since round
+59 measured them -- and that plan is DROPPED, on the references' own
+evidence:
+
+  package            badges at the named version              badges now
+  Ridge-Lab/capnp    1 (CI)                                   1 (CI)
+  gaato/discord      6 (CI, Voice shim, Release, mooncakes,
+                       DeepWiki, License)                     2 (CI, License)
+
+discord REMOVED four of its six badges between 0.10.0 and 0.13.0: the
+Release, the mooncakes, the DeepWiki and the Voice shim ones are gone.  The
+reference author dropped them, so a badge row is not a property the
+references have -- it is decoration that one of them has since deleted.
+capnp carries exactly ONE badge, the CI one, at BOTH versions -- which is
+what this README carries.
+
+So the badge row stays as it is: one CI badge, which is what capnp has and
+what discord kept.  (The DeepWiki badge was never a candidate anyway: its
+badge URL answers 429, so it cannot be verified.)
+
 THE MEASUREMENT (the two references against this README BEFORE THIS ROUND)
 ==========================================================================
   feature                                capnp@0.1.0    discord@0.10.0  this README

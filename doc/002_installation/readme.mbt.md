@@ -8,7 +8,7 @@ In your project's `moon.mod`:
 
 ```toml
 import {
-  "riantr/moonbit_doubleML@0.164.55",
+  "riantr/moonbit_doubleML@0.164.56",
 }
 ```
 
@@ -36,11 +36,11 @@ machine.
 ## Toolchain requirements
 
 - `moon` **0.1.20261028 or newer**. The published package declares
-  `moonbitlang/async@0.22.6`, and that version's published source imports
+  `moonbitlang/async@0.22.7`, and that version's published source imports
   `moonbitlang/core/async` — a core subpackage that older cores do not
   carry. On `moon 0.1.20261023` a consumer's build cannot be solved at all:
   "Cannot find import `moonbitlang/core/async` in
-  `moonbitlang/async@0.22.6`". CI installs the `latest` channel build, and
+  `moonbitlang/async@0.22.7`". CI installs the `latest` channel build, and
   the numbers below were measured on `moon 0.1.20261028`.
 - Any backend in `native / wasm / wasm-gc / js` — all 4 supported.
 - For the Python cross-check scripts: Python 3.10+ (CI runs them

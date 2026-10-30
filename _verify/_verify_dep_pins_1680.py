@@ -227,6 +227,60 @@ if m_floor:
           "the requirement says %s, the library declares %s"
           % (named_floor, lib_async[0]))
 
+# (round 72) EVERY LIVE DOCUMENT, not just the root README.
+#
+# The class this check owns is "a version a document names must be a version
+# the tree declares", and until now it only looked at the ROOT README.  The
+# other live documents -- `AGENTS.md`, the introduction, the installation
+# guide, the agent skill -- carry the pin in PROSE, and NOTHING held them:
+# round 70 moved the pin by hand in those files, and for one release they
+# were a version AHEAD of the tree (v0.164.54 named 0.22.6 while the tree
+# still pinned 0.22.5).  A literal with no holder is a literal that rots, and
+# the registry publishes a new version every day.
+#
+# The two HISTORICAL documents are exempt, by the house's own words: the
+# CHANGELOG is the release record, and `ENGINEERING.md` "is the HISTORICAL
+# document and must keep the version it was written with".
+HISTORICAL = ("CHANGELOG.md", "ENGINEERING.md")
+THIRD_PARTY = ("moonbitlang/async", "moonbit-community/sqlite3")
+PIN = re.compile(r"(%s)@([0-9][0-9A-Za-z.+-]*)"
+                 % "|".join(re.escape(p) for p in THIRD_PARTY))
+
+
+def tracked_markdown():
+    """Every TRACKED `.md` document, repo-relative."""
+    try:
+        raw = subprocess.run(["git", "-C", ROOT, "ls-files", "-z", "--", "*.md"],
+                             capture_output=True, timeout=120)
+        return [p for p in raw.stdout.decode("utf-8", "replace").split("\0") if p]
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+declared_versions = {}
+for m in declared:
+    pkg, ver = m.split("@", 1)
+    declared_versions.setdefault(pkg, set()).add(ver)
+
+md_docs = tracked_markdown()
+offenders = []
+scanned = 0
+for rel in sorted(md_docs):
+    if rel in HISTORICAL:
+        continue
+    p = os.path.join(ROOT, rel.replace("/", os.sep))
+    if not os.path.isfile(p):
+        continue
+    scanned += 1
+    body = io.open(p, encoding="utf-8", errors="replace").read()
+    for pkg, ver in PIN.findall(body):
+        if ver not in declared_versions.get(pkg, set()):
+            offenders.append("%s names %s@%s" % (rel, pkg, ver))
+check("every live document names a pin the tree declares", not offenders,
+      "%d offender(s): %s" % (len(offenders), "; ".join(offenders[:4]))
+      if offenders else "%d document(s) scanned, %d excluded as historical"
+      % (scanned, len(md_docs) - scanned))
+
 # the library's .mbt files import neither
 refs = 0
 for f in os.listdir(LIB):

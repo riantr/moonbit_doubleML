@@ -24,6 +24,17 @@ Six defects, six different mechanisms:
 The counter is checked against the verifier's own summary, because a count
 that can drift from the output proves nothing.
 
+A DEAD ANCHOR IS A SILENT COUNT
+===============================
+Mechanism 3 used to patch a LITERAL sentence.  Round 72 rewrote that
+sentence, and the driver stopped on its third mechanism -- so the last three
+never ran, and the count the driver published was a number it had not
+measured.  Nothing in the tree noticed until
+`_verify/_verify_dryrun_teeth_1650.py` asked whether every anchor is still
+live.  Mechanism 3 is anchored by a REGEX now, and the rule is the one the
+other drivers already follow: the anchor names the PROMISE, not the wording
+the promise happens to be wearing this release.
+
 WHAT IS COPIED IN
 =================
 The clone is checked out from HEAD, so it carries the committed tree.  The
@@ -75,6 +86,46 @@ def patch(path, old, new, count=1):
         fh.write(text)
 
 
+def patch_re(path, pattern, new, count=1):
+    """Replace the FIRST `count` matches of `pattern` with `new`.
+
+    The FIRST match, not every match: the point of this mechanism is that the
+    document carries ONE relative link, and a rule that rewrote every mention
+    would make the count of damaged links depend on how often the document
+    happens to name the thing.
+
+    A REGEX, not a literal.  This mechanism used to patch the sentence
+    "documented in `ENGINEERING.md`, together with" -- a LITERAL, because that
+    is how every other anchor in this driver is written.  Round 72 rewrote
+    that sentence (the Development section had to stop pointing readers at a
+    document whose body is a frozen snapshot), and the literal died with it:
+    the driver aborted on its THIRD mechanism, so the last three never ran and
+    the driver published a failure count it had not measured.  What has to
+    stay true is the PROMISE, not the sentence -- the README names the
+    companion document in a code span, and the registry serves exactly one
+    file, so that name must not become a relative link.  A literal is a
+    promise that dies with the sentence it named.
+    """
+    with io.open(path, encoding="utf-8", errors="replace", newline="") as fh:
+        text = fh.read()
+    crlf = "\r\n" in text
+    if crlf and "\r\n" not in new:
+        new = new.replace("\n", "\r\n")
+    hits = list(re.finditer(pattern, text))
+    if len(hits) < count:
+        raise SystemExit("!! %s: %r matched %d times (expected at least %d)"
+                         % (path, pattern[:70], len(hits), count))
+    out = []
+    last = 0
+    for m in hits[:count]:
+        out.append(text[last:m.start()])
+        out.append(new)
+        last = m.end()
+    out.append(text[last:])
+    with io.open(path, "w", encoding="utf-8", errors="replace", newline="") as fh:
+        fh.write("".join(out))
+
+
 if os.path.isdir(WORK):
     shutil.rmtree(WORK)
 os.makedirs(WORK, exist_ok=True)
@@ -116,9 +167,11 @@ patch(README,
 print("  2. a paragraph opens mid-sentence")
 
 # 3. a relative markdown link -- on the published page this is a link to nowhere
-patch(README,
-      "documented in `ENGINEERING.md`, together with",
-      "documented in [ENGINEERING.md](ENGINEERING.md), together with")
+#    The anchor is the code span that names the companion document, not the
+#    sentence around it: the sentence moved in round 72, the promise did not.
+patch_re(README,
+         r"`ENGINEERING\.md`",
+         "[ENGINEERING.md](ENGINEERING.md)")
 print("  3. a relative markdown link")
 
 # 4. a table row loses a cell

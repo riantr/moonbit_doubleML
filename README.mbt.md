@@ -19,8 +19,9 @@ Targets library authors and tool developers who need causal inference,
 panel data estimation, instrumental variable estimation, regression
 discontinuity, policy evaluation, or interpretable machine learning
 inside the MoonBit ecosystem. Delivers one
-`DoubleMLXxx::new(...).fit()` API across all 22 estimators, with robust
-variance estimation and a reproducible validation pipeline
+`DoubleMLXxx::new(...).fit()` API shape across all 22 estimators -- six take a
+different constructor, and those six are named in **API reference** -- with
+robust variance estimation and a reproducible validation pipeline
 (24 / 24 Python reference scripts PASS).
 
 > **Status**: MIT, pure MoonBit, on `native`, `wasm`, `wasm-gc` and `js`,
@@ -77,11 +78,11 @@ implementation.
 ## Installation
 
 **Requires `moon 0.1.20261028` or newer.** The package declares
-`moonbitlang/async@0.22.6`, and that published version imports
+`moonbitlang/async@0.22.7`, and that published version imports
 `moonbitlang/core/async` -- a subpackage of the MoonBit core that older
 cores do not carry. On an older `moon` the dependency cannot be resolved at
 all: the build fails with "Cannot find import `moonbitlang/core/async` in
-`moonbitlang/async@0.22.6`". The core that ships with
+`moonbitlang/async@0.22.7`". The core that ships with
 `moon 0.1.20261028` provides it, and this release's tests, cross-checks and
 bit-exactness gate were run on that toolchain.
 
@@ -94,7 +95,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.55",
+  "riantr/moonbit_doubleML@0.164.56",
 }
 ```
 
@@ -426,12 +427,15 @@ same seed yields byte-identical DGP outputs across runs.
 
 **Vectorised cross-fit helpers (v0.81.0+)** -- `vectorized.mbt`
 exposes `matrix_predict` (Kahan-compensated `X @ weights + bias`),
-`vector_subtract`, `vector_add`, and `vector_scale` as public
+`vector_add`, `vector_divide`, `vector_multiply`,
+`vector_scale` and `vector_subtract` as public
 free functions. `DoubleMLIRM::fit` / `fit_cluster` /
-`sensitivity_analysis` and the matching `DoubleMLPLR` paths now
-route the per-observation residual extraction through
-`vector_subtract` instead of an inlined per-iteration load /
-subtract. The helpers are pure element-wise loop wrappers today.
+`sensitivity_analysis` and the matching `DoubleMLPLR` paths route
+the per-observation residual extraction through `vector_subtract`
+instead of an inlined per-iteration load / subtract, and 12 of the
+library's own files call it today. The `vector_*` helpers are pure
+element-wise loop wrappers today; `matrix_predict` is a
+Kahan-compensated matrix-vector product.
 
 ## Examples
 
@@ -510,7 +514,7 @@ The same `api_server.wasm` also runs under `moonrun <path-to-the-wasm>`.
 The listen port is hard-coded to `4000` in `main.mbt`, so the service
 ignores any argument it is given (see `examples/api_server/README.md`
 for the full PowerShell smoke recipe).
-The service is built directly on `moonbitlang/async@0.22.6` --
+The service is built directly on `moonbitlang/async@0.22.7` --
 no third-party HTTP framework is pulled in.
 
 ## Common pitfalls and best practices
@@ -610,7 +614,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.55** |
+| `moon.mod` version | **0.164.56** |
 | Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -700,13 +704,13 @@ takes no parameters -- so the fuzz check replays one fixed master seed
 property-based run -- 11 surfaces, 300 trials per surface -- so the check
 repeats that one run, and no CI workflow runs it either. And the two
 declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
-and `moonbitlang/async@0.22.6` -- are dead: nothing imports them, and
+and `moonbitlang/async@0.22.7` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
 ['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
-['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.6']`) rather than
+['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.7']`) rather than
 passing quietly. Removing them is an open call, not an oversight. Dead is not
 the same as harmless, though: the published source of
-`moonbitlang/async@0.22.6` imports `moonbitlang/core/async`, a core
+`moonbitlang/async@0.22.7` imports `moonbitlang/core/async`, a core
 subpackage that older cores do not carry, so the dead pin is what sets the
 **toolchain floor** -- see **Installation**. The `sqlite3` pin is not what
 forces it: its published source imports no `moonbitlang/core/async`.
@@ -747,7 +751,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.55, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.56, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -780,7 +784,7 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 
 - Only official `moonbitlang/*` packages.
 - Non-official packages may only be `riantr/*` (this repo).
-- Pin to the latest published version (e.g. `moonbitlang/async@0.22.6`).
+- Pin to the latest published version (e.g. `moonbitlang/async@0.22.7`).
 - Consequence: `examples/api_server/` builds directly on
   `moonbitlang/async`'s raw `Server` API. No third-party HTTP
   framework is allowed.
@@ -791,7 +795,7 @@ declares two packages, and **neither is imported by any `.mbt` in the library**
 
 | declared | imported by the library? | note |
 |---|---|---|
-| `moonbitlang/async@0.22.6` | no | referenced by nothing in the library: `examples/api_server/` imports the same package at the same pin (`moonbitlang/async@0.22.6`), but no `.mbt` under `moonbit_doubleML/` imports it |
+| `moonbitlang/async@0.22.7` | no | referenced by nothing in the library: `examples/api_server/` imports the same package at the same pin (`moonbitlang/async@0.22.7`), but no `.mbt` under `moonbit_doubleML/` imports it |
 | `moonbit-community/sqlite3@0.2.3` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
 
 So the library has no runtime third-party dependency today, while `moon.mod`
@@ -860,11 +864,12 @@ and `_verify/UPSTREAM_PROVENANCE.md`.
 
 ## Development
 
-The test suite, the Python cross-checks, the QA harness and the
-reproducibility commands are all documented in `ENGINEERING.md`, together with
-the history of the defects that moved the estimator defaults and the
-derivation of the upstream naming map. Both files are in the repository; the
-registry publishes this one.
+`ENGINEERING.md` is the companion, and it is worth saying what it is: its
+header is the correction ledger for every round to date, and its body is this
+README as it stood at `v0.164.11`, word for word. The CURRENT gate commands
+are not in that snapshot -- they are in `.github/workflows/check.yml` (what CI
+runs) and `.github/scripts/qa_loop/` (the QA harness the CI job invokes).
+Both files are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn

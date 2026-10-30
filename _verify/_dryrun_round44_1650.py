@@ -297,18 +297,18 @@ MECHANISMS = [
 
     ("the dependency table's note quotes a pin the tree does not declare",
      lambda: (sub_once(README,
-                        r"at the same pin \(`moonbitlang/async@0\.22\.6`\)",
+                        r"at the same pin \(`moonbitlang/async@0\.\d+\.\d+`\)",
                         "at the same pin (`moonbitlang/async@0.20.3`)"),
               sub_once(SHIPPED,
-                       r"at the same pin \(`moonbitlang/async@0\.22\.6`\)",
+                       r"at the same pin \(`moonbitlang/async@0\.\d+\.\d+`\)",
                        "at the same pin (`moonbitlang/async@0.20.3`)"))),
 
     ("the service sentence quotes a pin the example does not declare",
      lambda: (sub_once(README,
-                        r"The service is built directly on `moonbitlang/async@0\.22\.6` --",
+                        r"The service is built directly on `moonbitlang/async@0\.\d+\.\d+` --",
                         "The service is built directly on `moonbitlang/async@0.20.3` --"),
               sub_once(SHIPPED,
-                       r"The service is built directly on `moonbitlang/async@0\.22\.6` --",
+                       r"The service is built directly on `moonbitlang/async@0\.\d+\.\d+` --",
                        "The service is built directly on `moonbitlang/async@0.20.3` --"))),
 
     ("the bare-`moon test` sentence credits the suite to the wrong backend",

@@ -1,0 +1,9 @@
+round 72 dry-run: the claims that rotted, broken 6 ways
+baseline 0 failing checks; final 14
+VERDICT PASS
+   1. the vectorised list drops a helper the file exports
+   2. the vectorised list names a helper the file does NOT export
+   3. the vectorised paragraph understates how many files call it
+   4. the vectorised paragraph calls matrix_predict an element-wise wrapper
+   5. the opening paragraph loses the API-shape caveat again
+   6. the Development section goes back to pointing at the frozen snapshot

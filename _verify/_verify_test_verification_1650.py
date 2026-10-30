@@ -59,6 +59,19 @@ import re
 import subprocess
 import sys
 
+def declared_pins():
+    """The dependency pins the library's own manifest declares.
+
+    DERIVED, never typed in.  `moon.mod` carries the template's example line
+    inside a COMMENT, so the comments are stripped first -- a commented-out
+    import is a template, not a dependency.  A pin typed into a check is a pin
+    that goes stale the moment the registry publishes the next version, and the
+    registry publishes one every day.
+    """
+    txt = io.open(os.path.join(PKG, "moon.mod"), encoding="utf-8").read()
+    body = "\n".join(line.split("//", 1)[0] for line in txt.split("\n"))
+    return sorted(set(re.findall(r'"([^"]+@[^"]+)"', body)))
+
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -326,7 +339,7 @@ if "dependencies" in REG:
               "README: %r\nlive  : %r" % (m.group(1).strip(), live))
     check("the dependencies check WARNs rather than passing quietly",
           r.verdict == "WARN", "verdict: %s" % r.verdict)
-    for d in ("moonbit-community/sqlite3@0.2.3", "moonbitlang/async@0.22.6"):
+    for d in declared_pins():
         check("the dependency %s is still declared" % d,
               d in read(os.path.join(PKG, "moon.mod")))
         check("the dependency %s is still unreferenced by the library" % d,

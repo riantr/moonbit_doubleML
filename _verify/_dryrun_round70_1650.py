@@ -167,32 +167,32 @@ MECHANISMS = [
     ("the dependency RULE's example names a pin the tree does not declare",
      lambda: (sub_once(README,
                         r"Pin to the latest published version \(e\.g\. "
-                        r"`moonbitlang/async@0\.22\.6`\)",
+                        r"`moonbitlang/async@0\.\d+\.\d+`\)",
                         "Pin to the latest published version (e.g. "
                         "`moonbitlang/async@0.22.5`)"),
               sub_once(SHIPPED,
                        r"Pin to the latest published version \(e\.g\. "
-                       r"`moonbitlang/async@0\.22\.6`\)",
+                       r"`moonbitlang/async@0\.\d+\.\d+`\)",
                        "Pin to the latest published version (e.g. "
                        "`moonbitlang/async@0.22.5`)"))),
 
     ("the dependency table's ROW names a pin the tree does not declare",
      lambda: (sub_once(README,
-                        r"\| `moonbitlang/async@0\.22\.6` \| no \|",
+                        r"\| `moonbitlang/async@0\.\d+\.\d+` \| no \|",
                         "| `moonbitlang/async@0.22.5` | no |"),
               sub_once(SHIPPED,
-                       r"\| `moonbitlang/async@0\.22\.6` \| no \|",
+                       r"\| `moonbitlang/async@0\.\d+\.\d+` \| no \|",
                        "| `moonbitlang/async@0.22.5` | no |"))),
 
     ("the service sentence names a pin the example does not declare",
      lambda: (sub_once(README,
                         r"The service is built directly on "
-                        r"`moonbitlang/async@0\.22\.6` --",
+                        r"`moonbitlang/async@0\.\d+\.\d+` --",
                         "The service is built directly on "
                         "`moonbitlang/async@0.22.5` --"),
               sub_once(SHIPPED,
                        r"The service is built directly on "
-                       r"`moonbitlang/async@0\.22\.6` --",
+                       r"`moonbitlang/async@0\.\d+\.\d+` --",
                        "The service is built directly on "
                        "`moonbitlang/async@0.22.5` --"))),
 ]

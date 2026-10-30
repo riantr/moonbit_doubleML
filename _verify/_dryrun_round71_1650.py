@@ -191,7 +191,7 @@ def both_readmes(pattern, repl):
 MECHANISMS = [
     ("the Installation requirement names a pin the tree does not declare",
      lambda: both_readmes(
-         r"`moonbitlang/async@0\.22\.6`, and that published version imports",
+         r"`moonbitlang/async@0\.\d+\.\d+`, and that published version imports",
          "`moonbitlang/async@0.22.5`, and that published version imports")),
 
     ("the Installation requirement names a toolchain the Status table does not",

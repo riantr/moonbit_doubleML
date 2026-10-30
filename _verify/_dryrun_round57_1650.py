@@ -287,13 +287,13 @@ def m11():
 
 def m12():
     """The dependency rule's version example."""
-    sub(AG, r"registry \(e\.g\. `moonbitlang/async@0\.22\.6`\)",
+    sub(AG, r"registry \(e\.g\. `moonbitlang/async@0\.\d+\.\d+`\)",
         "registry (e.g. `moonbitlang/async@0.22.5`)")
 
 
 def m13():
     """The HTTP service's async version."""
-    sub(AG, r"on top of\s+`moonbitlang/async@0\.22\.6`",
+    sub(AG, r"on top of\s+`moonbitlang/async@0\.\d+\.\d+`",
         "on top of\n  `moonbitlang/async@0.22.5`")
 
 

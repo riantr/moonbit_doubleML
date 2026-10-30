@@ -3,8 +3,8 @@ name = "example/api_server"
 version = "0.1.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.55",
-  "moonbitlang/async@0.22.6",
+  "riantr/moonbit_doubleML@0.164.56",
+  "moonbitlang/async@0.22.7",
 }
 
 readme = "../../README.mbt.md"

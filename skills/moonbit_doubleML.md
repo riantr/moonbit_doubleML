@@ -38,7 +38,7 @@ surface and anti-patterns).
   **no `.mbt` in the library imports it** (0 references), so it is a dead
   entry, not a runtime dependency.
 - For official packages, pin to the latest published version on the
-  registry (e.g. `moonbitlang/async@0.22.6`) and upgrade when
+  registry (e.g. `moonbitlang/async@0.22.7`) and upgrade when
   bumping is intentional.
 - Notable consequence: HTTP-service code (e.g.
   `examples/api_server/`) builds directly on `moonbitlang/async`'s
@@ -131,7 +131,7 @@ surface and anti-patterns).
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.164.55"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.56"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside

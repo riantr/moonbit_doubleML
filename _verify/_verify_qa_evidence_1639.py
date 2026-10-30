@@ -34,6 +34,21 @@ data = json.load(io.open(QA_FAST, encoding="utf-8"))
 runs = data.get("runs", [])
 measured = {c.get("id"): c for c in (runs[0] if runs else [])}
 
+def declared_pins():
+    """The dependency pins the library's own manifest declares.
+
+    DERIVED, never typed in.  `moon.mod` carries the template's example line
+    inside a COMMENT, so the comments are stripped first -- a commented-out
+    import is a template, not a dependency.  A pin typed into a check is a pin
+    that goes stale the moment the registry publishes the next version, and the
+    registry publishes one every day.
+    """
+    txt = io.open(os.path.join(ROOT, "moonbit_doubleML", "moon.mod"),
+                  encoding="utf-8").read()
+    body = "\n".join(line.split("//", 1)[0] for line in txt.split("\n"))
+    return sorted(set(re.findall(r'"([^"]+@[^"]+)"', body)))
+
+
 fails = []
 
 
@@ -68,11 +83,14 @@ if m:
     check("it names sqlite3 as non-conforming",
           "moonbit-community/sqlite3@0.2.3" in ev and "non-conforming" in ev,
           "measured: %s" % ev)
+    # The expected list is DERIVED from the tree's own manifest, in the order
+    # the QA harness prints it (sorted), so a pin that moves does not take the
+    # check with it.
+    expected = "[%s]" % ", ".join("'%s'" % p for p in declared_pins())
     check("it names BOTH unreferenced packages, not a summary",
-          "declared but unreferenced by library code: "
-          "['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.6']"
+          ("declared but unreferenced by library code: " + expected)
           in re.sub(r"\s+", " ", ev),
-          "measured: %s" % ev)
+          "measured: %s\nexpected: %s" % (ev, expected))
     check("the quote is not the '[both]' paraphrase",
           "[both]" not in quoted, "the README summarised the evidence")
 
