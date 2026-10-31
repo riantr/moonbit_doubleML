@@ -26,7 +26,7 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 74, and 10 of the numbers in between
+> at round 21 and run to round 75, and 10 of the numbers in between
 > (rounds 60-69) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
@@ -2518,7 +2518,89 @@
 >   the mutation that puts the old Development paragraph back.  The count is
 >   tree-dependent by design, and this entry is the live one.
 >
+
+> * **Round 75.**  The upstream moved to 0.11.4, the gate that holds the
+>   README's provenance rows against it had gone DEAD, and the Installation
+>   section was missing a prerequisite.
 >
+>   *The upstream reference moved.*  The README's provenance paragraph said
+>   the labels are re-measured against the **installed** `doubleml` **0.11.3**
+>   package.  They are not any more: PyPI serves **0.11.4**, the installed
+>   package was upgraded to it, and the reference tree is the 0.11.4 source.
+>   Every LIVE claim that named 0.11.3 was re-measured against 0.11.4
+>   BEFORE it was renamed, and all of them hold: the **21** upstream
+>   estimator classes (twenty `DoubleML*` plus `RDFlex`), the 19
+>   name-identical / 2 renamed / 1 with no 1:1 grouping, all **94** measured
+>   upstream defaults, the `nu2` / `sigma2` formulas (bit-exact), the
+>   `DoubleMLDIDData` deprecation notice, the absence of a public setter
+>   for `_double_sample_splitting`, and `DoubleMLPanelData`'s
+>   DataFrame-and-column-names constructor.
+>
+>   *A gate that had gone DEAD.*  `_verify/_gate_provenance_1160.py` holds
+>   the README's 22 provenance rows against the upstream sdist -- and it had
+>   been reporting fifteen UNLABELLED rows and two rows backwards.  Nothing
+>   ran it, so nobody noticed.  Three defects: it parsed the WHOLE README,
+>   and the README has two more tables whose rows also begin with a
+>   `DoubleML*` name, so the estimator table was overwritten and the gate
+>   read the wrong cells; its marker vocabulary expected "no upstream
+>   counterpart" where the README says "no 1:1 class"; and its truth model
+>   was pure name identity, which cannot express the ONE documented
+>   exception -- upstream's `DoubleMLDIDCS` is the port's
+>   `DoubleMLDIDCrossSection`, so the port's own `DoubleMLDIDCS` has no 1:1
+>   upstream class even though upstream ships a class of that name.  It now
+>   reads the estimator table by its own header, takes the exception from
+>   the sdist scan and the port's source rather than from a literal, and it
+>   reports 19 name-identical, 2 renamed and 1 without a counterpart -- the
+>   README's own grouping, measured rather than asserted.  It is wired into
+>   the local gate as a named step.
+>
+>   *And a control that had gone RED.*  `_verify/_gate_provenance_control_1160.py`
+>   is the positive control: it mutates a COPY of the README and requires
+>   the gate to fail.  It had been failing all along, and when the gate was
+>   repaired it failed for a NEW reason -- the control appended its broken
+>   row at the END of the README, while the repaired gate reads the
+>   ESTIMATOR TABLE, so the two table mutations landed outside the region
+>   the gate looks at and were MISSED.  A control that cannot set its test
+>   up inside the region the gate reads proves nothing about the gate.  It
+>   now breaks the marker ON the row it claims to break, and it exercises
+>   every way the gate can fail: the table's markers in all three
+>   directions, the flat prose assertions, both of the parser's guards, and
+>   the one documented exception -- which is proved DERIVED by renaming the
+>   port's own struct, so the exception cannot be a literal in disguise.
+>   It is wired into the local gate beside the gate it watches, because a
+>   control nothing runs is not a control.
+>
+>   *The Installation section was missing a prerequisite.*  It stated which
+>   `moon` a reader needs and why, and then handed them a `moon add` line
+>   that silently needs a second program they were never told about: Moon
+>   resolves the package registry by CLONING it with git -- the registry's
+>   remote is `https://mooncakes.io/git/index` -- and the MoonBit toolchain
+>   bundles no git of its own.  On a machine without git the `moon add`
+>   fails before it resolves anything, and the failure says nothing about
+>   git.  The peer packages on this registry say so -- `gaato/discord` leads
+>   with a Prerequisites section for exactly this.  The section now names the
+>   prerequisite and gives the reason, in the same voice it already used for
+>   the toolchain floor.
+>
+>   *A dry-run of this round's own checks.*  `_verify/_dryrun_round75_1650.py`
+>   breaks each of them one at a time -- the prerequisite without the
+>   reason, the reason without the word "prerequisite", a renamed class
+>   claiming to be plain upstream, and the gate's comparison neutered so it
+>   stops biting -- and the control has to notice the last one.  The capture
+>   is published.
+>
+>   *The checks that grew.*  `_verify/_verify_readme_precision_1680.py`
+>   published **23** and makes **26**: the three new ones hold that the
+>   Installation section is there, that it names git as a prerequisite, and
+>   that it gives the reason.  `_verify/_verify_path_promises_1650.py`
+>   published **477** and makes **479**: a path named in prose is a check,
+>   and this round names two more of them -- the control and the driver.
+>
+>   *The ledger did not move.*  This round publishes no count for a NEW
+>   check, so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is
+>   unchanged.
+>
+
 >
 >
 >

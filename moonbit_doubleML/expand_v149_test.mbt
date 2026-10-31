@@ -1,6 +1,6 @@
 // v0.149.0 -- GATES for stage 2: upstream's panel-level `sigma2` / `nu2`.
 //
-// BOTH FORMULAS ARE VERIFIED BIT-EXACT AGAINST A RUNNING UPSTREAM 0.11.3.
+// BOTH FORMULAS ARE VERIFIED BIT-EXACT AGAINST A RUNNING UPSTREAM 0.11.4.
 // Upstream reports, on a 2x2 panel built from its own CS2021 DGP:
 //
 //     sigma2 = 256.4070590464714        nu2 = 18.253043736106648

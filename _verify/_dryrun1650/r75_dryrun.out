@@ -1,0 +1,7 @@
+round 75 dry-run: this round's new checks, broken 4 ways
+baseline 0 failing checks; every mechanism grew the count of the check it breaks
+VERDICT PASS
+   1. the Installation section keeps the prerequisite and loses the reason -- _verify/_verify_readme_precision_1680.py
+   2. the Installation section keeps the reason and loses the word 'prerequisite' -- _verify/_verify_readme_precision_1680.py
+   3. the estimator table claims a renamed class is plain upstream -- _verify/_gate_provenance_1160.py
+   4. the gate's comparison is neutered, so it stops biting -- _verify/_gate_provenance_control_1160.py

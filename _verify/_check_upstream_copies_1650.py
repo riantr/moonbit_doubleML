@@ -60,7 +60,7 @@ for name, upstream_path in PAIRS:
                     break
 print()
 
-print("=== the tarball: is the installed package really 0.11.3, and the sdist 0.11.4? ===")
+print("=== the tarball: is the installed package really 0.11.4, and the sdist 0.11.4? ===")
 try:
     from importlib.metadata import version
     print("  installed doubleml version:", version("doubleml"))

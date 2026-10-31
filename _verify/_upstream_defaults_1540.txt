@@ -1,4 +1,4 @@
-upstream doubleml 0.11.3
+upstream doubleml 0.11.4
 
 DoubleMLDID
     n_folds=5

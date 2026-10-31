@@ -64,6 +64,15 @@ for base, dirs, files in os.walk(PKG):
 est = sorted(owners)
 
 # ---- upstream truth -------------------------------------------------------
+# The sdist is a vendored upstream artefact and is deliberately NOT tracked,
+# so it may be absent -- in a fresh clone, or on a machine that never fetched
+# it.  A missing artefact is not a broken claim, and it must not be reported
+# as one: the gate SKIPS, loudly, rather than failing over a file that was
+# never there.
+if not os.path.isfile(TAR):
+    print("SKIP: the 0.11.4 sdist is not present at %s -- the README's "
+          "provenance rows cannot be checked against upstream here." % TAR)
+    sys.exit(0)
 tf = tarfile.open(TAR)
 upstream = {}
 for m in tf.getnames():
@@ -98,9 +107,22 @@ for m in tf.getnames():
 # sanity: the scanner must find a known class
 assert "DoubleMLPLR" in upstream, "sdist scan is broken -- cannot gate on it"
 
+# ONE documented exception, and it is DERIVED rather than asserted.
+# Upstream's `DoubleMLDIDCS` is the port's `DoubleMLDIDCrossSection`, so
+# the port's own `DoubleMLDIDCS` has NO 1:1 upstream class even though
+# upstream ships a class of that NAME.  A pure name-identity model cannot
+# see that, and it reported both rows backwards.  The sdist scan decides
+# whether upstream's DoubleMLDIDCS exists; the port's own source decides
+# whether it has a DoubleMLDIDCrossSection for it to be.
+EXC = {}
+if "DoubleMLDIDCS" in upstream and "DoubleMLDIDCrossSection" in est:
+    EXC = {"DoubleMLDIDCS": "none", "DoubleMLDIDCrossSection": "renamed"}
+
 truth = {}
 for n in est:
-    if n in upstream:
+    if n in EXC:
+        truth[n] = EXC[n]
+    elif n in upstream:
         truth[n] = "upstream"
     elif n == "DoubleMLRDD" and RDD_UPSTREAM:
         truth[n] = "renamed"
@@ -130,7 +152,21 @@ print()
 # a gate. Guard against the same thing recurring: refuse to judge unless every
 # estimator actually produced a row.
 txt = open(README, encoding="utf-8").read()
-rows = dict(re.findall(r"^\|\s*`(DoubleML\w+)`\s*\|[^|]*\|([^|]*)\|", txt, re.M))
+# Only the ESTIMATOR TABLE carries the provenance markers.  The README has
+# other tables whose rows also begin with a `DoubleML*` name -- the
+# upstream-gate table and the per-estimator comparison table -- and
+# `dict(re.findall(...))` keeps the LAST match for each name.  Parsing the
+# whole file therefore read those other tables, and the gate reported
+# fifteen UNLABELLED rows that were never broken.  The table is located by
+# its own header, so a table that moves is a loud failure, not a silent
+# mis-read.
+_ROW = r"^\|\s*`(DoubleML\w+)`\s*\|[^|]*\|([^|]*)\|"
+_start = txt.find("| Model |")
+if _start < 0:
+    print("ABORT: the estimator table's header was not found in the README")
+    sys.exit(1)
+_end = txt.find("\n\n", _start)
+rows = dict(re.findall(_ROW, txt[_start:_end], re.M))
 missing_rows = [n for n in est if n not in rows]
 if missing_rows:
     print(f"ABORT: only {len(rows)}/{len(est)} estimator rows parsed; "
@@ -141,7 +177,7 @@ print(f"table rows parsed = {len(rows)}/{len(est)}")
 claimed = {}
 for n in est:
     cell = rows.get(n, "")
-    if "no upstream counterpart" in cell:
+    if "no 1:1 class" in cell or "no upstream counterpart" in cell:
         claimed[n] = "none"
     elif "upstream, renamed" in cell:
         claimed[n] = "renamed"

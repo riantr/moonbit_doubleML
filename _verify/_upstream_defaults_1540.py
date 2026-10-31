@@ -13,7 +13,7 @@ import inspect
 
 import doubleml
 
-# doubleml 0.11.3 does NOT use a `doubleml.dml.*` layout -- that was an older
+# doubleml 0.11.4 does NOT use a `doubleml.dml.*` layout -- that was an older
 # arrangement. Measured: submodules are `double_ml`, `did`, `irm`, `plm`,
 # `rdd`, ... and every estimator is re-exported at the TOP LEVEL. The first
 # version of this file imported `doubleml.dml.did` and died with

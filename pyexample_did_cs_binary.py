@@ -32,7 +32,7 @@ Upstream's `DoubleMLDIDCS` is deprecated -- "will be removed with version
 container: "For repeated cross sections the data must be of DoubleMLDIDData
 type", raised against a `DoubleMLPanelData` argument. Gating a port method
 against a class upstream is deleting would put an expiry date on this gate.
-The notice is in the installed upstream already -- `doubleml` 0.11.3 carries
+The notice is in the installed upstream already -- `doubleml` 0.11.4 carries
 it in `doubleml/did/did_cs.py` -- so the removal is not a rumour.
 
 THE DATA IS THE CS2021 PANEL, NOT A NEW DGP

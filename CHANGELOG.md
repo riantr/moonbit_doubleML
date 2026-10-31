@@ -9,6 +9,112 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.59] -- the upstream moved to 0.11.4, a gate that had gone dead, and a missing prerequisite
+
+`moon.mod` moves 0.164.58 -> 0.164.59. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Changed -- the upstream reference moved from 0.11.3 to 0.11.4
+
+The README's provenance paragraph said the estimator labels are re-measured
+against the **installed** `doubleml` **0.11.3** package. They are not any
+more: PyPI serves **0.11.4**, the installed package was upgraded to it, and
+the reference tree is the 0.11.4 source.
+
+Every LIVE claim that named 0.11.3 was re-measured against 0.11.4 BEFORE it
+was renamed, and all of them hold:
+
+- the **21** upstream estimator classes -- twenty `DoubleML*` plus `RDFlex` --
+  and the 19 name-identical / 2 renamed / 1 with no 1:1 grouping;
+- all **94** measured upstream defaults, identical to the 0.11.3 wheel;
+- the `nu2` / `sigma2` formulas, bit-exact against a running 0.11.4;
+- the `DoubleMLDIDData` deprecation notice, still in `data/did_data.py`;
+- the absence of a public setter for `_double_sample_splitting`;
+- `DoubleMLPanelData`'s DataFrame-and-column-names constructor.
+
+### Fixed -- a gate that had gone DEAD
+
+`_verify/_gate_provenance_1160.py` is the gate that holds the README's 22
+provenance rows against the upstream sdist. It had been reporting fifteen
+UNLABELLED rows and two rows backwards, and **nothing ran it**, so nobody
+noticed. Three defects:
+
+- it parsed the **whole** README, and the README has two more tables whose rows
+  also begin with a `DoubleML*` name, so the estimator table was overwritten
+  and the gate read the wrong cells;
+- its marker vocabulary expected "no upstream counterpart" where the README
+  says "no 1:1 class";
+- its truth model was pure name identity, which cannot express the one
+  documented exception -- upstream's `DoubleMLDIDCS` is the port's
+  `DoubleMLDIDCrossSection`, so the port's own `DoubleMLDIDCS` has no 1:1
+  upstream class even though upstream ships a class of that name.
+
+It now reads the estimator table by its own header, takes the exception from
+the sdist scan and the port's source rather than from a literal, and it
+reports 19 name-identical, 2 renamed and 1 without a counterpart -- the
+README's own grouping, measured rather than asserted. It is **wired into the
+local gate** as a named step.
+
+### Fixed -- a control that had gone RED
+
+`_verify/_gate_provenance_control_1160.py` is the positive control for
+the gate above: it mutates a COPY of the README and requires the gate
+to fail. It had been failing all along, and when the gate was repaired
+it failed for a NEW reason -- the control appended its broken row at the
+END of the README, while the repaired gate reads the ESTIMATOR TABLE, so
+the two table mutations landed outside the region the gate looks at and
+were MISSED. A control that cannot set its test up inside the region the
+gate reads proves nothing about the gate.
+
+It now breaks the marker ON the row it claims to break, and it exercises
+every way the gate can fail: the table's markers in all three
+directions, the flat prose assertions, both of the parser's guards, and
+the one documented exception -- which is proved DERIVED by renaming the
+port's own struct, so the exception cannot be a literal in disguise. It
+is wired into the local gate beside the gate it watches, because a
+control nothing runs is not a control.
+
+### Fixed -- the Installation section was missing a prerequisite
+
+It stated which `moon` a reader needs and why, and then handed them a
+`moon add` line that silently needs a second program they were never told
+about: Moon resolves the package registry by **cloning it with git** -- the
+registry's remote is `https://mooncakes.io/git/index` -- and the MoonBit
+toolchain bundles no git of its own. On a machine without git the `moon add`
+fails before it resolves anything, and the failure says nothing about git.
+
+The peer packages on this registry say so -- `gaato/discord` leads with a
+Prerequisites section for exactly this. The section now names the
+prerequisite and gives the reason, in the same voice it already used for the
+toolchain floor.
+
+### A dry-run of this round's own checks
+
+`_verify/_dryrun_round75_1650.py` breaks each of them one at a time --
+the prerequisite without the reason, the reason without the word
+"prerequisite", a renamed class claiming to be plain upstream, and the
+gate's comparison neutered so it stops biting -- and the control has to
+notice the last one. The capture is published.
+
+### Changed -- the ledger
+
+- `_verify/_verify_readme_precision_1680.py` published **23** and makes **26**
+  checks: the three new ones hold that the Installation section is there, that
+  it names git as a prerequisite, and that it gives the reason.
+- `_verify/_verify_path_promises_1650.py` published **477** and makes **479**
+  checks: a path named in prose is a check, and this round names two more of
+  them -- the control and the driver.
+- The ledger did not move: this round publishes no count for a NEW check, so
+  `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
+
+### Verified --
+
+- local gate: 50 steps, 0 failed
+- tracked verifier suite: 80 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **80** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
+- published README byte-identical to the repo's, and to the registry's
 ## [0.164.58] -- a false claim about the frozen snapshot, and the checks that guard the README's prose
 
 `moon.mod` moves 0.164.57 -> 0.164.58. No estimator behaviour changed and the

@@ -6,7 +6,7 @@ WHAT THIS PROVES
 shape from the SOURCE -- the 9 score parameters and their owning methods,
 the accepted set at each site, the internal cache-kind tags, the port's
 accepted union and upstream's, measured on BOTH the vendored 0.11.4 tree
-and the installed 0.11.3 wheel.
+and the installed 0.11.4 wheel.
 
 Round 28 found five false statements across `doc/004_estimators`, the
 published README and `skills/moonbit_doubleML.md`.  The point of the
@@ -35,7 +35,7 @@ count is re-derived, so the documents that still say 7 fail.
 
 Mechanism 12 mutates the vendored upstream tree, so the upstream
 vocabulary is no longer the one the documents state -- and the vendored
-0.11.4 and the installed 0.11.3 stop agreeing, which the verifier checks
+0.11.4 and the installed 0.11.4 stop agreeing, which the verifier checks
 separately.
 
 WHAT IS COPIED IN

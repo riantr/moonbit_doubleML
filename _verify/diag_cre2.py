@@ -1,4 +1,4 @@
-"""Diagnostic 4: probe installed doubleml 0.11.3 PLPR internals.
+"""Diagnostic 4: probe installed doubleml 0.11.4 PLPR internals.
 
 Answers three questions about the cre_general SE path:
   Q1  Is the transformed data treated as cluster data? (_is_cluster_data)

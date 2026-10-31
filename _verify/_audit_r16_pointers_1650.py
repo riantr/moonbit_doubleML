@@ -33,12 +33,12 @@ p = os.path.join(PKG, "did", "did_cs.py")
 lines = open(p, encoding="utf-8", errors="replace").read().splitlines()
 for i, l in enumerate(lines, 1):
     if pat.match(l):
-        print("  installed 0.11.3  did/did_cs.py:%d  %s" % (i, l.strip()))
+        print("  installed 0.11.4  did/did_cs.py:%d  %s" % (i, l.strip()))
         for j in range(max(0, i - 4), i):
             print("        context %d: %s" % (j + 1, lines[j].rstrip()[:96]))
         break
 else:
-    print("  installed 0.11.3: class DoubleMLDIDCS not found")
+    print("  installed 0.11.4: class DoubleMLDIDCS not found")
 print()
 
 # the same in the 0.11.4 sdist

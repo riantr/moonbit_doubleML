@@ -13,7 +13,7 @@ This script is the method, shipped.  It re-derives every number the corrected
 records cite, from source, with no hidden state:
 
   * the port side is parsed from `moonbit_doubleML/*.mbt` (no grep);
-  * the upstream side comes from the INSTALLED `doubleml` -- 0.11.3 here --
+  * the upstream side comes from the INSTALLED `doubleml` -- 0.11.4 here --
     read via `inspect.signature` and by parsing the upstream sources;
   * the two sides never share a parser.
 

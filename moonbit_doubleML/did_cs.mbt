@@ -270,7 +270,7 @@ pub struct DoubleMLDIDCS {
   //   sigma2 = mean((y - g_hat)^2),  g_hat = sum of the four weighted cells
   //   nu2    = mean(2*m_alpha - rr^2)
   //
-  // Both formulas verified BIT-EXACT against a running upstream 0.11.3
+  // Both formulas verified BIT-EXACT against a running upstream 0.11.4
   // (`_verify/_oracle_v1482_nu2_gap.py`: upstream reports 18.253043736106648
   // and 256.4070590464714; this transcription reproduces both to the last
   // digit). `sigma2_panel`/`nu2_panel` are 0.0 before `fit`; the per-row
@@ -688,7 +688,7 @@ pub fn DoubleMLDIDCS::sensitivity_sigma2(self : DoubleMLDIDCS) -> Double {
 ///
 /// where `m_alpha` and `rr` are the Riesz quantities from
 /// `doubleml/did/did_cs.py:466-497`. **Both formulas verified bit-exact
-/// against a running upstream 0.11.3**: on a 2x2 panel upstream reports
+/// against a running upstream 0.11.4**: on a 2x2 panel upstream reports
 /// `nu2 = 18.253043736106648` and `sigma2 = 256.4070590464714`, and this
 /// transcription reproduces both to the last digit
 /// (`_verify/_oracle_v1482_nu2_gap.py`).
@@ -1392,7 +1392,7 @@ pub fn DoubleMLDIDCS::fit(
     //     nu2    = mean(2*m_alpha - rr^2)
     //
     // transcribed from `did_cs.py:451-497`. Both verified bit-exact against a
-    // running upstream 0.11.3 -- upstream reports sigma2 = 256.4070590464714
+    // running upstream 0.11.4 -- upstream reports sigma2 = 256.4070590464714
     // and nu2 = 18.253043736106648 on a 2x2 panel, and this reproduces both to
     // the last digit (`_verify/_oracle_v1482_nu2_gap.py`).
     //

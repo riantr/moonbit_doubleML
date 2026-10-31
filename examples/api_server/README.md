@@ -65,7 +65,7 @@ estimator list:
 
 ```json
 {
-  "library": "riantr/moonbit_doubleML@0.164.58",
+  "library": "riantr/moonbit_doubleML@0.164.59",
   "service": "example/api_server@0.1.0",
   "estimators": ["plr", "irm"]
 }

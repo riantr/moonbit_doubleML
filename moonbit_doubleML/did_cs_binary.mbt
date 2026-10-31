@@ -609,7 +609,7 @@ fn cs_bin_score_obs(
 /// `(g_value, t_value_pre, t_value_eval)` triple via
 /// the Sant'Anna-Zhao (2020) binary-outcome DML score.
 /// Mirrors the upstream `DoubleMLDIDCSBinary` (Python
-/// 0.11.3) with the v0.51.0 simplifications listed in
+/// 0.11.4) with the v0.51.0 simplifications listed in
 /// the file-level docstring.
 pub struct DoubleMLDIDCSBinary {
   data : DoubleMLDIDCSData

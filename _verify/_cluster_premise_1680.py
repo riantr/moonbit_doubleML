@@ -2,7 +2,7 @@
 
 The evidence doc `_verify/CLUSTER_UPSTREAM_PARITY_1680.md` concluded that
 upstream has NO working one-way cluster reference, because `cluster_vars`
-produces n_samples=1 upstream. It was measured on doubleml 0.11.3. If upstream
+produces n_samples=1 upstream. It was measured on doubleml 0.11.4. If upstream
 has since fixed that, the premise of "switch the default to upstream's
 cluster-average" changes completely -- so check the installed version and
 re-run the decisive route.

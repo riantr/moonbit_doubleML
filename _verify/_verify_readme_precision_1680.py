@@ -272,6 +272,34 @@ check("the banner's 'in full and word for word' names the title line",
       "its title line aside" in flatbanner,
       "the banner still claims the old README in full, word for word")
 
+# ==========================================================================
+# E.  the Installation section
+# ==========================================================================
+#
+# Round 75.  The section handed the reader a `moon add` line and never said
+# that Moon fetches the package registry by CLONING it with git.  The peer
+# packages on this registry say so -- `gaato/discord` leads with a
+# Prerequisites section for exactly this -- and a reader on a machine without
+# git got a failure that said nothing about git.
+#
+# Two checks, because the requirement and the REASON are different claims:
+# naming git without saying why is a sentence a reader cannot act on, and
+# saying why without naming git is a fact that changes nothing.
+print()
+print("E. the Installation section")
+
+i = re.search(r"## Installation\n(.*?)(?=\n## |\Z)", readme, re.S)
+inst = re.sub(r"\s+", " ", i.group(1)) if i else ""
+check("the Installation section was found", bool(inst))
+
+check("it names git as a prerequisite",
+      "git" in inst and "prerequisite" in inst,
+      "the section never says git is a prerequisite")
+check("it says why -- the registry is cloned with git",
+      "https://mooncakes.io/git/index" in inst
+      and "CLONING it with git" in inst,
+      "the section does not say the registry is cloned with git")
+
 print()
 print("=" * 74)
 print("%d checks, %d failed" % (N, len(FAILS)))

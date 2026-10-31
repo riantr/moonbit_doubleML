@@ -50,7 +50,7 @@ WHAT IS DERIVED, NOT ASSERTED
     and `estimator_kind(...)`, with COMMENTS and DOCSTRINGS removed, so a
     tag mentioned in prose is not counted as a tag;
   * the port's accepted union, and the upstream one -- measured on BOTH the
-    vendored 0.11.4 tree and the installed 0.11.3 wheel, which must agree;
+    vendored 0.11.4 tree and the installed 0.11.4 wheel, which must agree;
   * the logistic-defaulting `ml_m` estimators, so the skills document has to
     account for every one of them;
   * the 15 / 9 split of the `validate_*` family, by CODE (the wheel import),
@@ -382,7 +382,7 @@ check("NO cache-kind tag is accepted as a score value",
 # ==============================================================================
 print()
 print("=" * 78)
-print("3. the upstream vocabulary -- 0.11.4 (vendored) and 0.11.3 (installed)")
+print("3. the upstream vocabulary -- 0.11.4 (vendored) and 0.11.4 (installed)")
 print("=" * 78)
 
 
@@ -419,7 +419,7 @@ try:
     UPVER = doubleml.__version__
 except Exception as e:                                   # pragma: no cover
     print("  (installed doubleml unavailable: %s)" % e)
-check("the installed wheel is 0.11.3", UPVER == "0.11.3", UPVER)
+check("the installed wheel is 0.11.4", UPVER == "0.11.4", UPVER)
 up_check("the two upstream versions agree on the vocabulary", UP13 == UP14,
          "13-only=%s 14-only=%s" % (sorted(UP13 - UP14), sorted(UP14 - UP13)))
 up_check("upstream's 15 are the documented ones",

@@ -1,4 +1,4 @@
-"""ROW M oracle arm: upstream doubleml 0.11.3, in_sample_normalization True vs False.
+"""ROW M oracle arm: upstream doubleml 0.11.4, in_sample_normalization True vs False.
 
 The port's claim (did.mbt:164-169) is that the two weightings are
 "equivalent asymptotically but differ in finite samples".  The MoonBit arm
@@ -11,8 +11,8 @@ DoubleMLDIDData and has a KNOWN true theta -- the port fixture used in the
 MoonBit arm does not state its true ATT, which is one reason that arm could
 report a mean but not a bias.
 
-Version split, as recorded elsewhere in _verify: installed doubleml is 0.11.3,
-vendored tree is 0.11.4.  This runs the installed 0.11.3.
+Version split, as recorded elsewhere in _verify: installed doubleml is 0.11.4,
+vendored tree is 0.11.4.  This runs the installed 0.11.4.
 """
 import warnings
 warnings.filterwarnings("ignore")

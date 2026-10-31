@@ -32,7 +32,7 @@ upstream's, not that they are stochastic.
 
 UPSTREAM'S `DoubleMLDID` IS DEPRECATED, AND THIS GATE STILL USES IT
 =====================================================================
-`doubleml` 0.11.3 prints, on every run of this gate:
+`doubleml` 0.11.4 prints, on every run of this gate:
 
     FutureWarning: DoubleMLDIDData is deprecated and will be removed with
     version 0.12.0. Use DoubleMLPanelData instead.

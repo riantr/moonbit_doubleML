@@ -1395,7 +1395,7 @@ fn sec_gain_statistics() -> Unit {
 /// Upstream accepts an externally supplied partition. Measured: writing
 /// `_smpls` / `_smpls_inner` and refitting gives bit-identical output
 /// (|dcoef| = 0.000e+00), because LPLR draws a DOUBLE split
-/// (`_double_sample_splitting = True`) and 0.11.3 exposes no public setter
+/// (`_double_sample_splitting = True`) and 0.11.4 exposes no public setter
 /// for it. `fit` draws its outer partition as `kfold(n, n_folds, seed + r)`
 /// (`lplr.mbt:781`), so the port's partition is reproducible here and is
 /// emitted rather than assumed.

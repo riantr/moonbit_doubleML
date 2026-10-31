@@ -7,8 +7,9 @@
 > quotes, are tracked.
 >
 > Written in the v0.103.0 round, against the `doubleml-0.11.4` sdist. The
-> readings are re-anchored to the **installed** `doubleml` **0.11.3** package
+> readings are re-anchored to the **installed** `doubleml` **0.11.4** package
 > (`site-packages/doubleml`), which is what a user actually installs. The
+> installed package and the sdist are now the SAME upstream release, and the
 > score vocabularies of all 18 upstream classes are identical in the two, and
 > every line this record cites resolves in both, so the installed package is
 > the anchor and the sdist is a convenience copy.
@@ -21,7 +22,7 @@
 > | `DoubleMLDIDCS` -> upstream | table said upstream `DoubleMLDIDCS`; prose said upstream `DoubleMLDID` | **both withdrawn.** Upstream's `DoubleMLDIDCS` is the *repeated cross-sections* estimator, which is this port's `DoubleMLDIDCrossSection`. The port's `DoubleMLDIDCS` is a **port-side variant** of upstream's `DoubleMLDIDMulti` and has no 1:1 upstream class |
 > | "our `DoubleMLDIDCS` is upstream's `DoubleMLDID`" | asserted | **false.** Upstream's `DoubleMLDID` is the *two-time-period panel* DiD, and it is this port's `DoubleMLDID` |
 > | grouping | (not stated) | **19 name-identical + 2 renamed + 1 with no 1:1 upstream class** |
-> | `did/did_cs.py` pointer | `L16` | **still correct** -- `class DoubleMLDIDCS(LinearScoreMixin, DoubleML):` is at line 16 in both 0.11.3 and the 0.11.4 sdist |
+> | `did/did_cs.py` pointer | `L16` | **still correct** -- `class DoubleMLDIDCS(LinearScoreMixin, DoubleML):` is at line 16 in both the installed 0.11.4 package and the 0.11.4 sdist |
 > | `LinearScoreMixin` snippet | quoted from `double_ml_score_mixins.py` | **still correct** -- `_compute_score` at :35, `_compute_score_deriv` at :39, `_est_coef` at :42 |
 > | `var_did` snippet | quoted from `did/tests/_utils_did_manual.py` | **still correct** -- the file is in the installed package at `doubleml/did/tests/` |
 > | "Files kept in this directory" | 6 files promised | **5 of 6 were untracked**; 4 are now tracked, 1 is **stale** (upstream replaced it), 1 (the sdist) is **not tracked** and is not promised |
@@ -34,8 +35,8 @@
 > by `_verify/_audit_r16_provenance_1650.py` and pinned by
 > `_verify/_verify_round16_provenance_1650.py`.
 
-Source of truth: the **installed** `doubleml` package, cross-checked against
-the published sdist `doubleml-0.11.4.tar.gz` (PyPI).
+Source of truth: the **installed** `doubleml` **0.11.4** package, cross-checked
+against the published sdist `doubleml-0.11.4.tar.gz` (PyPI).
 
 Retrieved: `https://pypi.org/pypi/doubleml/json` -> `urls[sdist]`.
 

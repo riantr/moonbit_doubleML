@@ -47,7 +47,7 @@ WHAT IS DERIVED, NOT ASSERTED
 
 WHAT IS NOT CHECKED, AND WHY
 ============================
-The upstream package (`doubleml` 0.11.3 / the 0.11.4 sdist) is not tracked,
+The upstream package (`doubleml` 0.11.4 and the 0.11.4 sdist) is not tracked,
 so no claim about UPSTREAM's surface can be checked here; the tracked
 record `_verify/UPSTREAM_PROVENANCE.md` holds those.
 

@@ -12,7 +12,7 @@ calls it `RDFlex`) and `DoubleMLDIDCrossSection` is upstream's
 -- it is this port's variant of upstream's multi-period `DoubleMLDIDMulti`,
 which upstream keeps in a single class that this port splits in two. Those
 provenance labels are re-measured against the **installed** `doubleml`
-0.11.3 package, not asserted -- see the estimator table below and
+0.11.4 package, not asserted -- see the estimator table below and
 `_verify/UPSTREAM_PROVENANCE.md`.
 
 Targets library authors and tool developers who need causal inference,
@@ -86,6 +86,12 @@ all: the build fails with "Cannot find import `moonbitlang/core/async` in
 `moon 0.1.20261028` provides it, and this release's tests, cross-checks and
 bit-exactness gate were run on that toolchain.
 
+**`git` is the other prerequisite.** Moon resolves the package registry by
+CLONING it with git -- the registry's remote is
+`https://mooncakes.io/git/index` -- so a machine without `git` cannot fetch
+the registry at all, and `moon add` fails before it resolves anything. The
+MoonBit toolchain bundles no git of its own.
+
 ```bash
 moon add riantr/moonbit_doubleML
 ```
@@ -95,7 +101,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.58",
+  "riantr/moonbit_doubleML@0.164.59",
 }
 ```
 
@@ -614,7 +620,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.58** |
+| `moon.mod` version | **0.164.59** |
 | Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -751,7 +757,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.58, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.59, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
