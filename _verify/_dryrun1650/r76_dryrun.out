@@ -1,0 +1,16 @@
+round 76 dry-run: this round's new checks, broken 13 ways
+baseline 0 failing checks; every mechanism made the check it breaks fail
+VERDICT PASS
+   1. the README names only ONE of the two third-party references -- _verify/_verify_validator_references_1680.py
+   2. the README's third-party count says THREE -- _verify/_verify_validator_references_1680.py
+   3. a live claim in a cited record names the old upstream version -- _verify/_verify_upstream_version_claims_1680.py
+   4. the mutation record's verdict is neutered -- _verify/_verify_mutation_verdict_1680.py
+   5. the reference verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_validator_references_1680.py
+   6. the version-claims verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_upstream_version_claims_1680.py
+   7. the mutation verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_mutation_verdict_1680.py
+   8. an upstream pointer in a cited record is moved past the end of the file -- _verify/_verify_upstream_line_refs_1680.py
+   9. a record's claim about WHICH README line cites it is wrong -- _verify/_verify_record_readme_refs_1680.py
+  10. a record's claim about HOW MANY records the README cites is wrong -- _verify/_verify_record_readme_refs_1680.py
+  11. the upstream-line-refs verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_upstream_line_refs_1680.py
+  12. the record-readme-refs verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_record_readme_refs_1680.py
+  13. the README names the wrong four estimators as the ones that kept their OLS default -- _verify/_verify_hazard_table_1680.py

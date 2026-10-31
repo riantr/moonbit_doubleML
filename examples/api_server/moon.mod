@@ -3,7 +3,7 @@ name = "example/api_server"
 version = "0.1.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.59",
+  "riantr/moonbit_doubleML@0.164.60",
   "moonbitlang/async@0.22.7",
 }
 

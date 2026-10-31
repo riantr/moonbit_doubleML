@@ -389,12 +389,12 @@ MECHANISMS = [
     ("the prose stops naming what the target file carries",
      lambda: patch(
          README,
-         "`DoubleMLSSM` has the largest margin of the four migrations of\n"
-         "v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and\n"
-         "`DoubleMLSSM` -- because its score carries **two** reciprocals, one per\n",
-         "`DoubleMLSSMX` has the largest margin of the four migrations of\n"
-         "v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and\n"
-         "`DoubleMLSSMX` -- because its score carries **two** reciprocals, one per\n")),
+         "`DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 --\n"
+         "`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- because its\n"
+         "score carries **two** reciprocals, one per direction (`ssm.mbt:73-74`): the\n",
+         "`DoubleMLSSMX` is one of the four migrations of v0.132.0-v0.138.0 --\n"
+         "`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSMX` -- because its\n"
+         "score carries **two** reciprocals, one per direction (`ssm.mbt:73-74`): the\n")),
 
     # -- 5. the cited line falls off the end of its file ---------------------
     # The file is truncated below the cited line, so the pointer names a line

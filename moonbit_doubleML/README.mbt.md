@@ -101,7 +101,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.59",
+  "riantr/moonbit_doubleML@0.164.60",
 }
 ```
 
@@ -323,7 +323,7 @@ everywhere. **Seven** estimators now default to a classifier --
 `DoubleMLPQ`, `DoubleMLQTE` and `DoubleMLLPLR` --
 their `ml_m` default is now
 `LearnerDispatch::logistic_regression(LogisticRegression::new())`, while
-`ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x]`), so the
+`ml_g` deliberately stays OLS (it models `E[y | x]`, not `P(y = 1 | x)`), so the
 two defaults diverge on purpose. `LearnerDispatch::is_classifier()` reports
 which constructors qualify.
 
@@ -337,17 +337,16 @@ the honest discriminator (`0.270` vs `86.28`, a 320x separation), because the
 mechanism is that an
 unbounded propensity makes `1 / m_hat` explode and takes the variance with it.
 
-`DoubleMLSSM` has the largest margin of the four migrations of
-v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and
-`DoubleMLSSM` -- because its score carries **two** reciprocals, one per
-direction (`ssm.mbt:73-74`): the treatment propensity `m` and the selection
-propensity `pi`, so an unbounded regressor breaks both denominators
-independently. On a saturated fixture with true `theta = 1.0`, the OLS arm
-returns `242.116` with SE `185.45` where the classifier returns `1.177` with
-SE `0.0982` -- roughly **200x** on the point estimate and **1900x** on the
-standard error. Across three seeds the OLS coefficient also **changes sign**
-(`+242`, `+106`, `-452`); the classifier's spread over the same three seeds
-is `0.761`.
+`DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 --
+`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- because its
+score carries **two** reciprocals, one per direction (`ssm.mbt:73-74`): the
+treatment propensity `m` and the selection propensity `pi`, so an unbounded
+regressor breaks both denominators independently. On a saturated fixture with
+true `theta = 1.0`, the OLS arm returns `242.116` with SE `185.45` where the
+classifier returns `1.177` with SE `0.0982` -- roughly **200x** on the point
+estimate and **1900x** on the standard error. Across three seeds the OLS
+coefficient also **changes sign** (`+242`, `+106`, `-452`); the classifier's
+spread over the same three seeds is `0.761`.
 
 One caveat worth stating plainly: on a *mild* fixture, where the true
 propensity never reaches the `0.02`/`0.98` clamp, the two learners agree to
@@ -569,7 +568,7 @@ it is what makes the port *no worse* rather than better. Record:
    identification.** The estimators that need one default to
    `logistic_regression`; the ones that do not are named in **Propensity
    processing** above, with the measurement behind each. `ml_g` deliberately
-   stays OLS -- it models `E[y | x]`, not `P(y = 1 | x]`.
+   stays OLS -- it models `E[y | x]`, not `P(y = 1 | x)`.
    `LearnerDispatch::is_classifier()` reports which constructors qualify.
 2. **Read the warnings.** `DoubleMLLPLR::fit()` can return a degenerate
    standard error, and it says so rather than returning a confident wrong
@@ -620,7 +619,7 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.59** |
+| `moon.mod` version | **0.164.60** |
 | Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
@@ -635,9 +634,13 @@ it is what makes the port *no worse* rather than better. Record:
 ### Validated against upstream, not only against ourselves
 
 **Nine gates whose reference is UPSTREAM, not ours** -- the `pyexample_*`
-family. Every script above compares the port against a second implementation
-written in this repository, which on its own can only catch a disagreement
-someone already thought to look for. The `pyexample_*` scripts instead run a
+family. Every script above compares the port against a second implementation.
+Two of them take that implementation from a third-party library --
+`validate_pava_with_python.py` against scikit-learn's `isotonic_regression`,
+and `validate_padjust_with_python.py` against statsmodels' `multipletests`;
+the others take it from this repository or from the upstream wheel. A second
+implementation of our own can only catch a disagreement someone already
+thought to look for. The `pyexample_*` scripts instead run a
 reference implementation on the port's rows and compare that: not "does the
 port agree with our second implementation" but "does the port agree with
 upstream". The reference is upstream's own `doubleml` classes in eight of
@@ -757,7 +760,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.59, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.60, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

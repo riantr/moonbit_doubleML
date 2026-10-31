@@ -26,7 +26,7 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 75, and 10 of the numbers in between
+> at round 21 and run to round 76, and 10 of the numbers in between
 > (rounds 60-69) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
@@ -2599,6 +2599,124 @@
 >   *The ledger did not move.*  This round publishes no count for a NEW
 >   check, so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is
 >   unchanged.
+>
+> * **Round 76.**  The records the README NAMES had gone stale, and five
+>   promises nobody kept had nothing behind them.
+>
+>   *The documents the README points at had gone stale.*  The README's
+>   provenance paragraph calls `_verify/UPSTREAM_PROVENANCE.md` its authority
+>   map, and that record still said 0.11.3 in two LIVE claims after the
+>   upstream moved to 0.11.4 -- "verified bit-exact against a running upstream
+>   0.11.3", and "byte-identical to the installed `doubleml` 0.11.3 package".
+>   A reader who followed the pointer found a document contradicting the
+>   package it points at.  A third record the README names,
+>   `_verify/LPLR_GATE_BLINDNESS_1680.md`, said "0.11.3 ships no public setter
+>   for the inner split".  All three were MEASURED before they were renamed:
+>   the bit-exactness holds against a running 0.11.4, the four tracked copies
+>   are byte-identical to the installed 0.11.4 by sha256, and upstream 0.11.4's
+>   `lplr.py` has neither `_smpls_inner` nor any `set_` method.  The
+>   comparison at `UPSTREAM_PROVENANCE.md:190` names two versions in one
+>   paragraph and STAYS: a version named ALONE is a claim about the current
+>   upstream, and a version named ALONGSIDE another is history.
+>
+>   *A check for what the records say.*  The new
+>   `_verify/_verify_upstream_version_claims_1680.py` reads the documents the
+>   README cites -- the scope is DERIVED from the citation, so a newly-cited
+>   record enters it -- and holds each document's upstream claims against the
+>   INSTALLED package's version.  Its scope is the upstream VERSION FAMILY,
+>   derived from the installed version and the document's anchor, because the
+>   same records name scipy 1.18.0, typos 1.50.3 and this package's own
+>   0.163.3, and a generic version pattern would flag all three.  A literal
+>   `0.11` would have been a dead check the moment upstream shipped 0.12.
+>
+>   *A claim the code contradicted.*  The README said "Every script above
+>   compares the port against a second implementation written in this
+>   repository".  Two of the 24 do not: `validate_pava_with_python.py`
+>   compares the port against scikit-learn's `isotonic_regression`, and
+>   `validate_padjust_with_python.py` against statsmodels' `multipletests`.
+>   The count is DERIVED, not typed -- a validator takes its reference from a
+>   third-party library iff it imports, at module level, a symbol from a
+>   third-party package under a namespace no OTHER validator imports at module
+>   level -- and the README now names both scripts and both libraries.
+>   `_verify/_verify_validator_references_1680.py` holds the two against each
+>   other.
+>
+>   *A superlative with two answers.*  "DoubleMLSSM has the largest margin of
+>   the four" is true on the standard error and false on the coefficient,
+>   where `DoubleMLIRM`'s 367x is the larger -- and no ordering of the four is
+>   derivable at all, because `DoubleMLAPOS` publishes a per-level bias and no
+>   pair.  The claim is withdrawn and the four are still named.
+>
+>   *A verdict nobody had recorded.*  The README says `mutation` kills three
+>   mutants on one kernel.  The check is scope=full, no workflow runs it, and
+>   its verdict lived only in a console scrollback.  It was RUN -- 3 of 3
+>   killed on `ps_processor.mbt`, 54.97s -- and the verdict is now a tracked
+>   record, `_verify/_mutation_verdict_1680.json`.
+>   `_verify/_verify_mutation_verdict_1680.py` holds the README's claim
+>   against that record, against the check's own definition of its mutants,
+>   and against the workflows that would run it.
+>
+>   *Two promises in those same records, and two checks for them.*  The
+>   house file:line verifier says, in its own docstring, that UPSTREAM
+>   Python pointers "are counted and reported, but they are not resolved
+>   against this tree" -- and the records the README names are outside its
+>   scope altogether.  So 37 upstream pointers, such as
+>   `plm/lplr.py:326`, had never been resolved, and upstream's line numbers
+>   move with its releases.  The new `_verify/_verify_upstream_line_refs_1680.py`
+>   resolves them against upstream 0.11.4 itself, and also reads the form the
+>   house pointer regex cannot see -- "upstream's `did_cs.py` at lines 110,
+>   445, ...".  And a record can make a claim ABOUT the README: one of them
+>   called itself "the **only** `_verify/` record the shipped
+>   `README.mbt.md` cites (at its lines 1162 and 1217)", and the README is
+>   896 lines long and cites TWO records, at its lines 16, 204, 563 and 832.
+>   Both claims were false, and both are now true.  The new
+>   `_verify/_verify_record_readme_refs_1680.py` holds them.
+>
+>   *The upstream this round compared against.*  The tree named by the
+>   owner -- `doubleml-for-py-0.11.4` -- was measured against the installed
+>   package: 320 shared Python files, ZERO differ, so the two are the same
+>   release and a comparison against either is a comparison against
+>   upstream 0.11.4.  Every citation the provenance record makes was then
+>   read out of that tree: `did/did_cs.py:16`, the score mixin's
+>   `_compute_score` at :35, `did/did_multi.py:65-68`,
+>   `did/utils/_did_utils.py:127`, `did/did_multi.py:197`, and the ten
+>   `did_cs.py` machinery lines -- all of them resolve, and the four tracked
+>   copies are byte-identical to it by sha256.
+>
+>   *A check that read the WRONG sentence.*  The tracked verifier suite
+>   failed this round on `_verify/_verify_hazard_table_1680.py`, and the
+>   README was RIGHT and the checker was wrong.  Its rule read the four
+>   estimators that "kept their OLS default" with a lazy `.*?`, so the four
+>   names could come from ANY earlier run of four backticked estimators and
+>   then walk forward to the anchor.  It stayed hidden because the README
+>   happened to break that earlier run across a line -- "`DoubleMLAPO`,
+
+>   `DoubleMLAPOS`" -- and the pattern wants "`, `".  This round re-wrapped a
+>   nearby paragraph, the run became contiguous, and the check read
+>   `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- the
+>   four HAZARDOUS estimators -- as the four that kept their OLS default.
+>   The rule now requires the names and the anchor to be in ONE sentence, and
+>   the check carries a control arm that the old rule fails.
+>
+>   *A dry-run of this round's own checks.*  The new
+>   `_verify/_dryrun_round76_1650.py` breaks each of this round's checks
+>   thirteen ways -- the README naming one reference instead of two, the count
+>   saying THREE, a live claim in a cited record naming the old upstream
+>   version, the mutation record's verdict neutered, an upstream pointer
+>   moved past the end of the upstream file, a record naming the wrong
+>   README line, a record claiming the wrong number of records, the README
+>   naming the wrong four estimators as the ones that kept their OLS
+>   default, and each verifier's own comparison neutered so that ITS control
+>   arm has to notice -- and every mechanism made the check it breaks fail.
+>   The capture is published.
+>
+>   *The checks that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **479** and makes **490**: a path named in prose is a check, and
+>   this round names more of them -- the two validators, the five new checks,
+>   the record and the driver.
+>
+>   *The ledger did not move.*  This round publishes no count for a NEW check,
+>   so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
 >
 
 >

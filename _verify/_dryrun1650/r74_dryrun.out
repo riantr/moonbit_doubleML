@@ -1,6 +1,6 @@
 round 74 dry-run: the anchor census against the real contract
 the census on the tree as it stands : exit 0
 the census on the mutated tree     : exit 1
-  FRAGILE  _verify/_verify_count_referents_1650.py:333 -> README.mbt.md
+  FRAGILE  _verify/_verify_count_referents_1650.py:340 -> README.mbt.md
 the census on the restored tree    : exit 0
 VERDICT PASS

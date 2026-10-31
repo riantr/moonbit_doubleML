@@ -15,11 +15,12 @@ B. the set the README's 'four' counts
   *** FAIL ***  the migrated set is EXACTLY the source's `ml_m`-classifier set README says ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM'] / source says ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIIVM', 'DoubleMLIRM', 'DoubleMLLPLR', 'DoubleMLPQ', 'DoubleMLQTE', 'DoubleMLSSM']
   ok    the SSM margin sentence is findable                            
   *** FAIL ***  the SSM sentence names all four migrations                 missing: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM']
-  ok    the SSM sentence's count is four                               `DoubleMLSSM` has the largest margin of the four, because its score carries
+  ok    the SSM sentence's count is four                               `DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 -- because its 
   ok    the classifier sentence is findable                            
   *** FAIL ***  the classifier sentence names all four hazardous verdicts  missing: ['DoubleMLAPO', 'DoubleMLAPOS', 'DoubleMLIRM', 'DoubleMLSSM']
   ok    the classifier sentence's count is four                        A static classifier (read the score: does it carry `1/m`? is it doubly robust?) 
-  *** FAIL ***  the withdrawn wording 'the largest margin of the four' is gone 
+  ok    the withdrawn wording 'the largest margin of the four' is gone 
+  ok    the withdrawn wording 'has the largest margin of the four migrations' is gone 
   *** FAIL ***  the withdrawn wording 'all four earlier outcomes' is gone  
 
 C. the CHANGELOG's v0.138.0 entry agrees with its own list
@@ -81,7 +82,7 @@ F. the inventory: no unregistered count claim
   ok    the registered claim 'The three classification learners' is present in the README 
   ok    the registered claim '**Four backends**' is present in the README 
   ok    the registered claim 'four declared backends' is present in the README 
-  *** FAIL ***  the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README NOT FOUND
+  ok    the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README 
   ok    the registered claim '**Eight structs still default `ml_m` to `linea' is present in the README 
   ok    the registered claim '**Six rows turned out hazardous**' is present in the README 
   ok    the registered claim 'All six default to a classifier today' is present in the README 
@@ -145,7 +146,7 @@ G. the counts this verifier owns, derived from the tree
   ok    the 129 blackbox test files are the *_test.mbt files           got 129
   ok    the 26 whitebox test files are the *_wbtest.mbt files          got 26
   ok    the 24 Python reference scripts are the validate_*_with_python.py files got 24
-  ok    the README names the scripts it refers to                      got 26: ['_verify/_bitexact_mutation_1640.py', 'apo.mbt', 'blp_policy.mbt', 'did_cs.py']
+  ok    the README names the scripts it refers to                      got 28: ['_verify/_bitexact_mutation_1640.py', 'apo.mbt', 'blp_policy.mbt', 'did_cs.py']
   ok    every file name the README spells is a tracked file in the tree not a file: []
   ok    the CHANGELOG's DIDBinary probe section is findable            
   ok    the CHANGELOG enumerates four probe designs                    got 4
@@ -153,12 +154,11 @@ G. the counts this verifier owns, derived from the tree
   *** FAIL ***  no unregistered count claim in the README                  ['Seven estimators']
 
 ==========================================================================
-134 checks, 20 failed
+135 checks, 18 failed
 *** FAIL ***
   - the migrated set is EXACTLY the source's `ml_m`-classifier set
   - the SSM sentence names all four migrations
   - the classifier sentence names all four hazardous verdicts
-  - the withdrawn wording 'the largest margin of the four' is gone
   - the withdrawn wording 'all four earlier outcomes' is gone
   - the v0.138.0 entry says FOURTH, not fifth
   - the v0.138.0 entry's four are the four the README names
@@ -172,8 +172,7 @@ G. the counts this verifier owns, derived from the tree
   - the gherkin evidence reports the resolving count
   - the gherkin evidence no longer says '29/29 mapped test names resolve'
   - the gherkin evidence's total is the mapped-name count
-  - the registered claim 'the four migrations of v0.132.0-v0.138.0' is present in the README
   - the registered claim 'the four hazardous verdicts of v0.132.0-v0.138' is present in the README
   - no unregistered count claim in the README
 
-EXACT failure count: 20
+EXACT failure count: 18

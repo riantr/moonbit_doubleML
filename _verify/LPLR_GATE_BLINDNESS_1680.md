@@ -2,8 +2,9 @@
 
 _1680 series. Measured on `b922349` plus the uncommitted LPLR gate work._
 
-> **Re-audited 2026-10-20 (round 17).** This is the **only** `_verify/`
-> record the shipped `README.mbt.md` cites (at its lines 1162 and 1217), so
+> **Re-audited 2026-10-20 (round 17).** This is **one of the two** `_verify/`
+> records the shipped `README.mbt.md` cites (at its line 563; the other is
+> `_verify/UPSTREAM_PROVENANCE.md`, cited at its lines 16, 204 and 832), so
 > every promise made here is a promise the README inherits. The record was
 > added at `d3ac364` (2026-10-16) and had never been re-audited; 33 commits
 > have since touched the record and 18 have touched the port's LPLR surface.
@@ -45,8 +46,9 @@ _1680 series. Measured on `b922349` plus the uncommitted LPLR gate work._
 ## 1. What existed, and why it was blind
 
 `examples/lplr` is one of the twenty e2e-checked examples, and
-`validate_lplr_with_python.py` **is** wired into CI (`check.yml:114` globs
-`validate_*_with_python.py`). So this was not "a gate in no workflow" — it
+`validate_lplr_with_python.py` **is** wired into CI
+(`.github/workflows/check.yml:125` globs `validate_*_with_python.py`). So this
+was not "a gate in no workflow" — it
 was a gate that ran and could not fail for the reason anyone would assume it
 existed to catch.
 
@@ -76,7 +78,7 @@ Two things follow, and only the first is stated in the file:
 ## 2. Upstream accepts a pinned partition, so the noise can be removed
 
 `DoubleMLLPLR` sets `_double_sample_splitting = True`, so the public
-`set_sample_splitting` raises, and 0.11.3 ships no public setter for the
+`set_sample_splitting` raises, and 0.11.4 ships no public setter for the
 inner split. Measured facts about installing one directly:
 
 - storage is the instance-dict keys `_smpls` (outer) and `_smpls_inner`

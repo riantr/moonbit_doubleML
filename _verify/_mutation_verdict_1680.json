@@ -1,0 +1,20 @@
+{
+  "record": "the `mutation` QA check's verdict on the port's isotonic kernel",
+  "round": 76,
+  "measured_on": "2026-10-31",
+  "measured_against_commit": "393f625",
+  "toolchain": "moon 0.1.20261028 (e1e1f15 2026-10-28)",
+  "how": "python .github/scripts/qa_loop/run.py --only mutation --full --json <out>.json",
+  "target": "moonbit_doubleML/ps_processor.mbt",
+  "why_it_exists": "The README says `mutation` kills three mutants on one kernel. Nothing recorded that it does: the check is scope=full, no CI workflow runs it, and its verdict lived only in a console scrollback that nobody could re-read a week later. This is that verdict, measured.",
+  "verdict": "PASS",
+  "killed": 3,
+  "applied": 3,
+  "seconds": 54.97,
+  "mutants": [
+    {"name": "reintroduce raw-y pooling", "verdict": "killed"},
+    {"name": "stop pooling one block early", "verdict": "killed"},
+    {"name": "flip comparison", "verdict": "killed"}
+  ],
+  "caveat": "the check's own words: ad-hoc, no surviving-mutant ledger, not a CI runner"
+}

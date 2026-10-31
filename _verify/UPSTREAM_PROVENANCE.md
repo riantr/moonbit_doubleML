@@ -106,7 +106,7 @@ three facts that settle it, all read from source:
    transcribes upstream's `DoubleMLDIDCS` **machinery** instead -- upstream
    `did_cs.py` at lines 110, 445, 451, 456, 462, 464, 466, 470, 527, 529
    (the 2x2 `(d, t)` outcome nuisances and the panel-level sensitivity
-   elements), verified bit-exact against a running upstream 0.11.3.
+   elements), verified bit-exact against a running upstream 0.11.4.
 
 Upstream's single `DoubleMLDIDMulti` class is therefore **split** across two
 port estimators: the port's `DoubleMLDIDCS` is the grid, and the port's
@@ -170,8 +170,8 @@ def var_did(theta, psi_a, psi_b, n_obs):
 
 ## Files kept in this directory
 
-**Tracked**, and byte-identical to the installed `doubleml` 0.11.3 package
-(verified by sha256 on 2026-10-20):
+**Tracked**, and byte-identical to the installed `doubleml` 0.11.4 package
+(verified by sha256 on 2026-10-31):
 
 - `did_cs.py` -- upstream's `DoubleMLDIDCS`
 - `_utils_did_cs_manual.py` -- upstream's DIDCS manual harness

@@ -110,11 +110,12 @@ CHANGELOG = os.path.join(WORK, "CHANGELOG.md")
 CHECKS = os.path.join(WORK, ".github", "scripts", "qa_loop", "checks.py")
 
 # 1. the SSM sentence drops the named set -- the count stays, the set goes
+#    (round 76 reworded the sentence's opening, so the anchor follows it: the
+#    sentence must stay FINDABLE, or the check would fail for the wrong reason)
 patch(README,
-      "`DoubleMLSSM` has the largest margin of the four migrations of\n"
-      "v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and\n"
-      "`DoubleMLSSM` -- because",
-      "`DoubleMLSSM` has the largest margin of the four, because")
+      "`DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 --\n"
+      "`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- because its\n",
+      "`DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 -- because its\n")
 print("  1. the SSM sentence drops the named set")
 
 # 2. the classifier sentence drops the named set

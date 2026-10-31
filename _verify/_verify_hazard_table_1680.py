@@ -100,8 +100,34 @@ check("every one of the six is in the table with a 'hazardous' verdict",
       "table: %s" % {n: table_rows.get(n) for n in hazardous})
 
 # ------------------------------------------- the "kept their OLS default" claim
-m2 = re.search(r"`(DoubleML\w+)`, `(DoubleML\w+)`, `(DoubleML\w+)` and `(DoubleML\w+)`.*?"
-               r"kept their OLS default \*\*on\s+measured evidence\*\*", readme, re.S)
+# The four names and the anchor must be in the SAME SENTENCE, so the gap
+# between them may not contain a period.  This used to be a lazy `.*?`, and
+# that was a latent bug: it let the four names come from ANY earlier run of
+# four backticked estimators, and then walk forward to the anchor.
+#
+# It stayed hidden because the README happened to break the earlier run
+# across a line -- "`DoubleMLAPO`,\n`DoubleMLAPOS`" -- and the pattern wants
+# "`, `".  Round 76 re-wrapped a nearby sentence, the run became contiguous,
+# and the check read `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and
+# `DoubleMLSSM` -- the four HAZARDOUS estimators -- as the four that kept
+# their OLS default.  The README was right and the checker was wrong.
+#
+# So the rule is now: no period between the names and the anchor.  The real
+# sentence reads "`DoubleMLDIDBinary`, `DoubleMLCVAR`, `DoubleMLIIVM` and
+# `DoubleMLPLR` (whose propensity role is `learner_m`, not `ml_m`) kept their
+# OLS default **on measured evidence**", and the gap there is a parenthetical
+# with no period in it.
+KEPT_RE = re.compile(r"`(DoubleML\w+)`, `(DoubleML\w+)`, `(DoubleML\w+)` and `(DoubleML\w+)`[^.]*?"
+                     r"kept their OLS default \*\*on\s+measured evidence\*\*", re.S)
+
+
+def kept_names(text):
+    """The four estimators the README says kept their OLS default."""
+    m = KEPT_RE.search(text)
+    return list(m.groups()) if m else []
+
+
+m2 = KEPT_RE.search(readme)
 check("the 'kept their OLS default' sentence is findable", m2 is not None)
 kept = list(m2.groups()) if m2 else []
 expected_kept = sorted(set(ols_names) & {"DoubleMLDIDBinary", "DoubleMLCVAR",
@@ -116,6 +142,37 @@ check("PLR's role is `learner_m`, not `ml_m`",
       "ml_m" not in ols.get("DoubleMLPLR", set())
       and "learner_m" in ols.get("DoubleMLPLR", set()),
       "DoubleMLPLR slots: %s" % sorted(ols.get("DoubleMLPLR", set())))
+
+# ---------------------------------------------------- the control arm
+# A checker that has never been shown to fail is a comment.  The bug above was
+# invisible because the check had no arm that could see it, so the rule now
+# has three: the names and the anchor in one sentence are found; an EARLIER
+# four-name run in ANOTHER sentence is not stolen; and a broken anchor is not
+# found at all.
+print()
+print("the control arm: what the rule does with a document it did not write")
+GOOD = ("`DoubleMLDIDBinary`, `DoubleMLCVAR`, `DoubleMLIIVM` and `DoubleMLPLR` "
+        "(whose propensity role is `learner_m`, not `ml_m`) kept their OLS default "
+        "**on measured evidence** -- no flip was warranted.")
+STOLEN = ("`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` are the "
+          "four hazardous verdicts.  Something else entirely: "
+          "`DoubleMLDIDBinary`, `DoubleMLCVAR`, `DoubleMLIIVM` and `DoubleMLPLR` "
+          "kept their OLS default **on measured evidence**.")
+BROKEN = ("`DoubleMLDIDBinary`, `DoubleMLCVAR`, `DoubleMLIIVM` and `DoubleMLPLR` "
+          "(whose propensity role is `learner_m`, not `ml_m`) kept their OLS default "
+          "**on some evidence**.")
+
+check("the control document's own sentence is found",
+      kept_names(GOOD) == ["DoubleMLDIDBinary", "DoubleMLCVAR", "DoubleMLIIVM",
+                            "DoubleMLPLR"],
+      "the rule must find the sentence it is written for")
+check("an EARLIER four-name run in another sentence is NOT stolen",
+      kept_names(STOLEN) == ["DoubleMLDIDBinary", "DoubleMLCVAR", "DoubleMLIIVM",
+                             "DoubleMLPLR"],
+      "the names must come from the sentence that carries the anchor")
+check("a broken anchor is not found at all",
+      kept_names(BROKEN) == [],
+      "the rule must not find a sentence that is not there")
 
 # ------------------------------------------------------- the DID family row
 did_in_source = sorted(n for n in ols_names if n.startswith("DoubleMLDID"))

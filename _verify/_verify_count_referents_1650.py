@@ -173,7 +173,7 @@ check("the migrated set is EXACTLY the source's `ml_m`-classifier set",
       "README says %s / source says %s" % (migrated, sorted(clf_mlm)))
 
 # the two sentences that count the four
-ssm_sent = re.search(r"`DoubleMLSSM` has the largest margin of the .*?because its score carries",
+ssm_sent = re.search(r"`DoubleMLSSM` is one of the four migrations of .*?because its score carries",
                       readme_flat)
 check("the SSM margin sentence is findable", ssm_sent is not None)
 if ssm_sent:
@@ -194,6 +194,13 @@ if cls_sent:
 
 check("the withdrawn wording 'the largest margin of the four' is gone",
       "largest margin of the four," not in readme_flat)
+# Round 76: the superlative itself is withdrawn, because the document prints
+# two axes and the answer differs between them -- SSM's separation is ~200x on
+# the point estimate and ~1900x on the standard error, while IRM's is 367x on
+# the coefficient.  `DoubleMLAPOS` publishes a per-level bias and no pair, so
+# no ordering of the four is derivable on either axis.
+check("the withdrawn wording 'has the largest margin of the four migrations' is gone",
+      "has the largest margin of the four migrations" not in readme_flat)
 check("the withdrawn wording 'all four earlier outcomes' is gone",
       "all four earlier outcomes" not in readme_flat)
 
@@ -223,7 +230,7 @@ if v138:
     check("the v0.138.0 entry names exactly four estimators", len(named) == 4, str(named))
     # The README's own SSM sentence still names the four; the CHANGELOG's
     # entry and the README's sentence must agree.
-    ssm_four = re.search(r"`DoubleMLSSM` has the largest margin of the four migrations of "
+    ssm_four = re.search(r"`DoubleMLSSM` is one of the four migrations of "
                           r"v0\.132\.0-v0\.138\.0 -- (.*?) -- because its score carries",
                           readme_flat)
     readme_four = sorted(set(re.findall(r"`(DoubleML\w+)`", ssm_four.group(1)))) if ssm_four else []

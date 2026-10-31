@@ -2915,6 +2915,123 @@ __GAP_NOTE__
 >   check, so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is
 >   unchanged.
 >
+> * **Round 76.**  The records the README NAMES had gone stale, and five
+>   promises nobody kept had nothing behind them.
+>
+>   *The documents the README points at had gone stale.*  The README's
+>   provenance paragraph calls `_verify/UPSTREAM_PROVENANCE.md` its authority
+>   map, and that record still said 0.11.3 in two LIVE claims after the
+>   upstream moved to 0.11.4 -- "verified bit-exact against a running upstream
+>   0.11.3", and "byte-identical to the installed `doubleml` 0.11.3 package".
+>   A reader who followed the pointer found a document contradicting the
+>   package it points at.  A third record the README names,
+>   `_verify/LPLR_GATE_BLINDNESS_1680.md`, said "0.11.3 ships no public setter
+>   for the inner split".  All three were MEASURED before they were renamed:
+>   the bit-exactness holds against a running 0.11.4, the four tracked copies
+>   are byte-identical to the installed 0.11.4 by sha256, and upstream 0.11.4's
+>   `lplr.py` has neither `_smpls_inner` nor any `set_` method.  The
+>   comparison at `UPSTREAM_PROVENANCE.md:190` names two versions in one
+>   paragraph and STAYS: a version named ALONE is a claim about the current
+>   upstream, and a version named ALONGSIDE another is history.
+>
+>   *A check for what the records say.*  The new
+>   `_verify/_verify_upstream_version_claims_1680.py` reads the documents the
+>   README cites -- the scope is DERIVED from the citation, so a newly-cited
+>   record enters it -- and holds each document's upstream claims against the
+>   INSTALLED package's version.  Its scope is the upstream VERSION FAMILY,
+>   derived from the installed version and the document's anchor, because the
+>   same records name scipy 1.18.0, typos 1.50.3 and this package's own
+>   0.163.3, and a generic version pattern would flag all three.  A literal
+>   `0.11` would have been a dead check the moment upstream shipped 0.12.
+>
+>   *A claim the code contradicted.*  The README said "Every script above
+>   compares the port against a second implementation written in this
+>   repository".  Two of the 24 do not: `validate_pava_with_python.py`
+>   compares the port against scikit-learn's `isotonic_regression`, and
+>   `validate_padjust_with_python.py` against statsmodels' `multipletests`.
+>   The count is DERIVED, not typed -- a validator takes its reference from a
+>   third-party library iff it imports, at module level, a symbol from a
+>   third-party package under a namespace no OTHER validator imports at module
+>   level -- and the README now names both scripts and both libraries.
+>   `_verify/_verify_validator_references_1680.py` holds the two against each
+>   other.
+>
+>   *A superlative with two answers.*  "DoubleMLSSM has the largest margin of
+>   the four" is true on the standard error and false on the coefficient,
+>   where `DoubleMLIRM`'s 367x is the larger -- and no ordering of the four is
+>   derivable at all, because `DoubleMLAPOS` publishes a per-level bias and no
+>   pair.  The claim is withdrawn and the four are still named.
+>
+>   *A verdict nobody had recorded.*  The README says `mutation` kills three
+>   mutants on one kernel.  The check is scope=full, no workflow runs it, and
+>   its verdict lived only in a console scrollback.  It was RUN -- 3 of 3
+>   killed on `ps_processor.mbt`, 54.97s -- and the verdict is now a tracked
+>   record, `_verify/_mutation_verdict_1680.json`.
+>   `_verify/_verify_mutation_verdict_1680.py` holds the README's claim
+>   against that record, against the check's own definition of its mutants,
+>   and against the workflows that would run it.
+>
+>   *Two promises in those same records, and two checks for them.*  The
+>   house file:line verifier says, in its own docstring, that UPSTREAM
+>   Python pointers "are counted and reported, but they are not resolved
+>   against this tree" -- and the records the README names are outside its
+>   scope altogether.  So 37 upstream pointers, such as
+>   `plm/lplr.py:326`, had never been resolved, and upstream's line numbers
+>   move with its releases.  The new `_verify/_verify_upstream_line_refs_1680.py`
+>   resolves them against upstream 0.11.4 itself, and also reads the form the
+>   house pointer regex cannot see -- "upstream's `did_cs.py` at lines 110,
+>   445, ...".  And a record can make a claim ABOUT the README: one of them
+>   called itself "the **only** `_verify/` record the shipped
+>   `README.mbt.md` cites (at its lines 1162 and 1217)", and the README is
+>   896 lines long and cites TWO records, at its lines 16, 204, 563 and 832.
+>   Both claims were false, and both are now true.  The new
+>   `_verify/_verify_record_readme_refs_1680.py` holds them.
+>
+>   *The upstream this round compared against.*  The tree named by the
+>   owner -- `doubleml-for-py-0.11.4` -- was measured against the installed
+>   package: 320 shared Python files, ZERO differ, so the two are the same
+>   release and a comparison against either is a comparison against
+>   upstream 0.11.4.  Every citation the provenance record makes was then
+>   read out of that tree: `did/did_cs.py:16`, the score mixin's
+>   `_compute_score` at :35, `did/did_multi.py:65-68`,
+>   `did/utils/_did_utils.py:127`, `did/did_multi.py:197`, and the ten
+>   `did_cs.py` machinery lines -- all of them resolve, and the four tracked
+>   copies are byte-identical to it by sha256.
+>
+>   *A check that read the WRONG sentence.*  The tracked verifier suite
+>   failed this round on `_verify/_verify_hazard_table_1680.py`, and the
+>   README was RIGHT and the checker was wrong.  Its rule read the four
+>   estimators that "kept their OLS default" with a lazy `.*?`, so the four
+>   names could come from ANY earlier run of four backticked estimators and
+>   then walk forward to the anchor.  It stayed hidden because the README
+>   happened to break that earlier run across a line -- "`DoubleMLAPO`,\n
+>   `DoubleMLAPOS`" -- and the pattern wants "`, `".  This round re-wrapped a
+>   nearby paragraph, the run became contiguous, and the check read
+>   `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- the
+>   four HAZARDOUS estimators -- as the four that kept their OLS default.
+>   The rule now requires the names and the anchor to be in ONE sentence, and
+>   the check carries a control arm that the old rule fails.
+>
+>   *A dry-run of this round's own checks.*  The new
+>   `_verify/_dryrun_round76_1650.py` breaks each of this round's checks
+>   thirteen ways -- the README naming one reference instead of two, the count
+>   saying THREE, a live claim in a cited record naming the old upstream
+>   version, the mutation record's verdict neutered, an upstream pointer
+>   moved past the end of the upstream file, a record naming the wrong
+>   README line, a record claiming the wrong number of records, the README
+>   naming the wrong four estimators as the ones that kept their OLS
+>   default, and each verifier's own comparison neutered so that ITS control
+>   arm has to notice -- and every mechanism made the check it breaks fail.
+>   The capture is published.
+>
+>   *The checks that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **479** and makes **490**: a path named in prose is a check, and
+>   this round names more of them -- the two validators, the five new checks,
+>   the record and the driver.
+>
+>   *The ledger did not move.*  This round publishes no count for a NEW check,
+>   so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
+>
 
 >
 >
@@ -3140,7 +3257,7 @@ not a defect this port introduced.
    identification.** The estimators that need one default to
    `logistic_regression`; the ones that do not are named in **Propensity
    processing** above, with the measurement behind each. `ml_g` deliberately
-   stays OLS -- it models `E[y | x]`, not `P(y = 1 | x]`.
+   stays OLS -- it models `E[y | x]`, not `P(y = 1 | x)`.
    `LearnerDispatch::is_classifier()` reports which constructors qualify.
 2. **Read the warnings.** `DoubleMLLPLR::fit()` can return a degenerate
    standard error, and it says so rather than returning a confident wrong
@@ -5125,6 +5242,91 @@ robust variance estimation and a reproducible validation pipeline
 
 PATCHES.append((OLD_72_VECTORISED, NEW_72_VECTORISED))
 PATCHES.append((OLD_72_OPENING, NEW_72_OPENING))
+
+
+# ==============================================================================
+# 20.  THE ROUND-76 PATCHES -- a claim the code contradicts, a superlative
+#     with two answers, and a bracket that does not close
+# ==============================================================================
+#
+# (a) "EVERY SCRIPT ABOVE COMPARES THE PORT AGAINST A SECOND IMPLEMENTATION
+#     WRITTEN IN THIS REPOSITORY" WAS FALSE FOR TWO OF THE TWENTY-FOUR.
+#
+#     `validate_pava_with_python.py` compares the port against
+#     `sklearn.isotonic.isotonic_regression`, and
+#     `validate_padjust_with_python.py` against
+#     `statsmodels.stats.multitest.multipletests`.  Both are third-party
+#     libraries, not implementations written here, and the sentence claimed
+#     every one of the 24.
+#
+#     The count is DERIVED, not typed.  A validator takes its reference from a
+#     third-party library iff it imports, AT MODULE LEVEL, a symbol from a
+#     third-party package under a namespace that NO OTHER validator imports at
+#     module level.  `sklearn.linear_model` (ten validators),
+#     `sklearn.model_selection` (seven) and `pandas` (four) are shared -- they
+#     are nuisance learners, splitters and IO, not references -- and
+#     `scipy.optimize` is imported INSIDE a function, as a subroutine of this
+#     repository's own reference.  The two namespaces that are unique to one
+#     validator are exactly the two references.  The derivation, and a control
+#     arm that proves it bites, live in
+#     `_verify/_verify_validator_references_1680.py`.
+#
+# (b) "DoubleMLSSM HAS THE LARGEST MARGIN OF THE FOUR" HAD TWO ANSWERS.
+#
+#     The document prints two axes.  SSM's separation is ~200x on the point
+#     estimate and ~1900x on the standard error, while `DoubleMLIRM`'s is 367x
+#     on the coefficient -- so the superlative is true on one axis and false on
+#     the other, and NO ordering of the four can be derived: `DoubleMLAPOS`
+#     publishes a per-level bias and no pair, so "the largest of the four" is
+#     not checkable on either axis.  The claim is withdrawn; the set is still
+#     named, which is what the count-referents check needs.
+#
+# (c) A BRACKET THAT DOES NOT CLOSE: `P(y = 1 | x]`, twice.  One of the two
+#     lives in a block literal (the DO list, fixed in place above); the other
+#     is in the base text, and is patched here.
+OLD_76_REFERENCE = """family. Every script above compares the port against a second implementation
+written in this repository, which on its own can only catch a disagreement
+someone already thought to look for."""
+
+NEW_76_REFERENCE = """family. Every script above compares the port against a second implementation.
+Two of them take that implementation from a third-party library --
+`validate_pava_with_python.py` against scikit-learn's `isotonic_regression`,
+and `validate_padjust_with_python.py` against statsmodels' `multipletests`;
+the others take it from this repository or from the upstream wheel. A second
+implementation of our own can only catch a disagreement someone already
+thought to look for."""
+
+OLD_76_SSM = """`DoubleMLSSM` has the largest margin of the four migrations of
+v0.132.0-v0.138.0 -- `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and
+`DoubleMLSSM` -- because its score carries **two** reciprocals, one per
+direction (`ssm.mbt:73-74`): the treatment propensity `m` and the selection
+propensity `pi`, so an unbounded regressor breaks both denominators
+independently. On a saturated fixture with true `theta = 1.0`, the OLS arm
+returns `242.116` with SE `185.45` where the classifier returns `1.177` with
+SE `0.0982` -- roughly **200x** on the point estimate and **1900x** on the
+standard error. Across three seeds the OLS coefficient also **changes sign**
+(`+242`, `+106`, `-452`); the classifier's spread over the same three seeds
+is `0.761`."""
+
+NEW_76_SSM = """`DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 --
+`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- because its
+score carries **two** reciprocals, one per direction (`ssm.mbt:73-74`): the
+treatment propensity `m` and the selection propensity `pi`, so an unbounded
+regressor breaks both denominators independently. On a saturated fixture with
+true `theta = 1.0`, the OLS arm returns `242.116` with SE `185.45` where the
+classifier returns `1.177` with SE `0.0982` -- roughly **200x** on the point
+estimate and **1900x** on the standard error. Across three seeds the OLS
+coefficient also **changes sign** (`+242`, `+106`, `-452`); the classifier's
+spread over the same three seeds is `0.761`."""
+
+OLD_76_BRACKET = ("`ml_g` deliberately stays OLS (it models `E[y | x]`, not "
+                  "`P(y = 1 | x]`), so the")
+NEW_76_BRACKET = ("`ml_g` deliberately stays OLS (it models `E[y | x]`, not "
+                  "`P(y = 1 | x)`), so the")
+
+PATCHES.append((OLD_76_REFERENCE, NEW_76_REFERENCE))
+PATCHES.append((OLD_76_SSM, NEW_76_SSM))
+PATCHES.append((OLD_76_BRACKET, NEW_76_BRACKET))
 
 
 for _old, _new in PATCHES:
