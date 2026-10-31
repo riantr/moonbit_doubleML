@@ -1,0 +1,11 @@
+round 77 dry-run: this round's new checks, broken 8 ways
+baseline 0 failing checks; every mechanism made the check it breaks fail
+VERDICT PASS
+   1. a tutorial names a stale upstream version ALONE -- _verify/_verify_live_doc_versions_1680.py
+   2. the SHIPPED README copy names a stale upstream version -- _verify/_verify_live_doc_versions_1680.py
+   3. the live-doc verifier's scope is emptied -- _verify/_verify_live_doc_versions_1680.py
+   4. the live-doc verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_live_doc_versions_1680.py
+   5. a live document's cross-document count is wrong -- _verify/_verify_cross_doc_counts_1680.py
+   6. the cross-doc verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_cross_doc_counts_1680.py
+   7. the agent skill carries the bracket round 76 fixed -- _verify/_verify_live_doc_brackets_1680.py
+   8. the bracket verifier's comparison is neutered -- ITS CONTROL MUST NOTICE -- _verify/_verify_live_doc_brackets_1680.py

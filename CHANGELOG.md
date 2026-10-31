@@ -9,6 +9,97 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.61] -- the LIVE documents had never been audited, and the bracket round 76 fixed was still in the skill
+
+`moon.mod` moves 0.164.60 -> 0.164.61. No estimator behaviour changed and the
+test counts stay **1117 / 1123 / 1117 / 1117** (native / wasm-gc / wasm / js).
+
+### Fixed -- the bracket round 76 missed
+
+Round 76 found a bracket that does not close -- "`P(y = 1 | x]`" -- and fixed
+it, TWICE, in the README, and announced the removal. The THIRD copy was in
+the agent skill, in the anti-patterns section:
+
+    because it models `E[y | x]`, not `P(y = 1 | x]`.
+
+The skill is the document a coding agent reads before it writes a line
+against this library, and nothing held it: the README's copy lives in the
+builder as a patch, and the skill's is plain prose that nobody was reading.
+It is now `P(y = 1 | x)`.
+
+The new `_verify/_verify_live_doc_brackets_1680.py` holds the live documents'
+prose: an inline code span must not OPEN a bracket and leave it unclosed. It
+is deliberately not a "the two counts are equal" rule -- the shell pattern
+`case "$line" in *PASS*)` closes a bracket the shell opened, and two live
+documents say exactly that.
+
+### Added -- a check for the upstream claims in the LIVE documents
+
+Round 76 gave the upstream-version rule a home, but it gave it to the wrong
+scope: the `_verify/` RECORDS the README names. The LIVE documents -- the
+ones a reader is OPENED -- are opened far more often, and five of them carry
+a live claim about the upstream release:
+
+- the README's provenance paragraph ("the **installed** `doubleml` 0.11.4
+  package") and its score paragraph ("upstream `doubleml-for-py` 0.11.4 uses
+  ...");
+- the introduction tutorial ("all 21 estimator classes upstream ships in
+  0.11.4");
+- the estimators tutorial ("Upstream `doubleml-for-py` 0.11.4 uses a
+  different set of **15** spellings");
+- the DGPs tutorial ("upstream doubleml-for-py 0.11.4's 18 `make_*` dataset
+  factories").
+
+All five were MEASURED against the upstream 0.11.4 tree and all five are
+true BY MEASUREMENT and by nothing else: when upstream ships the next release
+every one of them becomes a lie, and nothing in this repository would notice.
+
+`_verify/_verify_live_doc_versions_1680.py` reads the documents a reader is
+pointed at -- the scope is DERIVED, and the SHIPPED README is in it as well
+as the one the repository presents, because that is the file the registry
+serves -- and holds each document's upstream claims against the INSTALLED
+package's version. Its scope is the upstream version FAMILY, derived from the
+installed version and never written down: a literal `0.11` would be a dead
+check the moment upstream ships 0.12. A version named ALONE in a paragraph is
+a claim; a version named ALONGSIDE another is history.
+
+### Added -- a check for the counts a document states about ANOTHER document
+
+A count about this repository's OWN tree is held. A count about a SECOND
+FILE is a different kind of promise: it says "go to that file and you will
+find something of this size", and the file it points at is edited for its own
+reasons. The introduction tutorial says "See `doc/003_quick_start` for a
+39-line end-to-end example"; the fenced block it points at has exactly 39
+content lines -- and NOTHING held it. Add a comment line to that block and the
+tutorial quietly starts lying.
+
+`_verify/_verify_cross_doc_counts_1680.py` measures the count against the
+file the claim names, and does not fire on a count that names no document.
+
+### Added -- a dry-run that proves the three checks bite
+
+`_verify/_dryrun_round77_1650.py` breaks each of this round's checks eight
+ways -- a tutorial naming a stale upstream version, the SHIPPED README copy
+naming one, the live-doc verifier's scope emptied, a cross-document count
+wrong, the skill carrying the bracket, and each verifier's own comparison
+neutered so that ITS control arm has to notice -- and every mechanism made
+the check it breaks fail. The capture is published.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **490** and makes
+  **494** checks: a path named in prose is a check, and this round
+  names four more of them -- the three new checks and the driver.
+- The ledger did not move: this round publishes no count for a NEW check, so
+  `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
+
+### Verified --
+
+- local gate: 58 steps, 0 failed
+- tracked verifier suite: 88 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **88** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1117 / 1123 / 1117 / 1117 (native / wasm-gc / wasm / js)
 ## [0.164.60] -- the records the README names had gone stale, and five promises nobody kept
 
 `moon.mod` moves 0.164.59 -> 0.164.60. No estimator behaviour changed and the

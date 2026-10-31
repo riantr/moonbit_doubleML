@@ -131,7 +131,7 @@ surface and anti-patterns).
     validators drive, and `examples/consumer_demo/` is the
     library-user pattern.
   - `examples/api_server/` is the HTTP service: it declares
-    `"riantr/moonbit_doubleML@0.164.60"` in `moon.mod` and consumes
+    `"riantr/moonbit_doubleML@0.164.61"` in `moon.mod` and consumes
     the library through its public API.
 
 - Python cross-validators live at the **repo root** -- not inside
@@ -195,7 +195,7 @@ surface and anti-patterns).
   `DoubleMLLPLR` (v0.163.3), also defaults `ml_m` to the classifier,
   but its propensity enters the score as `d - m_hat`, not `1 / m_hat`
   -- so do not add it to the six. `ml_g` deliberately stays OLS,
-  because it models `E[y | x]`, not `P(y = 1 | x]`.
+  because it models `E[y | x]`, not `P(y = 1 | x)`.
 
 - do NOT bypass `--deny-warn`. The CI runs
   `moon test --target {native,wasm-gc,wasm,js} --deny-warn` and

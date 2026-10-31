@@ -3032,6 +3032,66 @@ __GAP_NOTE__
 >   *The ledger did not move.*  This round publishes no count for a NEW check,
 >   so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
 >
+> * **Round 77.**  The LIVE documents had never been audited: the bracket
+>   round 76 fixed in the README was still in the skill.
+>
+>   *The documents a reader OPENS.*  Round 76 gave the upstream-version rule a
+>   home, but it gave it to the wrong scope: the `_verify/` RECORDS the README
+>   names.  The live documents are opened far more often -- both README
+>   copies, the six tutorials, the agent skill and the example service's own
+>   README -- and five of them carry a live claim about the upstream release:
+>   the README's provenance paragraph and its score paragraph, and the
+>   introduction, estimators and DGPs tutorials.  All five were MEASURED
+>   against the upstream 0.11.4 tree and all five are true BY MEASUREMENT and
+>   by nothing else: when upstream ships the next release every one of them
+>   becomes a lie, and nothing in this repository would notice.
+>
+>   *A check for what the live documents say.*  The new
+>   `_verify/_verify_live_doc_versions_1680.py` reads the documents a reader
+>   is pointed at -- the scope is DERIVED, and the SHIPPED README is in it as
+>   well as the one the repository presents, because that is the file the
+>   registry serves -- and holds each document's upstream claims against the
+>   INSTALLED package's version.  Its scope is the upstream VERSION FAMILY,
+>   derived from the installed version and never written down: a literal
+>   `0.11` would be a dead check the moment upstream shipped 0.12.  A version
+>   named ALONE in a paragraph is a claim; a version named ALONGSIDE another
+>   is history.
+>
+>   *A count about a SECOND file.*  The introduction tutorial says "See
+>   `doc/003_quick_start` for a 39-line end-to-end example", and the fenced
+>   block it points at has exactly 39 content lines -- and NOTHING held it.
+>   Add a comment line to that block and the tutorial quietly starts lying.
+>   The new `_verify/_verify_cross_doc_counts_1680.py` MEASURES the count
+>   against the file the claim names.
+>
+>   *The bracket round 76 missed.*  Round 76 fixed the bracket that does not
+>   close -- "`P(y = 1 | x]`" -- TWICE, in the README, and announced it.  The
+>   THIRD copy is in the agent skill, in the anti-patterns section: "because
+>   it models `E[y | x]`, not `P(y = 1 | x]`".  The skill is the document a
+>   coding agent reads before it writes a line against this library, and
+>   nothing held it: the README's copy lives in the builder as a patch, and
+>   the skill's is plain prose that nobody was reading.  The new
+>   `_verify/_verify_live_doc_brackets_1680.py` holds the live documents'
+>   prose -- an inline code span must not OPEN a bracket and leave it
+>   unclosed.  It is not about the two counts being equal: the shell pattern
+>   `case "$line" in *PASS*)` closes a bracket the shell opened, and two live
+>   documents say exactly that.
+>
+>   *A dry-run of this round's own checks.*  The new
+>   `_verify/_dryrun_round77_1650.py` breaks each of this round's checks eight
+>   ways -- a tutorial naming a stale upstream version, the SHIPPED README
+>   copy naming one, the live-doc verifier's scope emptied, a cross-document
+>   count wrong, the skill carrying the bracket, and each verifier's own
+>   comparison neutered so that ITS control arm has to notice -- and every
+>   mechanism made the check it breaks fail.  The capture is published.
+>
+>   *The checks that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **490** and makes **494**: a path named in prose is a check, and this
+>   round names four more of them -- the three new checks and the driver.
+>
+>   *The ledger did not move.*  This round publishes no count for a NEW check,
+>   so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
+>
 
 >
 >
