@@ -41,13 +41,21 @@ def run(cmd, cwd=ROOT, timeout=1200):
 print("== 1. the README must not quote a number the tree does not produce ==")
 
 # --- moon test --target native --deny-warn
-claimed = "Total tests: 1117, passed: 1117, failed: 0."
-check("Quick Start quotes the native test total",
-      claimed in readme, "the string is not in the README")
+# The count is DERIVED from the run, not typed.  The suite's size moves with
+# every release that adds a test, so a typed count here is a landmine: it
+# goes off on the next release, and the fix -- re-type it -- is the kind of
+# fix that gets forgotten.  The README is checked against what the tree
+# REALLY prints.
 rc, out = run(["moon", "test", "--target", "native", "--deny-warn"],
               cwd=os.path.join(ROOT, "moonbit_doubleML"))
-check("`moon test --target native --deny-warn` really prints that",
-      rc == 0 and claimed in out, "rc=%d out=%s" % (rc, out[-300:]))
+m = re.search(r"Total tests: (\d+), passed: (\d+), failed: (\d+)\.", out)
+claimed = ("Total tests: %s, passed: %s, failed: %s." % m.groups()
+           if m else "Total tests: ?, passed: ?, failed: ?")
+check("`moon test --target native --deny-warn` really prints a green total",
+      rc == 0 and m is not None and m.group(3) == "0",
+      "rc=%d out=%s" % (rc, out[-300:]))
+check("Quick Start quotes the native test total",
+      claimed in readme, "the string is not in the README")
 
 # --- moon run examples/main
 rc, out = run(["moon", "run", "examples/main"])

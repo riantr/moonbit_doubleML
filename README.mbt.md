@@ -101,7 +101,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.61",
+  "riantr/moonbit_doubleML@0.164.62",
 }
 ```
 
@@ -114,7 +114,7 @@ repo-root paths and fail from inside `moonbit_doubleML/`.
 
 ```console
 $ moon test --target native --deny-warn
-Total tests: 1117, passed: 1117, failed: 0.
+Total tests: 1118, passed: 1118, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
@@ -129,10 +129,10 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 ```
 
 `--target native` is spelled out because the package's `preferred_target` is
-`wasm-gc`, where the suite is **1123** -- 1117 plus 6 doc tutorials; the
+`wasm-gc`, where the suite is **1124** -- 1118 plus 6 doc tutorials; the
 per-target numbers are in the Status table. A bare `moon test` runs the suite
 on only one of the four declared backends -- on `moon 0.1.20261028` it reports
-`Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1123
+`Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1124
 tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs.
 
@@ -619,14 +619,14 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.61** |
+| `moon.mod` version | **0.164.62** |
 | Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --target <backend> --deny-warn` |
-| Tests (native / wasm / js) | **1117 / 1117 / 1117** |
-| Tests (wasm-gc) | **1123 / 1123** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1118 / 1118 / 1118** |
+| Tests (wasm-gc) | **1124 / 1124** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none of that API (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`) -- but `DoubleMLRDD` (v0.96.0) and `DoubleMLBLP` (v0.97.0) do expose a heteroskedasticity-robust `hac_se` under their own name; `DoubleMLPolicyTree` exposes no robust SE at all. Introduced v0.79.0 (on `DoubleMLIRM` and `DoubleMLPLR`), extended to **19 / 22** by v0.100.0 |
 | Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -760,7 +760,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.61, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.62, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -886,7 +886,7 @@ are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn
-Total tests: 1117, passed: 1117, failed: 0.
+Total tests: 1118, passed: 1118, failed: 0.
 ```
 
 ## License

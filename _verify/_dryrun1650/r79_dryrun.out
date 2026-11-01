@@ -1,0 +1,10 @@
+round 79 dry-run: the re-anchored count checks, broken 7 ways
+baseline 0 failing checks; every mechanism made the check it breaks fail
+VERDICT PASS
+   1. the README's native total drifts from the tree -- _verify/_verify_readme_commands_1680.py, _verify/_verify_round18_readme_1650.py
+   2. the README's Status table quotes a stale count in the SPACED shape -- _verify/_verify_round18_readme_1650.py
+   3. the round-18 check is restored to the UNSPACED shape and a stale count is quoted in the SPACED shape -- it must STAY GREEN -- must stay green: _verify/_verify_round18_readme_1650.py
+   4. the record's live count drifts from the tree -- _verify/_verify_round17_lplr_1650.py
+   5. the record's stale count loses its anchor -- _verify/_verify_round17_lplr_1650.py
+   6. the working tree gains a test that is NOT committed -- the check counts the WORKING tree, so it must go RED -- _verify/_verify_round17_lplr_1650.py
+   7. the same uncommitted test, and the check counts the COMMITTED tree again -- it must STAY GREEN -- must stay green: _verify/_verify_round17_lplr_1650.py

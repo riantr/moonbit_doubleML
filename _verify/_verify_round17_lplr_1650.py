@@ -102,17 +102,26 @@ def body(text):
 
 
 def test_blocks(subdir):
-    n = 0
-    r = subprocess.run(["git", "ls-tree", "-r", "--name-only", "HEAD", "--", subdir],
-                       cwd=ROOT, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
-    for p in r.stdout.splitlines():
-        if p.endswith(".mbt"):
-            blob = subprocess.run(["git", "show", "HEAD:%s" % p], cwd=ROOT,
-                                  capture_output=True, text=True,
-                                  encoding="utf-8", errors="replace")
-            n += len(re.findall(r'^\s*test\s+"', blob.stdout, re.M))
-    return n
+    """The `test "..."` declarations under a directory, by NAME.
+
+    The SAME rule `_verify/_verify_testcounts_1610.py` uses, and the rule the
+    README's generator uses: a WORKING-TREE walk, de-duplicated by name.
+
+    It used to count the COMMITTED tree, and that made the check true at
+    exactly ONE point in the release cycle -- before the commit it read the
+    previous release's count and after the commit it read the new one, so
+    the same record could not satisfy it at both ends of the release.  A
+    check that is only true half the time is not a check.
+    """
+    acc = set()
+    for base, dirs, files in os.walk(os.path.join(ROOT, subdir)):
+        dirs[:] = [x for x in dirs if x not in ("_build", "_verify", "target", ".git")]
+        for f in files:
+            if f.endswith(".mbt"):
+                src = io.open(os.path.join(base, f), encoding="utf-8",
+                              errors="replace").read()
+                acc.update(re.findall(r'\btest\s+"([^"]+)"', src))
+    return len(acc)
 
 
 print("=" * 78)
@@ -147,21 +156,37 @@ print("-- 2. the stale test counts are RE-ANCHORED, not overwritten --")
 # checked.  The anchor may sit on a LATER line than the count (the count is
 # in a sentence and the anchor is in the parenthetical under it), so the
 # window is a plain slice -- it crosses newlines.
-STALE = re.compile(r"(1115/1115|1122/1122)")
+# `1117/1117` joined the list when the counts moved: it was TRUE when it
+# was written and it is stale now, so it is anchored like the two before it.
+STALE = re.compile(r"(1115/1115|1122/1122|1117/1117)")
 ANCHOR = re.compile(r"`[0-9a-f]{7}`|\btoday\b")
 for m in STALE.finditer(bd):
     after = bd[m.end():m.end() + 400]
     before = bd[max(0, m.start() - 200):m.start()]
     check("the body anchors %s to the commit that wrote it" % m.group(1),
           ANCHOR.search(after) is not None or ANCHOR.search(before) is not None)
-check("the body states the CURRENT count", "**1117**" in bd and "**1123**" in bd)
-
 native = test_blocks("moonbit_doubleML")
 doc = test_blocks("doc")
-check("the derived native count matches what the record claims (1117)",
-      native == 1117 and "**1117**" in text)
-check("the derived wasm-gc count matches what the record claims (1123)",
-      native + doc == 1123 and "**1123**" in text)
+# The counts are DERIVED, so this check holds no literal of its own to go
+# stale: the record must state whatever the tree says today.
+check("the body states the CURRENT count",
+      ("**%d**" % native) in bd and ("**%d**" % (native + doc)) in bd)
+check("the derived native count matches what the record claims",
+      ("**%d**" % native) in text)
+check("the derived wasm-gc count matches what the record claims",
+      ("**%d**" % (native + doc)) in text)
+# A PRESENCE check cannot see a record that states the current count AND a
+# wrong one: it asks whether the number appears, not whether the CLAIM is
+# true.  The record says which counts are CURRENT by the word "today" -- "it
+# is **1118** today" -- so those claims are read out and held against the
+# tree, and a count the record calls current must BE the current count.
+TODAY = re.compile(r"\*\*(\d+)\*\*\s+today")
+CLAIMS = set(int(m.group(1)) for m in TODAY.finditer(bd))
+check("the record calls at least one count current, so the claim below is "
+      "readable",
+      len(CLAIMS) > 0)
+check("every count the record calls current IS the current count",
+      CLAIMS <= set([native, native + doc]))
 check("the wasm-gc count is native + the doc tutorials, not a literal",
       doc == 6)
 
@@ -386,8 +411,13 @@ check("the README's derivative factor agrees with the record's",
       "344" in readme and "344" in text)
 check("the README's overshoot agrees with the record's",
       "-1381" in readme and "-1381" in text)
+# The README writes its counts with SPACES around the slash, so the
+# unspaced shape this check used to test never appeared in it -- in any
+# commit -- and the check could not fail.
 check("the README does not quote the stale counts",
-      "1115/1115" not in readme and "1122/1122" not in readme)
+      not any(s in readme for s in ("1115/1115", "1115 / 1115",
+                                    "1122/1122", "1122 / 1122",
+                                    "1117/1117", "1117 / 1117")))
 check("the README's mean(beta) figures agree with the record's",
       "2.56" in readme_flat and "sd 3.39" in readme_flat
       and "2.5554" in text and "3.3939" in text)

@@ -8,7 +8,7 @@ In your project's `moon.mod`:
 
 ```toml
 import {
-  "riantr/moonbit_doubleML@0.164.61",
+  "riantr/moonbit_doubleML@0.164.62",
 }
 ```
 
@@ -63,7 +63,7 @@ repository root:
 
 ```console
 $ moon test --target native
-Total tests: 1117, passed: 1117, failed: 0.
+Total tests: 1118, passed: 1118, failed: 0.
 ```
 
 ## Next

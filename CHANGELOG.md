@@ -9,6 +9,161 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.62] -- a backend claim was true and held by nothing, and a count that has to be re-typed every release will one day be re-typed wrongly
+
+`moon.mod` moves 0.164.61 -> 0.164.62. No estimator behaviour changed. The
+test counts MOVE **1117 / 1123 / 1117 / 1117** -> **1118 / 1124 / 1118 / 1118**
+(native / wasm-gc / wasm / js): one new test in the library package.
+
+### Fixed -- the quick start's four-backend promise had no witness on three of the four backends
+
+`doc/003_quick_start` publishes three exact numbers and says they are
+"re-measured bit-identical on all four supported backends (`native`,
+`wasm-gc`, `wasm`, `js`)". The measurement is TRUE -- it was re-measured on
+all four, and every one of the four numbers comes out bit for bit identical.
+
+The PROMISE that kept it true was not:
+
+    The tutorial's own test (`using_test.mbt`) asserts all three values
+    bit-exactly, so this table cannot drift away from the code it
+    documents.
+
+`doc/003_quick_start/moon.pkg` declares `supported_targets = "wasm-gc"`, so
+that test can only ever run on ONE of the four backends the claim names. The
+table could drift on native / wasm / js with every check in this repository
+still green -- and the document's own Cross-platform section says the thing
+that breaks the arrangement: "A test that passes on native is not evidence
+that it passes on the other three."
+
+`moonbit_doubleML/plr_test.mbt` now pins the same three values inside the
+LIBRARY package, whose `supported_targets` are `native+wasm+wasm-gc+js` --
+and CI's `moon test` matrix builds every one of them. The table is therefore
+re-measured on all four backends on every push, and a backend that stops
+agreeing turns the test red instead of turning the tutorial quietly wrong.
+The pin is `==` and not a tolerance: a tolerance would hide exactly the
+drift it exists to catch.
+
+The document now names BOTH witnesses, and says which one is load-bearing.
+
+### Fixed -- a check that punished the correction and rewarded the drift
+
+`_verify/_verify_tutorial_claims_1650.py` held the claim with a WORD check --
+`"bit-identical" in flat(DOC3)`. It stays green when the claim goes FALSE and
+goes RED when the claim is REMOVED, so it rewarded the drift and punished
+the correction. It now finds the witness that asserts the published numbers
+and compares the backends the document names with the targets the library
+package declares.
+
+### Added -- a check for the backend claims
+
+`_verify/_verify_backend_claims_1680.py` holds the family: a document that
+names a SET of backends must name the set the library package DECLARES, every
+backend it names must be one CI builds, and a document that publishes exact
+numbers must have a witness that RUNS on all of them. Every input is derived
+-- the backend sets, the published numbers, the candidate witnesses, the
+package each candidate lives in -- so a typed one would be a dead check the
+moment the tree moves.
+
+### Added -- a dry-run that proves the checks bite
+
+`_verify/_dryrun_round78_1650.py` breaks each of this round's checks nine
+ways. Two of them are the SAME perturbation under two different checks: with
+the old word check restored the round-27 verifier stays GREEN when the
+published value changes, and with the repaired check it goes RED. That is
+what "the old check was vacuous and the new one bites" means, and it is
+proved by construction rather than asserted. The capture is published.
+
+### Fixed -- four count-holders that had to be re-typed by hand, every release
+
+Round 78 added one test to the library package, so the counts moved (1117/1123
+-> 1118/1124), and FOUR verifiers that held those counts as LITERALS went red.
+They were not wrong -- the tree really did move -- but each of them had to be
+re-typed by hand, by a release. A holder that must be re-typed every release is
+a holder that will one day be re-typed wrongly, or not at all.
+
+The rule that decides what to do with each one is one sentence long: a count
+that is a fact about the CODE is derived from the code, and a count that is a
+fact about a DOCUMENT is the document's to hold.
+
+- `_verify/_verify_readme_commands_1680.py` no longer types the test total into
+  its source. It RUNS `moon test --target native --deny-warn` and parses the
+  total the tree really prints.
+- `_verify/_verify_round18_readme_1650.py` KEEPS its literal, because that is
+  the check that NAMES the counts: the orphan-number rule requires a literal
+  holder to exist, and a count with no literal holder is a count nothing can
+  check.
+- `_verify/_verify_round17_lplr_1650.py` counted the COMMITTED tree, with `git
+  ls-tree HEAD` -- so before the commit it read the previous release's count and
+  after the commit it read the new one. A check that is only true half the time
+  is not a check. It counts the WORKING TREE now, by the same rule
+  `_verify/_verify_testcounts_1610.py` uses and the README's generator uses --
+  so the generator and the check cannot disagree about what "the test count"
+  means.
+
+### Fixed -- two shapes that never appeared, and a check that could not see the drift
+
+The stale-count checks tested the shape "1115/1115", and the README writes its
+counts with SPACES -- "1115 / 1115". The unspaced shape never appeared in the
+README in ANY commit, so the check could not fail and looked like it could. Both
+now test both spellings.
+
+The round-44 dry-run `_verify/_dryrun_round44_1650.py` patched the README by
+COUNT, so its anchors died with the suite's size; they are now count-free
+SHAPES.
+
+The record `_verify/LPLR_GATE_BLINDNESS_1680.md` carried a stale count of its
+own, and it is now re-anchored to the commit that wrote it -- `f452421`, where
+the count really was what it says. Its live count was held by a PRESENCE check:
+it asked whether the number appeared, not whether the CLAIM was true, so a
+record stating the current count AND a wrong one was green. The record says
+which counts are current by the word "today", and those claims are now read
+out and held against the tree.
+
+### Fixed -- a snapshot that went stale
+
+The dry-run sweep found one more holder that had to be re-typed by hand.
+`_verify/_dryrun_round27_1650.py` copies "the files this round has not
+committed yet" into its clone, and that set was a FIXED LIST written when
+round 27 was the round. Round 78 added the witness that holds doc/003's
+four-backend promise, the list did not name it, and the driver's baseline
+went RED over a tree that was CORRECT.
+
+The set is DERIVED now (`git diff --name-only HEAD`). A list that has to be
+re-typed every release is a list that will one day be re-typed wrongly.
+
+### Added -- a dry-run that proves the re-anchored checks still bite
+
+`_verify/_dryrun_round79_1650.py` breaks each of this round's checks seven ways
+-- the README's total drifting from the tree, a stale count in the shape the
+README really uses, the OLD unspaced shape restored (which must STAY GREEN,
+because that is what "the old check was vacuous" means), the record's live
+count drifting, the record's stale count losing its anchor, and an UNCOMMITTED
+test that the working-tree rule can see and the committed-tree rule cannot --
+and every mechanism made the check it breaks fail. The capture is published.
+
+The driver counts a verifier's failures from the verifier's OWN summary line,
+and it PROVES that counter against all six failure conventions the tree uses
+before it runs a single mechanism: the round-17 verifier prints "[FAIL]"
+where the others print "*** FAIL ***", and a counter blind to that one
+reported a mechanism as proving nothing while the verifier was failing loudly.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **494** and makes
+  **503** checks: a path named in prose is a check, and these two
+  name eight more of them -- the backend check, its driver, the witness, the
+  tutorial package's own manifest, the three re-anchored holders and the
+  re-anchoring round's driver.
+- The ledger did not move: this release publishes no count for a NEW check,
+  so `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
+
+### Verified --
+
+- local gate: 59 steps, 0 failed
+- tracked verifier suite: 89 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **89** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1118 / 1124 / 1118 / 1118 (native / wasm-gc / wasm / js)
 ## [0.164.61] -- the LIVE documents had never been audited, and the bracket round 76 fixed was still in the skill
 
 `moon.mod` moves 0.164.60 -> 0.164.61. No estimator behaviour changed and the

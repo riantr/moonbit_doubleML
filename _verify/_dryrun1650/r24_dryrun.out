@@ -63,7 +63,7 @@ D. the other count claims, derived from the tree
   ok    the sentence names the backend that carries the suite          
   ok    the backend that carries the suite is the preferred target     the sentence says wasm-gc, the package's preferred_target is wasm-gc
   ok    the Status table's wasm-gc count is findable                   
-  ok    the sentence quotes the Status table's wasm-gc count           the Status table says 1123
+  ok    the sentence quotes the Status table's wasm-gc count           the Status table says 1124
   ok    the bit-exact mutation battery is tracked                      
   ok    the bit-exact battery declares four mutation cases             got 4
   ok    the README says all four mutations were killed                 

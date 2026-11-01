@@ -64,9 +64,19 @@ re-measured bit-identical on all four supported backends (`native`,
 | `se()` | `13.75724952565863` |
 | `confint()` | `(-35.74634818655666, 18.18104605674274)` |
 
-The tutorial's own test (`using_test.mbt`) asserts all three values
-bit-exactly, so this table cannot drift away from the code it
-documents.
+Two tests assert all three values bit-exactly, so this table cannot
+drift away from the code it documents on any of the four backends:
+
+- the tutorial's own `using_test.mbt` -- which runs on `wasm-gc`, the one
+  backend this tutorial package builds for;
+- the package's own suite, in `plr_test.mbt`, under the test
+  `plr_tutorial_fixture_matches_the_published_doc_values` -- which runs on
+  all four, because the library package declares
+  `native+wasm+wasm-gc+js` and CI's `moon test` matrix builds each of them.
+
+The second one is the load-bearing one. A test that passes on one backend is
+not evidence about the other three, so the tutorial's own test alone could
+not keep a four-backend table honest.
 
 The estimate is far from zero and the interval is wide. That is
 correct, not a bug: the fixture is a deterministic *modular* pattern
@@ -97,7 +107,9 @@ of `==`. A test that passes on native is not evidence that it passes
 on the other three. This tutorial's PLR fixture happens to be an
 exception — its three published values came out bit-identical on all
 four backends — but that is a property of this fixture, not a general
-licence to assert `==` on any estimate.
+licence to assert `==` on any estimate. The package suite re-pins those
+three values on every backend on every CI run, so the exception stays an
+exception instead of becoming a memory.
 
 ## Next
 

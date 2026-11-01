@@ -66,6 +66,31 @@ COPY_IN = [
 ]
 
 
+def changed_files():
+    """The files this round has not committed yet, DERIVED.
+
+    The list above was a SNAPSHOT of that intent, and it went stale the
+    moment a later round added a file the claims depend on: round 78's
+    witness, `moonbit_doubleML/plr_test.mbt`, is what holds doc/003's
+    four-backend promise, and the repaired
+    `_verify/_verify_tutorial_claims_1650.py` looks for it -- so the driver's
+    baseline went red over a tree that was CORRECT.
+
+    `git diff --name-only HEAD` is the difference between the commit and the
+    working tree, which is exactly "the files this round has not committed
+    yet" -- and it includes the new files that are already STAGED.
+
+    UNTRACKED files are deliberately NOT copied in: the verifier derives the
+    cross-check coverage map from the pyexample scripts that are PRESENT,
+    and the repository root holds hundreds of scratch files that must not
+    join that set.
+    """
+    rc, out = run(["git", "diff", "--name-only", "HEAD"], cwd=REPO)
+    if rc != 0:
+        return []
+    return [l.strip().replace("\\", "/") for l in out.splitlines() if l.strip()]
+
+
 def run(cmd, cwd=REPO, timeout=3600):
     p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=timeout)
@@ -112,12 +137,20 @@ if rc != 0:
 rc, out = run(["git", "rev-parse", "HEAD"], cwd=WORK)
 print("  %s -> %s" % (COMMIT, out.strip()))
 
-for rel in COPY_IN:
+_copied = []
+for rel in COPY_IN + changed_files():
+    if rel in _copied:
+        continue
     src = os.path.join(REPO, rel.replace("/", os.sep))
+    if not os.path.isfile(src):
+        continue
     dst = os.path.join(WORK, rel.replace("/", os.sep))
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     shutil.copy2(src, dst)
-    print("  copied in %s" % rel)
+    _copied.append(rel)
+print("  copied in %d file(s) from the working tree" % len(_copied))
+for rel in _copied:
+    print("     %s" % rel)
 
 README = os.path.join(WORK, "README.mbt.md")
 SHIPPED = os.path.join(WORK, "moonbit_doubleML", "README.mbt.md")

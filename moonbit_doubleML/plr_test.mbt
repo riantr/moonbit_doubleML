@@ -85,3 +85,62 @@ test "plr_fitted_has_predictions" {
   inspect(fitted.predictions_l().length(), content="100")
   inspect(fitted.predictions_m().length(), content="100")
 }
+
+///|
+/// THE FOUR-BACKEND WITNESS for `doc/003_quick_start`.
+///
+/// The tutorial publishes three exact numbers (`coef`, `se`, `confint`) and
+/// says they are bit-identical on all four supported backends.  Until this
+/// test existed, NOTHING in the tree could hold that claim:
+///
+///  * the tutorial package (`doc/003_quick_start/moon.pkg`) declares
+///    `supported_targets = "wasm-gc"`, so `using_test.mbt` -- the test the
+///    tutorial points at -- can only ever run on ONE of the four backends;
+///  * the library's own suite did not carry the fixture at all.
+///
+/// So the table could drift on native / wasm / js and every check stayed
+/// green.  The document itself makes the point that breaks the old
+/// arrangement: "A test that passes on native is not evidence that it
+/// passes on the other three."
+///
+/// THIS test is that evidence.  It lives in the library package, whose
+/// `supported_targets` are `native+wasm+wasm-gc+js`, and CI's `moon test`
+/// matrix runs all four -- so the three published values are re-measured on
+/// every backend on every push, and a backend that stops agreeing makes this
+/// test red instead of making the tutorial quietly wrong.
+///
+/// MEASURED, not assumed.  On `moon 0.1.20261028` this fixture was fitted on
+/// all four backends and every one of the four numbers below came out
+/// bit-for-bit identical -- the same digits, not "close enough".  That is why
+/// the comparison is `==` and not a tolerance: a tolerance would hide exactly
+/// the drift this test exists to catch.  (The did_cs quantities are the
+/// counter-example -- they carry a ~1.5e-15 relative spread across backends,
+/// which is why `expand_v146_test.mbt` pins them at 1e-12 instead.)
+///
+/// The fixture is byte-for-byte the one in the tutorial, so the two tests
+/// cannot drift apart without this one failing.
+test "plr_tutorial_fixture_matches_the_published_doc_values" {
+  let n = 100
+  let x_data : Array[Double] = Array::make(n * 5, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    x_data[i * 5 + 0] = i.to_double()
+    x_data[i * 5 + 1] = (i % 2).to_double()
+    x_data[i * 5 + 2] = ((i + 1) % 3).to_double()
+    x_data[i * 5 + 3] = ((i + 2) % 5).to_double()
+    x_data[i * 5 + 4] = ((i + 3) % 7).to_double()
+  }
+  let x : Matrix = Matrix::from_array(x_data, n, 5)
+  let y : Array[Double] = Array::make(n, 0.0)
+  let d : Array[Double] = Array::make(n, 0.0)
+  for i = 0; i < n; i = i + 1 {
+    d[i] = i.to_double() * 0.5
+    y[i] = i.to_double() * 1.0 + (i % 2).to_double()
+  }
+  let data = DoubleMLData::new(x, y, d)
+  let fitted = DoubleMLPLR::new(data, n_folds=2, n_rep=1, seed=3141).fit()
+  let (lo, hi) = fitted.confint()
+  assert_true(fitted.coef() == -8.782651064906958)
+  assert_true(fitted.se() == 13.75724952565863)
+  assert_true(lo == -35.74634818655666)
+  assert_true(hi == 18.18104605674274)
+}

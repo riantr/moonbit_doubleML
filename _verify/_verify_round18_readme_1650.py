@@ -223,7 +223,7 @@ USER_FACING = [
     "-1381",
     "2.56",
     "sd 3.39",
-    "**1123**",
+    "**1124**",
     "**19** are marked *(upstream)*",
     "no 1:1 upstream class",
     "How the names map",
@@ -241,7 +241,7 @@ USER_FACING = [
     # now -- the wording it carried is the section's own.
     "Not covered, so not claimed",
     "moon test --target native --deny-warn",
-    "Total tests: 1117",
+    "Total tests: 1118",
     "Run these from the **repository root**",
     "estimated theta   = 1.092018247331361",
     "standard error    = 0.08875683254582736",
@@ -253,8 +253,14 @@ for lit in USER_FACING:
 check("the README keeps the user-facing fact '**2** are marked *(upstream, renamed)*'",
       "**2** are marked *(upstream, renamed)*" in readme
       or "**2** are marked\n*(upstream, renamed)*" in readme)
-for lit in ("1115/1115", "1122/1122"):
-    check("the README does not quote the stale count %r" % lit, lit not in readme)
+# The README writes its counts with SPACES around the slash ("**1118 / 1118 /
+# 1118**"), so a stale count is only VISIBLE in that shape.  The unspaced
+# shape this list used to carry ("1115/1115") never appeared in the README
+# in ANY commit -- the check could not fail, and it looked like it could.
+for lit in ("1115", "1122", "1117"):
+    for shape in ("%s/%s" % (lit, lit), "%s / %s" % (lit, lit)):
+        check("the README does not quote the stale count %r" % shape,
+              shape not in readme)
 
 # =========================================================== D. no check died
 print()

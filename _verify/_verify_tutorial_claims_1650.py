@@ -237,8 +237,43 @@ check("the tutorial test still holds exactly one test",
       "got %d" % len(re.findall(r'^\s*test\s+"', test3, re.M)))
 check("doc/003 names the test that witnesses the table",
       "using_test.mbt" in doc3)
-check("doc/003 says the values are backend-independent",
-      "bit-identical" in flat(DOC3))
+# --- round 78: a backend claim needs a WITNESS, not a word ------------------
+# This check used to be:
+#     check("doc/003 says the values are backend-independent",
+#           "bit-identical" in flat(DOC3))
+# A WORD check.  It stays GREEN when the claim goes FALSE -- the direction
+# that matters -- and goes RED when the claim is REMOVED, so it punishes the
+# correction and rewards the drift.
+#
+# The claim is a MEASUREMENT, and a measurement needs a witness: a test that
+# asserts the published values on every backend the document names.  The full
+# structural rule -- and its control arms -- are in
+# `_verify/_verify_backend_claims_1680.py`; this is the local form of it.
+# Every input below is DERIVED: the backends the document names, the targets
+# the library package declares, and the witness files found by looking for
+# the published numbers themselves.
+_BT = set()
+_m = re.search(r'supported_targets\s*=\s*"([^"]*)"',
+               read(os.path.join(LIB, "moon.pkg")))
+if _m:
+    _BT = set(x for x in _m.group(1).split("+") if x)
+_c = re.search(r"all (\w+) supported backends \(([^)]*)\)", flat(DOC3))
+_NAMED = set(re.findall(r"`([^`]+)`", _c.group(2))) if _c else set()
+_NUMS = [n for _l, n in NUMS]
+_WIT = []
+if _NUMS:
+    for _f in sorted(os.listdir(LIB)):
+        if not _f.endswith("_test.mbt"):
+            continue
+        _src = read(os.path.join(LIB, _f))
+        if all(n in _src for n in _NUMS) and \
+           all(any(n in ln and "==" in ln for ln in _src.split("\n"))
+               for n in _NUMS):
+            _WIT.append(_f)
+check("doc/003's backend-independence claim is witnessed on every backend it names",
+      bool(_NUMS) and bool(_NAMED) and bool(_WIT) and _NAMED <= _BT,
+      "the claim names %s; the library package declares %s; witness: %s"
+      % (sorted(_NAMED), sorted(_BT), _WIT or "NONE"))
 
 # ============================================================================
 # 3. doc/005 -- the DGP factory table

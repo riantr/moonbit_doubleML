@@ -13,11 +13,19 @@ _1680 series. Measured on `b922349` plus the uncommitted LPLR gate work._
 > **0.11.4** -- the vendored sdist these numbers were originally taken
 > against:
 >
+> **The counts, re-audited 2026-11-01 (round 79).**  The library package
+> gained one test — the quick start's four-backend witness — so the
+> native count is **1118** and the wasm-gc count is **1124**.  `1117/1117` is
+> now the THIRD stale count in this record, and it is re-anchored to the
+> commit that wrote it, exactly as `1115/1115` and `1122/1122` were.  Only
+> the counts were re-measured; every other number in this banner is the
+> 2026-10-20 measurement.
+>
 > | | as written | now |
 > |---|---|---|
 > | upstream's own failure rate on the n=66 rows (27g) | 17/40 (42%) implausible coefficients, 18/40 root warnings | **reproduced exactly** by `_verify/_lplr_upstream_fragility_control_1680.py` |
 > | upstream's `mean(beta)` over the same 40 draws (27g) | mean 2.5554, sd 3.3939, range [-3.2057, 13.8508]; 14/40 above the basin edge; the port's 6.842375 at the 90th percentile | **reproduced exactly** by `_verify/_lplr_startval_bias_1680.py` |
-> | the `moon test` counts quoted below | `1115/1115` (twice), `1122/1122` (twice) | **all four were TRUE when written and are now stale.** `1115` was the native count at `b223a44` / `4775218`; `1122` was the wasm-gc count at `c744fc4` / `e7471e5`. The counts are now **1117 native / 1123 wasm-gc** |
+> | the `moon test` counts quoted below | `1115/1115` (twice), `1122/1122` (twice), `1117/1117` (once) | **all five were TRUE when written and are now stale.** `1115` was the native count at `b223a44` / `4775218`; `1122` was the wasm-gc count at `c744fc4` / `e7471e5`; `1117` was the native count at `f452421`. The counts are now **1118 native / 1124 wasm-gc** |
 > | `moonbit_doubleML/lplr.mbt` line pointers (16 of them) | written against the `d3ac364` tree | **8 of the 16 moved** -- that file changed by 624 lines -- and all 16 are re-anchored below by content |
 > | the method scripts this record names | 10 named, **none of them tracked** | **now tracked**, path-portable, and each one announces which upstream it ran against |
 > | 27b/27c: the causal test and the 16-cell swap | the port's values make upstream's own solver diverge; `beta` alone does it | **reproduced exactly** by `_verify/_lplr_nuisance_causal_1680.py` -- both `PORTMETA` blocks, every one of the 16 cells |
@@ -213,7 +221,7 @@ Two lessons, both of which cost a cycle here:
    poor instrument for a question about defaults.
 2. **The test suite was green (1115/1115) while the estimator was broken.**
    *(1115 was the native count at `b223a44` (2026-10-16), where this line was
-   written; it is **1117** today. The claim is that the suite was green, not
+   written; it is **1118** today. The claim is that the suite was green, not
    what it counted.)*
    The LPLR invariants live in `examples/fuzz`, not in `moon test`, so
    `moon test` cannot see them. Regenerating the e2e table — which runs
@@ -325,7 +333,7 @@ listed as open in §8.
 
 | configuration | fuzz | `moon test` | LPLR gate |
 |---|---|---|---|
-| logistic default, D1 held off | ALL 11 SURFACES PASSED | 1115/1115 *(the native count at `4775218`; **1117** today)* | PASS |
+| logistic default, D1 held off | ALL 11 SURFACES PASSED | 1115/1115 *(the native count at `4775218`; **1118** today)* | PASS |
 | logistic default, D1 on | FAIL trial 25 | — | PASS |
 
 So the default change ships and D1 does not. D1 is now blocked on **D3**, not
@@ -415,7 +423,7 @@ one of them had been tested.
 3. The Newton start became `mean(beta_row)`, matching `np.average(beta)`.
 4. The fit cache stored the length-n array instead of a packed length-1 scalar.
 
-`moon test` stayed 1122/1122 — the wasm-gc count at `c744fc4`; it is **1123**
+`moon test` stayed 1122/1122 — the wasm-gc count at `c744fc4`; it is **1124**
 today — including the five `lplr_score_at` tests, whose
 expected literals did not move, because a constant array gives the same `r_hat`
 a scalar did.
@@ -530,7 +538,7 @@ acceptable, and I did not find an input that still triggers non-convergence, so
 I cannot re-base them.
 
 **Reverted**, and the baseline re-verified exactly (`0.113896 / 0.024022`,
-PASS, `moon test` 1122/1122 — the wasm-gc count at `e7471e5`; it is **1123**
+PASS, `moon test` 1122/1122 — the wasm-gc count at `e7471e5`; it is **1124**
 today).
 
 What would unblock it, in order:
@@ -1411,7 +1419,8 @@ anyway. `num` was dead, and `den`'s only live effect was the all-`d == 0`
 guard. A reader checking the start value against upstream `:326`
 (`np.average(beta)`) would have concluded the port used a *different*
 quantity, when it uses the same one. Comment corrected and `num` removed in
-the same commit; `moon check --deny-warn`, 1117/1117 native tests,
+the same commit; `moon check --deny-warn`, 1117/1117 native tests *(the
+native count at `f452421`; **1118** today)*,
 `moon fmt --check` and `examples/fuzz` all pass unchanged, which is what
 "no behavioural change" means here.
 

@@ -3,7 +3,7 @@ name = "example/consumer_demo"
 version = "0.1.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.61",
+  "riantr/moonbit_doubleML@0.164.62",
 }
 
 readme = "../../README.mbt.md"

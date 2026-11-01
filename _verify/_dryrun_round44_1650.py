@@ -311,13 +311,19 @@ MECHANISMS = [
                        r"The service is built directly on `moonbitlang/async@0\.\d+\.\d+` --",
                        "The service is built directly on `moonbitlang/async@0.20.3` --"))),
 
+    # The anchor is a SHAPE, not a count: the suite's size moves with every
+    # release, and an anchor that names the count is an anchor that dies
+    # with it.  The replacement is count-free too, so the sentence keeps
+    # whatever count it has and exactly the checks that broke before break
+    # now -- the driver publishes a failure count, and a mechanism that
+    # broke a different NUMBER of checks would contradict it.
     ("the bare-`moon test` sentence credits the suite to the wrong backend",
      lambda: (sub_once(README,
-                        r"runs the suite on `wasm-gc` \(1123",
-                        "runs the suite on `wasm` (1123"),
+                        r"runs the suite on `wasm-gc`",
+                        "runs the suite on `wasm`"),
               sub_once(SHIPPED,
-                       r"runs the suite on `wasm-gc` \(1123",
-                       "runs the suite on `wasm` (1123"))),
+                       r"runs the suite on `wasm-gc`",
+                       "runs the suite on `wasm`"))),
 
     ("doc/001 states the blanket `ml_m` rule again",
      lambda: sub_once(DOC1,
@@ -325,10 +331,15 @@ MECHANISMS = [
                       r"score as `1 / m_hat`",
                       "wherever the\n  propensity enters the score as `1 / m_hat`")),
 
+    # The replacement is a count the suite can never have, so the mutation
+    # does not have to be re-typed when the suite grows.  The check that
+    # breaks is the one that says an installed consumer runs NO tests, and
+    # it breaks because "Total tests: 0" is gone -- not because of the
+    # number that replaces it.
     ("doc/002 drops the installed consumer's zero count",
      lambda: sub_once(DOC2,
                       r"Total tests: 0, passed: 0, failed: 0\.",
-                      "Total tests: 1117, passed: 1117, failed: 0.")),
+                      "Total tests: 1, passed: 1, failed: 0.")),
 ]
 
 prev = n0
