@@ -26,7 +26,7 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 79, and 10 of the numbers in between
+> at round 21 and run to round 85, and 10 of the numbers in between
 > (rounds 60-69) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
@@ -2920,6 +2920,152 @@
 >
 >   *The ledger did not move.*  This round publishes no count for a NEW check, so
 >   `_verify/_verify_ledger_counts_1650.py` (**82** checks) is unchanged.
+> * **Round 80.**  The release was re-checked after its verification was
+>   interrupted, and the re-check used three routes that could not agree with
+>   each other by construction.
+>
+>   *The shipped commit, in a fresh clone.*  The tracked contract was re-run
+>   against a clone of the released commit: nothing failed, and no verifier
+>   named an absolute path -- so the contract is a property of the REPOSITORY
+>   and not of one working copy.
+>
+>   *An audit that does not use the house's own generators.*  Every headline
+>   number in the published README was re-derived from the tree by a route the
+>   generators do not use, borrowing the repository's OWN bucket definitions
+>   from `AGENTS.md`: the `.mbt` census, the estimator count and its data
+>   holders, the upstream-provenance split, the four backend test counts and
+>   the two families of Python cross-check.  All of them agreed.
+>
+>   *The toolchain, and the two reference packages.*  The toolchain the README
+>   names is the one installed.  Both reference packages were re-read end to
+>   end, and the conventions they use are already in this README -- so no
+>   change was warranted, and none was made.
+>
+> * **Round 81.**  The six tutorial pages under `doc/` -- the documents a
+>   reader opens AFTER the README -- were audited for the first time, and so
+>   was the upstream-provenance split against the upstream tree this
+>   repository now compares itself with.
+>
+>   *The tutorials.*  Every number and every signature the six pages publish
+>   was re-derived from the source: the eighteen DGP factories and their
+>   accessor sets, the eleven `LearnerDispatch` variants, the twenty-two
+>   estimators and the seven of them that take a score, the twenty-four
+>   validation scripts and the nine of them that import the upstream wheel,
+>   the nine upstream gates, and the fenced block in the quick start.  All of
+>   them agreed.
+>
+>   *The provenance split.*  It was re-derived against
+>   `doubleml-for-py-0.11.4` itself rather than against a name list: nineteen
+>   estimators match upstream by name, two are renames of an upstream class,
+>   and one is port-only.  The one name that appears in both trees -- a DID
+>   estimator whose name is spelled the same in each -- is a COINCIDENCE: the
+>   two trees use it for DIFFERENT estimators, so a name-only join credits one
+>   match too many.  The estimators' documented PURPOSE is the disambiguator,
+>   and the shape of their container is not.
+>
+> * **Round 82.**  Every claim the README makes about RUNTIME behaviour was
+>   measured by RUNNING the thing, and the remaining live documents were
+>   audited.
+>
+>   *The sixteen CLI demos.*  All sixteen were run and their OUTPUT
+>   classified semantically: fourteen print a true value, and eleven print a
+>   95 % interval.  The house's own earlier regex, run over the same captured
+>   output, counted twelve -- the extra one is a case label the regex read as
+>   an interval.  Measuring what a driver PRINTS FROM ITS SOURCE is a claim
+>   about a claim, and the semantic rule found nothing the old rule missed.
+>
+>   *The other live documents.*  The skill file, `AGENTS.md` and the API
+>   server's own README were audited against the tree: the test cases they
+>   count, the demo set they name, the example names they list, the port
+>   ceiling and the default port, the routes they document.  All of them
+>   agreed.
+>
+>   *What "the tree" means.*  A document's claim about the tree is about the
+>   project's SOURCE -- tracked content and package directories.  A build
+>   output and a scratch fixture are not part of it, and a directory is a
+>   package only when it carries a `moon.pkg`.
+>
+> * **Round 83.**  The last live documents were audited, and so was the way
+>   the two reference packages point at files that are not published.
+>
+>   *The last documents.*  The `doc/` index, the hooks' README and the
+>   historical-document markers: the six tutorials the index names are the six
+>   packages that exist, the two committed copies of the README are
+>   byte-identical, the pre-commit hook runs exactly one command, no tracked
+>   file is executable, and all seven historical documents say in their own
+>   words that they are historical.
+>
+>   *The two references.*  Both packages point at repo-only files, and NEITHER
+>   says what the registry actually publishes.  This README does, so it is the
+>   more explicit of the three -- and a bare path in a published README is a
+>   STYLE difference, not a broken pointer: the rule this repository follows
+>   is that the path must EXIST, and neither reference makes reachability one.
+>
+> * **Round 84.**  The published README's STRUCTURE was compared with the two
+>   reference packages, and every URL it carries was probed.
+>
+>   *The structure.*  This README carries every convention either reference
+>   uses -- the CI badge, the status block, the prerequisites, the install
+>   command, the import, a runnable quickstart, a capability table, an
+>   explicit "not covered" section, the exact verification commands, the
+>   provenance and the licence -- so it is a SUPERSET of both.
+>
+>   *The URLs.*  Each one was probed by the route that fits its kind: a git
+>   remote by `git ls-remote`, a GitHub page by the GitHub API, a published
+>   page by an HTTP request.  Every one resolves.  A first pass reported seven
+>   failures that were all the PROBE's fault -- a git remote 404s a bare GET
+>   by design, and one of the addresses is a console command rather than a
+>   link.
+>
+> * **Round 85.**  A package's DESCRIPTION is a promise, and nothing held it.
+>
+>   *The two that had rotted.*  The published manifest's description enumerates
+>   the model families the package is for and ends in "and policy-tree
+>   models", so it reads as a COMPLETE list -- and it omitted LPLR (partially
+>   logistic regression, Liu-Zhang-Zhou 2021) and PLPR (partially linear panel
+>   regression, Clarke-Polselli 2025).  Both had shipped a MONTH before the
+>   description was written, so it had been incomplete since the day it was
+>   written, while the README's own estimator row named both.  And the LPLR
+>   example's manifest called LPLR "local potential quantile regression" --
+>   which is LPQ's name; the driver's own header says "partially logistic
+>   regression, LZZ2020".
+>
+>   *A fix that was not a check.*  This class was fixed once before -- two
+>   stale counts in two example descriptions -- and it was fixed by EDITING
+>   the descriptions.  Nothing held it, so it rotted again.
+>
+>   *The check.*  `_verify/_verify_manifest_descriptions_1680.py` runs **32**
+>   checks and holds the class with five rules: the published list is CLOSED,
+>   so it must COVER every family the package ships; every name it carries
+>   must resolve to a family that exists; a description must not name a
+>   DIFFERENT estimator than the one it is about; a named estimator class must
+>   exist; and a count a description carries is measured, not trusted.  The
+>   spellings come from the README's own estimator table, and an ACRONYM
+>   matches on word boundaries -- so "pq" inside "lpq" cannot satisfy PQ.
+>
+>   *The dry-run.*  `_verify/_dryrun_round85_1650.py` breaks the check seven
+>   ways -- the published description omitting a family, naming one the
+>   package lacks, the example manifest naming LPQ's estimator, the example
+>   manifest naming a class that does not exist, the main example's count
+>   drifting, the API server's description naming a route it does not serve,
+>   and the families listed in a DIFFERENT order, which must STAY GREEN
+>   because the check reads the LIST rather than comparing the string.  The
+>   capture is published.
+>
+>   *Three measurement defects in the check's own first draft, and why they
+>   are recorded.*  A character class that excluded the delimiter silently
+>   dropped seven of the eighteen banners it read, and the count it published
+>   was two short.  A rule that recognised only a FIXED set of names could not
+>   see a description naming a route the server does not serve -- so the bad
+>   case was invisible to it.  And a control arm built FROM the live text can
+>   only prove that the rule agrees with itself; the arms here are built on a
+>   template nobody publishes.
+>
+>   *The counts that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **503** and makes **505**, and `_verify/_verify_ledger_counts_1650.py`
+>   (**84** checks) moved because this round publishes a count for one
+>   more check.
+>
 >
 
 >

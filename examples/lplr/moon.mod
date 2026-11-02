@@ -3,7 +3,7 @@ name = "local/moonbit_doubleML-examples-lplr"
 version = "0.52.0"
 
 import {
-  "riantr/moonbit_doubleML@0.164.62",
+  "riantr/moonbit_doubleML@0.164.63",
 }
 
 readme = "../../README.mbt.md"
@@ -14,6 +14,6 @@ license = "MIT"
 
 keywords = [ "doubleml", "demo", "cli" ]
 
-description = "LPLR (local potential quantile regression) demo driver"
+description = "LPLR (partially logistic regression) demo driver"
 
 preferred_target = "native"

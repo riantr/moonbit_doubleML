@@ -9,6 +9,91 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.63] -- a package's description is a promise, and nothing held it
+
+`moon.mod` moves 0.164.62 -> 0.164.63. No estimator behaviour changed. The
+test counts are UNCHANGED at **1118 / 1124 / 1118 / 1118**
+(native / wasm-gc / wasm / js).
+
+### Fixed -- the published description had been incomplete since the day it was written
+
+`moonbit_doubleML/moon.mod`'s `description` is the line the registry shows
+beside the package name, before anyone installs anything. It enumerates the
+model families the package is for and ends in "and policy-tree models", so it
+reads as a COMPLETE list -- and it named fifteen of the seventeen families the
+package ships. **LPLR** (partially logistic regression, Liu-Zhang-Zhou 2021)
+and **PLPR** (partially linear panel regression, Clarke-Polselli 2025) were
+missing.
+
+Both had shipped a MONTH before the description was written on 2026-09-24 --
+LPLR in v0.27.0 and PLPR in v0.26.0 -- so the list was incomplete from the day
+it was written, while the README's own estimator row named both. The
+description now names all seventeen, in the README's own order and in the
+vocabulary it already used.
+
+### Fixed -- the LPLR example's manifest named a DIFFERENT estimator
+
+`examples/lplr/moon.mod` said "LPLR (local potential quantile regression)
+demo driver". LPLR is the partially logistic estimator; "local potential
+quantile" is **LPQ**'s name. The driver's own header says "partially logistic
+regression, LZZ2020". The manifest now agrees with it.
+
+### Added -- a check that holds the class
+
+`_verify/_verify_manifest_descriptions_1680.py` (**32** checks) holds a class
+that had only ever been FIXED. Round 54 corrected two stale counts in two
+example descriptions by editing them; nothing held the class, so it rotted
+again.
+
+Five rules, and every input is derived rather than typed:
+
+- R1 -- the published list is CLOSED (it ends in "and ... models"), so it must
+  COVER every family the package ships.
+- R2 -- every NAME the published list carries must resolve to a family the
+  package has.
+- R3 -- a description must not name a DIFFERENT estimator than the one it is
+  about.
+- R4 -- a description that names an estimator CLASS must name one that exists.
+- R5 -- a count a description carries is measured, not trusted.
+
+The spellings come from the README's own estimator table, and an ACRONYM
+matches on word boundaries -- so "pq" inside "lpq" cannot satisfy PQ.
+
+### Added -- a dry-run that proves the check bites
+
+`_verify/_dryrun_round85_1650.py` breaks the check seven ways: the published
+description omitting a family, the published description naming one the
+package lacks, the example manifest naming LPQ's estimator, the example
+manifest naming a class that does not exist, the main example's count
+drifting, and the API server's description naming a route it does not serve --
+and the families listed in a DIFFERENT order, which must STAY GREEN, because
+the check reads the LIST rather than comparing the string. Every mechanism
+made the check it breaks fail. The capture is published.
+
+### Fixed -- three measurement defects in the check's own first draft
+
+A character class that excluded the delimiter silently dropped seven of the
+eighteen banners it read, and the count it published was two short. A rule
+that recognised only a FIXED set of names could not see a description naming a
+route the server does not serve -- so the bad case was invisible to it. And a
+control arm built FROM the live text can only prove that the rule agrees with
+itself; the arms are built on a template nobody publishes.
+
+### Changed -- the ledger
+
+- `_verify/_verify_path_promises_1650.py` published **503** and makes
+  **505** checks: a path named in prose is a check, and this round
+  names two more of them -- the new check and its dry-run driver.
+- `_verify/_verify_ledger_counts_1650.py` (**84** checks) moved,
+  because this round publishes a count for one more check.
+
+### Verified --
+
+- local gate: __GATESTEPS__ steps, 0 failed
+- tracked verifier suite: __SUITE__ passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **__SUITE__** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1118 / 1124 / 1118 / 1118 (native / wasm-gc / wasm / js)
 ## [0.164.62] -- a backend claim was true and held by nothing, and a count that has to be re-typed every release will one day be re-typed wrongly
 
 `moon.mod` moves 0.164.61 -> 0.164.62. No estimator behaviour changed. The

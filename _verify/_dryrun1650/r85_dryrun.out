@@ -1,0 +1,10 @@
+round 85 dry-run: the manifest description checks, broken 7 ways
+baseline 0 failing checks; every mechanism made the check it breaks fail
+VERDICT PASS
+   1. the published description omits a family the package ships -- _verify/_verify_manifest_descriptions_1680.py
+   2. the published description names a family the package LACKS -- _verify/_verify_manifest_descriptions_1680.py
+   3. the LPLR example's manifest names LPQ's estimator -- _verify/_verify_manifest_descriptions_1680.py
+   4. the PLPR example's manifest names a class that does not exist -- _verify/_verify_manifest_descriptions_1680.py
+   5. the main example's description carries a wrong estimator count -- _verify/_verify_manifest_descriptions_1680.py
+   6. the API server's description names a route it does not serve -- _verify/_verify_manifest_descriptions_1680.py
+   7. the published description lists the same families in a different order -- it must STAY GREEN -- must stay green: _verify/_verify_manifest_descriptions_1680.py

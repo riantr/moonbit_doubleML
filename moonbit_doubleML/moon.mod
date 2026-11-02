@@ -15,7 +15,7 @@ import {
 
 name = "riantr/moonbit_doubleML"
 
-version = "0.164.62"
+version = "0.164.63"
 
 readme = "README.mbt.md"
 
@@ -35,4 +35,4 @@ preferred_target = "wasm-gc"
 
 supported_targets = "native+wasm+wasm-gc+js"
 
-description = "Pure-MoonBit port of doubleml-for-py: Double / Debiased Machine Learning for partial linear, IRM, IV, DID, SSM, APO(S), PQ, QTE, LPQ, CVaR, RDD, BLP, and policy-tree models"
+description = "Pure-MoonBit port of doubleml-for-py: Double / Debiased Machine Learning for partial linear, IRM, IV, DID, SSM, APO(S), PQ, QTE, LPQ, LPLR, CVaR, PLPR, RDD, BLP, and policy-tree models"
