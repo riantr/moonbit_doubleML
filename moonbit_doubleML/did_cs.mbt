@@ -13,6 +13,7 @@
 /// for each `(g, t_pre, t_eval)` triple on the long-format panel,
 /// and returns the per-`(g, t)` ATT estimates as a flat array
 /// (row-major, length `n_groups * n_periods`).
+#derive(Debug)
 pub struct DoubleMLDIDCSData {
   x : Matrix
   y : Array[Double]
@@ -27,7 +28,7 @@ pub struct DoubleMLDIDCSData {
   // Sorted unique time-period values, including the smallest as the
   // `never_treated_time` sentinel.
   times : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDCSData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -151,6 +152,7 @@ fn discover_groups_times(
 ///     Sant'Anna & Zhao (2020) eq. 4.3 form.
 ///   - No sensitivity analysis, no `tune_optuna`, no aggregation
 ///     beyond the per-`(g, t)` output.
+#derive(Debug)
 pub struct DoubleMLDIDCS {
   data : DoubleMLDIDCSData
   control_group : String
@@ -311,7 +313,7 @@ pub struct DoubleMLDIDCS {
   // readable via `learner_g()` / `learner_m()`.
   ml_g : LearnerDispatch
   ml_m : LearnerDispatch
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDCS with @moonbitlang/core/debug.Debug::{to_repr}
@@ -343,21 +345,21 @@ pub fn DoubleMLDIDCS::new(
   }
   try {
     // NOTE (v0.156.0): deliberately NO `n_folds <= ...` upper bound here,
-    // unlike every other estimator (`apo.mbt:116`, `plr.mbt:107`, `irm.mbt:122`
+    // unlike every other estimator (`apo.mbt:117`, `plr.mbt:108`, `irm.mbt:123`
     // and the rest all carry one). `n_folds` is instead bound DOWNSTREAM, and
     // against a HARDCODED FOUR-ROW PLACEHOLDER rather than any real data:
     //
-    //   did_cs.mbt:1622   DoubleMLDIDBinary::new(  (in DoubleMLDIDCS::fit)
-    //   did_binary.mbt:352   pub fn DoubleMLDIDBinary::new
-    //   did_binary.mbt:439     inner: DoubleMLDID::new(
-    //   did_binary.mbt:440       DoubleMLDIDData::new(
-    //   did_binary.mbt:441         Matrix::zeros(4, data.n_features()),
-    //   did.mbt:276          require(n_folds <= data.n_obs())
-    //   did.mbt:317          abort(...)   <- the failure
+    //   did_cs.mbt:1624   DoubleMLDIDBinary::new(  (in DoubleMLDIDCS::fit)
+    //   did_binary.mbt:355   pub fn DoubleMLDIDBinary::new
+    //   did_binary.mbt:442     inner: DoubleMLDID::new(
+    //   did_binary.mbt:443       DoubleMLDIDData::new(
+    //   did_binary.mbt:444         Matrix::zeros(4, data.n_features()),
+    //   did.mbt:278          require(n_folds <= data.n_obs())
+    //   did.mbt:319          abort(...)   <- the failure
     //
     // `DoubleMLDIDBinary::new` builds a 4-row dummy inner model so that
     // construction does not trip the precondition, and overwrites it with the
-    // real one in `fit()`. Its own comment (did_binary.mbt:412-417) notes this
+    // real one in `fit()`. Its own comment (did_binary.mbt:415-420) notes this
     // is safe because "`n_folds` defaults to 2". That is exactly why the limit
     // was never hit: the default is under the ceiling and the ceiling is
     // invisible until someone passes a larger number.

@@ -56,7 +56,7 @@ WHAT IS NOT CHECKED, AND WHY
     upstream tree is not in this repository.  The port's own count, which
     the same sentence states, IS checked.
   * A DATED measurement -- "the band was measured across 12 seeds", "moon
-    0.1.20261023 vs CPython 3.13.14: `sqrt` 6/6 bit-exact" -- says which
+    0.1.20261102 vs CPython 3.13.14: `sqrt` 6/6 bit-exact" -- says which
     measurement it records, and that is the whole of the promise.
   * A RUNTIME verdict -- "1117 / 1117 tests pass on native" -- is what the
     CI gate's transcript records, and `_verify/_verify_shipped_docs_1643.py`

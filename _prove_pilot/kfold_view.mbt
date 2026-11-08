@@ -13,10 +13,11 @@
 /// Proof-side view of the main package's `Fold` struct. Same shape,
 /// but uses `FixedArray[Int]` so the proof side can talk about
 /// element-wise disjointness and bounds.
+#derive(Debug)
 pub struct FoldView {
   train_idx : FixedArray[Int]
   test_idx : FixedArray[Int]
-} derive(Debug)
+}
 
 ///|
 /// Fold::new equivalent: build a fold from explicit train/test index

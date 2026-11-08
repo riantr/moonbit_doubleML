@@ -12,12 +12,13 @@
 /// cross-validated calibration (matches upstream
 /// `sklearn.model_selection.cross_val_predict`); pass `cv` to
 /// `PSProcessor::adjust_ps` to control the fold partition.
+#derive(Debug)
 pub(all) struct PSProcessorConfig {
   clipping_threshold : Double
   extreme_threshold : Double
   calibration_method : String
   cv_calibration : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend PSProcessorConfig with @moonbitlang/core/debug.Debug::{to_repr}
@@ -109,9 +110,10 @@ pub fn PSProcessorConfig::default() -> PSProcessorConfig {
 /// isotonic regression; with `cv_calibration=true`, K-fold
 /// cross-validated predictions are used instead (one isotonic fit
 /// per fold, predictions concatenated across folds).
+#derive(Debug)
 pub struct PSProcessor {
   config : PSProcessorConfig
-} derive(Debug)
+}
 
 ///|
 pub extend PSProcessor with @moonbitlang/core/debug.Debug::{to_repr}

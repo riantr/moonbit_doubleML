@@ -121,8 +121,22 @@ for d in CLI:
     p = subprocess.run(["moon", "run", "examples/%s" % d], cwd=ROOT,
                        capture_output=True, text=True, timeout=900,
                        encoding="utf-8", errors="replace")
-    out = (p.stdout or "") + (p.stderr or "")
+    # THE PROGRAM'S OUTPUT IS ITS STDOUT.
+    #
+    # The toolchain writes a warning on STDERR for every `moon run`, and
+    # merging the two streams let the TOOLCHAIN's diagnostics decide what a
+    # driver "printed": the old bracket rule then counted every one of the
+    # sixteen drivers instead of the twelve it counted before, and the gap it
+    # was measuring -- the one driver the old rule added -- became five.
+    #
+    # This is the same defect the CI e2e gate had, in a second place: a
+    # gate that reads the toolchain's diagnostics as the program's output.
+    # stderr is REPORTED, never asserted on.
+    out = p.stdout or ""
     lines = out.splitlines()
+    if (p.stderr or "").strip():
+        print("      (stderr, not counted: %s)"
+              % (p.stderr or "").strip().splitlines()[0][:100])
     has_true = any(TRUE_RE.search(l) and "=" in l for l in lines)
     strict = [l for l in lines
               if LEVEL_RE.search(l) or NAME_RE.search(l) or ENDPOINT_RE.search(l)]

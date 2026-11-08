@@ -76,6 +76,7 @@
 ///|
 /// Random-forest classifier (binary). `predict` returns
 /// `P(y = 1 | x)`, not a hard class label -- see the file header.
+#derive(Debug)
 pub struct RFClassifier {
   n_trees : Int32
   max_depth : Int32
@@ -85,7 +86,7 @@ pub struct RFClassifier {
   // Fitted state (empty until `fit` is called).
   trees : Array[CART]
   n_features : Int32 // -1 = not yet fit
-} derive(Debug)
+}
 
 ///|
 pub extend RFClassifier with @moonbitlang/core/debug.Debug::{to_repr}

@@ -31,6 +31,7 @@
 /// The implementation supports only the `partialling out` score and a
 /// single treatment. It is intentionally minimal — see the README for
 /// the matrix of features covered relative to the upstream package.
+#derive(Debug)
 pub struct DoubleMLPLR {
   data : DoubleMLData
   // injected learner types (v0.54.0+): separate per-nuisance so
@@ -88,7 +89,7 @@ pub struct DoubleMLPLR {
   // configuration are unchanged. Mirrors the IRM plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLPLR with @moonbitlang/core/debug.Debug::{to_repr}
@@ -382,11 +383,11 @@ fn plr_score_elements(
 /// its `__init__` default is `score="partialling out"`. This port has always
 /// spelled it `"partialling-out"` (hyphen), so the port's default was a value
 /// upstream rejects, and `DoubleMLPLR` aborted on upstream's own spelling.
-/// `DoubleMLPLPR::new` (plpr.mbt:551-554) uses the SPACE spelling, matching
+/// `DoubleMLPLPR::new` (plpr.mbt:554-557) uses the SPACE spelling, matching
 /// upstream, so the two estimators in this package did not share a vocabulary.
 ///
 /// Accepting both is strictly additive and cannot move a number:
-/// `plr_score_elements` (`if plr_is_iv_score(score)`, `plr.mbt:356`) selects the
+/// `plr_score_elements` (`if plr_is_iv_score(score)`, `plr.mbt:357`) selects the
 /// IV branch only on an
 /// iv-type spelling and falls through to partialling-out for everything
 /// else, so `"partialling out"` already computed the identical PO score --
@@ -1050,7 +1051,7 @@ pub fn DoubleMLPLR::bootstrap(
 ///
 /// The old call passed `self.psi_a` to `irm_style_sensitivity`, which squares
 /// its third argument (sensitivity.mbt:42). But the DML score's `psi_a` is
-/// `-v^2` (plr.mbt:369), so the reported baseline was the FOURTH moment
+/// `-v^2` (plr.mbt:370), so the reported baseline was the FOURTH moment
 /// `mean((-v^2)^2) = mean(v^4)` -- a different functional form, not a
 /// differently-scaled version of the intended quantity. The Riesz
 /// representer is a different object from the score element, which is exactly

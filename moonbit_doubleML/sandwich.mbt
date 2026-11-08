@@ -121,6 +121,7 @@
 /// the function call site rather than via this enum because
 /// the cluster variant has a different signature
 /// (per-cluster sums + jackknife correction).
+#derive(Debug)
 pub enum SandwichKind {
   /// Classical sandwich (Huber 1967, White 1980). No
   /// finite-sample correction.
@@ -140,7 +141,7 @@ pub enum SandwichKind {
   /// (MacKinnon 2012 sec 5.4); widens the confidence
   /// interval most aggressively.
   HC3
-} derive(Debug)
+}
 
 ///|
 pub extend SandwichKind with @moonbitlang/core/debug.Debug::{to_repr}

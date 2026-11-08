@@ -35,13 +35,14 @@
 /// ratio of cluster score sums (`est_coef_cluster`), and the SE is
 /// unit-level cluster-robust (`var_est_cluster`), with the
 /// closed-form `LinearRegression` learner.
+#derive(Debug)
 pub struct DoubleMLPanelData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
   t : Array[Int32]
   id : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLPanelData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -76,13 +77,14 @@ pub fn DoubleMLPanelData::new(
 /// every transformed row: upstream wraps the transformed data in a
 /// static-panel `DoubleMLPanelData`, which sets `cluster_cols =
 /// id_col`, so the clustered DML path always keys off this column.
+#derive(Debug)
 struct PanelTransform {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
   d_mean_row : Array[Double]
   id : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend PanelTransform with @moonbitlang/core/debug.Debug::{to_repr}
@@ -499,6 +501,7 @@ fn transform_panel(
 /// and `transform_panel` for the four approaches. Scores:
 /// `"partialling out"` (default) or `"IV-type"` (fits an extra
 /// g-nuisance on `y - theta_initial * d` exactly like upstream).
+#derive(Debug)
 pub struct DoubleMLPLPR {
   panel : DoubleMLPanelData
   approach : String
@@ -542,7 +545,7 @@ pub struct DoubleMLPLPR {
   // / PLR / CVAR / SSM plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLPLPR with @moonbitlang/core/debug.Debug::{to_repr}

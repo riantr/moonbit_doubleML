@@ -86,6 +86,10 @@ for cls, fname in (("DoubleMLDIDCS", "did_cs.mbt"),
             doc.append(s)
         elif s.startswith("//"):
             continue
+        elif s.startswith("#"):
+            # An ATTRIBUTE (`#derive(...)`) sits between the doc comment and
+            # the type; skip it rather than end the docstring there.
+            continue
         else:
             break
     doc.reverse()

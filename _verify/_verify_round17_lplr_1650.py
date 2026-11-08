@@ -254,37 +254,38 @@ for u in outof:
     print("        out of range: %s" % u)
 
 CONTENT = [
-    ("lplr.mbt", 198, 198, "r_hat = t_pred"),
-    ("lplr.mbt", 202, 203, "expit(-r_hat)"),
-    ("lplr.mbt", 360, 362, "LogisticRegression::new()"),
-    ("lplr.mbt", 665, 665, "route `ml_g` to the `ml_t` slot"),
-    ("lplr.mbt", 781, 781, "kfold(n, self.n_folds, self.seed + r)"),
-    ("lplr.mbt", 775, 782, "set_sample_splitting"),
-    ("lplr.mbt", 836, 836, "cross_fit_predict_dispatch"),
-    ("lplr.mbt", 854, 876, "reverted twice"),
-    ("lplr.mbt", 868, 868, "0.007307 -> 0.021078"),
-    ("lplr.mbt", 870, 870, "1.03e11"),
-    ("lplr.mbt", 928, 928, "m_pred = a_pred"),
-    ("lplr.mbt", 1236, 1242, "One real divergence"),
-    ("lplr.mbt", 1260, 1260, "theta_new.abs() > 5.0"),
-    ("lplr.mbt", 1261, 1261, "raw_delta.abs() < 0.25"),
-    ("lplr.mbt", 1264, 1264, "(theta_new - theta).abs() < 1.0e-9"),
-    ("lplr.mbt", 1616, 1634, "cross_fit_predict_inner"),
+    ("lplr.mbt", 199, 199, "r_hat = t_pred"),
+    ("lplr.mbt", 203, 204, "expit(-r_hat)"),
+    ("lplr.mbt", 362, 364, "LogisticRegression::new()"),
+    ("lplr.mbt", 667, 667, "route `ml_g` to the `ml_t` slot"),
+    ("lplr.mbt", 783, 783, "kfold(n, self.n_folds, self.seed + r)"),
+    ("lplr.mbt", 777, 784, "set_sample_splitting"),
+    ("lplr.mbt", 838, 838, "cross_fit_predict_dispatch"),
+    ("lplr.mbt", 856, 878, "reverted twice"),
+    ("lplr.mbt", 870, 870, "0.007307 -> 0.021078"),
+    ("lplr.mbt", 872, 872, "1.03e11"),
+    ("lplr.mbt", 930, 930, "m_pred = a_pred"),
+    ("lplr.mbt", 1238, 1244, "One real divergence"),
+    ("lplr.mbt", 1262, 1262, "theta_new.abs() > 5.0"),
+    ("lplr.mbt", 1263, 1263, "raw_delta.abs() < 0.25"),
+    ("lplr.mbt", 1266, 1266, "(theta_new - theta).abs() < 1.0e-9"),
+    ("lplr.mbt", 1618, 1636, "cross_fit_predict_inner"),
     ("var_est.mbt", 79, 79, "jacobian.abs() > 0.0"),
-    ("logistic.mbt", 217, 217, "pub fn LogisticRegression::predict("),
-    ("logistic.mbt", 250, 250, "pub fn LogisticRegression::predict_class("),
-    ("kfold.mbt", 757, 757, "Array::make(m, 0.0)"),
-    ("kfold.mbt", 751, 757, "kfold(m, n_inner, rng_state)"),
-    ("learner.mbt", 159, 159, "P(y = 1 | x)"),
-    ("learner.mbt", 380, 425, "cross_fit_predict_conditional_dispatch"),
+    ("logistic.mbt", 218, 218, "pub fn LogisticRegression::predict("),
+    ("logistic.mbt", 251, 251, "pub fn LogisticRegression::predict_class("),
+    ("kfold.mbt", 758, 758, "Array::make(m, 0.0)"),
+    ("kfold.mbt", 752, 758, "kfold(m, n_inner, rng_state)"),
+    ("learner.mbt", 162, 162, "P(y = 1 | x)"),
+    ("learner.mbt", 383, 428, "cross_fit_predict_conditional_dispatch"),
     ("expand_v145_test.mbt", 38, 136, "lplr_warnings_report_the_degenerate_design"),
     ("examples/fuzz/main.mbt", 412, 412, "rng.int(limit=100) + 60"),
     ("examples/fuzz/main.mbt", 412, 459, "chacha8_rng(seed)"),
     ("examples/fuzz/main.mbt", 478, 478, "se < 1.0e10"),
-    # Round 43 added a CI step above this one, so the pin moved from 114 to
-    # 125.  The pin is the LINE that runs the validators, and the workflow
-    # grows above it from time to time.
-    ("check.yml", 125, 125, "validate_*_with_python.py"),
+    # The pin is the LINE that runs the validators, and the workflow grows
+    # above it from time to time: it was 114, then 125, and it is 155 now --
+    # round 43 added a CI step above it and round 86 added the generator-sync
+    # job, which carries the README-compile step with it.
+    ("check.yml", 155, 155, "validate_*_with_python.py"),
 ]
 for path, a, b, tok in CONTENT:
     real = resolve(path)

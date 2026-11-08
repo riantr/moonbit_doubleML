@@ -189,31 +189,41 @@ def both_readmes(pattern, repl):
 
 
 MECHANISMS = [
+    # The anchor matches the PROSE, not the wrap.  Round 86 rewrote the
+    # Installation sentence -- the floor now has TWO reasons, so the pin's
+    # clause reads "whose published source imports" instead of "and that
+    # published version imports" -- and an anchor that spells the prose with
+    # LITERAL SPACES is a promise about where the generator broke the line.
+    # The driver died on it with "matched 0 times", and a driver that dies
+    # before it applies its mutation proves nothing.  So the whitespace is
+    # matched with \s+, which spans the line break, and the pin itself stays
+    # a pattern: the version moves with every release.
     ("the Installation requirement names a pin the tree does not declare",
      lambda: both_readmes(
-         r"`moonbitlang/async@0\.\d+\.\d+`, and that published version imports",
-         "`moonbitlang/async@0.22.5`, and that published version imports")),
+         r"`moonbitlang/async@0\.\d+\.\d+`,\s+whose\s+published\s+source\s+imports",
+         "`moonbitlang/async@0.22.5`, whose published source imports")),
 
     ("the Installation requirement names a toolchain the Status table does not",
      lambda: both_readmes(
-         r"\*\*Requires `moon 0\.1\.\d+` or newer\.\*\*",
+         r"\*\*Requires\s+`moon\s+0\.1\.\d+`\s+or\s+newer\.\*\*",
          "**Requires `moon 0.1.20261023` or newer.**")),
 
     ("the floor is NEWER than the toolchain the release was verified on",
      lambda: both_readmes(
-         r"\*\*Requires `moon 0\.1\.\d+` or newer\.\*\*",
+         r"\*\*Requires\s+`moon\s+0\.1\.\d+`\s+or\s+newer\.\*\*",
          "**Requires `moon 0.1.20261105` or newer.**")),
 
     ("the 'Not covered' section stops saying what the dead pin costs",
      lambda: both_readmes(
-         r", a core\nsubpackage that older cores do not carry, so the dead pin is what sets the\n"
-         r"\*\*toolchain floor\*\* -- see \*\*Installation\*\*\.",
-         ", a core\nsubpackage that older cores do not carry.")),
+         r",\s+a\s+core\s+subpackage\s+that\s+older\s+cores\s+do\s+not\s+carry,\s+"
+         r"so\s+the\s+dead\s+pin\s+is\s+what\s+sets\s+the\s+"
+         r"\*\*toolchain\s+floor\*\*\s+--\s+see\s+\*\*Installation\*\*\.",
+         ", a core subpackage that older cores do not carry.")),
 
     ("the installation guide goes back to saying the repository pins no minimum",
      lambda: sub_once(
          GUIDE,
-         r"- `moon` \*\*0\.1\.\d+ or newer\*\*\.",
+         r"- `moon`\s+\*\*0\.1\.\d+\s+or\s+newer\*\*\.",
          "- `moon` — CI installs the `latest` channel build and the\n"
          "  repository pins no minimum.")),
 ]

@@ -2,11 +2,11 @@
 //
 // WHY THIS FILE EXISTS EVEN THOUGH IT IS NEVER USED FOR A COMPARISON
 // ================================================================
-// MoonBit 0.1.20261028 has no file I/O (measured: `@std/env`, `@std/fs`,
-// `@std/io`, `@std/process` all fail to resolve -- `Cannot find import
-// '@std/env'`; the builtin `read_file` does not exist, error 4021), so
-// Python-generated data cannot be handed to the port as a file. It has to
-// arrive as literals in a compiled `.mbt` source.
+// MoonBit 0.1.20261102 has no file I/O (measured: `@std/env`, `@std/fs`,
+// `@std/io`, `@std/process` all fail to resolve -- "Cannot use `@std`:
+// package std is not imported.", error 4037; the builtin `read_file` does
+// not exist, error 4021), so Python-generated data cannot be handed to the
+// port as a file. It has to arrive as literals in a compiled `.mbt` source.
 //
 // That means the symbol `sec_did_pyexample` in `main.mbt` has to exist in
 // every build of this package -- including `moon build` and `moon test` at
@@ -28,7 +28,7 @@
 /// a run without generation still COMPLETES and the validator can report "the
 /// fixture was never generated" -- instead of the emitter dying deep inside a
 /// 3-row panel, which is what a bare stub produced (measured: a panic at
-/// `require(n_folds <= data.n_obs())`, `did.mbt:276`, n_folds=2 on three
+/// `require(n_folds <= data.n_obs())`, `did.mbt:278`, n_folds=2 on three
 /// observations).
 fn pyexample_generated() -> Int32 {
   0

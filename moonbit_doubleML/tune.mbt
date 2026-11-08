@@ -36,10 +36,11 @@
 /// - the field is `learner_l` and always has been. Those comments now
 /// name the slot's *role* instead. Use `TuneParam::for_outcome` /
 /// `TuneParam::for_treatment` so the call site carries the role.
+#derive(Debug)
 pub struct TuneParam {
   learner_l : LearnerDispatch
   learner_m : LearnerDispatch
-} derive(Debug)
+}
 
 ///|
 pub extend TuneParam with @moonbitlang/core/debug.Debug::{to_repr}
@@ -99,6 +100,7 @@ pub fn TuneParam::for_treatment(
 /// R^2 scoring is deferred to a follow-up release — R^2 needs a
 /// defended against degenerate `Var(y) = 0` and isn't needed by
 /// the standard PLR tune workflow.
+#derive(Debug)
 pub enum TuneScoring {
   /// Mean squared error; lower is better.
   MSE
@@ -106,7 +108,7 @@ pub enum TuneScoring {
   RMSE
   /// Negative MSE; higher is better (sklearn convention).
   NegMSE
-} derive(Debug)
+}
 
 ///|
 pub extend TuneScoring with @moonbitlang/core/debug.Debug::{to_repr}
@@ -142,6 +144,7 @@ pub fn TuneScoring::parse(s : String) -> TuneScoring {
 /// is-better is the same convention as the chosen `TuneScoring`.
 /// For diagnostics where the user wants to compare across scoring
 /// rules, they should re-run `tune` with the other rule.
+#derive(Debug)
 pub struct TuneResult {
   /// The candidate with the best score under the chosen rule.
   best : TuneParam
@@ -149,7 +152,7 @@ pub struct TuneResult {
   best_score : Double
   /// Per-candidate raw scores, in `param_set` order.
   all_scores : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend TuneResult with @moonbitlang/core/debug.Debug::{to_repr}
@@ -261,7 +264,7 @@ fn tune_argmin(scores : Array[Double], scoring : TuneScoring) -> Int32 {
 /// v0.108.0: the previous version of this comment gave
 /// "an RFLearner with 0 trees" as the example, and that was wrong.
 /// `RFLearner::fit` raises `PreconditionError` on `n_trees=0` and its
-/// own `catch` escalates it to `abort` (`rfl.mbt:649`), so the
+/// own `catch` escalates it to `abort` (`rfl.mbt:651`), so the
 /// process dies before any caller sees a vector - let alone a
 /// wrong-length one. No learner in the current `LearnerDispatch` set
 /// can reach the sentinel: they all return `x.rows()`-length vectors.

@@ -197,10 +197,11 @@ pub suberror PreconditionError {
 ///|
 /// A single fold is represented by a pair of train and test index
 /// arrays. Test indices are disjoint and together cover `[0, n_obs)`.
+#derive(Debug)
 pub struct Fold {
   train_idx : Array[Int32]
   test_idx : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend Fold with @moonbitlang/core/debug.Debug::{to_repr}

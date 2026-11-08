@@ -51,11 +51,11 @@ keep.
 
 WHY IT HAS TO LOOK LIKE THIS
 ============================
-MoonBit 0.1.20261028 has no file I/O. Measured, not assumed: `@std/env`,
-`@std/fs`, `@std/io` and `@std/process` all fail to resolve (`Cannot find
-import '@std/env'`) and the builtin `read_file` does not exist (error 4021).
-A dataset cannot be handed to the port as a file; it has to arrive as
-literals in a compiled `.mbt` source.
+MoonBit 0.1.20261102 has no file I/O. Measured, not assumed: `@std/env`,
+`@std/fs`, `@std/io` and `@std/process` all fail to resolve ("Cannot use
+`@std`: package std is not imported.", error 4037) and the builtin `read_file`
+does not exist (error 4021). A dataset cannot be handed to the port as a
+file; it has to arrive as literals in a compiled `.mbt` source.
 
 So: write the generated dataset into `examples/parity/pyexample_data.mbt`,
 run the emitter, compare, restore. The placeholder is committed because CI
@@ -125,7 +125,7 @@ it were both measured FALSE:
     own control." They agree for INTEGER `g`. `_get_never_treated_value` is
     dtype-dependent -- `0` for integer, `inf` for floating, `NaT` for datetime
     -- and `0` is exactly this port's rule (`discover_groups_times`,
-    `did_cs.mbt:84-95`). The `inf` that broke the attempt came from
+    `did_cs.mbt:85-96`). The `inf` that broke the attempt came from
     `time_type="float"`; recoding to integer reconciles them.
 
 Both claims were refuted by running the thing rather than reading the module

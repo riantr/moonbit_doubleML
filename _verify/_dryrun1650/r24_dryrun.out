@@ -146,7 +146,7 @@ G. the counts this verifier owns, derived from the tree
   ok    the 129 blackbox test files are the *_test.mbt files           got 129
   ok    the 26 whitebox test files are the *_wbtest.mbt files          got 26
   ok    the 24 Python reference scripts are the validate_*_with_python.py files got 24
-  ok    the README names the scripts it refers to                      got 28: ['_verify/_bitexact_mutation_1640.py', 'apo.mbt', 'blp_policy.mbt', 'did_cs.py']
+  ok    the README names the scripts it refers to                      got 29: ['_verify/_bitexact_mutation_1640.py', '_verify/_verify_readme_snippets_1650.py', 'apo.mbt', 'blp_policy.mbt']
   ok    every file name the README spells is a tracked file in the tree not a file: []
   ok    the CHANGELOG's DIDBinary probe section is findable            
   ok    the CHANGELOG enumerates four probe designs                    got 4

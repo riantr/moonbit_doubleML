@@ -1,5 +1,6 @@
 ///|
 /// Average potential outcomes for an arbitrary treatment level.
+#derive(Debug)
 pub struct DoubleMLAPO {
   data : DoubleMLData
   treatment_level : Double
@@ -46,14 +47,14 @@ pub struct DoubleMLAPO {
   //
   // The old "not yet consumed internally" note was STALE and is removed:
   // since v0.61.0 both reach the cross-fit through `cross_fit_apo`
-  // (apo.mbt:274) -- `ml_g` fits the conditional outcome on the TREATED
+  // (apo.mbt:275) -- `ml_g` fits the conditional outcome on the TREATED
   // subset, `ml_m` fits the propensity on the FULL training fold.
   //
   // v0.134.0: the two defaults now DIVERGE, deliberately.
   //   `ml_g` models `E[Y | X]`        -> stays OLS
   //   `ml_m` models `P(D = lvl | X)`  -> LogisticRegression
   // APO's `ml_m` is fitted against `treated` -- the
-  // `indicator_level(d, treatment_level)` 0/1 VECTOR (apo.mbt:355, :577),
+  // `indicator_level(d, treatment_level)` 0/1 VECTOR (apo.mbt:356, :577),
   // NOT raw `d` -- so the target is binary by construction for ANY
   // treatment level, and a classifier is structurally the right learner.
   // Upstream agrees: `regressor=False, classifier=True` plus
@@ -91,7 +92,7 @@ pub struct DoubleMLAPO {
   // any post-aggregation configuration always takes effect).
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLAPO with @moonbitlang/core/debug.Debug::{to_repr}
@@ -1070,8 +1071,8 @@ pub fn DoubleMLAPOS::tune(
 ///   * `m_hat_adj = _propensity_score_adjustment(m_hat, treated, normalize_ipw)`
 ///     (`apo.py:365-367`), which returns `m_hat` unchanged when
 ///     `normalize_ipw` is False. This port HAS the flag (`normalize_ipw : Bool`,
-///     `apo.mbt:44`) and calls the same helper at
-///     `PSProcessor::from_config(ps_processor_config)` (`apo.mbt:320`), so the
+///     `apo.mbt:45`) and calls the same helper at
+///     `PSProcessor::from_config(ps_processor_config)` (`apo.mbt:321`), so the
 ///     adjusted propensity is available directly rather than needing a new
 ///     implementation.
 ///
@@ -1083,7 +1084,7 @@ pub fn DoubleMLAPOS::tune(
 ///   nu2     = mean( 2*m_alpha - rr^2 )
 /// ```
 ///
-/// `treated[i] = 1{d[i] == treatment_level}` (`apo.mbt:355`), matching
+/// `treated[i] = 1{d[i] == treatment_level}` (`apo.mbt:356`), matching
 /// upstream's `self.treated`.
 ///
 /// The default path previously computed `mean(psi_a^2)`, upstream's documented
@@ -1199,6 +1200,7 @@ pub fn DoubleMLAPO::sensitivity_analysis_cluster(
 /// level-by-level difference `coefs[i] - coefs[ref]` for one or
 /// more reference levels, matching the upstream
 /// `DoubleMLAPOS.causal_contrast` semantics.
+#derive(Debug)
 pub struct DoubleMLAPOS {
   data : DoubleMLData
   treatment_levels : Array[Double]
@@ -1271,7 +1273,7 @@ pub struct DoubleMLAPOS {
   // components WITHOUT re-fitting the children (re-fitting would
   // defeat the cache, which is the whole point of the layer).
   psi_b_flat : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLAPOS with @moonbitlang/core/debug.Debug::{to_repr}

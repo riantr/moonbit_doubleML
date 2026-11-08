@@ -1,10 +1,11 @@
 ///|
+#derive(Debug)
 pub struct DoubleMLLPQData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLLPQData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -88,6 +89,7 @@ pub fn lpq_score_ipw(
 }
 
 ///|
+#derive(Debug)
 pub struct DoubleMLLPQ {
   data : DoubleMLLPQData
   treatment : Double
@@ -167,7 +169,7 @@ pub struct DoubleMLLPQ {
   // PLR plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLLPQ with @moonbitlang/core/debug.Debug::{to_repr}

@@ -1,11 +1,12 @@
 ///|
 /// Data for a sharp or fuzzy regression-discontinuity design.
+#derive(Debug)
 pub struct DoubleMLRDDData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
   score : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLRDDData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -36,6 +37,7 @@ pub fn DoubleMLRDDData::n_obs(self : DoubleMLRDDData) -> Int32 {
 ///|
 /// Local-polynomial RD estimator. The port uses a triangular kernel and a fixed
 /// bandwidth, which keeps the hot path pure MoonBit and deterministic.
+#derive(Debug)
 pub struct DoubleMLRDD {
   data : DoubleMLRDDData
   cutoff : Double
@@ -149,7 +151,7 @@ pub struct DoubleMLRDD {
   // skipped.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLRDD with @moonbitlang/core/debug.Debug::{to_repr}
@@ -246,6 +248,7 @@ pub fn DoubleMLRDD::new(
 /// correction fit carries the `u^2` column `q = 2` needs. The POINT
 /// estimator still defaults to `order = 1`, matching `rdrobust`'s
 /// `p = 1`, so the default numbers are unchanged.
+#derive(Debug)
 pub enum RDDKernel {
   /// `1 - |u|/h`. The `rdrobust` default, and this port's only kernel
   /// until v0.110.0.
@@ -258,7 +261,7 @@ pub enum RDDKernel {
   Epanechnikov
   /// `1 - (u/h)^2`.
   Quadratic
-} derive(Debug)
+}
 
 ///|
 pub extend RDDKernel with @moonbitlang/core/debug.Debug::{to_repr}

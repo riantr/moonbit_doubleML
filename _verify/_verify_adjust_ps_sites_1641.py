@@ -2,8 +2,8 @@
 
 The README says (v0.121.0 retrospective):
 
-    "The five remaining `adjust_ps` call sites (`apo.mbt:320`, `did.mbt:628`,
-     `did_cross_section.mbt:615`, `did_cs_binary.mbt:374`, `cvar.mbt:736` and
+    "The five remaining `adjust_ps` call sites (`apo.mbt:321`, `did.mbt:630`,
+     `did_cross_section.mbt:617`, `did_cs_binary.mbt:375`, `cvar.mbt:737` and
      `:1005`) still do not forward `cv`."
 
 The list has SIX entries. Either "five" counts the FILES, or the count is
@@ -23,7 +23,7 @@ guards it:
   * the count word "eight" and the "seven files" it is qualified with;
   * the two that DO forward `cv`, named by the line the `cv=` ARGUMENT is on
     -- which is the convention the README uses ("`cv=` is passed at
-    `irm.mbt:430` and `iivm.mbt:525`"), and NOT the line the call starts on
+    `irm.mbt:431` and `iivm.mbt:527`"), and NOT the line the call starts on
     (427 and 522). Getting that convention wrong is what made this file
     report a defect that was not there.
 """
@@ -71,7 +71,7 @@ for f in prod:
             depth = buf.count("(") - buf.count(")")
         # A line that is only a COMMENT quoting upstream's call is not a call
         # site -- the first version of this scanner counted three of those
-        # (cvar.mbt:997, did.mbt:139, did_cs_binary.mbt:339) and produced a
+        # (cvar.mbt:998, did.mbt:141, did_cs_binary.mbt:340) and produced a
         # nine-site set that does not exist.
         stripped = line.lstrip()
         if stripped.startswith("//") or stripped.startswith("///"):
@@ -102,10 +102,10 @@ print()
 
 readme = io.open(os.path.join(ROOT, "README.mbt.md"), encoding="utf-8").read()
 
-EXPECTED_NO_CV = {"apo.mbt:320", "cvar.mbt:736", "cvar.mbt:1005", "did.mbt:628",
-                  "did_cross_section.mbt:615", "did_cs_binary.mbt:374",
-                  "quantile.mbt:217", "ssm.mbt:671"}
-EXPECTED_WITH_CV = {"irm.mbt:430", "iivm.mbt:525"}
+EXPECTED_NO_CV = {"apo.mbt:321", "cvar.mbt:737", "cvar.mbt:1006", "did.mbt:630",
+                  "did_cross_section.mbt:617", "did_cs_binary.mbt:375",
+                  "quantile.mbt:217", "ssm.mbt:673"}
+EXPECTED_WITH_CV = {"irm.mbt:431", "iivm.mbt:527"}
 
 check("the README's list names every call site that does not forward cv",
       set("%s:%d" % s for s in no_cv) == EXPECTED_NO_CV,

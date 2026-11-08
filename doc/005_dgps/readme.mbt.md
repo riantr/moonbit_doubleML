@@ -43,7 +43,7 @@ the same sample.
 | `make_pliv_data` | PLIV | `(n_obs, dim_x, theta, seed)` | `dgp_pliv.mbt` |
 | `make_pliv_CHS2015` | PLIV, Chernozhukov et al. 2015 | `(n_obs, dim_x, theta, seed)` | `dgp_pliv.mbt` |
 | `make_pliv_multiway_cluster` | PLIV, multiway clustered | `(n_obs, dim_x, theta, seed)` | `dgp_pliv_cluster.mbt` |
-| `make_lplr_LZZ2020` | LPLR, Liu-Zhang-Zhou 2020 | `(n, alpha, seed)` | `dgp_lplr.mbt` |
+| `make_lplr_LZZ2020` | LPLR, Liu-Zhang-Zhou 2021 | `(n, alpha, seed)` | `dgp_lplr.mbt` |
 | `make_plpr_CP2025` | PLPR, Clarke-Polselli 2025 | `(n_obs, dim_x, theta, seed)` | `dgp_plpr.mbt` |
 | `make_did_SZ2020` | DID, Sant'Anna-Zhao 2020 | `(n_obs, dim_x, theta, seed)` | `dgp_did_SZ2020.mbt` |
 | `make_did_CS2021` | DID, Callaway-Sant'Anna 2021 | `(n_obs, dim_x, theta, seed)` | `dgp_did_CS2021.mbt` |

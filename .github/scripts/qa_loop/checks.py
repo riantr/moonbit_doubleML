@@ -71,6 +71,31 @@ def run(cmd, cwd=ROOT, timeout=1800, env=None):
         return 124, f"timeout after {timeout}s: {' '.join(cmd)}"
 
 
+# Run a command and keep its stdout and its stderr APART.
+#
+# `run()` merges the two streams, which is the right default for a check that
+# only cares whether the command worked: the merged text is what gets scanned
+# for a summary line.  It is the wrong default for a check that asserts on a
+# PROGRAM'S OUTPUT, because the merged order puts stderr LAST -- so a
+# diagnostic the TOOLCHAIN printed lands after the program's own last line and
+# is read as the program's last word.
+#
+# Return: (returncode, stdout, stderr)
+def run_split(cmd, cwd=ROOT, timeout=1800, env=None):
+    e = dict(os.environ)
+    if env:
+        e.update(env)
+    try:
+        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                           timeout=timeout, env=e,
+                           encoding="utf-8", errors="replace")
+        return p.returncode, (p.stdout or ""), (p.stderr or "")
+    except FileNotFoundError:
+        return 127, "", "command not found: %s" % cmd[0]
+    except subprocess.TimeoutExpired:
+        return 124, "", "timeout after %ss: %s" % (timeout, " ".join(cmd))
+
+
 def mbt(rel: str) -> str:
     return os.path.join(PKG, rel)
 
@@ -1134,38 +1159,84 @@ def _templatise(line):
     return _NUM_LITERAL.sub("<n>", line.strip())
 
 
+# --------------------------------------------------------------------------- #
+# 14/21. End-to-end examples -- run each one natively and assert its output.
+#
+# A PROGRAM'S OUTPUT IS ITS STDOUT.  That sentence is load-bearing, and it
+# was learned the hard way on 2026-10-29: the stable toolchain moved from
+# 0.1.20261028 to 0.1.20261029 and started printing
+#
+#     Warning: Package `moonbitlang/async/internal/event_loop` dep...
+#
+# on STDERR for every `moon run`.  `run()` merges stderr into stdout, so the
+# merged text ended with the toolchain's warning, and the final-line
+# assertion -- which reads the LAST line -- read the warning as the example's
+# last word.  All twenty examples failed on a line the examples never
+# printed.  The examples were fine; the gate was reading the wrong stream.
+#
+# So the verdict is computed from stdout alone.  The assertion is NOT
+# weakened: the same prefix, the same templatised length, the same minimum
+# line count and the same exit code are checked, against the same examples.
+# What changed is WHICH stream the asserted line comes from.  stderr is the
+# toolchain's channel: it is reported in the evidence, never asserted on.
+# --------------------------------------------------------------------------- #
+
+
+def _e2e_lines(text):
+    return [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+
+
+def _e2e_verdict(prefix, want_len, min_lines, rc, stdout):
+    # One example's verdict: None when it holds, else the reason it does not.
+    #
+    # Pure on purpose: it reads the example's stdout and nothing else, so it
+    # can be exercised with a synthetic stream -- including one carrying the
+    # toolchain's deprecation warning on stderr -- without running anything.
+    if rc != 0:
+        return "exit=%d" % rc
+    lines = _e2e_lines(stdout)
+    if len(lines) < min_lines:
+        return "only %d line(s), expected >= %d" % (len(lines), min_lines)
+    got = _templatise(lines[-1]) if lines else ""
+    if not got.startswith(prefix):
+        return "final line starts %r, expected %r" % (got[:60], prefix)
+    if len(got) != want_len:
+        return "final line is %d templatised chars, expected %d" % (len(got), want_len)
+    return None
+
+
 @check("e2e", "run every runnable example and assert its output", "fast")
 def c_e2e():
     ran, bad = 0, []
+    err_examples, err_lines, sample = 0, 0, ""
     for name, prefix, want_len, min_lines in _EXAMPLES:
         d = os.path.join("examples", name)
         if not os.path.isdir(os.path.join(ROOT, d)):
             bad.append((name, "missing"))
             continue
-        rc, out = run(["moon", "run", "--target", "native", d], timeout=900)
+        rc, out, err = run_split(["moon", "run", "--target", "native", d], timeout=900)
         ran += 1
-        if rc != 0:
-            bad.append((name, "exit=%d" % rc))
-            continue
-        lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
-        if len(lines) < min_lines:
-            bad.append((name, "only %d line(s), expected >= %d"
-                        % (len(lines), min_lines)))
-            continue
-        got = _templatise(lines[-1]) if lines else ""
-        if not got.startswith(prefix):
-            bad.append((name, "final line starts %r, expected %r"
-                        % (got[:60], prefix)))
-        elif len(got) != want_len:
-            bad.append((name, "final line is %d templatised chars, expected %d"
-                        % (len(got), want_len)))
+        why = _e2e_verdict(prefix, want_len, min_lines, rc, out)
+        if why:
+            bad.append((name, why))
+        elines = _e2e_lines(err)
+        if elines:
+            err_examples += 1
+            err_lines += len(elines)
+            if not sample:
+                sample = elines[0][:120]
     if ran == 0:
         return R("e2e", "", SKIP, "no runnable examples found")
+    note = ""
+    if err_examples:
+        note = ("; stderr carried %d line(s) from %d example(s) -- the toolchain's "
+                "channel, reported not asserted: %r"
+                % (err_lines, err_examples, sample))
     return R("e2e", "", PASS if not bad else FAIL,
-             "%d example(s) executed natively; exit code, final-line prefix, "
-             "final-line length and output length asserted on each; "
+             "%d example(s) executed natively; exit code, stdout final-line prefix, "
+             "stdout final-line length and stdout line count asserted on each; "
              "examples/api_server excluded (service, never returns)"
-             % ran + ("" if not bad else "; FAILURES: %s" % bad))
+             % ran + ("" if not bad else "; FAILURES: %s" % bad) + note)
 
 
 # --------------------------------------------------------------------------- #
@@ -1366,12 +1437,12 @@ def c_api():
         results["/fit/irm rejects a fold without both groups"] = (st, st == 400)
         # The cross-fitting PARAMETERS are the same class of defect, and they
         # were the hole the v0.164.38 fix left: the library `require`s
-        # `n_folds >= 2`, `n_folds <= n_obs` and `n_rep >= 1` (plr.mbt:106-108,
-        # irm.mbt:121-123), and `kfold` aborts on an impossible partition
-        # (kfold.mbt:442).  A `require` is a PANIC, not a catchable error, so
+        # `n_folds >= 2`, `n_folds <= n_obs` and `n_rep >= 1` (plr.mbt:107-109,
+        # irm.mbt:122-124), and `kfold` aborts on an impossible partition
+        # (kfold.mbt:443).  A `require` is a PANIC, not a catchable error, so
         # the process EXITS and every later caller is refused -- measured:
         # `POST /fit/irm` with one row and n_folds=2 printed
-        # `precondition failed at kfold.mbt:442` + `PanicError`, the client
+        # `precondition failed at kfold.mbt:443` + `PanicError`, the client
         # saw the connection reset, and `/healthz` then refused connections.
         # Both endpoints are exercised, because both call the library.
         one_row = json.dumps({"x": [[1.0, 0.2]], "y": [1.0], "d": [1.0],

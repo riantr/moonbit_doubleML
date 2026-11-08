@@ -109,7 +109,7 @@ test "plr_fitted_has_predictions" {
 /// every backend on every push, and a backend that stops agreeing makes this
 /// test red instead of making the tutorial quietly wrong.
 ///
-/// MEASURED, not assumed.  On `moon 0.1.20261028` this fixture was fitted on
+/// MEASURED, not assumed.  On `moon 0.1.20261102` this fixture was fitted on
 /// all four backends and every one of the four numbers below came out
 /// bit-for-bit identical -- the same digits, not "close enough".  That is why
 /// the comparison is `==` and not a tolerance: a tolerance would hide exactly

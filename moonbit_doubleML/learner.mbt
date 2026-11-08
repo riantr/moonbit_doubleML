@@ -40,9 +40,10 @@
 /// Constant-predictor learner. `fit` is a no-op (returns
 /// `self`); `predict` returns a length-`x.rows()` array of
 /// the constant `value` for every row, ignoring `x`.
+#derive(Debug)
 pub struct ConstantLearner {
   value : Double
-} derive(Debug)
+}
 
 ///|
 pub extend ConstantLearner with @moonbitlang/core/debug.Debug::{to_repr}
@@ -88,11 +89,12 @@ impl Learner for ConstantLearner with fn predict(self, x) {
 /// no-op; `predict` returns all zeros. Useful for sanity
 /// tests that the DML pipeline doesn't divide by zero when
 /// the nuisance is trivial.
+#derive(Debug)
 pub struct NoopLearner {
   // `value : Double = 0.0` placeholder; preserved as a struct
   // (not a unit type) so adding fields later is non-breaking.
   value : Double
-} derive(Debug)
+}
 
 ///|
 pub extend NoopLearner with @moonbitlang/core/debug.Debug::{to_repr}
@@ -141,6 +143,7 @@ impl Learner for NoopLearner with fn predict(self, x) {
 /// `DoubleMLPLR[LinearRegression, LinearRegression]`), at the
 /// cost of an extra match arm per learner type. Adding a new
 /// learner is 3 small edits (see the file header).
+#derive(Debug)
 pub enum LearnerDispatch {
   /// OLS via `LinearRegression` (the v0.54.0 default)
   LinearRegression(LinearRegression)
@@ -177,7 +180,7 @@ pub enum LearnerDispatch {
   /// Pure-MoonBit elastic net, the convex Lasso/Ridge blend.
   /// v0.120.0+.
   ElasticNet(ElasticNet)
-} derive(Debug)
+}
 
 ///|
 pub extend LearnerDispatch with @moonbitlang/core/debug.Debug::{to_repr}

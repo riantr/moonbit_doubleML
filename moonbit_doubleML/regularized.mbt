@@ -349,13 +349,14 @@ fn enet_fit_tail(
 /// for no benefit. The positivity also guarantees the Cholesky inside
 /// `solve_spd` cannot fail: `X'WX` is positive semi-definite and
 /// `alpha * I` is positive definite.
+#derive(Debug)
 pub struct Ridge {
   alpha : Double
   coef_ : Array[Double]
   intercept_ : Double
   n_features_ : Int32
   fitted : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend Ridge with @moonbitlang/core/debug.Debug::{to_repr}
@@ -519,6 +520,7 @@ impl Learner for Ridge with fn predict(self, x) {
 ///
 /// `sample_weight` is accepted and renormalised to mean 1, so this
 /// learner is invariant to a constant rescaling of the weights.
+#derive(Debug)
 pub struct Lasso {
   alpha : Double
   tol : Double
@@ -528,7 +530,7 @@ pub struct Lasso {
   n_iter_ : Int32
   n_features_ : Int32
   fitted : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend Lasso with @moonbitlang/core/debug.Debug::{to_repr}
@@ -693,6 +695,7 @@ impl Learner for Lasso with fn predict(self, x) {
 ///
 /// Defaults match scikit-learn: `alpha = 1.0`, `l1_ratio = 0.5`,
 /// `tol = 1e-4`, `max_iter = 1000`.
+#derive(Debug)
 pub struct ElasticNet {
   alpha : Double
   l1_ratio : Double
@@ -703,7 +706,7 @@ pub struct ElasticNet {
   n_iter_ : Int32
   n_features_ : Int32
   fitted : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend ElasticNet with @moonbitlang/core/debug.Debug::{to_repr}

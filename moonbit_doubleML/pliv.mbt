@@ -4,13 +4,14 @@
 /// instrumental variable `z`. The port supports a *single*
 /// instrument (1-D array) — the multi-instrument case is not
 /// implemented.
+#derive(Debug)
 pub struct DoubleMLPLIVData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
   cluster_vars : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLPLIVData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -100,6 +101,7 @@ pub fn DoubleMLPLIVData::n_cluster_vars(self : DoubleMLPLIVData) -> Int32 {
 /// out* score (the `IV-type` score, which would need an additional
 /// `ml_g` learner, is not implemented). All three nuisance functions
 /// are estimated with the same closed-form `LinearRegression` learner.
+#derive(Debug)
 pub struct DoubleMLPLIV {
   data : DoubleMLPLIVData
   n_folds : Int32
@@ -144,7 +146,7 @@ pub struct DoubleMLPLIV {
   // (false by default to preserve v0.81.0 behavior bit-for-bit).
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLPLIV with @moonbitlang/core/debug.Debug::{to_repr}

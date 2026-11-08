@@ -242,17 +242,28 @@ MECHANISMS = [
               commit(WORK, [os.path.join("examples", "apo", "moon.mod")],
                      "dry-run: a manifest's licence went stale"))),
 
+    # The pointer's LINE NUMBER is DERIVED, not written down.  The README's
+    # pointers come from the builder, which finds the CONSTRUCT in the source
+    # and emits the line it occupies -- so a literal number here is a promise
+    # about where the source stands, and round 86's `#derive(...)` migration
+    # moved `did.mbt:628` to `did.mbt:630` and `cvar.mbt:736` to
+    # `cvar.mbt:737`.  Both anchors died with it, and a dead anchor is a
+    # mechanism that cannot fail.
+    #
+    # The FILE NAME is named, and it is one the README states exactly ONE
+    # pointer to: `did.mbt` and `cvar.mbt` are stated twice each, and an
+    # anchor that matches twice is not an anchor.
     ("a `file:line` pointer names a file that is not in the tree",
      lambda: (sub_once(README,
-                        r"`did\.mbt:628`",
-                        "`did_not_there.mbt:628`"),
+                        r"`apo\.mbt:(\d+)`",
+                        "`apo_not_there.mbt:\\1`"),
               commit(WORK, ["README.mbt.md"],
                      "dry-run: a pointer named a file that is not there"))),
 
     ("a `file:line` pointer names a line past the end of its file",
      lambda: (sub_once(README,
-                        r"`cvar\.mbt:736`",
-                        "`cvar.mbt:999999`"),
+                        r"`quantile\.mbt:\d+`",
+                        "`quantile.mbt:999999`"),
               commit(WORK, ["README.mbt.md"],
                      "dry-run: a pointer named a line past the end"))),
 

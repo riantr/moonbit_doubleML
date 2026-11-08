@@ -5,11 +5,12 @@
 /// intended to be a general-purpose linear algebra library; only the
 /// operations needed for the closed-form LinearRegression learner and the
 /// DML score have been implemented.
+#derive(Debug)
 struct Matrix {
   nrows : Int32
   ncols : Int32
   data : Array[Double] // length = nrows * ncols, row-major
-} derive(Debug)
+}
 
 ///|
 pub extend Matrix with @moonbitlang/core/debug.Debug::{to_repr}

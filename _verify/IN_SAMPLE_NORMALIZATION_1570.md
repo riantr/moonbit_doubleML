@@ -24,7 +24,7 @@
 > | the 49 / 42 / 7 constructor-divergence triple | asserted | **not reproducible** from the two sources it names, under any of six scopings — replaced by §10 |
 > | the port's `in_sample_normalization` default | `false` at 6 sites | `false` at 6 sites — unchanged |
 > | upstream's default | `True` | `True` — unchanged |
-> | `did.mbt` `in_sample_normalization` | `:164-200` | `did.mbt:166-201` |
+> | `did.mbt` `in_sample_normalization` | `:164-200` | `did.mbt:168-203` |
 > | `did_cross_section.mbt` `p_hat = mean(d)` note | `:1476` | `:1476` — unchanged |
 >
 > **What is NOT verified here.** No arm was re-run. Every number in §2–§4 is
@@ -79,7 +79,7 @@ capability rather than default choice.
 
 ## 1. Why the port chose `false`
 
-`did.mbt:164-200`:
+`did.mbt:166-202`:
 
 > ...equivalent asymptotically but differs in finite samples. Default is
 > `false` to preserve pre-0.8.0 bit-equality with the prior `DoubleMLDID` port.
@@ -109,7 +109,7 @@ values. `n_folds=2, n_rep=1, seed=3141`.
 cannot** reach `psi_a`. All difference lives in `psi_b`.
 
 `mean |psi_a| = 1.0000000000000000` (to ~1e-14) on both arms, confirming the
-structural claim at `did_cross_section.mbt:1476`.
+structural claim at `did_cross_section.mbt:1478`.
 
 ## 3. Arm 2 — port DIDCS. Up to 0.97 SE; SE itself moves 3.3×.
 

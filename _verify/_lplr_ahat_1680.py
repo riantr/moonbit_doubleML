@@ -8,11 +8,11 @@ comes from `_double_dml_cv_predict(..., smpls=smpls, smpls_inner=...)` and
 is a full `n`-vector: a row inside an outer fold's TRAINING set gets an INNER
 out-of-fold prediction, a row in its test set gets the outer model's.
 
-The port's `a_pred` (lplr.mbt:836) is a plain outer cross-fit, so every row
+The port's `a_pred` (lplr.mbt:838) is a plain outer cross-fit, so every row
 gets an outer-model prediction. The machinery to fix it already exists --
 `a_inner_per_fold` (:801) is ml_m's inner OOF per outer fold, and
 `double_cross_fit_predict` returns a vector of length `len(train_idx)` per
-fold (kfold.mbt:757) -- so the combine is:
+fold (kfold.mbt:758) -- so the combine is:
 
     a_pred[outer[fi].train_idx[k]] = a_inner_per_fold[fi][k]
 

@@ -644,7 +644,7 @@ check("the skills document does not call the 1/m_hat set seven",
 # "`ml_m` defaults to the logistic classifier wherever the propensity enters
 # the score as `1 / m_hat`".  That is FALSE for `DoubleMLIIVM`, whose
 # propensity enters the score as `1 / m_hat` and `1 / (1 - m_hat)` -- of the
-# INSTRUMENT -- and whose `ml_m` still defaults to OLS (iivm.mbt:184).  The
+# INSTRUMENT -- and whose `ml_m` still defaults to OLS (iivm.mbt:186).  The
 # README had said so twice all along; the tutorial had not caught up.
 #
 # The rule the document states has to be the rule the SOURCE has, so the

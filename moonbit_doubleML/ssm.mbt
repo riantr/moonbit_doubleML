@@ -3,12 +3,13 @@
 /// indicator* `s` on top of the usual `x/y/d`. The outcome `y` is
 /// observed only when `s = 1`; for `s = 0` the y entry should be
 /// ignored.
+#derive(Debug)
 pub struct DoubleMLSSMData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
   s : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLSSMData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -84,6 +85,7 @@ pub fn DoubleMLSSMData::n_features(self : DoubleMLSSMData) -> Int32 {
 ///
 /// Note: only the MAR case is implemented; `normalize_ipw = True`
 /// and the nonignorable-nonresponse case are out of scope.
+#derive(Debug)
 pub struct DoubleMLSSM {
   data : DoubleMLSSMData
   n_folds : Int32
@@ -141,7 +143,7 @@ pub struct DoubleMLSSM {
   // PLR / CVAR plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLSSM with @moonbitlang/core/debug.Debug::{to_repr}

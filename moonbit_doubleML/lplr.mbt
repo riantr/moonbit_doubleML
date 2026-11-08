@@ -32,11 +32,12 @@
 /// neither branch here; `m_pred` is aliased to `a_pred`, unconditioned
 /// and unweighted. See the `m_pred = a_pred` block in `fit` for the full
 /// measurement and why it is held off.
+#derive(Debug)
 pub struct DoubleMLBinaryData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLBinaryData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -278,6 +279,7 @@ pub fn newton_solve_score(
 /// logistic regression learners (`LogisticRegression` for `ml_M` and
 /// `ml_m`, `LinearRegression` for `ml_t`). The repository keeps one
 /// estimator per data; multi-treatment support is out of scope here.
+#derive(Debug)
 pub struct DoubleMLLPLR {
   data : DoubleMLBinaryData
   score : String
@@ -343,7 +345,7 @@ pub struct DoubleMLLPLR {
   // CVAR / SSM / PLPR plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLLPLR with @moonbitlang/core/debug.Debug::{to_repr}
@@ -1185,8 +1187,8 @@ pub fn DoubleMLLPLR::fit(
         // this file's own construction that used sklearn `.predict` -- hard
         // 0/1 labels -- where upstream uses `predict_proba` (`lplr.py:166`,
         // `:150`). This port is on the probability side too: `predict` returns
-        // `sigmoid(eta)` clipped into `(1e-15, 1-1e-15)` (`logistic.mbt:229-233`)
-        // and the labels are a separate `predict_class` (`logistic.mbt:250`).
+        // `sigmoid(eta)` clipped into `(1e-15, 1-1e-15)` (`logistic.mbt:230-234`)
+        // and the labels are a separate `predict_class` (`logistic.mbt:251`).
         // The old control measured labels-against-probabilities, which
         // guarantees a large answer for a reason that has nothing to do with
         // bagging. **Do not implement the bagging**: it cannot move the gated

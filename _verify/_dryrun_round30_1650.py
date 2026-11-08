@@ -381,7 +381,7 @@ MECHANISMS = [
          "\n      cv=Some(folds_to_cv_partition(folds)),")),
 
     # -- 4. the PROSE moves away from the code -------------------------------
-    # The block that cites `ssm.mbt:73-74` names the estimators it compares,
+    # The block that cites `ssm.mbt:74-75` names the estimators it compares,
     # and `DoubleMLSSM` is the only one of them the target file carries.
     # Renaming it leaves the block naming nothing the target file has, and
     # the pointer now points at a file that does not say what the sentence
@@ -391,10 +391,10 @@ MECHANISMS = [
          README,
          "`DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 --\n"
          "`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- because its\n"
-         "score carries **two** reciprocals, one per direction (`ssm.mbt:73-74`): the\n",
+         "score carries **two** reciprocals, one per direction (`ssm.mbt:74-75`): the\n",
          "`DoubleMLSSMX` is one of the four migrations of v0.132.0-v0.138.0 --\n"
          "`DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSMX` -- because its\n"
-         "score carries **two** reciprocals, one per direction (`ssm.mbt:73-74`): the\n")),
+         "score carries **two** reciprocals, one per direction (`ssm.mbt:74-75`): the\n")),
 
     # -- 5. the cited line falls off the end of its file ---------------------
     # The file is truncated below the cited line, so the pointer names a line
@@ -406,14 +406,14 @@ MECHANISMS = [
     ("a pointer names a line past the end of its file",
      lambda: patch(
          README,
-         "`cvar.mbt:1005`",
+         "`cvar.mbt:1006`",
          "`cvar.mbt:999999`")),
 
     # -- 7. a pointer names a file that is not in the tree -------------------
     ("a pointer names a file that is not in the tree",
      lambda: patch(
          README,
-         "`did_cross_section.mbt:615`",
+         "`did_cross_section.mbt:617`",
          "`did_cross_section_gone.mbt:615`")),
 
     # -- 8. a pointer names a file that is not TRACKED -----------------------
@@ -432,7 +432,7 @@ MECHANISMS = [
                     "}\n"),
               patch(
                   README,
-                  "`ssm.mbt:671`",
+                  "`ssm.mbt:673`",
                   "`ghost_not_tracked.mbt:1`"))),
 
     # -- 9. the SET SIZE moves: LAST on purpose -----------------------------

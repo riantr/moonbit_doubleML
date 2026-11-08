@@ -214,7 +214,21 @@ with io.open(os.path.join(probe_dir, "main.mbt"), "w", encoding="utf-8", newline
 with io.open(os.path.join(probe_dir, "moon.mod"), "w", encoding="utf-8", newline="\n") as fh:
     fh.write('name = "local/transcendental-probe"\n\nversion = "0.0.1"\n')
 with io.open(os.path.join(probe_dir, "moon.pkg"), "w", encoding="utf-8", newline="\n") as fh:
-    fh.write('pkgtype(kind: "executable")\n')
+    # The core's packages must be imported AT THE PACKAGE LEVEL.  The compiler
+    # moved the standard library into `moonbitlang/core/*` packages, and a
+    # package that uses one without importing it no longer compiles:
+    #
+    #     Cannot use @math: package math is not imported.
+    #     Hint: packages from `moonbitlang/core` need to be imported as well,
+    #            e.g. `moonbitlang/core/math`.
+    #
+    # This repository's own `moonbit_doubleML/moon.pkg` already imports the
+    # core packages it uses, which is why the library still builds; the probe
+    # is a separate package and has to say the same thing.  The import goes in
+    # `moon.pkg`, NOT in `moon.mod`: `moon.mod` only accepts VERSIONED
+    # registry dependencies, and the core is the toolchain's own package.
+    fh.write('import {\n  "moonbitlang/core/math",\n}\n\n'
+             'pkgtype(kind: "executable")\n')
 
 pp = subprocess.run(["moon", "run", "--target", "native", probe_dir], cwd=probe_dir,
                     capture_output=True, text=True, encoding="utf-8",

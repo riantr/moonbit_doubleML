@@ -27,6 +27,13 @@ its verdicts are trusted:
       flag is what CI gates on, so a failure slipping through it would make
       the whole CI gate decorative
 
+  T21-T28 the e2e gate reads the example's STDOUT, not stdout+stderr merged:
+      T21/T22/T23/T24/T25 the verdict on stdout alone (right output, wrong
+      output, non-zero exit, short output, right line but not the LAST one)
+      T26 the MERGED stream really would have failed -- the bug was real
+      T27/T28 the REAL c_e2e passes with the toolchain's warning on stderr
+      and still fails when the example's own stdout is wrong
+
 Run:  python .github/scripts/qa_loop/selftest.py
 """
 from __future__ import annotations
@@ -317,6 +324,153 @@ try:
        "ok" in out18, f"exit={rc18} out={out18!r}")
 except Exception as _e:  # noqa: BLE001
     ok("T18 run() survives undecodable subprocess bytes", False, repr(_e))
+
+# --------------------------------------------------------------------------- #
+# T21-T28 -- the e2e gate must read the example's STDOUT, not a merged stream.
+#
+# On 2026-10-29 the stable toolchain moved from 0.1.20261028 to 0.1.20261029
+# and started printing a deprecation warning on stderr for every `moon run`:
+#
+#     Warning: Package `moonbitlang/async/internal/event_loop` dep...
+#
+# `run()` merges stderr into stdout, so the merged text ended with that
+# warning and the "final line" assertion -- which reads the LAST line -- read
+# the warning as the example's last word.  All twenty examples failed on a
+# line no example ever printed.  These arms pin the fix from both sides: the
+# toolchain's diagnostic must NOT decide the verdict, and the assertion must
+# still BITE.  A fix that only proved the first would have disarmed the gate.
+# --------------------------------------------------------------------------- #
+
+# The exact diagnostic observed on CI on 2026-10-29 (run id 41497496882).  It
+# is a constant here, not a reading of the live toolchain, so the arm keeps
+# working on a machine whose toolchain does not emit it.
+TOOLCHAIN_WARNING = "Warning: Package `moonbitlang/async/internal/event_loop` dep..."
+
+
+def fake_stdout(prefix, want_len, min_lines, break_final=False):
+    # A stdout that satisfies one row of _EXAMPLES (or deliberately misses it).
+    #
+    # The row marker is a 60-character PREFIX of the templatised line plus
+    # that line's exact length -- for `bitexact` the prefix shows 6 of the 32
+    # `b'<n>'` repetitions and the length is 295, and for `did_cs` the prefix
+    # is 60 and the length is 67.  So the line is built from the prefix and
+    # then EXTENDED to the expected length: the prefix is what the check
+    # matches, the length is what it measures, and both have to hold.  The
+    # filler is a letter, never a digit, because a digit would template to
+    # `<n>` and change the very length the filler is there to establish.
+    if break_final:
+        final = "the example printed something else"
+    else:
+        final = prefix.replace("<n>", "1") + "x" * max(0, want_len - len(prefix))
+    pad = ["pad line %d" % (i + 1) for i in range(max(0, min_lines - 1))]
+    return "\n".join(pad + [final]) + "\n"
+
+
+def row_for(name):
+    for n, prefix, want_len, min_lines in C._EXAMPLES:
+        if n == name:
+            return prefix, want_len, min_lines
+    return None
+
+
+# T21 -- the example's own output satisfies its row.
+n_ok = 0
+for _n, _p, _wl, _ml in C._EXAMPLES:
+    if C._e2e_verdict(_p, _wl, _ml, 0, fake_stdout(_p, _wl, _ml)) is None:
+        n_ok += 1
+ok("T21 every example's own stdout satisfies its row",
+   n_ok == len(C._EXAMPLES), f"{n_ok}/{len(C._EXAMPLES)}")
+
+# T21b -- run_split really keeps the two streams apart.  If the merge ever
+# moves back inside run_split, THIS is the arm that notices: `run()` merges
+# on purpose (its callers scan the merged text for a summary line), so the
+# separation has to live in the function that promises it.
+try:
+    _rc, _out, _err = C.run_split(
+        [sys.executable, "-c",
+         "import sys; sys.stdout.write('OUT'); sys.stderr.write('ERR')"])
+except Exception as _e:  # noqa: BLE001
+    _out, _err = "", repr(_e)
+ok("T21b run_split keeps stdout and stderr apart",
+   _out == "OUT" and _err == "ERR", f"out={_out!r} err={_err!r}")
+
+# T22 -- a wrong final line is caught, and the message names the expectation.
+_p, _wl, _ml = C._EXAMPLES[0][1], C._EXAMPLES[0][2], C._EXAMPLES[0][3]
+why = C._e2e_verdict(_p, _wl, _ml, 0, fake_stdout(_p, _wl, _ml, break_final=True))
+ok("T22 a wrong final line is rejected",
+   why is not None and "final line starts" in why, str(why)[:70])
+
+# T23 -- a non-zero exit is still fatal.
+why = C._e2e_verdict(_p, _wl, _ml, 3, fake_stdout(_p, _wl, _ml))
+ok("T23 a non-zero exit is rejected", why == "exit=3", str(why)[:70])
+
+# T24 -- too few lines is still fatal.
+why = C._e2e_verdict(_p, _wl, _ml, 0, fake_stdout(_p, _wl, 1))
+ok("T24 too few output lines are rejected",
+   why is not None and "line(s)" in why, str(why)[:70])
+
+# T25 -- the LAST line is the one that counts.  A stdout whose earlier line
+# matches the template but whose last line does not must be rejected: a gate
+# that scanned for a matching line ANYWHERE would pass a truncated program.
+_bad = fake_stdout(_p, _wl, _ml, break_final=True)
+_mid = _bad.split("\n")
+_mid.insert(0, _p.replace("<n>", "1"))
+why = C._e2e_verdict(_p, _wl, _ml, 0, "\n".join(_mid))
+ok("T25 the LAST line decides, not any matching line",
+   why is not None and "final line starts" in why, str(why)[:70])
+
+# T26 -- the MERGED stream really would have failed.  This is the bug, shown
+# rather than described: with the toolchain's warning on stderr, the merged
+# final line is the warning, so the pre-fix logic rejected a correct example.
+_merged = fake_stdout(_p, _wl, _ml) + TOOLCHAIN_WARNING + "\n"
+_ml = [_l.strip() for _l in _merged.splitlines() if _l.strip()]
+_got = C._templatise(_ml[-1])
+ok("T26 the MERGED stream would have failed (the bug was real)",
+   not _got.startswith(_p) and _got.startswith("Warning:"), _got[:50])
+
+# T27/T28 -- the REAL c_e2e, with run_split stubbed.  T27 is the fix (the
+# toolchain's diagnostic does not decide the verdict, and it is still
+# REPORTED); T28 is the guarantee that the fix did not disarm the gate.
+# T27c counts the stub's calls: without it, an `e2e` that went back to the
+# merged `run()` would silently run the real examples and could still pass.
+_calls = []
+
+
+def c_e2e_with(stub):
+    saved = C.run_split
+    try:
+        C.run_split = stub
+        return C.c_e2e()
+    finally:
+        C.run_split = saved
+
+
+def stub_for(break_final):
+    def _stub(cmd, **kw):
+        _calls.append(os.path.basename(cmd[-1]))
+        row = row_for(os.path.basename(cmd[-1]))
+        if row is None:
+            return 0, "", ""
+        prefix, want_len, min_lines = row
+        err = "" if break_final else (TOOLCHAIN_WARNING + "\n")
+        return 0, fake_stdout(prefix, want_len, min_lines,
+                               break_final=break_final), err
+    return _stub
+
+
+_calls.clear()
+_r27 = c_e2e_with(stub_for(False))
+ok("T27 c_e2e PASSES with the toolchain's warning on stderr",
+   _r27.verdict == C.PASS, f"{_r27.verdict}: {_r27.evidence[-90:]}")
+ok("T27b c_e2e REPORTS the stderr it did not assert on",
+   "reported not asserted" in _r27.evidence, _r27.evidence[-90:])
+ok("T27c c_e2e went through run_split for every example",
+   len(_calls) == len(C._EXAMPLES), f"{len(_calls)}/{len(C._EXAMPLES)}")
+
+_calls.clear()
+_r28 = c_e2e_with(stub_for(True))
+ok("T28 c_e2e FAILS when the example's own stdout is wrong",
+   _r28.verdict == C.FAIL, f"{_r28.verdict}: {_r28.evidence[-90:]}")
 
 print("-" * 70)
 bad = [n for n, o, _ in results if not o]

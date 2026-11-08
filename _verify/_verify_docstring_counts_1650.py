@@ -254,9 +254,19 @@ def doc_above(f, i):
     """
     doc = []
     j = i - 1
-    while j >= 0 and LINES[f][j].strip().startswith("///"):
-        doc.append(LINES[f][j].strip())
-        j -= 1
+    while j >= 0:
+        s = LINES[f][j].strip()
+        if s.startswith("///"):
+            doc.append(s)
+            j -= 1
+            continue
+        if s.startswith("#"):
+            # An ATTRIBUTE (`#derive(...)`) sits between the doc comment and
+            # the type; it is not part of the docstring and it is not a break
+            # in it either.  Skip it and keep walking back.
+            j -= 1
+            continue
+        break
     doc.reverse()
     return " ".join(d[3:].strip() for d in doc)
 

@@ -1,20 +1,36 @@
 
 A. the measurement -- run the 16 drivers and look at what they print
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     apo                true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     apos               true=yes ci=NO  loose=NO
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     cluster            true=yes ci=NO  loose=NO
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     cvar               true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     datasets           true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     did_binary         true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     did_cross_section  true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     did_cs             true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     did_cs_binary      true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     did_multi          true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     lplr               true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     main               true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     pava               true=NO  ci=NO  loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     plpr               true=yes ci=yes loose=yes
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     splitting          true=NO  ci=NO  loose=NO
+      (stderr, not counted: Warning: Package `moonbitlang/async` depends on experimental package `moonbitlang/core/async`. Set `)
     ssm                true=yes ci=NO  loose=NO
   PASS  all 16 drivers ran
   PASS  14 of the 16 print a true value

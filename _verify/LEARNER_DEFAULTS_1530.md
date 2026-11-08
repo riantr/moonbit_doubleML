@@ -169,14 +169,14 @@ stored and exposed: **15 `ml_g` + 15 `ml_m` + 2 `ml_l` + 1 `ml_r` = 33 slots,
 from 12 / 12 to 15 / 15, which is the three DID constructors acquiring the
 parameter they never had.
 
-The bottom row had **no** `ml_g` / `ml_m` field on the struct at all. `DoubleMLDIDCS::new` (`did_cs.mbt:312-324`),
-`DoubleMLDIDCSBinary::new` (`did_cs_binary.mbt:696`) and
-`DoubleMLDIDBinary::new` (`did_binary.mbt:343`) accept no learner parameter;
+The bottom row had **no** `ml_g` / `ml_m` field on the struct at all. `DoubleMLDIDCS::new` (`did_cs.mbt:314-326`),
+`DoubleMLDIDCSBinary::new` (`did_cs_binary.mbt:698`) and
+`DoubleMLDIDBinary::new` (`did_binary.mbt:346`) accept no learner parameter;
 the learner appears only as a `::fit` argument defaulting to OLS:
 
-- `did_cs.mbt:1128-1129` — `DoubleMLDIDCS::fit`
-- `did_cs_binary.mbt:1038-1039` — `DoubleMLDIDCSBinary::fit`
-- `did_binary.mbt:750-751` — `DoubleMLDIDBinary::fit`
+- `did_cs.mbt:1130-1131` — `DoubleMLDIDCS::fit`
+- `did_cs_binary.mbt:1040-1041` — `DoubleMLDIDCSBinary::fit`
+- `did_binary.mbt:753-754` — `DoubleMLDIDBinary::fit`
 
 A caller cannot ask a fitted `DoubleMLDIDCS` which propensity learner produced
 it, and a constructor-level audit like this one is structurally blind to those
@@ -190,9 +190,9 @@ Two, both in files this audit had to read, both of the same shape: a comment
 claiming a parameter is ignored or hardcoded when the surrounding code routes
 it.
 
-**`did_cs.mbt:1131`** — a vestigial `ignore(ml_g)` stood above the v0.146.0
+**`did_cs.mbt:1133`** — a vestigial `ignore(ml_g)` stood above the v0.146.0
 note. `ml_g` has driven the four conditional `(d, t)` outcome nuisances since
-v0.146.0 (`did_cs.mbt:1230`, `1235`, `1242`, `1249`, forwarded at `1518`), so
+v0.146.0 (`did_cs.mbt:1232`, `1235`, `1242`, `1249`, forwarded at `1518`), so
 the line claimed a drop that does not exist. **Fixed** in this round.
 
 **`did_cs_binary.mbt:11-23`** — the header's "Simplifications vs. upstream"
@@ -216,7 +216,7 @@ Both changes are comment-only (one deleted line, one rewritten doc block), so
 no numeric pin is involved and no cross-backend spread can be introduced.
 Proportionate gate run: `moon check` exit 0, `moon test --target native`
 **1087 / 1087**. The full four-target run at the released baseline
-(`1087 / 1087 / 1093 / 1087`) was confirmed after the `did_cs.mbt:1131` fix.
+(`1087 / 1087 / 1093 / 1087`) was confirmed after the `did_cs.mbt:1133` fix.
 
 ## 5. v0.153.0 — the fix, and the evidence it discriminates
 
@@ -296,7 +296,7 @@ Gates: `moonbit_doubleML/expand_v153b_test.mbt`, 4 tests.
 
 It fitted each estimator twice and compared coefficients. Fitting
 `DoubleMLSSM` at `n=400, p=5` **aborts** with a precondition failure at
-`logistic.mbt:134`, so the gate was testing the optimiser's convergence, not
+`logistic.mbt:135`, so the gate was testing the optimiser's convergence, not
 the accessor. Rewritten to pattern-match the `LearnerDispatch` enum directly —
 `learner_m()` must return the `LogisticRegression` / `LinearRegression`
 variant the constructor was given. No fit, no optimiser, no fragile fixture,
@@ -317,10 +317,10 @@ type errors rather than logic bugs:
 
 ## 7. Still open from the did_cs thread
 
-- `DoubleMLDIDMulti` ignores `t_pre` entirely (`did_multi.mbt:326`, `356`,
+- `DoubleMLDIDMulti` ignores `t_pre` entirely (`did_multi.mbt:327`, `356`,
   `396`), and its `expand_gt_keyword` (`:210-275`) still encodes the
   pre-v0.150.0 convention (`t_pre = g`, `t > g`), so `"standard"` **aborts** on
   the canonical 2-period fixture via `require(resolved.length() > 0)` at
-  `did_multi.mbt:117`.
+  `did_multi.mbt:118`.
 - The port's `DoubleMLDIDCS` `(group, period)` cell grid vs. upstream's
   panel-level, group-less shape — still unanswered.

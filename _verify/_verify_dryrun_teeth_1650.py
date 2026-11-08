@@ -157,17 +157,29 @@ MARKER = "\x00FMT\x00"
 
 
 class Driver(object):
-    def __init__(self, rel):
+    def __init__(self, rel, source=None):
         self.rel = rel
-        self.src = io.open(os.path.join(ROOT, rel.replace("/", os.sep)),
-                           encoding="utf-8").read()
+        if source is None:
+            self.src = io.open(os.path.join(ROOT, rel.replace("/", os.sep)),
+                               encoding="utf-8").read()
+        else:
+            self.src = source
         self.tree = ast.parse(self.src)
         self.strs = {}       # name -> string value
         self.paths = {}      # name -> [repo-relative paths]
         self.lists = {}      # name -> [strings]
         self.witness = None  # the CHANGELOG-publication regex, if any
+        self.funcs = {}      # name -> the FunctionDef
         self.base_tail = None  # the work directory's last component
         self._collect()
+
+    def params(self, fname):
+        """A helper's own parameter names, in order."""
+        fn = self.funcs.get(fname)
+        if fn is None:
+            return []
+        a = fn.args
+        return [p.arg for p in (list(a.posonlyargs) + list(a.args))]
 
     def _base_tail(self):
         """The work directory's last component, or None.
@@ -189,6 +201,8 @@ class Driver(object):
         # another path, and the one it is built from is named first.
         nodes = []
         for node in ast.walk(self.tree):
+            if isinstance(node, ast.FunctionDef):
+                self.funcs.setdefault(node.name, node)
             if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
                 nodes.append((node.lineno, node))
             elif isinstance(node, ast.For) and isinstance(node.target, ast.Name):
@@ -245,6 +259,13 @@ class Driver(object):
                 if tail and p[0].split("/")[-1] == tail:
                     continue        # the work directory: the base
                 segs.append(p[0])
+            elif isinstance(a, ast.Name) and a.id in self.strs:
+                # a module-level STRING constant used as a path segment:
+                # `RM = os.path.join(WORK, README)`, where README names the
+                # document.  Round 59's driver writes it that way, and a
+                # path this verifier cannot resolve is an anchor it cannot
+                # check.
+                segs.append(self.strs[a.id])
             elif i == 0:
                 continue            # the base, named but not resolved
             else:
@@ -270,6 +291,13 @@ class Driver(object):
             left = self.text_of(node.left)
             if left[0] is not None:
                 return left[0], True
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "escape" and node.args):
+            # `re.escape(<constant>)` -- a driver builds an anchor out of a
+            # marker, and the marker is a module-level constant
+            inner = self.text_of(node.args[0])
+            if inner[0] is not None:
+                return re.escape(inner[0]), False
         return None, False
 
     # -- the file an argument names -----------------------------------------
@@ -351,9 +379,216 @@ def helper_is_regex(drv, name, depth=0):
     return False
 
 
-def patch_calls(drv):
-    """(helper, paths, old, old_is_template, new, expected_count)."""
+
+# ---------------------------------------------------------------------------
+# THE SHAPES A DRIVER MAY PATCH WITH
+# ---------------------------------------------------------------------------
+# A driver may patch a file through a helper of its OWN, and the helper's
+# arguments are where the anchor lives.  So the shapes are taught here, the
+# way the house has always taught a new shape: by name.
+#
+#   path    -- "argN" names the file; "both" means BOTH README copies
+#   anchor  -- "argN" names the anchor
+#   repl    -- "argN" names the replacement; None means there is none
+#   count   -- "argN" names the expected number of matches
+#   flags   -- "flags" reads the call's `flags=` keyword; "re.S" is DOTALL
+#
+# A helper that is NOT in this table is not a patcher this verifier can read
+# directly: it is ENTERED, and the call it performs is found by walking its
+# body -- which is how a driver's NAMED mechanism function (`def m1(): ...`)
+# is resolved at all.
+#
+# Before round 86 the verifier walked MODULE-LEVEL calls only, so a driver
+# whose mechanisms live inside a function was invisible to it: 216 anchors
+# were watched and 166 were not, and SIX of the unwatched ones were dead.
+SHAPES = {
+    "sub_once":     ("arg0", "arg1", "arg2", None,   None,   True),
+    "patch_re":     ("arg0", "arg1", "arg2", None,   None,   True),
+    "patch":        ("arg0", "arg1", "arg2", None,   None,   False),
+    "patch_readmes": ("both", "arg0", "arg1", None,  None,   True),
+    "sub":          ("arg0", "arg1", "arg2", "arg3", "flags", True),
+    "drop":         ("arg0", "arg1", None,    "arg2", "re.S",  True),
+    "both":         ("both", "arg0", "arg1",  "arg2", None,   True),
+    "both_readmes": ("both", "arg0", "arg1",  None,   None,   True),
+}
+
+
+def re_flags_of(node):
+    """The regex flags a call passes: `re.S`, `re.M`, `re.I`, `re.A`."""
+    out = 0
+    if isinstance(node, ast.Attribute):
+        out |= {"S": re.S, "M": re.M, "I": re.I, "A": re.A}.get(node.attr, 0)
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+        out = re_flags_of(node.left) | re_flags_of(node.right)
+    return out
+
+
+def shape_op(drv, fname, call):
+    """The patch operation a call to `fname` performs, or None."""
+    path_role, anchor_role, repl_role, count_role, flags_role, rx = SHAPES[fname]
+    args = call.args
+    old, tmpl = (None, False)
+    if anchor_role is not None:
+        i = int(anchor_role[3:])
+        if i < len(args):
+            old, tmpl = drv.text_of(args[i])
+    if old is None:
+        return None
+    if path_role == "both":
+        paths = ["README.mbt.md", "moonbit_doubleML/README.mbt.md"]
+    else:
+        i = int(path_role[3:])
+        paths = drv.paths_of(args[i]) if i < len(args) else None
+        if paths is None:
+            return None
+    new = None
+    if repl_role is not None:
+        i = int(repl_role[3:])
+        if i < len(args):
+            new, _t = drv.text_of(args[i])
+    count = 1
+    if count_role is not None:
+        i = int(count_role[3:])
+        if i < len(args) and isinstance(args[i], ast.Constant) \
+                and isinstance(args[i].value, int):
+            count = args[i].value
+    for kw in call.keywords:
+        if kw.arg == "count" and isinstance(kw.value, ast.Constant):
+            count = kw.value.value
+    flags = 0
+    if flags_role == "flags":
+        for kw in call.keywords:
+            if kw.arg == "flags":
+                flags = re_flags_of(kw.value)
+    elif flags_role == "re.S":
+        flags = re.S
+    # A driver may patch with a LITERAL or with a PATTERN, and the helper
+    # itself says which: the house's own `helper_is_regex` reads the
+    # helper's body.  The four NEW shapes are always patterns.
+    if fname in ("patch", "patch_re", "sub_once", "patch_readmes"):
+        rx = (fname in REGEX_PATCH) or helper_is_regex(drv, fname)
+    return (paths, old, tmpl, new, count, flags, rx)
+
+
+def resolve_call(drv, fname, call, depth=0, seen=()):
+    """The patch operations a call to `fname` performs.
+
+    A helper that is a known shape is read directly.  A helper that is NOT
+    is ENTERED: its body is walked until the call that performs the patch
+    is found, and that call's arguments are bound to the helper's own
+    parameters -- so a helper's parameter becomes the call site's argument.
+    """
+    if fname in SHAPES:
+        op = shape_op(drv, fname, call)
+        return [op] if op else []
+    if depth > 5 or fname in seen:
+        return []
+    fn = drv.funcs.get(fname)
+    if fn is None:
+        return []
+    params = drv.params(fname)
+    pindex = {p: i for i, p in enumerate(params)}
     out = []
+    for inner in ast.walk(fn):
+        if not (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name)):
+            continue
+        callee = inner.func.id
+        if callee in WITNESS_PATCH or callee in WRITE_PATCH:
+            continue
+        if callee not in SHAPES and callee not in drv.funcs:
+            continue
+        site = []
+        for a in inner.args:
+            if isinstance(a, ast.Name) and a.id in pindex:
+                j = pindex[a.id]
+                site.append(call.args[j] if j < len(call.args) else None)
+            else:
+                site.append(a)
+        fake = ast.Call(func=ast.Name(id=callee), args=site,
+                        keywords=list(inner.keywords))
+        ast.copy_location(fake, inner)
+        out += resolve_call(drv, callee, fake, depth + 1, seen + (fname,))
+    return out
+
+
+def mechanism_elements(drv):
+    """The driver's MECHANISMS list, in the order it runs them."""
+    for node in ast.walk(drv.tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not isinstance(node.targets[0], ast.Name):
+            continue
+        if node.targets[0].id not in ("MECHANISMS", "MECH"):
+            continue
+        if isinstance(node.value, (ast.List, ast.Tuple)):
+            return node.value.elts
+    return []
+
+
+def mechanism_calls(drv):
+    """(index, call-node) for every call the mechanisms make.
+
+    A mechanism may be a LAMBDA -- its body is walked -- or a NAME that
+    refers to a function the driver defined -- the function's body is
+    walked.  Both are mechanisms, and both were invisible before.
+    """
+    out = []
+    for idx, el in enumerate(mechanism_elements(drv)):
+        parts = el.elts if isinstance(el, ast.Tuple) else [el]
+        for part in parts:
+            if isinstance(part, ast.Lambda):
+                for c in ast.walk(part):
+                    if (isinstance(c, ast.Call)
+                            and isinstance(c.func, ast.Name)):
+                        out.append((idx, c))
+            elif isinstance(part, ast.Name) and part.id in drv.funcs:
+                fn = drv.funcs[part.id]
+                for c in ast.walk(fn):
+                    if (isinstance(c, ast.Call)
+                            and isinstance(c.func, ast.Name)):
+                        out.append((idx, c))
+    return out
+
+def patch_calls(drv):
+    """(helper, paths, old, old_is_template, new, expected_count,
+    lineno, is_regex, flags, key).
+
+    THE MECHANISMS FIRST, THEN THE REST
+    ====================================
+    A driver runs its mechanisms in the order of its MECHANISMS list, and
+    they are CUMULATIVE: a mechanism may patch the text an earlier
+    mechanism produced.  So the mechanisms are collected in THAT order, and
+    the calls that belong to no mechanism follow in source order.
+
+    A mechanism may be a lambda or a NAME that refers to a function the
+    driver defined, and the calls inside a function body are what the
+    verifier must read -- a driver that writes its mechanisms as
+    `def m1(): ...` used to be invisible to it.
+    """
+    out = []
+    seen = set()
+
+    def emit(helper, paths, old, tmpl, new, count, lineno, rx, flags, key):
+        if old is None or paths is None:
+            return
+        if key in seen:
+            return
+        seen.add(key)
+        out.append((helper, paths, old, tmpl, new, count, lineno, rx, flags))
+
+    # -- the mechanisms, in the order the driver runs them -------------------
+    for _idx, node in mechanism_calls(drv):
+        fn = node.func.id
+        if fn in WITNESS_PATCH or fn in WRITE_PATCH:
+            continue
+        ops = resolve_call(drv, fn, node)
+        if not ops:
+            continue
+        for (paths, old, tmpl, new, count, flags, rx) in ops:
+            emit(fn, paths, old, tmpl, new, count, node.lineno, rx, flags,
+                 (node.lineno, node.col_offset))
+
+    # -- the calls that belong to no mechanism, in source order --------------
     for lineno, node in calls_of(drv):
         fn = node.func.id
         if fn in WITNESS_PATCH:
@@ -364,9 +599,9 @@ def patch_calls(drv):
             if len(node.args) >= 2:
                 old, tmpl = drv.text_of(node.args[0])
                 new, _n = drv.text_of(node.args[1])
-                rx = helper_is_regex(drv, fn)
-                out.append((fn, ["README.mbt.md", "moonbit_doubleML/README.mbt.md"],
-                            old, tmpl, new, 1, lineno, rx))
+                emit(fn, ["README.mbt.md", "moonbit_doubleML/README.mbt.md"],
+                     old, tmpl, new, 1, lineno,
+                     helper_is_regex(drv, fn), 0, (lineno, node.col_offset))
             continue
         if fn not in LITERAL_PATCH and fn not in REGEX_PATCH:
             continue
@@ -380,7 +615,8 @@ def patch_calls(drv):
             if kw.arg == "count" and isinstance(kw.value, ast.Constant):
                 count = kw.value.value
         rx = fn in REGEX_PATCH or helper_is_regex(drv, fn)
-        out.append((fn, paths, old, tmpl, new, count, lineno, rx))
+        emit(fn, paths, old, tmpl, new, count, lineno, rx, 0,
+             (lineno, node.col_offset))
     return out
 
 
@@ -446,7 +682,7 @@ for drv in parsed:
         for p in paths:
             state[p] = content
             n_written.add(p)
-    for helper, paths, old, tmpl, new, count, lineno, rx in patch_calls(drv):
+    for helper, paths, old, tmpl, new, count, lineno, rx, flags in patch_calls(drv):
         if paths is None:
             unresolved.append("%s:%d: %s -- the path is not a literal path"
                               % (drv.rel, lineno, helper))
@@ -469,8 +705,15 @@ for drv in parsed:
             crlf = "\r\n" in text
             if rx:
                 # a regular expression: it must MATCH, not be counted
+                pat = old
+                if tmpl:
+                    # a printf template: the VALUE is not knowable, but the
+                    # TEMPLATE is -- and a template is a REGEX here, so only
+                    # the value slot becomes a wildcard and the pattern's
+                    # own escapes stay.
+                    pat = old.replace("%s", ".+?").replace("%d", ".+?")
                 try:
-                    hit = re.search(old, text)
+                    hit = re.search(pat, text, flags)
                 except re.error as exc:
                     unresolved.append("%s:%d: %s -- %r is not a valid regex (%s)"
                                       % (drv.rel, lineno, helper, old[:40], exc))
@@ -480,7 +723,7 @@ for drv in parsed:
                                 % (drv.rel, lineno, helper, old[:50], p))
                     continue
                 repl = new if new is not None else ""
-                state[p] = re.sub(old, repl, text, count=1)
+                state[p] = re.sub(pat, repl, text, count=1, flags=flags)
                 continue
             if tmpl:
                 # a printf template: the VALUE is not knowable, so the anchor
@@ -516,6 +759,144 @@ check("every patch anchor is live where the driver expects it", not dead,
 check("every patch anchor could be resolved", not unresolved,
       "%d could not: %s" % (len(unresolved), "; ".join(unresolved[:3]))
       if unresolved else "%d anchor(s)" % n_anchor)
+
+# ---------------------------------------------------------------------------
+# B2. every driver's MECHANISMS are RESOLVED
+# ---------------------------------------------------------------------------
+# The check above asks whether an anchor that WAS resolved is a literal.
+# This one asks the harder question: whether the verifier RESOLVED the
+# driver's mechanisms at all.
+#
+# A driver that writes its mechanisms as `def m1(): ...`, or patches
+# through a helper of its own, was INVISIBLE before round 86: the verifier
+# walked module-level calls only, so 216 anchors were watched and 166 were
+# not -- and SIX of the unwatched ones were dead in the tree.  A check
+# that cannot see an anchor cannot report it dead, so the hole was not a
+# gap in a report: it was a gap in the WATCH.
+#
+# So the rule is: every mechanism a driver declares must resolve to at
+# least one patch operation, and the number of operations a driver
+# contributes is PUBLISHED -- so a driver that stops resolving does not
+# quietly stop being watched.
+print()
+print("B2. every driver's mechanisms are resolved")
+
+unwatched = []
+n_mech = 0
+n_mech_total = 0
+n_unwatched_mech = 0
+for drv in parsed:
+    els = mechanism_elements(drv)
+    if not els:
+        continue
+    n_mech += 1
+    ops = 0
+    for idx, el in enumerate(els):
+        parts = el.elts if isinstance(el, ast.Tuple) else [el]
+        calls = []
+        for part in parts:
+            if isinstance(part, ast.Lambda):
+                calls += [c for c in ast.walk(part)
+                          if isinstance(c, ast.Call)
+                          and isinstance(c.func, ast.Name)]
+            elif isinstance(part, ast.Name) and part.id in drv.funcs:
+                calls += [c for c in ast.walk(drv.funcs[part.id])
+                          if isinstance(c, ast.Call)
+                          and isinstance(c.func, ast.Name)]
+        n_mech_total += 1
+        mops = 0
+        for c in calls:
+            fn = c.func.id
+            if fn in WITNESS_PATCH or fn in WRITE_PATCH:
+                continue
+            mops += len(resolve_call(drv, fn, c))
+        if mops == 0:
+            n_unwatched_mech += 1
+    for _idx, node in mechanism_calls(drv):
+        fn = node.func.id
+        if fn in WITNESS_PATCH or fn in WRITE_PATCH:
+            continue
+        ops += len(resolve_call(drv, fn, node))
+    if ops == 0:
+        unwatched.append(drv.rel)
+check("every driver that declares mechanisms resolves at least one",
+      not unwatched,
+      "%d do not: %s" % (len(unwatched), "; ".join(unwatched[:3]))
+      if unwatched else "%d driver(s) declare mechanisms, %d of %d mechanisms "
+                        "patch in a shape this verifier does not resolve"
+                        % (n_mech, n_unwatched_mech, n_mech_total))
+
+# ---------------------------------------------------------------------------
+# B3. the CONTROL ARM: the rule must BITE
+# ---------------------------------------------------------------------------
+# A check that cannot fail is not a check.  So the resolution is run over
+# two SYNTHETIC drivers, built in memory: one whose mechanism patches
+# through a shape this verifier KNOWS, and one whose mechanism patches
+# through a shape it does NOT know.
+#
+# The second is exactly the hole this rule closes -- a driver that writes
+# its file itself, with no patch helper to resolve -- so a rule that
+# ACCEPTED it would be a rule that cannot fail.  The control arm is built
+# from a template nobody publishes, so it cannot be satisfied by a file
+# that happens to be in the tree.
+print()
+print("B3. the control arm")
+
+CONTROL_KNOWN = '''
+import os
+import re
+WORK = os.path.join("control", "work")
+README = os.path.join(WORK, "README.mbt.md")
+
+
+def sub_once(path, pattern, repl):
+    pass
+
+
+MECHANISMS = [
+    ("a shape the verifier knows", lambda: sub_once(README, "an anchor", "a repl")),
+]
+'''
+
+CONTROL_UNKNOWN = '''
+import os
+WORK = os.path.join("control", "work")
+README = os.path.join(WORK, "README.mbt.md")
+
+
+def read(path):
+    pass
+
+
+def write(path, text):
+    pass
+
+
+MECHANISMS = [
+    ("a shape the verifier does not know",
+     lambda: write(README, read(README).replace("an anchor", "a repl"))),
+]
+'''
+
+
+def resolves_any(source):
+    """How many patch operations a synthetic driver's mechanisms resolve."""
+    drv = Driver("<control arm>", source)
+    ops = 0
+    for _idx, node in mechanism_calls(drv):
+        fn = node.func.id
+        if fn in WITNESS_PATCH or fn in WRITE_PATCH:
+            continue
+        ops += len(resolve_call(drv, fn, node))
+    return ops
+
+
+known_ops = resolves_any(CONTROL_KNOWN)
+unknown_ops = resolves_any(CONTROL_UNKNOWN)
+check("the control arm bites: a mechanism the verifier cannot resolve is "
+      "rejected", known_ops > 0 and unknown_ops == 0,
+      "the known shape resolved %d operation(s), the unknown shape %d"
+      % (known_ops, unknown_ops))
 
 in_repo = sorted(p for p in n_paths if not is_upstream(p))
 absent = [p for p in in_repo if read_bytes(p) is None]

@@ -9,7 +9,7 @@ Round 35 closed two blind spots in the README's own checking:
     states.  That is how `DoubleMLLPLR::new(data, alpha=1.5)` (a parameter
     that does not exist) survived until a reader found it by hand.
   * NOTHING checked the README's source citations.  The DID paragraph cited
-    `did.mbt:708` for "the observational DID score", and line 708 is the
+    `did.mbt:710` for "the observational DID score", and line 708 is the
     EXPERIMENTAL branch.
 
 THE MECHANISMS
@@ -231,13 +231,13 @@ MECHANISMS = [
     # holds the token -- so the offset has to leave the window for the
     # promise to break.
     ("a citation points at a line that carries none of what it claims",
-     lambda: (patch(README, "`irm.mbt:430`", "`irm.mbt:350`"),
+     lambda: (patch(README, "`irm.mbt:431`", "`irm.mbt:351`"),
               commit(WORK, ["README.mbt.md"],
                      "dry-run: a citation drifted off its token"))),
 
     # -- 5. a citation names a configuration and points at the wrong branch ---
     ("a citation names a configuration and points at the wrong branch",
-     lambda: (patch(README, "`did.mbt:97`", "`did.mbt:708`"),
+     lambda: (patch(README, "`did.mbt:98`", "`did.mbt:710`"),
               commit(WORK, ["README.mbt.md"],
                      "dry-run: a citation in the wrong branch"))),
 
@@ -256,8 +256,8 @@ MECHANISMS = [
     # valid citation makes no failure -- the set grew and nothing broke.
     ("a citation names a line that is not in the file",
      lambda: (patch(README,
-                    "direction (`ssm.mbt:73-74`):",
-                    "direction (`ssm.mbt:73-74`, `ssm.mbt:1200`):"),
+                    "direction (`ssm.mbt:74-75`):",
+                    "direction (`ssm.mbt:74-75`, `ssm.mbt:1200`):"),
               commit(WORK, ["README.mbt.md"],
                      "dry-run: a citation names a line that is not there"))),
 ]

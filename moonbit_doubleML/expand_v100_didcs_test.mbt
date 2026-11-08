@@ -759,7 +759,7 @@ test "didcs_sandwich_empty_cell_state" {
 ///
 /// The guards themselves are real. `sandwich_se_at(3, 0, ...)` with
 /// `n_groups() == 3` was observed aborting with a `precondition failed`
-/// error (`did_cs.mbt:71` is where the port raises it). What is assertable is
+/// error (`did_cs.mbt:72` is where the port raises it). What is assertable is
 /// the state those guards read, and that is what this test checks:
 /// the row a guard rejects must be EMPTY, and a degenerate cell
 /// must report `0.0` from `se_at` rather than a real-looking SE.

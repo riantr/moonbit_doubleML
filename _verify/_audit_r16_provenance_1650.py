@@ -182,6 +182,14 @@ def port_info(cls, fname):
                 doc.append(s[3:].strip())
             elif s.startswith("//"):
                 continue
+            elif s.startswith("#"):
+                # An ATTRIBUTE (`#derive(...)`) sits between the doc comment
+                # and the type since the compiler deprecated the trailing
+                # `derive(...)` form.  It is not part of the docstring, and it
+                # is not a break in it either -- so it is SKIPPED, like a
+                # `//` comment.  Stopping here instead is what made this
+                # reader return an EMPTY docstring for every derived type.
+                continue
             else:
                 break
         doc.reverse()

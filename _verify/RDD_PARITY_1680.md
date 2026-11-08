@@ -52,7 +52,7 @@ same rows" — the two arms agreeing that the residuals are zero.
 
 The one part of finding 2 that survives is an observation about the source, not
 a measured defect: `sandwich_se_weighted` builds `M` from `X^T X` **unweighted**
-(`linear.mbt:301`) where its docstring says `X^T W X` (`linear.mbt:280-282`).
+(`linear.mbt:302`) where its docstring says `X^T W X` (`linear.mbt:281-283`).
 That is a real inconsistency between code and documentation. It was *not* shown
 to produce a wrong number, and it is not the cause of any zero. Recorded as a
 doc/code mismatch to settle on its own merits, not as a defect with evidence
@@ -304,7 +304,7 @@ must be set.
 **2. The port's HC0 arm returns EXACTLY 0.0 on both designs.** On `sec_rdd_var`,
 where `homo_se = 0.003535472` on the *same rows with non-zero residuals*. An SE
 of precisely zero is never legitimate and it is not caused by anything upstream
-does. The accumulator is `sum_k w_k^2 * m_k^2 * e_k^2` (`linear.mbt:319`), so
+does. The accumulator is `sum_k w_k^2 * m_k^2 * e_k^2` (`linear.mbt:320`), so
 the zero means one of `w`, `m_k`, `e_k` is identically zero on that path --
 and `sandwich_se_weighted` builds `X^T X` **unweighted** where its docstring
 says `X^T W X`. A separate defect with its own merit; the root cause is **not

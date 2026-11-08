@@ -46,6 +46,7 @@
 
 ///|
 /// Gradient boosting learner (regression).
+#derive(Debug)
 pub struct GBLearner {
   n_trees : Int32
   learning_rate : Double
@@ -57,7 +58,7 @@ pub struct GBLearner {
   // Fitted state (empty until `fit` is called).
   initial : Double // = mean(y) at fit time
   trees : Array[CART] // CART tree per boosting round
-} derive(Debug)
+}
 
 ///|
 pub extend GBLearner with @moonbitlang/core/debug.Debug::{to_repr}

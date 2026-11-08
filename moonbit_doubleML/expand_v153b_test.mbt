@@ -12,7 +12,7 @@
 // Method note. The first version of this file fitted each estimator twice and
 // compared coefficients. That was abandoned on measurement: fitting
 // `DoubleMLSSM` at n=400, p=5 aborts with a precondition failure at
-// `require(yi == 0.0 || yi == 1.0)` (`logistic.mbt:134`), so the gate was
+// `require(yi == 0.0 || yi == 1.0)` (`logistic.mbt:135`), so the gate was
 // measuring the learner optimiser rather
 // than the accessor. These gates therefore pattern-match the `LearnerDispatch`
 // enum directly -- `learner_m()` returns the variant the constructor was given.

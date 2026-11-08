@@ -26,6 +26,25 @@ the floor.  Measured:
 So the floor is a FACT about the published package, and this file holds the
 README's statement of it.
 
+ROUND 86 ADDED A SECOND FACT
+=============================
+On 2026-11-02 the stable toolchain DEPRECATED the `derive(...)` syntax that
+every trait derivation in this package used, and the replacement is
+`#derive(...)` -- an ATTRIBUTE above the type.  CI installs the floating
+`latest` channel build and runs `--deny-warn`, so the deprecation is 59 build
+errors there.  The attribute form is what MoonBit's own v0.10.19 release
+notes describe -- "Trait derivation moves from `derive(...)` after a type
+definition to an attribute above it.  Run `moon fmt` to convert existing
+code." -- and the compiler that accepts it is the one this release is
+verified on.
+
+So the floor is now the LATER of two facts: the pin's subpackage
+(2026-10-28) and the compiler's attribute syntax (2026-11-02).  The two are
+not interchangeable, and they are measured differently.  The pin's fact is a
+DEPENDENCY fact, and it is measured out of the toolchain's own registry
+cache.  The syntax's fact is a SOURCE fact, and it is measured out of the
+tree's own tracked sources.
+
 WHAT IS CHECKED
 ===============
   F1  the tree declares exactly one `moonbitlang/async` pin, and it is READ
@@ -48,7 +67,14 @@ WHAT IS CHECKED
   F10 the "Not covered" section says what the dead pin COSTS, so "dead" does
       not read as "harmless";
   F11 the installation guide states the same floor, and no longer says the
-      repository pins no minimum.
+      repository pins no minimum;
+  S1  no tracked source uses the DEPRECATED `derive(...)` form -- the
+      compiler warns on it, and `--deny-warn` turns that warning into 59
+      build errors in CI;
+  S2  the tracked sources use the `#derive(...)` attribute form, so S1 is
+      not vacuous;
+  S3  the Installation section names the attribute syntax, so the
+      requirement's SECOND reason is stated where the requirement is.
 
 TWO METHOD POINTS
 ==================
@@ -71,12 +97,20 @@ WHAT IS NOT CHECKED HERE, AND WHY
   * That the requirement names a version the tree declares.  That class is
     owned by `_verify/_verify_dep_pins_1680.py`, which now covers the
     Installation site too.  One verifier per fact.
+  * That the attribute syntax arrived in EXACTLY this toolchain.  The
+    argument is a date argument -- v0.164.63's CI built this package on
+    `moon 0.1.20261029` with `--deny-warn` and the deprecation did not fire,
+    and the toolchain this release is verified on does fire it -- and it is
+    recorded in the ENGINEERING banner rather than asserted here, because a
+    check that re-derives it would have to download a release this tree does
+    not have.
 
 Run: python _verify/_verify_toolchain_floor_1680.py
 """
 import io
 import os
 import re
+import subprocess
 import sys
 import zipfile
 
@@ -320,6 +354,72 @@ if FLOOR:
           SUBPACKAGE in guide, "no %s" % SUBPACKAGE)
 
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# S1 -- the sources use the syntax the floor's compiler accepts
+# ---------------------------------------------------------------------------
+print()
+print("== the trait derivation syntax ==")
+
+# The compiler deprecated the `derive(...)` form and its formatter rewrites it
+# to the `#derive(...)` attribute form.  The boundary matters: `derive(` inside
+# a word is not a use, and `#derive(` IS the new form, so the old form's
+# pattern must not match it.
+DEREPRECATED_DERIVE = re.compile(r"(?<![#\w])derive\s*\(")
+ATTRIBUTE_DERIVE = re.compile(r"#derive\s*\(")
+
+
+def deprecated_derive_sites(text):
+    """Every use of the DEPRECATED `derive(...)` form in a source text."""
+    return DEREPRECATED_DERIVE.findall(text)
+
+
+def attribute_derive_sites(text):
+    """Every use of the `#derive(...)` attribute form in a source text."""
+    return ATTRIBUTE_DERIVE.findall(text)
+
+
+p = subprocess.run(["git", "-C", ROOT, "ls-files", "*.mbt"], capture_output=True,
+                   text=True, encoding="utf-8", errors="replace")
+tracked_mbt = []
+for rel in p.stdout.split():
+    rel = rel.strip()
+    if not rel:
+        continue
+    full = os.path.join(ROOT, rel.replace("/", os.sep))
+    if os.path.isfile(full):
+        tracked_mbt.append((rel, full))
+deprecated = []
+attribute = 0
+for rel, full in tracked_mbt:
+    body = read(full)
+    n = len(deprecated_derive_sites(body))
+    if n:
+        deprecated.append("%s (%d)" % (rel, n))
+    attribute += len(attribute_derive_sites(body))
+print("   %d tracked .mbt file(s)" % len(tracked_mbt))
+check("no tracked source uses the deprecated `derive(...)` form",
+      not deprecated, "; ".join(deprecated[:6]))
+check("the tracked sources use the `#derive(...)` attribute form",
+      attribute > 0, "there is no #derive(...) anywhere in the tree")
+if FLOOR:
+    check("the Installation section names the attribute syntax",
+          "#derive" in install_flat,
+          "the requirement's second reason is not stated")
+
+print()
+print("== the control arm: synthetic sources, and what the rules do with them ==")
+OLD_FORM = "pub struct S {\n  x : Int\n} derive(Debug)\n"
+NEW_FORM = "#derive(Debug)\npub struct S {\n  x : Int\n}\n"
+check("C1 a source with the deprecated form is REJECTED",
+      bool(deprecated_derive_sites(OLD_FORM)), "the rule did not see it")
+check("C1b the same source with the attribute form is ACCEPTED",
+      not deprecated_derive_sites(NEW_FORM), "the rule invented a deprecated use")
+check("C2 the attribute form is recognised",
+      bool(attribute_derive_sites(NEW_FORM)), "the rule did not see it")
+check("C2b the deprecated form is not counted as the attribute form",
+      not attribute_derive_sites(OLD_FORM), "the rule counted it anyway")
+
 print()
 print("=" * 78)
 print("%d checks, %d failed, %d skipped" % (NCHECK, len(fails), len(skips)))

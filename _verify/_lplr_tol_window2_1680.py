@@ -40,7 +40,7 @@ DECL_NEW = ('      let mut stop_reason = "exhausted_step_budget"\n'
 STEP_OLD = '        let raw_delta = s / sd\n'
 STEP_NEW = STEP_OLD   # unused; the block replacement below subsumes it
 
-# The clamp verbatim from lplr.mbt:1126-1131. Replaced as ONE block together
+# The clamp verbatim from lplr.mbt:1128-1133. Replaced as ONE block together
 # with the probe insert, because STEP_OLD is a prefix of CLAMP_NEW: doing
 # them as separate str.replace calls makes the second pass re-match the text
 # the first pass just wrote, and the file silently ends up mangled.

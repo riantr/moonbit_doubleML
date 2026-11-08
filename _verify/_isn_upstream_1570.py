@@ -1,6 +1,6 @@
 """ROW M oracle arm: upstream doubleml 0.11.4, in_sample_normalization True vs False.
 
-The port's claim (did.mbt:164-169) is that the two weightings are
+The port's claim (did.mbt:166-171) is that the two weightings are
 "equivalent asymptotically but differ in finite samples".  The MoonBit arm
 measured up to 0.97 SE of movement on DIDCS and a 3.3x SE ratio, which is not
 what "finite-sample noise" usually means.  This runs BOTH arms on upstream's OWN

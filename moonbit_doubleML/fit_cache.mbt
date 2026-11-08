@@ -45,6 +45,7 @@
 /// `is_valid(...)` check requires the stored hash to match the
 /// caller's hash, so a switch from IID to clustered (or a
 /// different cluster partition) invalidates the cache.
+#derive(Debug)
 pub struct FitCache {
   fold_ids : Array[Int32]
   predictions : Array[Array[Double]]
@@ -56,7 +57,7 @@ pub struct FitCache {
   hyperparams_hash : UInt64
   cluster_ids_hash : UInt64
   estimator_kind : String
-} derive(Debug)
+}
 
 ///|
 pub extend FitCache with @moonbitlang/core/debug.Debug::{to_repr}

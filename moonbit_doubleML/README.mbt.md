@@ -77,14 +77,18 @@ implementation.
 
 ## Installation
 
-**Requires `moon 0.1.20261028` or newer.** The package declares
-`moonbitlang/async@0.22.7`, and that published version imports
-`moonbitlang/core/async` -- a subpackage of the MoonBit core that older
-cores do not carry. On an older `moon` the dependency cannot be resolved at
-all: the build fails with "Cannot find import `moonbitlang/core/async` in
-`moonbitlang/async@0.22.7`". The core that ships with
-`moon 0.1.20261028` provides it, and this release's tests, cross-checks and
-bit-exactness gate were run on that toolchain.
+**Requires `moon 0.1.20261102` or newer.** Two things set that floor: the
+package declares `moonbitlang/async@0.22.7`, whose published source
+imports `moonbitlang/core/async` -- a subpackage older cores do not carry,
+so on an older `moon` the build fails with "Cannot find import
+`moonbitlang/core/async` in `moonbitlang/async@0.22.7`" -- and the
+package's trait derivations use the `#derive(...)` attribute syntax, which
+the compiler accepted from `moon 0.1.20261102`. This release's tests,
+cross-checks and bit-exactness gate were run on that toolchain.
+
+**CI installs the `latest` channel build.** The floor above is the version
+this release was VERIFIED on, not the version the gate RUNS on: a newer
+toolchain can change the language, and did -- the `derive(...)` deprecation.
 
 **`git` is the other prerequisite.** Moon resolves the package registry by
 CLONING it with git -- the registry's remote is
@@ -101,7 +105,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.63",
+  "riantr/moonbit_doubleML@0.164.64",
 }
 ```
 
@@ -131,7 +135,7 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 `--target native` is spelled out because the package's `preferred_target` is
 `wasm-gc`, where the suite is **1124** -- 1118 plus 6 doc tutorials; the
 per-target numbers are in the Status table. A bare `moon test` runs the suite
-on only one of the four declared backends -- on `moon 0.1.20261028` it reports
+on only one of the four declared backends -- on `moon 0.1.20261102` it reports
 `Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1124
 tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs.
@@ -339,7 +343,7 @@ unbounded propensity makes `1 / m_hat` explode and takes the variance with it.
 
 `DoubleMLSSM` is one of the four migrations of v0.132.0-v0.138.0 --
 `DoubleMLIRM`, `DoubleMLAPO`, `DoubleMLAPOS` and `DoubleMLSSM` -- because its
-score carries **two** reciprocals, one per direction (`ssm.mbt:73-74`): the
+score carries **two** reciprocals, one per direction (`ssm.mbt:74-75`): the
 treatment propensity `m` and the selection propensity `pi`, so an unbounded
 regressor breaks both denominators independently. On a saturated fixture with
 true `theta = 1.0`, the OLS arm returns `242.116` with SE `185.45` where the
@@ -380,7 +384,7 @@ Migrating `DoubleMLDIDBinary` was attempted and abandoned on the evidence:
 across four probe designs and ~14 configurations its OLS default matched a
 logistic one to within ~1e-4, and where they differed the OLS default was the
 BETTER of the pair. The reason is structural. In the observational DID score
-(`did.mbt:97`) the residual weight is `(D - m) / (p_hat * (1 - m))`, so the
+(`did.mbt:98`) the residual weight is `(D - m) / (p_hat * (1 - m))`, so the
 score never divides by `m`: for a **treated** row the `m` dependence cancels,
 and `m` reaches the control rows only. The score is **doubly robust** -- a
 correct `g` carries identification, leaving `m` second-order. IRM and APO need
@@ -407,7 +411,7 @@ Every row above is a **measured verdict**. **Six rows turned out hazardous**:
 `DoubleMLIRM` (`-225.86` vs `1.44`), `DoubleMLAPO` (bias `5.246` vs `0.531`),
 `DoubleMLAPOS` (per-level bias to `436.11`), `DoubleMLSSM` (`242.116` vs
 `1.177` -- its score divides by `m*pi` AND `(1-m)*pi`, two reciprocals in both
-directions, `ssm.mbt:73-74`), and `DoubleMLPQ` / `DoubleMLQTE`, which ignored
+directions, `ssm.mbt:74-75`), and `DoubleMLPQ` / `DoubleMLQTE`, which ignored
 their `quantile` outright. All six default to a classifier today.
 `DoubleMLDIDBinary`, `DoubleMLCVAR`, `DoubleMLIIVM` and `DoubleMLPLR` (whose
 propensity role is `learner_m`, not `ml_m`) kept their OLS default **on
@@ -475,7 +479,7 @@ is visible rather than described.
 | `examples/did_multi` | `DoubleMLDIDMulti` | Top-level multi-period DID + aggregation | 1.0 |
 | `examples/did_cross_section` | `DoubleMLDIDCrossSection` | Sant'Anna-Zhao 2020 cross-section DID, 500 units | 1.0 |
 | `examples/plpr` | `DoubleMLPLPR` | Static-panel PLR (60 units x 4 periods) | 1.0 |
-| `examples/lplr` | `DoubleMLLPLR` | Partially logistic regression, LZZ2020 | 0.5 (logit-scale `alpha`) |
+| `examples/lplr` | `DoubleMLLPLR` | Partially logistic regression, Liu-Zhang-Zhou 2021 | 0.5 (logit-scale `alpha`) |
 | `examples/apo` | `DoubleMLAPO` | 3-level discrete treatment (`D` in 0/1/2): the LEVEL `E[Y(t)]` | 1.0 (`E[Y(1)]`) / 2.5 (`E[Y(2)]`) |
 | `examples/apos` | `DoubleMLAPOS` | 2-level discrete treatment: per-level `E[Y(t)]` PLUS pairwise CONTRASTS | 1.0 per level; contrast 0.0 |
 | `examples/cvar` | `DoubleMLCVAR` | CVaR at `q=0.5` | 1.74 |
@@ -597,10 +601,10 @@ it is what makes the port *no worse* rather than better. Record:
    not a guarantee.
 2. **Don't assume every `adjust_ps` call forwards `cv`.** The `adjust_ps`
    call sites that do not forward `cv` are **eight**, in seven files:
-   `apo.mbt:320`, `cvar.mbt:736`, `cvar.mbt:1005`, `did.mbt:628`,
-   `did_cross_section.mbt:615`, `did_cs_binary.mbt:374`, `quantile.mbt:217`
-   and `ssm.mbt:671`. The only two that do are IRM's and IIVM's -- `cv=` is
-   passed at `irm.mbt:430` and `iivm.mbt:525`.
+   `apo.mbt:321`, `cvar.mbt:737`, `cvar.mbt:1006`, `did.mbt:630`,
+   `did_cross_section.mbt:617`, `did_cs_binary.mbt:375`, `quantile.mbt:217`
+   and `ssm.mbt:673`. The only two that do are IRM's and IIVM's -- `cv=` is
+   passed at `irm.mbt:431` and `iivm.mbt:527`.
 3. **`DoubleMLRDD`'s shipped default arm is still the one absence.** `coef()` / `se()` are
    homoskedastic and **uncorrected**, so they are a *different estimator* from
    `rdrobust`'s default rather than a worse implementation of the same one, and matching
@@ -619,8 +623,8 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.63** |
-| Toolchain | `moon 0.1.20261028` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
+| `moon.mod` version | **0.164.64** |
+| Toolchain | `moon 0.1.20261102` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -680,7 +684,7 @@ Measured designs, one script per upstream class or family:
 port is arithmetically identical to the reference" apart from "the port lands
 within 1e-4 of it". `validate_bitexact_with_python.py` compares IEEE-754 bit
 patterns instead, against `examples/bitexact/`. Measured scope, not assumed --
-re-measured on `moon 0.1.20261028` vs CPython 3.13.14, unchanged from the
+re-measured on `moon 0.1.20261102` vs CPython 3.13.14, unchanged from the
 `moon 0.1.20261012` vs CPython 3.14 pair it was first taken on:
 
 | operation | bit-exact | why |
@@ -712,11 +716,11 @@ takes no parameters -- so the fuzz check replays one fixed master seed
 (20260824) three times rather than sweeping seeds. Each invocation is a real
 property-based run -- 11 surfaces, 300 trials per surface -- so the check
 repeats that one run, and no CI workflow runs it either. And the two
-declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.3`
+declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.4`
 and `moonbitlang/async@0.22.7` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
-['moonbit-community/sqlite3@0.2.3']; declared but unreferenced by library code:
-['moonbit-community/sqlite3@0.2.3', 'moonbitlang/async@0.22.7']`) rather than
+['moonbit-community/sqlite3@0.2.4']; declared but unreferenced by library code:
+['moonbit-community/sqlite3@0.2.4', 'moonbitlang/async@0.22.7']`) rather than
 passing quietly. Removing them is an open call, not an oversight. Dead is not
 the same as harmless, though: the published source of
 `moonbitlang/async@0.22.7` imports `moonbitlang/core/async`, a core
@@ -760,7 +764,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.63, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.64, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers
@@ -806,7 +810,7 @@ declares two packages, and **neither is imported by any `.mbt` in the library**
 | declared | imported by the library? | note |
 |---|---|---|
 | `moonbitlang/async@0.22.7` | no | referenced by nothing in the library: `examples/api_server/` imports the same package at the same pin (`moonbitlang/async@0.22.7`), but no `.mbt` under `moonbit_doubleML/` imports it |
-| `moonbit-community/sqlite3@0.2.3` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
+| `moonbit-community/sqlite3@0.2.4` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
 
 So the library has no runtime third-party dependency today, while `moon.mod`
 carries two dead entries -- one of which does not satisfy the rule above.
@@ -881,8 +885,11 @@ title line replaced by the heading above it. That body is **frozen at
 `v0.164.11`** -- it carries the gate table as it stood at that release, so
 it is a record, not a live view. The **current** gate commands live in
 `.github/workflows/check.yml` and `.github/workflows/publish.yml`, plus
-`.github/scripts/qa_loop/` (the QA harness the CI job invokes). All of them
-are in the repository; the registry publishes this one.
+`.github/scripts/qa_loop/` (the QA harness the CI job invokes). Every
+`moonbit` block in this README has a compiled twin:
+`_verify/_verify_readme_snippets_1650.py` compiles each one against this
+tree, and CI, the local gate and the publish workflow all run it. Those
+commands are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn

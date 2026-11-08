@@ -4,7 +4,7 @@ Section 18 established a structural difference by reading source:
 `_double_dml_cv_predict` (`utils/_estimation.py:207-229`) sums every inner
 model's prediction on the outer test rows and divides by `len(smpls)`, so
 `a_hat["preds"]` is an average over inner models. The port's `a_pred`
-(`lplr.mbt:836`) is a single outer-OOF prediction. That value feeds
+(`lplr.mbt:838`) is a single outer-OOF prediction. That value feeds
 `r_hat = t_hat - beta * a_hat["preds"]` (`lplr.py:345`), then
 `psi_hat = expit(-r_hat)`, the factor that collapses (`mean(psi_deriv)`).
 

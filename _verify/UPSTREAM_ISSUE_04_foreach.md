@@ -152,7 +152,7 @@ rewrite is the moonbit_doubleML convention in contracted scope.
 The v0.52.0 main-package contract integration attempt on
 `kfold_stratified` did not trigger this on its body (it already
 uses C-style range throughout — `for k = 0; k < arr.length(); k = k + 1`
-at `kfold.mbt:331, 338, 342` **at `v0.52.0`**, where that file was 657
+at `kfold.mbt:332, 338, 342` **at `v0.52.0`**, where that file was 657
 lines and sat at the repository root; all already C-style by v0.51+
 convention). The `kfold_stratified` body is therefore a "negative
 confirmation" of this issue: pre-existing C-style code passes

@@ -46,7 +46,7 @@ BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
 
 def port_nu2(d, t, m):
     """Transcription of the port's `cs_bin_sensitivity_nu2_elements`, false
-    branch (did_cs_binary.mbt:1277-1299), which mirrors upstream
+    branch (did_cs_binary.mbt:1279-1301), which mirrors upstream
     did_cs_binary.py:896-902 + :932. Guarded denominators reproduced so the
     transcription matches the PORT rather than upstream's bare np.divide."""
     d = np.asarray(d, dtype=float)

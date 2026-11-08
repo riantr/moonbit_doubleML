@@ -7,7 +7,7 @@ compliance. The numbers below are the reason.
 
 ## What the port does, and it is deliberate
 
-`cluster_sandwich_variance` (`sandwich.mbt:533`) implements the statsmodels
+`cluster_sandwich_variance` (`sandwich.mbt:534`) implements the statsmodels
 `cov_type='cluster'` convention:
 
     var = M_inv^2 * sum_c (n_c / max(n_c-1, 1)) * S_c^2 / n^2,
@@ -118,7 +118,7 @@ statsmodels one as the default.** The user chose this after the premise was
 re-measured (section below) rather than on the earlier reading of this file.
 
 **The work was smaller than the decision implied, because upstream's estimator
-was already ported.** `var_est_cluster` (`plpr.mbt:250`) is a transcription of
+was already ported.** `var_est_cluster` (`plpr.mbt:252`) is a transcription of
 upstream's `var_one_way_cluster` / `_var_est`:
 
 | | upstream | port |

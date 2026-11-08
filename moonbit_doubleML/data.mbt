@@ -16,6 +16,7 @@
 /// `n_obs`. This mirrors the upstream `DoubleMLData(cluster_cols=)`
 /// API in 0.11.x and is the path `DoubleMLClusterData` (the
 /// pre-0.11 backward-compat shim) used to take.
+#derive(Debug)
 pub struct DoubleMLData {
   x : Matrix
   y : Array[Double]
@@ -27,7 +28,7 @@ pub struct DoubleMLData {
   // partialling-out path. Empty by default to preserve the
   // v0.54.0 surface.
   z : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLData with @moonbitlang/core/debug.Debug::{to_repr}

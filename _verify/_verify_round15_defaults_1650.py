@@ -181,47 +181,47 @@ for script in ("_verify/_upstream_defaults_1540.py",
 # A pointer must resolve AND its content must match an anchor.  The anchor
 # table is the round-14 lesson applied: existence is not evidence.
 ANCHORS = {
-    ("did.mbt", 276): r"require\(n_folds <= data\.n_obs\(\)\)",
-    ("did.mbt", 317): r"abort\(",
-    ("did.mbt", 262): r'score~ : String = "observational"',
-    ("did_binary.mbt", 352): r"pub fn DoubleMLDIDBinary::new",
-    ("did_binary.mbt", 439): r"DoubleMLDID::new\(",
-    ("did_binary.mbt", 441): r"Matrix::zeros\(4,",
-    ("did_binary.mbt", 412): r"Placeholder",
-    ("did_binary.mbt", 367): r'score~ : String = "observational"',
-    ("did_cross_section.mbt", 191): r'score~ : String = "observational"',
-    ("did_cs_binary.mbt", 731): r'score~ : String = "observational"',
-    ("did_cs_binary.mbt", 756): r'require\(score == "observational"\)',
-    ("lplr.mbt", 354): r'score~ : String = "nuisance_space"',
-    ("plpr.mbt", 554): r'score~ : String = "partialling out"',
-    ("plr.mbt", 418): r'score~ : String = "partialling-out"',
-    ("plr.mbt", 677): r'score~ : String = "partialling-out"',
-    ("plr.mbt", 422): r"require\(plr_is_po_score\(score\) \|\| plr_is_iv_score\(score\)\)",
-    ("plr.mbt", 395): r"fn plr_is_po_score",
-    ("plr.mbt", 396): r'"partialling-out" \|\| score == "partialling out"',
-    ("plr.mbt", 401): r'"iv-type" \|\| score == "IV-type"',
-    ("tune.mbt", 355): r'score~ : String = "partialling-out"',
-    ("did_cs.mbt", 320): r"pub fn DoubleMLDIDCS::new",
-    ("did_cs.mbt", 1242): r"pub fn DoubleMLDIDCS::fit",
-    ("did_cs.mbt", 669): r"NaN",
-    ("did_cs.mbt", 1392): r"nu2",
-    ("did_cs.mbt", 1396): r"nu2",
-    ("did_cs.mbt", 1409): r"mean\(d1t0\)",
-    ("did_cs.mbt", 1428): r"let ti = self\.data\.t\[i\]\.to_double\(\)",
-    ("did_cs.mbt", 1336): r"cond_d0_t0",
-    ("did_cross_section.mbt", 1476): r"p_hat = mean\(d\)",
-    ("sensitivity.mbt", 534): r"pub struct SensitivityResult",
-    ("apo.mbt", 50): r"ml_m",
-    ("cvar.mbt", 359): r"cf_y",
-    ("cvar.mbt", 377): r"cf_y~ : Double = 0\.05",
-    ("cvar.mbt", 378): r"cf_d~ : Double = 0\.05",
-    ("iivm.mbt", 187): r"ml_r",
-    ("did_multi.mbt", 326): r"ignore\(t_pre\)",
-    ("did_multi.mbt", 117): r"require\(resolved\.length\(\) > 0\)",
-    ("logistic.mbt", 134): r"require\(yi == 0\.0 \|\| yi == 1\.0\)",
+    ("did.mbt", 278): r"require\(n_folds <= data\.n_obs\(\)\)",
+    ("did.mbt", 319): r"abort\(",
+    ("did.mbt", 264): r'score~ : String = "observational"',
+    ("did_binary.mbt", 355): r"pub fn DoubleMLDIDBinary::new",
+    ("did_binary.mbt", 442): r"DoubleMLDID::new\(",
+    ("did_binary.mbt", 444): r"Matrix::zeros\(4,",
+    ("did_binary.mbt", 415): r"Placeholder",
+    ("did_binary.mbt", 370): r'score~ : String = "observational"',
+    ("did_cross_section.mbt", 193): r'score~ : String = "observational"',
+    ("did_cs_binary.mbt", 733): r'score~ : String = "observational"',
+    ("did_cs_binary.mbt", 758): r'require\(score == "observational"\)',
+    ("lplr.mbt", 356): r'score~ : String = "nuisance_space"',
+    ("plpr.mbt", 557): r'score~ : String = "partialling out"',
+    ("plr.mbt", 419): r'score~ : String = "partialling-out"',
+    ("plr.mbt", 678): r'score~ : String = "partialling-out"',
+    ("plr.mbt", 423): r"require\(plr_is_po_score\(score\) \|\| plr_is_iv_score\(score\)\)",
+    ("plr.mbt", 396): r"fn plr_is_po_score",
+    ("plr.mbt", 397): r'"partialling-out" \|\| score == "partialling out"',
+    ("plr.mbt", 402): r'"iv-type" \|\| score == "IV-type"',
+    ("tune.mbt", 358): r'score~ : String = "partialling-out"',
+    ("did_cs.mbt", 322): r"pub fn DoubleMLDIDCS::new",
+    ("did_cs.mbt", 1244): r"pub fn DoubleMLDIDCS::fit",
+    ("did_cs.mbt", 671): r"NaN",
+    ("did_cs.mbt", 1394): r"nu2",
+    ("did_cs.mbt", 1398): r"nu2",
+    ("did_cs.mbt", 1411): r"mean\(d1t0\)",
+    ("did_cs.mbt", 1430): r"let ti = self\.data\.t\[i\]\.to_double\(\)",
+    ("did_cs.mbt", 1338): r"cond_d0_t0",
+    ("did_cross_section.mbt", 1478): r"p_hat = mean\(d\)",
+    ("sensitivity.mbt", 535): r"pub struct SensitivityResult",
+    ("apo.mbt", 51): r"ml_m",
+    ("cvar.mbt", 360): r"cf_y",
+    ("cvar.mbt", 378): r"cf_y~ : Double = 0\.05",
+    ("cvar.mbt", 379): r"cf_d~ : Double = 0\.05",
+    ("iivm.mbt", 189): r"ml_r",
+    ("did_multi.mbt", 327): r"ignore\(t_pre\)",
+    ("did_multi.mbt", 118): r"require\(resolved\.length\(\) > 0\)",
+    ("logistic.mbt", 135): r"require\(yi == 0\.0 \|\| yi == 1\.0\)",
     ("dgp_did_CS2021.mbt", 50): r"let n_periods = 4",
-    ("lplr.mbt", 352): r"pub fn DoubleMLLPLR::new",
-    ("lplr.mbt", 361): r"LogisticRegression::new\(\)",
+    ("lplr.mbt", 354): r"pub fn DoubleMLLPLR::new",
+    ("lplr.mbt", 363): r"LogisticRegression::new\(\)",
     ("dgp_lplr_test.mbt", 41): r"test \"LPLR_estimator_recovers_theta\"",
 }
 PTR_RE = re.compile(r"`([A-Za-z0-9_]+\.mbt):(\d+)(?:-(\d+))?`")
@@ -434,16 +434,16 @@ check("SCORE: the withdrawn single-spelling intersection is gone",
 check("SCORE: states the two-spelling PLR intersection",
       "`{partialling out, IV-type}`" in B_SCORE)
 check("SCORE: the rotted pointers are gone",
-      "`did.mbt:231`" not in B_SCORE and "`plr.mbt:388`" not in B_SCORE
-      and "`lplr.mbt:350`" not in B_SCORE)
+      "`did.mbt:233`" not in B_SCORE and "`plr.mbt:389`" not in B_SCORE
+      and "`lplr.mbt:352`" not in B_SCORE)
 check("SCORE: states the 18-class upstream vocabulary",
       "18 upstream classes validate a `score`" in B_SCORE)
 check("SCORE: names the five classes the old table missed",
       all(k in R_SCORE for k in ("irm/cvar.py", "irm/lpq.py", "irm/pq.py",
                                  "irm/ssm.py", "plm/pliv.py")))
 
-check("N_FOLDS: the rotted DIDCS::fit pointer is gone", "`did_cs.mbt:1620`" not in R_NF)
-check("N_FOLDS: states the current pointer", "`did_cs.mbt:1242`" in R_NF)
+check("N_FOLDS: the rotted DIDCS::fit pointer is gone", "`did_cs.mbt:1622`" not in R_NF)
+check("N_FOLDS: states the current pointer", "`did_cs.mbt:1244`" in R_NF)
 
 check("ISN: the 20x headline is withdrawn",
       "**The port's `DoubleMLDIDCS` is ~20× more sensitive to this flag than" in B_ISN
@@ -455,8 +455,8 @@ check("ISN: states the 51/30/12/21/45 live numbers",
       all(s in B_ISN for s in ("**51**", "**30**", "**12**", "**21**", "**45**")))
 
 check("PARITY: the rotted pointers are gone",
-      "`apo.mbt:52-60`" not in B_PAR and "`cvar.mbt:354-357`" not in B_PAR
-      and "`iivm.mbt:185`" not in B_PAR)
+      "`apo.mbt:53-61`" not in B_PAR and "`cvar.mbt:355-358`" not in B_PAR
+      and "`iivm.mbt:187`" not in B_PAR)
 check("PARITY: no longer claims 17 estimators for the cf default",
       "all 17 estimators" not in B_PAR)
 check("PARITY: states that cf is a method default, not a constructor parameter",
@@ -468,9 +468,9 @@ check("PORT: the withdrawn single intersection is gone",
       'intersect only at\n> `"IV-type"`' not in B_PORT
       and "intersect only at" not in B_PORT)
 check("PORT: the rotted pointers are gone",
-      "`did.mbt:245`" not in B_PORT and "`did_cs.mbt:1328`" not in B_PORT
-      and "`did_cs.mbt:1347`" not in B_PORT and "`did_cs.mbt:1259-1275`" not in B_PORT
-      and "`did_cs.mbt:635`" not in B_PORT and "`did_cs.mbt:1388`" not in B_PORT)
+      "`did.mbt:247`" not in B_PORT and "`did_cs.mbt:1330`" not in B_PORT
+      and "`did_cs.mbt:1349`" not in B_PORT and "`did_cs.mbt:1261-1277`" not in B_PORT
+      and "`did_cs.mbt:637`" not in B_PORT and "`did_cs.mbt:1390`" not in B_PORT)
 
 # every record carries a re-audit banner
 for rec, txt in texts.items():

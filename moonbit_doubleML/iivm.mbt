@@ -2,13 +2,14 @@
 /// Data container for `DoubleMLIIVM`. Same shape as `DoubleMLData`
 /// but adds a single instrumental variable `z`. The treatment `d`
 /// and the instrument `z` are both binary.
+#derive(Debug)
 pub struct DoubleMLIIVMData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
   z : Array[Double]
   cluster_vars : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLIIVMData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -97,6 +98,7 @@ pub fn DoubleMLIIVMData::n_cluster_vars(self : DoubleMLIIVMData) -> Int32 {
 ///     gamma     = mean(psi(theta_hat)^2)
 ///     sigma2    = gamma / (J^2 * n)
 ///     se        = sqrt(sigma2).
+#derive(Debug)
 pub struct DoubleMLIIVM {
   data : DoubleMLIIVMData
   n_folds : Int32
@@ -167,7 +169,7 @@ pub struct DoubleMLIIVM {
   // Mirrors the IRM plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLIIVM with @moonbitlang/core/debug.Debug::{to_repr}

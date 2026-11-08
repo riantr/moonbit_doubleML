@@ -5,11 +5,12 @@
 /// `d ∈ {-1, 0, 1}` for never-treated/always-treated/switchers
 /// under the Sant'Anna & Zhao (2020) convention). The default port
 /// supports binary `d ∈ {0, 1}` (only the switchers).
+#derive(Debug)
 pub struct DoubleMLDIDData {
   x : Matrix
   y : Array[Double]
   d : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -119,6 +120,7 @@ pub fn DoubleMLDIDData::n_features(self : DoubleMLDIDData) -> Int32 {
 /// they are required by `DoubleMLDIDBinary`'s preprocessing wrapper.
 /// The staggered-DID variant (`DoubleMLDIDCS`) is still not
 /// implemented in this port.
+#derive(Debug)
 pub struct DoubleMLDID {
   data : DoubleMLDIDData
   n_folds : Int32
@@ -241,7 +243,7 @@ pub struct DoubleMLDID {
   // PLIV plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDID with @moonbitlang/core/debug.Debug::{to_repr}

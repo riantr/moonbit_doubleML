@@ -95,13 +95,13 @@ the **live default** on `plr.py` and `plpr.py`, both in `__init__`:
 
 | port site | default | port accepts | upstream accepts |
 |---|---|---|---|
-| `did.mbt:262` | `"observational"` | `{observational, experimental}` | same — **match** |
-| `did_binary.mbt:367` | `"observational"` | `{observational, experimental}` | same — **match** |
-| `did_cross_section.mbt:191` | `"observational"` | `{observational, experimental}` | same — **match** |
-| `did_cs_binary.mbt:731` | `"observational"` | `{observational}` | `{observational, experimental}` — **narrower** |
-| `lplr.mbt:354` | `"nuisance_space"` | `{nuisance_space, instrument}` | same — **match** |
-| `plpr.mbt:554` | `"partialling out"` | `{partialling out, IV-type}` | same — **match** |
-| **`plr.mbt:418` / `:677`** | **`"partialling-out"`** | `{partialling-out, partialling out, iv-type, IV-type}` | `{partialling out, IV-type}` |
+| `did.mbt:264` | `"observational"` | `{observational, experimental}` | same — **match** |
+| `did_binary.mbt:370` | `"observational"` | `{observational, experimental}` | same — **match** |
+| `did_cross_section.mbt:193` | `"observational"` | `{observational, experimental}` | same — **match** |
+| `did_cs_binary.mbt:733` | `"observational"` | `{observational}` | `{observational, experimental}` — **narrower** |
+| `lplr.mbt:356` | `"nuisance_space"` | `{nuisance_space, instrument}` | same — **match** |
+| `plpr.mbt:557` | `"partialling out"` | `{partialling out, IV-type}` | same — **match** |
+| **`plr.mbt:419` / `:677`** | **`"partialling-out"`** | `{partialling-out, partialling out, iv-type, IV-type}` | `{partialling out, IV-type}` |
 
 So 5 of 6 `score` defaults match upstream. The one that does not is
 `DoubleMLPLR` — and it still does not: the port's default is the **hyphen**
@@ -112,8 +112,8 @@ spelling, which upstream rejects.
 > IV-type}`. It now accepts **four** — `8308f09` (v0.155.0) added
 > `"partialling out"`, which is exactly the fix §4 recommends. The port's
 > guard is now `require(plr_is_po_score(score) || plr_is_iv_score(score))`
-> (`plr.mbt:422`), with the two spellings resolved by `plr_is_po_score`
-> (`plr.mbt:395-397`).
+> (`plr.mbt:423`), with the two spellings resolved by `plr_is_po_score`
+> (`plr.mbt:396-398`).
 
 ### The set arithmetic
 
@@ -168,7 +168,7 @@ test probe_v1550_abort_hyphen_plpr_test.mbt ("v1550abort_hyphen_plpr") failed: E
     at @moonbitlang/core/abort.abort[@riantr/moonbit_doubleML.DoubleMLPLPR]
 ```
 
-**Still true.** `plpr.mbt:567` requires exactly
+**Still true.** `plpr.mbt:570` requires exactly
 `score == "partialling out" || score == "IV-type"`.
 
 So the package now reads: `partialling out` works on **both** PLR and PLPR;
@@ -179,7 +179,7 @@ upstream compatibility would break the estimator, and left in place the case
 where a user matching PLR's own default breaks PLPR.
 
 **Verdict: a real, narrow API defect — half-fixed.** The divergence is
-**purely lexical**: `plr_score_elements` (`plr.mbt:347`, branch at `:356`)
+**purely lexical**: `plr_score_elements` (`plr.mbt:348`, branch at `:356`)
 selects the IV branch only on an iv-type spelling and falls through to PO for
 everything else, so the space spelling computes the identical PO score. The
 PLR side of this has been fixed; the **PLPR side has not** — PLPR still
@@ -250,13 +250,13 @@ Re-investigated after the instrument work. Two candidate explanations are
 **eliminated by reading**, not by inference:
 
 1. ~~"The coefficient is computed from a psi-independent quantity."~~ **No.**
-   `plpr.mbt:1106,1134` → `aggregate_coef_se(coefs, ses)`; `coefs[r] = theta_r`
+   `plpr.mbt:1109,1134` → `aggregate_coef_se(coefs, ses)`; `coefs[r] = theta_r`
    (`:1086,1103`) from `cluster_causal_param_and_se`; and that function
-   (`kfold.mbt:649`) calls `est_coef_cluster(psi_a, psi_b, ...)`. The
+   (`kfold.mbt:650`) calls `est_coef_cluster(psi_a, psi_b, ...)`. The
    coefficient is a function of **both** psi arrays.
 
 2. ~~"`est_coef_cluster` might collapse the two arrays."~~ **No.**
-   `plpr.mbt:196-224` is exactly the fold-weighted ratio
+   `plpr.mbt:198-226` is exactly the fold-weighted ratio
 
    ```
    theta = - ( sum_k w_k * sum_{i in k} psi_b )
@@ -279,7 +279,7 @@ The one link that could explain it, and the only one left:
 > **`g_pred` and `l_pred` must be bringing the ratio back to the same value.**
 > Invariance to 4.44e-16 is an *identity*, not a small difference, so whatever
 > relates `psi_b = v(y - g)` to `psi_b = v(y - l)` and `psi_a = -v d` to
-> `psi_a = -v²` must hold exactly on this fixture. Note `plpr.mbt:1040-1044`
+> `psi_a = -v²` must hold exactly on this fixture. Note `plpr.mbt:1043-1047`
 > computes `theta_init` from the **PO** formula (`-v²`, `v·u`) inside the
 > IV-type branch — so `g_pred`'s *starting value* is branch-independent by
 > construction, which is a plausible route to that identity.
@@ -319,7 +319,7 @@ artefact**; it is structural.
 
 **`cre_normal` is the exception, and it is explicable.** It augments `ml_m`'s
 training inputs with a per-unit treatment mean
-(`plpr.mbt:998-1009`): `ml_m` gets `[X, d_mean]` instead of `X`. That changes
+(`plpr.mbt:1001-1012`): `ml_m` gets `[X, d_mean]` instead of `X`. That changes
 the nuisance model's input set, so `g_pred` and `l_pred` stop being *exactly*
 recoverable, and the ratio loses its bit-exactness.
 
@@ -364,15 +364,15 @@ from "coincidental on this fixture".
 - **Not licensed**: flipping the default to `"partialling out"`. That would break
   every caller that passes `score="partialling-out"` explicitly, including
   `plr_iv_type_wbtest.mbt:199-201`. (It has not been flipped — the default is
-  still the hyphen, `plr.mbt:418` / `:677`.)
+  still the hyphen, `plr.mbt:419` / `:677`.)
 - **Not licensed**: any claim that PLPR's `coef()` is a bug. It is measured to
   be score-invariant; it is *not* measured to be wrong, and the mechanism is
   open.
 - **Still open — and now the only half of the defect that remains**:
   `DoubleMLPLPR` still rejects the hyphen spelling its own sibling defaults to
-  (`plpr.mbt:567`). Widening PLPR to accept `"partialling-out"` is the same
+  (`plpr.mbt:570`). Widening PLPR to accept `"partialling-out"` is the same
   zero-risk additive change PLR already received — but it is a behaviour
   change, and it is **not** done.
-- **Unrelated but recorded**: `did_cs_binary.mbt:756` requires
+- **Unrelated but recorded**: `did_cs_binary.mbt:758` requires
   `score == "observational"` while upstream's `did_cs_binary.py:182` allows
   `experimental` too. Narrower, not wrong; left alone.

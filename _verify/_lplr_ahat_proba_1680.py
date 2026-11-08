@@ -2,7 +2,7 @@
 
 What went wrong in the first run of this file
 =============================================
-The port's `a_pred` (`lplr.mbt:836`) is a plain outer cross-fit, and upstream's
+The port's `a_pred` (`lplr.mbt:838`) is a plain outer cross-fit, and upstream's
 `a_hat["preds"]` is a bagged one. To measure that difference I built the "port"
 side in Python as
 
@@ -16,10 +16,10 @@ So the first run compared probabilities against labels and reported an 82.9%
 divergence, and injecting those labels into upstream moved the coefficient by
 -0.050. Both numbers were about `predict` vs `predict_proba`, NOT about bagging.
 
-The port is on the probabilities side: `learner.mbt:159` and the implementation
-at `logistic.mbt:217-243` -- `predict` returns `sigmoid(eta[i])` clipped into
+The port is on the probabilities side: `learner.mbt:162` and the implementation
+at `logistic.mbt:218-244` -- `predict` returns `sigmoid(eta[i])` clipped into
 `(1e-15, 1-1e-15)`, and the hard-label path is a separate `predict_class`
-(`logistic.mbt:250-262`). Verified in the code, not just the comment.
+(`logistic.mbt:251-263`). Verified in the code, not just the comment.
 
 This file redoes the measurement with `predict_proba(x)[:, 1]` on both sides,
 so the only remaining difference IS the construction: bagged vs plain OOF.

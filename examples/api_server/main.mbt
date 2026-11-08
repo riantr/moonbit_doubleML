@@ -47,9 +47,10 @@
 // ============================================================
 
 ///|
+#derive(Debug)
 suberror ApiError {
   Message(String)
-} derive(Debug)
+}
 
 // ============================================================
 // JSON helpers
@@ -216,26 +217,31 @@ fn parse_fit_request(
 // ============================================================
 
 ///|
-struct Empty {} derive(ToJson)
+#derive(ToJson)
+struct Empty {}
 
 ///|
+#derive(ToJson)
 struct HealthResponse {
   status : String
-} derive(ToJson)
+}
 
 ///|
+#derive(ToJson)
 struct VersionResponse {
   library : String
   service : String
   estimators : Array[String]
-} derive(ToJson)
+}
 
 ///|
+#derive(ToJson)
 struct ErrorResponse {
   error : String
-} derive(ToJson)
+}
 
 ///|
+#derive(ToJson)
 struct FitResponse {
   estimator : String
   coef : Double
@@ -244,7 +250,7 @@ struct FitResponse {
   ci_hi : Double
   n_obs : Int32
   n_features : Int32
-} derive(ToJson)
+}
 
 ///|
 async fn write_json(
@@ -342,7 +348,7 @@ fn handler_version(_body : Json) -> Json raise ApiError {
   // same run. Both are real gates doing their job -- a version bump touches
   // every place the version lives, and `_verify/_bump_1636.py` is that list.
   ToJson::to_json({
-    library: "riantr/moonbit_doubleML@0.164.63",
+    library: "riantr/moonbit_doubleML@0.164.64",
     service: "example/api_server@0.1.0",
     estimators: ["plr", "irm"],
   })
@@ -371,15 +377,15 @@ fn handler_fit_plr(body : Json) -> Json raise ApiError {
 /// documented.
 ///
 /// Every estimator constructor `require`s `n_folds >= 2`,
-/// `n_folds <= n_obs` and `n_rep >= 1` (`plr.mbt:106-108`,
-/// `irm.mbt:121-123`), and `kfold` itself `require`s `n_obs > 0`,
-/// `n_folds > 0` and `n_folds <= n_obs` (`kfold.mbt:440-442`).  A `require`
+/// `n_folds <= n_obs` and `n_rep >= 1` (`plr.mbt:107-109`,
+/// `irm.mbt:122-124`), and `kfold` itself `require`s `n_obs > 0`,
+/// `n_folds > 0` and `n_folds <= n_obs` (`kfold.mbt:441-443`).  A `require`
 /// in MoonBit is a PANIC, not a catchable error, so a request that violates
 /// one of them takes the whole PROCESS down rather than the request: the
 /// process exits and every later caller gets a refused connection.
 ///
 /// MEASURED, not assumed: `POST /fit/irm` with one row and `n_folds = 2`
-/// printed `precondition failed at kfold.mbt:442:5-442:30` followed by
+/// printed `precondition failed at kfold.mbt:443:5-442:30` followed by
 /// `PanicError`; the client saw the connection reset, and `/healthz` then
 /// answered "connection refused" instead of `{"status":"ok"}`.  The v0.164.38
 /// validator made this WORSE in one narrow sense: it calls the library's own
@@ -505,10 +511,11 @@ fn handler_fit_irm(body : Json) -> Json raise ApiError {
 // ============================================================
 
 ///|
+#derive(Eq)
 priv enum Method {
   Get
   Post
-} derive(Eq)
+}
 
 ///|
 priv struct Route {

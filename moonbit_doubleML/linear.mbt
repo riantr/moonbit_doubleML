@@ -8,6 +8,7 @@
 /// singularity when the design matrix is near-collinear; the default
 /// `lambda = 1e-10` is small enough to be invisible on well-conditioned
 /// data but prevents the Cholesky from failing on degenerate inputs.
+#derive(Debug)
 pub struct LinearRegression {
   ridge : Double
   // fitted parameters: coefficients of the augmented design matrix
@@ -21,7 +22,7 @@ pub struct LinearRegression {
   // the WLS-aware intercept variance (TODO #11c.2).
   xtwx_inv_diag : Array[Double]
   fitted : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend LinearRegression with @moonbitlang/core/debug.Debug::{to_repr}

@@ -479,7 +479,7 @@ fn sec_did_pyexample() -> Unit {
   section("did_pyexample")
   // Emitted first, and it gates everything below. The first version fitted
   // unconditionally and panicked at `require(n_folds <= data.n_obs())`
-  // (`did.mbt:276`) on the 3-row stub -- n_folds=2 on three observations. An
+  // (`did.mbt:278`) on the 3-row stub -- n_folds=2 on three observations. An
   // emitter that crashes takes the other ten sections' output with it, so a
   // clean "not generated" is strictly better than a stack trace.
   let generated = pyexample_generated() != 0
@@ -591,7 +591,7 @@ fn sec_did_pyexample() -> Unit {
 /// disagree, so the port would treat a cohort as its own control. They agree
 /// for INTEGER `g`: `_get_never_treated_value` returns `0` for integer dtype
 /// and `inf` only for floating dtype, and `0` is precisely this port's rule
-/// (`discover_groups_times`, `did_cs.mbt:84-95`). The `inf` that broke the
+/// (`discover_groups_times`, `did_cs.mbt:85-96`). The `inf` that broke the
 /// earlier attempt came from `time_type="float"`; `pyexample_did_cs2021.py`
 /// recodes to integer and the conventions reconcile.
 ///
@@ -600,9 +600,9 @@ fn sec_did_pyexample() -> Unit {
 /// Upstream's `"standard"` yields 12 `(g, t_pre, t_eval)` triples; this port
 /// can express 6. The split is structural and measured, not chosen:
 ///
-///   * this port fixes its base period at `g_value - 1` (`did_cs.mbt:1565`)
+///   * this port fixes its base period at `g_value - 1` (`did_cs.mbt:1567`)
 ///     and restricts the panel to `(g == g_value) U (g == never_treated)`
-///     (`did_cs.mbt:1591`);
+///     (`did_cs.mbt:1593`);
 ///   * upstream picks `t_pre = t_values[t_values < g][-1]`, then
 ///     `min(t_values[i], t_pre)`;
 ///   * the two therefore agree EXACTLY on the cells where upstream landed on
@@ -613,7 +613,7 @@ fn sec_did_pyexample() -> Unit {
 /// because the keyword yields only 3 of the 6 -- asking explicitly is the
 /// stronger comparison.
 ///
-/// `DoubleMLDIDMulti`'s `ignore(t_pre)` (`did_multi.mbt:326`) is a real
+/// `DoubleMLDIDMulti`'s `ignore(t_pre)` (`did_multi.mbt:327`) is a real
 /// divergence from upstream, and it is NOT fixed here. It is unreachable on
 /// these cells, and that is the reason the gate is sound rather than lucky: the
 /// requested `t_pre` is the period the inner estimator picks anyway. The other
@@ -645,7 +645,7 @@ fn sec_did_pyexample_cs2021() -> Unit {
 
   // `DoubleMLDIDCSData::new` does not declare `raise DIDDataError` on this
   // build -- it `abort`s instead (its own `catch` turns the precondition into
-  // an abort, `did_cs.mbt:69-72`), so a `catch` here would be an `unused_try`.
+  // an abort, `did_cs.mbt:70-73`), so a `catch` here would be an `unused_try`.
   let cs_data = @moonbit_doubleML.DoubleMLDIDCSData::new(
     x_cs, y_cs, d_cs, t_cs, id_cs, g_cs,
   )
@@ -735,7 +735,7 @@ fn sec_did_pyexample_cs2021() -> Unit {
 ///
 /// `DoubleMLSSM::new` has no `ml_pi` slot, while upstream takes the selection
 /// propensity `P(S = 1 | D, X)` as a THIRD learner. The port's `fit` does take
-/// it (`ml_pi~ : LearnerDispatch = self.ml_m,`, `ssm.mbt:694`), defaulting
+/// it (`ml_pi~ : LearnerDispatch = self.ml_m,`, `ssm.mbt:696`), defaulting
 /// to `ml_m`, so it is passed explicitly here.
 /// Relying on that default happens to match today and would silently stop
 /// matching the day it changed -- and nothing in the output would say why.
@@ -827,11 +827,11 @@ fn sec_pyexample_suite() -> Unit {
   // `has_constant` (`blp.py:239`): it is origin-forced on whatever basis it is
   // given, and `_all_coef[:, i] = blp_model.params` stores exactly
   // `basis.shape[1]` numbers. The port's `LinearRegression::fit` ALWAYS
-  // prepends an intercept (`augment_with_intercept`, `linear.mbt:102`) and
+  // prepends an intercept (`augment_with_intercept`, `linear.mbt:103`) and
   // `DoubleMLBLP::fit` stores
   // that whole augmented vector, so the port's `coef` is `basis.cols() + 1`
   // long with the intercept at index 0 -- a convention `predictions` itself
-  // relies on (`self.coef[0]`, `blp_policy.mbt:677`) and `n_params()`
+  // relies on (`self.coef[0]`, `blp_policy.mbt:678`) and `n_params()`
   // documents.
   //
   // So each side is given the raw column and each side's own convention adds
@@ -1066,13 +1066,13 @@ fn sec_did_cs_binary() -> Unit {
 ///
 /// `n_folds = 2`, and that is a hard port limitation rather than a choice:
 /// `DoubleMLDIDBinary::new` builds a FOUR-ROW dummy inner model
-/// (`DoubleMLDIDData::new(Matrix::zeros(4, ...), ...)`, `did_binary.mbt:440-441`)
+/// (`DoubleMLDIDData::new(Matrix::zeros(4, ...), ...)`, `did_binary.mbt:443-444`)
 /// so that construction does not trip `require(n_folds <= data.n_obs())`,
 /// which caps `n_folds` at 4 for this type no matter how many rows the real
 /// wide subset holds.
 ///
 /// This section exists because that ceiling was misdiagnosed. An earlier
-/// version passed upstream's default `n_folds = 5`, aborted at `did.mbt:276`,
+/// version passed upstream's default `n_folds = 5`, aborted at `did.mbt:278`,
 /// and was recorded as a row-count defect -- "the eligible subset is too
 /// small". The subset is NOT small. Measured here directly: for ATT(2,1,2)
 /// `preprocess_did_binary` emits 515 wide rows out of a 5000-row panel, and
@@ -1111,7 +1111,7 @@ fn sec_did_binary_upstream() -> Unit {
   val("db_n_cells", n_cells.to_double())
   for i = 0; i < n_cells; i = i + 1 {
     // `ml_m` is a CLASSIFIER on upstream's side (`P[D=1|X]`), and the port
-    // DEFAULTS IT TO A REGRESSOR (`did_binary.mbt:376`). Left at the default
+    // DEFAULTS IT TO A REGRESSOR (`did_binary.mbt:379`). Left at the default
     // this gate would be red for a reason that has nothing to do with parity,
     // so both learners are spelled out. Same trap as `sec_cvar`.
     let fitted = @moonbit_doubleML.DoubleMLDIDBinary::new(
@@ -1397,7 +1397,7 @@ fn sec_gain_statistics() -> Unit {
 /// (|dcoef| = 0.000e+00), because LPLR draws a DOUBLE split
 /// (`_double_sample_splitting = True`) and 0.11.4 exposes no public setter
 /// for it. `fit` draws its outer partition as `kfold(n, n_folds, seed + r)`
-/// (`lplr.mbt:781`), so the port's partition is reproducible here and is
+/// (`lplr.mbt:783`), so the port's partition is reproducible here and is
 /// emitted rather than assumed.
 ///
 /// The data is emitted for the reason given at the top of this file: the
@@ -1407,7 +1407,7 @@ fn sec_gain_statistics() -> Unit {
 ///
 /// REMAINING MISMATCH, stated rather than hidden: the port's INNER split is
 /// still drawn from `self.seed + r * 1000 + 7`. `set_sample_splitting`
-/// (`lplr.mbt:2022`) covers the outer partition only; the OUTER partition is
+/// (`lplr.mbt:2024`) covers the outer partition only; the OUTER partition is
 /// replaced and the INNER one is not. `fit` is therefore
 /// re-run across five seeds -- with the outer partition HELD FIXED, so the
 /// only thing that moves is the inner draw -- and those are emitted as

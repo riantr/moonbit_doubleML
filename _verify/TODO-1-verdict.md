@@ -52,12 +52,12 @@ that is **not retained in this repository**.
 - Method: ran the four smoke variants under `--target native` to surface the `abort()` message (WASM-GC only shows "Error" without the message). Then ran a separate adversarial driver.
 - Evidence (native backend, `moon test _verify_smoke_check_test.mbt -i <n> --target native`):
   ```
-  precondition failed at matrix.mbt:139:3-139:33@mavis/dml   (smoke_matvec_length_mismatch)
+  precondition failed at matrix.mbt:140:3-139:33@mavis/dml   (smoke_matvec_length_mismatch)
   precondition failed at linalg.mbt:24:5-24:24@mavis/dml     (smoke_cholesky_non_psd)
-  precondition failed at plr.mbt:80:3-80:23@mavis/dml        (smoke_plr_coef_before_fit)
-  precondition failed at irm.mbt:61:3-61:24@mavis/dml        (smoke_irm_new_n_folds_zero)
+  precondition failed at plr.mbt:81:3-80:23@mavis/dml        (smoke_plr_coef_before_fit)
+  precondition failed at irm.mbt:62:3-61:24@mavis/dml        (smoke_irm_new_n_folds_zero)
   ```
-  Cross-checked against source: each `loc` lands on the exact `require(...)` call site in the source file (matrix.mbt:139 `require(a.ncols == x.length())`, linalg.mbt:24 `require(diag > 0.0)`, plr.mbt:80 `require(self.fitted)`, irm.mbt:61 `require(n_folds >= 2)`). The message never points inside `check.mbt`, which confirms `#callsite(autofill(loc))` is auto-injecting the caller's `SourceLoc` into the labelled `loc` parameter and that `check.mbt` does not re-stamp it.
+  Cross-checked against source: each `loc` lands on the exact `require(...)` call site in the source file (matrix.mbt:140 `require(a.ncols == x.length())`, linalg.mbt:24 `require(diag > 0.0)`, plr.mbt:81 `require(self.fitted)`, irm.mbt:62 `require(n_folds >= 2)`). The message never points inside `check.mbt`, which confirms `#callsite(autofill(loc))` is auto-injecting the caller's `SourceLoc` into the labelled `loc` parameter and that `check.mbt` does not re-stamp it.
 - Adversarial driver (separate `require(false)` call, native):
   ```
   test "adversarial_require_false_loc_driver" {

@@ -1,7 +1,7 @@
 """v0.131.0 external oracle: is the port's nu2 upstream's nu2?
 
 The port's `DoubleMLDIDCSBinary` defaults `in_sample_normalization = false`
-(`did_cs_binary.mbt:712`) while upstream defaults it to `True`
+(`did_cs_binary.mbt:714`) while upstream defaults it to `True`
 (`did_cs_binary.py:118`), so the two compute DIFFERENT branches of the same
 formula. Comparing them only means anything when the flag is matched, which is
 what this does.

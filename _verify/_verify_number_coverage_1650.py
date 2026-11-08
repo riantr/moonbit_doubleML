@@ -221,8 +221,8 @@ POINTERS = [
      (157,), "classifier=True", "moonbit_doubleML/irm_wbtest.mbt"),
     ("irm.py:161", "_verify/_upstream_ps/doubleml-0.11.4/doubleml/irm/irm.py",
      (161,), "predict_proba", "moonbit_doubleML/irm_wbtest.mbt"),
-    ("did.mbt:708", "moonbit_doubleML/did.mbt", (708,), "w_d = d_i / m_i", None),
-    ("ssm.mbt:73-74", "moonbit_doubleML/ssm.mbt", (73, 74), "pi", None),
+    ("did.mbt:710", "moonbit_doubleML/did.mbt", (710,), "w_d = d_i / m_i", None),
+    ("ssm.mbt:74-75", "moonbit_doubleML/ssm.mbt", (74, 75), "pi", None),
 ]
 for pointer, target, nums, claim, recorder in POINTERS:
     tracked_here = target in tracked_set

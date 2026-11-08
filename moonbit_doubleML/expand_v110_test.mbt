@@ -172,7 +172,7 @@ test "v110_different_kernel_changes_the_estimate" {
   // and the configured kernel reads back from the model.
   //
   // Compared through `tag()` rather than `==`: `RDDKernel` does not
-  // implement `Eq`. `derive(Eq)` trips `implicit_impl_as_method`, and an
+  // implement `Eq`. `#derive(Eq)` trips `implicit_impl_as_method`, and an
   // explicit `impl Eq` trips `unused_value` in the non-test build (nothing
   // in the library itself compares two kernels). Both are `--deny-warn`
   // build failures, and paying a `moon.pkg` warning suppression for a
@@ -189,7 +189,7 @@ test "v110_different_kernel_changes_the_estimate" {
 ///
 /// `cluster_hac_se` takes one cluster id per BANDWIDTH-RESTRICTED LOCAL
 /// ROW, not per observation (`cluster_ids.length()` must equal `n_local()`,
-/// `rdd.mbt:1425-1429`), so the id array has to
+/// `rdd.mbt:1428-1432`), so the id array has to
 /// be sized from `n_local()` after fitting. Sizing it to the full sample
 /// aborts, which is the guard working.
 test "v110_cluster_path_uses_the_same_kernel" {

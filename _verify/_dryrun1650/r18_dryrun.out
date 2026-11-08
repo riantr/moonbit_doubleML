@@ -22,7 +22,7 @@ A. the README's shape -- the reference package page's, in that order
 
 B. the README is a USER document
   the pre-rewrite README is readable at v0.164.11                  OK
-  the README is under 900 lines                                    *** FAIL ***
+  the README is under 950 lines                                    *** FAIL ***
   the README is under 60 KB                                        *** FAIL ***
   the README is at most half the pre-rewrite line count            *** FAIL ***
   the README no longer carries the project phrase 'registers **31 checks**' *** FAIL ***
@@ -156,7 +156,7 @@ checks: 125   failed: 59
   - the README has a '## Development' section -- 
   - the README has a '## License' section -- 
   - the README has no H2 that is not in the reference's shape -- a section appears twice
-  - the README is under 900 lines -- 2289
+  - the README is under 950 lines -- 2289
   - the README is under 60 KB -- 139079
   - the README is at most half the pre-rewrite line count -- 2289 vs 2289
   - the README no longer carries the project phrase 'registers **31 checks**' -- 
@@ -199,6 +199,6 @@ checks: 125   failed: 59
   - the project document links back to the README -- 
   - the project document is TRACKED -- the README links to it, so a path in prose is a promise -- 
 VERDICT: FAIL
-<unknown>:1252: SyntaxWarning: invalid escape sequence '\w'
+<unknown>:1263: SyntaxWarning: invalid escape sequence '\w'
 
 EXACT failure count: 59

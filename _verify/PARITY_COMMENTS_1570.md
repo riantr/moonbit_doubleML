@@ -29,7 +29,7 @@ running the estimator, not by reading the port's own comments.
 
 ---
 
-## 1. `apo.mbt:50-62` — **VERIFIED ACCURATE**
+## 1. `apo.mbt:51-63` — **VERIFIED ACCURATE**
 
 The comment claims APO's `ml_m` is fitted against the `treated` indicator
 vector, not raw `d`, and that *"Upstream agrees: `regressor=False,
@@ -52,7 +52,7 @@ classifier-only. The port's split defaults mirror that.
 
 ---
 
-## 2. `cvar.mbt:359-362` — **the premise is right, the conclusion is false**
+## 2. `cvar.mbt:360-363` — **the premise is right, the conclusion is false**
 
 The comment says:
 
@@ -91,7 +91,7 @@ Only the **stored** fields move. Every computed field is bit-identical.
 
 ### The structural reason, which is sharper than the measurement
 
-The port's `SensitivityResult` (`sensitivity.mbt:534`) is:
+The port's `SensitivityResult` (`sensitivity.mbt:535`) is:
 
 ```
 rv, sigma2, nu2, cf_y, cf_d, max_bias
@@ -133,7 +133,7 @@ a divergence.
 > `DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLQTE` and `RDFlex`. The port,
 > by contrast, takes
 > `cf_y` / `cf_d` as **constructor** parameters defaulting to `0.05`
-> (`cvar.mbt:377-378`) — so the two "defaults" are not even the same kind of
+> (`cvar.mbt:378-379`) — so the two "defaults" are not even the same kind of
 > thing, and comparing them is comparing a knob with a method argument.
 >
 > The 2026-10-24 measurement is derived by
@@ -145,7 +145,7 @@ a divergence.
 
 ---
 
-## 3. `iivm.mbt:187-188` — the `ml_r` default is a regressor; upstream forbids it
+## 3. `iivm.mbt:189-190` — the `ml_r` default is a regressor; upstream forbids it
 
 Verified against installed upstream (`doubleml/irm/iivm.py`):
 
@@ -153,7 +153,7 @@ Verified against installed upstream (`doubleml/irm/iivm.py`):
 |---|---|
 | `iivm.py:164` | `self._check_learner(ml_r, "ml_r", regressor=False, classifier=True)` |
 | `iivm.py:43-45` | docstring: *"ml_r : classifier implementing `fit()` and `predict_proba()` … for `r_0(Z,X) = E[D\|X,Z]`"* |
-| `iivm.mbt:187-188` | `ml_r~ : LearnerDispatch = LearnerDispatch::linear_regression()` |
+| `iivm.mbt:189-190` | `ml_r~ : LearnerDispatch = LearnerDispatch::linear_regression()` |
 
 So the port ships exactly the learner class upstream rejects, and nothing in the
 file recorded it.
@@ -214,8 +214,8 @@ measurement.
 
 Both are documentation-only fixes, in the same shape as the v0.156.0 comments:
 
-- `apo.mbt:50-62` — **no change.** It is correct.
-- `cvar.mbt:359-362` — rewrite the last clause. Something like: *"`cf_y`/`cf_d`
+- `apo.mbt:51-63` — **no change.** It is correct.
+- `cvar.mbt:360-363` — rewrite the last clause. Something like: *"`cf_y`/`cf_d`
   are stored so a caller can read back what was requested; they reach no
   computation, and upstream uses them to set a band this result type does not
   carry. The port's default is 0.05 where upstream's is 0.03."*

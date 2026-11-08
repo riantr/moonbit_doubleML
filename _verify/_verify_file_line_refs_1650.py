@@ -156,7 +156,7 @@ def ids(text):
     treating it as one would make the check fire on prose -- which is how
     a rule with false positives teaches its reader to ignore it.
 
-    POINTER-shaped spans are removed FIRST: `apo.mbt:320` names a FILE
+    POINTER-shaped spans are removed FIRST: `apo.mbt:321` names a FILE
     and a line, not a symbol in that file, so it is not evidence that the
     target neighbourhood contains anything.
 

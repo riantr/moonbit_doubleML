@@ -130,7 +130,7 @@ pub fn irm_style_sensitivity_from_elements(
 /// Build a `SensitivityResult` from the two variance BASELINES alone.
 ///
 /// v0.144.0, added with the `DoubleMLPLR` nu2 fix. Proven at
-/// `compute_sensitivity_bias` (sensitivity.mbt:565) and reproduced below:
+/// `compute_sensitivity_bias` (sensitivity.mbt:566) and reproduced below:
 /// `max_bias[i] = sqrt(sigma2 * nu2)` for EVERY `i`, `psi_max_bias` is
 /// discarded by every caller in this file (`let (max_bias_arr, _) = ...`),
 /// `robustness_value` divides `|theta|` by `mean(max_bias)`, and `max_bias` is
@@ -531,6 +531,7 @@ pub fn single_psi_sensitivity(
 
 ///|
 // v0.66.0+: result struct for `DoubleMLXXX::sensitivity_analysis`.
+#derive(Debug)
 pub struct SensitivityResult {
   rv : Double
   sigma2 : Double
@@ -538,7 +539,7 @@ pub struct SensitivityResult {
   cf_y : Double
   cf_d : Double
   max_bias : Double
-} derive(Debug)
+}
 
 ///|
 pub extend SensitivityResult with @moonbitlang/core/debug.Debug::{to_repr}
@@ -636,12 +637,13 @@ pub fn robustness_value(theta : Double, max_bias : Array[Double]) -> Double {
 /// benchmark is the upstream `doubleml.utils.gain_statistics`
 /// output; see Cinelli & Hazlett (2020) §3.4 for the
 /// interpretation of `cf_y` / `cf_d` / `rho`.
+#derive(Debug)
 pub struct GainStatsResult {
   cf_y : Array[Double]
   cf_d : Array[Double]
   rho : Array[Double]
   delta_theta : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend GainStatsResult with @moonbitlang/core/debug.Debug::{to_repr}
@@ -836,13 +838,14 @@ pub fn gain_statistics(
 /// `all_coef` are row-major `(n_coef, n_rep)`; `n_rep` is
 /// the per-coefficient repetition count; `var_y` is the
 /// scalar outcome variance.
+#derive(Debug)
 pub struct GainStatsSource {
   var_y_residuals : Array[Double]
   nu2 : Array[Double]
   all_coef : Array[Double]
   n_rep : Int32
   var_y : Double
-} derive(Debug)
+}
 
 ///|
 pub extend GainStatsSource with @moonbitlang/core/debug.Debug::{to_repr}
@@ -1381,6 +1384,7 @@ fn median_sorted(sorted : Array[Double]) -> Double {
 ///   - `cf_d`: benchmarking upper-bound on the treatment-nuisance
 ///     confounding fraction (default 0.05). Pass-through to the
 ///     joint result for parity with `SensitivityResult.cf_d`.
+#derive(Debug)
 pub struct JointSensitivityInput {
   name : String
   coef : Double
@@ -1389,7 +1393,7 @@ pub struct JointSensitivityInput {
   rho : Double
   cf_y : Double
   cf_d : Double
-} derive(Debug)
+}
 
 ///|
 pub extend JointSensitivityInput with @moonbitlang/core/debug.Debug::{to_repr}
@@ -1450,6 +1454,7 @@ pub fn JointSensitivityInput::empty() -> JointSensitivityInput {
 ///     per_estimator_rv_q`: per-estimator outputs, length K.
 ///   - `bonferroni_alpha` = `alpha / K`.
 ///   - `num_estimators` = K.
+#derive(Debug)
 pub struct JointSensitivityResult {
   joint_lower : Double
   joint_upper : Double
@@ -1461,7 +1466,7 @@ pub struct JointSensitivityResult {
   per_estimator_rv_q : Array[Double]
   bonferroni_alpha : Double
   num_estimators : Int32
-} derive(Debug)
+}
 
 ///|
 pub extend JointSensitivityResult with @moonbitlang/core/debug.Debug::{to_repr}

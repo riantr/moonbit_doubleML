@@ -592,7 +592,7 @@ def group_line_pointers():
     cstyle = [n for n in (331, 338, 342)
               if n <= len(lines)
               and re.search(r"for\s+\w+\s*=\s*0;", lines[n - 1])]
-    check("kfold.mbt:331,338,342 are C-style range at %s" % tag,
+    check("kfold.mbt:332,338,342 are C-style range at %s" % tag,
           len(cstyle) == 3, "matched %s" % cstyle)
     # the try/catch shim at 266-274
     shim = [n for n in range(266, 275) if n <= len(lines)
@@ -600,7 +600,7 @@ def group_line_pointers():
                  or "require(" in lines[n - 1]
                  or "PreconditionError" in lines[n - 1]
                  or "abort(" in lines[n - 1])]
-    check("kfold.mbt:266-274 is the try/catch shim at %s" % tag,
+    check("kfold.mbt:267-275 is the try/catch shim at %s" % tag,
           len(shim) >= 7, "matched %d of 9 lines" % len(shim))
 
 

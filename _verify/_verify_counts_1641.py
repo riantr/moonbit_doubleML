@@ -128,9 +128,9 @@ no_cv = sorted("%s:%d" % (f, i) for f, i, c in sites if not c)
 with_cv = sorted("%s:%d" % (f, i) for f, i, c in sites if c)
 print("  without cv: %s" % ", ".join(no_cv))
 print("  with cv   : %s" % ", ".join(with_cv))
-EXPECTED_NO_CV = ["apo.mbt:320", "cvar.mbt:736", "cvar.mbt:1005",
-                  "did.mbt:628", "did_cross_section.mbt:615",
-                  "did_cs_binary.mbt:374", "quantile.mbt:217", "ssm.mbt:671"]
+EXPECTED_NO_CV = ["apo.mbt:321", "cvar.mbt:737", "cvar.mbt:1006",
+                  "did.mbt:630", "did_cross_section.mbt:617",
+                  "did_cs_binary.mbt:375", "quantile.mbt:217", "ssm.mbt:673"]
 check("the derived no-cv set is the expected eight",
       set(no_cv) == set(EXPECTED_NO_CV) and len(no_cv) == 8,
       "got %s" % no_cv)

@@ -16,13 +16,13 @@
 >
 > | pointer | as written | now (`v0.164.9`) |
 > |---|---|---|
-> | `DoubleMLDIDCS::fit` | did_cs.mbt:1620 | **`did_cs.mbt:1242`** |
-> | `DoubleMLDIDBinary::new` | `did_binary.mbt:352` | `did_binary.mbt:352` — unchanged |
-> | inner `DoubleMLDID::new` | `did_binary.mbt:439` | `did_binary.mbt:439` — unchanged |
-> | `require(n_folds <= data.n_obs())` | `did.mbt:276` | `did.mbt:276` — unchanged |
-> | `abort(...)` | `did.mbt:317` | `did.mbt:317` — unchanged |
-> | the 4-row placeholder | `did_binary.mbt:441` | `did_binary.mbt:441` — unchanged |
-> | the placeholder's comment | `did_binary.mbt:412-417` | `did_binary.mbt:412-417` — unchanged |
+> | `DoubleMLDIDCS::fit` | did_cs.mbt:1622 | **`did_cs.mbt:1244`** |
+> | `DoubleMLDIDBinary::new` | `did_binary.mbt:355` | `did_binary.mbt:355` — unchanged |
+> | inner `DoubleMLDID::new` | `did_binary.mbt:442` | `did_binary.mbt:442` — unchanged |
+> | `require(n_folds <= data.n_obs())` | `did.mbt:278` | `did.mbt:278` — unchanged |
+> | `abort(...)` | `did.mbt:319` | `did.mbt:319` — unchanged |
+> | the 4-row placeholder | `did_binary.mbt:444` | `did_binary.mbt:444` — unchanged |
+> | the placeholder's comment | `did_binary.mbt:415-420` | `did_binary.mbt:415-420` — unchanged |
 >
 > **What is NOT verified here.** No estimator was re-run: the 4-row ceiling,
 > the 2/3/4/5 threshold and the per-cell counts are quoted from the original
@@ -35,7 +35,7 @@
 > The first version concluded that `n_folds = 5` aborts because *"the
 > post-`preprocess_did_binary` survivor set falls below 5 rows"*. **That is
 > wrong.** The binding set is a **hardcoded 4-row placeholder**
-> (`did_binary.mbt:441`), created at construction of `DoubleMLDIDBinary`,
+> (`did_binary.mbt:444`), created at construction of `DoubleMLDIDBinary`,
 > before any preprocessing runs.
 >
 > The first version also reported "9 cells, all equal" — the probe looped
@@ -112,17 +112,17 @@ exactly 4 and rules out any sample-size explanation.
 ### Abort chain (line numbers at `8308f09`+v0.156.0)
 
 ```
-DoubleMLDIDCS::fit              did_cs.mbt:1242
-DoubleMLDIDBinary::new          did_binary.mbt:352
-  inner: DoubleMLDID::new(      did_binary.mbt:439
-    DoubleMLDIDData::new(Matrix::zeros(4, ...))   did_binary.mbt:441
-      require(n_folds <= data.n_obs())            did.mbt:276
-      abort(...)                                  did.mbt:317
+DoubleMLDIDCS::fit              did_cs.mbt:1244
+DoubleMLDIDBinary::new          did_binary.mbt:355
+  inner: DoubleMLDID::new(      did_binary.mbt:442
+    DoubleMLDIDData::new(Matrix::zeros(4, ...))   did_binary.mbt:444
+      require(n_folds <= data.n_obs())            did.mbt:278
+      abort(...)                                  did.mbt:319
 ```
 
 ### Why it exists
 
-`did_binary.mbt:412-417` states it outright:
+`did_binary.mbt:415-420` states it outright:
 
 > Placeholder: the real `DoubleMLDID` is built in `fit()` once the wide-format
 > preprocessing has produced a non-empty dataset. **We pass a 4-row dummy here**
@@ -197,7 +197,7 @@ predicted, which is what licenses the `n_folds=5` reading.
 the estimator. Elsewhere the difference is ≤1.03 SE of correctly-priced noise and
 2 folds halves compute.
 
-Now documented at three sites — `did_cs.mbt` (the missing guard), `did_binary.mbt:412`
+Now documented at three sites — `did_cs.mbt` (the missing guard), `did_binary.mbt:415`
 (the placeholder that creates the ceiling), and this document — so the default
 is not "fixed" into a broken state.
 

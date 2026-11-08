@@ -3,8 +3,8 @@
 _1680 series. Measured on `b922349` plus the uncommitted LPLR gate work._
 
 > **Re-audited 2026-10-20 (round 17).** This is **one of the two** `_verify/`
-> records the shipped `README.mbt.md` cites (at its line 563; the other is
-> `_verify/UPSTREAM_PROVENANCE.md`, cited at its lines 16, 204 and 832), so
+> records the shipped `README.mbt.md` cites (at its line 567; the other is
+> `_verify/UPSTREAM_PROVENANCE.md`, cited at its lines 16, 208, 836), so
 > every promise made here is a promise the README inherits. The record was
 > added at `d3ac364` (2026-10-16) and had never been re-audited; 33 commits
 > have since touched the record and 18 have touched the port's LPLR surface.
@@ -55,7 +55,7 @@ _1680 series. Measured on `b922349` plus the uncommitted LPLR gate work._
 
 `examples/lplr` is one of the twenty e2e-checked examples, and
 `validate_lplr_with_python.py` **is** wired into CI
-(`.github/workflows/check.yml:125` globs `validate_*_with_python.py`). So this
+(`.github/workflows/check.yml:155` globs `validate_*_with_python.py`). So this
 was not "a gate in no workflow" — it
 was a gate that ran and could not fail for the reason anyone would assume it
 existed to catch.
@@ -104,7 +104,7 @@ With that, refitting under a pinned partition is **bit-identical**
 (`|dcoef| = 0.000e+00`). So the comparison does not need a 0.81 band.
 
 The port's own outer partition is reproducible: `fit` draws
-`kfold(n, n_folds, seed + r)` (`lplr.mbt:781`).
+`kfold(n, n_folds, seed + r)` (`lplr.mbt:783`).
 
 ## 3. A second divergence upstream cannot mirror at all
 
@@ -133,9 +133,9 @@ load-bearing (`plm/lplr.py`):
 | `ml_a` | inner propensity for `d_tilde`; `clone(ml_m)` when absent | `ml_m` |
 
 The port's 2-slot API is a faithful compression of the *structure*
-(`lplr.mbt:665`: "route `ml_g` to the `ml_t` slot and `ml_m` to the
+(`lplr.mbt:667`: "route `ml_g` to the `ml_t` slot and `ml_m` to the
 binary-classification slots"). It is not faithful on `ml_m`: the port sets
-`m_pred = a_pred` (`lplr.mbt:928`) where upstream fits `ml_m` separately on
+`m_pred = a_pred` (`lplr.mbt:930`) where upstream fits `ml_m` separately on
 the `Y == 0` subsample (`lplr.py:247-252`). **That is D1.**
 
 ## 5. D1 measured, not assumed — and then measured again
@@ -230,7 +230,7 @@ Two lessons, both of which cost a cycle here:
 ## 6. Band, measured from both sides
 
 `set_sample_splitting` replaces the **outer** partition only
-(`lplr.mbt:775-782`) — the port's inner draw still comes from
+(`lplr.mbt:777-784`) — the port's inner draw still comes from
 `self.seed + r*1000 + 7`. That is the residual, so both sides' inner
 spreads are measured and the band is built from them rather than assumed:
 
@@ -1130,7 +1130,7 @@ The machinery to close it is already present and already correct for `beta`:
 `a_inner_per_fold` (`:801`) is ml_m's inner OOF per outer fold, and
 `prelim_beta_per_fold` consumes `a_inner_per_fold[fi]` against
 `ti = outer[fi].train_idx` (`:976-981`). `double_cross_fit_predict` returns a
-vector of length `len(outer[fi].train_idx)` per fold (`kfold.mbt:757`,
+vector of length `len(outer[fi].train_idx)` per fold (`kfold.mbt:758`,
 `Array::make(m, 0.0)` with `m = train_idx.length()`), so combining is:
 
     for fi in 0..outer.length():
@@ -1281,7 +1281,7 @@ NOT, and that is the one deliberate deviation.
 The 0/300 measurement in 13c was about to be thrown out. It fitted upstream
 with `LogisticRegression(C=1e6, ...)` while `DoubleMLLPLR::new` defaults to
 `LearnerDispatch::logistic_regression(LogisticRegression::new())`
-(`lplr.mbt:360-362`), and `LogisticRegression::new()` looks like a C = 1.0
+(`lplr.mbt:362-364`), and `LogisticRegression::new()` looks like a C = 1.0
 default -- so the two sides of the comparison would have had different
 regularization, and "upstream is robust where the port is not" would have
 been an artifact.
@@ -1293,7 +1293,7 @@ at all:
       { fitted: false, coef_: [], }
     }
 
-(`logistic.mbt:23-25`). No `C`, no penalty term, no lambda -- it is an
+(`logistic.mbt:24-26`). No `C`, no penalty term, no lambda -- it is an
 unregularized MLE, which is the same regime as upstream's `C=1e6`. The two
 configurations are matched in substance, so the 0/300 figure stands.
 
@@ -1340,7 +1340,7 @@ Read out of installed scipy 1.18.0, not recalled:
   i.e. `|p - p0| <= 1.48e-8`, a **pure absolute** bound -- the relative term
   is multiplied by zero.
 
-The port's test, `lplr.mbt:1264`, is
+The port's test, `lplr.mbt:1266`, is
 
     (theta_new - theta).abs() < 1.0e-9
 
@@ -1467,19 +1467,19 @@ outer folds. It is a bagged predictor, not a single model's output.
 
 ### 18b. What the port computes
 
-`lplr.mbt:836`:
+`lplr.mbt:838`:
 
     a_pred = cross_fit_predict_dispatch(ml_m, x, d, outer)
 
 One model per outer test row -- the ordinary K-fold OOF value. No inner
-cross-fit, no averaging. `r_hat` is then built from it at `lplr.mbt:198`:
+cross-fit, no averaging. `r_hat` is then built from it at `lplr.mbt:199`:
 
     let r_hat = t_pred[i] - beta[i] * a_pred[i]
 
 So the port's `r_hat` uses a single outer-OOF prediction where upstream uses
 an average of inner-model predictions, and `r_hat` feeds
 `psi_hat = expit(-r_hat)` and `score_const = d_tilde * (1-y) * exp(r_hat)`
-(`lplr.mbt:202-203`) -- the exact pair that 17c identified as the collapse
+(`lplr.mbt:203-204`) -- the exact pair that 17c identified as the collapse
 mechanism.
 
 ### 18c. Why 16a did not catch this
@@ -1497,7 +1497,7 @@ stopped one level short of the pieces that produce those pieces.
 `xx[train_idx] = W_inner[idx]` padded with NaN, and `_fit` uses
 `y[train_index]`, so it reduces to fit-on-`(x[train_idx], W_inner[idx])`
 and predict-`x[test_idx]`. The port's `cross_fit_predict_inner`
-(`lplr.mbt:1616-1634`) does exactly that.
+(`lplr.mbt:1618-1636`) does exactly that.
 
 ### 18d. Magnitude, measured (the direction claim here was WRONG -- see 19)
 
@@ -1637,7 +1637,7 @@ from `utils/resampling.py:52-65`:
 `self.resampling_inner.split(X=train)` yields **positional** indices into
 the outer fold's TRAINING rows, and `train[train_inner]` maps them back to
 original positions. So upstream's inner cross-fit covers the outer training
-rows only -- exactly what the port does at `kfold.mbt:751-757`:
+rows only -- exactly what the port does at `kfold.mbt:752-758`:
 
     let m = train_idx.length()
     let inner = kfold(m, n_inner, rng_state)
@@ -1794,7 +1794,7 @@ whenever you retract one** -- one of three being fixed is an assumption, not a
 result.
 
 Two figures were left alone deliberately. `CHANGELOG.md` and §11/§12 record
-`-3.3e6` and `1.03e11` as history and are correct as history. `lplr.mbt:870`'s
+`-3.3e6` and `1.03e11` as history and are correct as history. `lplr.mbt:872`'s
 `1.03e11` is a §8-10 D2 A/B result, explicitly labelled as such and pointing
 at its own sections.
 
@@ -1861,7 +1861,7 @@ was measured before D4, so §22's numbers did not reproduce it. Re-run at
 
 ### 23a. Method
 
-Raise the two damping thresholds at `lplr.mbt:1260` from `5.0` / `1.0` to
+Raise the two damping thresholds at `lplr.mbt:1262` from `5.0` / `1.0` to
 `1.0e300` so the branch cannot fire on any finite value, leaving
 `theta_new = theta - raw_delta` -- scipy's bare Newton, exactly. Run
 `pyexample_lplr.py` and `examples/fuzz`. Revert with `git checkout`. The tree
@@ -1924,7 +1924,7 @@ been described using D4-era arithmetic.
 > **CORRECTION.** This section was first written claiming the conditioning was
 > "the one structural deviation never tested". **That was wrong**, and the
 > error came from reading §14a rather than the `m_pred` block it points at.
-> `lplr.mbt:854-876` records TWO prior implementations, both reverted, both
+> `lplr.mbt:856-878` records TWO prior implementations, both reverted, both
 > with numbers -- most recently on the D2+D3 baseline in v0.163.0, where the
 > gated `nuisance_space` gap went **0.007307 -> 0.021078**. Section 25 is an
 > independent third implementation, and it reproduced that figure exactly.
@@ -1958,7 +1958,7 @@ m_hat = _dml_cv_predict(self._learner["ml_m"], x, d, smpls=filtered_smpls, ...)
 
 For `nuisance_space` upstream fits the propensity **on the control rows only**
 and predicts on the full test fold. The port's `m_pred = a_pred` is an
-UNCONDITIONED outer cross-fit (`lplr.mbt:836`, alias at `:928`).
+UNCONDITIONED outer cross-fit (`lplr.mbt:838`, alias at `:928`).
 
 §14a checked the outer-cross-fit SHAPE -- that `_dml_cv_predict(ml_m, x, d)`
 really is a plain outer cross-fit -- and found the alias faithful. It did not
@@ -2041,7 +2041,7 @@ one would land somewhere else.
 ### 25a. Method
 
 The primitive already exists: `cross_fit_predict_conditional_dispatch`
-(`learner.mbt:380-425`) fits on `train INTERSECT cond` and predicts on the
+(`learner.mbt:383-428`) fits on `train INTERSECT cond` and predicts on the
 **full** test fold, which is exactly upstream's
 `filtered_smpls = [(train[y[train] == 0], test)]`. So the change is small:
 
@@ -2084,7 +2084,7 @@ on the same rows:
 | shipped (unconditioned) | 0.399521 | 0.392214 | **0.007307** |
 | conditioned | 0.371136 | 0.392214 | **0.021078** |
 
-`0.007307 -> 0.021078` is the **same pair** `lplr.mbt:868` records for the
+`0.007307 -> 0.021078` is the **same pair** `lplr.mbt:870` records for the
 v0.163.0 implementation. Two independent implementations, a year of
 intervening work apart, landing on the same two numbers to six digits. The
 recorded price of this change is confirmed, not re-litigated.
@@ -2425,9 +2425,9 @@ under comparison are probability vectors:
     once in each nuisance.
 
 The port is on the probability side, verified in the implementation and not only
-in its comment: `logistic.mbt:217-243` returns `sigmoid(eta[i])` clipped into
+in its comment: `logistic.mbt:218-244` returns `sigmoid(eta[i])` clipped into
 `(1e-15, 1-1e-15)`, and the hard-label path is a *separate* function,
-`predict_class` at `logistic.mbt:250-262`.
+`predict_class` at `logistic.mbt:251-263`.
 
 So every "PLAIN is much worse" number in this document was measuring **hard
 labels against probabilities**. That control is guaranteed to look bad: labels
@@ -2479,7 +2479,7 @@ labels. 19b's `~13x` and `~1400x` are `0.99` and `1.00`.
 
 The bagging IS a real difference -- upstream sums every inner model's prediction
 on the outer test rows and divides by `len(smpls)` (`_estimation.py:207-229`),
-where `lplr.mbt:836` is a single outer OOF -- and it shrinks with n
+where `lplr.mbt:838` is a single outer OOF -- and it shrinks with n
 (21.5% of span at n=60, 2.6% at n=500). It is simply **not a cause of
 anything**: survival ties at every n, Newton-step ratios 1.00, and a coefficient
 shift of 3.9e-4 against a tolerance of 1.3e-1.
@@ -2509,7 +2509,7 @@ what made 18d and 19 publishable and load-bearing.
 
 The check that would have caught it costs one grep: read the port's `predict`
 implementation and see what it returns. It was already written down at
-`learner.mbt:159`. **A control reconstructed from source must be validated
+`learner.mbt:162`. **A control reconstructed from source must be validated
 against the source before it is used to measure anything.**
 
 ---
@@ -2632,7 +2632,7 @@ if not bounded:
 
 With no bounds, upstream runs an **unbracketed Newton from exactly the start
 value the port uses**. The port's start *rule* is `np.average(beta)`, verbatim.
-The clamp at `lplr.mbt:1261` is standing in for a robustness upstream does not
+The clamp at `lplr.mbt:1263` is standing in for a robustness upstream does not
 have either.
 
 ### 27f. The basin, and the derivative collapse that explains it
@@ -2742,7 +2742,7 @@ fragility measured on both sides rather than by an asymmetry that did not exist.
 ### 27i. A withdrawn number was still live 33 lines below its own withdrawal
 
 Correcting 27g required re-reading what cites it, and the sweep for the withdrawn
-bagging figure found `lplr.mbt:1236-1242` still reading "One real divergence
+bagging figure found `lplr.mbt:1238-1244` still reading "One real divergence
 remains and it is NOT implemented ... (69% of `a_hat`'s own span apart)" -- 33
 lines below the paragraph at `:1202-1205` that withdraws that exact figure, and
 23 lines below `:1213-1215` which says **do not implement the bagging**. Fixed

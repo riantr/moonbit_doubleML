@@ -2,7 +2,7 @@
 A. the README's numbers
   PASS  the README has number-bearing prose lines
   154 number-bearing prose lines, 154 distinct numbers
-  80 tracked verifiers read the README
+  81 tracked verifiers read the README
   PASS  the propensity_clip default is in the source
   PASS  the README's `1e6` is 1 / the propensity_clip default
   PASS  the fuzz harness names its master seed
@@ -10,14 +10,14 @@ A. the README's numbers
   SKIP  irm.py:157: _verify/_upstream_ps/doubleml-0.11.4/doubleml/irm/irm.py is not in this checkout (the upstream copy is local, not tracked) -- the recorded pointer above is the promise
   PASS  the pointer irm.py:161 is recorded in a tracked file (moonbit_doubleML/irm_wbtest.mbt)
   SKIP  irm.py:161: _verify/_upstream_ps/doubleml-0.11.4/doubleml/irm/irm.py is not in this checkout (the upstream copy is local, not tracked) -- the recorded pointer above is the promise
-  PASS  the pointer did.mbt:708 names a tracked file (moonbit_doubleML/did.mbt)
-  PASS  the pointer did.mbt:708 resolves to content in moonbit_doubleML/did.mbt
-  PASS  the pointer ssm.mbt:73-74 names a tracked file (moonbit_doubleML/ssm.mbt)
-  PASS  the pointer ssm.mbt:73-74 resolves to content in moonbit_doubleML/ssm.mbt
+  PASS  the pointer did.mbt:710 names a tracked file (moonbit_doubleML/did.mbt)
+  *** FAIL ***  the pointer did.mbt:710 resolves to content in moonbit_doubleML/did.mbt -- line 710 of moonbit_doubleML/did.mbt does not contain 'w_d = d_i / m_i'
+  PASS  the pointer ssm.mbt:74-75 names a tracked file (moonbit_doubleML/ssm.mbt)
+  PASS  the pointer ssm.mbt:74-75 resolves to content in moonbit_doubleML/ssm.mbt
 
 B. every number is guarded, derived, or witnessed
   *** FAIL ***  every number in the README is accounted for -- no witness: ['0.999123456']
-  guarded: 114, derived: 4, witnessed: 38, total: 154
+  guarded: 114, derived: 3, witnessed: 38, total: 154
 
 C. the witnesses
   0.0005       <- CHANGELOG.md
@@ -62,13 +62,14 @@ C. the witnesses
 D. the derived figures
   1e6          1 / the propensity_clip default (moonbit_doubleML/apo.mbt = 1e-06 in moonbit_doubleML/apo.mbt)
   20260824     the seed the fuzz harness passes to chacha8 (examples/fuzz/main.mbt)
-  708          the line number in the pointer did.mbt:708 (moonbit_doubleML/did.mbt)
-  73           the line number in the pointer ssm.mbt:73-74 (moonbit_doubleML/ssm.mbt)
-  74           the line number in the pointer ssm.mbt:73-74 (moonbit_doubleML/ssm.mbt)
+  710          the line number in the pointer did.mbt:710 (moonbit_doubleML/did.mbt)
+  74           the line number in the pointer ssm.mbt:74-75 (moonbit_doubleML/ssm.mbt)
+  75           the line number in the pointer ssm.mbt:74-75 (moonbit_doubleML/ssm.mbt)
 
 ========================================================================
-11 checks, 1 failed
+11 checks, 2 failed
 *** FAIL ***
+  - the pointer did.mbt:710 resolves to content in moonbit_doubleML/did.mbt
   - every number in the README is accounted for
 
-EXACT failure count: 1
+EXACT failure count: 2

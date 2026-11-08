@@ -103,6 +103,10 @@ def file_header(src):
         if s.startswith("///") or s.startswith("//"):
             head.append(s)
             continue
+        if s.startswith("#"):
+            # An ATTRIBUTE (`#derive(...)`) is not prose; it does not belong
+            # in the file's head comments, and it is not a break in them.
+            continue
         if s == "":
             if head:
                 break

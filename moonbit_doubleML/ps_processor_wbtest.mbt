@@ -10,7 +10,7 @@
 // `folds_to_cv_partition` (added v0.159.0). `default_5fold` itself had none.
 //
 // Mutation evidence. The qa_loop mutation battery flips the half-open interval
-// test at ps_processor.mbt:850 from `j >= start + size` to `j > start + size`.
+// test at ps_processor.mbt:852 from `j >= start + size` to `j > start + size`.
 // The mutant drops the row `start + size` from BOTH train and test -- it lands
 // in neither set, so it silently never contributes to any fit. Measured over
 // n in {7, 10, 20, 23}, the mutant loses 4 rows per 5-fold CV (every fold

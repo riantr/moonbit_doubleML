@@ -13,6 +13,7 @@
 /// or not-yet-treated per `control_group`), and the covariates from
 /// the earlier period. The wide-format dataset is then passed to
 /// `DoubleMLDID` for the standard DML cross-fit.
+#derive(Debug)
 pub struct DoubleMLDIDBinaryData {
   x : Matrix
   y : Array[Double]
@@ -20,7 +21,7 @@ pub struct DoubleMLDIDBinaryData {
   t : Array[Int32]
   g : Array[Int32]
   id : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDBinaryData with @moonbitlang/core/debug.Debug::{to_repr}
@@ -64,6 +65,7 @@ pub fn DoubleMLDIDBinaryData::n_features(self : DoubleMLDIDBinaryData) -> Int32 
 /// binary G_indicator (`d`), and the binary t_indicator
 /// (`t_indicator`: 0 if the wide row originated from the
 /// `t_value_pre` period, 1 if from `t_value_eval`).
+#derive(Debug)
 struct WideDIDSubset {
   x : Matrix
   y : Array[Double]
@@ -75,7 +77,7 @@ struct WideDIDSubset {
   // `DoubleMLDIDBinaryData` (long-format) array. Length
   // matches `y` / `d`.
   eval_idx : Array[Int32]
-} derive(Debug)
+}
 
 ///|
 pub extend WideDIDSubset with @moonbitlang/core/debug.Debug::{to_repr}
@@ -289,6 +291,7 @@ fn preprocess_did_binary(
 /// dataset, then dispatches to `DoubleMLDID::fit`. The DML point
 /// estimate is the ATT (average treatment effect on the treated)
 /// for the chosen `(g_value, t_value_pre, t_value_eval)` triple.
+#derive(Debug)
 pub struct DoubleMLDIDBinary {
   data : DoubleMLDIDBinaryData
   g_value : Int32
@@ -343,7 +346,7 @@ pub struct DoubleMLDIDBinary {
   // `.enable_memoize()` / `.has_cache()` / `.clear_cache()`
   // uniformly across the DID family.
   memoize_enabled : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDBinary with @moonbitlang/core/debug.Debug::{to_repr}

@@ -64,12 +64,13 @@
 /// Per-row output of `cs_bin_panel_subset`. Each row is one
 /// observation in the post-subset panel: a `(G_indicator, T_indicator)`
 /// pair, the covariates, and the (still-raw) outcome `y`.
+#derive(Debug)
 struct CSBinPanelRow {
   x : Array[Double] // length p
   y : Double
   g_indicator : Double // 0 or 1
   t_indicator : Double // 0 (pre) or 1 (eval)
-} derive(Debug)
+}
 
 ///|
 pub extend CSBinPanelRow with @moonbitlang/core/debug.Debug::{to_repr}
@@ -611,6 +612,7 @@ fn cs_bin_score_obs(
 /// Mirrors the upstream `DoubleMLDIDCSBinary` (Python
 /// 0.11.4) with the v0.51.0 simplifications listed in
 /// the file-level docstring.
+#derive(Debug)
 pub struct DoubleMLDIDCSBinary {
   data : DoubleMLDIDCSData
   g_value : Int32
@@ -701,7 +703,7 @@ pub struct DoubleMLDIDCSBinary {
   // despite routing both through `LearnerDispatch` since v0.62.0.
   ml_g : LearnerDispatch
   ml_m : LearnerDispatch
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDCSBinary with @moonbitlang/core/debug.Debug::{to_repr}

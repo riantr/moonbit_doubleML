@@ -21,6 +21,7 @@
 /// computed the CVaR via a single `solve_pq` call + a "max"
 /// target trick) has been removed; the canonical CVaR estimator
 /// is this struct.
+#derive(Debug)
 pub struct DoubleMLCVAR {
   data : DoubleMLData
   treatment : Double
@@ -96,7 +97,7 @@ pub struct DoubleMLCVAR {
   // the IRM / PLR plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLCVAR with @moonbitlang/core/debug.Debug::{to_repr}
@@ -362,7 +363,7 @@ pub fn DoubleMLCVAR::predictions_m(self : DoubleMLCVAR) -> Array[Double] {
 ///   (delta = 0 on every field). Only the stored `cf_y`/`cf_d` round-trip.
 /// - Upstream uses `cf` to set the WIDTH of the theta band (measured there:
 ///   +/-6.88 SE at cf=0.20). This port's `SensitivityResult`
-///   (`sensitivity.mbt:534`) has no band, no CI and no `rva`, so it
+///   (`sensitivity.mbt:535`) has no band, no CI and no `rva`, so it
 ///   STRUCTURALLY cannot carry the quantity `cf` moves upstream. That is the
 ///   real sense in which there is no parity here, and it is not fixable by
 ///   plumbing.

@@ -20,6 +20,7 @@
 /// learner only affects the residual / RSS computation. Defaults
 /// to `LearnerDispatch::linear_regression()` which preserves the
 /// v0.62.2 byte-equality behaviour for the standard fit.
+#derive(Debug)
 pub struct DoubleMLBLP {
   basis : Matrix
   orth_signal : Array[Double]
@@ -58,7 +59,7 @@ pub struct DoubleMLBLP {
   // unchanged. Mirrors the IRM / PLR / CVAR / SSM plumbing.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLBLP with @moonbitlang/core/debug.Debug::{to_repr}
@@ -754,7 +755,7 @@ pub fn DoubleMLBLP::confint_joint(
       // quantile the rest of the package uses for `confint`), so the
       // default path is unchanged.
       let z = if (level - 0.95).abs() < 1.0e-12 {
-        // Same convention as `did_cross_section.mbt:485-490`: keep the
+        // Same convention as `did_cross_section.mbt:487-492`: keep the
         // canonical 95% value bit-exact so the default path (and the
         // test contract) are unchanged, and use `norm_ppf` for every
         // other level.
@@ -1258,10 +1259,11 @@ pub fn DoubleMLBLP::cluster_hac_se(
 /// the split feature, the threshold value, and the two child nodes.
 /// Internal-only (not exposed in the public API) so the public
 /// `DoubleMLPolicyTree` signature is unchanged from the depth-1 era.
+#derive(Debug)
 pub enum PolicyTreeNode {
   Leaf(Int32)
   Split(Int32, Double, PolicyTreeNode, PolicyTreeNode)
-} derive(Debug)
+}
 
 ///|
 pub extend PolicyTreeNode with @moonbitlang/core/debug.Debug::{to_repr}
@@ -1403,6 +1405,7 @@ fn policy_tree_predict(node : PolicyTreeNode, x : Matrix, row : Int32) -> Int32 
 /// variance-reduction gain (Bug #8); the `depth` parameter controls
 /// how many levels of recursion to use (TODO #11c.3: previously the
 /// `depth` field was unused and the fit was always a depth-1 stump).
+#derive(Debug)
 pub struct DoubleMLPolicyTree {
   features : Matrix
   orth_signal : Array[Double]
@@ -1555,7 +1558,7 @@ pub struct DoubleMLPolicyTree {
   // number.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLPolicyTree with @moonbitlang/core/debug.Debug::{to_repr}

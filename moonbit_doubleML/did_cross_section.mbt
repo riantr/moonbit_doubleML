@@ -15,6 +15,7 @@
 /// for the 4 (d, t) combinations, plus 1 propensity
 /// function `m(x) = E[D=1 | X]`, and constructs the
 /// ATT score function from these nuisance predictions.
+#derive(Debug)
 pub struct DoubleMLDIDCrossSectionData {
   x : Matrix
   y : Array[Double]
@@ -23,7 +24,7 @@ pub struct DoubleMLDIDCrossSectionData {
   // Convenience: the data-set name, used only for
   // `DoubleMLDIDCrossSection` error messages.
   name : String
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDCrossSectionData with @moonbitlang/core/debug.Debug::{
@@ -114,6 +115,7 @@ pub fn DoubleMLDIDCrossSectionData::n_features(
 ///     form, with `weight_psi_a = d / p_hat`.
 ///   - `true`: in-sample normalization
 ///     `weight_psi_a = d / mean(d)`.
+#derive(Debug)
 pub struct DoubleMLDIDCrossSection {
   data : DoubleMLDIDCrossSectionData
   n_folds : Int32
@@ -177,7 +179,7 @@ pub struct DoubleMLDIDCrossSection {
   // flag is forwarded for uniformity with the rest of the
   // DID family.
   memoize_enabled : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDCrossSection with @moonbitlang/core/debug.Debug::{to_repr}

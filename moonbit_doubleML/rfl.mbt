@@ -59,10 +59,11 @@
 /// column index, the threshold, and the two child subtrees.
 /// `Leaf` carries the per-leaf mean (the constant prediction
 /// for rows that land here).
+#derive(Debug)
 pub enum CART {
   Leaf(Double)
   Split(Int32, Double, CART, CART)
-} derive(Debug)
+}
 
 ///|
 pub extend CART with @moonbitlang/core/debug.Debug::{to_repr}
@@ -71,6 +72,7 @@ pub extend CART with @moonbitlang/core/debug.Debug::{to_repr}
 /// Random forest learner (regression). Fits a forest of
 /// CART trees on bootstrap samples; predicts by averaging
 /// leaf values across all trees.
+#derive(Debug)
 pub struct RFLearner {
   n_trees : Int32
   max_depth : Int32
@@ -82,7 +84,7 @@ pub struct RFLearner {
   // Number of feature columns the forest was fit on. Used in
   // `predict` to validate input shape. -1 = not yet fit.
   n_features : Int32
-} derive(Debug)
+}
 
 ///|
 pub extend RFLearner with @moonbitlang/core/debug.Debug::{to_repr}

@@ -9,7 +9,7 @@
 //| acts on it.
 //
 //| Why SSM and why it is the worst case in the package. The score carries TWO
-//| reciprocals, one per direction (`ssm.mbt:73-74`):
+//| reciprocals, one per direction (`ssm.mbt:74-75`):
 //!
 //|   psi_b1 = (D==1)*S*(Y-g_d1)/(m*pi)      + g_d1
 //!   psi_b0 = (D==0)*S*(Y-g_d0)/((1-m)*pi)  + g_d0

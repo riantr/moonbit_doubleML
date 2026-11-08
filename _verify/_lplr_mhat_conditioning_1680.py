@@ -14,7 +14,7 @@ The candidate
 
 So upstream fits the propensity `ml_m` on the **controls only** and predicts
 on the full test fold. The port uses `m_pred = a_pred`, an UNCONDITIONED outer
-cross-fit (`lplr.mbt:836`, alias at `:928`).
+cross-fit (`lplr.mbt:838`, alias at `:928`).
 
 Section 14a checked the outer-cross-fit SHAPE and found the alias faithful --
 `_dml_cv_predict(self._learner["ml_m"], x, d, ...)` really is a plain outer

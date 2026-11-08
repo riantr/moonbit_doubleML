@@ -46,7 +46,7 @@ THE RULE
       this file exists to catch.
   L4  the scope matters, because the same documents name UNRELATED versions
       -- `moonbitlang/async` 0.22.7, `moonbit-community/sqlite3` 0.2.3, the
-      `moon` toolchain 0.1.20261028, this package's own 0.164.60, CPython
+      `moon` toolchain 0.1.20261102, this package's own 0.164.64, CPython
       3.13.14 and the host 127.0.0.1 -- and a generic version pattern would
       flag all of them.
   L5  with no installed upstream there is nothing to compare against, and

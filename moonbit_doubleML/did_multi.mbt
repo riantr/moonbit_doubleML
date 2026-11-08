@@ -21,6 +21,7 @@
 /// `DoubleMLDIDCS` instance is the canonical per-(g, t)
 /// estimator; `DoubleMLDIDMulti` adds the `gt_combinations`
 /// filter and the aggregation API on top.
+#derive(Debug)
 pub struct DoubleMLDIDMulti {
   data : DoubleMLDIDCSData
   // gt_combinations: list of `(g_value, t_value_pre, t_value_eval)`
@@ -61,7 +62,7 @@ pub struct DoubleMLDIDMulti {
   // this flag to the inner `DoubleMLDIDCS` so the aggregated
   // cross-fits honour `.enable_memoize()` uniformly.
   memoize_enabled : Bool
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLDIDMulti with @moonbitlang/core/debug.Debug::{to_repr}

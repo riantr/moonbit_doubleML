@@ -16,7 +16,7 @@
 ///|
 /// v0.150.0 corrected `DoubleMLDIDCS` to base period `g - 1` with live cells
 /// `t >= g`, which made `ATT(g, g)` estimable. `DoubleMLDIDMulti` was never
-/// updated: `t > g - anticipation_periods && t > g` (`did_multi.mbt:242`) still
+/// updated: `t > g - anticipation_periods && t > g` (`did_multi.mbt:243`) still
 /// emits `(g, g, t)` only when that holds, and
 /// `:246` emits `(g, g, t)` for every `t != g`.
 ///
@@ -117,7 +117,7 @@ test "v1540_didmulti_all_also_hardcodes_t_pre_to_g" {
 /// MEASURED on `make_did_cs_CS2021(800, 3, 1.0, 3141)` (`groups=[1]`,
 /// `times=[0,1]`):
 ///   "standard" -> 0 cells, and `require(resolved.length() > 0)` at
-///                  `did_multi.mbt:117` ABORTS. Not catchable: MoonBit's
+///                  `did_multi.mbt:118` ABORTS. Not catchable: MoonBit's
 ///                  `require` calls `abort`, it does not raise.
 ///   "all"      -> exactly 1 cell, `(1, 1, 0)` -- which is a PRE-TREATMENT
 ///                  PLACEBO (`t_eval = 0 < t_pre = 1`), not an effect.

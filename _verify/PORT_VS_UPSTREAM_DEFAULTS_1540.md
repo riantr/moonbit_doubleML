@@ -75,7 +75,7 @@ produced the same confident, wrong answer.
 > **CORRECTED by `_verify/SCORE_VOCABULARY_1550.md`.** The `score` row above
 > counts only constructor defaults (bodies of `::new`), which is why it lists
 > `'partialling out'` ×1 and misses the three `'partialling-out'` (hyphen)
-> sites in `plr.mbt:417`, `plr.mbt:676` and `tune.mbt:355` — those are `fit`
+> sites in `plr.mbt:418`, `plr.mbt:677` and `tune.mbt:358` — those are `fit`
 > parameters, not constructor defaults. That scoping choice was never stated in
 > this table and reads as a complete census; it is not. Upstream's real
 > `valid_scores` per estimator are in `SCORE_VOCABULARY_1550.md`.
@@ -107,7 +107,7 @@ passes the flag explicitly.
 
 ### MEASURED blast radius of flipping it — and it cuts BOTH ways
 
-`did_cs.mbt:1392` and `:1396` select between two materially different formulas
+`did_cs.mbt:1394` and `:1396` select between two materially different formulas
 for `m_alpha` and `rr`. Measured on `make_did_cs_CS2021(800, 3, 1.0, seed)`,
 true ATT = 1.0:
 
@@ -125,7 +125,7 @@ true ATT = 1.0:
 same values v0.152.0 measured when it found `max |att − 1.0| = 14.41`.
 
 *Against* the flip: **`nu2` is NaN on all four seeds** under the upstream
-branch. The `true` formula divides by `mean(d1t0)` (`did_cs.mbt:1409`), which is
+branch. The `true` formula divides by `mean(d1t0)` (`did_cs.mbt:1411`), which is
 zero on this fixture's empty `(d=1, t=0)` cell — the structural emptiness
 recorded in the v0.147.0 header. So the flip would trade a finite `nu2` for a
 NaN one, on the very estimator whose sensitivity analysis this release thread
@@ -137,7 +137,7 @@ unaffected either way.
 **Therefore: do not flip this default on the evidence so far.** The
 `in_sample_normalization = true` branch is the upstream-faithful one *and* it is
 broken on staggered panels with an empty `(d=1, t=0)` cell. Fixing the NaN (or
-documenting when it is correct — `did_cs.mbt:669` already argues NaN can be
+documenting when it is correct — `did_cs.mbt:671` already argues NaN can be
 correct here) has to come before the default can move.
 
 ### Is the NaN a formula bug, or a consequence of the empty cell? — MEASURED
@@ -153,7 +153,7 @@ canonical fixture's **400 / 200 / 0 / 200**.
 
 **The NaN is caused by the empty cell, not by a broken formula.** The upstream
 branch returns a finite value wherever `mean(d1t0)` is defined. So
-`did_cs.mbt:669`'s "MAY be NaN, AND THAT IS CORRECT" survives — with the
+`did_cs.mbt:671`'s "MAY be NaN, AND THAT IS CORRECT" survives — with the
 mechanism stated precisely: it is structural, not arithmetic error.
 
 **But the control run raises a second, larger problem.** Where the branch *is*
@@ -176,7 +176,7 @@ is worth changing.
 
 ## ROOT CAUSE FOUND — and it is not a normalisation bug
 
-`did_cs.mbt:1428` reads
+`did_cs.mbt:1430` reads
 
 ```moonbit
 let ti = self.data.t[i].to_double()
@@ -215,7 +215,7 @@ So **both** symptoms have one cause:
 
 An earlier report in this file described the fix as narrow — "make `t[i]` yield
 a 0/1 post-treatment indicator". Reading the g-function construction refutes
-that. `did_cs.mbt:1336-1347` builds the four condition masks like this:
+that. `did_cs.mbt:1338-1349` builds the four condition masks like this:
 
 ```moonbit
 let ti = self.data.t[i]
@@ -261,10 +261,10 @@ Upstream `5` at every estimator read; this port `2` at 17 of 19 sites. The
 obvious reading is "the port chose 2 over upstream's 5". **Measurement refutes
 that.**
 
-`n_folds = 5` **aborts** on the canonical fixture, at `did.mbt:276`:
+`n_folds = 5` **aborts** on the canonical fixture, at `did.mbt:278`:
 
 ```
-precondition failed at did.mbt:276:5-276:37
+precondition failed at did.mbt:278:5-276:37
     require(n_folds <= data.n_obs())
 ```
 

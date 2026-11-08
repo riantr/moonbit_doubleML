@@ -6,8 +6,8 @@ AUDIT script (which did not exist at that tag), and runs the SAME verifier
 against it.
 
 Every defect round 15 fixed was present in v0.164.9 -- the stale 213/216
-file counts, the stale 27-site learner inventory, the rotted `did.mbt:245`
-and `plr.mbt:388` pointers, the 13-class score vocabulary, the "the port
+file counts, the stale 27-site learner inventory, the rotted `did.mbt:247`
+and `plr.mbt:389` pointers, the 13-class score vocabulary, the "the port
 rejects upstream's spelling" claim, the 20x headline, the 49/42/7 triple,
 the crossed README provenance labels, and the untracked method scripts.  So
 the verifier MUST FAIL there, and the failure count is the evidence that the

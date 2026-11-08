@@ -71,6 +71,7 @@
 ///|
 /// Gradient-boosting classifier (binary log loss). `predict` returns
 /// `P(y = 1 | x)`.
+#derive(Debug)
 pub struct GBClassifier {
   n_trees : Int32
   learning_rate : Double
@@ -83,7 +84,7 @@ pub struct GBClassifier {
   initial : Double // log-odds of the base rate
   base_rate : Double // pbar, kept for the accessor's sake
   trees : Array[CART]
-} derive(Debug)
+}
 
 ///|
 pub extend GBClassifier with @moonbitlang/core/debug.Debug::{to_repr}

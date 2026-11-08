@@ -16,7 +16,7 @@ Both were built by reconstructing the port's nuisances in Python as
   * `m_hat`  -- `method=self._predict_method["ml_m"]`, also `"predict_proba"`
     (`plm/lplr.py:150`, consumed at `:261`).
 
-The port is on the probability side there too: `logistic.mbt:217-243` returns
+The port is on the probability side there too: `logistic.mbt:218-244` returns
 `sigmoid(eta[i])` clipped into `(1e-15, 1-1e-15)`, with `predict_class` the
 separate hard-label path.
 

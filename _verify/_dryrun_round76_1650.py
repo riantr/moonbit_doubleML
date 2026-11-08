@@ -286,8 +286,37 @@ M8_OLD = r"`plm/lplr\.py:326` sets `self\._coef_start_val = np\.average\(beta\)`
 M8_NEW = r"`plm/lplr.py:3260` sets `self._coef_start_val = np.average(beta)` and hands it"
 
 # 9  a record's claim about WHICH README line cites it is wrong
-M9_OLD = r"cites \(at its line 563;"
-M9_NEW = r"cites (at its line 560;"
+#
+# The line the record names is NOT a constant: the README is regenerated every
+# round and the record is re-anchored whenever it moves, so an anchor that
+# names an absolute line goes stale the moment the README grows -- and a
+# stale anchor makes the driver die before it can prove anything.  Round 86
+# paid for that: the record moved from 563 to 567 and this anchor did not
+# move with it.
+#
+# So the anchor is DERIVED.  The anchor is a PATTERN that matches whatever
+# number the record states now, and the replacement names a line the README
+# does not cite -- computed from the record's own number and from the
+# README's ACTUAL citation lines.  The mechanism keeps its meaning (the
+# record names the WRONG line) and it can no longer go stale.
+def _m9_wrong_line():
+    """A line the README does not cite, next to the one the record names."""
+    m = re.search(r"cites \(at its line (\d+);", read(LPLR))
+    if m is None:
+        raise SystemExit("!! the record does not state 'cites (at its line N;'")
+    stated = int(m.group(1))
+    cited = set()
+    for i, line in enumerate(read(README).split("\n"), 1):
+        if re.search(r"_verify/[A-Za-z0-9_./-]+\.md", line):
+            cited.add(i)
+    for cand in (stated - 1, stated + 1, stated - 2, stated + 2, stated + 1000):
+        if cand > 0 and cand not in cited:
+            return cand
+    raise SystemExit("!! no neighbouring line is free of a record citation")
+
+
+M9_OLD = r"cites \(at its line \d+;"
+M9_NEW = r"cites (at its line %d;" % _m9_wrong_line()
 
 # 10  a record's claim about HOW MANY records the README cites is wrong
 M10_OLD = r"This is \*\*one of the two\*\* `_verify/`"

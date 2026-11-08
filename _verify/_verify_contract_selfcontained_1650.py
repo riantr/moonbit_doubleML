@@ -31,7 +31,10 @@ So this file states the invariant and holds the contract to it:
 
   C3  Every repository-relative path a tracked verifier READS must be a
       TRACKED file.  An untracked input is invisible to a clone and to
-      anybody who downloads the package.
+      anybody who downloads the package.  Two classes are exempt, and both
+      are checked rather than assumed: a DOWNLOADED third-party tree, and a
+      GENERATED artefact the tree's own tooling rewrites on every run.  A
+      verifier that reads one of those must SKIP when it is absent.
 
 C1 and C2 are static and cheap.  C3 is static too: the paths are read
 out of the AST, so a verifier that builds a path by concatenation is
@@ -223,6 +226,16 @@ print("== C3: every file a tracked verifier READS is tracked ==")
 DOWNLOADED = ("_verify/_upstream",)
 SDIST = re.compile(r"^_verify/doubleml-.*\.tar\.gz$")
 
+# A GENERATED artefact is the same class of thing: the tree's OWN tooling
+# writes it on every run, so it cannot be tracked.  The gate's result file is
+# the case in point -- it carries the seconds each step took and the
+# absolute path of the build directory, so tracking it would make every
+# release a diff of noise and would carry one developer's directory layout
+# into the repository.  A verifier that reads one must SKIP when it is
+# absent -- that is checked separately, below, exactly as for a downloaded
+# tree.
+GENERATED = re.compile(r"^_verify/_gate_\d+\.json$")
+
 # a build output directory: produced by the toolchain, never tracked
 BUILT = ("_build/", ".mooncakes/", "__pycache__/")
 
@@ -288,6 +301,8 @@ def classify(p):
     rel = os.path.relpath(ap, ROOT).replace(os.sep, "/")
     if rel.startswith(DOWNLOADED) or SDIST.match(rel):
         return ("downloaded", rel)
+    if GENERATED.match(rel):
+        return ("generated", rel)
     if rel.startswith(BUILT):
         return ("built", rel)
     return ("repo", rel)
@@ -296,6 +311,7 @@ def classify(p):
 untracked_dep = []
 missing_read = []
 downloaded_reads = []
+generated_reads = []
 checked_paths = 0
 for name in contract:
     path = os.path.join(VD, name)
@@ -318,6 +334,9 @@ for name in contract:
         if kind == "downloaded":
             downloaded_reads.append((name, rel))
             continue
+        if kind == "generated":
+            generated_reads.append((name, rel))
+            continue
         if not os.path.exists(os.path.join(ROOT, rel.replace("/", os.sep))):
             missing_read.append((name, rel))
             continue
@@ -336,9 +355,11 @@ for name, rel in untracked_dep:
     print("      %s reads %s -- untracked" % (name, rel))
 note("%d repository-relative reads were examined" % checked_paths)
 
-# C5 -- a verifier that reads a DOWNLOADED tree must SKIP when it is absent
+# C5 -- a verifier that reads a DOWNLOADED tree or a GENERATED artefact must
+#       SKIP when it is absent
 print("")
-print("== C5: a verifier over a downloaded tree skips when it is absent ==")
+print("== C5: a verifier over a downloaded tree or a generated artefact "
+      "skips when it is absent ==")
 if downloaded_reads:
     for name, rel in downloaded_reads:
         src = io.open(os.path.join(VD, name), encoding="utf-8",
@@ -349,6 +370,16 @@ if downloaded_reads:
     note("%d read(s) live under a downloaded tree" % len(downloaded_reads))
 else:
     note("no tracked verifier reads a downloaded tree")
+if generated_reads:
+    for name, rel in generated_reads:
+        src = io.open(os.path.join(VD, name), encoding="utf-8",
+                      errors="replace").read()
+        check("%s has a SKIP path for the generated artefact %s" % (name, rel),
+              re.search(r"\bSKIP\b|\bskip\(", src) is not None,
+              "no SKIP marker in the source")
+    note("%d read(s) name a GENERATED artefact" % len(generated_reads))
+else:
+    note("no tracked verifier reads a generated artefact")
 
 # ==============================================================================
 # C4 -- the contract the runner will execute is the contract that is tracked

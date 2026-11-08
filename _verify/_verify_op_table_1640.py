@@ -75,7 +75,23 @@ shutil.copy2(os.path.join(ROOT, PROBE.replace("/", os.sep)),
 with open(os.path.join(PKG, "moon.mod"), "w", encoding="utf-8", newline="\n") as fh:
     fh.write('name = "local/op-table-probe"\n\nversion = "0.0.1"\n')
 with open(os.path.join(PKG, "moon.pkg"), "w", encoding="utf-8", newline="\n") as fh:
-    fh.write('pkgtype(kind: "executable")\n')
+    # The core's packages must be imported AT THE PACKAGE LEVEL.  The
+    # compiler moved the standard library into `moonbitlang/core/*`
+    # packages, and a package that uses one without importing it no longer
+    # compiles:
+    #
+    #     Cannot use @math: package math is not imported.
+    #     Hint: packages from `moonbitlang/core` need to be imported as well,
+    #            e.g. `moonbitlang/core/math`.
+    #
+    # This repository's own `moonbit_doubleML/moon.pkg` already imports the
+    # core packages it uses, which is why the library still builds; the
+    # probe is a separate package and has to say the same thing.  The
+    # import goes in `moon.pkg`, NOT in `moon.mod`: `moon.mod` only accepts
+    # VERSIONED registry dependencies, and the core is the toolchain's own
+    # package, not a registry one.
+    fh.write('import {\n  "moonbitlang/core/math",\n}\n\n'
+             'pkgtype(kind: "executable")\n')
 
 out = subprocess.run(["moon", "run", "--target", "native", PKG], cwd=PKG,
                      capture_output=True, text=True, encoding="utf-8",

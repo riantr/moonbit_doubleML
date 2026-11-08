@@ -347,7 +347,7 @@ Setup:
   `Array[Int]` field) in either the body or the `.mbtp` predicate.
   Underlying cause is the same as documented (missing
   `use array.Array` in the WhyML preamble). Sites:
-  `kfold.mbt:289, 291, 292, 293, 299, 305, 306-310, 311-315,
+  `kfold.mbt:290, 291, 292, 293, 299, 305, 306-310, 311-315,
   317-321, 324-327, 328-332, 336-350, 354`;
   `kfold_proof.mbtp:26, 33, 41, 55-60, 69-71`.
   **These are line numbers at `v0.52.0`**, where `kfold.mbt` was 657

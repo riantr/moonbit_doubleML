@@ -5,12 +5,12 @@ It could: the recorded "defect" was a misdiagnosis, and this file is the
 evidence. The short version --
 
     `DoubleMLDIDBinary::new` builds a FOUR-ROW dummy inner model
-    (`DoubleMLDIDData::new(Matrix::zeros(4, ...), ...)`, `did_binary.mbt:440-441`)
+    (`DoubleMLDIDData::new(Matrix::zeros(4, ...), ...)`, `did_binary.mbt:443-444`)
     so that construction does not trip `require(n_folds <= data.n_obs())`.
     That caps `n_folds` at 4 on this type.
 
 The first attempt at this gate passed upstream's default `n_folds = 5`, hit
-that ceiling, and aborted at `did.mbt:276`. It was recorded as a row-count
+that ceiling, and aborted at `did.mbt:278`. It was recorded as a row-count
 defect on the CS2021 panel -- "the eligible subset must be smaller than
 n_folds". Measured, that is false:
 
@@ -66,7 +66,7 @@ own fold noise.
 UPSTREAM TRAPS
 ==============
   * `ml_m` must be a CLASSIFIER. The port DEFAULTS IT TO A REGRESSOR
-    (`did_binary.mbt:376`), so the emitter passes a logistic explicitly.
+    (`did_binary.mbt:379`), so the emitter passes a logistic explicitly.
     Upstream trims extreme weights by default
     (`trimming_rule="truncate"`, `trimming_threshold=0.01`) and the port has no
     such argument -- whether the port's untrimmed configuration lands on

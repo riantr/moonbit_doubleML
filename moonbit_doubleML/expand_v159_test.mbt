@@ -74,7 +74,7 @@ test "v1590_isotonic_tied_x_returns_the_shared_pooled_value" {
 /// FIX: `folds_to_cv_partition` (ps_processor.mbt) converts the estimator's
 /// `Array[Fold]` into the `Array[(Array[Int32], Array[Int32])]` shape
 /// `isotonic_calibrate_cv` expects, and `folds_to_cv_partition(folds)`
-/// (`irm.mbt:430` / `iivm.mbt:525`) now pass it.
+/// (`irm.mbt:431` / `iivm.mbt:527`) now pass it.
 ///
 /// WHAT THIS PINS: the conversion is only sound because `kfold`'s `Fold`
 /// guarantees disjoint test indices that COVER `[0, n_obs)`
@@ -234,7 +234,7 @@ test "v1590_pq_reports_a_root_of_its_own_orthogonal_score" {
 /// MECHANISM: the score's theta-derivative was computed as a central difference
 /// of the step function, so it was identically zero whenever no observation lay
 /// within `+/- h` of theta. `DoubleMLQTE::fit` scales `psi` by `1 / deriv`
-/// (`quantile.mbt:2415-2422`) with no guard of its own -- the section comment
+/// (`quantile.mbt:2417-2424`) with no guard of its own -- the section comment
 /// there documents exactly this -- so `0/0 = NaN` reached `ses[j]`. Measured on
 /// the five-quantile sweep fixture:
 /// `ses = [NaN, 0.3019, 0.1758, 0.1994, 1.6937]`.
@@ -271,12 +271,12 @@ test "v1590_pq_derivative_stays_positive_across_quantiles_and_arms" {
 ///
 /// REPORTED: the 50% and 95% joint intervals were identical.
 ///
-/// ROOT CAUSE: `blp_policy.mbt:746` hardcoded
+/// ROOT CAUSE: `blp_policy.mbt:747` hardcoded
 /// `let z = 1.959963984540054`. `level` was accepted and range-checked at line
 /// 727, then never used.
 ///
 /// FIX: follow the convention already in this package
-/// (`did_cross_section.mbt:485`): return the exact constant when
+/// (`did_cross_section.mbt:487`): return the exact constant when
 /// `level == 0.95` -- which keeps the default bit-exact -- and
 /// `norm_ppf((1 + level) / 2)` otherwise.
 ///

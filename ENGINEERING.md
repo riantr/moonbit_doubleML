@@ -26,7 +26,7 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 85, and 10 of the numbers in between
+> at round 21 and run to round 86, and 10 of the numbers in between
 > (rounds 60-69) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
@@ -3065,6 +3065,458 @@
 >   **503** and makes **505**, and `_verify/_verify_ledger_counts_1650.py`
 >   (**84** checks) moved because this round publishes a count for one
 >   more check.
+>
+> * **Round 86.**  A gate that read the toolchain's diagnostics as the program's
+>   output -- and a release that never reached the registry because of it.
+>
+>   *What happened.*  v0.164.63's tag was pushed, and CI ran on `moon
+>   0.1.20261029` -- one day newer than the toolchain the release was verified
+>   on.  The newer toolchain prints a warning on STDERR for every `moon run`;
+>   it names `moonbitlang/async/internal/event_loop`, a module of the pinned
+>   `moonbitlang/async`.  The e2e check read the LAST line of stdout+stderr
+>   MERGED, so the toolchain's warning landed where the example's own last
+>   line should be: all twenty examples failed on a line no example printed,
+>   and the registry never received the package.
+>
+>   *The fix is a change of SEMANTICS, not of strength.*  `run()` merges the
+>   two streams on purpose -- its callers scan the merged text for a summary
+>   line.  The gate that asserts on a program's OUTPUT now reads that
+>   program's stdout, and `.github/scripts/qa_loop/checks.py` is where the
+>   separation lives.  The same prefix, the same templatised length, the same
+>   minimum line count and the same exit code are checked against the same
+>   twenty examples; only the STREAM the asserted line comes from changed.
+>   stderr is the toolchain's channel: it is REPORTED in the check's evidence
+>   and never asserted on.
+>
+>   *The check that holds it.*  `_verify/_verify_qa_e2e_stdout_1680.py` runs
+>   **16** checks against the REAL harness module -- a re-implementation of the
+>   rule would prove only that the rule agrees with itself -- and its control
+>   arms are built on a template nobody publishes.
+>   `.github/scripts/qa_loop/selftest.py` grew nine more (T21-T28): the
+>   toolchain's diagnostic must not decide the verdict, and the assertion must
+>   still BITE.  An arm that proved only the first would have disarmed the
+>   gate.
+>
+>   *The measurement that pinned it.*  All twenty examples were run under the
+>   floor toolchain with stdout and stderr captured SEPARATELY: exit 0,
+>   stderr EMPTY, and the stdout final line matching its row's prefix and
+>   length.  So the stdout-only verdict is behaviour-preserving on the
+>   toolchain the release is verified on, and it differs from the merged one
+>   exactly where the toolchain's diagnostic used to land.
+>
+>   *The pin stays.*  `moonbitlang/async@0.22.7` is the registry's latest, and
+>   the dead pin is what sets the toolchain floor -- see **Installation**.  The
+>   toolchain's warning is a fact ABOUT the pin, not a reason to move it.
+>
+>   *A stale anchor, and the hole that let it through.*  This round also
+>   re-anchored `_verify/LPLR_GATE_BLINDNESS_1680.md`'s claim about WHICH
+>   README line cites it: the README grew by four lines, so the claim moved
+>   from 563 to 567, and the re-anchor was correct.  But
+>   `_verify/_dryrun_round76_1650.py` broke that very claim with a hard-coded
+>   line number of its own, so when the record moved the driver's anchor no
+>   longer matched the text it patches -- the driver died, the dry-run sweep
+>   reported it, the chain went red and the release was blocked.  The system
+>   worked; the ANCHOR was stale.
+>
+>   *The repair.*  An anchor that names an absolute line goes stale the moment
+>   the README moves, and the README is regenerated every round.  So the
+>   anchor is DERIVED: it matches whatever number the record states now, and
+>   the replacement names a line the README does not cite -- computed from the
+>   record's own number and from the README's actual citation lines.  The
+>   mechanism keeps its meaning, and the check goes red in BOTH directions:
+>   the record names a line the README does not cite, and the README's own
+>   citation is left unclaimed.
+>
+>   *The hole, closed.*  Round 76 measured it: the teeth verifier walked
+>   MODULE-LEVEL calls only, so a driver whose mechanisms live inside a
+>   function was invisible to it.  It now ENTERS the function and resolves
+>   the patch it performs, binding the helper's parameters to the call site's
+>   arguments, and the four helper shapes the drivers use besides the ones it
+>   knew are taught by name.  It watches **401** anchors now, against 216
+>   before, and every driver that declares mechanisms resolves at least one.
+>   The residual is measured rather than assumed: 48 of the 402 mechanisms
+>   patch a file in a shape the verifier does not resolve, and that number is
+>   published so it cannot grow unnoticed.
+>
+>   *Six dead anchors, found by the closed watch.*  Two were the README's
+>   pointers, moved by this round's own migration -- round 42's `did.mbt:628`
+>   and `cvar.mbt:736` -- and three were round 55's: `ssm.mbt:73-74`,
+>   `apo.mbt:320` and `did_cs.mbt:312-324`.  The sixth was round 57's
+>   `sqlite3@0.2.3`, the pin that moved to 0.2.4 while this release was in
+>   flight.  A dead anchor is a mechanism that CANNOT fail -- the driver's own
+>   `sub` raises "pattern matched 0 times", the driver dies, and the sweep
+>   reports a red driver instead of a red check.  Every one of them is
+>   DERIVED now: the anchor names the FILE and the SHAPE of the pointer, and
+>   the number is whatever the tree says.
+>
+>   *An anchor that spelled the prose with literal spaces.*  Round 71's first
+>   mechanism matched a sentence the Installation section no longer says, and
+>   the sentence was re-wrapped because the floor now has TWO reasons.  An
+>   anchor that spells prose with LITERAL SPACES is a promise about where the
+>   generator broke the line, not about what the document says.  All five of
+>   that driver's anchors match whitespace with `\s+` now.
+>
+>   *A citation year that was not the citation.*  `doc/005_dgps`'s factory
+>   table cites the LPLR paper as "Liu-Zhang-Zhou 2020", while this
+>   README's own estimator table -- eleven lines above the DGP table --
+>   says 2021.  One paper, two years, in two documents a reader can open
+>   side by side.  Upstream's own docstring settles it: "Liu, Molei, Yi
+>   Zhang, and Doudou Zhou. 2021. ... The Econometrics Journal 24 (3):
+>   559-88."  The 2020 is upstream's FACTORY label -- the factory is
+>   `make_lplr_LZZ2020` -- and a factory's name-year is not a paper's
+>   year.  The table's own convention (`<model>, <authors> <year>`) made
+>   the name-year read as a citation, and every other row in the table has
+>   a name-year that IS the citation year -- so nothing about the row said
+>   "this one is different".
+>
+>   *The measurement.*  Of the 18 upstream DGP modules this port names,
+>   exactly ONE has a name-year that differs from its citation year.  The
+>   upstream module for each factory is read out of OUR OWN port's
+>   `moonbit_doubleML/dgp_*.mbt` header, which names the module it ports;
+>   the citation year is read out of that module's own docstring.  The
+>   upstream source is chosen the way the house chooses it -- the pinned
+>   sdist, else the tree `DOUBLEML_UPSTREAM_TREE` names, else the
+>   INSTALLED `doubleml` package -- and with no source at all the check
+>   is a reported SKIP, never a pass.
+>
+>   *The check that holds it.*  `_verify/_verify_dgp_citation_years_1680.py`
+>   holds three rules -- a document states the UPSTREAM citation year, a
+>   row that names a DGP's year-carrying NAME states that year too, and
+>   the two estimator tables agree with each other -- and five control
+>   arms, so the rules are shown to REJECT a wrong year and ACCEPT a
+>   right one.  The name-form only counts when it stands ALONE: inside a
+>   factory name it is an identifier, and inside a script name like
+>   `pyexample_did_cs2021.py` it is a filename.  A rule that flagged
+>   those would have been a rule that fired on a healthy document.
+>
+>   *The second CI blocker: the compiler deprecated the syntax.*  The
+>   toolchain moved again, to `moon 0.1.20261102`, and this time it
+>   DEPRECATED the `derive(...)` form that every trait derivation in this
+>   package used.  The replacement is the `#derive(...)` attribute above the
+>   type, and `moon fmt` performs the migration: its diff is exactly
+>   `} derive(Debug)` -> `}` plus `#derive(Debug)` above the type.  So the
+>   migration is not a hand-written guess -- it is the toolchain's own
+>   rewriting of the tree.
+>
+>   *CI installs the floating `latest` channel build and runs `--deny-warn`.*
+>   A deprecation is therefore not a note in a log: it is 59 build errors, in
+>   all four backends, and the release cannot ship.  The local gate caught it
+>   the same way it caught the e2e failure -- by RUNNING the build.  The
+>   migration touched **76** sites in **39** files, and the whole diff is
+>   that shape and nothing else: every removed line is `} derive(...)` and
+>   every added line is `}` or `#derive(...)`.
+>
+>   *The floor moved with the syntax.*  The requirement was a DEPENDENCY
+>   fact: the pin imports `moonbitlang/core/async`, and the core that first
+>   carried it shipped with `moon 0.1.20261028`.  It is now also a SOURCE
+>   fact -- the attribute syntax, which the compiler that accepts it is the
+>   one this release is verified on.  v0.164.63's CI built this package on
+>   `moon 0.1.20261029` with `--deny-warn` and the deprecation did not fire
+>   there, so the syntax arrived AFTER the dependency floor.  The requirement
+>   is now `moon 0.1.20261102`, and the Installation section gives BOTH
+>   reasons.
+>
+>   *The check that holds the syntax.*  `_verify/_verify_toolchain_floor_1680.py`
+>   (**28** checks) grew three rules and four control arms: no tracked source uses the
+>   deprecated form, the tracked sources use the attribute form, and the
+>   Installation section names it.  265 tracked `.mbt` files are scanned, and
+>   the boundary is the compiler's own: `derive(` inside a word is not a use,
+>   and `#derive(` IS the new form.
+>
+>   *A CHANGELOG that shipped its own template.*  v0.164.63's committed
+>   CHANGELOG reads "local gate: __GATESTEPS__ steps, 0 failed" and
+>   "tracked verifier suite: __SUITE__ passed".  Those tokens are what an
+>   entry says BEFORE the numbers are known, and the release was supposed to
+>   replace them before it committed.  It did not, and nothing noticed: the
+>   package never reached the registry, so the broken entry was read nowhere
+>   but in the repository.  A template that reaches a reader states nothing,
+>   and it LOOKS like a measurement.
+>
+>   *The numbers v0.164.63 measured are known.*  **59** gate steps and **90**
+>   contract verifiers, from that release's own chain log -- and the
+>   derivation agrees: the tracked contract at the tag `v0.164.63` is 90
+>   scripts, by the same derivation the suite uses, and the same method
+>   reproduces the published 79 / 80 / 80 / 85 / 88 / 89 for the six
+>   releases before it.
+>
+>   *The check that holds it.*  `_verify/_verify_changelog_placeholders_1680.py`
+>   (**21** checks) holds six rules and twelve control arms: the CHANGELOG
+>   carries no unfilled token, the newest section states three digit counts,
+>   the suite count is the tracked contract count, the fresh-clone count is
+>   the same number, the gate count is the gate's OWN result list -- read from
+>   the artifact, and SKIPPED loudly when that artifact is a previous round's
+>   -- and the finding count is the number of `### Fixed` entries the section
+>   carries.
+>
+>   *The check read the PROSE instead of the claims.*  The three counts were
+>   read with a first-match search over the WHOLE newest section, so a
+>   sentence of PROSE could supply the number the rule then measured.  It was
+>   not hypothetical: the CHANGELOG's newest entry is ABOUT a past release's
+>   CHANGELOG, and the suite and gate rules were reading THAT sentence rather
+>   than the claims block -- they agreed with the block only by luck.  The
+>   counts are now read from the claims BLOCK, the bullet list that states all
+>   three, and the control arms carry a decoy that states all three shapes
+>   about another release, so a prose mention that disagrees with the block is
+>   proved to be ignored.
+>
+>   *The release path fills it now.*  The fill is a STEP of the chain, right
+>   after the gate -- the gate's result list is the measured step count, and
+>   the tracked contract is derived the way the suite derives it.  It fills
+>   the NEWEST section only, and it REFUSES if a historical section still
+>   holds a token: a global replace would rewrite history.  The release tail
+>   runs the check once more, immediately before the commit that would
+>   publish it.
+>
+>   *The toolchain moved TWICE and the check that watched it did not notice.*
+>   `_verify/_verify_toolchain_claims_1640.py` held the reference as a
+>   LITERAL -- `CURRENT = "0.1.20261028"` -- and the live claims kept the
+>   same label.  A verifier that DEMANDS a literal version cannot notice
+>   that the version moved: the tree kept the old label, the check kept
+>   demanding it, and both stayed green while CI installed a different
+>   compiler.  Two channel builds of drift, in the check that existed to
+>   catch exactly that.  The reference is DERIVED now -- from the README's
+>   Status table, which the builder derives from the transcript the release
+>   was measured on -- and the check holds it to the INSTALLED toolchain, so
+>   the two cannot drift apart either.
+>
+>   *A file can be added and forgotten.*  The list of live files was
+>   hand-kept, and it had already missed two: `doc/006_python_check/` and
+>   `moonbit_doubleML/plr_test.mbt` both carried a live label and neither
+>   was in it.  The census is derived now: every tracked file that names a
+>   toolchain must either name the current one or be a record of a past
+>   measurement.  Sixty files name a toolchain; all sixty are accounted for.
+>
+>   *A QUOTED MESSAGE WENT STALE.*  The claim that MoonBit has no file I/O
+>   quoted the compiler's own words -- "Cannot find import '@std/env'" --
+>   and the compiler stopped saying that when the standard library moved
+>   into `moonbitlang/core/*` packages.  The substance held: the four
+>   packages do not resolve, `read_file` is still unbound, and the core
+>   ships no `fs` and no `io` module.  But the QUOTE belonged to a compiler
+>   that no longer ships.  It says "Cannot use `@std`: package std is not
+>   imported." now, error 4037.
+>
+>   *The check that holds the quote.*  `_verify/_verify_fileio_claim_1680.py`
+>   (**22** checks) runs the five probes on the toolchain that is installed
+>   NOW and compares the tree's words with the compiler's output: the
+>   diagnostic, the error code, and the toolchain the claim names.  The
+>   house already had a PROBE for this claim, but a probe measures and
+>   leaves the verdict to whoever reads its output -- the tree's text was
+>   never compared with it, so the two could disagree forever.  And they
+>   did.
+>
+>   *The channel build CI installs was measured too.*  CI installs the
+>   FLOATING `latest`, and that is `moon 0.1.20261104` -- two channel builds
+>   past the one this release is verified on.  The tree was built and tested on
+>   it: `moon build --target native --deny-warn` exits 0, `moon test --target
+>   native --deny-warn` exits 0 with the SAME **1118** tests passing, and the
+>   QA loop's e2e gate PASSES all twenty examples.  So the release is not one
+>   channel build behind the thing that publishes it -- which is the whole
+>   shape of the two failures round 86 found.
+>
+>   *The migration moved every line the tree points at.*  The derive
+>   migration inserted a `#derive(...)` line above every derived type, so every
+>   line below an insertion moved down by one -- and the house holds its line
+>   anchors as `file.mbt:NNN` pointers.  Six hundred and sixty-six of them
+>   were left naming the line the code used to occupy.
+>
+>   *The shift is not a guess, and it was WRONG before it was right.*  The
+>   first map counted every equal block twice, so `apo.mbt`'s
+>   `pub struct DoubleMLAPO {` at line 3 mapped to line 6 when the truth was
+>   4.  A map that points a pointer at a DIFFERENT line is worse than no map
+>   at all, because the tree still looks plausible.  The map was rebuilt from
+>   the diff's own structure and checked against the CONTENT of the two
+>   lines: **108434** old lines, of which **108277** answer with identical
+>   text and **157** answer with different text; **0** old lines have no
+>   answer and **0** new numbers fall outside the file.  Every one of those
+>   **157** is a line this round EDITED on purpose -- the migration's derive
+>   shape (**76**), a re-anchored pointer (**73**), a toolchain label (**3**),
+>   the file-I/O claim (**2**), the version string (**1**) -- except **2**,
+>   which are the re-flowed comment of that same file-I/O claim, and no
+>   tracked pointer names either of them.
+>   *A published number that no longer reproduced.*  The migration entry's
+>   first draft stated **108350** mappings checked and **0** answering with
+>   different text.  Measured again on the tree that ships, the validator
+>   says **108277** answer with identical text, **69** answer with the
+>   migration's derive shape and **88** with different text -- the
+>   re-anchor's EDITED 73 source lines among them, each a pointer inside a
+>   comment, and each now answering with different text.  A published number
+>   that no check can see rots in silence, and this one had no check at all.
+>   The entry states the measured numbers now, and the residue is stated
+>   rather than hidden.
+>
+>
+>   *The anchors are not all text.*  A verifier holds them in three shapes: a
+>   TEXT pointer (`lplr.mbt:836`), a TUPLE (`("lplr.mbt", 836, 836, "...")`),
+>   and a NESTED tuple (`("did.mbt:710", "moonbit_doubleML/did.mbt", (708,),
+>   ...)`).  The third hides best: the label is text, so the text pass moves
+>   it, while the line number lives in a tuple whose SECOND element is the
+>   target.  When the two disagree the check reads the OLD line and reports
+>   that the pointer "does not contain" what the pointer says it contains.
+>   The anchor table and the records it checks are ONE promise written twice,
+>   so both moved together: the round-15 verifier looks up
+>   `ANCHORS[(file, line)]` for every pointer it finds in a record, and
+>   shifting the record and not the table makes the lookup miss -- so the
+>   content check stops running in silence.
+>
+>   *The README's pointers are DERIVED now.*  The README names thirteen source
+>   lines, and a number that names a line is a promise broken the moment the
+>   source moves -- which is what the migration did to all of them.  Each
+>   pointer names a CONSTRUCT, the construct is found in the source, and the
+>   README gets the line the construct occupies NOW.  A needle that is not
+>   unique ABORTS the build, and the needle and the diff-derived map were
+>   checked against each other: all thirteen agree.
+>
+>   *The same merged-stream defect, in a second place.*  The CLI-demo verifier
+>   measured what the sixteen drivers PRINT by merging their stdout and their
+>   stderr, so the toolchain's warning landed in every one of them: the old
+>   bracket rule counted sixteen drivers instead of the twelve it counted
+>   before, and the gap it was measuring became five.  A driver's output is
+>   its stdout now; stderr is reported, never asserted on.
+>
+>   *A GENERATED artefact is a class of its own.*  The contract rule -- every
+>   file a tracked verifier READS is a TRACKED file -- had no answer for the
+>   gate's own result artifact, which the tree rewrites on every run and
+>   which carries the seconds each step took and the absolute path of the
+>   build directory.  It is exempt exactly as a DOWNLOADED third-party tree
+>   already was, and a verifier that reads one must SKIP when it is absent --
+>   which is checked, not assumed.
+>
+>   *The sqlite3 pin moved, and the README's copy of it is derived.*
+>   `moonbit-community/sqlite3` published **0.2.4** on 2026-11-04 while this
+>   release was in flight, so the tree's own dep-pin check went red: a
+>   document that names a version the tree does not declare is a promise the
+>   tree broke.  The pin moved with `moon add --upgrade`, which changed one
+>   line and left the async pin and the package version alone.  The README
+>   named the pin in three places and all three were LITERALS; they are
+>   derived now, the way the async pin has been derived since round 44 -- the
+>   number is read from the manifest, so it cannot rot.
+>
+>   *The docstring readers stopped at an attribute line.*  The migration put
+>   `#derive(Debug)` BETWEEN each docstring and its type, and four house
+>   readers walk BACKWARDS from `pub struct` and stop at the first
+>   non-comment line.  An attribute is not a comment, so they stopped there
+>   and every derived type's docstring came back EMPTY: the renamed
+>   `DoubleMLDIDCrossSection`/`DoubleMLDIDCS` correspondence was lost and the
+>   census derived **21** estimators instead of **22**.  The readers were
+>   fixed, not the sources -- an attribute is not part of a docstring and not
+>   a break in it.
+>   *The GENERATOR and the file it generates had drifted apart.*
+>   `ENGINEERING.md`, `README.mbt.md` and `moonbit_doubleML/README.mbt.md`
+>   are GENERATED by `_verify/_r18_build_readme_1650.py`.  A generated
+>   document has TWO copies of every claim: the one a reader opens, and the
+>   one the generator emits.  This round's banner publications were spliced
+>   into the GENERATED file and the generator was left behind -- so the
+>   generator still published the PRE-CORRECTION shift-map numbers, and it
+>   was missing four of the round's publications: the teeth hole closed,
+>   the six dead anchors, the anchor that spelled prose with literal spaces,
+>   and the check that read the PROSE instead of the claims.
+>
+>   Nothing compared the two, so the drift was invisible: a rebuild would
+>   have restored the stale numbers and dropped four findings, silently.  The
+>   generator is brought up to the file now, and
+>   `_verify/_verify_generator_sync_1680.py` (**13** checks) holds them
+>   together -- it copies the tracked tree into a scratch directory, runs
+>   the builder THERE, and compares the three outputs with the tracked
+>   files byte for byte.  The README was never affected: the generator's
+>   README is byte-identical to the file on disk.  It runs in CI as a job
+>   of its own, and in the publish workflow before the publish step -- a
+>   check that only ran on the release machine would be exactly the kind of
+>   thing this round found: a class nothing held.
+>
+>   *The release path did not compile the README it publishes.*
+>   `check.yml` compiles the published README's code blocks on every master
+>   push, and it says why: the README is a document a reader COPIES from, so
+>   a block that does not compile is a block that does not work when they
+>   paste it.  The LOCAL GATE covers `check.yml` job by job, and inside the
+>   `python-cross-check` job it skipped that one step: the gate did not
+>   compile the README a reader copies.  The PUBLISH workflow did not compile
+>   it either -- so the one moment that matters, the moment the README is put
+>   in front of users, had no compile step at all.
+>
+>   The step is in the gate now, and in the publish workflow before the
+>   publish.  It is measured, not asserted: the check compiles each `moonbit`
+>   block against this tree, block by block, and it passes.
+>
+>   *The release path's fill step could not refresh a filled block.*  The
+>   claims block states three numbers: the gate's step count, the tracked
+>   contract's size, and the fresh-clone count.  The release path fills them
+>   from two TEMPLATE tokens, and a section written with the tokens is filled
+>   once -- after which the tokens are gone, and a later change to the
+>   numbers the block states cannot be filled again.  This round changed both
+>   of them after the block had already been filled -- the gate grew a step
+>   and the contract grew a script -- so the fill ran, reported the right
+>   numbers, and wrote nothing at all.
+>
+>   The tracked check held the document against it: the suite count the block
+>   stated was 94 and the contract was 95.  The fill now REFRESHES the three
+>   numbers from the measurements it has just taken, in the newest section
+>   only, and it refuses if the block's shape is not the one it knows.
+>
+>   *The README now says that its code blocks compile.*  `discord@0.10.0` --
+>   one of the two packages this release was audited against -- states that
+>   every MoonBit code block in its README has a compiled twin.  That was the
+>   one thing our README did not say, and it said nothing because there was
+>   nothing to say: the compile step ran in CI, but the LOCAL GATE did not run
+>   it and the PUBLISH workflow did not either -- so the moment the README was
+>   put in front of users had no compile step at all.
+>
+>   Both are fixed, so the sentence can be written.  The README's
+>   **Development** section now says that every `moonbit` block in it has a
+>   compiled twin, names the check that compiles them, and names the three
+>   places that run it.  It costs three lines.
+>
+>   *The round's own finding count was published three ways.*  The
+>   CHANGELOG's newest section carried twenty-one `### Fixed` entries,
+>   the commit message said "Sixteen defects", and the goal summary
+>   said "FIFTEEN findings".  Nothing derived any of them and no check
+>   could see any of them.
+>
+>   The count is DERIVED now: it is the number of `### Fixed` entries in
+>   the newest section, and the tracked check reads the entries and
+>   compares.  The commit message carries the same enumeration -- every
+>   entry has a section in it, and the release path refuses to commit
+>   when one is missing.
+>
+>   *Five findings the release path's own suite found.*  The chain that
+>   publishes this release runs the whole tracked verifier suite before it
+>   commits, and five of them were RED on this tree -- not because the
+>   library broke, but because this round's own changes moved the ground
+>   under them: a driver patched a paragraph the README no longer says, a
+>   verifier measured a month-old snapshot instead of the live harness, a
+>   record pointed at a line the workflow had moved past, the CI job count
+>   the project document stated was the FROZEN body's, and the README had
+>   crossed the line budget it had kept for fifty-two releases.  Each one
+>   is fixed, and each one is published in this release's CHANGELOG section.
+>
+>   *The CI run grew a job.*  Round 86 wired the GENERATOR check into CI, so
+>   the `CI` run on `master` is **8 jobs** now: `README sync`,
+>   `Generator sync`, `moon test --deny-warn` x4, `Python cross-check`, and
+>   `QA loop`.  The count in the body below is the one v0.164.11 had: the
+>   body is a record of that release, and it is not rewritten.
+>
+>   *The count is derived again.*  This round closed **27** findings, and
+>   the number is the `### Fixed` entries of its CHANGELOG section -- read
+>   by the tracked check, not typed in.
+>
+>   *The counts that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **505** and makes **515**, and
+>   `_verify/_verify_ledger_counts_1650.py` (**94** checks) moved
+>   because this round publishes a count for one more check.
+>   `_verify/_verify_generator_sync_1680.py` (**13** checks) holds the
+>   GENERATOR and the file it generates together: it runs the builder in a
+>   scratch copy of the tree and compares its output with the tree's, byte
+>   for byte, and a control arm proves the comparison bites.
+>   `_verify/_verify_toolchain_claims_1640.py` (**26** checks) publishes its
+>   count for the first time: its summary was in a shape the count-reader
+>   could not read, so its count could not be checked.
+>   `_verify/_verify_contract_selfcontained_1650.py` published **8** and makes
+>   **9** checks: a GENERATED artefact is a class of its own now, and the
+>   rule that a verifier reading one must SKIP when it is absent is checked
+>   rather than assumed.
+>   `_verify/_verify_dryrun_teeth_1650.py` published **13** and makes **15**
+>   checks: the hole is closed, the watch is **401** anchors, and a control
+>   arm proves the rule bites -- a mechanism the verifier cannot resolve is
+>   REJECTED.
 >
 >
 

@@ -399,6 +399,7 @@ pub fn solve_pq(
 }
 
 ///|
+#derive(Debug)
 pub struct DoubleMLPQ {
   data : DoubleMLData
   treatment : Double
@@ -469,7 +470,7 @@ pub struct DoubleMLPQ {
   // configuration always takes effect through the data hash.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLPQ with @moonbitlang/core/debug.Debug::{to_repr}
@@ -1453,6 +1454,7 @@ pub fn DoubleMLPQ::sample_splitting(self : DoubleMLPQ) -> SampleSplitting? {
 }
 
 ///|
+#derive(Debug)
 pub struct DoubleMLQTE {
   data : DoubleMLData
   quantiles : Array[Double]
@@ -1523,7 +1525,7 @@ pub struct DoubleMLQTE {
   // still runs on every `fit()` call.
   memoize_enabled : Bool
   fit_cache : FitCache
-} derive(Debug)
+}
 
 ///|
 pub extend DoubleMLQTE with @moonbitlang/core/debug.Debug::{to_repr}

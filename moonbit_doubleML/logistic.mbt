@@ -8,10 +8,11 @@
 /// and `coef_[1..]` are the slopes. Only binary outcomes (y in {0, 1})
 /// are supported — multiclass classification is intentionally out of
 /// scope for this learner.
+#derive(Debug)
 pub struct LogisticRegression {
   fitted : Bool
   coef_ : Array[Double]
-} derive(Debug)
+}
 
 ///|
 pub extend LogisticRegression with @moonbitlang/core/debug.Debug::{to_repr}

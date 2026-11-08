@@ -217,19 +217,32 @@ SEED = os.path.join(WORK, "moonbit_doubleML", "seed.mbt")
 
 # ------------------------------------------------------------ the mechanisms
 # CUMULATIVE: each mechanism is applied on top of the ones before it.
+#
+# THE LINE NUMBERS ARE DERIVED, NOT WRITTEN DOWN
+# ==================================================
+# The README's pointers and the records' pointers are moved every time the
+# source moves -- round 86's `#derive(...)` migration moved thirteen of the
+# README's and several of the records' -- and an anchor that names a line
+# goes dead with them.  A dead anchor is a mechanism that cannot fail: the
+# driver's own `sub` raises "pattern matched 0 times", the driver dies, and
+# the dry-run sweep reports a red driver instead of a red check.
+#
+# So every anchor here names the FILE and the SHAPE of the pointer and lets
+# the number be whatever the tree says now.
 def m1():
     """A citation points PAST THE END of the file it names."""
-    sub(README, r"`ssm\.mbt:73-74`", "`ssm.mbt:7300-7400`")
+    sub(README, r"`ssm\.mbt:\d+-\d+`", "`ssm.mbt:7300-7400`")
 
 
 def m2():
     """A citation names a file that is not in the tree."""
-    sub(README, r"`apo\.mbt:320`", "`apo_missing.mbt:320`")
+    sub(README, r"`apo\.mbt:(\d+)`", "`apo_missing.mbt:\\1`")
 
 
 def m3():
     """A verdict record's citation names a file that is not in the tree."""
-    sub(DEFAULTS, r"`did_cs\.mbt:312-324`", "`did_cs_missing.mbt:312-324`")
+    sub(DEFAULTS, r"`DoubleMLDIDCS::new` \(`did_cs\.mbt:(\d+)-(\d+)`\)",
+        "`DoubleMLDIDCS::new` (`did_cs_missing.mbt:\\1-\\2`)")
 
 
 def m4():

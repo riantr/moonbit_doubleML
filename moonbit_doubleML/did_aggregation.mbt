@@ -3,11 +3,12 @@
 /// `theta` is the weighted-mean ATT, `se` is the delta-method SE,
 /// `agg_names[i]` is the human-readable label (e.g. the group
 /// value, the time period, or the event-time value).
+#derive(Debug)
 pub struct DIDAggregationResult {
   theta : Array[Double]
   se : Array[Double]
   agg_names : Array[String]
-} derive(Debug)
+}
 
 ///|
 pub extend DIDAggregationResult with @moonbitlang/core/debug.Debug::{to_repr}

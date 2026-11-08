@@ -273,7 +273,10 @@ def m9():
 
 def m10():
     """The dependency carve-out, removed."""
-    sub(AG, r"`moonbit-community/sqlite3@0\.2\.3`, in `moonbit_doubleML/moon\.mod` --\n"
+    # The PIN's version is derived: it moved to 0.2.4 while this release was
+    # in flight, and an anchor that names a version is an anchor that goes
+    # dead the moment the registry publishes the next one.
+    sub(AG, r"`moonbit-community/sqlite3@0\.\d+\.\d+`, in `moonbit_doubleML/moon\.mod` --\n"
             r"  \*\*no `\.mbt` in the library imports it\*\* \(0 references\), so it is a dead\n"
             r"  entry, not a runtime dependency\.",
         "it is a dead entry, not a runtime dependency.")

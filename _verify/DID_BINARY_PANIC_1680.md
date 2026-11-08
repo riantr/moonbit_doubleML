@@ -17,11 +17,11 @@ emitter aborted with:
 section did_binary_upstream
 val db_generated 1
 val db_n_cells 6
-precondition failed at did.mbt:276:5-276:37@riantr/moonbit_doubleML
+precondition failed at did.mbt:278:5-276:37@riantr/moonbit_doubleML
 PanicError
 ```
 
-`did.mbt:276` is `require(n_folds <= data.n_obs())` inside `DoubleMLDID::new`.
+`did.mbt:278` is `require(n_folds <= data.n_obs())` inside `DoubleMLDID::new`.
 It was recorded as: the eligible wide-format subset must be smaller than
 `n_folds`, so the CS2021 panel defeats the port.
 
@@ -29,15 +29,15 @@ It was recorded as: the eligible wide-format subset must be smaller than
 
 The claim rested on an INFERENCE about the call graph, not on a measurement.
 The real `inner_pre = DoubleMLDID::new(wide_data, ...)` is at
-`did_binary.mbt:898`, so the panic was read as coming from there. But
+`did_binary.mbt:901`, so the panic was read as coming from there. But
 `DoubleMLDIDBinary::new` builds a **second, 4-row dummy** `DoubleMLDID` at
-`did_binary.mbt:445` — a placeholder so that construction cannot itself trip
+`did_binary.mbt:448` — a placeholder so that construction cannot itself trip
 `n_folds <= n_obs`. Both calls raise at the SAME line and print the SAME
 message. The panic text cannot tell them apart, and the call site was never
 evidence about which one fired.
 
 It was always a known port limit, recorded next to the code it came from
-(`did_binary.mbt:425-439`) and in `_verify/N_FOLDS_1570.md`: the 4-row dummy
+(`did_binary.mbt:428-442`) and in `_verify/N_FOLDS_1570.md`: the 4-row dummy
 caps `n_folds` at 4 for this type, `n_folds <= 4` fits and `n_folds >= 5`
 aborts, **at every sample size**. The port default of 2 sits under the ceiling,
 which is why it went unnoticed until a gate passed 5.

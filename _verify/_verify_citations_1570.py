@@ -29,7 +29,7 @@ SRC = os.path.join(ROOT, "moonbit_doubleML")
 # an upstream Python anchor and is out of scope, while a `.mbt` citation names a
 # file in this package and is checkable.
 EXPLICIT = re.compile(r"\b([A-Za-z0-9_]+(?:/[A-Za-z0-9_]+)*\.(mbt|py)):(\d+)")
-# The shorthand: `(plr.mbt:394, :399)` -- a bare `:NNN` continuing the previous
+# The shorthand: `(plr.mbt:395, :399)` -- a bare `:NNN` continuing the previous
 # citation. It is ONLY a self-citation if the run it belongs to is a .mbt run.
 BARE = re.compile(r"(?<![A-Za-z0-9_./-]):(\d+)")
 
@@ -80,7 +80,7 @@ for f in files:
     lines = lines_by_file[f]
     # Walk the block once, in order, remembering the most recently cited
     # FILE. The bare `:NNN` shorthand means "same file as the citation I just
-    # wrote" -- so `(apo.mbt:343, :1087)` inside a TEST file resolves both
+    # wrote" -- so `(apo.mbt:344, :1087)` inside a TEST file resolves both
     # numbers against apo.mbt, NOT against the file that happens to contain the
     # comment. Getting this backwards reports every cross-file shorthand as an
     # out-of-range line in the citing file.

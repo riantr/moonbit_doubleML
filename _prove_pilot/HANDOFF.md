@@ -257,7 +257,7 @@ I attempted two strengthening forms and **both regressed the result** to 17v/3t 
 
 **17 valid / 0 invalid / 0 unknown / 0 oom / 0 step_limit / 2 timeout / 0 failure** (19 total goals).
 
-The 2 remaining timeouts are **both at `_prove_pilot/kfold_view.mbt:104`** (the inner loop's exit), specifically:
+The 2 remaining timeouts are **both at `_prove_pilot/kfold_view.mbt:105`** (the inner loop's exit), specifically:
 1. The `proof_assert found` after the inner loop.
 2. The `proof_ensure: result => row_unit_map_view_ok(result, cluster, uniq)` postcondition.
 
