@@ -2250,6 +2250,15 @@ fn median_of(
 ) -> Double {
   let sl = rows_where(d, y, n, g)
   let c = sl.length()
+  // An arm with no rows has no median. The parity fixture's DGPs give
+  // both arms the same number of rows, so this is unreachable today;
+  // if it ever fires, the parity check must fail LOUDLY. Returning
+  // 0.0 would be worse than useless: the `qte == pq - med_c` identity
+  // below would then hold for the wrong reason, and the cross-check
+  // against the Python reference would pass on a broken fixture.
+  if c == 0 {
+    abort("parity: the arm g=" + g.to_string() + " has no rows")
+  }
   let mid = c / 2
   if c % 2 == 1 {
     sl[mid]
@@ -2269,6 +2278,12 @@ fn cvar_upper_half_mean(
 ) -> Double {
   let sl = rows_where(d, y, n, g)
   let c = sl.length()
+  // The same empty-arm guard as `median_of`. Without it the mean
+  // below is `0.0 / 0.0`, i.e. a silent NaN that would flow into the
+  // parity report as a number instead of a visible failure.
+  if c == 0 {
+    abort("parity: the arm g=" + g.to_string() + " has no rows")
+  }
   let lo = c / 2
   let mut s = 0.0
   for i = lo; i < c; i = i + 1 {

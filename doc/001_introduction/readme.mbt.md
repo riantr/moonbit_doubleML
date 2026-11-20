@@ -27,7 +27,7 @@ The pure-MoonBit implementation:
 
 - **No Python FFI, no native add-ons** — the library imports no
   third-party package at all. `moon.mod` does declare two entries,
-  `moonbitlang/async@0.22.7` and `moonbit-community/sqlite3@0.2.4`,
+  `moonbitlang/async@0.22.10` and `moonbit-community/sqlite3@0.2.5`,
   but no `.mbt` in the library imports either one (measured: 0
   references each), so they are dead entries rather than runtime
   dependencies.
@@ -58,7 +58,7 @@ The pure-MoonBit implementation:
   counting the `dgp_*_test.mbt` siblings and the cross-estimator
   `dgp_recovery_test.mbt`), ported from upstream's 18 `make_*` dataset
   factories.
-- **1118 / 1118 tests pass** on native.
+- **1120 / 1120 tests pass** on native.
 - **0 errors** under `moon test --deny-warn`.
 - **Published to mooncakes.io** as `riantr/moonbit_doubleML@0.164.64`.
 

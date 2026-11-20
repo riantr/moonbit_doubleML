@@ -328,29 +328,109 @@ if sum(counts.values()) != 0:
     print("!! the baseline is not green -- the dry-run would prove nothing")
     sys.exit(1)
 
+# ------------------------------------------------------- the counts, DERIVED
+#
+# The anchors below are the numbers the documents under test carry.  They were
+# LITERALS, and a literal is a claim about the world that only its author can
+# refresh: the suite grew by two cases this round, and every anchor that named
+# the old count died at once -- the driver could not even reach its own
+# mechanisms, because a name it used had no definition.
+#
+# They are DERIVED now, by the SAME rule
+# `_verify/_verify_testcounts_1610.py` uses -- the same regex, the same
+# de-duplication by name -- so the driver and the check that holds the
+# documents cannot disagree about what "the test count" means.
+def test_decls(directory):
+    """the `test "..."` declarations under a directory, by name."""
+    acc = set()
+    for base, dirs, files in os.walk(os.path.join(REPO, directory)):
+        dirs[:] = [x for x in dirs
+                   if x not in ("_build", "_verify", "target", ".git")]
+        for f in files:
+            if f.endswith(".mbt"):
+                src = io.open(os.path.join(base, f), encoding="utf-8",
+                              errors="replace").read()
+                acc.update(re.findall(r'\btest\s+"([^"]+)"', src))
+    return acc
+
+
+NATIVE = len(test_decls("moonbit_doubleML"))
+DOC = len(test_decls("doc"))
+WASMGC = NATIVE + DOC
+
+# The record's LIVE count: read out of the record itself, so this anchor can
+# never name a count the record does not carry.
+_rec = io.open(os.path.join(REPO, RECORD.replace("/", os.sep)),
+               encoding="utf-8", errors="replace").read()
+_m = re.search(r"written; it is \*\*(\d+)\*\* today", _rec)
+REC_NATIVE = int(_m.group(1)) if _m else NATIVE
+
+# The two wrong counts the mechanisms patch IN: one more, one fewer.  Both are
+# derived from the real count, so neither can accidentally be the right one.
+WRONG = NATIVE + 1
+
+# The count mechanism 2 quotes is a DIFFERENT thing, and it is read out of
+# the CHECK's own source rather than derived from the live count.
+#
+# The round-18 check forbids a fixed set of historical counts in the shape the
+# README really uses ("**1117 / 1117 / 1117**"), and mechanism 2 breaks it by
+# quoting one of THOSE.  It used to quote NATIVE-1, which was a coincidence:
+# the live count was 1118 and 1117 happened to be on the forbidden list.  The
+# suite grew by two, the live count became 1120, and NATIVE-1 became 1119 --
+# a count the check does not forbid -- so the mechanism patched the README
+# and NOTHING went red.  A mechanism that proves nothing is worse than a
+# mechanism that does not exist: it is reported as a proof.
+#
+# So the count is read out of the check's own list, and the mechanism and the
+# check cannot disagree about what the check forbids.
+_r18_src = io.open(os.path.join(REPO, "_verify", "_verify_round18_readme_1650.py"),
+                    encoding="utf-8", errors="replace").read()
+_m = re.search(r'for lit in \("(\d+)", "(\d+)", "(\d+)"\):', _r18_src)
+FORBIDDEN = [int(x) for x in _m.groups()] if _m else []
+if not FORBIDDEN:
+    print("!! the round-18 check's forbidden counts could not be read -- ABORT")
+    sys.exit(1)
+STALE = FORBIDDEN[-1]
+
+print()
+print("=== the counts, derived from the tree ===")
+print("  native=%d  doc=%d  wasm-gc=%d  the record's live count=%d"
+      % (NATIVE, DOC, WASMGC, REC_NATIVE))
+print("  the count the round-18 check forbids: %d (of %s)"
+      % (STALE, ", ".join(str(x) for x in FORBIDDEN)))
+
 # -------------------------------------------------------------- the mechanisms
 #
 # 1  the README's native total drifts from the tree.  The transcript
 #    appears TWICE, so the two are told apart by what follows each.
-M1A_OLD = r"Total tests: 1118, passed: 1118, failed: 0\.\n\n\$ moon run examples/main"
-M1A_NEW = "Total tests: 1119, passed: 1119, failed: 0.\n\n$ moon run examples/main"
-M1B_OLD = r"Total tests: 1118, passed: 1118, failed: 0\.\n```"
-M1B_NEW = "Total tests: 1119, passed: 1119, failed: 0.\n```"
+M1A_OLD = (r"Total tests: %d, passed: %d, failed: 0\.\n\n\$ moon run examples/main"
+           % (NATIVE, NATIVE))
+M1A_NEW = ("Total tests: %d, passed: %d, failed: 0.\n\n$ moon run examples/main"
+           % (WRONG, WRONG))
+M1B_OLD = (r"Total tests: %d, passed: %d, failed: 0\.\n```" % (NATIVE, NATIVE))
+M1B_NEW = ("Total tests: %d, passed: %d, failed: 0.\n```" % (WRONG, WRONG))
 
 # 2  the README's Status table quotes a stale count in the SPACED shape
-M2_OLD = r"\| Tests \(native / wasm / js\) \| \*\*1118 / 1118 / 1118\*\* \|"
-M2_NEW = "| Tests (native / wasm / js) | **1117 / 1117 / 1117** |"
+M2_OLD = (r"\| Tests \(native / wasm / js\) \| \*\*%d / %d / %d\*\* \|"
+          % (NATIVE, NATIVE, NATIVE))
+M2_NEW = ("| Tests (native / wasm / js) | **%d / %d / %d** |"
+          % (STALE, STALE, STALE))
 
 # 3  a stale count quoted in the SPACED shape, elsewhere in the table
-M3_OLD = r"\| Tests \(wasm-gc\) \| \*\*1124 / 1124\*\* \(lib \+ 6 doc tutorials\) \|"
-M3_NEW = "| Tests (wasm-gc) | **1122 / 1122** (lib + 6 doc tutorials) |"
+M3_OLD = (r"\| Tests \(wasm-gc\) \| \*\*%d / %d\*\* \(lib \+ %d doc tutorials\) \|"
+          % (WASMGC, WASMGC, DOC))
+M3_NEW = ("| Tests (wasm-gc) | **%d / %d** (lib + %d doc tutorials) |"
+          % (WASMGC - 2, WASMGC - 2, DOC))
 
 # 4  the record's live count drifts from the tree
-M4_OLD = r"written; it is \*\*1118\*\* today\. The claim is that the suite was green, not"
-M4_NEW = "written; it is **1119** today. The claim is that the suite was green, not"
+M4_OLD = (r"written; it is \*\*%d\*\* today\. The claim is that the suite was "
+          r"green, not" % REC_NATIVE)
+M4_NEW = ("written; it is **%d** today. The claim is that the suite was green, "
+          "not" % (REC_NATIVE + 1))
 
 # 5  the record's stale count loses its anchor
-M5_OLD = r"1117/1117 native tests \*\(\s*the\s+native count at `f452421`; \*\*1118\*\* today\)\*,"
+M5_OLD = (r"1117/1117 native tests \*\(\s*the\s+native count at `f452421`; \*\*%d\*\* "
+          r"today\)\*," % REC_NATIVE)
 M5_NEW = "1117/1117 native tests,"
 
 # 6/7  the round-17 check's counting rule.  The pattern spans the whole

@@ -237,8 +237,12 @@ def m4():
 
 def m5():
     """The skill file's whitebox TEST-CASE count is wrong."""
-    sub(SKILL, r"holding \*\*169\*\* test cases in total",
-        r"holding **170** test cases in total")
+    # The anchor is a SHAPE, not a count: the suite's size moves with every
+    # release, and an anchor that names the count is an anchor that dies with
+    # it.  The replacement is a count the suite CAN NEVER have -- zero
+    # whitebox test cases, in a tree that holds twenty-six whitebox files.
+    sub(SKILL, r"holding \*\*\d+\*\* test cases in total",
+        r"holding **0** test cases in total")
 
 
 def m6():

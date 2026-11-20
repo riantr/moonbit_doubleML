@@ -221,6 +221,23 @@ check("no line of the pre-rewrite README is missing from the two documents",
 print("     (%d non-blank lines of the pre-rewrite README)" % len(old_lines))
 
 # the user-facing ones must be in the README itself
+#
+# THE TWO COUNTS IN THIS LIST ARE LITERALS ON PURPOSE, and they stay that way
+# until the counts they name are re-anchored by hand.
+#
+# Round 79 considered deriving them -- the tree's count is derivable, and a
+# derived count cannot rot -- and rejected it, for a reason that is still
+# true: this check is the one that NAMES the counts, and
+# `_verify/_verify_no_orphan_numbers_1680.py` requires every number in the
+# README to be NAMED, literally, by a verifier that reads the README.  Derive
+# them here and the README's wasm-gc count becomes an ORPHAN: nothing names it,
+# and the orphan check goes red.  The count's TRUTH is held separately, by
+# `_verify/_verify_testcounts_1610.py`, which derives it from the tree -- so
+# the literal here is a holder, not the truth.
+#
+# So the shape of the job when the suite grows: the count moves, this list is
+# re-anchored to the new value, and the tree stays green.  A count that
+# changed under a literal is LOUD, which is the point.
 USER_FACING = [
     "_verify/LPLR_GATE_BLINDNESS_1680.md",
     "_verify/UPSTREAM_PROVENANCE.md",
@@ -229,7 +246,7 @@ USER_FACING = [
     "-1381",
     "2.56",
     "sd 3.39",
-    "**1124**",
+    "**1126**",
     "**19** are marked *(upstream)*",
     "no 1:1 upstream class",
     "How the names map",
@@ -247,7 +264,7 @@ USER_FACING = [
     # now -- the wording it carried is the section's own.
     "Not covered, so not claimed",
     "moon test --target native --deny-warn",
-    "Total tests: 1118",
+    "Total tests: 1120",
     "Run these from the **repository root**",
     "estimated theta   = 1.092018247331361",
     "standard error    = 0.08875683254582736",

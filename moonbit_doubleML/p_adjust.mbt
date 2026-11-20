@@ -132,6 +132,14 @@ pub fn romano_wolf_p_adjust(
 ) -> Array[Double] {
   try {
     let n = t_stats.length()
+    // `n` is the divisor of the line below. An empty `t_stats` makes
+    // it zero, and the runtime turns integer division by zero into a
+    // panic ("RuntimeError: divide by zero"), so this guard has to
+    // come BEFORE the division. The `require(n_boot > 0)` below only
+    // covers the empty-bootstrap case; it cannot catch a zero
+    // divisor, because by the time it runs the division has already
+    // happened.
+    require(n > 0)
     let n_boot = boot_t_stat.length() / n
     require(n_boot > 0)
     // Sort |t| descending. We use a simple O(n^2) selection
@@ -222,6 +230,14 @@ pub fn romano_wolf_p_adjust(
 /// clipped to `1.0`. Re-order to original cell order.
 pub fn holm_bonferroni_p_adjust(unadjusted : Array[Double]) -> Array[Double] {
   let n = unadjusted.length()
+  // No hypotheses, no adjusted p-values: an empty input returns an
+  // empty array, the same as the five sibling entry points
+  // (bonferroni / bh / by / tsbh / tsby). Without this guard the
+  // `p_sorted[0]` write further down reads `order[0]` of an empty
+  // array and raises an out-of-bounds Error.
+  if n == 0 {
+    return []
+  }
   let order = argsort_asc(unadjusted)
   let ro : Array[Int32] = Array::make(n, 0)
   for i = 0; i < n; i = i + 1 {

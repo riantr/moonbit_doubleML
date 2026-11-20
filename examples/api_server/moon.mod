@@ -4,7 +4,7 @@ version = "0.1.0"
 
 import {
   "riantr/moonbit_doubleML@0.164.64",
-  "moonbitlang/async@0.22.7",
+  "moonbitlang/async@0.22.10",
 }
 
 readme = "../../README.mbt.md"

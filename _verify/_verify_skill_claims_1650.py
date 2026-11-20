@@ -132,18 +132,37 @@ for f in white:
     per_file[f] = len(TESTCASE.findall(read(os.path.join(PKG, f))))
 total_cases = sum(per_file.values())
 print("   %d files, %d test cases" % (len(white), total_cases))
-check("the skill's 26 whitebox files is the file count", len(white) == 26,
-      "got %d" % len(white))
-check("the skill's 169 whitebox test cases is the case count",
-      total_cases == 169, "got %d" % total_cases)
+
+# The skill's two whitebox figures are PARSED OUT OF THE SKILL, not typed
+# here.  A typed count is a claim about the world that only its author can
+# refresh: the whitebox suite grew by two cases, and the typed `169` became
+# a red row that said nothing except "re-type me".  The house's rule for a
+# document that describes the tree as it stands is the rule
+# `_verify/_verify_number_promises_1650.py` follows -- the claim is parsed
+# out of the document, the TREE is measured, and the two must agree.  The
+# check count is unchanged: this file's own count is published by the
+# CHANGELOG and measured by `_verify/_verify_ledger_counts_1650.py`.
+m_files = re.search(r"\*\*(\d+)\*\* `\*_wbtest\.mbt` files", sflat)
+m_cases = re.search(r"holding \*\*(\d+)\*\* test cases", sflat)
+skill_files = int(m_files.group(1)) if m_files else None
+skill_cases = int(m_cases.group(1)) if m_cases else None
+print("   the skill states %s files and %s cases"
+      % (skill_files, skill_cases))
+check("the skill's whitebox file count is the file count",
+      skill_files is not None and len(white) == skill_files,
+      "the skill says %r, the tree has %d" % (skill_files, len(white)))
+check("the skill's whitebox test-case count is the case count",
+      skill_cases is not None and total_cases == skill_cases,
+      "the skill says %r, the tree has %d" % (skill_cases, total_cases))
 check("kfold_wbtest.mbt holds the 5 cases the skill names",
       per_file.get("kfold_wbtest.mbt") == 5,
       "got %s" % per_file.get("kfold_wbtest.mbt"))
 check("matrix_wbtest.mbt holds the 6 cases the skill names",
       per_file.get("matrix_wbtest.mbt") == 6,
       "got %s" % per_file.get("matrix_wbtest.mbt"))
-check("the skill states 26 and 169",
-      "**26** `*_wbtest.mbt` files" in sflat and "**169** test cases" in sflat,
+check("the skill states %s files and %s cases" % (skill_files, skill_cases),
+      skill_files is not None and skill_cases is not None
+      and skill_files == len(white) and skill_cases == total_cases,
       "the skill's whitebox figures are not the ones checked")
 
 # --------------------------------------------------------------------------- #

@@ -3,24 +3,39 @@
 /// are `[0x45, 0x0c, 0x00, 0x00]`. Tiling gives `[0x45, 0x0c, 0x00,
 /// 0x00]` repeated 8 times → 32 bytes total. This pins down the
 /// byte ordering and the tiling shape.
+///
+/// WHY THESE ASSERT THE VALUE, NOT THE PRINTED BYTE.
+///
+/// The expectations used to be written against the toolchain's
+/// *rendering* of a `Byte` -- `b'\x45'` -- which is a display detail
+/// of `inspect`, not part of this module's contract. The core that
+/// ships with moon 0.1.20261117 renders a `Byte` as its integer value
+/// instead, so the three tests below failed on the new toolchain while
+/// the bytes they check were still exactly right (`69 == 0x45`).
+///
+/// Pinning `bytes[k].to_int()` keeps the assertion on the contract --
+/// the numeric value of the byte at index k -- and makes it
+/// independent of how the toolchain chooses to print a byte. Measured
+/// on moon 0.1.20261117 / core 0.10.21: `to_int()` of 0x45 is 69, of
+/// 0x0c is 12, of 0xff is 255, of 0x00 is 0.
 test "seed_to_bytes_layout" {
   let bytes = seed_to_bytes(3141)
   inspect(bytes.length(), content="32")
   // first 4 bytes are the little-endian encoding of 3141
-  inspect(bytes[0], content="b'\\x45'")
-  inspect(bytes[1], content="b'\\x0C'")
-  inspect(bytes[2], content="b'\\x00'")
-  inspect(bytes[3], content="b'\\x00'")
+  inspect(bytes[0].to_int(), content="69")
+  inspect(bytes[1].to_int(), content="12")
+  inspect(bytes[2].to_int(), content="0")
+  inspect(bytes[3].to_int(), content="0")
   // the next 4 bytes repeat the same pattern
-  inspect(bytes[4], content="b'\\x45'")
-  inspect(bytes[5], content="b'\\x0C'")
-  inspect(bytes[6], content="b'\\x00'")
-  inspect(bytes[7], content="b'\\x00'")
+  inspect(bytes[4].to_int(), content="69")
+  inspect(bytes[5].to_int(), content="12")
+  inspect(bytes[6].to_int(), content="0")
+  inspect(bytes[7].to_int(), content="0")
   // the last 4 bytes also tile the same pattern
-  inspect(bytes[28], content="b'\\x45'")
-  inspect(bytes[29], content="b'\\x0C'")
-  inspect(bytes[30], content="b'\\x00'")
-  inspect(bytes[31], content="b'\\x00'")
+  inspect(bytes[28].to_int(), content="69")
+  inspect(bytes[29].to_int(), content="12")
+  inspect(bytes[30].to_int(), content="0")
+  inspect(bytes[31].to_int(), content="0")
 }
 
 ///|
@@ -34,7 +49,7 @@ test "seed_to_bytes_negative" {
   inspect(bytes.length(), content="32")
   // every byte is 0xff
   for k = 0; k < 32; k = k + 1 {
-    inspect(bytes[k], content="b'\\xFF'")
+    inspect(bytes[k].to_int(), content="255")
   }
 }
 
@@ -62,6 +77,6 @@ test "seed_to_bytes_zero" {
   let bytes = seed_to_bytes(0)
   inspect(bytes.length(), content="32")
   for k = 0; k < 32; k = k + 1 {
-    inspect(bytes[k], content="b'\\x00'")
+    inspect(bytes[k].to_int(), content="0")
   }
 }

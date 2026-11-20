@@ -18,7 +18,7 @@
 /// rounding in the whole pipeline is the rounding being tested.
 ///
 /// `ln`, `cos` and `sin` are NOT correctly rounded in any implementation.
-/// Measured on `moon 0.1.20261102` vs CPython 3.13.14 (re-measured; unchanged
+/// Measured on `moon 0.1.20261117` vs CPython 3.13.14 (re-measured; unchanged
 /// from the `moon 0.1.20261012` vs CPython 3.14 pair it was first taken on):
 ///
 ///     sqrt  6/6 bit-exact        (guaranteed by IEEE-754)
@@ -286,8 +286,15 @@ fn emit_array(name : String, a : Array[Double]) -> Unit {
 }
 
 ///|
-/// The 32-byte ChaCha8 key, as Python bytes literals, so the Python side can
-/// `ast.literal_eval` them and compare the key byte-for-byte.
+/// The 32-byte ChaCha8 key, one DECIMAL byte value per field, so the
+/// Python side can compare the key byte-for-byte.
+///
+/// The values are printed as numbers, not as Python bytes literals:
+/// how a `Byte` renders is a toolchain detail, and the core that ships
+/// with moon 0.1.20261117 prints the number (`69` for 0x45) where the
+/// earlier one printed `b'\x45'`.  `validate_bitexact_with_python.py`
+/// parses both forms and compares the VALUES, so the rendering cannot
+/// move the result.
 fn emit_key(seed : Int32) -> Unit {
   let b = @moonbit_doubleML.seed_to_bytes(seed)
   let mut s = "key " + seed.to_string()

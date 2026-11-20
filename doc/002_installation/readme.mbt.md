@@ -35,15 +35,15 @@ machine.
 
 ## Toolchain requirements
 
-- `moon` **0.1.20261102 or newer**. The published package declares
-  `moonbitlang/async@0.22.7`, and that version's published source imports
+- `moon` **0.1.20261117 or newer**. The published package declares
+  `moonbitlang/async@0.22.10`, and that version's published source imports
   `moonbitlang/core/async` — a core subpackage that older cores do not
   carry; on `moon 0.1.20261023` a consumer's build cannot be solved at all
   ("Cannot find import `moonbitlang/core/async` in
-  `moonbitlang/async@0.22.7`"). The package's trait derivations also use
+  `moonbitlang/async@0.22.10`"). The package's trait derivations also use
   the `#derive(...)` attribute syntax, which the compiler accepted from
-  `moon 0.1.20261102`. CI installs the `latest` channel build, and the
-  numbers below were measured on `moon 0.1.20261102`.
+  `moon 0.1.20261117`. CI installs the `latest` channel build, and the
+  numbers below were measured on `moon 0.1.20261117`.
 - Any backend in `native / wasm / wasm-gc / js` — all 4 supported.
 - For the Python cross-check scripts: Python 3.10+ (CI runs them
   on 3.12), and the `doubleml`, `numpy`, `pandas`, `statsmodels`
@@ -65,7 +65,7 @@ repository root:
 
 ```console
 $ moon test --target native
-Total tests: 1118, passed: 1118, failed: 0.
+Total tests: 1120, passed: 1120, failed: 0.
 ```
 
 ## Next

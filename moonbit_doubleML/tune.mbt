@@ -191,7 +191,7 @@ fn tune_score_outcome(
     let r = y[i] - l_hat[i]
     sse = sse + r * r
   }
-  let mse = sse / Double::from_int(n)
+  let mse = sse / n.to_double()
   match scoring {
     MSE => mse
     RMSE => mse.sqrt()

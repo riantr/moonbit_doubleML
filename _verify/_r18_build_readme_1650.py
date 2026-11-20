@@ -214,7 +214,7 @@ OLD_SQLITE_PIN = "0.2.3"
 # line, and the Installation section's requirement.  Four literals are four
 # chances to move one and forget three, and the one that is forgotten is the
 # one a reader would have tripped over.
-TOOLCHAIN = "0.1.20261102"
+TOOLCHAIN = "0.1.20261117"
 
 # --------------------------------------------------------------- the test counts
 #

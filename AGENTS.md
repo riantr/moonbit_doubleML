@@ -78,17 +78,17 @@ You can browse and install extra skills here:
 - Only official (`moonbitlang/*`) packages are allowed.
 - Non-official packages may only be `riantr/*` (this repo itself). One
   declared line does not meet the rule today:
-  `moonbit-community/sqlite3@0.2.4`, in `moonbit_doubleML/moon.mod` --
+  `moonbit-community/sqlite3@0.2.5`, in `moonbit_doubleML/moon.mod` --
   **no `.mbt` in the library imports it** (0 references), so it is a dead
   entry, not a runtime dependency.
 - For official packages, pin to the latest published version on the
-  registry (e.g. `moonbitlang/async@0.22.7`) and upgrade when bumping is
+  registry (e.g. `moonbitlang/async@0.22.10`) and upgrade when bumping is
   intentional.
 
 ## HTTP service (examples/api_server)
 
 - `examples/api_server/` is a hand-rolled HTTP service on top of
-  `moonbitlang/async@0.22.7`. It deliberately avoids any third-party
+  `moonbitlang/async@0.22.10`. It deliberately avoids any third-party
   web framework (see commit `2ae0127` for the rationale).
 - All routing, JSON parsing, and response shaping lives in
   `examples/api_server/main.mbt`. The moonbit_doubleML library is

@@ -15,7 +15,7 @@ IEEE-754 requires `+ - * /` and `sqrt` to be correctly rounded. Two independent
 implementations given the same operands in the same order MUST therefore agree
 bit-for-bit. `ln`, `cos`, `sin`, `exp` and `pow` are NOT correctly rounded in
 any implementation, and the difference is real and was measured on this pair of
-toolchains (`moon 0.1.20261102` vs CPython 3.13.14, 6 arguments each -- unchanged
+toolchains (`moon 0.1.20261117` vs CPython 3.13.14, 6 arguments each -- unchanged
 from the `moon 0.1.20261012` vs CPython 3.14 pair the measurement was first
 taken on):
 
@@ -118,12 +118,25 @@ def parse(out: str) -> tuple[dict, dict, dict]:
 
 
 def _byte_literal(tok: str) -> bytes:
-    """MoonBit prints a Byte as a Python bytes literal, e.g. `b'\\x45'`."""
+    """One byte, as MoonBit prints it.
+
+    MoonBit prints a `Byte` either as its DECIMAL value (`69`) or as a
+    Python bytes literal (`b'\\x45'`).  Which one is a rendering detail
+    of the toolchain, and it has changed once already: the core that
+    ships with moon 0.1.20261117 prints the number.  The byte VALUES
+    are the same either way (`69 == 0x45`), and the comparison below is
+    over the values -- so this parser accepts BOTH forms and a
+    toolchain move cannot break the gate.
+
+    The old form is one literal per byte (`b'\\x45'`), and the new form
+    is one number per byte, so one token is one byte in both.
+    """
     body = tok.strip()
     if body.startswith("b'") and body.endswith("'"):
         body = body[2:-1]
-    return bytes(int(body[i + 2:i + 4], 16)
-                 for i in range(0, len(body), 4))
+        return bytes(int(body[i + 2:i + 4], 16)
+                     for i in range(0, len(body), 4))
+    return bytes([int(body)])
 
 
 # --------------------------------------------------------------------------- #

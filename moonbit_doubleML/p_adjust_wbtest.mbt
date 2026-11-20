@@ -187,6 +187,16 @@ test "p_adjust_wbtest_dispatcher_routes_each_method" {
   for i = 0; i < 4; i = i + 1 {
     inspect(bonf_out[i] == bonf_ref[i], content="true")
   }
+  // "romano-wolf" -> romano_wolf_p_adjust. The dispatcher is the only
+  // route that carries the bootstrap and t-stat vectors, and this
+  // branch was the one uncovered line of p_adjust.mbt in the coverage
+  // report (the sibling branches all had a test).
+  let rw_out = p_adjust("romano-wolf", [], boot_t_stat=[1.0, 2.0, 3.0], t_stats=[
+    1.0,
+  ])
+  let rw_ref = romano_wolf_p_adjust([1.0, 2.0, 3.0], [], [1.0])
+  inspect(rw_out.length(), content="1")
+  inspect(rw_out[0] == rw_ref[0], content="true")
 }
 
 ///|
@@ -200,4 +210,43 @@ test "p_adjust_wbtest_dispatcher_unknown_aborts" {
   let out = p_adjust("bonferroni", [0.05, 0.1])
   inspect(out[0], content="0.1")
   inspect(out[1], content="0.2")
+}
+
+///|
+test "p_adjust_wbtest_empty_hypothesis_set_is_graceful" {
+  // No hypotheses, no adjusted p-values: every entry point that
+  // takes only an unadjusted vector must accept an EMPTY one and
+  // return an EMPTY result, rather than reaching for an element that
+  // is not there.
+  //
+  // `holm_bonferroni_p_adjust` used to read `order[0]` of an empty
+  // array and raise an out-of-bounds Error, while its five siblings
+  // all returned an empty array. Measured on the pre-fix tree:
+  // `holm` raised at `p_adjust.mbt:231`, the other five returned `[]`.
+  inspect(holm_bonferroni_p_adjust([]).length(), content="0")
+  inspect(bonferroni_p_adjust([]).length(), content="0")
+  inspect(bh_fdr_p_adjust([]).length(), content="0")
+  inspect(by_fdr_p_adjust([]).length(), content="0")
+  inspect(tsbh_p_adjust([]).length(), content="0")
+  inspect(tsby_p_adjust([]).length(), content="0")
+  // The dispatcher routes to the same primitives, so it inherits the
+  // same behaviour.
+  inspect(p_adjust("holm", []).length(), content="0")
+  inspect(p_adjust("bh", []).length(), content="0")
+}
+
+///|
+test "panic_p_adjust_wbtest_romano_wolf_rejects_empty_t_stats" {
+  // `romano_wolf_p_adjust` divides by `t_stats.length()`, so an empty
+  // `t_stats` is a zero divisor. The runtime turns that into
+  // "RuntimeError: divide by zero" -- a panic with no message about
+  // the actual mistake. The function has a precondition for exactly
+  // this (its `try`/`catch` turns a failed `require` into
+  // "precondition failed at ..."), but the guard used to sit AFTER the
+  // division, so it could never fire for this case.
+  //
+  // The `panic_` prefix on the test name is what tells `moon test` the
+  // abort is the expected outcome.
+  let out = romano_wolf_p_adjust([1.0, 2.0], [], [])
+  inspect(out.length(), content="0")
 }

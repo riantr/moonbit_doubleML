@@ -77,13 +77,13 @@ implementation.
 
 ## Installation
 
-**Requires `moon 0.1.20261102` or newer.** Two things set that floor: the
-package declares `moonbitlang/async@0.22.7`, whose published source
+**Requires `moon 0.1.20261117` or newer.** Two things set that floor: the
+package declares `moonbitlang/async@0.22.10`, whose published source
 imports `moonbitlang/core/async` -- a subpackage older cores do not carry,
 so on an older `moon` the build fails with "Cannot find import
-`moonbitlang/core/async` in `moonbitlang/async@0.22.7`" -- and the
+`moonbitlang/core/async` in `moonbitlang/async@0.22.10`" -- and the
 package's trait derivations use the `#derive(...)` attribute syntax, which
-the compiler accepted from `moon 0.1.20261102`. This release's tests,
+the compiler accepted from `moon 0.1.20261117`. This release's tests,
 cross-checks and bit-exactness gate were run on that toolchain.
 
 **CI installs the `latest` channel build.** The floor above is the version
@@ -118,7 +118,7 @@ repo-root paths and fail from inside `moonbit_doubleML/`.
 
 ```console
 $ moon test --target native --deny-warn
-Total tests: 1118, passed: 1118, failed: 0.
+Total tests: 1120, passed: 1120, failed: 0.
 
 $ moon run examples/main
 === MoonBit DML PLR (partialling out) ===
@@ -133,10 +133,10 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 ```
 
 `--target native` is spelled out because the package's `preferred_target` is
-`wasm-gc`, where the suite is **1124** -- 1118 plus 6 doc tutorials; the
+`wasm-gc`, where the suite is **1126** -- 1120 plus 6 doc tutorials; the
 per-target numbers are in the Status table. A bare `moon test` runs the suite
-on only one of the four declared backends -- on `moon 0.1.20261102` it reports
-`Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1124
+on only one of the four declared backends -- on `moon 0.1.20261117` it reports
+`Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1126
 tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs.
 
@@ -523,7 +523,7 @@ The same `api_server.wasm` also runs under `moonrun <path-to-the-wasm>`.
 The listen port is hard-coded to `4000` in `main.mbt`, so the service
 ignores any argument it is given (see `examples/api_server/README.md`
 for the full PowerShell smoke recipe).
-The service is built directly on `moonbitlang/async@0.22.7` --
+The service is built directly on `moonbitlang/async@0.22.10` --
 no third-party HTTP framework is pulled in.
 
 ## Common pitfalls and best practices
@@ -624,13 +624,13 @@ it is what makes the port *no worse* rather than better. Record:
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
 | `moon.mod` version | **0.164.64** |
-| Toolchain | `moon 0.1.20261102` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
+| Toolchain | `moon 0.1.20261117` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
 | Backends | `native`, `wasm`, `wasm-gc`, `js` -- all pass `moon test --target <backend> --deny-warn` |
-| Tests (native / wasm / js) | **1118 / 1118 / 1118** |
-| Tests (wasm-gc) | **1124 / 1124** (lib + 6 doc tutorials) |
+| Tests (native / wasm / js) | **1120 / 1120 / 1120** |
+| Tests (wasm-gc) | **1126 / 1126** (lib + 6 doc tutorials) |
 | Sandwich-variance coverage | **15 / 22** expose the scalar `sandwich_se` / `cluster_sandwich_se` / `bias_corrected_coef`; **4** more (`DoubleMLAPOS`, `DoubleMLDIDCS`, `DoubleMLDIDMulti`, `DoubleMLQTE`) expose per-cell variants `sandwich_se_at` / `..._at_idx`; **3** expose none of that API (`DoubleMLBLP`, `DoubleMLPolicyTree`, `DoubleMLRDD`) -- but `DoubleMLRDD` (v0.96.0) and `DoubleMLBLP` (v0.97.0) do expose a heteroskedasticity-robust `hac_se` under their own name; `DoubleMLPolicyTree` exposes no robust SE at all. Introduced v0.79.0 (on `DoubleMLIRM` and `DoubleMLPLR`), extended to **19 / 22** by v0.100.0 |
 | Python cross-checks | **24 / 24 PASS** (`validate_*_with_python.py`); 25 of the 25 bit-exact items are IEEE-754 identical to CPython, and the 6 / 6 RNG keys are byte-identical |
 | HTTP service | `examples/api_server/` -- hand-rolled on `moonbitlang/async`, no third-party framework |
@@ -684,7 +684,7 @@ Measured designs, one script per upstream class or family:
 port is arithmetically identical to the reference" apart from "the port lands
 within 1e-4 of it". `validate_bitexact_with_python.py` compares IEEE-754 bit
 patterns instead, against `examples/bitexact/`. Measured scope, not assumed --
-re-measured on `moon 0.1.20261102` vs CPython 3.13.14, unchanged from the
+re-measured on `moon 0.1.20261117` vs CPython 3.13.14, unchanged from the
 `moon 0.1.20261012` vs CPython 3.14 pair it was first taken on:
 
 | operation | bit-exact | why |
@@ -716,14 +716,14 @@ takes no parameters -- so the fuzz check replays one fixed master seed
 (20260824) three times rather than sweeping seeds. Each invocation is a real
 property-based run -- 11 surfaces, 300 trials per surface -- so the check
 repeats that one run, and no CI workflow runs it either. And the two
-declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.4`
-and `moonbitlang/async@0.22.7` -- are dead: nothing imports them, and
+declared `moon.mod` dependencies -- `moonbit-community/sqlite3@0.2.5`
+and `moonbitlang/async@0.22.10` -- are dead: nothing imports them, and
 `dependencies` already WARNs about exactly that (`2 declared; non-conforming:
-['moonbit-community/sqlite3@0.2.4']; declared but unreferenced by library code:
-['moonbit-community/sqlite3@0.2.4', 'moonbitlang/async@0.22.7']`) rather than
+['moonbit-community/sqlite3@0.2.5']; declared but unreferenced by library code:
+['moonbit-community/sqlite3@0.2.5', 'moonbitlang/async@0.22.10']`) rather than
 passing quietly. Removing them is an open call, not an oversight. Dead is not
 the same as harmless, though: the published source of
-`moonbitlang/async@0.22.7` imports `moonbitlang/core/async`, a core
+`moonbitlang/async@0.22.10` imports `moonbitlang/core/async`, a core
 subpackage that older cores do not carry, so the dead pin is what sets the
 **toolchain floor** -- see **Installation**. The `sqlite3` pin is not what
 forces it: its published source imports no `moonbitlang/core/async`.
@@ -798,7 +798,7 @@ skills/moonbit_doubleML.md  <- agent skill: API surface + anti-patterns
 
 - Only official `moonbitlang/*` packages.
 - Non-official packages may only be `riantr/*` (this repo).
-- Pin to the latest published version (e.g. `moonbitlang/async@0.22.7`).
+- Pin to the latest published version (e.g. `moonbitlang/async@0.22.10`).
 - Consequence: `examples/api_server/` builds directly on
   `moonbitlang/async`'s raw `Server` API. No third-party HTTP
   framework is allowed.
@@ -809,8 +809,8 @@ declares two packages, and **neither is imported by any `.mbt` in the library**
 
 | declared | imported by the library? | note |
 |---|---|---|
-| `moonbitlang/async@0.22.7` | no | referenced by nothing in the library: `examples/api_server/` imports the same package at the same pin (`moonbitlang/async@0.22.7`), but no `.mbt` under `moonbit_doubleML/` imports it |
-| `moonbit-community/sqlite3@0.2.4` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
+| `moonbitlang/async@0.22.10` | no | referenced by nothing in the library: `examples/api_server/` imports the same package at the same pin (`moonbitlang/async@0.22.10`), but no `.mbt` under `moonbit_doubleML/` imports it |
+| `moonbit-community/sqlite3@0.2.5` | no | **not `moonbitlang/*`** -- added in v0.85.0 for `DoubleMLPolicyTree` memoisation, which now uses an in-memory `FitCache` |
 
 So the library has no runtime third-party dependency today, while `moon.mod`
 carries two dead entries -- one of which does not satisfy the rule above.
@@ -893,7 +893,7 @@ commands are in the repository; the registry publishes this one.
 
 ```console
 $ moon test --target native --deny-warn
-Total tests: 1118, passed: 1118, failed: 0.
+Total tests: 1120, passed: 1120, failed: 0.
 ```
 
 ## License

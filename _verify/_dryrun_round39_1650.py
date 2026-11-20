@@ -286,8 +286,14 @@ MECHANISMS = [
                      "dry-run: the skill's pin went stale"))),
 
     # -- 2. the skill's whitebox test-case count goes stale ------------------
+    # The anchor is a SHAPE, not a count: the suite's size moves with every
+    # release, and an anchor that names the count is an anchor that dies with
+    # it.  The replacement is a count the suite CAN NEVER have -- zero
+    # whitebox test cases, in a tree that holds twenty-six whitebox files --
+    # so the mutation does not have to be re-typed when the suite grows, and
+    # it cannot accidentally become true.
     ("the skill's whitebox test-case count goes stale",
-     lambda: (sub_once(SKILL, r"\*\*169\*\* test cases", "**170** test cases"),
+     lambda: (sub_once(SKILL, r"\*\*\d+\*\* test cases", "**0** test cases"),
               commit(WORK, [os.path.join("skills", "moonbit_doubleML.md")],
                      "dry-run: the skill's count went stale"))),
 
