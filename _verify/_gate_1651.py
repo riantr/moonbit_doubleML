@@ -60,6 +60,32 @@ for target in ("native", "wasm-gc", "wasm", "js"):
         ["moon", "build", "--target", target, "--deny-warn"], cwd=PKG)
     run("moon test --target %s --deny-warn" % target,
         ["moon", "test", "--target", target, "--deny-warn"], cwd=PKG, timeout=5400)
+
+# THE GATE'S SCOPE WAS NARROWER THAN CI'S, AND A RELEASE WENT OUT ON IT.
+# ------------------------------------------------------------------
+# v0.164.65's tag was pushed to both remotes and CI's FIRST step failed:
+# `moon check --target native --deny-warn` at the WORKSPACE ROOT reported
+# `Unused package 'moonbitlang/async'` in `examples/api_server/moon.pkg`.
+# The publish step never ran and the registry has no 0.164.65.
+#
+# The cause was SCOPE, not the library.  Every `moon build` and `moon test`
+# this gate ran had `cwd=PKG` -- the LIBRARY package -- so the gate never
+# looked at the 22 other workspace members, and an EXAMPLE's package manifest
+# could break without the gate noticing.  CI, by contrast, runs at the
+# workspace root: `check.yml`'s Build step is `moon build --deny-warn` and
+# `publish.yml`'s is `moon check --target <t> --deny-warn`, both at the root.
+# The gate mirrored CI's `moon fmt --check` at the root and nothing else.
+#
+# So the gate now runs BOTH root-scoped compilation steps, for all four
+# backends: the `moon build` CI's Build step runs, and the `moon check`
+# publish.yml runs before it publishes.  The package-scoped build and test
+# above stay: they are what the published test counts are measured from.
+for target in ("native", "wasm-gc", "wasm", "js"):
+    run("moon build --target %s --deny-warn (workspace root, as CI's Build step runs it)" % target,
+        ["moon", "build", "--target", target, "--deny-warn"], cwd=ROOT)
+    run("moon check --target %s --deny-warn (workspace root, as publish.yml runs it)" % target,
+        ["moon", "check", "--target", target, "--deny-warn"], cwd=ROOT)
+
 run("moon fmt --check (package)", ["moon", "fmt", "--check"], cwd=PKG)
 run("moon fmt --check (workspace root, as CI runs it)",
     ["moon", "fmt", "--check"], cwd=ROOT)

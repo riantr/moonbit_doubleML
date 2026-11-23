@@ -9,6 +9,105 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.66] -- an example declared a dependency it never used, and the gate looked at a different tree than CI does
+
+`moon.mod` moves 0.164.65 -> 0.164.66.  No estimator behaviour changed, and the
+test counts are UNCHANGED at **1120 / 1126 / 1120 / 1120** (native / wasm-gc /
+wasm / js) -- re-measured on the toolchain this release names, not carried
+over.
+
+This release closed **4** findings, and the first of them is a record rather
+than a repair: **v0.164.65 was cut, tagged, pushed to both remotes, and never
+reached the registry.**  Its section is the one immediately below this one, and
+it describes the eight findings this release also carries; a tag is never moved
+and a version is never re-used, so those fixes ship here instead.
+
+### Fixed -- the release that never reached the registry
+
+v0.164.65's tag was pushed to both remotes and to github's `main`, and CI
+started.  The publish run failed at its FIRST step -- `Check package (all 4
+backends, --deny-warn)` -- and the `CI` workflow failed in all four of its
+jobs on the same commit, with the same message:
+
+    examples/api_server/moon.pkg:3:3
+      3 |   "moonbitlang/async",
+        |            ╰─────────── Error Warning (unused_package): Unused package 'moonbitlang/async'
+    Failed with 0 warnings, 1 errors.
+
+The registry has no 0.164.65.  The cause was not this release's code: the file
+named in the error was byte-identical to the one that was there before the
+release, and the toolchain that reports `unused_package` is the CHANNEL build
+the workflows install -- `moon 0.1.20261119 (738607b 2026-11-19)`, core
+`v0.10.22+124d61d05` -- while the release had been verified on
+`moon 0.1.20261117`, core `v0.10.21`.
+
+v0.164.63 is the same shape, and its section says so: a tagged release whose
+publish step never ran, and the registry moves on to the next number.
+
+### Fixed -- an example declared a dependency it never used
+
+`examples/api_server/moon.pkg` declared FOUR packages from the `async` tree:
+the parent `moonbitlang/async` and its sub-packages `.../http`, `.../io` and
+`.../socket`.  The example uses the sub-packages -- `@http.Server`,
+`@http.Request`, `@io.Reader`, `@socket.Addr` -- and never the parent: there
+is no `@async.` reference anywhere in the package.  The parent is imported by
+the sub-packages themselves, so a consumer does not declare it.
+
+The parent import is gone.  It was harmless on the toolchain the release was
+verified on and an ERROR on the channel build CI installs, which is the whole
+of the failure: a dependency declaration that nothing used.
+
+### Fixed -- the gate looked at the library package, and CI looks at the whole workspace
+
+Every `moon build` and every `moon test` in the local gate ran with `cwd=PKG`
+-- the LIBRARY package.  CI does not: `check.yml`'s Build step is
+`moon build --target <t> --deny-warn` and `publish.yml`'s is
+`moon check --target <t> --deny-warn`, and both run at the WORKSPACE ROOT,
+where the twenty-three members live.  The gate mirrored CI's `moon fmt --check`
+at the root and nothing else, so an EXAMPLE's package manifest could break
+without the gate ever looking at it -- and one did.
+
+The gate now runs BOTH root-scoped compilation steps, for all four backends:
+the `moon build` CI's Build step runs, and the `moon check` publish.yml runs
+before it publishes.  The package-scoped build and test stay: they are what
+the published test counts are measured from.
+
+### Fixed -- the toolchain moved, and every claim that names it was re-derived
+
+The channel build moved to `moon 0.1.20261119 (738607b 2026-11-19)`, core
+`v0.10.22+124d61d05 (2026-11-19)`, and the tree's toolchain reference is
+checked against the INSTALLED toolchain -- so the reference moves, and
+everything it names is re-measured rather than re-labelled.  On the new build:
+the workspace-root `--deny-warn` check passes for all four backends, the test
+counts are **1120 / 1126 / 1120 / 1120** (unchanged), `moon fmt --check` at the
+root is exit 0, and the generated e2e expectation table still matches the tree.
+
+The move was NOT a global find-and-replace, because five of the mentions name
+the version where something CHANGED -- "the core that ships with moon
+0.1.20261117 prints the number where the earlier one printed `b'\x45'`" -- and
+moving those would say the change happened at the new version, which is false.
+Fifteen live claims moved; five historical ones stayed.
+
+The drift is not a choice: the workflows install the channel build, and the
+channel is the only artifact the installer can fetch -- `binaries/latest` and
+`binaries/nightly` answer, while every VERSIONED path answers 403 -- so a
+pinned toolchain is not available to pin to.  The release path's own compiler
+is therefore the one CI will use, which is what makes the gate's scope fix
+above worth having.
+
+- The path-promises check grew with this round's documents:
+  `_verify/_verify_path_promises_1650.py` published **519** and makes **520**
+  checks: a path named in prose is a check, and this round's ledger and
+  CHANGELOG entry name one more of them -- the example's package manifest,
+  whose one line was the whole of the failure.
+
+### Verified ---
+
+- local gate: 68 steps, 0 failed
+- tracked verifier suite: 97 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **97** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1120 / 1126 / 1120 / 1120 (native / wasm-gc / wasm / js)
 ## [0.164.65] -- a negative dimension was a raw panic, and a negative cluster id was a panic that named no site
 
 `moon.mod` moves 0.164.64 -> 0.164.65.  Three library files changed, and no

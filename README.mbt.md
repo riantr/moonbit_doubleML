@@ -77,13 +77,13 @@ implementation.
 
 ## Installation
 
-**Requires `moon 0.1.20261117` or newer.** Two things set that floor: the
+**Requires `moon 0.1.20261119` or newer.** Two things set that floor: the
 package declares `moonbitlang/async@0.22.10`, whose published source
 imports `moonbitlang/core/async` -- a subpackage older cores do not carry,
 so on an older `moon` the build fails with "Cannot find import
 `moonbitlang/core/async` in `moonbitlang/async@0.22.10`" -- and the
 package's trait derivations use the `#derive(...)` attribute syntax, which
-the compiler accepted from `moon 0.1.20261117`. This release's tests,
+the compiler accepted from `moon 0.1.20261119`. This release's tests,
 cross-checks and bit-exactness gate were run on that toolchain.
 
 **CI installs the `latest` channel build.** The floor above is the version
@@ -105,7 +105,7 @@ Then reference it from `moon.mod`:
 ```moonbit nocheck
 ///|
 import {
-  "riantr/moonbit_doubleML@0.164.65",
+  "riantr/moonbit_doubleML@0.164.66",
 }
 ```
 
@@ -135,7 +135,7 @@ PASS  |mb - handrolled_nrep5| (theta) = 8.868664e-02 < max(MODEL_TOL=0.1, 2.0*ha
 `--target native` is spelled out because the package's `preferred_target` is
 `wasm-gc`, where the suite is **1126** -- 1120 plus 6 doc tutorials; the
 per-target numbers are in the Status table. A bare `moon test` runs the suite
-on only one of the four declared backends -- on `moon 0.1.20261117` it reports
+on only one of the four declared backends -- on `moon 0.1.20261119` it reports
 `Total tests: 0` for `wasm` and `native`, runs the suite on `wasm-gc` (1126
 tests), and never reports `js` -- so the per-target counts here come from
 explicit `--target` runs.
@@ -623,8 +623,8 @@ it is what makes the port *no worse* rather than better. Record:
 | Repository | `https://github.com/riantr/moonbit_doubleML` |
 | Author | `riantr` |
 | License | MIT (port of upstream `doubleml-for-py`, BSD-3-Clause) |
-| `moon.mod` version | **0.164.65** |
-| Toolchain | `moon 0.1.20261117` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
+| `moon.mod` version | **0.164.66** |
+| Toolchain | `moon 0.1.20261119` -- the version this release's tests, cross-checks and bit-exactness gate were run on, and the version every number in this table was re-verified on; a bare `moon` from `cli.moonbitlang.com` may be newer |
 | Source layout | flat, `moonbit_doubleML/` (the library) |
 | `.mbt` file count | **220** `.mbt` files (**65** production + **129** blackbox test + **26** whitebox test) |
 | Estimators | **22** `DoubleML*` estimator structs (PLR / IRM / PLIV / IIVM / DID family / SSM / APO(S) / PQ / QTE / LPQ / LPLR / CVAR / RDD / BLP / PLPR / PolicyTree) |
@@ -684,7 +684,7 @@ Measured designs, one script per upstream class or family:
 port is arithmetically identical to the reference" apart from "the port lands
 within 1e-4 of it". `validate_bitexact_with_python.py` compares IEEE-754 bit
 patterns instead, against `examples/bitexact/`. Measured scope, not assumed --
-re-measured on `moon 0.1.20261117` vs CPython 3.13.14, unchanged from the
+re-measured on `moon 0.1.20261119` vs CPython 3.13.14, unchanged from the
 `moon 0.1.20261012` vs CPython 3.14 pair it was first taken on:
 
 | operation | bit-exact | why |
@@ -764,7 +764,7 @@ zero when all the variation is between leaves.
 ## Project layout
 
 ```
-moonbit_doubleML/        <- the library (moon.mod v0.164.65, 220 .mbt files)
+moonbit_doubleML/        <- the library (moon.mod v0.164.66, 220 .mbt files)
   moon.pkg              <- the package's imports and supported targets
   ...                    <- one file per estimator + DGPs + score / nuisance kernels
   vectorized.mbt         <- v0.81.0+ vectorised cross-fit helpers

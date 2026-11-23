@@ -26,7 +26,7 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 88, and 11 of the numbers in between
+> at round 21 and run to round 89, and 11 of the numbers in between
 > (rounds 60-69, round 87) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
@@ -3637,6 +3637,48 @@
 >
 >   *The counts that moved.*  `_verify/_verify_ledger_counts_1650.py` (**98**
 >   checks) moved because this round publishes a count for two more checks.
+>
+> * **Round 89.**  A release that never reached the registry, an example that
+>   declared a dependency it never used, and a gate that looked at a
+>   different tree than CI does.
+>
+>   v0.164.65's tag was pushed to both remotes and to github's `main`, and CI
+>   failed at its FIRST step: `moon check --target <t> --deny-warn` at the
+>   WORKSPACE ROOT reported `Unused package 'moonbitlang/async'` in
+>   `examples/api_server/moon.pkg`.  The registry has no 0.164.65, and the
+>   file named in the error was byte-identical to the one that was there
+>   before the release -- the cause was the CHANNEL build the workflows
+>   install, `moon 0.1.20261119` with core `v0.10.22`, reporting a warning
+>   the toolchain the release was verified on did not report.  v0.164.63 is
+>   the same shape, and its section says so.
+>
+>   The parent import is gone: the example uses `@http`, `@io`, `@socket`,
+>   `@utf8` and `@json` and never `@async`, and the sub-packages import the
+>   parent themselves, so a consumer does not declare it.
+>
+>   The GATE'S SCOPE WAS NARROWER THAN CI'S.  Every `moon build` and every
+>   `moon test` it ran had `cwd=PKG` -- the LIBRARY package -- while
+>   `check.yml`'s Build step and `publish.yml`'s check both run at the
+>   WORKSPACE ROOT, where the twenty-three members live.  An EXAMPLE's
+>   package manifest could break without the gate ever looking at it, and
+>   one did.  The gate now runs both root-scoped compilation steps, for all
+>   four backends.
+>
+>   The TOOLCHAIN MOVED, and every claim that names it was RE-DERIVED rather
+>   than re-labelled: the workspace-root check passes for all four backends,
+>   the test counts are 1120 / 1126 / 1120 / 1120 (unchanged), `moon fmt
+>   --check` at the root is exit 0, and the generated e2e expectation table
+>   still matches the tree.  Fifteen live claims moved and five historical
+>   ones did not -- a mention that names the version where something CHANGED
+>   is not a live claim, and moving it would rewrite the record.  The drift is
+>   not a choice: `binaries/latest` and `binaries/nightly` answer while every
+>   VERSIONED path answers 403, so there is no version to pin the workflows
+>   to.
+>
+>   *The count that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **519** and makes **520**: a path named in prose is a check, and this
+>   round's ledger and CHANGELOG entry name one more of them -- the example's
+>   package manifest, whose one line was the whole of the failure.
 >
 >
 
