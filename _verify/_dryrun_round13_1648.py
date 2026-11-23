@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -40,11 +41,32 @@ r = subprocess.run(["git", "-C", ROOT, "archive", "--format=tar", "-o", tarball,
 if r.returncode != 0:
     print("git archive failed:", r.stderr)
     sys.exit(2)
-r = subprocess.run(["tar", "-xf", tarball, "-C", SHADOW],
-                   capture_output=True, text=True)
-if r.returncode != 0:
-    print("tar failed:", r.stderr)
-    sys.exit(2)
+# The archive is extracted with Python's tarfile, not with `tar`.
+#
+# WHY NOT `tar`
+# ============
+# The archive has exactly ONE symlink member -- README.md, which points at
+# README.mbt.md -- and bsdtar on Windows cannot create a symlink without the
+# "create symbolic links" privilege.  This host does not hold it (os.symlink
+# fails with WinError 1314), so `tar -xf` exited 1 on that one member and the
+# driver measured NOTHING: it died before the verifier ran, and the sweep
+# recorded the driver as failed.
+#
+# WHY tarfile IS RIGHT HERE
+# =========================
+# A shadow tree is read, not executed, and a reader of README.md wants the
+# CONTENT of the link target, not the link.  tarfile materialises the symlink
+# member as a regular file carrying that content, and the explicit copy below
+# makes it so whether the filter skipped the member or materialised it.  The
+# conclusion the driver draws is unchanged -- and it is MEASURED, not assumed:
+# the capture written below is compared with the one this driver wrote before
+# the extraction changed.
+with tarfile.open(tarball) as _tf:
+    _tf.extractall(SHADOW, filter="data")
+_src = os.path.join(SHADOW, "README.mbt.md")
+_dst = os.path.join(SHADOW, "README.md")
+if not os.path.exists(_dst) and os.path.exists(_src):
+    shutil.copyfile(_src, _dst)
 print("extracted %s -> %s" % (OLD, SHADOW))
 print("=" * 78)
 

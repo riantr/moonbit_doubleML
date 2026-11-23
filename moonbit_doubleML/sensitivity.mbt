@@ -243,6 +243,7 @@ pub fn irm_style_sensitivity_cluster_from_elements(
   let n = residuals.length()
   require(n == nu2_score_element.length())
   require(n == riesz_rep.length())
+  require(cluster_ids.length() == n)
   require(n > 0)
   let use_weights = kernel_weights.length() > 0
   if use_weights {
@@ -250,6 +251,7 @@ pub fn irm_style_sensitivity_cluster_from_elements(
   }
   let mut max_cid = -1
   for i = 0; i < n; i = i + 1 {
+    require(cluster_ids[i] >= 0)
     if cluster_ids[i] > max_cid {
       max_cid = cluster_ids[i]
     }
@@ -336,6 +338,7 @@ pub fn irm_style_sensitivity_cluster(
   // n_clusters, second accumulate sums.
   let mut max_cid = -1
   for i = 0; i < n; i = i + 1 {
+    require(cluster_ids[i] >= 0)
     if cluster_ids[i] > max_cid {
       max_cid = cluster_ids[i]
     }

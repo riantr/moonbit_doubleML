@@ -52,7 +52,7 @@ C. nothing was lost -- every pinned string is still in the documentation
   the README keeps the user-facing fact '-1381'                    OK
   the README keeps the user-facing fact '2.56'                     OK
   the README keeps the user-facing fact 'sd 3.39'                  OK
-  the README keeps the user-facing fact '**1124**'                 *** FAIL ***
+  the README keeps the user-facing fact '**1126**'                 *** FAIL ***
   the README keeps the user-facing fact '**19** are marked *(upstream)*' OK
   the README keeps the user-facing fact 'no 1:1 upstream class'    OK
   the README keeps the user-facing fact 'How the names map'        *** FAIL ***
@@ -67,7 +67,7 @@ C. nothing was lost -- every pinned string is still in the documentation
   the README keeps the user-facing fact 'shipped default arm is still the one absence' OK
   the README keeps the user-facing fact 'Not covered, so not claimed' *** FAIL ***
   the README keeps the user-facing fact 'moon test --target native --deny-warn' OK
-  the README keeps the user-facing fact 'Total tests: 1118'        *** FAIL ***
+  the README keeps the user-facing fact 'Total tests: 1120'        *** FAIL ***
   the README keeps the user-facing fact 'Run these from the **repository root**' OK
   the README keeps the user-facing fact 'estimated theta   = 1.092018247331361' OK
   the README keeps the user-facing fact 'standard error    = 0.08875683254582736' OK
@@ -173,11 +173,11 @@ checks: 125   failed: 59
   - the project document carries 'Acceptance-criteria traceability' -- 
   - the README no longer carries the project phrase '4294967295' -- 
   - the project document carries '4294967295' -- 
-  - the README keeps the user-facing fact '**1124**' -- 
+  - the README keeps the user-facing fact '**1126**' -- 
   - the README keeps the user-facing fact 'How the names map' -- 
   - the README keeps the user-facing fact '**eight**, in seven files' -- 
   - the README keeps the user-facing fact 'Not covered, so not claimed' -- 
-  - the README keeps the user-facing fact 'Total tests: 1118' -- 
+  - the README keeps the user-facing fact 'Total tests: 1120' -- 
   - the README does not quote the stale count '1117 / 1117' -- 
   - _verify_round17_lplr_1650.py is new at v0.164.11 and exists now -- 
   - the project document exists -- 

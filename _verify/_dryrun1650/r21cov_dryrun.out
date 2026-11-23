@@ -1,8 +1,8 @@
 
 A. the README's numbers
   PASS  the README has number-bearing prose lines
-  154 number-bearing prose lines, 154 distinct numbers
-  81 tracked verifiers read the README
+  153 number-bearing prose lines, 155 distinct numbers
+  83 tracked verifiers read the README
   PASS  the propensity_clip default is in the source
   PASS  the README's `1e6` is 1 / the propensity_clip default
   PASS  the fuzz harness names its master seed
@@ -11,13 +11,13 @@ A. the README's numbers
   PASS  the pointer irm.py:161 is recorded in a tracked file (moonbit_doubleML/irm_wbtest.mbt)
   SKIP  irm.py:161: _verify/_upstream_ps/doubleml-0.11.4/doubleml/irm/irm.py is not in this checkout (the upstream copy is local, not tracked) -- the recorded pointer above is the promise
   PASS  the pointer did.mbt:710 names a tracked file (moonbit_doubleML/did.mbt)
-  *** FAIL ***  the pointer did.mbt:710 resolves to content in moonbit_doubleML/did.mbt -- line 710 of moonbit_doubleML/did.mbt does not contain 'w_d = d_i / m_i'
+  PASS  the pointer did.mbt:710 resolves to content in moonbit_doubleML/did.mbt
   PASS  the pointer ssm.mbt:74-75 names a tracked file (moonbit_doubleML/ssm.mbt)
   PASS  the pointer ssm.mbt:74-75 resolves to content in moonbit_doubleML/ssm.mbt
 
 B. every number is guarded, derived, or witnessed
   *** FAIL ***  every number in the README is accounted for -- no witness: ['0.999123456']
-  guarded: 114, derived: 3, witnessed: 38, total: 154
+  guarded: 115, derived: 4, witnessed: 38, total: 155
 
 C. the witnesses
   0.0005       <- CHANGELOG.md
@@ -41,8 +41,8 @@ C. the witnesses
   1.667        <- CHANGELOG.md
   1.685        <- CHANGELOG.md
   1.9e-15      <- .githooks/README.md
-  106          <- .github/scripts/qa_loop/checks.py
-  122          <- CHANGELOG.md
+  106          <- CHANGELOG.md
+  122          <- .github/scripts/qa_loop/checks.py
   161          <- CHANGELOG.md
   185.45       <- CHANGELOG.md
   1e-6         <- .githooks/README.md
@@ -57,7 +57,7 @@ C. the witnesses
   5.9e-3       <- CHANGELOG.md
   8.44e+122    <- CHANGELOG.md
   86.28        <- CHANGELOG.md
-  97           <- CHANGELOG.md
+  98           <- CHANGELOG.md
 
 D. the derived figures
   1e6          1 / the propensity_clip default (moonbit_doubleML/apo.mbt = 1e-06 in moonbit_doubleML/apo.mbt)
@@ -67,9 +67,8 @@ D. the derived figures
   75           the line number in the pointer ssm.mbt:74-75 (moonbit_doubleML/ssm.mbt)
 
 ========================================================================
-11 checks, 2 failed
+11 checks, 1 failed
 *** FAIL ***
-  - the pointer did.mbt:710 resolves to content in moonbit_doubleML/did.mbt
   - every number in the README is accounted for
 
-EXACT failure count: 2
+EXACT failure count: 1

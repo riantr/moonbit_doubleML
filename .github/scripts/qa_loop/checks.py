@@ -1118,15 +1118,23 @@ def c_contract():
 # 22 against an actual 32. Both are counting problems and neither belongs to a
 # person.
 #
+# The generator is `.github/scripts/qa_loop/gen_e2e_table.py`. It was NOT in
+# the tree for most of this table's life, and the table went stale because of
+# it: round 87 moved the toolchain, whose core renders a `Byte` as the NUMBER
+# where the earlier core rendered `b'\x45'`, the `bitexact` example was
+# adapted to print numbers -- and says why, in its own comment -- and this
+# table was not regenerated. The gate then asserted a final line the example
+# had not printed since that commit. A table that is generated needs its
+# generator in the tree, or it rots in silence and the gate catches it.
+#
 # The marker is a 60-character PREFIX of the templatised line plus that line's
 # exact length. The length is not decoration: a prefix alone passes a line that
-# got cut in half, and the whole line for `bitexact` is a 295-character string
-# of 32 repetitions of `b'<n>'` that would assert nothing except "some bytes
-# were printed".
+# got cut in half, and the whole line for `bitexact` is a long string of byte
+# values that would assert nothing except "some bytes were printed".
 _EXAMPLES = [
     ("apo", "bias_corrected_coef = <n>", 25, 26),
     ("apos", "contrast (level <n> - level <n>): delta=<n>, se=<n>", 51, 5),
-    ("bitexact", "key <n> b'\\x<n>' b'\\x<n>' b'\\x<n>' b'\\x<n>' b'\\x<n>' b'\\x<n>", 295, 36),
+    ("bitexact", "key <n> <n> <n> <n> <n> <n> <n> <n> <n> <n> <n> <n> <n> <n> ", 135, 36),
     ("cluster", "cluster example done", 20, 7),
     ("consumer_demo", "contains <n>?    = true", 23, 5),
     ("cvar", "Result:                 PASS  (within <n>*se + <n> of <n>)", 58, 10),
@@ -1139,7 +1147,7 @@ _EXAMPLES = [
     ("fuzz", "ALL FUZZ SURFACES PASSED (no invariant violations)", 50, 24),
     ("lplr", "LPLR example done", 17, 16),
     ("main", "se   = <n>", 10, 81),
-    ("parity", "end", 3, 215),
+    ("parity", "end", 3, 446),
     ("pava", "PAVA example done", 17, 7),
     ("plpr", "<n>% CI    = [<n>, <n>]", 23, 18),
     ("splitting", "splitting se=<n>", 16, 4),

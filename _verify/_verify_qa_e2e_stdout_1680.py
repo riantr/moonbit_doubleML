@@ -89,10 +89,10 @@ HAND_STDOUT = "alpha = 7\n"
 
 def synth_stdout(prefix, want_len, min_lines, break_final=False):
     # The row marker is a 60-character PREFIX of the templatised line plus
-    # that line's exact length (for `bitexact`: 60 of 295).  So the line is
-    # built from the prefix and EXTENDED to the expected length.  The filler
-    # is a letter and never a digit, because a digit would template to `<n>`
-    # and change the length the filler is there to establish.
+    # that line's exact length (for `bitexact`: 60 of the whole line).  So the
+    # line is built from the prefix and EXTENDED to the expected length.  The
+    # filler is a letter and never a digit, because a digit would template to
+    # `<n>` and change the length the filler is there to establish.
     if break_final:
         final = "the example printed something else"
     else:

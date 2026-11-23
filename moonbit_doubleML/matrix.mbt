@@ -17,27 +17,54 @@ pub extend Matrix with @moonbitlang/core/debug.Debug::{to_repr}
 
 ///|
 /// Create a zero matrix of the given shape.
+///
+/// Aborts if either dimension is negative. `Array::make` PANICS on a
+/// negative size, so a negative dimension used to reach the runtime as a
+/// raw panic instead of this package's `precondition failed at ...`
+/// message -- and a negative pair whose PRODUCT is positive
+/// (`zeros(-1, -3)`) built a matrix whose own `rows()` / `cols()` disagree
+/// with its data, silently.
 pub fn Matrix::zeros(nrows : Int32, ncols : Int32) -> Matrix {
-  let data = Array::make(nrows * ncols, 0.0)
-  { nrows, ncols, data, }
+  try {
+    require(nrows >= 0 && ncols >= 0)
+    let data = Array::make(nrows * ncols, 0.0)
+    { nrows, ncols, data, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// Create a matrix filled with ones.
+///
+/// Aborts if either dimension is negative, for the same reason
+/// `Matrix::zeros` does.
 pub fn Matrix::ones(nrows : Int32, ncols : Int32) -> Matrix {
-  let data = Array::make(nrows * ncols, 1.0)
-  { nrows, ncols, data, }
+  try {
+    require(nrows >= 0 && ncols >= 0)
+    let data = Array::make(nrows * ncols, 1.0)
+    { nrows, ncols, data, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
+  }
 }
 
 ///|
 /// Create a matrix from a flat row-major array. Panics if length does not
 /// match `nrows * ncols`.
+///
+/// Aborts if either dimension is negative: `nrows * ncols` can be positive
+/// for two negative dimensions, in which case the length check below would
+/// pass and the matrix would carry a shape that disagrees with its data.
 pub fn Matrix::from_array(
   data : Array[Double],
   nrows : Int32,
   ncols : Int32,
 ) -> Matrix {
   try {
+    require(nrows >= 0 && ncols >= 0)
     require(data.length() == nrows * ncols)
     { nrows, ncols, data, }
   } catch {

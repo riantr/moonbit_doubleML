@@ -210,7 +210,7 @@ ANCHORS = {
     ("did_cs.mbt", 1430): r"let ti = self\.data\.t\[i\]\.to_double\(\)",
     ("did_cs.mbt", 1338): r"cond_d0_t0",
     ("did_cross_section.mbt", 1478): r"p_hat = mean\(d\)",
-    ("sensitivity.mbt", 535): r"pub struct SensitivityResult",
+    ("sensitivity.mbt", 538): r"pub struct SensitivityResult",
     ("apo.mbt", 51): r"ml_m",
     ("cvar.mbt", 360): r"cf_y",
     ("cvar.mbt", 378): r"cf_y~ : Double = 0\.05",

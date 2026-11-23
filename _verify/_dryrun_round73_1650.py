@@ -210,9 +210,17 @@ M3_NEW = (r"header is the correction ledger for every round to date, and its bod
           r"README as it stood at `\1`, word for word. The CURRENT gate commands are not\n"
           r"in that snapshot -- they are in `.github/workflows/check.yml` (what CI runs)\n")
 
+# The gap list's CONTENT is DERIVED: the builder renders the skipped rounds as
+# runs joined with a comma, so it reads "(rounds 60-69)" while there is one
+# run and "(rounds 60-69, round 87)" once there are two.  The anchor used to
+# allow only digits and hyphens between "rounds " and ")" -- which matched the
+# first shape and could never match the second, so the anchor died the moment
+# a round was skipped AFTER a gap run.  It is the SHAPE the driver patches,
+# not the list the builder happened to derive: the list's content is whatever
+# the builder produced.
 M4_OLD = (r"> \*The round numbers below are not contiguous\.\*  The corrections start\n"
           r"> at round \d+ and run to round \d+, and \d+ of the numbers in between\n"
-          r"> \(rounds [\d-]+\) are not used\.\n>\n")
+          r"> \(rounds [^)]*\) are not used\.\n>\n")
 M4_NEW = ""
 
 M5_OLD = r"down a factor of \*\*344\*\*"

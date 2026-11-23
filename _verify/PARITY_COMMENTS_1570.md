@@ -91,7 +91,7 @@ Only the **stored** fields move. Every computed field is bit-identical.
 
 ### The structural reason, which is sharper than the measurement
 
-The port's `SensitivityResult` (`sensitivity.mbt:535`) is:
+The port's `SensitivityResult` (`sensitivity.mbt:538`) is:
 
 ```
 rv, sigma2, nu2, cf_y, cf_d, max_bias

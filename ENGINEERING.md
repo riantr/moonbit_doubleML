@@ -26,8 +26,8 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 86, and 10 of the numbers in between
-> (rounds 60-69) are not used.
+> at round 21 and run to round 88, and 11 of the numbers in between
+> (rounds 60-69, round 87) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
 >   **366x** separation for `DoubleMLIRM` and a **300x** one for
@@ -3517,6 +3517,126 @@
 >   checks: the hole is closed, the watch is **401** anchors, and a control
 >   arm proves the rule bites -- a mechanism the verifier cannot resolve is
 >   REJECTED.
+> * **Round 88.**  A negative dimension was a raw panic, and a negative
+>   cluster id was a panic that named no site.
+>
+>   The QA pass was ANCHORED TO THE REGISTRY: `riantr/LunaFlow` and
+>   `riantr/moonbit_static_analysis` were run at their registry `latest`
+>   against a CLEAN CLONE of the shipped tree -- not the working directory,
+>   which carries thousands of untracked scratch files -- and every finding
+>   they reported was adjudicated by MEASUREMENT rather than by reading.
+>
+>   *The registry's `latest` moved under the pass.*  `riantr/LunaFlow` was
+>   0.1.33 when the pass began and 0.1.34 twenty-nine minutes later, so
+>   both were run against ONE clean clone and their findings compared: the
+>   two `*_findings.jsonl` files are BYTE-IDENTICAL.  The new latest finds
+>   nothing new -- and a version diff taken on two different trees measures
+>   the TREES.
+>
+>   *A negative matrix dimension reached the runtime as a raw panic.*
+>   `Matrix::zeros`, `Matrix::ones` and `Matrix::from_array` allocated
+>   `nrows * ncols` elements without looking at either dimension.
+>   `Array::make` PANICS on a negative size, so `Matrix::zeros(-1, 3)` was a
+>   raw `PanicError` out of `moonbit_make_double_array_raw` -- exit
+>   3221226505, naming no site in this package.  The pair of negatives was
+>   worse: `zeros(-1, -3)` multiplied to a POSITIVE size, so the allocation
+>   SUCCEEDED and the matrix was built with `rows() == -1` and `cols() == -3`
+>   over three elements of data -- a shape that contradicts its own contents,
+>   silently.  All three constructors now reject a negative dimension with
+>   the package's own `precondition failed at matrix.mbt:29:...`.
+>
+>   *A negative cluster id reached an array index as a raw panic.*  Three
+>   cluster-id scans indexed `cluster_ids[i]` without checking the id's
+>   SIGN, and one of them indexed before it compared the array's length
+>   with the sample count at all.  A negative id and a short array were
+>   both raw panics; they are now the precondition failures the library
+>   promises, in the idiom the four sibling validators already used.
+>
+>   *The check that holds the new guards.*
+>   `_verify/_verify_precondition_guards_1650.py` (**8** checks) holds the
+>   two guard classes this round added: every cluster-id scan validates the
+>   id's SIGN, and every public Matrix constructor rejects a NEGATIVE
+>   dimension.  Its `--falsify` arm restores the PRE-FIX function bodies
+>   and requires every guard-dependent expectation to FLIP while the
+>   controls must not move -- a check that has never been shown to fail is
+>   a comment.
+>
+>   *The analyzers' own count is not the measurement of a fix.*  Line-
+>   normalised against clean HEAD, these guards REMOVE no finding and ADD
+>   nine -- seven "assertion may fail on some inputs" and two index rows --
+>   all in the six functions that were guarded.  The reason is the method:
+>   the abstract method treats every `require` as an assertion that may
+>   fail and cannot discharge one, so the original rows stay and the guard
+>   adds a new one.  The guards' value is established by the RUNTIME
+>   measurements, and this round says so rather than quoting a number that
+>   went the wrong way.
+>
+>   *A published failure count was stale, and only a release could move it.*
+>   Round 87 split ONE skill-claims check into TWO, so the round-39 dry-run's
+>   failure count grew from 13 to 14 and the published count -- which lives
+>   in a RELEASED entry -- was never re-derived.  The driver had been red
+>   on `master` since that commit, and nothing said so.
+>
+>   - (`_verify/_dryrun_round39_1650.py`) breaks each of the **8** mechanisms
+>     one at a time and requires the failure count to GROW at every step,
+>     and it ends at **14** failures.  It needs the network, because one of
+>     the mechanisms is exercised by the citation check; the pre-flight
+>     refuses to run without the publisher rather than measuring nothing.
+>
+>   *A live pointer moved with the code this round changed.*  The guard
+>   added to `sensitivity.mbt` moved `pub struct SensitivityResult` from
+>   line 535 to line 538, and `_verify/PARITY_COMMENTS_1570.md` still named
+>   `sensitivity.mbt:535` -- and so did the round-15 verifier's own anchor
+>   table.  A pointer that resolves to the wrong line is still wrong.  Both
+>   are repaired.
+>
+>   *The e2e gate's expectation table went stale, and the gate has been RED
+>   on `master` since round 87.*  Round 87 moved the toolchain, whose core
+>   renders a `Byte` as the NUMBER where the earlier one rendered `b'\x45'`,
+>   and `examples/bitexact/main.mbt` was adapted to print numbers -- and says
+>   so, in its own comment.  The TABLE was not regenerated, so the gate
+>   asserted a final line the example had not printed since that commit: one
+>   of twenty examples failed, and the release could not be cut until it was
+>   fixed.  The table is GENERATED, not typed, and the generator its own
+>   comment names was not in the tree -- `.github/scripts/qa_loop/gen_e2e_table.py`
+>   is it now, and `--check` diffs the measured rows against the table.  The
+>   regenerated `bitexact` row is a 135-character line of plain numbers where
+>   it expected 295 characters of byte literals, and the `parity` example's
+>   floor is 446 lines.
+>
+>   *A HEX ESCAPE IN THE GENERATOR TURNED A QUOTATION INTO A CHARACTER.*
+>   The banner is GENERATED -- this file holds it as a Python string literal --
+>   and the sentence that quotes what the earlier core printed was written with
+>   ONE backslash, so Python read it as an escape and the banner shipped
+>   `b'E'`: one character where the toolchain printed four, and a quotation of
+>   a string the toolchain never printed.  The CHANGELOG (a plain-text file,
+>   so its backslashes are literal), the commit message and the example's own
+>   comment all say `b'\x45'` -- three documents agreed and the banner did
+>   not.  Nothing caught it because every check that read the SOURCE saw four
+>   characters there: the damage exists only in the OUTPUT.  The audit that
+>   found it is a DIFF of the source against the evaluated value, not an eye.
+>   `_verify/_verify_escape_damage_1650.py` (**9** checks) holds the rule now,
+>   and its control arm re-introduces the damage and requires the checks to go
+>   red.
+>
+>   *A driver anchor froze a shape the builder does not produce.*  The
+>   ledger's intro names the rounds it skipped, and the builder DERIVES that
+>   list: the skipped rounds are rendered as runs joined with a comma, so it
+>   reads "(rounds 60-69, round 87)" once there are two of them.  The
+>   round-73 driver's anchor allowed only digits and hyphens, so it matched a
+>   list of ONE gap run and could never match a list of two -- and this
+>   release's own round entry grew the second run.  It is the SHAPE the
+>   driver patches now, not the list the builder happened to derive.
+>
+>   *The counts that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **515** and makes **519**: a path named in prose is a check, and this
+>   round's documents name four more of them -- the new guard check, the
+>   record document that holds the pointer that moved, the generator that
+>   owns the e2e table, and the check that holds the generated documents
+>   against escape damage.
+>
+>   *The counts that moved.*  `_verify/_verify_ledger_counts_1650.py` (**98**
+>   checks) moved because this round publishes a count for two more checks.
 >
 >
 

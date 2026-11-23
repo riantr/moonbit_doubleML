@@ -351,9 +351,10 @@ def fake_stdout(prefix, want_len, min_lines, break_final=False):
     # A stdout that satisfies one row of _EXAMPLES (or deliberately misses it).
     #
     # The row marker is a 60-character PREFIX of the templatised line plus
-    # that line's exact length -- for `bitexact` the prefix shows 6 of the 32
-    # `b'<n>'` repetitions and the length is 295, and for `did_cs` the prefix
-    # is 60 and the length is 67.  So the line is built from the prefix and
+    # that line's exact length -- for `bitexact` the prefix shows the first
+    # few of its byte values and the length is the whole line, and for
+    # `did_cs` the prefix is 60 and the length is 67.  So the line is built
+    # from the prefix and
     # then EXTENDED to the expected length: the prefix is what the check
     # matches, the length is what it measures, and both have to hold.  The
     # filler is a letter, never a digit, because a digit would template to

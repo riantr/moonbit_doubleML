@@ -1140,6 +1140,7 @@ pub fn DoubleMLPLR::sensitivity_analysis_cluster(
   let theta = self.coef()
   let mut max_cid = -1
   for i = 0; i < n; i = i + 1 {
+    require(cluster_ids[i] >= 0)
     if cluster_ids[i] > max_cid {
       max_cid = cluster_ids[i]
     }

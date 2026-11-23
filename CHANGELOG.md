@@ -9,6 +9,193 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.65] -- a negative dimension was a raw panic, and a negative cluster id was a panic that named no site
+
+`moon.mod` moves 0.164.64 -> 0.164.65.  Three library files changed, and no
+estimator behaviour changed with them.  The test counts stay **1120 / 1126 /
+1120 / 1120** (native / wasm-gc / wasm / js).
+
+This release closed **8** findings, and it was cut after a registry-anchored
+QA pass: `riantr/LunaFlow` and `riantr/moonbit_static_analysis` were run at
+their registry `latest` against a CLEAN CLONE of the shipped tree, every
+finding they reported was adjudicated by MEASUREMENT rather than by reading,
+and the three that were real became guards.
+
+### Fixed -- a negative matrix dimension reached the runtime as a raw panic
+
+`Matrix::zeros`, `Matrix::ones` and `Matrix::from_array` took their shape as
+two `Int32`s and allocated `nrows * ncols` elements without looking at
+either.  `Array::make` PANICS on a negative size, so `Matrix::zeros(-1, 3)`
+was a raw `PanicError` out of `moonbit_make_double_array_raw` -- exit code
+3221226505, and a message that names no site in this package.
+
+The pair of negatives was worse.  `Matrix::zeros(-1, -3)` multiplied to a
+POSITIVE size, so the allocation SUCCEEDED and the matrix was built with
+`rows() == -1` and `cols() == -3` over three elements of data: a shape that
+contradicts its own contents, silently, with no error anywhere.
+
+All three constructors now reject a negative dimension with the package's own
+precondition failure -- `precondition failed at matrix.mbt:29:...` -- which is
+the message the library's other validators produce, and it names the file and
+the line.
+
+### Fixed -- a negative cluster id reached an array index as a raw panic
+
+`irm_style_sensitivity_cluster`, `irm_style_sensitivity_cluster_from_elements`
+and `DoubleMLPLR::sensitivity_analysis_cluster` scan `cluster_ids` and index
+`cluster_ids[i]` without checking the id's SIGN.  A negative id is a raw
+`PanicError` (exit 3221226505) that names no site -- and a negative id is not
+a value a caller gets wrong by accident: it is what a sentinel, or an
+unsigned-to-signed conversion, produces.
+
+The three now require `cluster_ids[i] >= 0` before the scan, in the idiom the
+four sibling validators already used (`sandwich.mbt`, `blp_policy.mbt`,
+`quantile.mbt`, `rdd.mbt`): the abort names the file and the line, e.g.
+`precondition failed at sensitivity.mbt:341:...`.
+
+### Fixed -- a short cluster-id array was a raw panic where the library promises a precondition failure
+
+`irm_style_sensitivity_cluster_from_elements` compared the id array's length
+with the sample count only by accident: it indexed `cluster_ids[i]` before
+anything compared the two lengths.  A `cluster_ids` shorter than the sample
+was therefore an index panic, not the clean precondition failure the library
+promises its callers.
+
+The length is now required before the scan: `require(cluster_ids.length() == n)`.
+
+### Fixed -- the round-39 dry-run's published failure count was stale, and the driver that holds it had been RED since round 87
+
+Round 87 split ONE skill-claims check into TWO -- "the skill's whitebox
+test-case count is the case count" and "the skill states %s files and %s
+cases" -- so breaking that promise now fails TWO assertions.  The published
+count was never re-derived, and the count lives in a RELEASED entry, so only
+a release's fill could move it.
+
+The driver had been red on `master` since that commit, and nothing said so.
+
+- (`_verify/_dryrun_round39_1650.py`) breaks each of the **8** mechanisms one
+  at a time and requires the failure count to GROW at every step: **14**
+  failures at the end.  It needs the network, because one of the mechanisms
+  is exercised by the citation check; the pre-flight refuses to run without
+  the publisher rather than measuring nothing.
+
+### Fixed -- a live file.mbt pointer moved with the code this release changed, and nothing had repaired it
+
+The guard this release added to `sensitivity.mbt` moved `pub struct
+SensitivityResult` from line 535 to line 538 -- and `_verify/
+PARITY_COMMENTS_1570.md` still named `sensitivity.mbt:535`, and so did the
+round-15 verifier's own anchor table.  A `file.mbt:NNN` pointer is a live
+promise: the check that holds it resolves the line AND compares that line's
+CONTENT against an anchor, so a pointer that resolves to the wrong line is
+still wrong.
+
+Both are repaired, and the round-15 check is green again (109 checks).
+
+### Fixed -- the e2e gate's expectation table was stale, and the gate has been RED on `master` since round 87
+
+Round 87 moved the toolchain to moon 0.1.20261117, whose core renders a
+`Byte` as the NUMBER (`69` for 0x45) where the earlier core rendered
+`b'\x45'`.  `examples/bitexact/main.mbt` was adapted to print numbers instead
+of Python bytes literals -- and says why, in its own comment.
+
+The gate's expectation table was NOT regenerated: it still expected the
+`b'\x<n>'` form, so the gate asserted a final line the example had not
+printed since that commit.  One of the twenty examples failed, the gate was
+RED on `master`, and this release could not be cut until it was fixed.  The
+gate was RIGHT and the table was wrong; the table is what had to move.
+
+The table is GENERATED, not typed -- and the generator its own comment names
+was not in the tree.  `.github/scripts/qa_loop/gen_e2e_table.py` is it now:
+it re-runs every example, computes each row with the harness's OWN
+templatising and line-reading functions, `--check` diffs the measured rows
+against the table in `.github/scripts/qa_loop/checks.py`, and `--write` puts
+the measured rows back, byte for byte, leaving every other byte alone.
+
+Regenerated, exactly two rows moved: `bitexact` expects a 135-character line
+of plain numbers where it expected 295 characters of byte literals, and
+`parity`'s floor is 446 lines.  The other eighteen examples measured the
+values the table already published.
+
+### Fixed -- a hex escape in the generator turned a quotation into a character
+
+The ENGINEERING banner is GENERATED: `_verify/_r18_build_readme_1650.py` holds
+it as a Python string literal.  The sentence that quotes what the earlier
+toolchain printed was written with ONE backslash, so Python read `\x45` as an
+escape and the banner shipped `b'E'` -- one character where the toolchain
+printed four, and a quotation of a string the toolchain never printed.
+
+Nothing caught it, and the reason is worth writing down: every check that
+read the SOURCE saw four characters there, and the damage exists only in the
+OUTPUT.  The CHANGELOG -- a plain-text file, so its backslashes are literal
+-- says `b'\x45'`; the commit message says `b'\x45'`; the example's own
+comment says `b'\x45'`.  Three documents agreed and the banner did not.
+
+The audit that found it is a DIFF of the source against the evaluated value,
+not an eye.  A text generator's output is text, and the only way to know what
+a literal really says is to evaluate it.
+
+- `_verify/_verify_escape_damage_1650.py` (**9** checks) holds the rule now:
+  no string literal in the builder may contain a hex escape that FIRES, the
+  shipped `ENGINEERING.md` must carry the builder's evaluated `LEDGER_HEAD`,
+  and the banner and the CHANGELOG must spell the same code span.  Its
+  control arm re-introduces the historical damage -- the doubled backslash
+  turned back into a single one -- and requires the checks to go red.
+
+### Fixed -- the round-73 driver's anchor froze the gap list's shape, and this release's own ledger killed it
+
+The ledger's intro names the rounds it skipped, and the builder DERIVES that
+list: the skipped rounds are rendered as runs joined with a comma, so it
+reads "(rounds 60-69)" while there is one run and "(rounds 60-69, round 87)"
+once there are two.  The round-73 driver patched that paragraph with an
+anchor that allowed only digits and hyphens between "rounds " and ")", so it
+matched the first shape and could never match the second.
+
+This release added a round entry, so the list grew its second run -- and the
+anchor died.  It is the SHAPE the driver patches now, not the list the
+builder happened to derive: the list's content is whatever the builder
+produced.
+
+### Added -- two checks that pin this release, each with a control arm that must bite
+
+`_verify/_verify_precondition_guards_1650.py` (**8** checks) holds the two
+guard classes this release added: every cluster-id scan validates the id's
+SIGN, and every public Matrix constructor rejects a NEGATIVE dimension.  The
+structural half reads the shipped tree; the behavioural half COPIES the
+library package, flips it to an executable, runs one mode per process, and
+judges the PROCESS OUTCOME -- because the difference between the two failure
+modes, a clean precondition failure and a raw panic, is exactly what is being
+pinned.
+
+Its `--falsify` arm restores the PRE-FIX function bodies and requires every
+guard-dependent expectation to FLIP, while the control expectations must not
+move.  A check that has never been shown to fail is a comment.
+
+`_verify/_verify_escape_damage_1650.py` (**9** checks) holds the generated
+documents against the escape damage described above: no string literal in the
+builder may contain a hex escape that FIRES, the shipped `ENGINEERING.md`
+must carry the builder's evaluated `LEDGER_HEAD`, and the banner and the
+CHANGELOG must spell the same code span.  Its control arm re-introduces the
+historical damage -- the doubled backslash turned back into a single one --
+and requires the checks to go red on the mutated builder.
+
+- The ledger's own count moved with them:
+  `_verify/_verify_ledger_counts_1650.py` (**98** checks) is the new number,
+  because this release publishes a count for two more checks.
+
+- The path-promises check grew with the documents this release wrote:
+  `_verify/_verify_path_promises_1650.py` published **515** and makes
+  **519** checks: a path named in prose is a check, and this round names four
+  more of them -- the new guard check, the record document that holds the
+  pointer that moved, the generator that owns the e2e table, and the check
+  that holds the generated documents against escape damage.
+
+### Verified ---
+
+- local gate: 60 steps, 0 failed
+- tracked verifier suite: 97 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **97** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1120 / 1126 / 1120 / 1120 (native / wasm-gc / wasm / js)
 ## [0.164.64] -- a gate that read the toolchain's diagnostics as the program's output
 
 `moon.mod` moves 0.164.63 -> 0.164.64. No estimator behaviour changed. The
