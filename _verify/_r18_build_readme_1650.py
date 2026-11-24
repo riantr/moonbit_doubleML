@@ -4004,6 +4004,107 @@ __GAP_NOTE__
 >   **519** and makes **520**: a path named in prose is a check, and this
 >   round's ledger and CHANGELOG entry name one more of them -- the example's
 >   package manifest, whose one line was the whole of the failure.
+
+> * **Round 90.**  A negative sample count was a raw panic, and a design
+>   narrower than the covariates the DGP reads read past the end of the array.
+>
+>   The QA pass was ANCHORED TO THE REGISTRY again: `riantr/LunaFlow` and
+>   `riantr/moonbit_static_analysis` at their registry `latest` -- **0.1.37**
+>   and **0.5.4**, both newer than the round before -- against a CLEAN CLONE
+>   of the shipped tree.
+>
+>   The analyzer's ONE actionable finding was a FALSE POSITIVE.  It reports
+>   `unsupported operand types for '==': '[int]' and '[int]'` at
+>   `moonbit_doubleML/expand_v120_test.mbt`; the COMPILER accepts that
+>   comparison -- `moon check --deny-warn` exits 0 -- and a probe prints
+>   `true` for equal arrays and `false` for unequal ones.  The analyzer's
+>   type table is wrong, and the site it names is on an EXECUTED test path.
+>
+>   The flow analyzer's DIVISION-BY-ZERO class was guarded code: thirteen of
+>   its fifteen sites have a `require` immediately before the division, and
+>   the other two divide by a count that is zero only when the enclosing
+>   loop bound is zero, so the division is unreachable.  Its fingerprints do
+>   not separate guarded from unguarded either -- it reports the full-range
+>   `Array.make([-2147483648,2147483647])` at `moonbit_doubleML/matrix.mbt`,
+>   a site that now carries `require(nrows >= 0 && ncols >= 0)`.
+>
+>   The real defects were found by a PROBE, not by the analyzer: eighteen
+>   public DGP generators took a caller-supplied sample count and sized
+>   every array they build from it with no precondition in front of it.
+>   Fifteen of them also took a `dim_x` they never checked against the
+>   covariates their own formula reads, and eleven of those fifteen trapped
+>   below that floor.  A 186-arm probe -- counts {400, 0, -1, -16, -100}
+>   crossed with dimensions {0, 1, 2, 3, 4, 5}, the FULL output of every arm
+>   kept -- measured **83** raw traps, **102** survivors and one
+>   already-guarded call on the published 0.164.66 bytes.
+>
+>   *The probe's FILTER was the first thing that was wrong.*  The first
+>   runner kept only the lines matching `PROBE*`, `RuntimeError*` or
+>   `*Error*`, and the package's OWN `precondition failed at ...` line
+>   matches none of them -- so a correctly-guarded call was reported as a
+>   raw panic.  Keeping every line is what made the difference visible.
+>
+>   *The candidates the probe REFUTED did not become guards.*
+>   `range_indices(-1)` survives, because `Array::makei` does not trap on a
+>   negative count; and four generators whose formula reads no fixed
+>   covariate column trap at no dimension at all, so they carry no dimension
+>   guard -- a guard that rejects an input that works today would be a
+>   behaviour change, not a fix.
+>
+>   The fix is the house's shape: `require(...)` inside the function, with
+>   the package's own `abort("precondition failed at " + loc.to_string())`.
+>   The `require` lives IN the function because the abort names the
+>   `require`'s own site, so a shared helper would report the helper's line
+>   and the caller would not learn which generator they called.  Nineteen
+>   functions changed: the eighteen generators, and `did_bootstrap_t_stat`,
+>   whose rep count sized the result array the same way.
+>
+>   *The floors are MEASURED, not guessed.*  The smallest dimension the
+>   probe measured as not trapping is 2, 3 or 4 depending on the formula,
+>   and every call site in the tree was measured against them: the smallest
+>   `dim_x` any caller passes is 3, so no caller is refused.
+>
+>   *The TOOLS' NUMBERS MOVED, AND NOT ABOUT CORRECTNESS.*  The flow
+>   analyzer's `RANGE-VIOLATION` count rose by exactly **30** -- one "assert
+>   may be false" per new guard -- while its `INDEX-OOB` and `TAINT-ALLOC`
+>   counts did not move at all: it does not model `require`, so it cannot
+>   see that the raw panic is gone.  The other analyzer moved the other
+>   way: the guard shape is a `try` EXPRESSION, which it does not model
+>   either, so it stopped reading nineteen function bodies -- its notices
+>   fell and its "unchecked" count fell with them.  A reader comparing
+>   finding counts would conclude the tree got noisier in one tool and
+>   quieter in the other, for the same change, and neither number would be
+>   about the code.
+>
+>   *The check that holds the new guards.*
+>   `_verify/_verify_precondition_guards_1650.py` publishes **17** checks
+>   and its `--falsify` arm restores the pre-fix bodies: every
+>   guard-dependent expectation must then show the unguarded outcome, and
+>   every control must still work.
+>
+>   *A live pointer moved with the code this round changed.*  The guard
+>   added to `dgp_did_CS2021.mbt` moved `let n_periods = 4` from line 50 to
+>   line 56, and `_verify/N_FOLDS_1570.md` still named
+>   `dgp_did_CS2021.mbt:50-52` -- and so did the round-15 verifier's own
+>   anchor table.  A pointer that resolves to the wrong line is still wrong.
+>   Both are repaired.
+>
+>   *The escape-damage check measured the CHANGELOG's AGE, not its
+>   SPELLING.*  It compared the builder's code spans against the CHANGELOG's
+>   NEWEST SECTION, and the banner ACCUMULATES: it quotes a sentence the
+>   CHANGELOG recorded once, and the CHANGELOG is append-only, so the quote's
+>   home section moves down the file with every release.  The section that
+>   carried the quote left the window, and the check went RED on a release
+>   where the banner and the CHANGELOG still agreed.  The ground truth is the
+>   WHOLE FILE -- which is what the rule's own text has always said ("the
+>   CHANGELOG is a FILE, not a literal") -- so the IMPLEMENTATION was what
+>   was too narrow.  `_verify/_verify_escape_damage_1650.py` publishes
+>   **10** checks, and its arm now corrupts the CHANGELOG's own spelling and
+>   requires the comparison to reject it.
+>
+>   *The count that grew.*  `_verify/_verify_path_promises_1650.py` published
+>   **520** and makes **522**: a path named in prose is a check, and this
+>   round's ledger names the files the adjudication turned on.
 >
 >
 

@@ -53,150 +53,160 @@ struct DidCsData {
 /// Generate the DID CS2021 DGP. Default: 2 cohorts, 2 periods,
 /// `theta = 1.0`, balanced cohort sizes, `n_per_cohort = 200`,
 /// `dim_x = 3`.
+///
+/// Aborts if `n_obs` is negative: the count sizes every array in the
+/// DGP, and a negative size trapped the runtime instead of naming
+/// the precondition.
 pub fn make_did_cs_CS2021(
   n_obs : Int32,
   dim_x : Int32,
   theta : Double,
   seed : Int32,
 ) -> DidCsData {
-  let rng = chacha8_rng(seed)
-  // 2 cohorts, 2 periods, equal cohort sizes; cohort 0 = never-treated,
-  // cohort 1 = treated at t=1.
-  let n_periods = 2
-  let n_groups = 2
-  let n_per_cohort = n_obs / n_groups / n_periods
-  let true_n = n_per_cohort * n_groups * n_periods
-  // 1. Pre-draw X-draw normals (n_units * dim_x).
-  let n_units = n_per_cohort * n_groups
-  let n_normals_x = n_units * dim_x
-  let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
-  let half_z = (n_normals_x + 1) / 2
-  for i = 0; i < half_z; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_normals_x {
-      z_flat[idx_a] = z1
+  try {
+    require(n_obs >= 0)
+    let rng = chacha8_rng(seed)
+    // 2 cohorts, 2 periods, equal cohort sizes; cohort 0 = never-treated,
+    // cohort 1 = treated at t=1.
+    let n_periods = 2
+    let n_groups = 2
+    let n_per_cohort = n_obs / n_groups / n_periods
+    let true_n = n_per_cohort * n_groups * n_periods
+    // 1. Pre-draw X-draw normals (n_units * dim_x).
+    let n_units = n_per_cohort * n_groups
+    let n_normals_x = n_units * dim_x
+    let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
+    let half_z = (n_normals_x + 1) / 2
+    for i = 0; i < half_z; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_normals_x {
+        z_flat[idx_a] = z1
+      }
+      if idx_b < n_normals_x {
+        z_flat[idx_b] = z2
+      }
     }
-    if idx_b < n_normals_x {
-      z_flat[idx_b] = z2
-    }
-  }
-  // 2. Build unit-level X (n_units x dim_x) via lower-triangular L.
-  let x_unit : Array[Double] = Array::make(n_normals_x, 0.0)
-  for i = 0; i < n_units; i = i + 1 {
-    for k = 0; k < dim_x; k = k + 1 {
-      let mut s = 0.0
-      let mut acc = 1.0
-      let mut j = k
-      while j >= 0 {
-        s = s + acc * z_flat[i * dim_x + j]
-        acc = acc * 0.7
-        if j == 0 {
-          break
+    // 2. Build unit-level X (n_units x dim_x) via lower-triangular L.
+    let x_unit : Array[Double] = Array::make(n_normals_x, 0.0)
+    for i = 0; i < n_units; i = i + 1 {
+      for k = 0; k < dim_x; k = k + 1 {
+        let mut s = 0.0
+        let mut acc = 1.0
+        let mut j = k
+        while j >= 0 {
+          s = s + acc * z_flat[i * dim_x + j]
+          acc = acc * 0.7
+          if j == 0 {
+            break
+          }
+          j = j - 1
         }
-        j = j - 1
-      }
-      x_unit[i * dim_x + k] = s
-    }
-  }
-  // 3. Pre-draw time-varying noise (n_units * n_periods).
-  let eps : Array[Double] = Array::make(true_n, 0.0)
-  let half_n = (true_n + 1) / 2
-  for i = 0; i < half_n; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < true_n {
-      eps[idx_a] = z1
-    }
-    if idx_b < true_n {
-      eps[idx_b] = z2
-    }
-  }
-  // 3b. Per-unit intercept `alpha_i`, a standard normal draw. v0.148.0.
-  //
-  // This REPLACED `alpha_i = 0.5 * unit_in_cohort`, a deterministic ramp over
-  // the within-cohort index reaching 99.5 with SD ~ 28.8. The ramp was not a
-  // small modelling choice, it dominated everything else and silently made the
-  // whole fixture unusable. Measured on make_did_cs_CS2021(800, 3, 1.0, 3141):
-  //
-  //   var(y)            = 828.42      (the ramp's share)
-  //   var(X . gamma)    ~  4.3
-  //   corr(X_k, y)      <= 0.027 for every k   ->  r^2 <= 7e-4
-  //   mse(g_hat)        = 871.78
-  //   mse(cell mean)    = 829.09              -> g_hat 5.2% WORSE than a constant
-  //
-  // So E[Y | D, T, X] carried no covariate signal at all: every conditional
-  // nuisance was effectively a constant, `sigma2 = mean((y - g_hat)^2)`
-  // collapsed onto `var(y)`, and the sensitivity machinery had nothing to
-  // condition on. `dgp_recovery_test`'s `max_abs_err < 5.0` never bit either,
-  // because it was reading a zero from a cell that was never estimated.
-  //
-  // A draw is kept deliberately rather than dropping the term outright:
-  // unobserved unit heterogeneity IS the hidden confounding that `nu2` exists
-  // to price, so removing it entirely would leave the fixture unable to
-  // represent the thing it is for. SD 1 puts it on the same scale as the true
-  // treatment effect (`theta = 1.0`) and makes it ~19% of the covariate
-  // signal, i.e. a minority that must be partialled out rather than a
-  // majority that drowns everything.
-  //
-  // Upstream has no unit intercept at all -- its outcome is
-  // `210 + (t/T) * (27.4*W1 + 13.7*W2 + 13.7*W3 + 13.7*W4)`, driven by
-  // covariates. This term is a port addition, kept on the measurement above.
-  let alpha : Array[Double] = Array::make(n_units, 0.0)
-  let half_a = (n_units + 1) / 2
-  for i = 0; i < half_a; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_units {
-      alpha[idx_a] = z1
-    }
-    if idx_b < n_units {
-      alpha[idx_b] = z2
-    }
-  }
-  // 4. Build panel y, d, t, g, id. Layout: outer = unit, inner = period.
-  let y : Array[Double] = Array::make(true_n, 0.0)
-  let d : Array[Double] = Array::make(true_n, 0.0)
-  let t : Array[Int32] = Array::make(true_n, 0)
-  let g : Array[Int32] = Array::make(true_n, 0)
-  let id : Array[Int32] = Array::make(true_n, 0)
-  for u = 0; u < n_units; u = u + 1 {
-    let cohort = u / n_per_cohort
-    let unit_in_cohort = u % n_per_cohort
-    let is_treated = cohort > 0
-    let tau_g = if is_treated { 1 } else { -1 } // never-treated sentinel
-    for period = 0; period < n_periods; period = period + 1 {
-      let idx = u * n_periods + period
-      // Treatment indicator: post-treatment for treated cohort.
-      d[idx] = if is_treated && period >= tau_g { 1.0 } else { 0.0 }
-      // Outcome: alpha_i + beta_t + theta * D + X_i @ gamma + eps
-      let mut x_dot_gamma = 0.0
-      for k = 0; k < dim_x; k = k + 1 {
-        x_dot_gamma = x_dot_gamma + x_unit[u * dim_x + k]
-      }
-      let alpha_i = alpha[u]
-      let beta_t = 0.3 * period.to_double()
-      y[idx] = alpha_i + beta_t + theta * d[idx] + x_dot_gamma + eps[idx]
-      t[idx] = period
-      g[idx] = cohort
-      id[idx] = unit_in_cohort
-    }
-  }
-  // Expand X to panel (each unit's X is repeated n_periods times).
-  let x_panel_flat : Array[Double] = Array::make(true_n * dim_x, 0.0)
-  for u = 0; u < n_units; u = u + 1 {
-    for p = 0; p < n_periods; p = p + 1 {
-      let panel_row = u * n_periods + p
-      for k = 0; k < dim_x; k = k + 1 {
-        x_panel_flat[panel_row * dim_x + k] = x_unit[u * dim_x + k]
+        x_unit[i * dim_x + k] = s
       }
     }
+    // 3. Pre-draw time-varying noise (n_units * n_periods).
+    let eps : Array[Double] = Array::make(true_n, 0.0)
+    let half_n = (true_n + 1) / 2
+    for i = 0; i < half_n; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < true_n {
+        eps[idx_a] = z1
+      }
+      if idx_b < true_n {
+        eps[idx_b] = z2
+      }
+    }
+    // 3b. Per-unit intercept `alpha_i`, a standard normal draw. v0.148.0.
+    //
+    // This REPLACED `alpha_i = 0.5 * unit_in_cohort`, a deterministic ramp over
+    // the within-cohort index reaching 99.5 with SD ~ 28.8. The ramp was not a
+    // small modelling choice, it dominated everything else and silently made the
+    // whole fixture unusable. Measured on make_did_cs_CS2021(800, 3, 1.0, 3141):
+    //
+    //   var(y)            = 828.42      (the ramp's share)
+    //   var(X . gamma)    ~  4.3
+    //   corr(X_k, y)      <= 0.027 for every k   ->  r^2 <= 7e-4
+    //   mse(g_hat)        = 871.78
+    //   mse(cell mean)    = 829.09              -> g_hat 5.2% WORSE than a constant
+    //
+    // So E[Y | D, T, X] carried no covariate signal at all: every conditional
+    // nuisance was effectively a constant, `sigma2 = mean((y - g_hat)^2)`
+    // collapsed onto `var(y)`, and the sensitivity machinery had nothing to
+    // condition on. `dgp_recovery_test`'s `max_abs_err < 5.0` never bit either,
+    // because it was reading a zero from a cell that was never estimated.
+    //
+    // A draw is kept deliberately rather than dropping the term outright:
+    // unobserved unit heterogeneity IS the hidden confounding that `nu2` exists
+    // to price, so removing it entirely would leave the fixture unable to
+    // represent the thing it is for. SD 1 puts it on the same scale as the true
+    // treatment effect (`theta = 1.0`) and makes it ~19% of the covariate
+    // signal, i.e. a minority that must be partialled out rather than a
+    // majority that drowns everything.
+    //
+    // Upstream has no unit intercept at all -- its outcome is
+    // `210 + (t/T) * (27.4*W1 + 13.7*W2 + 13.7*W3 + 13.7*W4)`, driven by
+    // covariates. This term is a port addition, kept on the measurement above.
+    let alpha : Array[Double] = Array::make(n_units, 0.0)
+    let half_a = (n_units + 1) / 2
+    for i = 0; i < half_a; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_units {
+        alpha[idx_a] = z1
+      }
+      if idx_b < n_units {
+        alpha[idx_b] = z2
+      }
+    }
+    // 4. Build panel y, d, t, g, id. Layout: outer = unit, inner = period.
+    let y : Array[Double] = Array::make(true_n, 0.0)
+    let d : Array[Double] = Array::make(true_n, 0.0)
+    let t : Array[Int32] = Array::make(true_n, 0)
+    let g : Array[Int32] = Array::make(true_n, 0)
+    let id : Array[Int32] = Array::make(true_n, 0)
+    for u = 0; u < n_units; u = u + 1 {
+      let cohort = u / n_per_cohort
+      let unit_in_cohort = u % n_per_cohort
+      let is_treated = cohort > 0
+      let tau_g = if is_treated { 1 } else { -1 } // never-treated sentinel
+      for period = 0; period < n_periods; period = period + 1 {
+        let idx = u * n_periods + period
+        // Treatment indicator: post-treatment for treated cohort.
+        d[idx] = if is_treated && period >= tau_g { 1.0 } else { 0.0 }
+        // Outcome: alpha_i + beta_t + theta * D + X_i @ gamma + eps
+        let mut x_dot_gamma = 0.0
+        for k = 0; k < dim_x; k = k + 1 {
+          x_dot_gamma = x_dot_gamma + x_unit[u * dim_x + k]
+        }
+        let alpha_i = alpha[u]
+        let beta_t = 0.3 * period.to_double()
+        y[idx] = alpha_i + beta_t + theta * d[idx] + x_dot_gamma + eps[idx]
+        t[idx] = period
+        g[idx] = cohort
+        id[idx] = unit_in_cohort
+      }
+    }
+    // Expand X to panel (each unit's X is repeated n_periods times).
+    let x_panel_flat : Array[Double] = Array::make(true_n * dim_x, 0.0)
+    for u = 0; u < n_units; u = u + 1 {
+      for p = 0; p < n_periods; p = p + 1 {
+        let panel_row = u * n_periods + p
+        for k = 0; k < dim_x; k = k + 1 {
+          x_panel_flat[panel_row * dim_x + k] = x_unit[u * dim_x + k]
+        }
+      }
+    }
+    let x_panel = Matrix::from_array(x_panel_flat, true_n, dim_x)
+    { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  let x_panel = Matrix::from_array(x_panel_flat, true_n, dim_x)
-  { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel, }
 }
 
 ///|

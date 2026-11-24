@@ -9,6 +9,117 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.67] -- a negative sample count was a raw panic, and a narrow design read past the end of the array
+
+`moon.mod` moves 0.164.66 -> 0.164.67.  No estimator behaviour changed, and the
+test counts are UNCHANGED at **1120 / 1126 / 1120 / 1120** (native / wasm-gc /
+wasm / js) -- re-measured on the toolchain this release names, not carried
+over.
+
+This release closed **6** findings.  Four are the same shape: a caller-supplied
+integer reached an allocation size or an array index with no precondition in
+front of it.  The other two are this release's OWN CONTRACT -- a live pointer
+moved with the code this release changed, and a check that measured the
+CHANGELOG's AGE instead of its spelling.
+
+The findings came from a QA pass anchored to the registry -- `riantr/LunaFlow`
+and `riantr/moonbit_static_analysis` at their `latest`, against a clean clone
+of the shipped tree -- and the defects themselves were decided by a PROBE
+rather than by the analyzers: a 186-arm probe called every generator across
+counts {400, 0, -1, -16, -100} and dimensions {0, 1, 2, 3, 4, 5}, keeping the
+full output of every arm.  On the published 0.164.66 bytes it measured **83**
+raw traps, **102** survivors and one already-guarded call.
+
+### Fixed -- a negative sample count reached an allocation without a guard
+
+Eighteen public DGP generators take a caller-supplied sample count and size
+every array they build from it.  NONE of them guarded it, so a negative count
+reached `Array::make` with a negative size and the runtime TRAPPED -- a raw
+`RuntimeError: unreachable` with no file, no line, and no statement of which
+precondition had failed.
+
+The count is refused now, by the package's own mechanism: `require(n_obs >= 0)`
+inside the generator, with the same `abort("precondition failed at " +
+loc.to_string())` the rest of the library uses, so the abort names the
+generator that refused.  The `require` lives in the function on purpose -- the
+abort reports the `require`'s own site, so a shared helper would report the
+helper's line and the caller would not learn which generator they called.
+
+### Fixed -- a negative sample count in the panel families produced an EMPTY dataset instead of an error
+
+The DID and PLPR families divide the count by 16 before they size anything, so
+a count of -1 truncated to zero observations and the generator RETURNED: an
+empty dataset, with no error at all.  That is the same "silently inconsistent"
+shape the `Matrix::zeros` fix closed, and it is closed now -- the count is
+refused before the division, not after it.
+
+### Fixed -- a design narrower than the covariates the DGP reads read past the end of the array
+
+Fifteen of the generators also take a `dim_x`, and eleven of them read a fixed
+covariate column of every row -- the second and the third for most of them, the
+second and the fourth for `make_plr_CCDDHNR2018`.  A design narrower than that
+read one past the end of the flat array on the LAST row, and trapped.
+
+Each of them refuses a design too narrow for its own formula now.  The floor is
+the smallest width that did not trap: 2 for the two that read only the second
+covariate, 3 for the seven that read the second and the third, and 4 for
+`make_plr_CCDDHNR2018`.  The four generators whose formula reads no fixed
+covariate column trap at no width at all, so they carry no width guard -- a
+guard that rejects an input that works today would be a behaviour change, not
+a fix.  Every call site in the tree was measured against the floors: the
+smallest `dim_x` any caller passes is 3, so no caller is refused.
+
+### Fixed -- the bootstrap rep count sized the result array without a guard
+
+`did_bootstrap_t_stat` sizes its result array with `n_rep_boot * n_thetas`,
+and `n_rep_boot` is a caller-supplied count with no precondition in front of
+it.  A negative rep count trapped the runtime.  It is refused now.
+
+### Fixed -- a live file.mbt pointer moved with the code this release changed, and nothing had repaired it
+
+The guard this release added to `dgp_did_CS2021.mbt` moved `let n_periods = 4`
+from line 50 to line 56 -- and `_verify/N_FOLDS_1570.md` still named
+`dgp_did_CS2021.mbt:50-52`, and so did the round-15 verifier's own anchor
+table.  A `file.mbt:NNN` pointer is a live promise: the check that holds it
+resolves the line AND compares that line's CONTENT against an anchor, so a
+pointer that resolves to the wrong line is still wrong.
+
+Both are repaired, and the round-15 check is green again (109 checks).
+
+### Fixed -- the escape-damage check measured the CHANGELOG's AGE, not its spelling
+
+`_verify/_verify_escape_damage_1650.py` compared the builder's code spans
+against the CHANGELOG's NEWEST SECTION.  But the banner is GENERATED and it
+ACCUMULATES: it quotes a sentence the CHANGELOG recorded once, and the
+CHANGELOG is append-only, so the quote's home section moves down the file with
+every release.  This release added a section, the section that carried the
+quote left the window, and the check went RED on a release where the banner
+and the CHANGELOG still agreed -- the comparison was measuring the CHANGELOG's
+AGE, not its spelling.
+
+The ground truth is the WHOLE FILE, which is what the rule's own text has
+always said ("the CHANGELOG is a FILE, not a literal"), so the IMPLEMENTATION
+was what was too narrow.  It is the file now, and the check's own arm corrupts
+the CHANGELOG's spelling of the code span and requires the comparison to
+reject it.  `_verify/_verify_escape_damage_1650.py` publishes **10** checks.
+
+- The check that holds the new guards grew with them:
+  `_verify/_verify_precondition_guards_1650.py` publishes **17** checks, and
+  its `--falsify` arm restores the pre-fix bodies: every guard-dependent
+  expectation must then show the unguarded outcome, and every control must
+  still work.
+- The path-promises check grew with this round's ledger:
+  `_verify/_verify_path_promises_1650.py` published **520** and makes **522**
+  checks: a path named in prose is a check, and this round's ledger names the
+  files the adjudication turned on.
+
+### Verified ---
+
+- local gate: 68 steps, 0 failed
+- tracked verifier suite: 97 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **97** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1120 / 1126 / 1120 / 1120 (native / wasm-gc / wasm / js)
 ## [0.164.66] -- an example declared a dependency it never used, and the gate looked at a different tree than CI does
 
 `moon.mod` moves 0.164.65 -> 0.164.66.  No estimator behaviour changed, and the

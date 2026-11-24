@@ -27,73 +27,84 @@ struct IrmConfoundedData {
 }
 
 ///|
+///
+/// Aborts if `n_obs` is negative, or if `dim_x` is smaller than 2:
+/// the DGP formula reads the second covariate of every row, and a
+/// narrower design read past the end of the flat array on the last row.
 pub fn make_irm_confounded_data(
   n_obs : Int32,
   dim_x : Int32,
   theta : Double,
   seed : Int32,
 ) -> IrmConfoundedData {
-  let rng = chacha8_rng(seed)
-  // 1. Pre-draw X-draw normals.
-  let n_normals_x = n_obs * dim_x
-  let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
-  let half_z = (n_normals_x + 1) / 2
-  for i = 0; i < half_z; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_normals_x {
-      z_flat[idx_a] = z1
-    }
-    if idx_b < n_normals_x {
-      z_flat[idx_b] = z2
-    }
-  }
-  let x_flat : Array[Double] = Array::make(n_normals_x, 0.0)
-  for i = 0; i < n_obs; i = i + 1 {
-    for k = 0; k < dim_x; k = k + 1 {
-      let mut s = 0.0
-      let mut acc = 1.0
-      let mut j = k
-      while j >= 0 {
-        s = s + acc * z_flat[i * dim_x + j]
-        acc = acc * 0.7
-        if j == 0 {
-          break
-        }
-        j = j - 1
+  try {
+    require(n_obs >= 0)
+    require(dim_x >= 2)
+    let rng = chacha8_rng(seed)
+    // 1. Pre-draw X-draw normals.
+    let n_normals_x = n_obs * dim_x
+    let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
+    let half_z = (n_normals_x + 1) / 2
+    for i = 0; i < half_z; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_normals_x {
+        z_flat[idx_a] = z1
       }
-      x_flat[i * dim_x + k] = s
+      if idx_b < n_normals_x {
+        z_flat[idx_b] = z2
+      }
     }
-  }
-  // 2. Pre-draw v ~ N(0, 1).
-  let v_flat : Array[Double] = Array::make(n_obs, 0.0)
-  let half_n = (n_obs + 1) / 2
-  for i = 0; i < half_n; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_obs {
-      v_flat[idx_a] = z1
+    let x_flat : Array[Double] = Array::make(n_normals_x, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      for k = 0; k < dim_x; k = k + 1 {
+        let mut s = 0.0
+        let mut acc = 1.0
+        let mut j = k
+        while j >= 0 {
+          s = s + acc * z_flat[i * dim_x + j]
+          acc = acc * 0.7
+          if j == 0 {
+            break
+          }
+          j = j - 1
+        }
+        x_flat[i * dim_x + k] = s
+      }
     }
-    if idx_b < n_obs {
-      v_flat[idx_b] = z2
+    // 2. Pre-draw v ~ N(0, 1).
+    let v_flat : Array[Double] = Array::make(n_obs, 0.0)
+    let half_n = (n_obs + 1) / 2
+    for i = 0; i < half_n; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_obs {
+        v_flat[idx_a] = z1
+      }
+      if idx_b < n_obs {
+        v_flat[idx_b] = z2
+      }
     }
+    // 3. Build c (binary confounder), d, y.
+    let c : Array[Double] = Array::make(n_obs, 0.0)
+    let d : Array[Double] = Array::make(n_obs, 0.0)
+    let y : Array[Double] = Array::make(n_obs, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      c[i] = if rng.double() < 0.5 { 1.0 } else { 0.0 }
+      let x1 = x_flat[i * dim_x + 1]
+      let p_score = 0.5 * c[i] + 0.5 * x1
+      let p = 1.0 / (1.0 + @math.exp(-p_score))
+      d[i] = if rng.double() < p { 1.0 } else { 0.0 }
+      y[i] = theta * d[i] + 0.5 * x1 + c[i] + v_flat[i]
+    }
+    let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
+    { theta, x: x_mat, y, d, c, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  // 3. Build c (binary confounder), d, y.
-  let c : Array[Double] = Array::make(n_obs, 0.0)
-  let d : Array[Double] = Array::make(n_obs, 0.0)
-  let y : Array[Double] = Array::make(n_obs, 0.0)
-  for i = 0; i < n_obs; i = i + 1 {
-    c[i] = if rng.double() < 0.5 { 1.0 } else { 0.0 }
-    let x1 = x_flat[i * dim_x + 1]
-    let p_score = 0.5 * c[i] + 0.5 * x1
-    let p = 1.0 / (1.0 + @math.exp(-p_score))
-    d[i] = if rng.double() < p { 1.0 } else { 0.0 }
-    y[i] = theta * d[i] + 0.5 * x1 + c[i] + v_flat[i]
-  }
-  let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d, c, }
 }
 
 ///|

@@ -21,82 +21,93 @@ struct IrmDiscreteData {
 }
 
 ///|
+///
+/// Aborts if `n_obs` is negative, or if `dim_x` is smaller than 3:
+/// the DGP formula reads the second and third covariate of every row, and a
+/// narrower design read past the end of the flat array on the last row.
 pub fn make_irm_discrete_treatments(
   n_obs : Int32,
   dim_x : Int32,
   theta : Double,
   seed : Int32,
 ) -> IrmDiscreteData {
-  let rng = chacha8_rng(seed)
-  // Pre-draw X-draw normals.
-  let n_normals_x = n_obs * dim_x
-  let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
-  let half_z = (n_normals_x + 1) / 2
-  for i = 0; i < half_z; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_normals_x {
-      z_flat[idx_a] = z1
-    }
-    if idx_b < n_normals_x {
-      z_flat[idx_b] = z2
-    }
-  }
-  let x_flat : Array[Double] = Array::make(n_normals_x, 0.0)
-  for i = 0; i < n_obs; i = i + 1 {
-    for k = 0; k < dim_x; k = k + 1 {
-      let mut s = 0.0
-      let mut acc = 1.0
-      let mut j = k
-      while j >= 0 {
-        s = s + acc * z_flat[i * dim_x + j]
-        acc = acc * 0.7
-        if j == 0 {
-          break
-        }
-        j = j - 1
+  try {
+    require(n_obs >= 0)
+    require(dim_x >= 3)
+    let rng = chacha8_rng(seed)
+    // Pre-draw X-draw normals.
+    let n_normals_x = n_obs * dim_x
+    let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
+    let half_z = (n_normals_x + 1) / 2
+    for i = 0; i < half_z; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_normals_x {
+        z_flat[idx_a] = z1
       }
-      x_flat[i * dim_x + k] = s
+      if idx_b < n_normals_x {
+        z_flat[idx_b] = z2
+      }
     }
+    let x_flat : Array[Double] = Array::make(n_normals_x, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      for k = 0; k < dim_x; k = k + 1 {
+        let mut s = 0.0
+        let mut acc = 1.0
+        let mut j = k
+        while j >= 0 {
+          s = s + acc * z_flat[i * dim_x + j]
+          acc = acc * 0.7
+          if j == 0 {
+            break
+          }
+          j = j - 1
+        }
+        x_flat[i * dim_x + k] = s
+      }
+    }
+    let v_flat : Array[Double] = Array::make(n_obs, 0.0)
+    let half_n = (n_obs + 1) / 2
+    for i = 0; i < half_n; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_obs {
+        v_flat[idx_a] = z1
+      }
+      if idx_b < n_obs {
+        v_flat[idx_b] = z2
+      }
+    }
+    let d : Array[Double] = Array::make(n_obs, 0.0)
+    let y : Array[Double] = Array::make(n_obs, 0.0)
+    let p = [0.1, 0.2, 0.3, 0.4]
+    let cum = [0.1, 0.3, 0.6, 1.0]
+    for i = 0; i < n_obs; i = i + 1 {
+      let u = rng.double()
+      let mut d_i = 0.0
+      if u < cum[0] {
+        d_i = 0.0
+      } else if u < cum[1] {
+        d_i = 1.0
+      } else if u < cum[2] {
+        d_i = 2.0
+      } else {
+        d_i = 3.0
+      }
+      let _ = p
+      d[i] = d_i
+      let x1 = x_flat[i * dim_x + 1]
+      let x2 = x_flat[i * dim_x + 2]
+      y[i] = theta * d_i + 0.5 * x1 + 0.5 * x2 + v_flat[i]
+    }
+    let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
+    { theta, x: x_mat, y, d, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  let v_flat : Array[Double] = Array::make(n_obs, 0.0)
-  let half_n = (n_obs + 1) / 2
-  for i = 0; i < half_n; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_obs {
-      v_flat[idx_a] = z1
-    }
-    if idx_b < n_obs {
-      v_flat[idx_b] = z2
-    }
-  }
-  let d : Array[Double] = Array::make(n_obs, 0.0)
-  let y : Array[Double] = Array::make(n_obs, 0.0)
-  let p = [0.1, 0.2, 0.3, 0.4]
-  let cum = [0.1, 0.3, 0.6, 1.0]
-  for i = 0; i < n_obs; i = i + 1 {
-    let u = rng.double()
-    let mut d_i = 0.0
-    if u < cum[0] {
-      d_i = 0.0
-    } else if u < cum[1] {
-      d_i = 1.0
-    } else if u < cum[2] {
-      d_i = 2.0
-    } else {
-      d_i = 3.0
-    }
-    let _ = p
-    d[i] = d_i
-    let x1 = x_flat[i * dim_x + 1]
-    let x2 = x_flat[i * dim_x + 2]
-    y[i] = theta * d_i + 0.5 * x1 + 0.5 * x2 + v_flat[i]
-  }
-  let x_mat = Matrix::from_array(x_flat, n_obs, dim_x)
-  { theta, x: x_mat, y, d, }
 }
 
 ///|

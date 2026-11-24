@@ -34,59 +34,69 @@ struct LplrData {
 
 ///|
 /// Generate the LPLR LZZ2020 DGP.
+///
+/// Aborts if `n` is negative: the count sizes every array in the
+/// DGP, and a negative size trapped the runtime instead of naming
+/// the precondition.
 pub fn make_lplr_LZZ2020(n : Int32, alpha : Double, seed : Int32) -> LplrData {
-  let p = 6
-  let x_flat : Array[Double] = Array::make(n * p, 0.0)
-  let d : Array[Double] = Array::make(n, 0.0)
-  let y : Array[Double] = Array::make(n, 0.0)
-  let rng = chacha8_rng(seed)
-  // Box-Muller pool: enough normals for x (n*p) + noise (n).
-  let need = n * p + n
-  let pool : Array[Double] = Array::make(need, 0.0)
-  let half = (need + 1) / 2
-  for i = 0; i < half; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < need {
-      pool[idx_a] = z1
+  try {
+    require(n >= 0)
+    let p = 6
+    let x_flat : Array[Double] = Array::make(n * p, 0.0)
+    let d : Array[Double] = Array::make(n, 0.0)
+    let y : Array[Double] = Array::make(n, 0.0)
+    let rng = chacha8_rng(seed)
+    // Box-Muller pool: enough normals for x (n*p) + noise (n).
+    let need = n * p + n
+    let pool : Array[Double] = Array::make(need, 0.0)
+    let half = (need + 1) / 2
+    for i = 0; i < half; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < need {
+        pool[idx_a] = z1
+      }
+      if idx_b < need {
+        pool[idx_b] = z2
+      }
     }
-    if idx_b < need {
-      pool[idx_b] = z2
+    for i = 0; i < n * p; i = i + 1 {
+      x_flat[i] = pool[i]
     }
+    // Treatment: a_0(x) + 0.5 * noise, then Bernoulli via sigmoid.
+    for i = 0; i < n; i = i + 1 {
+      let x1 = x_flat[i * p]
+      let x2 = x_flat[i * p + 1]
+      let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]
+      let p_t = 1.0 / (1.0 + @math.exp(-a))
+      let u = rng.double()
+      d[i] = if u < p_t { 1.0 } else { 0.0 }
+    }
+    // Outcome.
+    for i = 0; i < n; i = i + 1 {
+      let x1 = x_flat[i * p]
+      let x2 = x_flat[i * p + 1]
+      let x3 = x_flat[i * p + 2]
+      let x4 = x_flat[i * p + 3]
+      let x5 = x_flat[i * p + 4]
+      let x6 = x_flat[i * p + 5]
+      let r = 0.25 * x1 * x2 +
+        0.25 * x3 * x3 +
+        0.25 * @math.cos(x4) -
+        0.5 * @math.sin(x5) +
+        (if x6 > 0.0 { 1.0 } else { 0.0 }) -
+        0.5
+      let prob = 1.0 / (1.0 + @math.exp(-(alpha * d[i] + r)))
+      let u = rng.double()
+      y[i] = if u < prob { 1.0 } else { 0.0 }
+    }
+    let data = DoubleMLBinaryData::new(Matrix::from_array(x_flat, n, p), y, d)
+    { theta: alpha, data, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  for i = 0; i < n * p; i = i + 1 {
-    x_flat[i] = pool[i]
-  }
-  // Treatment: a_0(x) + 0.5 * noise, then Bernoulli via sigmoid.
-  for i = 0; i < n; i = i + 1 {
-    let x1 = x_flat[i * p]
-    let x2 = x_flat[i * p + 1]
-    let a = 0.5 * @math.sin(x1) + 0.5 * @math.cos(x2) + 0.5 * pool[n * p + i]
-    let p_t = 1.0 / (1.0 + @math.exp(-a))
-    let u = rng.double()
-    d[i] = if u < p_t { 1.0 } else { 0.0 }
-  }
-  // Outcome.
-  for i = 0; i < n; i = i + 1 {
-    let x1 = x_flat[i * p]
-    let x2 = x_flat[i * p + 1]
-    let x3 = x_flat[i * p + 2]
-    let x4 = x_flat[i * p + 3]
-    let x5 = x_flat[i * p + 4]
-    let x6 = x_flat[i * p + 5]
-    let r = 0.25 * x1 * x2 +
-      0.25 * x3 * x3 +
-      0.25 * @math.cos(x4) -
-      0.5 * @math.sin(x5) +
-      (if x6 > 0.0 { 1.0 } else { 0.0 }) -
-      0.5
-    let prob = 1.0 / (1.0 + @math.exp(-(alpha * d[i] + r)))
-    let u = rng.double()
-    y[i] = if u < prob { 1.0 } else { 0.0 }
-  }
-  let data = DoubleMLBinaryData::new(Matrix::from_array(x_flat, n, p), y, d)
-  { theta: alpha, data, }
 }
 
 ///|

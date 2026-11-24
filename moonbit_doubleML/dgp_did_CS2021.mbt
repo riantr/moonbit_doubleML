@@ -40,143 +40,153 @@ struct DidMultiData {
 /// total sample size; the actual n is `n_per_cohort * n_groups *
 /// n_periods`. The function chooses `n_per_cohort` to match
 /// `n_obs`.
+///
+/// Aborts if `n_obs` is negative: the count sizes every array in the
+/// DGP, and a negative size trapped the runtime instead of naming
+/// the precondition.
 pub fn make_did_CS2021(
   n_obs : Int32,
   dim_x : Int32,
   theta : Double,
   seed : Int32,
 ) -> DidMultiData {
-  let rng = chacha8_rng(seed)
-  let n_periods = 4
-  let n_groups = 4
-  let n_per_cohort = n_obs / n_groups / n_periods
-  let true_n = n_per_cohort * n_groups * n_periods
-  // Pre-draw unit-level X-draw normals.
-  let n_units = n_per_cohort * n_groups
-  let n_normals_x = n_units * dim_x
-  let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
-  let half_z = (n_normals_x + 1) / 2
-  for i = 0; i < half_z; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_normals_x {
-      z_flat[idx_a] = z1
+  try {
+    require(n_obs >= 0)
+    let rng = chacha8_rng(seed)
+    let n_periods = 4
+    let n_groups = 4
+    let n_per_cohort = n_obs / n_groups / n_periods
+    let true_n = n_per_cohort * n_groups * n_periods
+    // Pre-draw unit-level X-draw normals.
+    let n_units = n_per_cohort * n_groups
+    let n_normals_x = n_units * dim_x
+    let z_flat : Array[Double] = Array::make(n_normals_x, 0.0)
+    let half_z = (n_normals_x + 1) / 2
+    for i = 0; i < half_z; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_normals_x {
+        z_flat[idx_a] = z1
+      }
+      if idx_b < n_normals_x {
+        z_flat[idx_b] = z2
+      }
     }
-    if idx_b < n_normals_x {
-      z_flat[idx_b] = z2
-    }
-  }
-  // Build unit-level X.
-  let x_unit : Array[Double] = Array::make(n_normals_x, 0.0)
-  for i = 0; i < n_units; i = i + 1 {
-    for k = 0; k < dim_x; k = k + 1 {
-      let mut s = 0.0
-      let mut acc = 1.0
-      let mut j = k
-      while j >= 0 {
-        s = s + acc * z_flat[i * dim_x + j]
-        acc = acc * 0.7
-        if j == 0 {
-          break
+    // Build unit-level X.
+    let x_unit : Array[Double] = Array::make(n_normals_x, 0.0)
+    for i = 0; i < n_units; i = i + 1 {
+      for k = 0; k < dim_x; k = k + 1 {
+        let mut s = 0.0
+        let mut acc = 1.0
+        let mut j = k
+        while j >= 0 {
+          s = s + acc * z_flat[i * dim_x + j]
+          acc = acc * 0.7
+          if j == 0 {
+            break
+          }
+          j = j - 1
         }
-        j = j - 1
-      }
-      x_unit[i * dim_x + k] = s
-    }
-  }
-  // Pre-draw time-varying noise.
-  let eps : Array[Double] = Array::make(true_n, 0.0)
-  let half_n = (true_n + 1) / 2
-  for i = 0; i < half_n; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < true_n {
-      eps[idx_a] = z1
-    }
-    if idx_b < true_n {
-      eps[idx_b] = z2
-    }
-  }
-  // v0.151.0: the unit intercept, PRE-DRAWN per unit.
-  //
-  // This used to be `let alpha_i = 0.5 * unit_in_cohort.to_double()`, a
-  // deterministic ramp 0 .. 49.5 that is IDENTICAL for a given position in
-  // every cohort -- not cohort-specific noise, a positional ramp. Measured on
-  // make_did_CS2021(1600, 3, 1.0, 3141):
-  //
-  //   var(y)                                   206.75   (SD 14.38)
-  //   corr(id, y)                               0.975
-  //   r^2 X_0 / X_1 / X_2 vs y      1.0e-5 / 2.6e-3 / 9.2e-3
-  //   share of var(y) that is time-invariant    99.65 %
-  //   var(within unit)                           1.11
-  //
-  // i.e. 0.25 * var(0..99) = 208.3 of the 206.75 total: the ramp WAS the
-  // variance. Covariates carried under 1% of it, so E[Y|D,T,X] held almost no
-  // covariate signal and no conditional nuisance could meaningfully beat a
-  // constant -- the same defect v0.148.0 removed from `make_did_cs_CS2021`,
-  // never applied here.
-  //
-  // A per-unit N(0,1) draw rather than deleting the term: unobserved unit
-  // heterogeneity IS the hidden confounding `nu2` prices, so removing it
-  // outright would leave the fixture unable to represent what it is for. SD 1
-  // puts it on the true effect's scale (theta = 1.0) as a minority of the
-  // covariate signal instead of a majority that drowns everything.
-  //
-  // Drawn AFTER `eps`, so X and the noise stream are bit-identical to before
-  // and the r^2 columns below move only through alpha's own contribution.
-  let alpha : Array[Double] = Array::make(n_units, 0.0)
-  let half_alpha = (n_units + 1) / 2
-  for i = 0; i < half_alpha; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_units {
-      alpha[idx_a] = z1
-    }
-    if idx_b < n_units {
-      alpha[idx_b] = z2
-    }
-  }
-  // Build panel. Cohort g=0 is never-treated; cohort g>=1 is
-  // treated at tau_g = g - 1 (so cohort 1 treated at t=1, etc.).
-  let y : Array[Double] = Array::make(true_n, 0.0)
-  let d : Array[Double] = Array::make(true_n, 0.0)
-  let t : Array[Int32] = Array::make(true_n, 0)
-  let g : Array[Int32] = Array::make(true_n, 0)
-  let id : Array[Int32] = Array::make(true_n, 0)
-  for u = 0; u < n_units; u = u + 1 {
-    let cohort = u / n_per_cohort
-    let unit_in_cohort = u % n_per_cohort
-    let tau_g = if cohort == 0 { -1 } else { cohort - 1 }
-    for period = 0; period < n_periods; period = period + 1 {
-      let idx = u * n_periods + period
-      d[idx] = if cohort > 0 && period >= tau_g { 1.0 } else { 0.0 }
-      let mut x_dot_gamma = 0.0
-      for k = 0; k < dim_x; k = k + 1 {
-        x_dot_gamma = x_dot_gamma + x_unit[u * dim_x + k]
-      }
-      let alpha_i = alpha[u]
-      let beta_t = 0.3 * period.to_double()
-      y[idx] = alpha_i + beta_t + theta * d[idx] + x_dot_gamma + eps[idx]
-      t[idx] = period
-      g[idx] = cohort
-      id[idx] = unit_in_cohort
-    }
-  }
-  // Expand X to panel.
-  let x_panel_flat : Array[Double] = Array::make(true_n * dim_x, 0.0)
-  for u = 0; u < n_units; u = u + 1 {
-    for p = 0; p < n_periods; p = p + 1 {
-      let panel_row = u * n_periods + p
-      for k = 0; k < dim_x; k = k + 1 {
-        x_panel_flat[panel_row * dim_x + k] = x_unit[u * dim_x + k]
+        x_unit[i * dim_x + k] = s
       }
     }
+    // Pre-draw time-varying noise.
+    let eps : Array[Double] = Array::make(true_n, 0.0)
+    let half_n = (true_n + 1) / 2
+    for i = 0; i < half_n; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < true_n {
+        eps[idx_a] = z1
+      }
+      if idx_b < true_n {
+        eps[idx_b] = z2
+      }
+    }
+    // v0.151.0: the unit intercept, PRE-DRAWN per unit.
+    //
+    // This used to be `let alpha_i = 0.5 * unit_in_cohort.to_double()`, a
+    // deterministic ramp 0 .. 49.5 that is IDENTICAL for a given position in
+    // every cohort -- not cohort-specific noise, a positional ramp. Measured on
+    // make_did_CS2021(1600, 3, 1.0, 3141):
+    //
+    //   var(y)                                   206.75   (SD 14.38)
+    //   corr(id, y)                               0.975
+    //   r^2 X_0 / X_1 / X_2 vs y      1.0e-5 / 2.6e-3 / 9.2e-3
+    //   share of var(y) that is time-invariant    99.65 %
+    //   var(within unit)                           1.11
+    //
+    // i.e. 0.25 * var(0..99) = 208.3 of the 206.75 total: the ramp WAS the
+    // variance. Covariates carried under 1% of it, so E[Y|D,T,X] held almost no
+    // covariate signal and no conditional nuisance could meaningfully beat a
+    // constant -- the same defect v0.148.0 removed from `make_did_cs_CS2021`,
+    // never applied here.
+    //
+    // A per-unit N(0,1) draw rather than deleting the term: unobserved unit
+    // heterogeneity IS the hidden confounding `nu2` prices, so removing it
+    // outright would leave the fixture unable to represent what it is for. SD 1
+    // puts it on the true effect's scale (theta = 1.0) as a minority of the
+    // covariate signal instead of a majority that drowns everything.
+    //
+    // Drawn AFTER `eps`, so X and the noise stream are bit-identical to before
+    // and the r^2 columns below move only through alpha's own contribution.
+    let alpha : Array[Double] = Array::make(n_units, 0.0)
+    let half_alpha = (n_units + 1) / 2
+    for i = 0; i < half_alpha; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_units {
+        alpha[idx_a] = z1
+      }
+      if idx_b < n_units {
+        alpha[idx_b] = z2
+      }
+    }
+    // Build panel. Cohort g=0 is never-treated; cohort g>=1 is
+    // treated at tau_g = g - 1 (so cohort 1 treated at t=1, etc.).
+    let y : Array[Double] = Array::make(true_n, 0.0)
+    let d : Array[Double] = Array::make(true_n, 0.0)
+    let t : Array[Int32] = Array::make(true_n, 0)
+    let g : Array[Int32] = Array::make(true_n, 0)
+    let id : Array[Int32] = Array::make(true_n, 0)
+    for u = 0; u < n_units; u = u + 1 {
+      let cohort = u / n_per_cohort
+      let unit_in_cohort = u % n_per_cohort
+      let tau_g = if cohort == 0 { -1 } else { cohort - 1 }
+      for period = 0; period < n_periods; period = period + 1 {
+        let idx = u * n_periods + period
+        d[idx] = if cohort > 0 && period >= tau_g { 1.0 } else { 0.0 }
+        let mut x_dot_gamma = 0.0
+        for k = 0; k < dim_x; k = k + 1 {
+          x_dot_gamma = x_dot_gamma + x_unit[u * dim_x + k]
+        }
+        let alpha_i = alpha[u]
+        let beta_t = 0.3 * period.to_double()
+        y[idx] = alpha_i + beta_t + theta * d[idx] + x_dot_gamma + eps[idx]
+        t[idx] = period
+        g[idx] = cohort
+        id[idx] = unit_in_cohort
+      }
+    }
+    // Expand X to panel.
+    let x_panel_flat : Array[Double] = Array::make(true_n * dim_x, 0.0)
+    for u = 0; u < n_units; u = u + 1 {
+      for p = 0; p < n_periods; p = p + 1 {
+        let panel_row = u * n_periods + p
+        for k = 0; k < dim_x; k = k + 1 {
+          x_panel_flat[panel_row * dim_x + k] = x_unit[u * dim_x + k]
+        }
+      }
+    }
+    let x_panel = Matrix::from_array(x_panel_flat, true_n, dim_x)
+    { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  let x_panel = Matrix::from_array(x_panel_flat, true_n, dim_x)
-  { theta, n_groups, n_periods, y, d, t, g, id, x: x_panel, }
 }
 
 ///|

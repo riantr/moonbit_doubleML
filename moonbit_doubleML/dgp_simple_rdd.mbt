@@ -39,38 +39,48 @@ struct RddSimpleData {
 
 ///|
 /// Generate the simple RDD DGP.
+///
+/// Aborts if `n_obs` is negative: the count sizes every array in the
+/// DGP, and a negative size trapped the runtime instead of naming
+/// the precondition.
 pub fn make_simple_rdd_dgp(
   n_obs : Int32,
   theta : Double,
   seed : Int32,
 ) -> RddSimpleData {
-  let rng = chacha8_rng(seed)
-  // 1. Pre-draw v ~ N(0, 1) (outcome noise).
-  let v_flat : Array[Double] = Array::make(n_obs, 0.0)
-  let half = (n_obs + 1) / 2
-  for i = 0; i < half; i = i + 1 {
-    let (z1, z2) = box_muller_pair(rng)
-    let idx_a = 2 * i
-    let idx_b = 2 * i + 1
-    if idx_a < n_obs {
-      v_flat[idx_a] = z1
+  try {
+    require(n_obs >= 0)
+    let rng = chacha8_rng(seed)
+    // 1. Pre-draw v ~ N(0, 1) (outcome noise).
+    let v_flat : Array[Double] = Array::make(n_obs, 0.0)
+    let half = (n_obs + 1) / 2
+    for i = 0; i < half; i = i + 1 {
+      let (z1, z2) = box_muller_pair(rng)
+      let idx_a = 2 * i
+      let idx_b = 2 * i + 1
+      if idx_a < n_obs {
+        v_flat[idx_a] = z1
+      }
+      if idx_b < n_obs {
+        v_flat[idx_b] = z2
+      }
     }
-    if idx_b < n_obs {
-      v_flat[idx_b] = z2
+    // 2. Build X (uniform on [-1, 1]) and D, Y.
+    let x : Array[Double] = Array::make(n_obs, 0.0)
+    let d : Array[Double] = Array::make(n_obs, 0.0)
+    let y : Array[Double] = Array::make(n_obs, 0.0)
+    let score : Array[Double] = Array::make(n_obs, 0.0)
+    for i = 0; i < n_obs; i = i + 1 {
+      x[i] = rng.double() * 2.0 - 1.0
+      d[i] = if x[i] > 0.0 { 1.0 } else { 0.0 }
+      score[i] = 1.0
+      y[i] = 0.5 * x[i] * x[i] + theta * d[i] + v_flat[i]
     }
+    { theta, x, y, d, score, }
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  // 2. Build X (uniform on [-1, 1]) and D, Y.
-  let x : Array[Double] = Array::make(n_obs, 0.0)
-  let d : Array[Double] = Array::make(n_obs, 0.0)
-  let y : Array[Double] = Array::make(n_obs, 0.0)
-  let score : Array[Double] = Array::make(n_obs, 0.0)
-  for i = 0; i < n_obs; i = i + 1 {
-    x[i] = rng.double() * 2.0 - 1.0
-    d[i] = if x[i] > 0.0 { 1.0 } else { 0.0 }
-    score[i] = 1.0
-    y[i] = 0.5 * x[i] * x[i] + theta * d[i] + v_flat[i]
-  }
-  { theta, x, y, d, score, }
 }
 
 ///|

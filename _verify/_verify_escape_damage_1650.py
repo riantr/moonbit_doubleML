@@ -34,14 +34,22 @@ WHAT THIS CHECKS
     allowed to differ, because the builder computes it from the round numbers.
 3.  The plain-text reference: the CHANGELOG is a FILE, not a literal, so the
     code span it spells around the same escape is the ground truth, and the
-    banner must spell it the same way.
+    banner must spell it the same way.  The ground truth is the WHOLE FILE,
+    not "whichever section is newest": the banner ACCUMULATES and quotes a
+    sentence the CHANGELOG recorded once, and the CHANGELOG is append-only, so
+    the quote's home section moves down the file with every release.  A
+    comparison against the newest section measures the CHANGELOG's AGE, not
+    its spelling.
 
 THE CONTROL ARM
 ===============
-`--falsify` re-introduces the historical damage -- it turns the builder's
-DOUBLED backslash back into a single one, which is exactly what the defect
-was -- and requires the checks to go RED on the mutated builder.  A check
-that has never been shown to fail is a comment.
+The arm has TWO mutations, and both must be REJECTED.  The first turns the
+builder's DOUBLED backslash back into a single one, which is exactly what the
+defect was.  The second corrupts the CHANGELOG's OWN spelling of the code
+span, the way a damaged builder would have spelled it -- because the
+comparison is a substring test, and a substring test that nobody has ever
+seen fail is a comment.  A check that has never been shown to fail is a
+comment.
 
 Run: python _verify/_verify_escape_damage_1650.py [--falsify]
 """
@@ -195,15 +203,44 @@ def ledger_value(src):
     return None
 
 
-def newest_section(changelog_text):
-    """The CHANGELOG's newest section -- a plain-text file, so its backslashes
-    are LITERAL.  It is the reference the generated banner is measured against."""
-    m = re.search(r"(?m)^## \[", changelog_text)
-    if not m:
-        return ""
-    n = re.search(r"(?m)^## \[", changelog_text[m.end():])
-    end = (m.end() + n.start()) if n else len(changelog_text)
-    return changelog_text[m.start():end]
+def changelog_mismatch(exc, chlog):
+    """The code spans the CHANGELOG spells differently from the source.
+
+    THE GROUND TRUTH IS THE FILE, NOT WHICHER SECTION IS NEWEST.
+    ============================================================
+    The banner is GENERATED and it ACCUMULATES: it quotes a sentence the
+    CHANGELOG recorded when that sentence was written, and the CHANGELOG is
+    append-only, so the quote's home section moves further down the file with
+    every release.  Comparing against "whichever section is newest" measures
+    the CHANGELOG's AGE, not its spelling -- the section that carried the
+    quote left the window and the check went RED on a release where the banner
+    and the CHANGELOG still agreed.
+
+    The docstring has always said it this way ("the CHANGELOG is a FILE, not a
+    literal"), so the IMPLEMENTATION was what was too narrow.
+    """
+    return [e for e in exc if e[3] not in chlog]
+
+
+def corrupt_changelog(chlog, exc):
+    """The CHANGELOG with ONE code span spelled the way a DAMAGED builder would.
+
+    The mutation must be a REAL change: an arm whose mutation is a no-op
+    would report PASS while measuring nothing.
+    """
+    for e in exc:
+        spelled = e[3]
+        if not spelled or spelled not in chlog:
+            continue
+        m = HEX.search(spelled)
+        if not m:
+            continue
+        hx = m.group(2) or m.group(3) or m.group(4)
+        broken = spelled[:m.start()] + chr(int(hx, 16)) + spelled[m.end():]
+        if broken == spelled:
+            continue
+        return chlog.replace(spelled, broken), spelled
+    return None, None
 
 
 def ledger_contains(doc, value):
@@ -305,24 +342,24 @@ def main(argv):
         bad("the shipped README.mbt.md and the package copy are byte-identical")
 
     val = ledger_value(src) or ""
-    sec = newest_section(io.open(CHANGELOG, encoding="utf-8").read())
+    chlog = io.open(CHANGELOG, encoding="utf-8").read()
     # ONE aggregate check per document, not one per escape: the count a
     # verifier publishes must not move with the number of escapes the builder
     # happens to contain.  The escapes are still listed, so a failure says
     # WHICH one.
     exc = escapes(src)
-    bad_chlog = [e for e in exc if e[3] not in sec]
+    bad_chlog = changelog_mismatch(exc, chlog)
     if not exc:
-        ok("the CHANGELOG's newest section spells every code span the way "
-           "the source does (there are none)")
+        ok("the CHANGELOG spells every code span the way the source does "
+           "(there are none)")
     elif bad_chlog:
-        bad("the CHANGELOG's newest section spells every code span the way "
-            "the source does -- %d of %d differ: %s"
+        bad("the CHANGELOG spells every code span the way the source does -- "
+            "%d of %d differ: %s"
             % (len(bad_chlog), len(exc),
                "; ".join("line %d spells %s" % (e[0], e[3]) for e in bad_chlog)))
     else:
-        ok("the CHANGELOG's newest section spells every code span the way "
-           "the source does (%d span(s))" % len(exc))
+        ok("the CHANGELOG spells every code span the way the source does "
+           "(%d span(s))" % len(exc))
 
     # An escape that FIRES has a "fired form" -- the character it evaluates
     # to -- and the banner must not carry that.  An escape that does NOT fire
@@ -346,10 +383,11 @@ def main(argv):
            "source does (%d span(s))" % len(exc))
 
     # ---- the control arm ------------------------------------------------
-    # TWO counted checks, always: the arm must be BUILDABLE, and the mutated
-    # builder must be REJECTED.  When the arm cannot be built the second check
-    # fails with the reason -- a skipped check is a count that moves, and a
-    # count that moves is a count that can be published wrong.
+    # THREE counted checks, always: the builder arm must be BUILDABLE, the
+    # mutated builder must be REJECTED, and the corrupted CHANGELOG must be
+    # REJECTED.  When an arm cannot be built its check fails with the reason --
+    # a skipped check is a count that moves, and a count that moves is a count
+    # that can be published wrong.
     print("\n-- the control arm --")
     mutated, err = falsify(src)
     if mutated is None:
@@ -371,6 +409,24 @@ def main(argv):
         finally:
             if os.path.exists(tmp):
                 os.remove(tmp)
+
+    # ---- the CHANGELOG's own control arm --------------------------------
+    # The CHANGELOG comparison is a SUBSTRING test, so the arm shows that a
+    # CHANGELOG which spells the span differently is REJECTED.  ONE counted
+    # check, and it counts in both modes: the arm is part of the rule, and a
+    # rule whose arm is not counted is an arm nobody runs.
+    print("\n-- the CHANGELOG's control arm --")
+    mutated_cl, broken = corrupt_changelog(chlog, exc)
+    if mutated_cl is None:
+        bad("the corrupted CHANGELOG is REJECTED -- the arm could not be built, "
+            "so nothing was tested")
+    else:
+        mm = changelog_mismatch(exc, mutated_cl)
+        if mm:
+            ok("the corrupted CHANGELOG is REJECTED (%d span(s) no longer match)"
+               % len(mm))
+        else:
+            bad("the corrupted CHANGELOG is REJECTED -- it passed the comparison")
 
     n = len(RESULTS)
     nf = sum(1 for r in RESULTS if not r)

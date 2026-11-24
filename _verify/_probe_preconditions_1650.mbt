@@ -120,6 +120,70 @@ fn probe_matrix_ok() -> Unit {
 }
 
 ///|
+/// A negative sample count must be refused by a precondition.  The count
+/// sizes every array the DGP builds, so a negative size trapped the
+/// runtime instead of naming the precondition.
+fn probe_dgp_count_neg() -> Unit {
+  let _ = make_iivm_data(-1, 20, 1.0, 3141)
+  println("PROBE dgp_count_neg SURVIVED")
+}
+
+///|
+/// The DID family divides the count by 16 before it sizes anything, so it
+/// traps LATER than the other generators: n = -1 truncates to zero
+/// observations and survives, n = -16 reaches the allocation with a
+/// negative size.  Both facts are measured; this mode pins the second.
+fn probe_dgp_count_neg_did() -> Unit {
+  let _ = make_did_CS2021(-16, 3, 1.0, 3141)
+  println("PROBE dgp_count_neg_did SURVIVED")
+}
+
+///|
+/// A design narrower than the covariates the DGP formula reads must be
+/// refused by a precondition.  The formula reads the second and the fourth
+/// covariate of every row, so with three columns the last row read one
+/// past the end of the flat array.
+fn probe_dgp_dim_neg() -> Unit {
+  let _ = make_plr_CCDDHNR2018(400, 3, 1.0, 3141)
+  println("PROBE dgp_dim_neg SURVIVED")
+}
+
+///|
+/// The bootstrap rep count sizes the result array.
+fn probe_dgp_boot_neg() -> Unit {
+  let w = Array::make(12, 1.0)
+  let p = Array::make(4, 1.0)
+  let s = Array::make(1, 1.0)
+  let _ = did_bootstrap_t_stat(w, p, s, -1, 4, 1)
+  println("PROBE dgp_boot_neg SURVIVED")
+}
+
+///|
+/// The controls for the DGP modes: a valid count must still work.
+fn probe_dgp_ok() -> Unit {
+  let _ = make_iivm_data(400, 20, 1.0, 3141)
+  println("PROBE dgp_ok SURVIVED")
+}
+
+///|
+/// The control for the dimension mode: a design wide enough for the
+/// covariates the formula reads must still work.
+fn probe_dgp_ok_dim() -> Unit {
+  let _ = make_plr_CCDDHNR2018(400, 20, 0.5, 3141)
+  println("PROBE dgp_ok_dim SURVIVED")
+}
+
+///|
+/// The control for the bootstrap mode: a valid rep count must still work.
+fn probe_dgp_ok_boot() -> Unit {
+  let w = Array::make(12, 1.0)
+  let p = Array::make(4, 1.0)
+  let s = Array::make(1, 1.0)
+  let _ = did_bootstrap_t_stat(w, p, s, 3, 4, 1)
+  println("PROBE dgp_ok_boot SURVIVED")
+}
+
+///|
 /// Dispatch. The generated `main.mbt` calls this with one mode.
 fn probe_dispatch(mode : String) -> Unit raise {
   if mode == "cluster_neg" {
@@ -134,6 +198,20 @@ fn probe_dispatch(mode : String) -> Unit raise {
     probe_matrix_negneg()
   } else if mode == "matrix_ok" {
     probe_matrix_ok()
+  } else if mode == "dgp_count_neg" {
+    probe_dgp_count_neg()
+  } else if mode == "dgp_count_neg_did" {
+    probe_dgp_count_neg_did()
+  } else if mode == "dgp_dim_neg" {
+    probe_dgp_dim_neg()
+  } else if mode == "dgp_boot_neg" {
+    probe_dgp_boot_neg()
+  } else if mode == "dgp_ok" {
+    probe_dgp_ok()
+  } else if mode == "dgp_ok_dim" {
+    probe_dgp_ok_dim()
+  } else if mode == "dgp_ok_boot" {
+    probe_dgp_ok_boot()
   } else {
     println("PROBE unknown mode " + mode)
   }

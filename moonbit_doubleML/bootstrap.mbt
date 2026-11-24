@@ -63,6 +63,10 @@
 ///
 /// Rows where `se[k] == 0` are set to 0 (matches the upstream
 /// convention: empty cells produce no bootstrap variation).
+///
+/// Aborts if `n_rep_boot` is negative: the rep count sizes the result
+/// array, and a negative size trapped the runtime instead of naming the
+/// precondition.
 pub fn did_bootstrap_t_stat(
   weights : Array[Double],
   psi : Array[Double],
@@ -71,27 +75,33 @@ pub fn did_bootstrap_t_stat(
   n_obs : Int32,
   n_thetas : Int32,
 ) -> Array[Double] {
-  let boot_t_stat : Array[Double] = Array::make(n_rep_boot * n_thetas, 0.0)
-  let n_d = n_obs.to_double()
-  let sqrt_n = n_d.sqrt()
-  for b = 0; b < n_rep_boot; b = b + 1 {
-    for k = 0; k < n_thetas; k = k + 1 {
-      let se_k = se[k]
-      // Skip empty / pre-treatment cells (se = 0). Matches the
-      // v0.16.0+ DIDMulti convention; for DIDCrossSection the
-      // caller pre-computes se[0] and only invokes the helper
-      // when se[0] > 0 (degenerate se is handled before this
-      // call to preserve the v0.42.0 "return zeros" path).
-      if se_k == 0.0 {
-        continue
+  try {
+    require(n_rep_boot >= 0)
+    let boot_t_stat : Array[Double] = Array::make(n_rep_boot * n_thetas, 0.0)
+    let n_d = n_obs.to_double()
+    let sqrt_n = n_d.sqrt()
+    for b = 0; b < n_rep_boot; b = b + 1 {
+      for k = 0; k < n_thetas; k = k + 1 {
+        let se_k = se[k]
+        // Skip empty / pre-treatment cells (se = 0). Matches the
+        // v0.16.0+ DIDMulti convention; for DIDCrossSection the
+        // caller pre-computes se[0] and only invokes the helper
+        // when se[0] > 0 (degenerate se is handled before this
+        // call to preserve the v0.42.0 "return zeros" path).
+        if se_k == 0.0 {
+          continue
+        }
+        let mut s = 0.0
+        for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
+          let psi_k_i = psi[k * n_obs + i_long]
+          s = s + weights[b * n_obs + i_long] * psi_k_i
+        }
+        boot_t_stat[b * n_thetas + k] = s / (sqrt_n * se_k)
       }
-      let mut s = 0.0
-      for i_long = 0; i_long < n_obs; i_long = i_long + 1 {
-        let psi_k_i = psi[k * n_obs + i_long]
-        s = s + weights[b * n_obs + i_long] * psi_k_i
-      }
-      boot_t_stat[b * n_thetas + k] = s / (sqrt_n * se_k)
     }
+    boot_t_stat
+  } catch {
+    PreconditionError::Violated(loc) =>
+      abort("precondition failed at " + loc.to_string())
   }
-  boot_t_stat
 }

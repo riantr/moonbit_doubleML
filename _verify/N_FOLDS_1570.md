@@ -135,7 +135,7 @@ the limit.
 
 ## Arm 4 — the real cells are nowhere near the limit
 
-Full 4×4 sweep, matching `dgp_did_CS2021.mbt:50-52` (`n_periods = 4`,
+Full 4×4 sweep, matching `dgp_did_CS2021.mbt:56-58` (`n_periods = 4`,
 `n_groups = 4`, `n_per_cohort = n_obs / 4 / 4`). The DGP implies a per-cell row
 count, so the measured value is checked against it rather than merely reported:
 
@@ -230,5 +230,5 @@ made here.**
 Every arm above has a saved raw artifact. Arm 4 originally had none — it was
 printed to the console only — which is why the cell-count claim could not be
 checked against anything. Re-run and saved; the measured per-cell count now
-agrees with what `dgp_did_CS2021.mbt:50-52` implies, which is a check the
+agrees with what `dgp_did_CS2021.mbt:56-58` implies, which is a check the
 original run did not perform.

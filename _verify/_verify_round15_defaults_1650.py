@@ -219,7 +219,7 @@ ANCHORS = {
     ("did_multi.mbt", 327): r"ignore\(t_pre\)",
     ("did_multi.mbt", 118): r"require\(resolved\.length\(\) > 0\)",
     ("logistic.mbt", 135): r"require\(yi == 0\.0 \|\| yi == 1\.0\)",
-    ("dgp_did_CS2021.mbt", 50): r"let n_periods = 4",
+    ("dgp_did_CS2021.mbt", 56): r"let n_periods = 4",
     ("lplr.mbt", 354): r"pub fn DoubleMLLPLR::new",
     ("lplr.mbt", 363): r"LogisticRegression::new\(\)",
     ("dgp_lplr_test.mbt", 41): r"test \"LPLR_estimator_recovers_theta\"",
