@@ -26,7 +26,7 @@
 > `README.mbt.md`, which is the document the registry actually serves.
 >
 > *The round numbers below are not contiguous.*  The corrections start
-> at round 21 and run to round 90, and 11 of the numbers in between
+> at round 21 and run to round 91, and 11 of the numbers in between
 > (rounds 60-69, round 87) are not used.
 >
 > * **Round 21.** The propensity-margin paragraph further down quotes a
@@ -3780,6 +3780,162 @@
 >   *The count that grew.*  `_verify/_verify_path_promises_1650.py` published
 >   **520** and makes **522**: a path named in prose is a check, and this
 >   round's ledger names the files the adjudication turned on.
+>
+> * **Round 91.**  The house's own probe fixture was costing the analyzer four
+>   library sites.
+>
+>   The QA pass was ANCHORED TO THE REGISTRY again: `riantr/LunaFlow` and
+>   `riantr/moonbit_static_analysis` at their registry `latest` -- **0.1.37**
+>   and **0.5.4**, both UNCHANGED since round 90 -- against a CLEAN CLONE of
+>   the shipped 0.164.67 tree.
+>
+>   Every rule count was identical to the candidate tree.  ONE was not:
+>   `BUDGET-EXCEEDED` -- the family that says "the rest of this function was
+>   not executed", which is the analyzer GIVING UP on a function, not a
+>   defect -- rose **54** -> **57**.  A count that rises while the analyzer's
+>   reach falls is not progress, so the round went after the three new sites.
+>
+>   *The cause was the house's own fixture.*  The analyzer collects only the
+>   files whose name ends in `.mbt` (`scan.mbt`: `name.has_suffix(".mbt")`),
+>   and it enters every PLAIN function of the tree as an entry point -- a
+>   TEST BLOCK is not an entry (`package.mbt`: "the test blocks are not
+>   entries").  The probe that MEASURES the precondition guards is a set of
+>   plain functions, because the generated `main.mbt` has to call them; and
+>   while it sat in the tree as a `.mbt` file, the analyzer entered each arm,
+>   ran the arm's call into the library, and the generator's own loops spent
+>   the analyzer's 2000-step per-run budget INSIDE the callee.  The notice
+>   was then reported in the LIBRARY's file, at the line where the budget
+>   died, and it read like a statement about the library.
+>
+>   All four sites were the fixture's, not the library's:
+>
+>   * `moonbit_doubleML/bootstrap.mbt:97` -- `did_bootstrap_t_stat`
+>   * `moonbit_doubleML/dgp_iivm.mbt:89` -- `make_iivm_data`
+>   * `moonbit_doubleML/dgp_plr_CCDDHNR.mbt:91` -- `make_plr_CCDDHNR2018`
+>   * `moonbit_doubleML/sensitivity.mbt:302` --
+>     `irm_style_sensitivity_cluster_from_elements`
+>
+>   The last one had been in the report since 0.164.66 for the same reason,
+>   so the **54** this round started from was itself contaminated by one.
+>
+>   *SHRINKING THE PROBE DOES NOT HELP, and that was measured.*  The obvious
+>   fix -- make the probe's inputs small -- was tried FIRST, and it does
+>   nothing: the cost is the CALL, not the argument values, because the
+>   analyzer's abstract layer expands the callee's body whatever the
+>   arguments are.  Every generator call in the fixture was shrunk to the
+>   smallest valid input, and all three sites stayed, at the same lines.
+>
+>   The arms, ONE VARIABLE each, the library's `.mbt` files byte-identical in
+>   every one of them:
+>
+>   * the fixture reverted to its previous version -- **54**
+>   * the fixture's counts shrunk (400 -> 20) -- **57**
+>   * every generator call in the fixture shrunk -- **57**
+>   * the fixture's positive controls replaced by no-ops -- **55**
+>   * the fixture is not a `.mbt` file -- **53**
+>
+>   The fix is that the fixture is a TEMPLATE:
+>   `_verify/_probe_preconditions_1650.mbt.tpl`.  The verifier copies it into
+>   the library package -- where it is named `.mbt` again and compiled --
+>   exactly as before, and the extension is load-bearing, because the
+>   analyzer's scope is the LIBRARY and a fixture that calls the library
+>   spends the analyzer's budget inside the library.  The rule is written
+>   into the fixture's own header, so the next round does not have to
+>   rediscover it.
+>
+>   MEASURED on the fixed tree: **53** `BUDGET-EXCEEDED` -- one BETTER than
+>   the **54** this round started from, because the site the analyzer had
+>   been giving up on since 0.164.66 is now analyzed -- and the library's
+>   own findings are unchanged.
+>
+>   *The probe's value is intact, and so is its bite.*
+>   `_verify/_verify_precondition_guards_1650.py` still publishes **17**
+>   checks and its `--falsify` arm still publishes **16**, and both pass
+>   after the rename.
+>
+>   *The verifier's FIRST run after the rename failed, and it was not the
+>   rename.*  One mode -- `dgp_ok` -- came back with a native LINK error
+>   from the toolchain (`failed to make executable`), not with the
+>   library's own output.  The same mode passes on its own and the whole
+>   verifier passes on a re-run, so the tree is not the cause; the
+>   verifier's report truncates the toolchain's message to 220 characters,
+>   which is why the first run's output could not be read as a build
+>   failure.  Recorded here so that the next round does not spend an
+>   hour blaming the rename.
+>
+>   *The count that grew.*  `_verify/_verify_path_promises_1650.py`
+>   published **522** and makes **530**: a path named in prose is a
+>   check, and this round's ledger names the four files the budget
+>   sites are in, the fixture's own new name, and the sites the bump
+>   has to reach.
+
+>   *THE ROUND'S OWN VERSION BUMP REACHED ONE SITE OF TWENTY-EIGHT, AND THE
+>   HOUSE FOUND OUT FORTY MINUTES IN.*  The release moved
+>   `moonbit_doubleML/moon.mod` from 0.164.67 to 0.164.68 and nothing else.
+>   That manifest is the SOURCE OF TRUTH -- the builder reads the published
+>   version out of it -- but it is ONE site of twenty-eight.  The other
+>   twenty-seven are the twenty-two manifests that PIN the library (the
+>   twenty-one examples and the `doc/` module) and the five live documents
+>   that QUOTE the pin (`doc/001_introduction/readme.mbt.md`,
+>   `doc/002_installation/readme.mbt.md`, `skills/moonbit_doubleML.md`,
+>   `examples/api_server/README.md`, `examples/api_server/main.mbt`).
+>   Twenty-seven of them were left naming 0.164.67.
+>
+>   *The house's net caught it, and the gate said so first.*  The gate's own
+>   `qa loop (service checks)` FAILED, and its evidence named the shape: the
+>   api_server advertises 0.164.68 -- it reads the library's manifest -- while
+>   its own manifest still said 0.164.67, so `/version==moon.mod->200 BAD`.
+>   Four tracked checks went red on the same cause:
+>   `_verify/_verify_example_pins_1650.py` holds every example manifest,
+>   `_verify/_verify_secondary_docs_1650.py` holds the `doc/` module's own
+>   pin, `_verify/_verify_shipped_docs_1643.py` holds the two `doc/` documents,
+>   and `_verify/_verify_skill_claims_1650.py` holds the agent skill's quoted
+>   pin.  The CHANGELOG's fill step then REFUSED to publish a step count for
+>   a red gate -- which is the shape working -- and the placeholders it left
+>   behind turned `_verify/_verify_changelog_placeholders_1680.py` red as
+>   well.  That one is a KNOCK-ON, not a second defect.
+>
+>   *The fix is the house's own bump mechanism, run for this release's pair.*
+>   The bump script is GENERATED from the previous release's by a scripted
+>   version swap -- a hand-edited copy is where a bump site gets dropped --
+>   and it writes all twenty-eight sites.  Its ALLOWED set gained the two
+>   places that keep the old literal as HISTORY: `ENGINEERING.md`, which "is
+>   the HISTORICAL document and must keep the version it was written with",
+>   and the probe fixture's own header, which names the tree the measurement
+>   was taken on.  The pre-commit check already calls both history, so the
+>   two mechanisms now agree on the same rule.
+>
+>   *The second half of the fix is WHERE the house found out.*  A missed bump
+>   was caught by an api_server SERVICE CHECK, forty minutes into the chain,
+>   in the middle of a build -- while the tracked checks that hold exactly
+>   this shape sat in the suite, twenty minutes later, and the pre-commit
+>   check that holds the working tree's version literals sat after that.
+>   The release path now runs those working-tree version checks BEFORE the
+>   gate, so a missed bump is red in seconds and it names the site.
+>
+>   *AND THE CHECK THAT HOLDS THE SHAPE WAS NOT IN THE RELEASE PATH.*  The
+>   house has a check for exactly this shape --
+>   `_verify/_verify_release_tree_1650.py` runs **36** checks over the tree at
+>   a REF, and its site set is DERIVED from the bump script's own EDITS
+>   table, so "every place the version lives" is a NAMED set and not a guess.
+>   The ledger says the release procedure runs it against the new commit
+>   BEFORE the tag is made.
+>
+>   Nothing did.  The tracked suite runs it, and the suite runs BEFORE the
+>   commit, so it reads HEAD -- the PREVIOUS release's commit -- and is green
+>   whether or not this round's tree is right.  The chain, the gate, the
+>   pre-commit check, the owner checks, the committed-tree check and the CI
+>   workflows do not run it at all, and no round release script ever has.  The
+>   one check that holds "every bump site carries the version" was GREEN on a
+>   tree where twenty-seven of them named a version the registry no longer
+>   served.
+>
+>   It is in the committed-tree check now -- at the new commit, before the tag
+>   -- and the release path runs the working-tree version checks BEFORE the
+>   gate as well.  The WIRING is what this round added, and the wiring is
+>   what is proved: with one manifest left naming the old version the guard
+>   is RED and names the site; with the bump applied it is green.
+
 >
 >
 

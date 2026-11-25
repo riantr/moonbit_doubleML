@@ -9,6 +9,163 @@ with `Added` / `Changed` / `Fixed` / `Removed` per version. The state
 under each TODO is reset on every release -- the most recent verified
 release is the canonical version.
 
+## [0.164.68] -- the house's own probe fixture was costing the analyzer four library sites
+
+`moon.mod` moves 0.164.67 -> 0.164.68.  No estimator behaviour changed, and the
+test counts are UNCHANGED at **1120 / 1126 / 1120 / 1120** (native / wasm-gc /
+wasm / js) -- re-measured on the toolchain this release names, not carried
+over.
+
+This release closed **3** findings.  ALL THREE ARE DEFECTS IN THE HOUSE'S OWN
+tooling rather than in the library: the fixture that MEASURES the precondition
+guards was sitting in the analyzed tree as a plain MoonBit file, so the
+analyzer entered its arms, ran their calls into the library, and spent its
+2000-step budget INSIDE four library functions, and this release's OWN version
+bump reached the manifest and none of the twenty-seven other sites that carry
+the version.  The third is that the check which holds that shape was never in
+the release path.
+
+### Fixed -- the house's own probe fixture was costing the analyzer four library sites
+
+The QA pass was ANCHORED TO THE REGISTRY: `riantr/LunaFlow` and
+`riantr/moonbit_static_analysis` at their registry `latest` -- **0.1.37** and
+**0.5.4**, both unchanged -- against a CLEAN CLONE of the shipped 0.164.67
+tree.  Every rule count was identical to the candidate tree except one:
+`BUDGET-EXCEEDED`, the family that says "the rest of this function was not
+executed", rose **54** -> **57**.  A count that rises while the analyzer's reach
+falls is not progress, so the round went after the three new sites.
+
+The cause was the house's own fixture.  The analyzer collects only the files
+whose name ends in `.mbt`, and it enters every PLAIN function of the tree as
+an entry point -- a TEST BLOCK is not an entry.  The probe that measures the
+precondition guards is a set of plain functions, because the generated
+`main.mbt` has to call them; so the analyzer entered each arm, ran the arm's
+call into the library, and the generator's own loops spent the analyzer's
+2000-step per-run budget inside the callee.
+
+All four sites were the fixture's, not the library's:
+
+- `moonbit_doubleML/bootstrap.mbt:97` -- `did_bootstrap_t_stat`
+- `moonbit_doubleML/dgp_iivm.mbt:89` -- `make_iivm_data`
+- `moonbit_doubleML/dgp_plr_CCDDHNR.mbt:91` -- `make_plr_CCDDHNR2018`
+- `moonbit_doubleML/sensitivity.mbt:302` -- `irm_style_sensitivity_cluster_from_elements`
+
+The last one had been in the report since 0.164.66 for the same reason, so the
+**54** this round started from was itself contaminated by one.
+
+SHRINKING THE PROBE DOES NOT HELP, and that was measured rather than assumed:
+the obvious fix -- make the probe's inputs small -- was tried FIRST and does
+nothing, because the cost is the CALL, not the argument values.  Every
+generator call in the fixture was shrunk to the smallest valid input, and all
+three sites stayed, at the same lines.
+
+The arms, ONE VARIABLE each, the library's `.mbt` files byte-identical in
+every one of them:
+
+- the fixture reverted to its previous version -- **54**
+- the fixture's counts shrunk (400 -> 20) -- **57**
+- every generator call in the fixture shrunk -- **57**
+- the fixture's positive controls replaced by no-ops -- **55**
+- the fixture is not a `.mbt` file -- **53**
+
+The fixture is a TEMPLATE now: `_verify/_probe_preconditions_1650.mbt.tpl`.  The
+verifier copies it into the library package -- where it is named `.mbt` again
+and compiled -- exactly as before, and the extension is load-bearing, because
+the analyzer's scope is the LIBRARY, and a fixture that calls the library
+spends the analyzer's budget inside the library.  The rule is written into the
+fixture's own header, so the next round does not have to rediscover it.
+
+- The path-promises check grew with this round's ledger:
+  `_verify/_verify_path_promises_1650.py` published **522** and makes **530**
+  checks: a path named in prose is a check, and this round's ledger names the
+  four files the budget sites are in and the fixture's own new name.
+The probe's own value is intact: `_verify/_verify_precondition_guards_1650.py`
+still publishes **17** checks and its `--falsify` arm still publishes **16**,
+and both pass after the rename.  Measured on the fixed tree: **53**
+`BUDGET-EXCEEDED` -- one BETTER than the **54** this round started from,
+because the site the analyzer had been giving up on since 0.164.66 is now
+analyzed -- and the library's own findings are unchanged.
+
+### Fixed -- the release's own version bump reached the source of truth and none of the twenty-seven sites that carry it
+
+The release moved `moonbit_doubleML/moon.mod` from 0.164.67 to 0.164.68, and
+that manifest is the SOURCE OF TRUTH -- the README builder reads the published
+version out of it -- but it is ONE site of twenty-eight.  The other twenty-seven
+are the twenty-two manifests that PIN the library (the twenty-one examples and
+the `doc/` module) and the five live documents that QUOTE the pin
+(`doc/001_introduction/readme.mbt.md`, `doc/002_installation/readme.mbt.md`,
+`skills/moonbit_doubleML.md`, `examples/api_server/README.md`,
+`examples/api_server/main.mbt`).  Twenty-seven of them were left naming
+0.164.67.
+
+THE HOUSE'S NET CAUGHT IT, AND THE GATE SAID SO FIRST.  The gate's own
+`qa loop (service checks)` FAILED, and its evidence named the shape: the
+api_server advertises 0.164.68 -- it reads the library's manifest -- while its
+own manifest still said 0.164.67, so `/version==moon.mod->200 BAD`.  Four
+tracked checks went red on the same cause:
+`_verify/_verify_example_pins_1650.py` holds every example manifest,
+`_verify/_verify_secondary_docs_1650.py` holds the `doc/` module's own pin,
+`_verify/_verify_shipped_docs_1643.py` holds the two `doc/` documents, and
+`_verify/_verify_skill_claims_1650.py` holds the agent skill's quoted pin.
+The CHANGELOG's fill step then REFUSED to publish a step count for a red gate
+-- which is the shape working -- and the placeholders it left behind turned
+`_verify/_verify_changelog_placeholders_1680.py` red as well.  That one is a
+KNOCK-ON, not a second defect.
+
+THE FIX IS THE HOUSE'S OWN BUMP MECHANISM, RUN FOR THIS RELEASE'S PAIR.  The
+bump script is GENERATED from the previous release's by a scripted version
+swap -- a hand-edited copy is where a bump site gets dropped -- and it writes
+all twenty-eight sites.  Its ALLOWED set gained the two places that keep the
+old literal as HISTORY: `ENGINEERING.md`, which "is the HISTORICAL document
+and must keep the version it was written with", and the probe fixture's own
+header, which names the tree the measurement was taken on.  The pre-commit
+check already calls both history, so the two mechanisms now agree on the same
+rule.
+
+THE SECOND HALF OF THE FIX IS WHERE THE HOUSE FOUND OUT.  A missed bump was
+caught by an api_server SERVICE CHECK, forty minutes into the chain, in the
+middle of a build -- while the tracked checks that hold exactly this shape sat
+in the suite, twenty minutes later, and the pre-commit check that holds the
+working tree's version literals sat after that.  The release path now runs
+those working-tree version checks BEFORE the gate, so a missed bump is red in
+seconds and it names the site.
+
+Nothing in this release reached the registry in that state, and the tag was
+never made: the release tail refuses to run over a red chain.
+
+### Fixed -- the check that holds every bump site was not in the release path
+
+The house has a check for exactly this shape: `_verify/_verify_release_tree_1650.py`
+runs **36** checks over the tree at a REF, and its site set is DERIVED from the
+bump script's own EDITS table -- "every place the version lives" is a NAMED
+set, not a guess, and it is the same set the bump writes.  The ledger says the
+release procedure runs it against the new commit BEFORE the tag is made.
+
+Nothing ran it there.  The tracked suite runs it, and the suite runs BEFORE
+the commit, so it reads HEAD -- the PREVIOUS release's commit -- and is green
+whether or not this round's tree is right.  The release chain, the gate, the
+pre-commit check, the owner checks, the committed-tree check and the CI
+workflows do not run it at all, and no round release script ever has.  So the
+one check that holds "every bump site carries the version" was GREEN on a tree
+where twenty-seven of them named a version the registry no longer served.
+
+It is in the committed-tree check now, which runs at the new commit and before
+the tag, and the release path also runs the working-tree version checks BEFORE
+the gate, so a missed bump is red in seconds and it names the site.
+
+THE CONTROL ARM: the check is not new -- the round-34 and round-40 drivers
+break each of its seven mechanisms one at a time -- but the WIRING is what this
+round added, and the wiring is what is proved: with one manifest left naming
+the old version the guard is RED and names the site, and with the bump applied
+it is green.
+
+### Verified ---
+
+- local gate: 68 steps, 0 failed
+- tracked verifier suite: 97 passed / 0 failed / 0 unknown
+- the tracked contract in a FRESH CLONE: **0** of **97** fail
+- `typos` v1.19.0: exit 0 over the committed tree
+- test counts: 1120 / 1126 / 1120 / 1120 (native / wasm-gc / wasm / js)
 ## [0.164.67] -- a negative sample count was a raw panic, and a narrow design read past the end of the array
 
 `moon.mod` moves 0.164.66 -> 0.164.67.  No estimator behaviour changed, and the
@@ -5023,11 +5180,16 @@ v0.164.22 entry publishes the current count with a witness.
   per source file, so a tree with fewer rows runs fewer checks. That is the
   point -- the number moves when the thing being watched moves, and the
   witness says so instead of letting the published number drift.
-- `_verify/_dryrun_round28_1650.py` now does the same for the failure count it
-  ends at, and ABORTS if the published number and the measured one disagree.
-  On the tree as it stands it breaks the claims one mechanism at a time and
-  requires the failure count to GROW at every step: **35** failures at the
-  end, 0 -> 1 -> 2 -> 4 -> 7 -> 8 -> 10 -> 11 -> 13 -> 16 -> 17 -> 31 -> 35, and the counter agrees with the verifier's own summary.
+- `_verify/_dryrun_round28_1650.py` now does the same for the failure count it
+
+  ends at, and ABORTS if the published number and the measured one disagree.
+
+  On the tree as it stands it breaks the claims one mechanism at a time and
+
+  requires the failure count to GROW at every step: **35** failures at the
+
+  end, 0 -> 1 -> 2 -> 4 -> 7 -> 8 -> 10 -> 11 -> 13 -> 16 -> 17 -> 31 -> 35, and the counter agrees with the verifier's own summary.
+
 
 ### Also confirmed, and changed nothing
 

@@ -5,6 +5,47 @@
 // The MODE is chosen by the generated `main.mbt`, not by argv, so the
 // package needs no extra import.
 //
+// WHY THIS FILE IS NOT NAMED `.mbt`
+// ==================================
+// The extension is load-bearing.  Do not rename this file to `.mbt`.
+//
+// The analyzer collects only the files whose name ends in `.mbt`
+// (`scan.mbt`: `name.has_suffix(".mbt")`), and it enters every PLAIN
+// function of the tree as an entry point -- a TEST BLOCK is not an entry.
+// The arms below are plain functions, because the generated `main.mbt` calls
+// them; that is what makes the probe able to run at all.
+//
+// So while this file was a `.mbt` file, the analyzer entered each arm, ran
+// the arm's call into the library, and the generator's own loops spent the
+// analyzer's 2000-step per-run budget INSIDE the callee.  The notice was
+// then reported in the LIBRARY's file, at the line where the budget died,
+// and it read like a statement about the library:
+//
+//   moonbit_doubleML/bootstrap.mbt:97          did_bootstrap_t_stat
+//   moonbit_doubleML/dgp_iivm.mbt:89           make_iivm_data
+//   moonbit_doubleML/dgp_plr_CCDDHNR.mbt:91    make_plr_CCDDHNR2018
+//   moonbit_doubleML/sensitivity.mbt:302       irm_style_sensitivity_cluster_from_elements
+//
+// All four were this file's, not the library's.  The last one had been in
+// the report since 0.164.66 for the same reason.
+//
+// MEASURED, on the published 0.164.67 tree:
+//   the fixture reverted to its previous version        -> 54 BUDGET-EXCEEDED
+//   the fixture's counts shrunk (400 -> 20)             -> 57  (no change)
+//   every generator call in the fixture shrunk          -> 57  (no change)
+//   the fixture's POSITIVE controls removed             -> 55
+//   this file not a `.mbt` file                         -> 53
+//
+// The third and fourth lines are the important ones: SHRINKING THE INPUTS
+// DOES NOT HELP.  The cost is the CALL, not the argument values -- the
+// analyzer's abstract layer expands the callee's body whatever the
+// arguments are.  So the fix is not a smaller probe; the fix is to keep the
+// fixture out of the analyzer's file scan.
+//
+// The analyzer's scope is the LIBRARY.  This file is a verification
+// artefact: it is copied into the package for the verifier's own run, where
+// it is named `.mbt` and compiled, and it is not part of what ships.
+//
 // WHY A PROCESS PER MODE
 // ======================
 // The difference the probe measures is the difference between two ways a

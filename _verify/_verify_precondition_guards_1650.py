@@ -56,10 +56,22 @@ index or into an allocation size:
 
 HOW IT MEASURES
 ===============
-The probe (`_verify/_probe_preconditions_1650.mbt`) is COPIED INTO the
-library package, the package is flipped to an executable, and one mode per
-process is run. The PROCESS OUTCOME is the verdict, because the difference
+The probe (`_verify/_probe_preconditions_1650.mbt.tpl`) is COPIED INTO the
+library package -- where it is named `.mbt` again and compiled -- the package
+is flipped to an executable, and one mode per process is run. The PROCESS
+OUTCOME is the verdict, because the difference
 between the two failure modes is exactly what is being pinned.
+
+The probe is a TEMPLATE, and the extension is the point: the analyzer
+collects only the files whose name ends in `.mbt`, and it enters every PLAIN
+function of the tree as an entry point (test blocks are not entries). The
+probe's arms are plain functions -- the generated `main.mbt` calls them -- so
+while the probe sat in the tree as a `.mbt` file the analyzer entered them,
+ran their calls into the library, and spent its 2000-step per-run budget
+INSIDE four library functions. The fixture's cost was reported as the
+library's: three "the rest of this function was not executed" notices that
+were the probe's, and one the analyzer had been giving up on since 0.164.66
+that the probe was causing. Measured: BUDGET-EXCEEDED 57 -> 53.
 
 The structural half is a source scan over the same tree: every cluster-id
 scan must validate the id's sign, and every public Matrix constructor must
@@ -89,7 +101,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIB = os.path.join(ROOT, "moonbit_doubleML")
-PROBE = os.path.join(ROOT, "_verify", "_probe_preconditions_1650.mbt")
+PROBE = os.path.join(ROOT, "_verify", "_probe_preconditions_1650.mbt.tpl")
 
 FALSIFY = "--falsify" in sys.argv
 
