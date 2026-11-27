@@ -2,7 +2,7 @@
 //
 // WHY THIS FILE EXISTS EVEN THOUGH IT IS NEVER USED FOR A COMPARISON
 // ================================================================
-// MoonBit 0.1.20261119 has no file I/O (measured: `@std/env`, `@std/fs`,
+// MoonBit 0.1.20261126 has no file I/O (measured: `@std/env`, `@std/fs`,
 // `@std/io`, `@std/process` all fail to resolve -- "Cannot use `@std`:
 // package std is not imported.", error 4037; the builtin `read_file` does
 // not exist, error 4021), so Python-generated data cannot be handed to the

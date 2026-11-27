@@ -214,7 +214,7 @@ OLD_SQLITE_PIN = "0.2.3"
 # line, and the Installation section's requirement.  Four literals are four
 # chances to move one and forget three, and the one that is forgotten is the
 # one a reader would have tripped over.
-TOOLCHAIN = "0.1.20261119"
+TOOLCHAIN = "0.1.20261126"
 
 # --------------------------------------------------------------- the test counts
 #
@@ -4260,6 +4260,174 @@ __GAP_NOTE__
 >   gate as well.  The WIRING is what this round added, and the wiring is
 >   what is proved: with one manifest left naming the old version the guard
 >   is RED and names the site; with the bump applied it is green.
+> * **Round 92.** The house's analyser evidence had no scope and no coverage.
+>
+>   The QA pass was ANCHORED TO THE REGISTRY again: `riantr/LunaFlow` and
+>   `riantr/moonbit_static_analysis` at their registry `latest` -- **0.1.38**
+>   and **0.6.0**, and BOTH MOVED since round 91.  A single run cannot tell a
+>   tree's change from a tool's change, so the round ran a **2x2**: two
+>   published trees by two tool versions, every arm on a FRESH CLONE of a
+>   PUBLISHED commit, never on the working directory.
+>
+>   *The TOOL delta is ZERO.*  At their registry `latest` the two analysers
+>   report the same findings, finding for finding, that they reported before
+>   they moved: the flow analyser adds **0** and drops **0** on the published
+>   0.164.68 tree, and the static analyser's report is identical on BOTH trees
+>   under BOTH versions.  *The TREE delta is the four `BUDGET-EXCEEDED` sites
+>   round 91 removed, and nothing else.*  The library is unchanged under the
+>   new toolchain.
+>
+>   The static analyser's ONE actionable finding is the one this house already
+>   adjudicated -- `unsupported operand types for '==': '[int]' and '[int]'` at
+>   `moonbit_doubleML/expand_v120_test.mbt` -- and it is a false positive: the
+>   package compiles and its tests pass on four backends.  At the PACKAGE's
+>   scope it is worth saying WHERE it is.  The package's 220 `.mbt` files are
+>   91 library files and 129 test files, and the library alone -- the package
+>   minus its test files -- has **ZERO** actionable findings.
+>
+>   *THE HOUSE'S ANALYSER EVIDENCE WAS A SCAN THAT STOPPED EARLY.*  The
+>   tool's own report carries the table the house never read:
+>
+>       | Package | Functions entered | Functions skipped | Steps | budget |
+>       | ``      | 274               | 1137              | 100619| spent  |
+>
+>   The tool's module-wide STEP BUDGET -- 100,000 steps, the DEFAULT -- is
+>   checked BEFORE each function is entered, so the scan overshoots it by at
+>   most one function's own 2,000-step budget and then STOPS.  The dynamic
+>   layer had entered **274** of the package's **1411** analysed functions and
+>   had **1137** of them SKIPPED.  The house had raised the CFG layer's caps
+>   (`--max-cfg-functions 3000`, `--max-cfg 12`) and called the result "the
+>   full view"; the dynamic layer's cap was never raised, and the house never
+>   published the coverage.
+>
+>   *A HIGHER BUDGET IS NOT AVAILABLE, AND THAT WAS MEASURED, NOT ASSUMED.*
+>   The ladder, ONE VARIABLE at a time, on the same tree and the same tool:
+>
+>       --max-total-steps 100000 (the default)   274 entered  1137 skipped  COMPLETES
+>       --max-total-steps 200000                 538 entered   873 skipped  DIES
+>       --max-total-steps 400000                1136 entered   275 skipped  DIES
+>       --max-total-steps 0 (no budget at all)                                     DIES
+>
+>   The death is a trap in the tool's WebAssembly build -- `RuntimeError:
+>   unreachable`, exit 1 -- and it comes AFTER the report is written and BEFORE
+>   the findings are, so the run at 400,000 leaves a report that says it
+>   reached 1136 of 1411 functions and not one finding to show for it.  The
+>   trace is held in memory, so the step budget is a memory budget too.
+>
+>   *THE HOUSE MEASURED THE REPOSITORY, AND THE SAME LIBRARY FILE GOT
+>   DIFFERENT FINDINGS IN THE TWO SCOPES.*  The house's evidence was measured
+>   on 265 `.mbt` files, 45 of which never ship -- the example drivers, the
+>   `doc/` tutorials, `_prove_pilot/`, `_verify/`.  The artefact a user
+>   installs is the PACKAGE: 220 `.mbt` files.  The repository view reports
+>   **3967** findings and **53** `BUDGET-EXCEEDED`; the package view reports
+>   **3644** and **19** -- and the **19** are the SAME library sites in both,
+>   the repository's extra **34** being `examples/*/main.mbt` and
+>   `_prove_pilot/kfold_view.mbt`, which do not ship.
+>
+>   But the difference is not only a difference of scope.  The repository view
+>   carries **273** findings the package view does not, AND the package view
+>   carries **2** the repository view does not:
+>
+>       moonbit_doubleML/ssm.mbt:538      TAINT-INDEX
+>       moonbit_doubleML/matrix.mbt:279   TAINT-INDEX-RANGE
+>
+>   The reason is the budget: it is spent in FILE ORDER, so the point at which
+>   it runs out depends on what ELSE is in the scanned directory.  The same
+>   library file, in the same bytes, therefore carries different findings
+>   depending on where the scan was pointed -- and a count that depends on the
+>   directory is not a count about the tree.
+>
+>   *THE CONTROL ARM, ONE VARIABLE AT A TIME:* the package with its 129 test
+>   files removed -- 91 `.mbt` files, the library alone -- measures **2935**
+>   findings and the SAME **19** `BUDGET-EXCEEDED` sites.  So the package's
+>   own test files cause NONE of the library's budget exhaustion; they
+>   contribute **709** findings of their own, every one of them in a
+>   `*_test.mbt` file.
+>
+>   *THE HOUSE'S ANALYSER EVIDENCE WAS AN UNTRACKED SCRATCH FILE.*  The
+>   script that makes the final measurement lives OUTSIDE the repository, it
+>   hard-codes its expectations -- `BUDGET-EXCEEDED` must be 53, and the four
+>   fixture sites must be absent -- and NO release step runs it: not the
+>   chain, not the gate, not the tracked verifier suite, not the pre-commit
+>   check, not the owner checks, not the committed-tree check, not the CI
+>   workflows, not the release tail.  So the numbers the house published about
+>   its own analyser came from a file that is not in the tree, on a tree that
+>   is not the one that ships, at a depth the house had not stated.
+>
+>   *THE FIX IS THREE FILES AND ONE STEP.*  The measurement is tracked --
+>   `_verify/_measure_analyser_package_1650.py` -- and it DERIVES the package
+>   from the tree (the workspace member whose `moon.mod` declares the
+>   package's name), copies it outside the repository so the scan can neither
+>   see nor leave anything, and runs the analyser with the budget PINNED, so
+>   the tool's default cannot move under the house.  The record it writes is
+>   tracked too -- `_verify/ANALYSER_EVIDENCE.json` -- and it carries a digest
+>   of the package's SOURCE BYTES, so a record that no longer describes the
+>   package is red rather than published.  And the check that holds that
+>   record to its scope and its coverage is tracked:
+>   `_verify/_verify_analyser_evidence_1650.py` publishes **10** checks, every
+>   one of them proved to BITE by a control arm that mutates the record and
+>   requires the judgement to reject it AND to name the field.
+>
+>   The measurement is a STEP in the release chain, and it runs BEFORE the
+>   tracked verifier suite -- a check that cannot see the thing it checks
+>   measures nothing.
+>
+>   *THE PIN MOVED, AND THE TOOLCHAIN FLOOR WAS RE-MEASURED ON IT.*  The
+>   registry published `moonbitlang/async@0.22.11` on 2026-11-27, and the
+>   house's own dep-pin check turned RED on the release chain's "the version
+>   sites" step: the tree pinned **0.22.10**, and the README's own rule says to
+>   pin the latest published version.  So the pin moved -- in the library's
+>   manifest and in the api_server example's, in the four hand-maintained live
+>   documents that name it, and in the README, whose copy of the pin is
+>   DERIVED from `moonbit_doubleML/moon.mod` rather than typed in.
+>
+>   Moving a pin is not a number edit.  The README's toolchain FLOOR rests on a
+>   FACT about the pinned version's published source -- that it imports
+>   `moonbitlang/core/async`, a subpackage only the newer cores carry -- and
+>   that fact was MEASURED for the new version, out of the toolchain's own
+>   registry cache: **0.22.11**'s published source has **524** files and **4**
+>   of them import `moonbitlang/core/async`, where the old pin's had **3**.  So
+>   the floor still holds, and the sentence that states it stays true -- the PIN
+>   inside it moved, and the claim it rests on was re-measured rather than
+>   re-labelled.  `_verify/_verify_toolchain_floor_1680.py` is the check that
+>   MEASURES the published source, out of that cache, and
+>   `_verify/_verify_dep_pins_1680.py` is the check that turned red.
+>
+>   *THE TOOLCHAIN MOVED, AND EVERY CLAIM THAT NAMES IT WAS RE-DERIVED.*  The
+>   tree published `moon 0.1.20261119`; the toolchain that is installed NOW is
+>   `moon 0.1.20261126 (ccd306a 2026-11-26)`, in a NEW layout
+>   (`~/.moonup/toolchains/latest/`), and the core's version scheme moved with
+>   it -- `v0.10.22+124d61d05` is now `1.0.0-rc1+3c0520448`.  The drift was
+>   NOT this round's: the release before it was cut at 2026-11-26 04:07 and the
+>   toolchain was installed at 2026-11-27 06:02, so the tree published a
+>   toolchain that stopped being the installed one a day after it went out.
+>   Three tracked checks were RED on it: the toolchain census
+>   (`_verify/_verify_toolchain_claims_1640.py`), the toolchain FLOOR the
+>   README publishes (`_verify/_verify_toolchain_floor_1680.py`), and the
+>   fileio-claim check's own toolchain label
+>   (`_verify/_verify_fileio_claim_1680.py`).
+>
+>   *Everything the label names was RE-MEASURED before the label moved.*  The
+>   test counts are UNCHANGED at **1120 / 1126 / 1120 / 1120**; the
+>   workspace-root `--deny-warn` check exits 0 for all four backends; `moon
+>   fmt --check` exits 0 in the package and at the root; a BARE `moon test`
+>   still reports `Total tests: 0` for `wasm` and `native` and still never
+>   reports `js`; the `@std` probes still do not resolve (error 4037) and
+>   `read_file` is still unbound (error 4021); the core still ships the
+>   `async` subpackage, so the FLOOR still holds; and the house's own gate ran
+>   68 steps with 0 failed.  The move is NOT a global replace: six mentions
+>   name the version where something CHANGED, and they stay.
+>
+> *The count that grew.*  `_verify/_verify_path_promises_1650.py` published
+> **530** and makes **534** checks: a path named in prose is a check, and this
+> round's ledger names the measurement, the record and the check that holds
+> them.
+>
+> *The count that moved with the claims.*  `_verify/_verify_ledger_counts_1650.py`
+> (**100** checks): this round's ledger names a check the banner did not name
+> before, and the check that holds the banner's published counts makes two
+> checks more for every new name -- one against the banner and one against the
+> CHANGELOG.
 
 >
 >

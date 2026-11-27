@@ -16,7 +16,7 @@
 /// Pinning `bytes[k].to_int()` keeps the assertion on the contract --
 /// the numeric value of the byte at index k -- and makes it
 /// independent of how the toolchain chooses to print a byte. Measured
-/// on moon 0.1.20261119 / core 0.10.22: `to_int()` of 0x45 is 69, of
+/// on moon 0.1.20261126 / core 1.0.0-rc1+3c0520448: `to_int()` of 0x45 is 69, of
 /// 0x0c is 12, of 0xff is 255, of 0x00 is 0.
 test "seed_to_bytes_layout" {
   let bytes = seed_to_bytes(3141)

@@ -10,12 +10,12 @@
 // }
 import {
   "moonbit-community/sqlite3@0.2.5",
-  "moonbitlang/async@0.22.10",
+  "moonbitlang/async@0.22.11",
 }
 
 name = "riantr/moonbit_doubleML"
 
-version = "0.164.68"
+version = "0.164.69"
 
 readme = "README.mbt.md"
 
